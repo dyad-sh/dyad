@@ -17,6 +17,7 @@ import { useMcp } from "@/hooks/useMcp";
 import { persistChatModeToDb } from "@/lib/chatModeUtils";
 import type { ChatMode } from "@/lib/schemas";
 import { isChatModeAllowed, isDyadProEnabled } from "@/lib/schemas";
+import { isOpenAIOrAnthropicSetup } from "@/lib/providerUtils";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
@@ -47,13 +48,22 @@ export function ChatModeSelector() {
   const { servers } = useMcp();
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
   const isLocalAgentAllowed =
-    settings &&
+    !!settings &&
     isChatModeAllowed(
       "local-agent",
       settings,
       envVars,
       freeAgentQuotaAvailable,
     );
+  const localAgentUnavailableMessage = settings
+    ? !isDyadProEnabled(settings)
+      ? !freeAgentQuotaAvailable
+        ? "Agent mode unavailable — free quota exceeded"
+        : !isOpenAIOrAnthropicSetup(settings, envVars)
+          ? "Agent mode requires an OpenAI or Anthropic provider"
+          : null
+      : "Agent mode unavailable"
+    : "Agent mode unavailable";
 
   const handleModeChange = async (value: string) => {
     const newMode = value as ChatMode;
@@ -63,7 +73,7 @@ export function ChatModeSelector() {
     setIsPersisting(true);
     try {
       if (newMode === "local-agent" && !isLocalAgentAllowed) {
-        toast.error("Agent mode unavailable — free quota exceeded");
+        toast.error(localAgentUnavailableMessage ?? "Agent mode unavailable");
         return;
       }
 
@@ -213,17 +223,7 @@ export function ChatModeSelector() {
             </div>
           </SelectItem>
           {!isProEnabled && (
-            <SelectItem
-              value="local-agent"
-              disabled={
-                !isChatModeAllowed(
-                  "local-agent",
-                  settings!,
-                  envVars,
-                  freeAgentQuotaAvailable,
-                )
-              }
-            >
+            <SelectItem value="local-agent" disabled={!isLocalAgentAllowed}>
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />

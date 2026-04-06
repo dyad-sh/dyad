@@ -63,8 +63,7 @@ export function useChatModeToggle() {
         ? availableModes[(currentIndex + 1) % availableModes.length]
         : availableModes[0];
 
-    // Only show the quota-toast when the user is already on local-agent and it is unavailable.
-    if (
+    const localAgentUnavailableReason =
       currentMode === "local-agent" &&
       !isChatModeAllowed(
         "local-agent",
@@ -72,12 +71,23 @@ export function useChatModeToggle() {
         envVars,
         freeAgentQuotaAvailable,
       )
-    ) {
-      toast.info("Agent mode unavailable — free quota exceeded");
+        ? !freeAgentQuotaAvailable
+          ? "Agent mode unavailable — free quota exceeded"
+          : "Agent mode requires an OpenAI or Anthropic provider"
+        : null;
+
+    if (localAgentUnavailableReason) {
+      toast.error(localAgentUnavailableReason);
     }
 
     const initialChatId = chatId?.id;
     const initialPath = router.state.location.pathname;
+
+    const getCurrentChatId = () => {
+      if (!router.state.location.pathname.startsWith("/chat")) return undefined;
+      const id = (router.state.location.search as Record<string, unknown>).id;
+      return typeof id === "number" ? id : undefined;
+    };
 
     // Persist to chat if we're in a chat (match ChatModeSelector pattern: persist first)
     if (chatId?.id) {
@@ -93,8 +103,9 @@ export function useChatModeToggle() {
         return; // Don't update settings if DB persist failed
       }
 
+      const currentChatId = getCurrentChatId();
       if (
-        chatId?.id !== initialChatId ||
+        currentChatId !== initialChatId ||
         router.state.location.pathname !== initialPath
       ) {
         return; // Route changed while persisting; don't apply stale mode.
@@ -110,6 +121,7 @@ export function useChatModeToggle() {
     });
   }, [
     settings,
+    envVars,
     updateSettings,
     posthog,
     chatId,

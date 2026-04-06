@@ -23,6 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.dyad/
 
 
 === AI_RULES.md ===
@@ -101,9 +102,6 @@ export default tseslint.config(
   },
 );
 
-
-=== file1.txt ===
-A file (2)
 
 === index.html ===
 <!doctype html>

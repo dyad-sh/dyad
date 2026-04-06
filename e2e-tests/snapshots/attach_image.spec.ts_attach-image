@@ -1,6 +1,4 @@
 ===
 role: user
 message: [dump]
-
-Attachments:
-- logo.png (image/png)
+<dyad-attachment name="logo.png" type="image/png" url="dyad-media://media/wild-eagle-skip/.dyad/media/9c97b2d11a0b6781bae672819b981fd8.png" path="/tmp/dyad-e2e-tests-1775464212432/dyad-apps/wild-eagle-skip/.dyad/media/9c97b2d11a0b6781bae672819b981fd8.png" attachment-type="chat-context"></dyad-attachment>

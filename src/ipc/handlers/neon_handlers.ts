@@ -565,11 +565,8 @@ export function registerNeonHandlers() {
         .where(eq(apps.id, appId))
         .limit(1);
 
-      // Remove env vars first so DB is only updated on success
-      if (appRecord.length > 0) {
-        await removeNeonEnvVars({ appPath: appRecord[0].path });
-      }
-
+      // Update DB first (easy to verify), then remove env vars.
+      // If env removal fails, DB is correct and stale env vars are harmless.
       await db
         .update(apps)
         .set({
@@ -579,6 +576,10 @@ export function registerNeonHandlers() {
           neonActiveBranchId: null,
         })
         .where(eq(apps.id, appId));
+
+      if (appRecord.length > 0) {
+        await removeNeonEnvVars({ appPath: appRecord[0].path });
+      }
 
       logger.info(`Successfully unlinked Neon project from app ${appId}`);
       return { success: true };
@@ -620,17 +621,18 @@ export function registerNeonHandlers() {
       const neonClient = await getNeonClient();
       await neonClient.getProjectBranch(appData.neonProjectId, branchId);
 
-      // Inject env vars first so DB is only updated on success
+      // Update DB first, then inject env vars.
+      // If env injection fails, DB is correct and a retry is safe.
+      await db
+        .update(apps)
+        .set({ neonActiveBranchId: branchId })
+        .where(eq(apps.id, appId));
+
       const warning = await autoInjectNeonEnvVars({
         appId,
         projectId: appData.neonProjectId,
         branchId,
       });
-
-      await db
-        .update(apps)
-        .set({ neonActiveBranchId: branchId })
-        .where(eq(apps.id, appId));
 
       logger.info(
         `Successfully set active branch ${branchId} for app ${appId}`,

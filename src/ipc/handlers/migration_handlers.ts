@@ -282,7 +282,7 @@ export function registerMigrationHandlers() {
 
       // 9. Run drizzle-kit push directly against production
       const pushResult = await spawnDrizzleKit({
-        args: ["push", "--force", `--config=${pushConfigPath}`],
+        args: ["push", `--config=${pushConfigPath}`],
         cwd: tmpDir,
       });
 

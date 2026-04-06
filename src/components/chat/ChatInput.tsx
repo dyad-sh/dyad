@@ -266,13 +266,24 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
 
   // Detect transition to plan mode from another mode in a chat with messages
+  // Only fire if chatId stayed stable (not a chat switch side effect)
   const prevModeRef = useRef(settings?.selectedChatMode);
+  const prevChatIdRef = useRef(chatId);
   useEffect(() => {
     const prevMode = prevModeRef.current;
     const currentMode = settings?.selectedChatMode;
-    prevModeRef.current = currentMode;
+    const chatIdChanged = prevChatIdRef.current !== chatId;
 
-    if (prevMode && prevMode !== "plan" && currentMode === "plan") {
+    prevModeRef.current = currentMode;
+    prevChatIdRef.current = chatId;
+
+    // Only treat as user-initiated mode toggle if chatId stayed stable
+    if (
+      !chatIdChanged &&
+      prevMode &&
+      prevMode !== "plan" &&
+      currentMode === "plan"
+    ) {
       const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
       if (messages.length > 0) {
         setNeedsFreshPlanChat(true);

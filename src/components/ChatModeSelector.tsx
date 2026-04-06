@@ -20,7 +20,7 @@ import { isChatModeAllowed, isDyadProEnabled } from "@/lib/schemas";
 import { isOpenAIOrAnthropicSetup } from "@/lib/providerUtils";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
-import { useRouterState } from "@tanstack/react-router";
+import { useRouterState, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
@@ -28,10 +28,12 @@ import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 import { useChats } from "@/hooks/useChats";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function ChatModeSelector() {
   const { settings, updateSettings, envVars } = useSettings();
   const routerState = useRouterState();
+  const router = useRouter();
   const isChatRoute = routerState.location.pathname === "/chat";
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatId = routerState.location.search.id as number | undefined;
@@ -41,6 +43,7 @@ export function ChatModeSelector() {
   const [isPersisting, setIsPersisting] = useState(false);
 
   // Migration happens on read, so selectedChatMode will never be "agent"
+  const isLoadingSettings = !settings;
   const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
@@ -67,8 +70,9 @@ export function ChatModeSelector() {
 
   const handleModeChange = async (value: string) => {
     const newMode = value as ChatMode;
-    const currentChatId = chatId;
-    const currentRoute = isChatRoute;
+    const initialChatId = chatId;
+    const initialRoute = isChatRoute;
+    const initialPath = routerState.location.pathname;
 
     setIsPersisting(true);
     try {
@@ -92,7 +96,19 @@ export function ChatModeSelector() {
         }
       }
 
-      if (currentChatId === chatId && currentRoute === isChatRoute) {
+      // Read fresh router state post-await; only update settings if still on the same chat
+      const freshChatId =
+        router.state.location.pathname === "/chat"
+          ? (router.state.location.search as Record<string, unknown>).id
+          : undefined;
+      const freshRoute = router.state.location.pathname === "/chat";
+      const freshPath = router.state.location.pathname;
+
+      if (
+        freshChatId === initialChatId &&
+        freshRoute === initialRoute &&
+        freshPath === initialPath
+      ) {
         updateSettings({ selectedChatMode: newMode });
       }
     } finally {
@@ -158,6 +174,15 @@ export function ChatModeSelector() {
     }
   };
   const isMac = detectIsMac();
+
+  // Show skeleton while settings load to avoid flash of Build chip
+  if (isLoadingSettings) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Skeleton className="h-6 w-16 rounded-lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-1.5">

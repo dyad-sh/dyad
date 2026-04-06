@@ -566,6 +566,23 @@ ${componentSnippet}
         settings.selectedChatMode ??
         "build";
 
+      // Legacy chat migration: if chat_mode is null (pre-migration 0027) and we've resolved a concrete mode,
+      // persist it to the database so per-chat mode memory works going forward
+      if (updatedChat.chatMode === null && effectiveStreamMode !== null) {
+        try {
+          await db
+            .update(chats)
+            .set({ chatMode: effectiveStreamMode })
+            .where(eq(chats.id, req.chatId));
+        } catch (err) {
+          logger.error(
+            `Failed to migrate legacy chat ${req.chatId} to mode ${effectiveStreamMode}:`,
+            err,
+          );
+          // Don't fail the stream on migration error; just log it
+        }
+      }
+
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message

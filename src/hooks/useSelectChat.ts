@@ -9,7 +9,9 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useNavigate } from "@tanstack/react-router";
 import { useSettings } from "./useSettings";
 import { useInitialChatMode } from "./useInitialChatMode";
-import { ChatMode } from "@/lib/schemas";
+import { ChatMode, isChatModeAllowed } from "@/lib/schemas";
+import { useFreeAgentQuota } from "./useFreeAgentQuota";
+import { toast } from "sonner";
 import log from "electron-log";
 
 const logger = log.scope("useSelectChat");
@@ -21,8 +23,9 @@ export function useSelectChat() {
   const addSessionOpenedChatId = useSetAtom(addSessionOpenedChatIdAtom);
   const setChatInputValue = useSetAtom(chatInputValueAtom);
   const navigate = useNavigate();
-  const { updateSettings } = useSettings();
+  const { updateSettings, settings, envVars } = useSettings();
   const initialChatMode = useInitialChatMode();
+  const { isQuotaExceeded } = useFreeAgentQuota();
 
   return {
     selectChat: ({
@@ -58,7 +61,30 @@ export function useSelectChat() {
       // - Environment variables (DYAD_MODE override)
       // - Free agent quota availability
       const modeToSet = chatMode ?? initialChatMode;
-      if (modeToSet) {
+
+      // Validate that the mode is still allowed (quota/Pro status may have changed)
+      const freeAgentQuotaAvailable = !isQuotaExceeded;
+      if (
+        modeToSet &&
+        settings &&
+        !isChatModeAllowed(
+          modeToSet,
+          settings,
+          envVars,
+          freeAgentQuotaAvailable,
+        )
+      ) {
+        // Mode is no longer available, fall back to initialChatMode
+        const fallbackMode = initialChatMode;
+        if (fallbackMode) {
+          toast.error(
+            `Agent mode unavailable — switched this chat to ${fallbackMode}`,
+          );
+          updateSettings({ selectedChatMode: fallbackMode }).catch((error) => {
+            logger.error("Error updating chat mode:", error);
+          });
+        }
+      } else if (modeToSet) {
         updateSettings({ selectedChatMode: modeToSet }).catch((error) => {
           logger.error("Error updating chat mode:", error);
         });

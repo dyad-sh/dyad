@@ -2,11 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useSettings } from "./useSettings";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
-import {
-  ChatModeSchema,
-  isChatModeAllowed,
-  isDyadProEnabled,
-} from "../lib/schemas";
+import { ChatModeSchema, isChatModeAllowed } from "../lib/schemas";
 import { persistChatModeToDb } from "@/lib/chatModeUtils";
 import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,8 +25,7 @@ export function useChatModeToggle() {
   // Detect if user is on mac
   const isMac = useIsMac();
 
-  // Check Pro status and quota status at top level
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  // Check quota status at top level
   const { isQuotaExceeded } = useFreeAgentQuota();
 
   // Memoize the modifiers object to prevent re-registration
@@ -76,8 +71,17 @@ export function useChatModeToggle() {
           : "Agent mode requires an OpenAI or Anthropic provider"
         : null;
 
+    const localAgentAutoCycleNotification =
+      localAgentUnavailableReason &&
+      currentMode === "local-agent" &&
+      newMode !== "local-agent"
+        ? `Agent mode unavailable — switched to ${newMode}`
+        : null;
+
     if (localAgentUnavailableReason) {
-      toast.error(localAgentUnavailableReason);
+      toast.error(
+        localAgentAutoCycleNotification ?? localAgentUnavailableReason,
+      );
     }
 
     const initialChatId = chatId?.id;
@@ -113,6 +117,20 @@ export function useChatModeToggle() {
     }
 
     // Apply change to settings only after DB save (if in chat) to prevent wrong-mode sends during persist window
+    // Final validation: ensure mode is still allowed before persisting
+    const freeAgentQuotaAvailableForFinalCheck = !isQuotaExceeded;
+    if (
+      !isChatModeAllowed(
+        newMode,
+        settings,
+        envVars,
+        freeAgentQuotaAvailableForFinalCheck,
+      )
+    ) {
+      toast.error("Mode is no longer available — try again");
+      return;
+    }
+
     updateSettings({ selectedChatMode: newMode });
     posthog.capture("chat:mode_toggle", {
       from: currentMode,
@@ -127,7 +145,6 @@ export function useChatModeToggle() {
     chatId,
     queryClient,
     router.state.location.pathname,
-    isProEnabled,
     isQuotaExceeded,
   ]);
 

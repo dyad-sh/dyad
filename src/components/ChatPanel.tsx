@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { persistChatModeToDb } from "@/lib/chatModeUtils";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useChats } from "@/hooks/useChats";
 
 import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
@@ -54,6 +55,7 @@ export function ChatPanel({
   const initialChatMode = useInitialChatMode();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { isQuotaExceeded } = useFreeAgentQuota();
+  const { chats: chatsList } = useChats(selectedAppId);
   const showFreeAgentQuotaBanner =
     settings && isBasicAgentMode(settings) && isQuotaExceeded;
   const queryClient = useQueryClient();
@@ -144,38 +146,42 @@ export function ChatPanel({
     if (!chatId || !selectedAppId) return;
 
     try {
-      const chatSummaries = queryClient.getQueryData<ChatSummary[]>(
-        queryKeys.chats.list({ appId: selectedAppId }),
-      );
-
-      if (chatSummaries) {
-        const currentChat = chatSummaries.find((c) => c.id === chatId);
-        // Handle both new chats with explicit mode and legacy chats (chatMode === null)
-        const chatMode = currentChat?.chatMode ?? initialChatMode;
-        if (chatMode && chatMode !== settings?.selectedChatMode) {
-          updateSettings({ selectedChatMode: chatMode });
+      // Check if we have the current chat in the list
+      if (chatsList && chatsList.length > 0) {
+        const currentChat = chatsList.find((c: ChatSummary) => c.id === chatId);
+        if (currentChat) {
+          const chatMode = currentChat.chatMode ?? initialChatMode;
+          if (chatMode && chatMode !== settings?.selectedChatMode) {
+            updateSettings({ selectedChatMode: chatMode });
+          }
+          return; // Found and processed
         }
-      } else {
-        // Fallback: fetch chat directly when cache is empty (cold deep-link / browser history)
-        ipc.chat
-          .getChat(chatId)
-          .then((chat) => {
-            const chatMode = chat.chatMode ?? initialChatMode;
-            if (chatMode && chatMode !== settings?.selectedChatMode) {
-              updateSettings({ selectedChatMode: chatMode });
-            }
-          })
-          .catch((err) => {
-            console.error("Failed to restore chat mode on deep-link:", err);
-          });
       }
+
+      // Not in cache, fetch directly for cold deep-link / browser history
+      ipc.chat
+        .getChat(chatId)
+        .then((chat) => {
+          const chatMode = chat.chatMode ?? initialChatMode;
+          if (chatMode && chatMode !== settings?.selectedChatMode) {
+            updateSettings({ selectedChatMode: chatMode });
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to restore chat mode on deep-link:", err);
+        });
     } catch (err) {
       console.error(err);
     }
-
-    // Exclude settings?.selectedChatMode from dependencies to prevent race condition/infinite loop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, selectedAppId, queryClient, updateSettings, initialChatMode]);
+    // Include chatsList in deps so effect re-runs when cache data arrives
+  }, [
+    chatId,
+    selectedAppId,
+    chatsList,
+    settings?.selectedChatMode,
+    updateSettings,
+    initialChatMode,
+  ]);
 
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
   // but only if the user was following (at bottom) during the stream.

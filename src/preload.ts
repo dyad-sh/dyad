@@ -463,6 +463,8 @@ const validInvokeChannels = [
   "n8n:start",
   "n8n:stop",
   "n8n:status",
+  "n8n:set-api-key",
+  "n8n:refresh-auth",
   "n8n:db:configure",
   "n8n:db:get-config",
   "n8n:workflow:create",
@@ -532,6 +534,9 @@ const validInvokeChannels = [
   "libreoffice:ensure-ready",
   "libreoffice:shutdown",
   "libreoffice:stream-generate",
+  "libreoffice:read-content",
+  "libreoffice:update-content",
+  "libreoffice:ai-assist",
   // Marketplace Integration
   "marketplace:status",
   "marketplace:connect",
@@ -2023,6 +2028,8 @@ const validReceiveChannels = [
   "email:daily-digest-ready",
   // LibreOffice streaming document generation
   "libreoffice:generate-chunk",
+  // LibreOffice AI editing assist
+  "libreoffice:ai-assist-chunk",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

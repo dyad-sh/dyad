@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   FileText,
   FileSpreadsheet,
@@ -190,6 +191,7 @@ const JOYCREATE_TEMPLATES: {
 
 export default function DocumentsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [activeTab, setActiveTab] = useState("all");
@@ -460,6 +462,7 @@ export default function DocumentsPage() {
       className={`group relative overflow-hidden border-border/50 transition-all duration-300 cursor-pointer
         bg-gradient-to-br ${DOCUMENT_TYPE_COLORS[doc.type]}
         hover:shadow-xl hover:shadow-violet-500/5 hover:border-violet-500/30 hover:scale-[1.02]`}
+      onClick={() => navigate({ to: "/documents/$docId", params: { docId: String(doc.id) } })}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-background/80 via-background/60 to-background/80 backdrop-blur-sm" />
       <CardHeader className="relative pb-2">
@@ -485,6 +488,7 @@ export default function DocumentsPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
               >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>

@@ -213,6 +213,7 @@ export const ExperimentsSchema = z.object({
   enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
+  enableCloudSandbox: z.boolean().optional(),
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 

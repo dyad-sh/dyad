@@ -14,6 +14,16 @@ import { useAtomValue } from "jotai";
 import { appUrlAtom } from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
 
+export function shouldShowCloudSandboxOption({
+  runtimeMode,
+  cloudSandboxExperimentEnabled,
+}: {
+  runtimeMode: "host" | "docker" | "cloud";
+  cloudSandboxExperimentEnabled: boolean;
+}) {
+  return cloudSandboxExperimentEnabled || runtimeMode === "cloud";
+}
+
 export function RuntimeModeSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
@@ -27,11 +37,18 @@ export function RuntimeModeSelector() {
   const isDockerMode = settings?.runtimeMode2 === "docker";
   const isCloudMode = settings?.runtimeMode2 === "cloud";
   const hasCloudSandboxAccess = Boolean(userBudget);
+  const showCloudSandboxOption = shouldShowCloudSandboxOption({
+    runtimeMode: settings.runtimeMode2 ?? "host",
+    cloudSandboxExperimentEnabled: !!settings.experiments?.enableCloudSandbox,
+  });
 
   const handleRuntimeModeChange = async (
     value: "host" | "docker" | "cloud",
   ) => {
-    if (value === "cloud" && !hasCloudSandboxAccess) {
+    if (
+      value === "cloud" &&
+      (!hasCloudSandboxAccess || !showCloudSandboxOption)
+    ) {
       return;
     }
 
@@ -69,9 +86,11 @@ export function RuntimeModeSelector() {
             <SelectContent>
               <SelectItem value="host">Local (default)</SelectItem>
               <SelectItem value="docker">Docker (experimental)</SelectItem>
-              <SelectItem disabled={!hasCloudSandboxAccess} value="cloud">
-                Cloud Sandbox (Pro)
-              </SelectItem>
+              {showCloudSandboxOption && (
+                <SelectItem disabled={!hasCloudSandboxAccess} value="cloud">
+                  Cloud Sandbox (Pro)
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -79,7 +98,7 @@ export function RuntimeModeSelector() {
           {t("general.runtimeModeDescription")}
         </div>
       </div>
-      {!hasCloudSandboxAccess && (
+      {showCloudSandboxOption && !hasCloudSandboxAccess && (
         <div className="text-sm text-muted-foreground bg-muted/40 p-2 rounded">
           Cloud sandboxes are a Dyad Pro feature.{" "}
           <button

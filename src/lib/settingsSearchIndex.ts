@@ -34,6 +34,7 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  enableCloudSandbox: "setting-enable-cloud-sandbox",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableSelectAppFromHomeChatInput:
@@ -339,6 +340,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Use native Git for faster performance without external installation",
     keywords: ["git", "native", "experiment", "beta", "performance"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableCloudSandbox,
+    label: "Enable Cloud Sandbox (Pro)",
+    description:
+      "Run your app on the Cloud for a more secure runtime that uses fewer local system resources",
+    keywords: [
+      "cloud",
+      "sandbox",
+      "runtime",
+      "experiment",
+      "pro",
+      "credits",
+      "secure",
+    ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

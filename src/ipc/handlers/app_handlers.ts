@@ -1589,7 +1589,10 @@ export function registerAppHandlers() {
       }
     }
 
-    queueCloudSandboxSnapshotSync({ appId });
+    queueCloudSandboxSnapshotSync({
+      appId,
+      changedPaths: [filePath],
+    });
 
     return {};
   });

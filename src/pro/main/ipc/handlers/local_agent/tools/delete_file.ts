@@ -96,7 +96,10 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
         logger.warn(`File to delete does not exist: ${fullFilePath}`);
       }
 
-      queueCloudSandboxSnapshotSync({ appId: ctx.appId });
+      queueCloudSandboxSnapshotSync({
+        appId: ctx.appId,
+        deletedPaths: [args.path],
+      });
 
       return `Successfully deleted ${args.path}`;
     },

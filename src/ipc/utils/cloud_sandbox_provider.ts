@@ -32,7 +32,7 @@ export interface CloudSandboxProvider {
   uploadFiles(
     sandboxId: string,
     files: CloudSandboxFileMap,
-    options?: { replaceAll?: boolean },
+    options?: { replaceAll?: boolean; deletedFiles?: string[] },
   ): Promise<{ previewUrl?: string }>;
 }
 
@@ -41,6 +41,9 @@ const pendingUploads = new Map<
   {
     activeSandbox: ActiveCloudSandbox;
     timeoutId: ReturnType<typeof setTimeout>;
+    changedPaths: Set<string>;
+    deletedPaths: Set<string>;
+    fullSync: boolean;
   }
 >();
 const activeCloudSandboxesByAppId = new Map<number, ActiveCloudSandbox>();
@@ -103,6 +106,32 @@ export async function buildCloudSandboxFileMap(
   );
 
   return Object.fromEntries(entries);
+}
+
+async function buildCloudSandboxPartialFileMap(input: {
+  appPath: string;
+  changedPaths: Iterable<string>;
+}): Promise<{ files: CloudSandboxFileMap; deletedFiles: string[] }> {
+  const files: CloudSandboxFileMap = {};
+  const deletedFiles: string[] = [];
+
+  for (const relativePath of input.changedPaths) {
+    const normalizedPath = normalizePath(relativePath);
+    const fullPath = path.join(input.appPath, normalizedPath);
+
+    try {
+      const content = await fsPromises.readFile(fullPath, "utf-8");
+      files[normalizedPath] = content;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        deletedFiles.push(normalizedPath);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { files, deletedFiles };
 }
 
 async function* parseSseLines(response: Response, signal?: AbortSignal) {
@@ -174,6 +203,45 @@ async function uploadFullSnapshot(activeSandbox: ActiveCloudSandbox) {
   });
 }
 
+async function uploadPendingSnapshot(input: {
+  activeSandbox: ActiveCloudSandbox;
+  changedPaths: Set<string>;
+  deletedPaths: Set<string>;
+  fullSync: boolean;
+}) {
+  if (input.fullSync) {
+    await uploadFullSnapshot(input.activeSandbox);
+    logger.info(
+      `Synced full app snapshot to cloud sandbox ${input.activeSandbox.sandboxId} for app ${input.activeSandbox.appId}.`,
+    );
+    return;
+  }
+
+  const { files, deletedFiles: missingChangedFiles } =
+    await buildCloudSandboxPartialFileMap({
+      appPath: input.activeSandbox.appPath,
+      changedPaths: input.changedPaths,
+    });
+
+  const deletedFiles = [
+    ...new Set([...input.deletedPaths, ...missingChangedFiles]),
+  ].sort();
+
+  if (Object.keys(files).length === 0 && deletedFiles.length === 0) {
+    return;
+  }
+
+  await uploadCloudSandboxFiles({
+    sandboxId: input.activeSandbox.sandboxId,
+    files,
+    deletedFiles,
+    replaceAll: false,
+  });
+  logger.info(
+    `Synced incremental app snapshot to cloud sandbox ${input.activeSandbox.sandboxId} for app ${input.activeSandbox.appId}. fileCount=${Object.keys(files).length} deletedCount=${deletedFiles.length}.`,
+  );
+}
+
 export async function syncCloudSandboxSnapshot(input: {
   appId?: number;
   appPath?: string;
@@ -188,6 +256,34 @@ export async function syncCloudSandboxSnapshot(input: {
   logger.info(
     `Synced full app snapshot to cloud sandbox ${activeSandbox.sandboxId} for app ${activeSandbox.appId}.`,
   );
+}
+
+export async function syncCloudSandboxDirtyPaths(input: {
+  appId?: number;
+  appPath?: string;
+  changedPaths?: string[];
+  deletedPaths?: string[];
+}): Promise<void> {
+  const activeSandbox = resolveActiveCloudSandbox(input);
+  if (!activeSandbox) {
+    return;
+  }
+
+  stopCloudSandboxFileSync(activeSandbox.appId);
+  await uploadPendingSnapshot({
+    activeSandbox,
+    changedPaths: new Set(
+      (input.changedPaths ?? []).map((changedPath) =>
+        normalizePath(changedPath),
+      ),
+    ),
+    deletedPaths: new Set(
+      (input.deletedPaths ?? []).map((deletedPath) =>
+        normalizePath(deletedPath),
+      ),
+    ),
+    fullSync: false,
+  });
 }
 
 class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
@@ -241,13 +337,14 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
   async uploadFiles(
     sandboxId: string,
     files: CloudSandboxFileMap,
-    options?: { replaceAll?: boolean },
+    options?: { replaceAll?: boolean; deletedFiles?: string[] },
   ) {
     const response = await cloudSandboxFetch(`/sandboxes/${sandboxId}/files`, {
       method: "POST",
       body: JSON.stringify({
         files,
         replaceAll: options?.replaceAll ?? false,
+        deletedFiles: options?.deletedFiles ?? [],
       }),
     });
 
@@ -275,9 +372,11 @@ export async function uploadCloudSandboxFiles(input: {
   sandboxId: string;
   files: CloudSandboxFileMap;
   replaceAll?: boolean;
+  deletedFiles?: string[];
 }) {
   return defaultProvider.uploadFiles(input.sandboxId, input.files, {
     replaceAll: input.replaceAll,
+    deletedFiles: input.deletedFiles,
   });
 }
 
@@ -325,6 +424,9 @@ export function queueCloudSandboxSnapshotSync(input: {
   appId?: number;
   appPath?: string;
   immediate?: boolean;
+  changedPaths?: string[];
+  deletedPaths?: string[];
+  fullSync?: boolean;
 }): void {
   const activeSandbox = resolveActiveCloudSandbox(input);
   if (!activeSandbox) {
@@ -336,17 +438,50 @@ export function queueCloudSandboxSnapshotSync(input: {
     clearTimeout(existing.timeoutId);
   }
 
+  const changedPaths = existing?.changedPaths ?? new Set<string>();
+  const deletedPaths = existing?.deletedPaths ?? new Set<string>();
+
+  for (const changedPath of input.changedPaths ?? []) {
+    const normalizedPath = normalizePath(changedPath);
+    changedPaths.add(normalizedPath);
+    deletedPaths.delete(normalizedPath);
+  }
+
+  for (const deletedPath of input.deletedPaths ?? []) {
+    const normalizedPath = normalizePath(deletedPath);
+    deletedPaths.add(normalizedPath);
+    changedPaths.delete(normalizedPath);
+  }
+
+  const fullSync = input.fullSync === true || existing?.fullSync === true;
+
   const timeoutId = setTimeout(
     async () => {
+      const pending = pendingUploads.get(activeSandbox.appId);
       pendingUploads.delete(activeSandbox.appId);
 
+      if (!pending) {
+        return;
+      }
+
       try {
-        await syncCloudSandboxSnapshot({
-          appId: activeSandbox.appId,
-        });
+        if (pending.fullSync) {
+          await uploadPendingSnapshot({
+            activeSandbox: pending.activeSandbox,
+            changedPaths: pending.changedPaths,
+            deletedPaths: pending.deletedPaths,
+            fullSync: true,
+          });
+        } else {
+          await syncCloudSandboxDirtyPaths({
+            appId: pending.activeSandbox.appId,
+            changedPaths: [...pending.changedPaths],
+            deletedPaths: [...pending.deletedPaths],
+          });
+        }
       } catch (error) {
         logger.error(
-          `Failed to sync full app snapshot to cloud sandbox ${activeSandbox.sandboxId} for app ${activeSandbox.appId}:`,
+          `Failed to sync app snapshot to cloud sandbox ${activeSandbox.sandboxId} for app ${activeSandbox.appId}:`,
           error,
         );
       }
@@ -357,6 +492,9 @@ export function queueCloudSandboxSnapshotSync(input: {
   pendingUploads.set(activeSandbox.appId, {
     activeSandbox,
     timeoutId,
+    changedPaths,
+    deletedPaths,
+    fullSync,
   });
 }
 

@@ -55,7 +55,10 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
     // Write file content
     fs.writeFileSync(fullFilePath, args.content);
     logger.log(`Successfully wrote file: ${fullFilePath}`);
-    queueCloudSandboxSnapshotSync({ appId: ctx.appId });
+    queueCloudSandboxSnapshotSync({
+      appId: ctx.appId,
+      changedPaths: [args.path],
+    });
 
     // Deploy Supabase function if applicable
     if (

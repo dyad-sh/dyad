@@ -42,7 +42,10 @@ export async function updatePostgresUrlEnvVar({
 
   const envFileContents = serializeEnvFile(envVars);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-  queueCloudSandboxSnapshotSync({ appPath: getDyadAppPath(appPath) });
+  queueCloudSandboxSnapshotSync({
+    appPath: getDyadAppPath(appPath),
+    changedPaths: [ENV_FILE_NAME],
+  });
 }
 
 export async function updateDbPushEnvVar({
@@ -78,7 +81,10 @@ export async function updateDbPushEnvVar({
 
     const envFileContents = serializeEnvFile(envVars);
     await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-    queueCloudSandboxSnapshotSync({ appPath: getDyadAppPath(appPath) });
+    queueCloudSandboxSnapshotSync({
+      appPath: getDyadAppPath(appPath),
+      changedPaths: [ENV_FILE_NAME],
+    });
   } catch (error) {
     logger.error(
       `Failed to update DB push environment variable for app ${appPath}: ${error}`,

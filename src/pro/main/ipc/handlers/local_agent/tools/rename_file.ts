@@ -101,7 +101,11 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         logger.warn(`Source file for rename does not exist: ${fromFullPath}`);
       }
 
-      queueCloudSandboxSnapshotSync({ appId: ctx.appId });
+      queueCloudSandboxSnapshotSync({
+        appId: ctx.appId,
+        changedPaths: [args.to],
+        deletedPaths: [args.from],
+      });
 
       return `Successfully renamed ${args.from} to ${args.to}`;
     },

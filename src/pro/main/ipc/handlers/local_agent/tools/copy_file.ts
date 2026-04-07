@@ -46,7 +46,10 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
       ctx.isSharedModulesChanged = true;
     }
 
-    queueCloudSandboxSnapshotSync({ appId: ctx.appId });
+    queueCloudSandboxSnapshotSync({
+      appId: ctx.appId,
+      changedPaths: [args.to],
+    });
 
     if (result.deployError) {
       return `File copied, but failed to deploy Supabase function: ${result.deployError}`;

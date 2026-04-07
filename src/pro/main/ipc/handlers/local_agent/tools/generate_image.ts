@@ -145,7 +145,10 @@ export const generateImageTool: ToolDefinition<
       const imageData = await callGenerateImage(args.prompt, ctx);
 
       const relativePath = await saveGeneratedImage(imageData, ctx.appPath);
-      queueCloudSandboxSnapshotSync({ appId: ctx.appId });
+      queueCloudSandboxSnapshotSync({
+        appId: ctx.appId,
+        changedPaths: [relativePath],
+      });
 
       ctx.onXmlComplete(
         `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}" path="${escapeXmlAttr(relativePath)}">${escapeXmlContent(relativePath)}</dyad-image-generation>`,

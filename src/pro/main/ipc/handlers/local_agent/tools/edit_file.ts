@@ -201,7 +201,10 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
     // Write file content
     fs.writeFileSync(fullFilePath, newContent);
     logger.log(`Successfully edited file: ${fullFilePath}`);
-    queueCloudSandboxSnapshotSync({ appId: ctx.appId });
+    queueCloudSandboxSnapshotSync({
+      appId: ctx.appId,
+      changedPaths: [args.path],
+    });
 
     // Deploy Supabase function if applicable
     if (

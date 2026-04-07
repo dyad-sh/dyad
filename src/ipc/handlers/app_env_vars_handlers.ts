@@ -73,7 +73,10 @@ export function registerAppEnvVarsHandlers() {
 
         // Write to .env.local file
         await fs.promises.writeFile(envFilePath, content, "utf8");
-        queueCloudSandboxSnapshotSync({ appId });
+        queueCloudSandboxSnapshotSync({
+          appId,
+          changedPaths: [ENV_FILE_NAME],
+        });
       } catch (error) {
         console.error("Error setting app environment variables:", error);
         throw new Error(

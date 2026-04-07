@@ -543,7 +543,7 @@ app.post("/engine/v1/sandboxes/:sandboxId/files", (req, res) => {
   }
 
   console.log(
-    `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(req.body.replaceAll)} fileCount=${Object.keys(req.body.files ?? {}).length}`,
+    `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(req.body.replaceAll)} fileCount=${Object.keys(req.body.files ?? {}).length} deletedCount=${(req.body.deletedFiles ?? []).length}`,
   );
 
   sandbox.files = req.body.replaceAll
@@ -552,6 +552,10 @@ app.post("/engine/v1/sandboxes/:sandboxId/files", (req, res) => {
         ...sandbox.files,
         ...req.body.files,
       };
+
+  for (const deletedFile of req.body.deletedFiles ?? []) {
+    delete sandbox.files[deletedFile];
+  }
 
   res.json({
     previewUrl: `http://localhost:${PORT}/cloud-preview/${sandbox.id}`,

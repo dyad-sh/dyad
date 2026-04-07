@@ -168,6 +168,8 @@ export function registerVisualEditingHandlers() {
           });
         }
 
+        const changedPaths = new Set<string>();
+
         // Apply changes to each file
         for (const [relativePath, lineChanges] of fileChanges) {
           const normalizedRelativePath = normalizePath(relativePath);
@@ -175,6 +177,7 @@ export function registerVisualEditingHandlers() {
           const content = await fsPromises.readFile(filePath, "utf-8");
           const transformedContent = transformContent(content, lineChanges);
           await fsPromises.writeFile(filePath, transformedContent, "utf-8");
+          changedPaths.add(normalizedRelativePath);
           // Check if git repository exists and commit the change
           if (fs.existsSync(path.join(appPath, ".git"))) {
             await gitAdd({
@@ -188,7 +191,15 @@ export function registerVisualEditingHandlers() {
             });
           }
         }
-        queueCloudSandboxSnapshotSync({ appId });
+        for (const absoluteImagePath of writtenImagePaths) {
+          changedPaths.add(
+            normalizePath(path.relative(appPath, absoluteImagePath)),
+          );
+        }
+        queueCloudSandboxSnapshotSync({
+          appId,
+          changedPaths: [...changedPaths],
+        });
       } catch (error) {
         // Unstage any image files that were git-added before the failure
         for (const { appPath, filepath } of stagedGitPaths) {

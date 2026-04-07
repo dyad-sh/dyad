@@ -7,7 +7,10 @@ import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
 
 import log from "electron-log";
-import { executeAddDependency } from "./executeAddDependency";
+import {
+  executeAddDependency,
+  ExecuteAddDependencyError,
+} from "./executeAddDependency";
 import {
   deleteSupabaseFunction,
   deploySupabaseFunction,
@@ -110,6 +113,7 @@ export async function processFullResponseActions(
   error?: string;
   extraFiles?: string[];
   extraFilesError?: string;
+  warningMessages?: string[];
 }> {
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
@@ -153,6 +157,7 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Extract all tags
@@ -216,12 +221,16 @@ export async function processFullResponseActions(
     // TODO: Handle add dependency tags
     if (dyadAddDependencyPackages.length > 0) {
       try {
-        await executeAddDependency({
+        const addDependencyResult = await executeAddDependency({
           packages: dyadAddDependencyPackages,
           message: message,
           appPath,
         });
+        warningMessages.push(...addDependencyResult.warningMessages);
       } catch (error) {
+        if (error instanceof ExecuteAddDependencyError) {
+          warningMessages.push(...error.warningMessages);
+        }
         errors.push({
           message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
           error: error,
@@ -628,6 +637,8 @@ export async function processFullResponseActions(
       updatedFiles: hasChanges,
       extraFiles: uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
       extraFilesError,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);

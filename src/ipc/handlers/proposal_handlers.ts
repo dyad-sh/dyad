@@ -382,6 +382,7 @@ const approveProposalHandler = async (
     success: true,
     extraFiles: processResult.extraFiles,
     extraFilesError: processResult.extraFilesError,
+    warningMessages: processResult.warningMessages,
   };
 };
 

@@ -60,6 +60,7 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "blockUnsafeNpmPackages": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -113,6 +114,7 @@ describe("readSettings", () => {
       expect(result.telemetryConsent).toBe("opted_in");
       expect(result.hasRunBefore).toBe(true);
       // Should still have defaults for missing properties
+      expect(result.blockUnsafeNpmPackages).toBe(true);
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
     });
@@ -451,6 +453,7 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "blockUnsafeNpmPackages": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,

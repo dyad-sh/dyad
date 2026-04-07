@@ -1725,6 +1725,7 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            warningMessages: status.warningMessages,
             chatSummary,
           } satisfies ChatResponseEnd);
         } else {

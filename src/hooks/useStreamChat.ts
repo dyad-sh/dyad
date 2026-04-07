@@ -23,7 +23,7 @@ import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
-import { showExtraFilesToast } from "@/lib/toast";
+import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -289,6 +289,9 @@ export function useStreamChat({
                   error: response.extraFilesError,
                   posthog,
                 });
+              }
+              for (const warningMessage of response.warningMessages ?? []) {
+                showWarning(warningMessage);
               }
               // Use queryClient directly with the chatId parameter to avoid stale closure issues
               queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });

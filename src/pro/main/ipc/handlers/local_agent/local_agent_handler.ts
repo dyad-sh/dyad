@@ -495,6 +495,7 @@ export async function handleLocalAgentStream(
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
+    const warningMessages: string[] = [];
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -555,6 +556,9 @@ export async function handleLocalAgentStream(
           chatId: chat.id,
           todos,
         });
+      },
+      onWarningMessage: (message) => {
+        warningMessages.push(message);
       },
     };
 
@@ -1265,6 +1269,8 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       updatedFiles: !readOnly,
       chatSummary: ctx.chatSummary,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     } satisfies ChatResponseEnd);
 
     return true; // Success

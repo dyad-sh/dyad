@@ -279,6 +279,9 @@ export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
+export const UserModifiedSettingsSchema = z.record(z.string(), z.boolean());
+export type UserModifiedSettings = z.infer<typeof UserModifiedSettingsSchema>;
+
 /**
  * Base fields shared between StoredUserSettings and UserSettings
  */
@@ -312,6 +315,7 @@ const BaseUserSettingsFields = {
   hasRunBefore: z.boolean().optional(),
   enableDyadPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
+  userModifiedSettings: UserModifiedSettingsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
   maxToolCallSteps: z.number().optional(),

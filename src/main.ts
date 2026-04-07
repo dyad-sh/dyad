@@ -18,6 +18,7 @@ import {
   getSettingsFilePath,
   readSettings,
   writeSettings,
+  applyRemoteSettingsDefaultsIfNeeded,
 } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
@@ -179,6 +180,7 @@ export async function onReady() {
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
 
+  await applyRemoteSettingsDefaultsIfNeeded();
   const settings = readSettings();
 
   // Add dyad-apps directory to git safe.directory (required for Windows).

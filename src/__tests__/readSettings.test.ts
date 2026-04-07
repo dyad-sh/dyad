@@ -566,10 +566,13 @@ describe("readSettings", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
 
-      const result = resolveEffectiveSettings({
-        ...readSettings(),
-        blockUnsafeNpmPackages: true,
-      }, null);
+      const result = resolveEffectiveSettings(
+        {
+          ...readSettings(),
+          blockUnsafeNpmPackages: true,
+        },
+        null,
+      );
 
       expect(result.blockUnsafeNpmPackages).toBe(true);
     });

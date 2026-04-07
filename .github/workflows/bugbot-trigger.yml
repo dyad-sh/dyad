@@ -13,7 +13,7 @@ jobs:
     # Only review code from regular contributors since bug bot has a capped # of PR reviews.
     if: >-
       contains(
-        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","app/keppo-bot","dyad-assistant","app/dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
+        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","app/dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
         github.event.pull_request.user.login
       ) &&
       !contains(github.event.pull_request.body, '#skip-bugbot') &&

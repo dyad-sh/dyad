@@ -538,7 +538,7 @@ function TailscaleSettings() {
                           { key: "ollama" as const, label: "Ollama", port: 11434 },
                           { key: "n8n" as const, label: "n8n", port: 5678 },
                           { key: "celestia" as const, label: "Celestia", port: 26658 },
-                          { key: "openclaw" as const, label: "OpenClaw", port: 18789 },
+                          { key: "openclaw" as const, label: "OpenClaw", port: 18790 },
                         ] as const
                       ).map(({ key, label, port }) => (
                         <div

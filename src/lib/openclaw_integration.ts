@@ -196,7 +196,7 @@ export interface OpenClawWebSocketMessage {
 export const DEFAULT_OPENCLAW_INTEGRATION_CONFIG: OpenClawIntegrationConfig = {
   autoStartGateway: true,
   gatewayConfig: {
-    port: 18789,
+    port: 18790,
     bind: "loopback",
     authMode: "token",
     verbose: false,

@@ -102,6 +102,8 @@ export interface OpenClawGatewayState {
   version?: string;
   activePlugins: string[];
   connectedClients: number;
+  /** True when operating in bridge mode (client to external OpenClaw gateway) */
+  bridged?: boolean;
 }
 
 export type OpenClawMessageType =
@@ -378,7 +380,7 @@ export interface OpenClawEvent {
 export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
   gateway: {
     host: "127.0.0.1",
-    port: 18789,
+    port: 18790,
     protocol: "ws",
     reconnectInterval: 5000,
     maxReconnectAttempts: 10,
@@ -399,8 +401,8 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
     anthropic: {
       name: "Anthropic Claude",
       type: "anthropic",
-      model: "claude-3-5-sonnet-20250219",
-      enabled: false, // Enable when API key is set
+      model: "claude-sonnet-4-20250514",
+      enabled: true,
       priority: 2,
       capabilities: ["chat", "code", "vision", "function-calling", "reasoning", "agentic", "creative", "analysis"],
       temperature: 0.7,
@@ -429,8 +431,8 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
       type: "deepseek",
       baseURL: "https://api.deepseek.com/v1",
       model: "deepseek-chat",
-      enabled: false,
-      priority: 2,
+      enabled: true,
+      priority: 3,
       capabilities: ["chat", "code", "reasoning", "analysis"],
       temperature: 0.7,
     },
@@ -438,9 +440,9 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
       name: "Google Gemini",
       type: "google",
       baseURL: "https://generativelanguage.googleapis.com/v1beta",
-      model: "gemini-2.0-flash",
-      enabled: false,
-      priority: 2,
+      model: "gemini-2.5-flash",
+      enabled: true,
+      priority: 3,
       capabilities: ["chat", "code", "vision", "reasoning", "creative", "analysis"],
       temperature: 0.7,
     },

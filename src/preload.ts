@@ -1417,6 +1417,13 @@ const validInvokeChannels = [
   "openclaw:kanban:analytics",
   "openclaw:kanban:models:list",
   "openclaw:kanban:tasks:rate",
+  // OpenClaw Activity Log — persistent bot activity & channel messages
+  "openclaw:activity:log",
+  "openclaw:activity:log-batch",
+  "openclaw:activity:list",
+  "openclaw:activity:stats",
+  "openclaw:activity:message:save",
+  "openclaw:activity:messages:list",
   // Task Executor — Autonomous inference loop
   "task-executor:status",
   "task-executor:start",

@@ -502,8 +502,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: "MiniMax-M2.7-highspeed",
       displayName: "MiniMax M2.7 High Speed",
-      description:
-        "High-speed version of M2.7 for low-latency scenarios",
+      description: "High-speed version of M2.7 for low-latency scenarios",
       maxOutputTokens: 32_000,
       contextWindow: 204_800,
       temperature: 1.0,

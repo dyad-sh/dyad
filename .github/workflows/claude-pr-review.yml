@@ -23,7 +23,7 @@ jobs:
     # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
     if: >-
       contains(
-        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","app/dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
+        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
         github.event.pull_request.user.login
       )
     runs-on: ubuntu-latest

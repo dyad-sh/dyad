@@ -81,8 +81,11 @@ export const PublishPanel = () => {
           </h1>
         </div>
 
-        {/* Portal Section - Show only if app has neon project */}
-        {app.neonProjectId && <PortalMigrate appId={selectedAppId} />}
+        {/* Portal Section - Show only for portal template apps */}
+        {app.neonProjectId &&
+          app.files.some((f) => f === "payload.config.ts") && (
+            <PortalMigrate appId={selectedAppId} />
+          )}
 
         {/* Database Migration - Show only if app has neon project */}
         {app.neonProjectId && <MigrationPanel appId={selectedAppId} />}

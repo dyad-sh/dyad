@@ -596,7 +596,12 @@
       "migrating": "Migrating...",
       "success": "Migration applied successfully.",
       "errorMessage": "Migration failed. Check that your development database has a valid schema.",
-      "showDetails": "Show details"
+      "showDetails": "Show details",
+      "destructiveChangesTitle": "Destructive Changes Detected",
+      "destructiveChangesDescription": "This migration includes changes that could result in data loss on your production database:",
+      "cancel": "Cancel",
+      "proceedAnyway": "Proceed Anyway",
+      "alreadyInSync": "Development and production databases are already in sync. No migration needed."
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",

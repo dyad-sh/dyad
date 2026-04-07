@@ -116,6 +116,7 @@ export function NeonConnector({ appId }: { appId: number }) {
         toast.warning(result.warning);
       }
       await refreshApp();
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
       });
@@ -144,6 +145,7 @@ export function NeonConnector({ appId }: { appId: number }) {
       setNewProjectName("");
       await refetchProjects();
       await refreshApp();
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
       });
@@ -163,6 +165,7 @@ export function NeonConnector({ appId }: { appId: number }) {
       await ipc.neon.unsetAppProject({ appId });
       toast.success(t("integrations.neon.disconnectProject"));
       await refreshApp();
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
     } catch (error) {
       console.error("Failed to disconnect project:", error);
       toast.error(t("integrations.neon.failedDisconnectProject"));
@@ -372,7 +375,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleUnsetProject}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    className="bg-destructive text-white hover:bg-destructive/90"
                   >
                     {t("integrations.neon.disconnectProject")}
                   </AlertDialogAction>

@@ -15,7 +15,11 @@ import log from "electron-log";
 import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 import { DEFAULT_THEME_ID } from "@/shared/themes";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
+import {
+  getCachedRemoteDesktopConfig,
+  getRemoteDesktopConfig,
+  type RemoteDesktopConfig,
+} from "@/ipc/shared/remote_desktop_config";
 
 const logger = log.scope("settings");
 
@@ -31,12 +35,10 @@ const DEFAULT_SETTINGS: UserSettings = {
   telemetryUserId: uuidv4(),
   hasRunBefore: false,
   experiments: {},
-  userModifiedSettings: {},
   enableProLazyEditsMode: true,
   enableProSmartFilesContextMode: true,
   selectedChatMode: "build",
   enableAutoFixProblems: false,
-  blockUnsafeNpmPackages: true,
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
@@ -186,27 +188,36 @@ export function readSettings(): UserSettings {
   }
 }
 
-function writeSettingsInternal(
-  settings: Partial<UserSettings>,
-  options: { markUserModified?: boolean } = {},
-): void {
+export function resolveEffectiveSettings(
+  settings: UserSettings,
+  remoteConfig: RemoteDesktopConfig | null = getCachedRemoteDesktopConfig(),
+): UserSettings {
+  if (typeof settings.blockUnsafeNpmPackages === "boolean") {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    blockUnsafeNpmPackages:
+      remoteConfig?.defaults?.blockUnsafeNpmPackages ?? true,
+  };
+}
+
+export function readEffectiveSettings(): UserSettings {
+  return resolveEffectiveSettings(readSettings());
+}
+
+export async function readEffectiveSettingsAsync(): Promise<UserSettings> {
+  const settings = readSettings();
+  const remoteConfig = await getRemoteDesktopConfig();
+  return resolveEffectiveSettings(settings, remoteConfig);
+}
+
+export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();
     const currentSettings = readSettings();
     const newSettings = { ...currentSettings, ...settings };
-    if (
-      options.markUserModified !== false &&
-      Object.prototype.hasOwnProperty.call(
-        settings,
-        "blockUnsafeNpmPackages",
-      ) &&
-      typeof settings.blockUnsafeNpmPackages === "boolean"
-    ) {
-      newSettings.userModifiedSettings = {
-        ...currentSettings.userModifiedSettings,
-        blockUnsafeNpmPackages: true,
-      };
-    }
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -272,57 +283,6 @@ function writeSettingsInternal(
   } catch (error) {
     logger.error("Error writing settings:", error);
   }
-}
-
-export function writeSettings(settings: Partial<UserSettings>): void {
-  writeSettingsInternal(settings);
-}
-
-function readStoredSettingsFile():
-  | (Partial<UserSettings> & {
-      userModifiedSettings?: Record<string, boolean>;
-    })
-  | null {
-  try {
-    const filePath = getSettingsFilePath();
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-
-    return JSON.parse(
-      fs.readFileSync(filePath, "utf-8"),
-    ) as Partial<UserSettings> & {
-      userModifiedSettings?: Record<string, boolean>;
-    };
-  } catch (error) {
-    logger.error("Error reading raw settings file:", error);
-    return null;
-  }
-}
-
-export async function applyRemoteSettingsDefaultsIfNeeded(): Promise<UserSettings> {
-  const storedSettings = readStoredSettingsFile();
-  const settings = readSettings();
-
-  if (storedSettings?.userModifiedSettings?.blockUnsafeNpmPackages) {
-    return settings;
-  }
-
-  const remoteConfig = await getRemoteDesktopConfig();
-  const remoteDefault = remoteConfig?.defaults?.blockUnsafeNpmPackages;
-
-  if (
-    typeof remoteDefault !== "boolean" ||
-    settings.blockUnsafeNpmPackages === remoteDefault
-  ) {
-    return settings;
-  }
-
-  writeSettingsInternal(
-    { blockUnsafeNpmPackages: remoteDefault },
-    { markUserModified: false },
-  );
-  return readSettings();
 }
 
 export function encrypt(data: string): Secret {

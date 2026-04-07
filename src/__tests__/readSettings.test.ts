@@ -4,10 +4,11 @@ import path from "node:path";
 import { safeStorage } from "electron";
 import {
   readSettings,
+  resolveEffectiveSettings,
+  readEffectiveSettingsAsync,
   getSettingsFilePath,
   encrypt,
   decrypt,
-  applyRemoteSettingsDefaultsIfNeeded,
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
@@ -28,6 +29,7 @@ vi.mock("@/paths/paths", () => ({
 }));
 vi.mock("@/ipc/shared/remote_desktop_config", () => ({
   getRemoteDesktopConfig: vi.fn(),
+  getCachedRemoteDesktopConfig: vi.fn(() => null),
 }));
 
 const mockFs = vi.mocked(fs);
@@ -66,7 +68,6 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
-          "blockUnsafeNpmPackages": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -88,7 +89,6 @@ describe("readSettings", () => {
           "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
-          "userModifiedSettings": {},
         }
       `);
     });
@@ -121,7 +121,7 @@ describe("readSettings", () => {
       expect(result.telemetryConsent).toBe("opted_in");
       expect(result.hasRunBefore).toBe(true);
       // Should still have defaults for missing properties
-      expect(result.blockUnsafeNpmPackages).toBe(true);
+      expect(result.blockUnsafeNpmPackages).toBeUndefined();
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
     });
@@ -460,7 +460,6 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
-          "blockUnsafeNpmPackages": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -482,7 +481,6 @@ describe("readSettings", () => {
           "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
-          "userModifiedSettings": {},
         }
       `);
     });
@@ -551,53 +549,39 @@ describe("readSettings", () => {
     });
   });
 
-  describe("applyRemoteSettingsDefaultsIfNeeded", () => {
-    it("applies the remote default when the user has never explicitly changed the setting", async () => {
-      let currentFileContent = JSON.stringify({});
+  describe("effective settings", () => {
+    it("applies the remote default when the user has not explicitly set the setting", async () => {
       mockGetRemoteDesktopConfig.mockResolvedValue({
         defaults: { blockUnsafeNpmPackages: false },
       });
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockImplementation(() => currentFileContent);
-      mockFs.writeFileSync.mockImplementation((_, data) => {
-        currentFileContent = String(data);
-      });
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
 
-      const result = await applyRemoteSettingsDefaultsIfNeeded();
+      const result = await readEffectiveSettingsAsync();
 
       expect(result.blockUnsafeNpmPackages).toBe(false);
-      expect(currentFileContent).toContain('"blockUnsafeNpmPackages": false');
-      expect(currentFileContent).toContain('"userModifiedSettings": {}');
-      expect(currentFileContent).not.toContain(
-        '"blockUnsafeNpmPackages": true',
-      );
-      expect(currentFileContent).not.toContain(
-        '"userModifiedSettings":{"blockUnsafeNpmPackages":true}',
-      );
-      expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        mockSettingsPath,
-        expect.stringContaining('"blockUnsafeNpmPackages": false'),
-      );
+      expect(mockFs.writeFileSync).not.toHaveBeenCalled();
     });
 
-    it("does not override the local value after the user explicitly changes the setting", async () => {
-      mockGetRemoteDesktopConfig.mockResolvedValue({
-        defaults: { blockUnsafeNpmPackages: false },
-      });
+    it("does not override an explicitly stored local value", () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(
-        JSON.stringify({
-          blockUnsafeNpmPackages: true,
-          userModifiedSettings: {
-            blockUnsafeNpmPackages: true,
-          },
-        }),
-      );
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
 
-      const result = await applyRemoteSettingsDefaultsIfNeeded();
+      const result = resolveEffectiveSettings({
+        ...readSettings(),
+        blockUnsafeNpmPackages: true,
+      });
 
       expect(result.blockUnsafeNpmPackages).toBe(true);
-      expect(mockFs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the built-in default when remote config is missing", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
+
+      const result = resolveEffectiveSettings(readSettings(), null);
+
+      expect(result.blockUnsafeNpmPackages).toBe(true);
     });
   });
 

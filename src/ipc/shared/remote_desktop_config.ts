@@ -85,3 +85,14 @@ export async function getRemoteDesktopConfig(): Promise<RemoteDesktopConfig | nu
 
   return remoteDesktopConfigFetchPromise;
 }
+
+export function getCachedRemoteDesktopConfig(): RemoteDesktopConfig | null {
+  if (
+    remoteDesktopConfigCache &&
+    remoteDesktopConfigCache.expiresAt > Date.now()
+  ) {
+    return remoteDesktopConfigCache.config;
+  }
+
+  return null;
+}

@@ -2,7 +2,7 @@ import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { Message } from "@/ipc/types";
-import { readSettings } from "@/main/settings";
+import { readEffectiveSettings } from "@/main/settings";
 import {
   buildAddDependencyCommand,
   detectPreferredPackageManager,
@@ -98,7 +98,7 @@ export async function executeAddDependency({
   message: Message;
   appPath: string;
 }): Promise<ExecuteAddDependencyResult> {
-  const settings = readSettings();
+  const settings = readEffectiveSettings();
   const warningMessages: string[] = [];
 
   let useSocketFirewall = settings.blockUnsafeNpmPackages !== false;

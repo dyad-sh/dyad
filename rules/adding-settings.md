@@ -10,4 +10,4 @@ When adding a new toggle/setting to the Settings page:
 
 For settings whose default can be overridden remotely:
 
-- `readSettings()` writes `DEFAULT_SETTINGS` to `user-settings.json` on first read, so the stored file alone cannot tell you whether a value came from the user or from the built-in default. Persist a separate marker (for example `userModifiedSettings.<settingId>`) and only let the remote default win when that marker is absent.
+- Prefer leaving the raw stored field unset until the user explicitly changes it, then compute the effective value as `stored value ?? remote default ?? built-in fallback`. Do not persist remote-applied defaults into `user-settings.json`.

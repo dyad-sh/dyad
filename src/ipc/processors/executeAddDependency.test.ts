@@ -13,14 +13,14 @@ const {
   detectPreferredPackageManagerMock,
   ensureSocketFirewallInstalledMock,
   runCommandMock,
-  readSettingsMock,
+  readEffectiveSettingsMock,
   dbUpdateSetMock,
   dbUpdateWhereMock,
 } = vi.hoisted(() => ({
   detectPreferredPackageManagerMock: vi.fn(),
   ensureSocketFirewallInstalledMock: vi.fn(),
   runCommandMock: vi.fn(),
-  readSettingsMock: vi.fn(),
+  readEffectiveSettingsMock: vi.fn(),
   dbUpdateSetMock: vi.fn(),
   dbUpdateWhereMock: vi.fn(),
 }));
@@ -38,7 +38,7 @@ vi.mock("../../db/schema", () => ({
 }));
 
 vi.mock("@/main/settings", () => ({
-  readSettings: readSettingsMock,
+  readEffectiveSettings: readEffectiveSettingsMock,
 }));
 
 vi.mock("@/ipc/utils/socket_firewall", async () => {
@@ -62,7 +62,7 @@ describe("executeAddDependency", () => {
     });
     dbUpdateWhereMock.mockResolvedValue(undefined);
     detectPreferredPackageManagerMock.mockResolvedValue("pnpm");
-    readSettingsMock.mockReturnValue({
+    readEffectiveSettingsMock.mockReturnValue({
       blockUnsafeNpmPackages: true,
     });
   });

@@ -112,8 +112,13 @@ async function spawnDrizzleKit({
     logger.info(`Running: node ${drizzleKitBin} ${args.join(" ")}`);
 
     // Set NODE_PATH so that schema files in the temp dir can resolve
-    // drizzle-orm and other dependencies from the project's node_modules.
-    const nodeModulesPath = path.join(app.getAppPath(), "node_modules");
+    // drizzle-orm and other dependencies.
+    // In packaged builds, node_modules lives inside app.asar which spawned
+    // node processes cannot read. drizzle-orm is copied to resources/ via
+    // extraResource in forge.config.ts, so we point NODE_PATH there instead.
+    const nodeModulesPath = app.isPackaged
+      ? process.resourcesPath
+      : path.join(app.getAppPath(), "node_modules");
     const proc = spawn("node", [drizzleKitBin, ...args], {
       cwd,
       stdio: "pipe",

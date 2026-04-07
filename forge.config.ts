@@ -103,6 +103,7 @@ const config: ForgeConfig = {
       "node_modules/dugite/git",
       "node_modules/@vscode",
       "node_modules/drizzle-kit",
+      "node_modules/drizzle-orm",
     ],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },

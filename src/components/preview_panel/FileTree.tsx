@@ -12,6 +12,11 @@ import {
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { AppFileSearchResult } from "@/ipc/types";
 import { useSearchAppFiles } from "@/hooks/useSearchAppFiles";
 import { useTranslation } from "react-i18next";
@@ -44,14 +49,21 @@ const MentionFileButton = ({ filePath }: { filePath: string }) => {
   const handleMentionFile = useMentionFile(filePath);
   const { t } = useTranslation("home");
   return (
-    <button
-      type="button"
-      className="ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-      onClick={handleMentionFile}
-      aria-label={t("mentionFileInChat")}
-    >
-      <MessageCircle size={14} />
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className="ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+            onClick={handleMentionFile}
+            aria-label={t("mentionFileInChat")}
+          >
+            <MessageCircle size={14} />
+          </button>
+        }
+      />
+      <TooltipContent>{t("mentionFileInChat")}</TooltipContent>
+    </Tooltip>
   );
 };
 

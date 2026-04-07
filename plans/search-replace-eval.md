@@ -165,17 +165,31 @@ const CASES: EvalCase[] = [
      expectedContent string. */
 ];
 
+// Temperature per model must match language_model_constants.ts.
+// GPT-5 and Gemini 3 reasoning models require temperature: 1;
+// Anthropic models use temperature: 0.
 const MODELS: Array<{
   provider: EvalProvider;
   modelName: string;
   label: string;
+  temperature: number;
 }> = [
-  { provider: "anthropic", modelName: SONNET_4_6, label: "Claude Sonnet 4.6" },
-  { provider: "openai", modelName: "gpt-5", label: "GPT-5" },
-  { provider: "google", modelName: GEMINI_3_FLASH, label: "Gemini 3 Flash" },
+  {
+    provider: "anthropic",
+    modelName: SONNET_4_6,
+    label: "Claude Sonnet 4.6",
+    temperature: 0,
+  },
+  { provider: "openai", modelName: "gpt-5", label: "GPT-5", temperature: 1 },
+  {
+    provider: "google",
+    modelName: GEMINI_3_FLASH,
+    label: "Gemini 3 Flash",
+    temperature: 1,
+  },
 ];
 
-for (const { provider, modelName, label } of MODELS) {
+for (const { provider, modelName, label, temperature } of MODELS) {
   describe.skipIf(!hasApiKey(provider))(
     `search_replace eval — ${label}`,
     () => {
@@ -183,7 +197,7 @@ for (const { provider, modelName, label } of MODELS) {
         it(c.name, async () => {
           const result = await generateText({
             model: getEvalModel(provider, modelName),
-            temperature: 0,
+            temperature,
             system:
               "You are a precise code editor. When asked to change a file, " +
               "you MUST call the search_replace tool exactly once. Do not explain.",
@@ -294,7 +308,7 @@ Add next to the existing `test` script:
   - Model picks a different-but-also-valid edit. If this happens, either tighten the prompt or relax the assertion to a semantic check.
   - Model produces multi-step plan instead of a single tool call. Tighten the system prompt to require exactly one call.
   - Model rewrites the entire file by putting all (or most) of the file content into `old_string`. The `MAX_OLD_STRING_RATIO` guard in the eval catches this — if triggered, tighten the system prompt or tool description to discourage full-file rewrites.
-- [ ] Commit once all three models pass all cases deterministically at `temperature: 0`.
+- [ ] Commit once all three models consistently pass all cases at their production temperatures.
 
 ### Phase 4: Toward Replacing `edit_file` With `search_replace` (Aspirational)
 
@@ -363,20 +377,20 @@ Roughly in order of smallest-to-largest:
 This plan **is** a testing plan — the eval is itself the test. Meta-validation:
 
 - [ ] Unit-level: run `npm run eval` with no API keys set. All suites must be SKIPPED, no failures.
-- [ ] With keys set: all cases must pass at `temperature: 0` for all three target models, deterministically, across 3 consecutive runs.
+- [ ] With keys set: all cases must pass at each model's production temperature for all three target models, deterministically, across 3 consecutive runs.
 - [ ] Confirm the eval does NOT run during `npm test` (different `include` pattern).
 - [ ] Confirm the eval file is caught by `npm run lint` / `npm run fmt:check` (it lives under `src/` so it's in scope).
 
 ## Risks & Mitigations
 
-| Risk                                                          | Likelihood | Impact | Mitigation                                                                                                                                                   |
-| ------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Provider model IDs change (e.g., `gpt-5` renamed)             | Medium     | Low    | Model names are imported from `language_model_constants.ts` where available, so renames propagate.                                                           |
-| Non-determinism even at `temperature: 0`                      | Medium     | Medium | Start with small, unambiguous edits; if flaky, widen assertion from exact-equals to semantic equivalence (AST or normalized-whitespace compare).             |
-| API cost creep as eval grows                                  | Low        | Low    | Eval is opt-in (`npm run eval`), not part of CI. Keep case count small. Use the cheapest model in each family.                                               |
-| AI SDK v5 tool shape drifts                                   | Low        | Medium | Harness mirrors `buildAgentToolSet` exactly — if the production shape changes, the eval will surface the mismatch.                                           |
-| Test runs leak API keys into logs                             | Low        | High   | `getEvalModel` reads keys from `process.env` only; no logging of key values. Vitest does not print env to test output by default.                            |
-| `applySearchReplace` fuzzy matching masks real model failures | Low        | Medium | Eval asserts on _final file content_, not on `old_string` being byte-identical, so fuzzy matching is actually desired here — it matches production behavior. |
+| Risk                                                              | Likelihood | Impact | Mitigation                                                                                                                                                   |
+| ----------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider model IDs change (e.g., `gpt-5` renamed)                 | Medium     | Low    | Model names are imported from `language_model_constants.ts` where available, so renames propagate.                                                           |
+| Non-determinism (especially at `temperature: 1` for GPT-5/Gemini) | Medium     | Medium | Start with small, unambiguous edits; if flaky, widen assertion from exact-equals to semantic equivalence (AST or normalized-whitespace compare).             |
+| API cost creep as eval grows                                      | Low        | Low    | Eval is opt-in (`npm run eval`), not part of CI. Keep case count small. Use the cheapest model in each family.                                               |
+| AI SDK v5 tool shape drifts                                       | Low        | Medium | Harness mirrors `buildAgentToolSet` exactly — if the production shape changes, the eval will surface the mismatch.                                           |
+| Test runs leak API keys into logs                                 | Low        | High   | `getEvalModel` reads keys from `process.env` only; no logging of key values. Vitest does not print env to test output by default.                            |
+| `applySearchReplace` fuzzy matching masks real model failures     | Low        | Medium | Eval asserts on _final file content_, not on `old_string` being byte-identical, so fuzzy matching is actually desired here — it matches production behavior. |
 
 ## Open Questions
 
@@ -394,7 +408,7 @@ This plan **is** a testing plan — the eval is itself the test. Meta-validation
 | Reuse `searchReplaceTool.inputSchema` + `.description` + `applySearchReplace` | These are the only pieces whose exact identity matters for eval fidelity — they are what production LLMs see and what processes their output.                                                                                                  |
 | No `execute` in the tool definition passed to `generateText`                  | Standard AI SDK pattern for inspecting a tool call without executing it. Removes need for file I/O, temp dirs, or cleanup.                                                                                                                     |
 | Assert on final file content, not on raw `old_string`/`new_string`            | Semantic check is more robust to phrasing variance and exercises the production processor end-to-end.                                                                                                                                          |
-| `temperature: 0`                                                              | Maximizes determinism. Required for the eval to be a useful regression signal.                                                                                                                                                                 |
+| Per-model temperature from `language_model_constants.ts`                      | GPT-5 and Gemini 3 reasoning models reject or require `temperature: 1`; Anthropic models use `0`. Using each model's production temperature avoids API errors and matches real behavior.                                                       |
 | Single model per provider (not a full matrix)                                 | Balances signal vs. cost/runtime. Easy to extend later.                                                                                                                                                                                        |
 | `describe.skipIf(!hasApiKey(...))` (not `it.skipIf`)                          | Skipping at the describe level is clearer in output: when OPENAI_API_KEY is absent, the entire OpenAI block is reported as one skip rather than one per case.                                                                                  |
 

@@ -17,108 +17,8 @@ import { getAppWithNeonBranch } from "./neon_handlers";
 const logger = log.scope("migration_handlers");
 
 // =============================================================================
-// Schema Diff Types
-// =============================================================================
-
-interface SchemaColumn {
-  table_name: string;
-  column_name: string;
-  data_type: string;
-}
-
-interface DestructiveChange {
-  type: "drop_table" | "drop_column" | "alter_type";
-  table: string;
-  column?: string;
-  detail: string;
-}
-
-// =============================================================================
 // Helper Functions
 // =============================================================================
-
-/**
- * Queries the public schema columns for a given branch.
- */
-async function getSchemaColumns(
-  projectId: string,
-  branchId: string,
-): Promise<SchemaColumn[]> {
-  const result = await executeNeonSql({
-    projectId,
-    branchId,
-    query: `SELECT table_name, column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-            ORDER BY table_name, column_name`,
-  });
-  return JSON.parse(result) as SchemaColumn[];
-}
-
-/**
- * Compares dev and prod schemas to detect destructive changes
- * (dropped tables, dropped columns, type changes).
- */
-async function detectDestructiveChanges(
-  projectId: string,
-  devBranchId: string,
-  prodBranchId: string,
-): Promise<DestructiveChange[]> {
-  const [devColumns, prodColumns] = await Promise.all([
-    getSchemaColumns(projectId, devBranchId),
-    getSchemaColumns(projectId, prodBranchId),
-  ]);
-
-  const changes: DestructiveChange[] = [];
-
-  // Build lookup maps
-  const devTables = new Set(devColumns.map((c) => c.table_name));
-  const devMap = new Map(
-    devColumns.map((c) => [`${c.table_name}.${c.column_name}`, c]),
-  );
-
-  // Check for tables/columns in prod that are missing from dev
-  const prodTables = new Set<string>();
-  for (const col of prodColumns) {
-    prodTables.add(col.table_name);
-    const key = `${col.table_name}.${col.column_name}`;
-
-    if (!devTables.has(col.table_name)) {
-      // Table will be dropped — tracked at table level below
-      continue;
-    }
-
-    const devCol = devMap.get(key);
-    if (!devCol) {
-      changes.push({
-        type: "drop_column",
-        table: col.table_name,
-        column: col.column_name,
-        detail: `Column "${col.column_name}" will be dropped from table "${col.table_name}"`,
-      });
-    } else if (devCol.data_type !== col.data_type) {
-      changes.push({
-        type: "alter_type",
-        table: col.table_name,
-        column: col.column_name,
-        detail: `Column "${col.table_name}.${col.column_name}" type changes from "${col.data_type}" to "${devCol.data_type}"`,
-      });
-    }
-  }
-
-  // Check for dropped tables
-  for (const table of prodTables) {
-    if (!devTables.has(table)) {
-      changes.push({
-        type: "drop_table",
-        table,
-        detail: `Table "${table}" will be dropped`,
-      });
-    }
-  }
-
-  return changes;
-}
 
 /**
  * Finds the production (default) branch for a Neon project.
@@ -215,7 +115,6 @@ async function spawnDrizzleKit({
     const nodeModulesPath = path.join(app.getAppPath(), "node_modules");
     const proc = spawn("node", [drizzleKitBin, ...args], {
       cwd,
-      shell: true,
       stdio: "pipe",
       env: { ...process.env, NODE_PATH: nodeModulesPath },
     });
@@ -275,8 +174,8 @@ export function registerMigrationHandlers() {
   // migration:push
   // -------------------------------------------------------------------------
   createTypedHandler(migrationContracts.push, async (_, params) => {
-    const { appId, force } = params;
-    logger.info(`Pushing migration for app ${appId} (force=${!!force})`);
+    const { appId } = params;
+    logger.info(`Pushing migration for app ${appId}`);
 
     // 1. Get app data and resolve branches
     const { appData, branchId: devBranchId } =
@@ -310,25 +209,7 @@ export function registerMigrationHandlers() {
       `Connection URIs — dev host: ${new URL(devUri).hostname}, prod host: ${new URL(prodUri).hostname}`,
     );
 
-    // 4. Pre-flight: detect destructive schema changes
-    if (!force) {
-      const destructiveChanges = await detectDestructiveChanges(
-        projectId,
-        devBranchId,
-        prodBranchId,
-      );
-      if (destructiveChanges.length > 0) {
-        logger.warn(
-          `Destructive changes detected: ${JSON.stringify(destructiveChanges)}`,
-        );
-        return {
-          success: false,
-          warnings: destructiveChanges.map((c) => c.detail),
-        };
-      }
-    }
-
-    // 5. Validate dev schema has at least one table
+    // 4. Validate dev schema has at least one table
     const tableCheckResult = await executeNeonSql({
       projectId,
       branchId: devBranchId,
@@ -343,18 +224,18 @@ export function registerMigrationHandlers() {
       );
     }
 
-    // 6. Create temp directory
+    // 5. Create temp directory
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-migration-"));
 
     try {
-      // 7. Write introspect config pointing at dev branch
+      // 6. Write introspect config pointing at dev branch
       const introspectConfigPath = await createTempDrizzleConfig({
         tmpDir,
         connectionUri: devUri,
         configName: "drizzle-introspect.config.js",
       });
 
-      // 8. Run drizzle-kit introspect to generate schema files
+      // 7. Run drizzle-kit introspect to generate schema files
       const introspectResult = await spawnDrizzleKit({
         args: ["introspect", `--config=${introspectConfigPath}`],
         cwd: tmpDir,
@@ -367,7 +248,7 @@ export function registerMigrationHandlers() {
         );
       }
 
-      // 9. Find the generated schema file
+      // 8. Find the generated schema file
       const schemaOutDir = path.join(tmpDir, "schema-out");
       let schemaFiles: string[];
       try {
@@ -391,7 +272,7 @@ export function registerMigrationHandlers() {
 
       logger.info(`Using introspected schema file: ${tsSchemaFile}`);
 
-      // 10. Write push config pointing introspected schema at prod branch
+      // 9. Write push config pointing introspected schema at prod branch
       const pushConfigPath = await createTempDrizzleConfig({
         tmpDir,
         connectionUri: prodUri,
@@ -399,8 +280,9 @@ export function registerMigrationHandlers() {
         schemaPath: path.join(schemaOutDir, tsSchemaFile),
       });
 
-      // 11. Run drizzle-kit push directly against production (--force skips
-      //    interactive prompts; safe because we already checked for destructive changes)
+      // 10. Run drizzle-kit push directly against production (--force skips
+      //    interactive prompts).
+      // TODO: In a follow-up PR, add a warning for destructive changes.
       const pushResult = await spawnDrizzleKit({
         args: ["push", "--force", `--config=${pushConfigPath}`],
         cwd: tmpDir,
@@ -421,7 +303,7 @@ export function registerMigrationHandlers() {
       );
       return { success: true, noChanges };
     } finally {
-      // 12. Always clean up temp directory
+      // 11. Always clean up temp directory
       await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
         logger.warn(`Failed to clean up temp directory ${tmpDir}: ${err}`);
       });

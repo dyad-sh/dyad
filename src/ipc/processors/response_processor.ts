@@ -197,23 +197,6 @@ export async function processFullResponseActions(
               }
               throw new Error(`Neon SQL query failed: ${errorMsg}`);
             }
-
-            // Write migration file for Neon SQL (same setting as Supabase for backend parity)
-            if (settings.enableSupabaseWriteSqlMigration) {
-              try {
-                const migrationFilePath = await writeMigrationFile(
-                  appPath,
-                  query.content,
-                  query.description,
-                );
-                writtenFiles.push(migrationFilePath);
-              } catch (error) {
-                errors.push({
-                  message: `Failed to write SQL migration file for: ${query.description}`,
-                  error: error,
-                });
-              }
-            }
           } else if (chatWithApp.app.supabaseProjectId) {
             // Route to Supabase executor
             await executeSupabaseSql({

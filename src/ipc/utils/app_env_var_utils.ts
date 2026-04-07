@@ -57,9 +57,12 @@ export async function updateDbPushEnvVar({
     try {
       const content = await readEnvFile({ appPath });
       envVars = parseEnvFile(content);
-    } catch {
-      // If file doesn't exist, start with empty array
-      envVars = [];
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        envVars = [];
+      } else {
+        throw error;
+      }
     }
 
     // Update or add DYAD_DISABLE_DB_PUSH
@@ -193,9 +196,12 @@ export async function updateNeonEnvVars({
   try {
     const content = await readEnvFile({ appPath });
     envVars = parseEnvFile(content);
-  } catch {
-    // If file doesn't exist, start with empty array
-    envVars = [];
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      envVars = [];
+    } else {
+      throw error;
+    }
   }
 
   upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
@@ -238,9 +244,11 @@ export async function removeNeonEnvVars({
   try {
     const content = await readEnvFile({ appPath });
     envVars = parseEnvFile(content);
-  } catch {
-    // If file doesn't exist, nothing to remove
-    return;
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
   }
 
   const filtered = envVars.filter((envVar) => {

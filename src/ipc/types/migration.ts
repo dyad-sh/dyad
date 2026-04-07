@@ -7,14 +7,12 @@ import { defineContract, createClient } from "../contracts/core";
 
 export const MigrationPushParamsSchema = z.object({
   appId: z.number(),
-  force: z.boolean().optional(),
 });
 
 export type MigrationPushParams = z.infer<typeof MigrationPushParamsSchema>;
 
 export const MigrationPushResponseSchema = z.object({
   success: z.boolean(),
-  warnings: z.array(z.string()).optional(),
   noChanges: z.boolean().optional(),
 });
 

@@ -1,103 +1,136 @@
 import { expect } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { testWithConfigSkipIfWindows, Timeout } from "./helpers/test_helper";
+import {
+  testWithConfigSkipIfWindows,
+  Timeout,
+  type PageObject,
+} from "./helpers/test_helper";
 
-const originalPath = process.env.PATH ?? "";
-let fakeSfwLogPath = "";
+const originalNpmCache = process.env.npm_config_cache;
+const originalNpmStoreDir = process.env.npm_config_store_dir;
+const originalPnpmStoreDir = process.env.pnpm_config_store_dir;
 
-const testWithFakeSocketFirewall = testWithConfigSkipIfWindows({
+const testSkipIfWindows = testWithConfigSkipIfWindows({
   preLaunchHook: async ({ userDataDir }) => {
-    const fakeBinDir = path.join(userDataDir, "fake-bin");
-    fakeSfwLogPath = path.join(userDataDir, "sfw-invocations.log");
-    const fakeSfwPath = path.join(fakeBinDir, "sfw");
+    const npmCacheDir = path.join(userDataDir, "npm-cache");
+    const pnpmStoreDir = path.join(userDataDir, "pnpm-store");
 
-    await fs.mkdir(fakeBinDir, { recursive: true });
-    await fs.writeFile(
-      fakeSfwPath,
-      `#!/usr/bin/env node
-const fs = require("fs");
-const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(fakeSfwLogPath)}, JSON.stringify(args) + "\\n");
+    await fs.mkdir(npmCacheDir, { recursive: true });
+    await fs.mkdir(pnpmStoreDir, { recursive: true });
 
-if (args.length === 1 && args[0] === "--help") {
-  process.stdout.write("Socket Firewall test stub\\n");
-  process.exit(0);
-}
-
-if (args.includes("lodahs")) {
-  const details = [
-    "Socket Firewall blocked lodahs",
-    "Package \\"lodahs\\" is typosquatting lodash.",
-    "Reason: malicious package detected."
-  ].join("\\n");
-  process.stderr.write(details);
-  process.exit(1);
-}
-
-process.exit(0);
-`,
-      { mode: 0o755 },
-    );
-    await fs.chmod(fakeSfwPath, 0o755);
-    process.env.PATH = `${fakeBinDir}:${originalPath}`;
+    process.env.npm_config_cache = npmCacheDir;
+    process.env.npm_config_store_dir = pnpmStoreDir;
+    process.env.pnpm_config_store_dir = pnpmStoreDir;
   },
   postLaunchHook: async () => {
-    process.env.PATH = originalPath;
+    if (originalNpmCache === undefined) {
+      delete process.env.npm_config_cache;
+    } else {
+      process.env.npm_config_cache = originalNpmCache;
+    }
+
+    if (originalNpmStoreDir === undefined) {
+      delete process.env.npm_config_store_dir;
+    } else {
+      process.env.npm_config_store_dir = originalNpmStoreDir;
+    }
+
+    if (originalPnpmStoreDir === undefined) {
+      delete process.env.pnpm_config_store_dir;
+    } else {
+      process.env.pnpm_config_store_dir = originalPnpmStoreDir;
+    }
   },
 });
 
-testWithFakeSocketFirewall(
-  "build mode - blocked unsafe npm package shows socket verdict and preserves app files",
+async function openMinimalBuildChat(po: PageObject) {
+  await po.setUp();
+
+  await po.navigation.goToSettingsTab();
+  await expect(
+    po.page.getByRole("switch", { name: "Block unsafe npm packages" }),
+  ).toBeChecked();
+
+  await po.navigation.goToAppsTab();
+  await po.importApp("minimal");
+  await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+  await po.chatActions.clickNewChat();
+  await po.chatActions.selectChatMode("build");
+
+  const appPath = await po.appManagement.getCurrentAppPath();
+  return {
+    packageJsonPath: path.join(appPath, "package.json"),
+    pnpmLockPath: path.join(appPath, "pnpm-lock.yaml"),
+  };
+}
+
+testSkipIfWindows(
+  "build mode - safe npm package installs through the real socket firewall path",
   async ({ po }) => {
-    await po.setUp();
+    const { packageJsonPath, pnpmLockPath } = await openMinimalBuildChat(po);
+    const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
+    const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
 
-    await po.navigation.goToSettingsTab();
+    await po.sendPrompt("tc=add-safe-dependency");
+    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
+
+    await po.approveProposal();
+    await expect(async () => {
+      const packageJson = JSON.parse(
+        await fs.readFile(packageJsonPath, "utf8"),
+      );
+      expect(packageJson.dependencies?.lodash).toEqual(expect.any(String));
+      expect(await fs.readFile(pnpmLockPath, "utf8")).not.toBe(initialPnpmLock);
+    }).toPass({
+      timeout: Timeout.EXTRA_LONG,
+    });
+
     await expect(
-      po.page.getByRole("switch", { name: "Block unsafe npm packages" }),
-    ).toBeChecked();
+      po.page.getByText(/Failed to add dependencies:/),
+    ).not.toBeVisible();
 
-    await po.navigation.goToAppsTab();
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
-    await po.chatActions.clickNewChat();
-    await po.chatActions.selectChatMode("build");
+    expect(await fs.readFile(packageJsonPath, "utf8")).not.toBe(
+      initialPackageJson,
+    );
+  },
+);
 
-    const appPath = await po.appManagement.getCurrentAppPath();
-    const packageJsonPath = path.join(appPath, "package.json");
-    const pnpmLockPath = path.join(appPath, "pnpm-lock.yaml");
+testSkipIfWindows(
+  "build mode - blocked unsafe npm package shows the real socket verdict and preserves app files",
+  async ({ po }) => {
+    const { packageJsonPath, pnpmLockPath } = await openMinimalBuildChat(po);
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
 
     await po.sendPrompt("tc=add-unsafe-dependency");
-    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible();
-
-    await po.approveProposal();
-
-    const errorSummary =
-      "Failed to add dependencies: lodahs. Socket Firewall blocked lodahs";
-    await expect(po.page.getByText(errorSummary)).toBeVisible({
+    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
       timeout: Timeout.LONG,
     });
 
-    await po.page.getByText(errorSummary).click();
-    await expect(
-      po.page.getByText('Package "lodahs" is typosquatting lodash.'),
-    ).toBeVisible({
+    await po.approveProposal();
+
+    const errorCard = po.page.getByRole("button", {
+      name: /Failed to add dependencies: axois\./i,
+    });
+    await expect(errorCard).toBeVisible({
+      timeout: Timeout.EXTRA_LONG,
+    });
+
+    await errorCard.click();
+    await expect(errorCard).toContainText(/blocked npm package/i, {
       timeout: Timeout.MEDIUM,
     });
-    await expect(
-      po.page.getByText("Reason: malicious package detected."),
-    ).toBeVisible();
+    await expect(errorCard).toContainText(/axois/i, {
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(errorCard).toContainText(/malware/i, {
+      timeout: Timeout.MEDIUM,
+    });
 
     expect(await fs.readFile(packageJsonPath, "utf8")).toBe(initialPackageJson);
     expect(await fs.readFile(pnpmLockPath, "utf8")).toBe(initialPnpmLock);
-
-    const sfwInvocations = await fs.readFile(fakeSfwLogPath, "utf8");
-    expect(sfwInvocations).toContain('["--help"]');
-    expect(sfwInvocations).toContain('["pnpm","add","lodahs"]');
-    expect(sfwInvocations).toContain(
-      '["npm","install","--legacy-peer-deps","lodahs"]',
-    );
   },
 );

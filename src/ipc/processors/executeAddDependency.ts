@@ -4,16 +4,26 @@ import { eq } from "drizzle-orm";
 import { Message } from "@/ipc/types";
 import { readSettings } from "@/main/settings";
 import {
-  buildAddDependencyCommands,
+  buildAddDependencyCommand,
+  detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
   getCommandExecutionDisplayDetails,
   isSocketFirewallPolicyBlock,
   runCommand,
   SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
+import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildPackagesAttrPattern(packages: string[]): string {
+  const rawPackages = packages.join(" ");
+  const escapedPackages = escapeXmlAttr(rawPackages);
+  const packageVariants = new Set([rawPackages, escapedPackages]);
+
+  return Array.from(packageVariants).map(escapeRegExp).join("|");
 }
 
 export interface ExecuteAddDependencyResult {
@@ -53,47 +63,30 @@ export class ExecuteAddDependencyError extends Error {
   }
 }
 
-async function runAddDependencyCommands(
-  commands: Array<{ command: string; args: string[] }>,
+async function runAddDependencyCommand(
+  command: { command: string; args: string[] },
   appPath: string,
 ): Promise<{
   succeeded: boolean;
   installResults: string;
   lastError: unknown;
-  errors: unknown[];
 }> {
-  let installResults = "";
-  let lastError: unknown = null;
-  const errors: unknown[] = [];
-
-  for (const command of commands) {
-    try {
-      const { stdout, stderr } = await runCommand(
-        command.command,
-        command.args,
-        {
-          cwd: appPath,
-        },
-      );
-      installResults = stdout + (stderr ? `\n${stderr}` : "");
-      return {
-        succeeded: true,
-        installResults,
-        lastError: null,
-        errors: [],
-      };
-    } catch (error) {
-      lastError = error;
-      errors.push(error);
-    }
+  try {
+    const { stdout, stderr } = await runCommand(command.command, command.args, {
+      cwd: appPath,
+    });
+    return {
+      succeeded: true,
+      installResults: stdout + (stderr ? `\n${stderr}` : ""),
+      lastError: null,
+    };
+  } catch (error) {
+    return {
+      succeeded: false,
+      installResults: "",
+      lastError: error,
+    };
   }
-
-  return {
-    succeeded: false,
-    installResults,
-    lastError,
-    errors,
-  };
 }
 
 export async function executeAddDependency({
@@ -119,13 +112,9 @@ export async function executeAddDependency({
     }
   }
 
-  let {
-    succeeded,
-    installResults,
-    lastError,
-    errors: attemptedErrors,
-  } = await runAddDependencyCommands(
-    buildAddDependencyCommands(packages, useSocketFirewall),
+  const packageManager = await detectPreferredPackageManager();
+  let { succeeded, installResults, lastError } = await runAddDependencyCommand(
+    buildAddDependencyCommand(packages, packageManager, useSocketFirewall),
     appPath,
   );
 
@@ -133,11 +122,11 @@ export async function executeAddDependency({
     !succeeded &&
     useSocketFirewall &&
     lastError &&
-    !attemptedErrors.some((error) => isSocketFirewallPolicyBlock(error))
+    !isSocketFirewallPolicyBlock(lastError)
   ) {
     warningMessages.push(SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE);
-    ({ succeeded, installResults, lastError } = await runAddDependencyCommands(
-      buildAddDependencyCommands(packages, false),
+    ({ succeeded, installResults, lastError } = await runAddDependencyCommand(
+      buildAddDependencyCommand(packages, packageManager, false),
       appPath,
     ));
   }
@@ -150,12 +139,13 @@ export async function executeAddDependency({
   }
 
   // Update the message content with the installation results
+  const escapedPackages = escapeXmlAttr(packages.join(" "));
   const updatedContent = message.content.replace(
     new RegExp(
-      `<dyad-add-dependency packages="${escapeRegExp(packages.join(" "))}">[^<]*</dyad-add-dependency>`,
+      `<dyad-add-dependency packages="(?:${buildPackagesAttrPattern(packages)})">[\\s\\S]*?</dyad-add-dependency>`,
       "g",
     ),
-    `<dyad-add-dependency packages="${packages.join(" ")}">${installResults}</dyad-add-dependency>`,
+    `<dyad-add-dependency packages="${escapedPackages}">${escapeXmlContent(installResults)}</dyad-add-dependency>`,
   );
 
   // Save the updated message back to the database

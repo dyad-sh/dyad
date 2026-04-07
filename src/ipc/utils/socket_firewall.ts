@@ -45,6 +45,8 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
+export type PackageManager = "pnpm" | "npm";
+
 export function shouldUseCommandShell(
   platform: NodeJS.Platform = process.platform,
 ): boolean {
@@ -138,6 +140,8 @@ export function isSocketFirewallPolicyBlock(error: unknown): boolean {
 
   return (
     normalized.includes("socket firewall blocked") ||
+    normalized.includes("blocked npm package:") ||
+    normalized.includes("blocked npm packages:") ||
     (normalized.includes("socket firewall") && normalized.includes("blocked"))
   );
 }
@@ -165,22 +169,36 @@ export async function ensureSocketFirewallInstalled(
   }
 }
 
-export function buildAddDependencyCommands(
+export async function detectPreferredPackageManager(
+  runner: CommandRunner = runCommand,
+): Promise<PackageManager> {
+  try {
+    await runner("pnpm", ["--version"]);
+    return "pnpm";
+  } catch {
+    return "npm";
+  }
+}
+
+export function buildAddDependencyCommand(
   packages: string[],
+  packageManager: PackageManager,
   useSocketFirewall: boolean,
-): Array<{ command: string; args: string[] }> {
+): { command: string; args: string[] } {
+  const packageManagerArgs =
+    packageManager === "pnpm"
+      ? ["add", ...packages]
+      : ["install", "--legacy-peer-deps", ...packages];
+
   if (useSocketFirewall) {
-    return [
-      { command: "sfw", args: ["pnpm", "add", ...packages] },
-      {
-        command: "sfw",
-        args: ["npm", "install", "--legacy-peer-deps", ...packages],
-      },
-    ];
+    return {
+      command: "sfw",
+      args: [packageManager, ...packageManagerArgs],
+    };
   }
 
-  return [
-    { command: "pnpm", args: ["add", ...packages] },
-    { command: "npm", args: ["install", "--legacy-peer-deps", ...packages] },
-  ];
+  return {
+    command: packageManager,
+    args: packageManagerArgs,
+  };
 }

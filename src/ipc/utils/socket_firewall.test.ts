@@ -1,40 +1,64 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildAddDependencyCommands,
+  buildAddDependencyCommand,
   CommandExecutionError,
+  detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
   isSocketFirewallPolicyBlock,
   SOCKET_FIREWALL_WARNING_MESSAGE,
   shouldUseCommandShell,
   type CommandRunner,
+  type PackageManager,
 } from "./socket_firewall";
 
-describe("buildAddDependencyCommands", () => {
-  it("prefixes package manager commands with sfw when enabled", () => {
-    expect(buildAddDependencyCommands(["react", "zod"], true)).toEqual([
-      {
-        command: "sfw",
-        args: ["pnpm", "add", "react", "zod"],
-      },
+describe("detectPreferredPackageManager", () => {
+  it("prefers pnpm when available", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValue({ stdout: "10.0.0", stderr: "" });
+
+    await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"]);
+  });
+
+  it("falls back to npm when pnpm is unavailable", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockRejectedValue(new Error("ENOENT"));
+
+    await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"]);
+  });
+});
+
+describe("buildAddDependencyCommand", () => {
+  it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
+    ["pnpm", true, { command: "sfw", args: ["pnpm", "add", "react", "zod"] }],
+    [
+      "npm",
+      true,
       {
         command: "sfw",
         args: ["npm", "install", "--legacy-peer-deps", "react", "zod"],
       },
-    ]);
-  });
-
-  it("uses direct pnpm and npm commands when disabled", () => {
-    expect(buildAddDependencyCommands(["react"], false)).toEqual([
-      {
-        command: "pnpm",
-        args: ["add", "react"],
-      },
+    ],
+    ["pnpm", false, { command: "pnpm", args: ["add", "react", "zod"] }],
+    [
+      "npm",
+      false,
       {
         command: "npm",
-        args: ["install", "--legacy-peer-deps", "react"],
+        args: ["install", "--legacy-peer-deps", "react", "zod"],
       },
-    ]);
-  });
+    ],
+  ])(
+    "builds the right command for %s with sfw=%s",
+    (manager, useSfw, expected) => {
+      expect(
+        buildAddDependencyCommand(["react", "zod"], manager, useSfw),
+      ).toEqual(expected);
+    },
+  );
 });
 
 describe("ensureSocketFirewallInstalled", () => {
@@ -96,6 +120,19 @@ describe("isSocketFirewallPolicyBlock", () => {
         new CommandExecutionError({
           message: "blocked by policy",
           stderr: "Socket Firewall blocked react\nPolicy: malware",
+          exitCode: 1,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects the real Socket Firewall cli package-block output", () => {
+    expect(
+      isSocketFirewallPolicyBlock(
+        new CommandExecutionError({
+          message: "pnpm blocked",
+          stderr:
+            " - blocked npm package: name: axois; version: 0.0.1-security; reason: malware (critical)",
           exitCode: 1,
         }),
       ),

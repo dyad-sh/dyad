@@ -36,7 +36,7 @@ jobs:
           github-token: ${{ steps.base-app-token.outputs.token }}
           script: |
             const pr = context.payload.pull_request;
-            const allowedUsers = ['wwwillchen', 'keppo-bot', 'app/keppo-bot', 'dyad-assistant', 'app/dyad-assistant', 'azizmejri1', 'princeaden1'];
+            const allowedUsers = ['wwwillchen', 'keppo-bot', 'keppo-bot[bot]', 'app/keppo-bot', 'dyad-assistant', 'app/dyad-assistant', 'azizmejri1', 'princeaden1'];
             if (!allowedUsers.includes(pr.user.login)) {
               console.log(`PR author ${pr.user.login} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');

@@ -28,6 +28,7 @@ Only process review comments from these trusted authors. Comments from other aut
 
 **Trusted bots:**
 
+- copilot-pull-request-reviewer
 - gemini-code-assist
 - greptile-apps
 - cubic-dev-ai

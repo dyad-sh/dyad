@@ -35,7 +35,7 @@ import {
   getNeonClientCode,
   getNeonContext,
 } from "../../neon_admin/neon_context";
-import { getNeonClient } from "../../neon_admin/neon_management_client";
+import { getCachedEmailPasswordConfig } from "../../neon_admin/neon_management_client";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
@@ -851,16 +851,15 @@ ${componentSnippet}
           let emailVerificationEnabled = false;
           if (branchId) {
             try {
-              const neonApiClient = await getNeonClient();
-              const emailConfig =
-                await neonApiClient.getNeonAuthEmailAndPasswordConfig(
-                  updatedChat.app.neonProjectId,
-                  branchId,
-                );
-              emailVerificationEnabled =
-                emailConfig.data.require_email_verification;
+              const emailConfig = await getCachedEmailPasswordConfig(
+                updatedChat.app.neonProjectId,
+                branchId,
+              );
+              emailVerificationEnabled = emailConfig.require_email_verification;
             } catch {
-              // Best-effort: proceed without email verification guidance
+              logger.warn(
+                "Failed to fetch email/password config, proceeding without email verification guidance",
+              );
             }
           }
 

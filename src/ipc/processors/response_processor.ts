@@ -547,6 +547,10 @@ export async function processFullResponseActions(
       }
     }
 
+    // Track whether SQL queries were executed (for Neon timestamp even without file changes)
+    const hasNeonSqlExecutions =
+      dyadExecuteSqlQueries.length > 0 && !!chatWithApp.app.neonProjectId;
+
     // If we have any file changes, commit them all at once
     hasChanges =
       writtenFiles.length > 0 ||
@@ -658,6 +662,29 @@ export async function processFullResponseActions(
           .where(eq(messages.id, messageId));
       }
     }
+    // Store Neon timestamp for SQL-only responses (no file changes, no commit)
+    if (
+      hasNeonSqlExecutions &&
+      !hasChanges &&
+      chatWithApp.app.neonDevelopmentBranchId
+    ) {
+      try {
+        await storeDbTimestampAtCurrentVersion({
+          appId: chatWithApp.app.id,
+        });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(
+          "Error creating Neon branch at current version (SQL-only):",
+          error,
+        );
+        warnings.push({
+          message: "Failed to save database version snapshot",
+          error: errorMsg,
+        });
+      }
+    }
+
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved
     await db

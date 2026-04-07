@@ -120,6 +120,15 @@ export function NeonConnector({ appId }: { appId: number }) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
       });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.neon.project({ appId }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.neon.emailPasswordConfig({
+          appId,
+          branchId: app?.neonActiveBranchId ?? null,
+        }),
+      });
     } catch (error) {
       toast.error(
         t("integrations.neon.failedConnectProject", {
@@ -279,7 +288,8 @@ export function NeonConnector({ appId }: { appId: number }) {
             {t("integrations.neon.connectedToProject")}
             <Badge
               variant="secondary"
-              className="ml-2 text-base font-bold px-3 py-1"
+              className="ml-2 max-w-full truncate text-base font-bold px-3 py-1"
+              title={projectInfo?.projectName ?? app.neonProjectId}
             >
               {projectInfo?.projectName ?? app.neonProjectId}
             </Badge>

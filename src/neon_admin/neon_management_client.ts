@@ -390,3 +390,67 @@ export function getNeonErrorMessage(error: any): string {
   const detailedMessage = error.response?.data?.message ?? "";
   return error.message + " " + detailedMessage;
 }
+
+const DEFAULT_EMAIL_PASSWORD_CONFIG = {
+  enabled: false,
+  email_verification_method: "otp" as const,
+  require_email_verification: false,
+  auto_sign_in_after_verification: true,
+  send_verification_email_on_sign_up: false,
+  send_verification_email_on_sign_in: false,
+  disable_sign_up: false,
+};
+
+type EmailPasswordConfig = typeof DEFAULT_EMAIL_PASSWORD_CONFIG;
+
+const EMAIL_PASSWORD_CONFIG_TTL_MS = 60_000;
+
+const emailPasswordConfigCache = new Map<
+  string,
+  { data: EmailPasswordConfig; expiry: number }
+>();
+
+export function invalidateEmailPasswordConfigCache(
+  projectId: string,
+  branchId: string,
+): void {
+  emailPasswordConfigCache.delete(`${projectId}:${branchId}`);
+}
+
+export async function getCachedEmailPasswordConfig(
+  projectId: string,
+  branchId: string,
+): Promise<EmailPasswordConfig> {
+  const key = `${projectId}:${branchId}`;
+  const cached = emailPasswordConfigCache.get(key);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+
+  const neonClient = await getNeonClient();
+  try {
+    const response = await neonClient.getNeonAuthEmailAndPasswordConfig(
+      projectId,
+      branchId,
+    );
+    const data = response.data as EmailPasswordConfig;
+    emailPasswordConfigCache.set(key, {
+      data,
+      expiry: Date.now() + EMAIL_PASSWORD_CONFIG_TTL_MS,
+    });
+    return data;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      emailPasswordConfigCache.set(key, {
+        data: DEFAULT_EMAIL_PASSWORD_CONFIG,
+        expiry: Date.now() + EMAIL_PASSWORD_CONFIG_TTL_MS,
+      });
+      return DEFAULT_EMAIL_PASSWORD_CONFIG;
+    }
+    logger.error(
+      "Failed to fetch Neon Auth email/password config:",
+      getNeonErrorMessage(error),
+    );
+    throw error;
+  }
+}

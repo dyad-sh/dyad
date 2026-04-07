@@ -4,9 +4,11 @@ import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
 import {
+  getCachedEmailPasswordConfig,
   getNeonClient,
   getNeonErrorMessage,
   getNeonOrganizationId,
+  invalidateEmailPasswordConfigCache,
 } from "../../neon_admin/neon_management_client";
 import {
   executeNeonSql,
@@ -220,107 +222,126 @@ export function registerNeonHandlers() {
       const project = response.data.project;
       const mainBranch = response.data.branch;
 
-      // Enable Neon Auth on the main branch
-      await ensureNeonAuth({
-        projectId: project.id,
-        branchId: mainBranch.id,
-      });
+      // Post-creation steps: if any fail, best-effort delete the orphan project
+      try {
+        // Enable Neon Auth on the main branch
+        await ensureNeonAuth({
+          projectId: project.id,
+          branchId: mainBranch.id,
+        });
 
-      // Create development branch as a child of main (production)
-      const developmentBranchResponse = await retryOnLocked(
-        () =>
-          neonClient.createProjectBranch(project.id, {
-            endpoints: [{ type: EndpointType.ReadWrite }],
-            branch: {
-              name: "development",
-              parent_id: mainBranch.id,
-            },
-          }),
-        `Create development branch for project ${project.id}`,
-      );
-
-      if (
-        !developmentBranchResponse.data.branch ||
-        !developmentBranchResponse.data.connection_uris ||
-        developmentBranchResponse.data.connection_uris.length === 0
-      ) {
-        throw new DyadError(
-          "Failed to create development branch: No branch data returned.",
-          DyadErrorKind.External,
+        // Create development branch as a child of main (production)
+        const developmentBranchResponse = await retryOnLocked(
+          () =>
+            neonClient.createProjectBranch(project.id, {
+              endpoints: [{ type: EndpointType.ReadWrite }],
+              branch: {
+                name: "development",
+                parent_id: mainBranch.id,
+              },
+            }),
+          `Create development branch for project ${project.id}`,
         );
-      }
 
-      const developmentBranch = developmentBranchResponse.data.branch;
+        if (
+          !developmentBranchResponse.data.branch ||
+          !developmentBranchResponse.data.connection_uris ||
+          developmentBranchResponse.data.connection_uris.length === 0
+        ) {
+          throw new DyadError(
+            "Failed to create development branch: No branch data returned.",
+            DyadErrorKind.External,
+          );
+        }
 
-      // Enable Neon Auth on the development branch
-      await ensureNeonAuth({
-        projectId: project.id,
-        branchId: developmentBranch.id,
-      });
+        const developmentBranch = developmentBranchResponse.data.branch;
 
-      // Create preview branch as a child of development
-      const previewBranchResponse = await retryOnLocked(
-        () =>
-          neonClient.createProjectBranch(project.id, {
-            endpoints: [{ type: EndpointType.ReadOnly }],
-            branch: {
-              name: "preview",
-              parent_id: developmentBranch.id,
-            },
-          }),
-        `Create preview branch for project ${project.id}`,
-      );
+        // Enable Neon Auth on the development branch
+        await ensureNeonAuth({
+          projectId: project.id,
+          branchId: developmentBranch.id,
+        });
 
-      if (
-        !previewBranchResponse.data.branch ||
-        !previewBranchResponse.data.connection_uris ||
-        previewBranchResponse.data.connection_uris.length === 0
-      ) {
-        throw new DyadError(
-          "Failed to create preview branch: No branch data returned.",
-          DyadErrorKind.External,
+        // Create preview branch as a child of development
+        const previewBranchResponse = await retryOnLocked(
+          () =>
+            neonClient.createProjectBranch(project.id, {
+              endpoints: [{ type: EndpointType.ReadOnly }],
+              branch: {
+                name: "preview",
+                parent_id: developmentBranch.id,
+              },
+            }),
+          `Create preview branch for project ${project.id}`,
         );
+
+        if (
+          !previewBranchResponse.data.branch ||
+          !previewBranchResponse.data.connection_uris ||
+          previewBranchResponse.data.connection_uris.length === 0
+        ) {
+          throw new DyadError(
+            "Failed to create preview branch: No branch data returned.",
+            DyadErrorKind.External,
+          );
+        }
+
+        const previewBranch = previewBranchResponse.data.branch;
+
+        // Enable Neon Auth on the preview branch
+        await ensureNeonAuth({
+          projectId: project.id,
+          branchId: previewBranch.id,
+        });
+
+        // Store project and branch info in the app's DB row
+        await db
+          .update(apps)
+          .set({
+            neonProjectId: project.id,
+            neonDevelopmentBranchId: developmentBranch.id,
+            neonPreviewBranchId: previewBranch.id,
+            neonActiveBranchId: developmentBranch.id,
+          })
+          .where(eq(apps.id, appId));
+
+        const connectionUri =
+          developmentBranchResponse.data.connection_uris[0].connection_uri;
+
+        // Auto-inject env vars into the app's .env.local
+        const warning = await autoInjectNeonEnvVars({
+          appId,
+          projectId: project.id,
+          branchId: developmentBranch.id,
+        });
+
+        logger.info(
+          `Successfully created Neon project: ${project.id} with main branch: ${mainBranch.id} and development branch: ${developmentBranch.id} for app ${appId}`,
+        );
+        return {
+          id: project.id,
+          name: project.name,
+          connectionString: connectionUri,
+          branchId: developmentBranch.id,
+          warning,
+        };
+      } catch (postCreateError) {
+        // Best-effort cleanup: delete the orphan Neon project
+        logger.warn(
+          `Post-creation step failed for project ${project.id}, attempting cleanup: ${postCreateError}`,
+        );
+        try {
+          await neonClient.deleteProject(project.id);
+          logger.info(
+            `Successfully cleaned up orphan Neon project ${project.id}`,
+          );
+        } catch (deleteError) {
+          logger.error(
+            `Failed to clean up orphan Neon project ${project.id}: ${deleteError}`,
+          );
+        }
+        throw postCreateError;
       }
-
-      const previewBranch = previewBranchResponse.data.branch;
-
-      // Enable Neon Auth on the preview branch
-      await ensureNeonAuth({
-        projectId: project.id,
-        branchId: previewBranch.id,
-      });
-
-      // Store project and branch info in the app's DB row
-      await db
-        .update(apps)
-        .set({
-          neonProjectId: project.id,
-          neonDevelopmentBranchId: developmentBranch.id,
-          neonPreviewBranchId: previewBranch.id,
-          neonActiveBranchId: developmentBranch.id,
-        })
-        .where(eq(apps.id, appId));
-
-      const connectionUri =
-        developmentBranchResponse.data.connection_uris[0].connection_uri;
-
-      // Auto-inject env vars into the app's .env.local
-      const warning = await autoInjectNeonEnvVars({
-        appId,
-        projectId: project.id,
-        branchId: developmentBranch.id,
-      });
-
-      logger.info(
-        `Successfully created Neon project: ${project.id} with main branch: ${mainBranch.id} and development branch: ${developmentBranch.id} for app ${appId}`,
-      );
-      return {
-        id: project.id,
-        name: project.name,
-        connectionString: connectionUri,
-        branchId: developmentBranch.id,
-        warning,
-      };
     } catch (error: any) {
       if (error instanceof DyadError) throw error;
       const errorMessage = getNeonErrorMessage(error);
@@ -693,28 +714,7 @@ export function registerNeonHandlers() {
     neonContracts.getEmailPasswordConfig,
     async (_, params) => {
       const { appData, branchId } = await getAppWithNeonBranch(params.appId);
-      const neonClient = await getNeonClient();
-
-      try {
-        const response = await neonClient.getNeonAuthEmailAndPasswordConfig(
-          appData.neonProjectId!,
-          branchId,
-        );
-        return response.data;
-      } catch (error: any) {
-        if (error.response?.status === 404) {
-          return {
-            enabled: false,
-            email_verification_method: "otp" as const,
-            require_email_verification: false,
-            auto_sign_in_after_verification: true,
-            send_verification_email_on_sign_up: false,
-            send_verification_email_on_sign_in: false,
-            disable_sign_up: false,
-          };
-        }
-        throw error;
-      }
+      return getCachedEmailPasswordConfig(appData.neonProjectId!, branchId);
     },
   );
 
@@ -735,6 +735,7 @@ export function registerNeonHandlers() {
           }),
         },
       );
+      invalidateEmailPasswordConfigCache(appData.neonProjectId!, branchId);
       return response.data;
     },
   );

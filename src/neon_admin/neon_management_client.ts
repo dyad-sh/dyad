@@ -91,6 +91,25 @@ export async function refreshNeonToken(): Promise<void> {
 // Function to get the Neon API client
 export async function getNeonClient(): Promise<Api<unknown>> {
   if (IS_TEST_BUILD) {
+    const getMockBranchName = (branchId: string) => {
+      switch (branchId) {
+        case "test-main-branch-id":
+          return "main";
+        case "test-development-branch-id":
+          return "development";
+        case "test-preview-branch-id":
+          return "preview";
+        default:
+          return branchId.replace(/^test-/, "").replace(/-branch-id$/, "");
+      }
+    };
+
+    const getMockConnectionUri = (branchId: string) =>
+      `postgresql://test:test@test-${getMockBranchName(branchId)}.neon.tech/test`;
+
+    const getMockAuthBaseUrl = (branchId: string) =>
+      `https://test-${getMockBranchName(branchId)}.neonauth.us-east-2.aws.neon.tech/neondb/auth`;
+
     // Return a mock client for testing
     return {
       createProject: async (params: any) => ({
@@ -112,29 +131,32 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           },
           connection_uris: [
             {
-              connection_uri: "postgresql://test:test@test.neon.tech/test",
+              connection_uri: getMockConnectionUri("test-main-branch-id"),
             },
           ],
         },
       }),
-      createProjectBranch: async (projectId: string, params: any) => ({
-        data: {
-          branch: {
-            id: `test-${params.branch?.name || "child"}-branch-id`,
-            name: params.branch?.name || "development",
-            project_id: projectId,
-            parent_id: params.branch?.parent_id || "test-main-branch-id",
-            default: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+      createProjectBranch: async (projectId: string, params: any) => {
+        const branchId = `test-${params.branch?.name || "child"}-branch-id`;
+        return {
+          data: {
+            branch: {
+              id: branchId,
+              name: params.branch?.name || "development",
+              project_id: projectId,
+              parent_id: params.branch?.parent_id || "test-main-branch-id",
+              default: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            connection_uris: [
+              {
+                connection_uri: getMockConnectionUri(branchId),
+              },
+            ],
           },
-          connection_uris: [
-            {
-              connection_uri: `postgresql://test:test@test-${params.branch?.name || "child"}.neon.tech/test`,
-            },
-          ],
-        },
-      }),
+        };
+      },
       getProject: async (projectId: string) => ({
         data: {
           project: {
@@ -219,8 +241,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           created_at: new Date().toISOString(),
           owned_by: "neon",
           jwks_url: "https://test.neon.tech/.well-known/jwks.json",
-          base_url:
-            "https://ep-test.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+          base_url: getMockAuthBaseUrl(branchId),
         },
       }),
       createNeonAuth: async (
@@ -236,8 +257,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           jwks_url: "https://test.neon.tech/.well-known/jwks.json",
           schema_name: "neon_auth",
           table_name: "users",
-          base_url:
-            "https://ep-test.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+          base_url: getMockAuthBaseUrl(branchId),
         },
       }),
       listProjectBranchRoles: async () => ({
@@ -245,12 +265,17 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           roles: [{ name: "neondb_owner", protected: false }],
         },
       }),
+      getConnectionUri: async (params: any) => ({
+        data: {
+          uri: getMockConnectionUri(params.branch_id),
+        },
+      }),
       getProjectBranch: async (projectId: string, branchId: string) => ({
         data: {
           branch: {
             id: branchId,
             project_id: projectId,
-            name: "test-branch",
+            name: getMockBranchName(branchId),
             default: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),

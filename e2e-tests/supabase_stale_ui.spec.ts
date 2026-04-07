@@ -6,7 +6,7 @@ testSkipIfWindows("supabase - stale ui", async ({ po }) => {
   await po.sendPrompt("tc=add-supabase");
   await po.snapshotMessages();
 
-  await po.page.getByText("Set up supabase").click();
+  await po.appManagement.startDatabaseIntegrationSetup("supabase");
   // On app details page:
   await po.appManagement.clickConnectSupabaseButton();
   // TODO: for some reason on Windows this navigates to the main (apps) page,

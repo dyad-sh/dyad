@@ -13,6 +13,7 @@ import {
 } from "../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAppWithNeonBranch } from "./neon_handlers";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("migration_handlers");
 
@@ -195,6 +196,15 @@ export function registerMigrationHandlers() {
       );
     }
 
+    // In test builds, skip the actual drizzle-kit operations since the mock
+    // connection URIs don't point to real databases.
+    if (IS_TEST_BUILD) {
+      logger.info(
+        `Test build: skipping actual migration for app ${appId}, returning mock success`,
+      );
+      return { success: true, noChanges: false };
+    }
+
     // 3. Get connection URIs for both branches
     const devUri = await getConnectionUri({
       projectId,
@@ -282,7 +292,7 @@ export function registerMigrationHandlers() {
 
       // 10. Run drizzle-kit push directly against production (--force skips
       //    interactive prompts).
-      // TODO: In a follow-up PR, add a warning for destructive changes.
+      // TODO: In a follow-up PR, we should add a warning for destructive changes.
       const pushResult = await spawnDrizzleKit({
         args: ["push", "--force", `--config=${pushConfigPath}`],
         cwd: tmpDir,

@@ -106,6 +106,45 @@ export class AppManagement {
     await this.page.getByTestId("connect-supabase-button").click();
   }
 
+  async startDatabaseIntegrationSetup(provider: "supabase" | "neon") {
+    const providerLabel = provider === "supabase" ? "Supabase" : "Neon";
+    await this.page
+      .getByRole("button", {
+        name: new RegExp(`^${providerLabel}\\b`),
+      })
+      .click();
+
+    const setupButton = this.page.getByRole("button", {
+      name: `Set up ${providerLabel}`,
+    });
+    await expect(setupButton).toBeEnabled({
+      timeout: Timeout.MEDIUM,
+    });
+    await setupButton.click();
+  }
+
+  async clickConnectNeonButton() {
+    await this.page.getByTestId("connect-neon-button").click();
+  }
+
+  async selectNeonProject(projectName: string) {
+    const projectSelect = this.page.getByTestId("neon-project-select");
+    await expect(projectSelect).toBeVisible({ timeout: Timeout.MEDIUM });
+    await projectSelect.click();
+    await this.page.getByRole("option", { name: projectName }).click();
+  }
+
+  async selectNeonBranch(branchName: string) {
+    const branchSelect = this.page.getByTestId("neon-branch-select");
+    await expect(branchSelect).toBeVisible({ timeout: Timeout.MEDIUM });
+    await branchSelect.click();
+    await this.page
+      .getByRole("option", {
+        name: new RegExp(`^${branchName}\\b`, "i"),
+      })
+      .click();
+  }
+
   async importApp(appDir: string) {
     await this.page.getByRole("button", { name: "Import App" }).click();
     await eph.stubDialog(this.electronApp, "showOpenDialog", {

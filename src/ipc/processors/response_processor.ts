@@ -46,12 +46,21 @@ import {
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeCopyFile } from "../utils/copy_file_utils";
+import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
 interface Output {
   message: string;
   error: unknown;
+}
+
+function formatOutputError(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displayDetails;
+  }
+
+  return error instanceof Error ? error.toString() : String(error);
 }
 
 export async function dryRunSearchReplace({
@@ -230,11 +239,16 @@ export async function processFullResponseActions(
       } catch (error) {
         if (error instanceof ExecuteAddDependencyError) {
           warningMessages.push(...error.warningMessages);
+          errors.push({
+            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}. ${error.displaySummary}`,
+            error: error.displayDetails,
+          });
+        } else {
+          errors.push({
+            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
+            error: error,
+          });
         }
-        errors.push({
-          message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
-          error: error,
-        });
       }
       writtenFiles.push("package.json");
       const pnpmFilename = "pnpm-lock.yaml";
@@ -648,13 +662,13 @@ export async function processFullResponseActions(
     ${warnings
       .map(
         (warning) =>
-          `<dyad-output type="warning" message="${warning.message}">${warning.error}</dyad-output>`,
+          `<dyad-output type="warning" message="${escapeXmlAttr(warning.message)}">${escapeXmlContent(formatOutputError(warning.error))}</dyad-output>`,
       )
       .join("\n")}
     ${errors
       .map(
         (error) =>
-          `<dyad-output type="error" message="${error.message}">${error.error}</dyad-output>`,
+          `<dyad-output type="error" message="${escapeXmlAttr(error.message)}">${escapeXmlContent(formatOutputError(error.error))}</dyad-output>`,
       )
       .join("\n")}
     `;

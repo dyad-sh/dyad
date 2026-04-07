@@ -101,6 +101,26 @@ export async function runCommand(
   });
 }
 
+export function getCommandExecutionDisplayDetails(
+  error: unknown,
+): string | undefined {
+  if (!(error instanceof CommandExecutionError)) {
+    return undefined;
+  }
+
+  const stderr = error.stderr.trim();
+  if (stderr) {
+    return stderr;
+  }
+
+  const stdout = error.stdout.trim();
+  if (stdout) {
+    return stdout;
+  }
+
+  return undefined;
+}
+
 export async function ensureSocketFirewallInstalled(
   runner: CommandRunner = runCommand,
 ): Promise<{

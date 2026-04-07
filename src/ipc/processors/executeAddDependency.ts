@@ -6,6 +6,7 @@ import { readSettings } from "@/main/settings";
 import {
   buildAddDependencyCommands,
   ensureSocketFirewallInstalled,
+  getCommandExecutionDisplayDetails,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
 
@@ -18,9 +19,18 @@ export interface ExecuteAddDependencyResult {
   warningMessages: string[];
 }
 
+function getFirstNonEmptyLine(value: string): string | undefined {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+}
+
 export class ExecuteAddDependencyError extends Error {
   warningMessages: string[];
   originalError: unknown;
+  displayDetails: string;
+  displaySummary: string;
 
   constructor({
     error,
@@ -29,10 +39,15 @@ export class ExecuteAddDependencyError extends Error {
     error: unknown;
     warningMessages: string[];
   }) {
-    super(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    const displayDetails = getCommandExecutionDisplayDetails(error) ?? message;
+
+    super(message);
     this.name = "ExecuteAddDependencyError";
     this.warningMessages = warningMessages;
     this.originalError = error;
+    this.displayDetails = displayDetails;
+    this.displaySummary = getFirstNonEmptyLine(displayDetails) ?? message;
   }
 }
 
@@ -81,13 +96,10 @@ export async function executeAddDependency({
   }
 
   if (lastError) {
-    if (warningMessages.length > 0) {
-      throw new ExecuteAddDependencyError({
-        error: lastError,
-        warningMessages,
-      });
-    }
-    throw lastError;
+    throw new ExecuteAddDependencyError({
+      error: lastError,
+      warningMessages,
+    });
   }
 
   // Update the message content with the installation results

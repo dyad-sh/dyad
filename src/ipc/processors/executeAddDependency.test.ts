@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SOCKET_FIREWALL_WARNING_MESSAGE } from "@/ipc/utils/socket_firewall";
+import {
+  CommandExecutionError,
+  SOCKET_FIREWALL_WARNING_MESSAGE,
+} from "@/ipc/utils/socket_firewall";
 import {
   executeAddDependency,
   ExecuteAddDependencyError,
@@ -74,6 +77,49 @@ describe("executeAddDependency", () => {
     expect(caughtError).toMatchObject({
       warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
       message: "npm failed",
+    });
+  });
+
+  it("includes socket stderr verdict details when sfw blocks a dependency", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: true,
+    });
+    runCommandMock
+      .mockRejectedValueOnce(
+        new CommandExecutionError({
+          message: "pnpm blocked",
+          stderr: "Socket Firewall blocked react\nPolicy: malware",
+          exitCode: 1,
+        }),
+      )
+      .mockRejectedValueOnce(
+        new CommandExecutionError({
+          message: "npm blocked",
+          stderr: "Socket Firewall blocked react\nPolicy: malware",
+          exitCode: 1,
+        }),
+      );
+
+    let caughtError: unknown;
+    try {
+      await executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      });
+    } catch (error) {
+      caughtError = error;
+    }
+
+    expect(caughtError).toBeInstanceOf(ExecuteAddDependencyError);
+    expect(caughtError).toMatchObject({
+      displaySummary: "Socket Firewall blocked react",
+      displayDetails: "Socket Firewall blocked react\nPolicy: malware",
+      warningMessages: [],
     });
   });
 });

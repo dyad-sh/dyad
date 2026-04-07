@@ -583,17 +583,7 @@ function renderCustomTag(
       );
 
     case "dyad-add-integration":
-      return (
-        <DyadAddIntegration
-          node={{
-            properties: {
-              provider: attributes.provider || "",
-            },
-          }}
-        >
-          {content}
-        </DyadAddIntegration>
-      );
+      return <DyadAddIntegration>{content}</DyadAddIntegration>;
 
     case "dyad-edit":
       return (

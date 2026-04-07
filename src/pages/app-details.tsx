@@ -89,8 +89,9 @@ export default function AppDetailsPage() {
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
 
-  // Get the appId from search params and find the corresponding app
+  // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
+  const providerFilter = search.provider;
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
   const handleDeleteApp = async () => {
@@ -445,37 +446,49 @@ export default function AppDetailsPage() {
               </div>
             )}
           </div>
-          {appId && !selectedApp?.neonProjectId && (
+          {/* When providerFilter is set, show only the selected connector */}
+          {providerFilter === "supabase" && appId && (
             <SupabaseConnector appId={appId} />
           )}
-          {appId && selectedApp?.neonProjectId && (
-            <Card className="mt-1">
-              <CardHeader className="flex flex-row items-center gap-3 py-3">
-                <Info className="h-5 w-5 text-muted-foreground shrink-0" />
-                <div>
-                  <CardTitle className="text-sm">Supabase</CardTitle>
-                  <CardDescription className="text-xs">
-                    {t("integrations.mutualExclusion.supabaseUnavailable")}
-                  </CardDescription>
-                </div>
-              </CardHeader>
-            </Card>
-          )}
-          {appId && !selectedApp?.supabaseProjectId && (
+          {providerFilter === "neon" && appId && (
             <NeonConnector appId={appId} />
           )}
-          {appId && selectedApp?.supabaseProjectId && (
-            <Card className="mt-1">
-              <CardHeader className="flex flex-row items-center gap-3 py-3">
-                <Info className="h-5 w-5 text-muted-foreground shrink-0" />
-                <div>
-                  <CardTitle className="text-sm">Neon</CardTitle>
-                  <CardDescription className="text-xs">
-                    {t("integrations.mutualExclusion.neonUnavailable")}
-                  </CardDescription>
-                </div>
-              </CardHeader>
-            </Card>
+          {/* When no providerFilter, show both with existing mutual exclusion */}
+          {!providerFilter && (
+            <>
+              {appId && !selectedApp?.neonProjectId && (
+                <SupabaseConnector appId={appId} />
+              )}
+              {appId && selectedApp?.neonProjectId && (
+                <Card className="mt-1">
+                  <CardHeader className="flex flex-row items-center gap-3 py-3">
+                    <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <div>
+                      <CardTitle className="text-sm">Supabase</CardTitle>
+                      <CardDescription className="text-xs">
+                        {t("integrations.mutualExclusion.supabaseUnavailable")}
+                      </CardDescription>
+                    </div>
+                  </CardHeader>
+                </Card>
+              )}
+              {appId && !selectedApp?.supabaseProjectId && (
+                <NeonConnector appId={appId} />
+              )}
+              {appId && selectedApp?.supabaseProjectId && (
+                <Card className="mt-1">
+                  <CardHeader className="flex flex-row items-center gap-3 py-3">
+                    <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <div>
+                      <CardTitle className="text-sm">Neon</CardTitle>
+                      <CardDescription className="text-xs">
+                        {t("integrations.mutualExclusion.neonUnavailable")}
+                      </CardDescription>
+                    </div>
+                  </CardHeader>
+                </Card>
+              )}
+            </>
           )}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />

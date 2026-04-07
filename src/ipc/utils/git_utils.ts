@@ -332,17 +332,15 @@ export async function gitCommit({
 export async function gitCheckout({
   path,
   ref,
+  force,
 }: GitCheckoutParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execOrThrow(
-      ["checkout", ref],
-      path,
-      `Failed to checkout ref '${ref}'`,
-    );
+    const args = force ? ["checkout", "--force", ref] : ["checkout", ref];
+    await execOrThrow(args, path, `Failed to checkout ref '${ref}'`);
     return;
   } else {
-    return git.checkout({ fs, dir: path, ref });
+    return git.checkout({ fs, dir: path, ref, force: !!force });
   }
 }
 

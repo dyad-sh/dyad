@@ -448,6 +448,7 @@ export function registerVersionHandlers() {
       await gitCheckout({
         path: fullAppPath,
         ref: gitRef,
+        force: true,
       });
     });
   });

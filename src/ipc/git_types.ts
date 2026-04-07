@@ -24,6 +24,7 @@ export interface GitListFilesParams extends GitBaseParams {
 }
 export interface GitCheckoutParams extends GitBaseParams {
   ref: string;
+  force?: boolean;
 }
 export interface GitBranchRenameParams extends GitBaseParams {
   oldBranch: string;

@@ -7,7 +7,10 @@ import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
 
 import log from "electron-log";
-import { executeAddDependency } from "./executeAddDependency";
+import {
+  executeAddDependency,
+  ExecuteAddDependencyError,
+} from "./executeAddDependency";
 import {
   deleteSupabaseFunction,
   deploySupabaseFunction,
@@ -43,12 +46,21 @@ import {
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeCopyFile } from "../utils/copy_file_utils";
+import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
 interface Output {
   message: string;
   error: unknown;
+}
+
+function formatOutputError(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displayDetails;
+  }
+
+  return error instanceof Error ? error.toString() : String(error);
 }
 
 export async function dryRunSearchReplace({
@@ -110,6 +122,7 @@ export async function processFullResponseActions(
   error?: string;
   extraFiles?: string[];
   extraFilesError?: string;
+  warningMessages?: string[];
 }> {
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
@@ -153,6 +166,7 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Extract all tags
@@ -216,16 +230,25 @@ export async function processFullResponseActions(
     // TODO: Handle add dependency tags
     if (dyadAddDependencyPackages.length > 0) {
       try {
-        await executeAddDependency({
+        const addDependencyResult = await executeAddDependency({
           packages: dyadAddDependencyPackages,
           message: message,
           appPath,
         });
+        warningMessages.push(...addDependencyResult.warningMessages);
       } catch (error) {
-        errors.push({
-          message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
-          error: error,
-        });
+        if (error instanceof ExecuteAddDependencyError) {
+          warningMessages.push(...error.warningMessages);
+          errors.push({
+            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}. ${error.displaySummary}`,
+            error: error.displayDetails,
+          });
+        } else {
+          errors.push({
+            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
+            error: error,
+          });
+        }
       }
       writtenFiles.push("package.json");
       const pnpmFilename = "pnpm-lock.yaml";
@@ -628,22 +651,28 @@ export async function processFullResponseActions(
       updatedFiles: hasChanges,
       extraFiles: uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
       extraFilesError,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);
-    return { error: (error as any).toString() };
+    return {
+      error: (error as any).toString(),
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
+    };
   } finally {
     const appendedContent = `
     ${warnings
       .map(
         (warning) =>
-          `<dyad-output type="warning" message="${warning.message}">${warning.error}</dyad-output>`,
+          `<dyad-output type="warning" message="${escapeXmlAttr(warning.message)}">${escapeXmlContent(formatOutputError(warning.error))}</dyad-output>`,
       )
       .join("\n")}
     ${errors
       .map(
         (error) =>
-          `<dyad-output type="error" message="${error.message}">${error.error}</dyad-output>`,
+          `<dyad-output type="error" message="${escapeXmlAttr(error.message)}">${escapeXmlContent(formatOutputError(error.error))}</dyad-output>`,
       )
       .join("\n")}
     `;

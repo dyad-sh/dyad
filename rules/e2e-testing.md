@@ -111,10 +111,16 @@ If this happens:
 
 ## Common flaky test patterns and fixes
 
+- **After `po.importApp(...)`**: Some imports trigger an initial assistant turn (for example `minimal` generating `AI_RULES.md`) that can leave a visible `Retry` button in the chat. If the test is about a later prompt, first wait for that import-time turn to finish, then start a new chat before calling `sendPrompt()`, or helper methods that wait on `Retry` visibility may return too early.
 - **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.
 - **Keyboard navigation events (ArrowUp/ArrowDown)**: Add `await page.waitForTimeout(100)` between sequential keyboard presses to let the UI state settle. Rapid keypresses can cause race conditions in menu navigation.
 - **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: Timeout.EXTRA_LONG })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.
 - **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
+
+## Real Socket Firewall E2E tests
+
+- When exercising the real `sfw` binary in E2E, set fresh per-test `npm_config_cache`, `npm_config_store_dir`, and `pnpm_config_store_dir` in the launch hooks. Reused caches/stores can make Socket Firewall report that it did not detect package fetches, which turns blocked-package tests into false negatives.
+- For real-path blocked-package coverage, prefer `axois` over `lodahs`. `lodahs` can resolve to `0.0.1-security` and install successfully under `pnpm`, so it does not reliably reach the blocked-package UI.
 
 ## Waiting for button state transitions
 

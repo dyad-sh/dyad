@@ -333,6 +333,7 @@ const BaseUserSettingsFields = {
   enableAutoFixProblems: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
+  blockUnsafeNpmPackages: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),

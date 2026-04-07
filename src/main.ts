@@ -16,8 +16,8 @@ import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
 import {
   getSettingsFilePath,
-  readSettings,
   writeSettings,
+  readEffectiveSettings,
 } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
@@ -179,7 +179,7 @@ export async function onReady() {
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
 
-  const settings = readSettings();
+  const settings = await readEffectiveSettings();
 
   // Add dyad-apps directory to git safe.directory (required for Windows).
   // The trailing /* allows access to all repositories under the named directory.

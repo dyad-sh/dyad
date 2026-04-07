@@ -1716,6 +1716,7 @@ ${problemReport.problems
             safeSend(event.sender, "chat:response:error", {
               chatId: req.chatId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+              warningMessages: status.warningMessages,
             });
           }
 
@@ -1725,6 +1726,7 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            warningMessages: status.warningMessages,
             chatSummary,
           } satisfies ChatResponseEnd);
         } else {

@@ -136,24 +136,6 @@ export async function processFullResponseActions(
   const warnings: Output[] = [];
   const errors: Output[] = [];
 
-  if (
-    chatWithApp.app.neonProjectId &&
-    chatWithApp.app.neonDevelopmentBranchId
-  ) {
-    try {
-      await storeDbTimestampAtCurrentVersion({
-        appId: chatWithApp.app.id,
-      });
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error("Error creating Neon branch at current version:", error);
-      warnings.push({
-        message: "Failed to save database version snapshot",
-        error: errorMsg,
-      });
-    }
-  }
-
   try {
     // Extract all tags
     const dyadWriteTags = getDyadWriteTags(fullResponse);
@@ -641,6 +623,29 @@ export async function processFullResponseActions(
               `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
             );
             extraFilesError = (error as any).toString();
+          }
+        }
+
+        // Store Neon timestamp after commit so it's paired with the correct version
+        if (
+          chatWithApp.app.neonProjectId &&
+          chatWithApp.app.neonDevelopmentBranchId
+        ) {
+          try {
+            await storeDbTimestampAtCurrentVersion({
+              appId: chatWithApp.app.id,
+            });
+          } catch (error) {
+            const errorMsg =
+              error instanceof Error ? error.message : String(error);
+            logger.error(
+              "Error creating Neon branch at current version:",
+              error,
+            );
+            warnings.push({
+              message: "Failed to save database version snapshot",
+              error: errorMsg,
+            });
           }
         }
 

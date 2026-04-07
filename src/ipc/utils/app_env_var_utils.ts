@@ -202,12 +202,16 @@ export async function updateNeonEnvVars({
   upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
 
   if (neonAuthBaseUrl) {
+    const previousAuthUrl = envVars.find(
+      (v) => v.key === "NEON_AUTH_BASE_URL",
+    )?.value;
     upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", neonAuthBaseUrl);
-    // Only generate a new cookie secret if one doesn't already exist
+    // Regenerate the cookie secret when the auth URL changes (e.g. branch switch)
+    // to prevent cross-branch session reuse, or generate one if absent
     const existingSecret = envVars.find(
       (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
     );
-    if (!existingSecret) {
+    if (!existingSecret || previousAuthUrl !== neonAuthBaseUrl) {
       upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", generateCookieSecret());
     }
   }

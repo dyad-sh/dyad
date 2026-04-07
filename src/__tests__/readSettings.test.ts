@@ -5,7 +5,7 @@ import { safeStorage } from "electron";
 import {
   readSettings,
   resolveEffectiveSettings,
-  readEffectiveSettingsAsync,
+  readEffectiveSettings,
   getSettingsFilePath,
   encrypt,
   decrypt,
@@ -29,7 +29,6 @@ vi.mock("@/paths/paths", () => ({
 }));
 vi.mock("@/ipc/shared/remote_desktop_config", () => ({
   getRemoteDesktopConfig: vi.fn(),
-  getCachedRemoteDesktopConfig: vi.fn(() => null),
 }));
 
 const mockFs = vi.mocked(fs);
@@ -557,7 +556,7 @@ describe("readSettings", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
 
-      const result = await readEffectiveSettingsAsync();
+      const result = await readEffectiveSettings();
 
       expect(result.blockUnsafeNpmPackages).toBe(false);
       expect(mockFs.writeFileSync).not.toHaveBeenCalled();
@@ -570,7 +569,7 @@ describe("readSettings", () => {
       const result = resolveEffectiveSettings({
         ...readSettings(),
         blockUnsafeNpmPackages: true,
-      });
+      }, null);
 
       expect(result.blockUnsafeNpmPackages).toBe(true);
     });

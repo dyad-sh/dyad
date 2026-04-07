@@ -62,7 +62,7 @@ describe("executeAddDependency", () => {
     });
     dbUpdateWhereMock.mockResolvedValue(undefined);
     detectPreferredPackageManagerMock.mockResolvedValue("pnpm");
-    readEffectiveSettingsMock.mockReturnValue({
+    readEffectiveSettingsMock.mockResolvedValue({
       blockUnsafeNpmPackages: true,
     });
   });

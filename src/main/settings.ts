@@ -16,7 +16,6 @@ import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 import { DEFAULT_THEME_ID } from "@/shared/themes";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import {
-  getCachedRemoteDesktopConfig,
   getRemoteDesktopConfig,
   type RemoteDesktopConfig,
 } from "@/ipc/shared/remote_desktop_config";
@@ -190,7 +189,7 @@ export function readSettings(): UserSettings {
 
 export function resolveEffectiveSettings(
   settings: UserSettings,
-  remoteConfig: RemoteDesktopConfig | null = getCachedRemoteDesktopConfig(),
+  remoteConfig: RemoteDesktopConfig | null,
 ): UserSettings {
   if (typeof settings.blockUnsafeNpmPackages === "boolean") {
     return settings;
@@ -203,11 +202,7 @@ export function resolveEffectiveSettings(
   };
 }
 
-export function readEffectiveSettings(): UserSettings {
-  return resolveEffectiveSettings(readSettings());
-}
-
-export async function readEffectiveSettingsAsync(): Promise<UserSettings> {
+export async function readEffectiveSettings(): Promise<UserSettings> {
   const settings = readSettings();
   const remoteConfig = await getRemoteDesktopConfig();
   return resolveEffectiveSettings(settings, remoteConfig);

@@ -98,7 +98,7 @@ export async function executeAddDependency({
   message: Message;
   appPath: string;
 }): Promise<ExecuteAddDependencyResult> {
-  const settings = readEffectiveSettings();
+  const settings = await readEffectiveSettings();
   const warningMessages: string[] = [];
 
   let useSocketFirewall = settings.blockUnsafeNpmPackages !== false;

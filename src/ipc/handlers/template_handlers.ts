@@ -6,7 +6,6 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apps, chats } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { readSettings } from "@/main/settings";
 import { getAllTemplates } from "../utils/template_utils";
 import { localTemplatesData } from "../../shared/templates";
 import { createTypedHandler } from "./base";
@@ -52,11 +51,6 @@ export function registerTemplateHandlers() {
     const { appId, templateId, chatId } = params;
 
     return withLock(appId, async () => {
-      const currentTemplateId = readSettings().selectedTemplateId;
-      if (templateId === currentTemplateId) {
-        return { applied: false };
-      }
-
       const appRecord = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });

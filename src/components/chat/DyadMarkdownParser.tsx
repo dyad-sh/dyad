@@ -918,14 +918,8 @@ function renderCustomTag(
               state: getState({ isStreaming, inProgress }),
             },
           }}
-        >
-          {content}
-        </DyadMiniPlanCard>
+        />
       );
-
-    case "dyad-mini-plan-visuals":
-      // Visuals are rendered inside DyadMiniPlanCard, not standalone
-      return null;
 
     default:
       return null;

@@ -7,7 +7,10 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import { updateMiniPlanVisuals } from "@/ipc/handlers/mini_plan_handlers";
+import {
+  getMiniPlanForChat,
+  updateMiniPlanVisuals,
+} from "@/ipc/handlers/mini_plan_handlers";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("plan_visuals");
@@ -102,6 +105,10 @@ export const planVisualsTool: ToolDefinition<
   },
 
   execute: async (args, ctx: AgentContext) => {
+    if (!getMiniPlanForChat(ctx.chatId)) {
+      return "Error: No mini plan found. Call write_mini_plan first.";
+    }
+
     logger.log(`Planning ${args.visuals.length} visuals`);
 
     const visuals = args.visuals.map((v) => ({

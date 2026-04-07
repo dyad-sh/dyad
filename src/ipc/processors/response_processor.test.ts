@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CommandExecutionError } from "@/ipc/utils/socket_firewall";
+import {
+  CommandExecutionError,
+  SOCKET_FIREWALL_WARNING_MESSAGE,
+} from "@/ipc/utils/socket_firewall";
 import { ExecuteAddDependencyError } from "./executeAddDependency";
 
 const { executeAddDependencyMock, readSettingsMock } = vi.hoisted(() => ({
@@ -68,6 +71,7 @@ vi.mock("./executeAddDependency", async () => {
 });
 
 import { db } from "../../db";
+import { gitAdd } from "../utils/git_utils";
 import { processFullResponseActions } from "./response_processor";
 
 describe("processFullResponseActions add dependency errors", () => {
@@ -126,5 +130,27 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(contentUpdate?.content).toContain(
       "Socket Firewall blocked react&lt;malware&gt;\nPolicy: malware package",
     );
+  });
+
+  it("preserves warning messages when a later processing step throws", async () => {
+    executeAddDependencyMock.mockResolvedValue({
+      installResults: "installed",
+      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
+    vi.mocked(gitAdd).mockRejectedValueOnce(new Error("git add failed"));
+
+    const result = await processFullResponseActions(
+      '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(result).toMatchObject({
+      error: "Error: git add failed",
+      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
   });
 });

@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
+export const SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE =
+  "Socket Firewall could not verify these npm packages. Dyad installed them without firewall checks.";
 
 export interface CommandExecutionOptions {
   cwd?: string;
@@ -43,6 +45,12 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
+export function shouldUseCommandShell(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === "win32";
+}
+
 export function resolveExecutableName(command: string): string {
   if (process.platform === "win32" && !command.includes(".")) {
     return `${command}.cmd`;
@@ -59,6 +67,7 @@ export async function runCommand(
     const child = spawn(resolveExecutableName(command), args, {
       cwd: options.cwd,
       env: options.env,
+      shell: shouldUseCommandShell(),
       stdio: "pipe",
     });
 
@@ -119,6 +128,18 @@ export function getCommandExecutionDisplayDetails(
   }
 
   return undefined;
+}
+
+export function isSocketFirewallPolicyBlock(error: unknown): boolean {
+  const details =
+    getCommandExecutionDisplayDetails(error) ??
+    (error instanceof Error ? error.message : String(error));
+  const normalized = details.toLowerCase();
+
+  return (
+    normalized.includes("socket firewall blocked") ||
+    (normalized.includes("socket firewall") && normalized.includes("blocked"))
+  );
 }
 
 export async function ensureSocketFirewallInstalled(

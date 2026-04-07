@@ -7,7 +7,9 @@ import {
   buildAddDependencyCommands,
   ensureSocketFirewallInstalled,
   getCommandExecutionDisplayDetails,
+  isSocketFirewallPolicyBlock,
   runCommand,
+  SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
 
 function escapeRegExp(value: string): string {
@@ -51,6 +53,49 @@ export class ExecuteAddDependencyError extends Error {
   }
 }
 
+async function runAddDependencyCommands(
+  commands: Array<{ command: string; args: string[] }>,
+  appPath: string,
+): Promise<{
+  succeeded: boolean;
+  installResults: string;
+  lastError: unknown;
+  errors: unknown[];
+}> {
+  let installResults = "";
+  let lastError: unknown = null;
+  const errors: unknown[] = [];
+
+  for (const command of commands) {
+    try {
+      const { stdout, stderr } = await runCommand(
+        command.command,
+        command.args,
+        {
+          cwd: appPath,
+        },
+      );
+      installResults = stdout + (stderr ? `\n${stderr}` : "");
+      return {
+        succeeded: true,
+        installResults,
+        lastError: null,
+        errors: [],
+      };
+    } catch (error) {
+      lastError = error;
+      errors.push(error);
+    }
+  }
+
+  return {
+    succeeded: false,
+    installResults,
+    lastError,
+    errors,
+  };
+}
+
 export async function executeAddDependency({
   packages,
   message,
@@ -74,28 +119,30 @@ export async function executeAddDependency({
     }
   }
 
-  const commands = buildAddDependencyCommands(packages, useSocketFirewall);
-  let installResults = "";
-  let lastError: unknown;
+  let {
+    succeeded,
+    installResults,
+    lastError,
+    errors: attemptedErrors,
+  } = await runAddDependencyCommands(
+    buildAddDependencyCommands(packages, useSocketFirewall),
+    appPath,
+  );
 
-  for (const command of commands) {
-    try {
-      const { stdout, stderr } = await runCommand(
-        command.command,
-        command.args,
-        {
-          cwd: appPath,
-        },
-      );
-      installResults = stdout + (stderr ? `\n${stderr}` : "");
-      lastError = null;
-      break;
-    } catch (error) {
-      lastError = error;
-    }
+  if (
+    !succeeded &&
+    useSocketFirewall &&
+    lastError &&
+    !attemptedErrors.some((error) => isSocketFirewallPolicyBlock(error))
+  ) {
+    warningMessages.push(SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE);
+    ({ succeeded, installResults, lastError } = await runAddDependencyCommands(
+      buildAddDependencyCommands(packages, false),
+      appPath,
+    ));
   }
 
-  if (lastError) {
+  if (!succeeded && lastError) {
     throw new ExecuteAddDependencyError({
       error: lastError,
       warningMessages,

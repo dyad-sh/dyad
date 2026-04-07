@@ -1716,6 +1716,7 @@ ${problemReport.problems
             safeSend(event.sender, "chat:response:error", {
               chatId: req.chatId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+              warningMessages: status.warningMessages,
             });
           }
 

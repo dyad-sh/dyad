@@ -373,9 +373,13 @@ const approveProposalHandler = async (
   );
 
   if (processResult.error) {
-    throw new Error(
-      `Error processing actions for message ${messageId}: ${processResult.error}`,
-    );
+    return {
+      success: false,
+      error: `Error processing actions for message ${messageId}: ${processResult.error}`,
+      extraFiles: processResult.extraFiles,
+      extraFilesError: processResult.extraFilesError,
+      warningMessages: processResult.warningMessages,
+    };
   }
 
   return {

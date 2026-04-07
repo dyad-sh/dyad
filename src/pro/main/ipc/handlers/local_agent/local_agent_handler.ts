@@ -468,6 +468,7 @@ export async function handleLocalAgentStream(
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Get model client
@@ -495,7 +496,6 @@ export async function handleLocalAgentStream(
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
-    const warningMessages: string[] = [];
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -1295,6 +1295,8 @@ export async function handleLocalAgentStream(
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error: `Error: ${getErrorMessage(error)}`,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
     return false; // Error - don't consume quota
   }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CommandExecutionError,
+  SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE,
   SOCKET_FIREWALL_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
 import {
@@ -8,16 +9,25 @@ import {
   ExecuteAddDependencyError,
 } from "./executeAddDependency";
 
-const { ensureSocketFirewallInstalledMock, runCommandMock, readSettingsMock } =
-  vi.hoisted(() => ({
-    ensureSocketFirewallInstalledMock: vi.fn(),
-    runCommandMock: vi.fn(),
-    readSettingsMock: vi.fn(),
-  }));
+const {
+  ensureSocketFirewallInstalledMock,
+  runCommandMock,
+  readSettingsMock,
+  dbUpdateWhereMock,
+} = vi.hoisted(() => ({
+  ensureSocketFirewallInstalledMock: vi.fn(),
+  runCommandMock: vi.fn(),
+  readSettingsMock: vi.fn(),
+  dbUpdateWhereMock: vi.fn(),
+}));
 
 vi.mock("../../db", () => ({
   db: {
-    update: vi.fn(),
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: dbUpdateWhereMock,
+      })),
+    })),
   },
 }));
 
@@ -44,6 +54,7 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
 describe("executeAddDependency", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dbUpdateWhereMock.mockResolvedValue(undefined);
     readSettingsMock.mockReturnValue({
       blockUnsafeNpmPackages: true,
     });
@@ -120,6 +131,48 @@ describe("executeAddDependency", () => {
       displaySummary: "Socket Firewall blocked react",
       displayDetails: "Socket Firewall blocked react\nPolicy: malware",
       warningMessages: [],
+    });
+  });
+
+  it("falls back to direct package-manager commands after sfw runtime failures", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: true,
+    });
+    runCommandMock
+      .mockRejectedValueOnce(
+        new CommandExecutionError({
+          message: "sfw pnpm failed",
+          stderr: "Socket Firewall timed out",
+          exitCode: 1,
+        }),
+      )
+      .mockRejectedValueOnce(
+        new CommandExecutionError({
+          message: "sfw npm failed",
+          stderr: "Socket Firewall timed out",
+          exitCode: 1,
+        }),
+      )
+      .mockResolvedValueOnce({ stdout: "installed via pnpm", stderr: "" });
+
+    const result = await executeAddDependency({
+      packages: ["react"],
+      message: {
+        id: 1,
+        content: '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+      } as any,
+      appPath: "/tmp/app",
+    });
+
+    expect(runCommandMock).toHaveBeenNthCalledWith(
+      3,
+      "pnpm",
+      ["add", "react"],
+      { cwd: "/tmp/app" },
+    );
+    expect(result).toMatchObject({
+      installResults: "installed via pnpm",
+      warningMessages: [SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE],
     });
   });
 });

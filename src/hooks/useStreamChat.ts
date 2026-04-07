@@ -319,10 +319,13 @@ export function useStreamChat({
               invalidateTokenCount();
               onSettled?.({ success: true });
             },
-            onError: ({ error: errorMessage }) => {
+            onError: ({ error: errorMessage, warningMessages }) => {
               // Remove from pending set now that stream ended with error
               pendingStreamChatIds.delete(chatId);
 
+              for (const warningMessage of warningMessages ?? []) {
+                showWarning(warningMessage);
+              }
               console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
               setErrorById((prev) => {
                 const next = new Map(prev);

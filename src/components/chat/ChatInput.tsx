@@ -624,6 +624,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       for (const warningMessage of result.warningMessages ?? []) {
         showWarning(warningMessage);
       }
+      if (!result.success) {
+        setError(result.error ?? "An error occurred while approving");
+      }
     } catch (err) {
       console.error("Error approving proposal:", err);
       setError((err as Error)?.message || "An error occurred while approving");

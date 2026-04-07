@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildAddDependencyCommands,
+  CommandExecutionError,
   ensureSocketFirewallInstalled,
+  isSocketFirewallPolicyBlock,
   SOCKET_FIREWALL_WARNING_MESSAGE,
+  shouldUseCommandShell,
   type CommandRunner,
 } from "./socket_firewall";
 
@@ -72,5 +75,36 @@ describe("ensureSocketFirewallInstalled", () => {
       available: false,
       warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
     });
+  });
+});
+
+describe("shouldUseCommandShell", () => {
+  it("uses a shell on Windows so npm-style .cmd shims can execute", () => {
+    expect(shouldUseCommandShell("win32")).toBe(true);
+  });
+
+  it("avoids the shell on Unix platforms", () => {
+    expect(shouldUseCommandShell("darwin")).toBe(false);
+    expect(shouldUseCommandShell("linux")).toBe(false);
+  });
+});
+
+describe("isSocketFirewallPolicyBlock", () => {
+  it("detects explicit Socket Firewall policy blocks", () => {
+    expect(
+      isSocketFirewallPolicyBlock(
+        new CommandExecutionError({
+          message: "blocked by policy",
+          stderr: "Socket Firewall blocked react\nPolicy: malware",
+          exitCode: 1,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat generic runtime failures as policy blocks", () => {
+    expect(
+      isSocketFirewallPolicyBlock(new Error("Socket Firewall timed out")),
+    ).toBe(false);
   });
 });

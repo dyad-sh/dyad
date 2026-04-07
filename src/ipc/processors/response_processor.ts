@@ -656,7 +656,11 @@ export async function processFullResponseActions(
     };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);
-    return { error: (error as any).toString() };
+    return {
+      error: (error as any).toString(),
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
+    };
   } finally {
     const appendedContent = `
     ${warnings

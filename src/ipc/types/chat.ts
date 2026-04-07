@@ -130,6 +130,7 @@ export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;
 export const ChatResponseErrorSchema = z.object({
   chatId: z.number(),
   error: z.string(),
+  warningMessages: z.array(z.string()).optional(),
 });
 
 /**

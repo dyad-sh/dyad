@@ -140,6 +140,7 @@ import { describe, it, expect } from "vitest";
 import { generateText } from "ai";
 import { searchReplaceTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_replace";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
+import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
 import {
   SONNET_4_6,
   GEMINI_3_FLASH,
@@ -215,7 +216,11 @@ for (const { provider, modelName, label } of MODELS) {
           expect(args.file_path).toBe(c.fileName);
 
           // Reuse the production processor to apply the edit.
-          const ops = `<<<<<<< SEARCH\n${args.old_string}\n=======\n${args.new_string}\n>>>>>>> REPLACE`;
+          // Escape marker-like sequences in the args, matching production behavior
+          // in search_replace.ts:execute, so the parser doesn't misinterpret them.
+          const escapedOld = escapeSearchReplaceMarkers(args.old_string);
+          const escapedNew = escapeSearchReplaceMarkers(args.new_string);
+          const ops = `<<<<<<< SEARCH\n${escapedOld}\n=======\n${escapedNew}\n>>>>>>> REPLACE`;
           const applied = applySearchReplace(c.fileContent, ops);
           expect(applied.success).toBe(true);
           expect(applied.content?.trim()).toBe(c.expectedContent.trim());

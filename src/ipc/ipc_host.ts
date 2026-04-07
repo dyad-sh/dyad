@@ -118,6 +118,7 @@ import { registerAgentWorkspaceHandlers } from "./handlers/agent_workspace_handl
 import { registerAgentCreationHandlers } from "./handlers/agent_creation_handlers";
 import { registerAgentUIHandlers } from "./handlers/agent_ui_handlers";
 import { registerOpenClawKanbanHandlers } from "./handlers/openclaw_kanban_handlers";
+import { registerOpenClawActivityHandlers } from "./handlers/openclaw_activity_handlers";
 import { registerFlywheelHandlers } from "./handlers/flywheel_handlers";
 import { registerModelRegistryHandlers } from "./handlers/model_registry_handlers";
 import { registerSsiHandlers } from "./handlers/ssi_handlers";
@@ -363,6 +364,10 @@ export function registerIpcHandlers() {
 
   // OpenClaw Kanban — Visual task board & analytics for OpenClaw operations
   registerOpenClawKanbanHandlers();
+
+  // OpenClaw Activity Log — Persistent bot/agent activity & channel messages
+  // Data survives even when JoyCreate is closed while the bot is running
+  registerOpenClawActivityHandlers();
 
   // Data Flywheel — Self-reinforcing training loop
   // Interactions → Training Pairs → Fine-Tune → Smarter Models

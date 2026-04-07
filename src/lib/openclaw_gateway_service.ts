@@ -63,6 +63,12 @@ export class OpenClawGatewayService extends EventEmitter {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private providerHealthCache: Map<string, { healthy: boolean; lastCheck: number }> = new Map();
   
+  /** True when connected as a WS client to an external OpenClaw gateway */
+  private bridgeMode = false;
+  /** WebSocket client used in bridge mode */
+  private bridgeClient: WebSocket | null = null;
+  private bridgeReconnectTimer: NodeJS.Timeout | null = null;
+  
   private constructor() {
     super();
     this.config = { ...DEFAULT_OPENCLAW_CONFIG };
@@ -91,7 +97,7 @@ export class OpenClawGatewayService extends EventEmitter {
     
     await this.loadConfig();
     
-    if (this.config.gateway.enabled && !this.server) {
+    if (this.config.gateway.enabled && !this.server && !this.bridgeMode) {
       await this.startGateway();
     }
     
@@ -188,7 +194,7 @@ export class OpenClawGatewayService extends EventEmitter {
   // ===========================================================================
   
   async startGateway(): Promise<void> {
-    if (this.server) {
+    if (this.server || this.bridgeMode) {
       logger.warn("Gateway already running");
       return;
     }
@@ -198,6 +204,15 @@ export class OpenClawGatewayService extends EventEmitter {
       
       const { host, port } = this.config.gateway;
       
+      // ── Check if an external OpenClaw gateway is already listening ──
+      const externalAlive = await this.probeExternalGateway(host, port);
+      if (externalAlive) {
+        logger.info(`External OpenClaw gateway detected on ${host}:${port} — entering bridge mode`);
+        await this.startBridgeMode(host, port);
+        return;
+      }
+      
+      // ── No external gateway — start our own server ──
       // Create HTTP server for control UI + API
       this.httpServer = http.createServer((req, res) => {
         const parsedUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -281,6 +296,17 @@ export class OpenClawGatewayService extends EventEmitter {
       this.heartbeatTimer = null;
     }
     
+    // ── Bridge mode cleanup ──
+    if (this.bridgeReconnectTimer) {
+      clearInterval(this.bridgeReconnectTimer);
+      this.bridgeReconnectTimer = null;
+    }
+    if (this.bridgeClient) {
+      try { this.bridgeClient.close(1000, "JoyCreate shutting down"); } catch { /* ignore */ }
+      this.bridgeClient = null;
+      this.bridgeMode = false;
+    }
+    
     // Close all client connections
     for (const [id, ws] of this.clients) {
       try {
@@ -308,6 +334,160 @@ export class OpenClawGatewayService extends EventEmitter {
     
     this.updateStatus("disconnected");
     this.emitEvent("gateway:disconnected", {});
+  }
+  
+  // ===========================================================================
+  // BRIDGE MODE — connect as WS client to an external OpenClaw gateway
+  // ===========================================================================
+  
+  /** HTTP probe to see if an external gateway is listening */
+  private async probeExternalGateway(host: string, port: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const req = http.get({ hostname: host === "0.0.0.0" ? "127.0.0.1" : host, port, path: "/health", timeout: 2000 }, (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        res.on("end", () => {
+          try {
+            const data = JSON.parse(body);
+            // Accept any valid JSON response from /health as proof of life
+            resolve(data && typeof data === "object");
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+    });
+  }
+  
+  /** Connect as a WS client to the external gateway and mirror events locally */
+  private async startBridgeMode(host: string, port: number): Promise<void> {
+    const wsHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+    const url = `ws://${wsHost}:${port}`;
+    
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url);
+      
+      const connectTimeout = setTimeout(() => {
+        ws.terminate();
+        reject(new Error("Bridge connection to external gateway timed out"));
+      }, 5000);
+      
+      ws.on("open", () => {
+        clearTimeout(connectTimeout);
+        this.bridgeClient = ws;
+        this.bridgeMode = true;
+        
+        // Send the OpenClaw protocol connect frame
+        const token = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+        const connectFrame = {
+          type: "req",
+          method: "connect",
+          id: uuidv4(),
+          params: {
+            client: {
+              id: "joycreate-bridge",
+              displayName: "JoyCreate",
+              mode: "bridge",
+              version: app.getVersion(),
+              platform: "electron",
+            },
+            ...(token ? { auth: { token } } : {}),
+            minProtocol: 3,
+            maxProtocol: 3,
+            role: "operator",
+            scopes: ["operator.admin"],
+          },
+        };
+        ws.send(JSON.stringify(connectFrame));
+        
+        this.updateStatus("connected");
+        this.state.connectedAt = Date.now();
+        this.state.version = "bridge";
+        
+        this.emitEvent("gateway:connected", { host: wsHost, port, url, bridge: true });
+        logger.info(`Bridge mode active — connected to external gateway at ${url}`);
+        
+        // Periodic health check for the bridge connection
+        this.bridgeReconnectTimer = setInterval(async () => {
+          if (!this.bridgeClient || this.bridgeClient.readyState !== WebSocket.OPEN) {
+            logger.warn("Bridge connection lost, attempting reconnect...");
+            this.handleBridgeDisconnect();
+          }
+        }, 15_000);
+        
+        resolve();
+      });
+      
+      ws.on("message", (data: Buffer | string) => {
+        try {
+          const message = JSON.parse(data.toString());
+          // Forward all messages from the external gateway as local events
+          this.emitEvent("message:received", { clientId: "external-gateway", message });
+          
+          // Persist channel messages (Discord, Telegram, etc.) to DB
+          this.persistChannelMessage(message).catch(() => {});
+          
+          // Emit typed events for specific message types
+          if (message.type === "heartbeat") {
+            this.state.lastHeartbeat = Date.now();
+          } else if (message.type) {
+            this.emit(`bridge:${message.type}`, message);
+          }
+        } catch {
+          logger.debug("Non-JSON message from external gateway, ignoring");
+        }
+      });
+      
+      ws.on("close", (code, reason) => {
+        clearTimeout(connectTimeout);
+        logger.warn(`Bridge connection closed: ${code} ${reason}`);
+        this.handleBridgeDisconnect();
+      });
+      
+      ws.on("error", (error) => {
+        clearTimeout(connectTimeout);
+        logger.error("Bridge WebSocket error:", error);
+        if (!this.bridgeMode) {
+          reject(error);
+        }
+      });
+    });
+  }
+  
+  /** Handle bridge disconnect — try to reconnect or fall back */
+  private handleBridgeDisconnect(): void {
+    if (this.bridgeReconnectTimer) {
+      clearInterval(this.bridgeReconnectTimer);
+      this.bridgeReconnectTimer = null;
+    }
+    this.bridgeClient = null;
+    this.bridgeMode = false;
+    this.updateStatus("reconnecting");
+    
+    // Try to reconnect after a short delay
+    setTimeout(async () => {
+      try {
+        const { host, port } = this.config.gateway;
+        const alive = await this.probeExternalGateway(host, port);
+        if (alive) {
+          await this.startBridgeMode(host, port);
+        } else {
+          // External gateway went away — try starting our own
+          logger.info("External gateway no longer available, starting internal server");
+          await this.startGateway();
+        }
+      } catch (error) {
+        logger.error("Bridge reconnect failed:", error);
+        this.updateStatus("error", "Bridge reconnect failed");
+      }
+    }, 3000);
+  }
+  
+  /** Whether the service is operating in bridge mode (client to external gateway) */
+  isBridged(): boolean {
+    return this.bridgeMode;
   }
   
   private handleNewConnection(ws: WebSocket, req: http.IncomingMessage): void {
@@ -1432,10 +1612,139 @@ ${this.claudeCodeConfig.sandboxMode ? "SANDBOX MODE: Changes will be previewed b
     };
     
     this.emit("event", event);
+    
+    // Persist to activity log (fire-and-forget)
+    this.persistActivityEvent(type, data).catch((err) =>
+      logger.debug("Failed to persist activity event:", err),
+    );
+  }
+  
+  /** Map gateway event types to DB activity log entries */
+  private async persistActivityEvent(type: OpenClawEventType, data: unknown): Promise<void> {
+    try {
+      const { getDb } = await import("@/db");
+      const { openclawActivityLog } = await import("@/db/schema");
+      const { v4: makeId } = await import("uuid");
+      const db = getDb();
+      
+      const d = (data ?? {}) as Record<string, any>;
+      
+      // Map event type to activity event type
+      const mapping: Record<string, string> = {
+        "gateway:connected": "gateway_connected",
+        "gateway:disconnected": "gateway_disconnected",
+        "gateway:error": "system",
+        "message:received": "message_received",
+        "message:sent": "message_sent",
+        "provider:switched": "provider_switched",
+        "agent:task:started": "agent_started",
+        "agent:task:completed": "agent_completed",
+        "tool:invoked": "tool_invoked",
+        "chat:stream": "chat_response",
+      };
+      
+      const eventType = mapping[type];
+      if (!eventType) return; // Skip unmapped event types
+      
+      // Extract channel message details if present
+      const message = d.message as Record<string, any> | undefined;
+      const channel = message?.channel || d.channel;
+      const direction = type === "message:received" ? "inbound"
+        : type === "message:sent" ? "outbound"
+        : "internal";
+      
+      db.insert(openclawActivityLog)
+        .values({
+          id: makeId(),
+          eventType: eventType as any,
+          channel: channel || null,
+          channelMessageId: message?.id || d.channelMessageId || null,
+          actor: d.actor || d.clientId || "openclaw",
+          actorDisplayName: d.actorDisplayName || d.displayName || message?.from?.displayName || null,
+          content: message?.content || message?.text || d.content || d.result?.slice?.(0, 500) || null,
+          contentType: "text",
+          provider: d.provider || message?.provider || null,
+          model: d.model || message?.model || null,
+          agentId: d.agentId || null,
+          taskId: d.taskId || null,
+          workflowId: d.workflowId || null,
+          tokensUsed: d.tokensUsed || null,
+          durationMs: d.durationMs || d.latencyMs || null,
+          localProcessed: d.localProcessed ?? false,
+          direction: direction as any,
+          metadataJson: d,
+          externalEventId: d.externalEventId || null,
+        })
+        .run();
+    } catch {
+      // Silently ignore persistence failures — the event still fires
+    }
+  }
+  
+  /** Persist a channel message (from Discord/Telegram/etc.) to the DB */
+  private async persistChannelMessage(message: Record<string, any>): Promise<void> {
+    // Only persist actual channel messages (not heartbeats, control frames, etc.)
+    const channel = message.channel || message.platform;
+    if (!channel || !["discord", "telegram", "slack", "whatsapp", "webchat"].includes(channel)) {
+      return;
+    }
+    
+    try {
+      const { getDb } = await import("@/db");
+      const { openclawChannelMessages } = await import("@/db/schema");
+      const { v4: makeId } = await import("uuid");
+      const db = getDb();
+      
+      const msgId = message.messageId || message.id;
+      
+      // De-duplicate by platform message ID
+      if (msgId) {
+        const { eq, and } = await import("drizzle-orm");
+        const existing = db
+          .select({ id: openclawChannelMessages.id })
+          .from(openclawChannelMessages)
+          .where(
+            and(
+              eq(openclawChannelMessages.channel, channel),
+              eq(openclawChannelMessages.channelMessageId, String(msgId)),
+            ),
+          )
+          .get();
+        if (existing) return;
+      }
+      
+      const sender = message.author || message.from || message.sender || {};
+      
+      db.insert(openclawChannelMessages)
+        .values({
+          id: makeId(),
+          channel,
+          channelMessageId: msgId ? String(msgId) : null,
+          channelId: message.channelId || message.chatId ? String(message.channelId || message.chatId) : null,
+          channelName: message.channelName || message.chatName || null,
+          senderId: String(sender.id || sender.userId || "unknown"),
+          senderName: sender.displayName || sender.username || sender.name || "Unknown",
+          senderAvatar: sender.avatar || sender.avatarUrl || null,
+          isBot: sender.bot === true || sender.isBot === true,
+          content: message.content || message.text || "",
+          contentType: message.contentType || "text",
+          attachmentsJson: message.attachments || null,
+          replyToMessageId: message.replyTo?.id ? String(message.replyTo.id) : null,
+          replyToContent: message.replyTo?.content || null,
+          provider: message.provider || null,
+          model: message.model || null,
+          tokensUsed: message.tokensUsed || null,
+          durationMs: message.durationMs || null,
+          platformTimestamp: message.timestamp ? new Date(message.timestamp) : null,
+        })
+        .run();
+    } catch {
+      // Silently ignore — don't break the event flow
+    }
   }
   
   getGatewayState(): OpenClawGatewayState {
-    return { ...this.state };
+    return { ...this.state, bridged: this.bridgeMode };
   }
   
   // ===========================================================================

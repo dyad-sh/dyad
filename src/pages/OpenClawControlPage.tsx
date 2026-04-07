@@ -10,6 +10,7 @@ import { OpenClawClient as openclawClient } from "@/ipc/openclaw_client";
 import { OpenClawIntegrationClient } from "@/ipc/openclaw_integration_client";
 import { useCNSStatus, useCNSChat, useOllama } from "@/hooks/useOpenClawCNS";
 import { CNSDashboard } from "@/components/openclaw/CNSDashboard";
+import { useActivityLog, useActivityStats, useChannelMessages } from "@/hooks/useOpenClawActivity";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -71,8 +72,8 @@ export function OpenClawControlPage() {
   });
 
   const portalUrl = gatewayToken
-    ? `http://127.0.0.1:18789/?token=${encodeURIComponent(gatewayToken)}`
-    : "http://127.0.0.1:18789";
+    ? `http://127.0.0.1:18790/?token=${encodeURIComponent(gatewayToken)}`
+    : "http://127.0.0.1:18790";
 
   const { data: gatewayStatus, isLoading: isStatusLoading } = useQuery({
     queryKey: ["openclaw-gateway-status"],
@@ -255,6 +256,10 @@ export function OpenClawControlPage() {
             <Plug className="h-3.5 w-3.5" />
             Channels
           </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-1">
+            <Activity className="h-3.5 w-3.5" />
+            Activity
+          </TabsTrigger>
           <TabsTrigger value="settings" className="gap-1">
             <Settings className="h-3.5 w-3.5" />
             Settings
@@ -271,7 +276,7 @@ export function OpenClawControlPage() {
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-4 py-1 border-b">
               <span className="text-xs text-muted-foreground">
-                http://127.0.0.1:18789
+                http://127.0.0.1:18790
               </span>
               <Button
                 size="icon"
@@ -345,6 +350,13 @@ export function OpenClawControlPage() {
         {/* ================================================================= */}
         <TabsContent value="channels" className="flex-1 m-0 p-4 overflow-auto">
           <ChannelsPanel channels={channels} plugins={plugins} />
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* ACTIVITY TAB — Persistent bot/agent activity log                   */}
+        {/* ================================================================= */}
+        <TabsContent value="activity" className="flex-1 m-0 p-4 overflow-auto">
+          <ActivityPanel />
         </TabsContent>
 
         {/* ================================================================= */}
@@ -730,6 +742,235 @@ function ChannelsPanel({
 }
 
 // =============================================================================
+// =============================================================================
+// ACTIVITY PANEL — Persistent activity log & channel messages
+// =============================================================================
+
+const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  message_received: { label: "Message In", color: "bg-blue-500" },
+  message_sent: { label: "Message Out", color: "bg-green-500" },
+  agent_started: { label: "Agent Started", color: "bg-purple-500" },
+  agent_completed: { label: "Agent Done", color: "bg-emerald-500" },
+  agent_failed: { label: "Agent Failed", color: "bg-red-500" },
+  provider_switched: { label: "Provider", color: "bg-amber-500" },
+  workflow_triggered: { label: "Workflow", color: "bg-indigo-500" },
+  tool_invoked: { label: "Tool", color: "bg-cyan-500" },
+  gateway_connected: { label: "Connected", color: "bg-green-600" },
+  gateway_disconnected: { label: "Disconnected", color: "bg-gray-500" },
+  chat_request: { label: "Chat Req", color: "bg-blue-400" },
+  chat_response: { label: "Chat Resp", color: "bg-blue-600" },
+  system: { label: "System", color: "bg-gray-400" },
+};
+
+const CHANNEL_ICONS: Record<string, string> = {
+  discord: "🎮",
+  telegram: "✈️",
+  slack: "💬",
+  whatsapp: "📱",
+  webchat: "🌐",
+};
+
+function ActivityPanel() {
+  const [activeView, setActiveView] = useState<"feed" | "messages">("feed");
+  const [channelFilter, setChannelFilter] = useState<string | undefined>();
+
+  const { data: activities = [], isLoading: feedLoading } = useActivityLog({
+    limit: 200,
+    channel: channelFilter as any,
+  });
+
+  const { data: stats } = useActivityStats();
+
+  const { data: messages = [], isLoading: messagesLoading } = useChannelMessages({
+    limit: 200,
+    channel: channelFilter as any,
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Total Events</p>
+            <p className="text-2xl font-bold">{stats?.totalEvents ?? 0}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Channel Messages</p>
+            <p className="text-2xl font-bold">{stats?.totalMessages ?? 0}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Tokens Used</p>
+            <p className="text-2xl font-bold">{(stats?.totalTokens ?? 0).toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        {Object.entries(stats?.byChannel ?? {}).map(([ch, cnt]) => (
+          <Card key={ch}>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-muted-foreground">{CHANNEL_ICONS[ch] || "📡"} {ch}</p>
+              <p className="text-2xl font-bold">{cnt as number}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* View toggle + channel filter */}
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant={activeView === "feed" ? "default" : "outline"}
+          onClick={() => setActiveView("feed")}
+        >
+          <Activity className="h-3.5 w-3.5 mr-1" />
+          Activity Feed
+        </Button>
+        <Button
+          size="sm"
+          variant={activeView === "messages" ? "default" : "outline"}
+          onClick={() => setActiveView("messages")}
+        >
+          <MessageSquare className="h-3.5 w-3.5 mr-1" />
+          Channel Messages
+        </Button>
+        <Separator orientation="vertical" className="h-6" />
+        <Button
+          size="sm"
+          variant={!channelFilter ? "default" : "outline"}
+          onClick={() => setChannelFilter(undefined)}
+        >
+          All
+        </Button>
+        {["discord", "telegram", "slack", "whatsapp"].map((ch) => (
+          <Button
+            key={ch}
+            size="sm"
+            variant={channelFilter === ch ? "default" : "outline"}
+            onClick={() => setChannelFilter(ch)}
+          >
+            {CHANNEL_ICONS[ch]} {ch}
+          </Button>
+        ))}
+      </div>
+
+      {/* Feed */}
+      {activeView === "feed" && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Activity Feed</CardTitle>
+            <CardDescription>
+              All bot and agent activity — persisted even while JoyCreate is closed
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[500px]">
+              {feedLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : activities.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  No activity recorded yet. Events will appear here as the bot operates.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {activities.map((a: any) => {
+                    const meta = EVENT_TYPE_LABELS[a.eventType] ?? { label: a.eventType, color: "bg-gray-400" };
+                    return (
+                      <div key={a.id} className="flex items-start gap-2 py-1.5 px-1 rounded hover:bg-muted/50 text-sm">
+                        <Badge variant="outline" className={`${meta.color} text-white text-[10px] px-1.5 py-0 shrink-0`}>
+                          {meta.label}
+                        </Badge>
+                        {a.channel && (
+                          <span className="text-xs shrink-0">{CHANNEL_ICONS[a.channel] || "📡"}</span>
+                        )}
+                        <span className="text-muted-foreground text-xs shrink-0">
+                          {a.actorDisplayName || a.actor}
+                        </span>
+                        <span className="flex-1 truncate">
+                          {a.content || "—"}
+                        </span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {new Date((a.createdAt?.seconds ?? a.createdAt) * 1000).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Channel Messages */}
+      {activeView === "messages" && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Channel Messages</CardTitle>
+            <CardDescription>
+              Discord, Telegram, and other channel conversations with the bot
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[500px]">
+              {messagesLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : messages.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  No channel messages yet. Send a message to your bot on Discord or Telegram!
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {messages.map((m: any) => (
+                    <div
+                      key={m.id}
+                      className={`flex gap-3 py-2 px-3 rounded-lg ${
+                        m.isBot ? "bg-primary/5 border border-primary/20" : "bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-0.5 shrink-0">
+                        <span className="text-lg">{CHANNEL_ICONS[m.channel] || "📡"}</span>
+                        {m.isBot && <Badge variant="secondary" className="text-[9px] px-1">BOT</Badge>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{m.senderName}</span>
+                          {m.channelName && (
+                            <span className="text-xs text-muted-foreground">in {m.channelName}</span>
+                          )}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {new Date((m.createdAt?.seconds ?? m.createdAt) * 1000).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm mt-0.5">{m.content}</p>
+                        {m.provider && (
+                          <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
+                            <span>via {m.provider}</span>
+                            {m.model && <span>· {m.model}</span>}
+                            {m.tokensUsed && <span>· {m.tokensUsed} tokens</span>}
+                            {m.durationMs && <span>· {m.durationMs}ms</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // SETTINGS PANEL
 // =============================================================================
 
@@ -773,7 +1014,7 @@ function SettingsPanel({ config }: { config?: any }) {
             <div>
               <Label className="text-xs">Port</Label>
               <Input
-                value={gateway?.port ?? 18789}
+                value={gateway?.port ?? 18790}
                 readOnly
                 className="h-8 text-xs"
               />
@@ -934,7 +1175,7 @@ function CNSPanel() {
           </CardHeader>
           <CardContent>
             <Badge variant="default" className="text-xs">
-              Port 18789
+              Port 18790
             </Badge>
             <p className="text-xs text-muted-foreground mt-1">
               OpenClaw message routing

@@ -302,6 +302,13 @@
       "when": 1775275454769,
       "tag": "0042_next_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1775497262914,
+      "tag": "0043_wakeful_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

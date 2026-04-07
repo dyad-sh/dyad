@@ -61,7 +61,7 @@ const SERVICE_PORTS: Record<string, number> = {
   ollama: 11434,
   n8n: 5678,
   celestia: 26658,
-  openclaw: 18789,
+  openclaw: 18790,
   lmstudio: 1234,
 };
 

@@ -132,21 +132,34 @@ export async function onReady() {
   const ensureOpenClaw = async () => {
     const gw = getOpenClawGateway();
     const state = gw.getGatewayState();
+    // Skip if already connected (server mode or bridge mode)
     if (state.status === "connected") return;
+    // Skip if actively reconnecting in bridge mode
+    if (state.status === "reconnecting") return;
     try {
       await gw.initialize();
-      openClawLogger.info("OpenClaw gateway initialized");
+      openClawLogger.info(`OpenClaw gateway initialized${gw.isBridged() ? " (bridge mode)" : ""}`);
     } catch (err) {
       openClawLogger.warn("OpenClaw gateway init failed, watchdog will retry:", err);
     }
   };
   ensureOpenClaw();
 
+  // ── Start JoyCreate API server for OpenClaw tool integration ──
+  import("@/lib/joycreate_api_server")
+    .then(({ startJoyCreateApiServer }) => startJoyCreateApiServer())
+    .catch((err) => openClawLogger.warn("JoyCreate API server failed to start:", err));
+
   // Watchdog: check every 30s and re-init if not connected
   const openClawWatchdog = setInterval(() => {
     ensureOpenClaw().catch(() => {});
   }, 30_000);
   app.on("will-quit", () => clearInterval(openClawWatchdog));
+  app.on("will-quit", () => {
+    import("@/lib/joycreate_api_server")
+      .then(({ stopJoyCreateApiServer }) => stopJoyCreateApiServer())
+      .catch(() => {});
+  });
 
   // ── Auto-start autonomous services after window is created ──
   // Delay to let external services (n8n, Ollama) finish booting

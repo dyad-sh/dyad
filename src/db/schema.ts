@@ -2312,3 +2312,112 @@ export const videoStudioVideos = sqliteTable("video_studio_videos", {
     .notNull()
     .default(sql`(unixepoch())`),
 });
+
+// ── OpenClaw Bot Activity Log ────────────────────────────────
+// Persists ALL gateway events so activity is available even when
+// JoyCreate was closed while the bot was running.
+
+export const openclawActivityLog = sqliteTable("openclaw_activity_log", {
+  id: text("id").primaryKey(), // UUID v4
+  
+  // Event classification
+  eventType: text("event_type", {
+    enum: [
+      "message_received",   // Incoming message from a channel (Discord, Telegram, etc.)
+      "message_sent",       // Bot response sent to a channel
+      "agent_started",      // Autonomous agent task began
+      "agent_completed",    // Agent task finished
+      "agent_failed",       // Agent task failed
+      "provider_switched",  // AI provider changed
+      "workflow_triggered", // n8n workflow triggered
+      "tool_invoked",       // Tool/function call by agent
+      "gateway_connected",  // Gateway connected
+      "gateway_disconnected", // Gateway disconnected
+      "chat_request",       // Chat request processed
+      "chat_response",      // Chat response generated
+      "system",             // System-level event
+    ],
+  }).notNull(),
+
+  // Source channel (null for internal events)
+  channel: text("channel"), // "discord", "telegram", "slack", "whatsapp", "webchat", null
+  channelMessageId: text("channel_message_id"), // Original message ID from the platform
+
+  // Actor / sender
+  actor: text("actor").notNull().default("openclaw"), // "user:discord:12345", "openclaw", agent name
+  actorDisplayName: text("actor_display_name"), // Human-readable name
+
+  // Content
+  content: text("content"), // Message text or event summary
+  contentType: text("content_type").default("text"), // "text", "image", "embed", "file"
+
+  // Execution context
+  provider: text("provider"),   // AI provider used
+  model: text("model"),         // Model used
+  agentId: text("agent_id"),    // If from an agent
+  taskId: text("task_id"),      // Related kanban task ID
+  workflowId: text("workflow_id"), // Related n8n workflow
+
+  // Metrics
+  tokensUsed: integer("tokens_used"),
+  durationMs: integer("duration_ms"),
+  localProcessed: integer("local_processed", { mode: "boolean" }).default(sql`0`),
+
+  // Direction for messages
+  direction: text("direction", { enum: ["inbound", "outbound", "internal"] }).default("internal"),
+
+  // Full event data for anything not captured above
+  metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+
+  // De-duplication: external gateway event ID (prevents re-inserting same event on reconnect)
+  externalEventId: text("external_event_id"),
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const openclawChannelMessages = sqliteTable("openclaw_channel_messages", {
+  id: text("id").primaryKey(), // UUID v4
+
+  // Channel identification
+  channel: text("channel", {
+    enum: ["discord", "telegram", "slack", "whatsapp", "webchat"],
+  }).notNull(),
+  channelMessageId: text("channel_message_id"), // Platform-native ID
+  channelId: text("channel_id"),     // Discord channel ID, Telegram chat ID, etc.
+  channelName: text("channel_name"), // "#general", "DM with user", etc.
+
+  // Sender
+  senderId: text("sender_id").notNull(),     // Platform user ID
+  senderName: text("sender_name").notNull(), // Display name
+  senderAvatar: text("sender_avatar"),       // Avatar URL
+  isBot: integer("is_bot", { mode: "boolean" }).default(sql`0`),
+
+  // Message content
+  content: text("content").notNull(),
+  contentType: text("content_type").default("text"),
+  attachmentsJson: text("attachments_json", { mode: "json" }).$type<Array<{
+    type: string;
+    url: string;
+    name?: string;
+    size?: number;
+  }> | null>(),
+
+  // Reply context
+  replyToMessageId: text("reply_to_message_id"), // Platform ID of the message being replied to
+  replyToContent: text("reply_to_content"),       // Snippet for display
+
+  // Bot response
+  botResponseId: text("bot_response_id"), // Links to the bot's reply message in this table
+  provider: text("provider"),  // Which AI provider answered
+  model: text("model"),        // Which model
+  tokensUsed: integer("tokens_used"),
+  durationMs: integer("duration_ms"),
+
+  // Timestamps from the platform
+  platformTimestamp: integer("platform_timestamp", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

@@ -298,7 +298,7 @@ export function SystemServicesPage() {
               name="OpenClaw Gateway"
               description="AI gateway with multi-provider routing"
               icon={<Network className="w-5 h-5" />}
-              url="http://localhost:18789/status"
+              url="http://localhost:18790/status"
               status={services.find((s) => s.name === "OpenClaw Gateway")?.status}
             />
             <QuickLaunchCard
@@ -396,7 +396,7 @@ function ServiceCard({
 const SERVICE_DASHBOARD_URLS: Record<string, string> = {
   n8n: "http://localhost:5678",
   Ollama: "http://localhost:11434",
-  "OpenClaw Gateway": "http://localhost:18789/status",
+  "OpenClaw Gateway": "http://localhost:18790/status",
 };
 
 function QuickLaunchCard({

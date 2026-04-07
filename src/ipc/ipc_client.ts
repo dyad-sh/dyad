@@ -3386,6 +3386,112 @@ export class IpcClient {
     return this.ipcRenderer.invoke("openclaw:kanban:tasks:rate", params);
   }
 
+  // ── OpenClaw Activity Log ──
+
+  /** Log a single activity event */
+  public async logActivity(params: {
+    eventType: string;
+    channel?: string;
+    channelMessageId?: string;
+    actor?: string;
+    actorDisplayName?: string;
+    content?: string;
+    contentType?: string;
+    provider?: string;
+    model?: string;
+    agentId?: string;
+    taskId?: string;
+    workflowId?: string;
+    tokensUsed?: number;
+    durationMs?: number;
+    localProcessed?: boolean;
+    direction?: "inbound" | "outbound" | "internal";
+    metadataJson?: Record<string, unknown>;
+    externalEventId?: string;
+  }): Promise<{ id: string }> {
+    return this.ipcRenderer.invoke("openclaw:activity:log", params);
+  }
+
+  /** Log a batch of activity events (for syncing historical data) */
+  public async logActivityBatch(entries: Array<{
+    eventType: string;
+    channel?: string;
+    actor?: string;
+    content?: string;
+    direction?: "inbound" | "outbound" | "internal";
+    externalEventId?: string;
+    metadataJson?: Record<string, unknown>;
+    [key: string]: unknown;
+  }>): Promise<{ inserted: number }> {
+    return this.ipcRenderer.invoke("openclaw:activity:log-batch", entries);
+  }
+
+  /** List activity log entries with filtering */
+  public async listActivity(filters?: {
+    eventType?: string | string[];
+    channel?: string | string[];
+    actor?: string;
+    direction?: "inbound" | "outbound" | "internal";
+    search?: string;
+    since?: number;
+    until?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("openclaw:activity:list", filters);
+  }
+
+  /** Get activity statistics */
+  public async getActivityStats(since?: number): Promise<{
+    totalEvents: number;
+    byType: Record<string, number>;
+    byChannel: Record<string, number>;
+    totalTokens: number;
+    totalMessages: number;
+  }> {
+    return this.ipcRenderer.invoke("openclaw:activity:stats", since);
+  }
+
+  /** Save a channel message (Discord, Telegram, etc.) */
+  public async saveChannelMessage(params: {
+    channel: string;
+    channelMessageId?: string;
+    channelId?: string;
+    channelName?: string;
+    senderId: string;
+    senderName: string;
+    senderAvatar?: string;
+    isBot?: boolean;
+    content: string;
+    contentType?: string;
+    attachmentsJson?: Array<{ type: string; url: string; name?: string; size?: number }>;
+    replyToMessageId?: string;
+    replyToContent?: string;
+    botResponseId?: string;
+    provider?: string;
+    model?: string;
+    tokensUsed?: number;
+    durationMs?: number;
+    platformTimestamp?: number;
+  }): Promise<{ id: string }> {
+    return this.ipcRenderer.invoke("openclaw:activity:message:save", params);
+  }
+
+  /** List channel messages with filtering */
+  public async listChannelMessages(filters?: {
+    channel?: string | string[];
+    channelId?: string;
+    senderId?: string;
+    isBot?: boolean;
+    search?: string;
+    since?: number;
+    until?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("openclaw:activity:messages:list", filters);
+  }
+
   // ── Task Executor ──
 
   public async getTaskExecutorStatus(): Promise<any> {

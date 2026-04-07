@@ -215,6 +215,7 @@ async function spawnDrizzleKit({
     const nodeModulesPath = path.join(app.getAppPath(), "node_modules");
     const proc = spawn("node", [drizzleKitBin, ...args], {
       cwd,
+      shell: true,
       stdio: "pipe",
       env: { ...process.env, NODE_PATH: nodeModulesPath },
     });

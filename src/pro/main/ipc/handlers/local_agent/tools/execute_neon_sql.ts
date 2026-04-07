@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
+import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
+import { readSettings } from "../../../../../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const executeNeonSqlSchema = z.object({
@@ -44,6 +46,16 @@ export const executeNeonSqlTool: ToolDefinition<
       branchId: ctx.neonActiveBranchId,
       query: args.query,
     });
+
+    // Write migration file if enabled (same setting as Supabase for backend parity)
+    const settings = readSettings();
+    if (settings.enableSupabaseWriteSqlMigration) {
+      try {
+        await writeMigrationFile(ctx.appPath, args.query, args.description);
+      } catch (error) {
+        return `SQL executed, but failed to write migration file: ${error}\n\nSQL result:\n${sqlResult}`;
+      }
+    }
 
     return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
   },

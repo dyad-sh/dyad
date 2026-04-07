@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CommandExecutionError,
-  SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE,
   SOCKET_FIREWALL_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
 import {
@@ -163,40 +162,33 @@ describe("executeAddDependency", () => {
     expect(runCommandMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to direct package-manager commands after sfw runtime failures", async () => {
+  it("fails closed after sfw runtime failures", async () => {
     ensureSocketFirewallInstalledMock.mockResolvedValue({
       available: true,
     });
-    runCommandMock
-      .mockRejectedValueOnce(
-        new CommandExecutionError({
-          message: "sfw pnpm failed",
-          stderr: "Socket Firewall timed out",
-          exitCode: 1,
-        }),
-      )
-      .mockResolvedValueOnce({ stdout: "installed via pnpm", stderr: "" });
-
-    const result = await executeAddDependency({
-      packages: ["react"],
-      message: {
-        id: 1,
-        content: '<dyad-add-dependency packages="react"></dyad-add-dependency>',
-      } as any,
-      appPath: "/tmp/app",
-    });
-
-    expect(runCommandMock).toHaveBeenNthCalledWith(
-      2,
-      "pnpm",
-      ["add", "react"],
-      { cwd: "/tmp/app" },
+    runCommandMock.mockRejectedValueOnce(
+      new CommandExecutionError({
+        message: "sfw pnpm failed",
+        stderr: "Socket Firewall timed out",
+        exitCode: 1,
+      }),
     );
-    expect(runCommandMock).toHaveBeenCalledTimes(2);
-    expect(result).toMatchObject({
-      installResults: "installed via pnpm",
-      warningMessages: [SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE],
+
+    await expect(
+      executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toMatchObject({
+      displaySummary: "Socket Firewall timed out",
+      warningMessages: [],
     });
+    expect(runCommandMock).toHaveBeenCalledTimes(1);
   });
 
   it("uses npm directly when pnpm is unavailable", async () => {

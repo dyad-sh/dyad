@@ -8,9 +8,7 @@ import {
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
   getCommandExecutionDisplayDetails,
-  isSocketFirewallPolicyBlock,
   runCommand,
-  SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 
@@ -117,19 +115,6 @@ export async function executeAddDependency({
     buildAddDependencyCommand(packages, packageManager, useSocketFirewall),
     appPath,
   );
-
-  if (
-    !succeeded &&
-    useSocketFirewall &&
-    lastError &&
-    !isSocketFirewallPolicyBlock(lastError)
-  ) {
-    warningMessages.push(SOCKET_FIREWALL_FALLBACK_WARNING_MESSAGE);
-    ({ succeeded, installResults, lastError } = await runAddDependencyCommand(
-      buildAddDependencyCommand(packages, packageManager, false),
-      appPath,
-    ));
-  }
 
   if (!succeeded && lastError) {
     throw new ExecuteAddDependencyError({

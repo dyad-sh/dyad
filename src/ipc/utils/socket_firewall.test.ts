@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildAddDependencyCommand,
-  CommandExecutionError,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
-  isSocketFirewallPolicyBlock,
   SOCKET_FIREWALL_WARNING_MESSAGE,
   shouldUseCommandShell,
   type CommandRunner,
@@ -110,38 +108,5 @@ describe("shouldUseCommandShell", () => {
   it("avoids the shell on Unix platforms", () => {
     expect(shouldUseCommandShell("darwin")).toBe(false);
     expect(shouldUseCommandShell("linux")).toBe(false);
-  });
-});
-
-describe("isSocketFirewallPolicyBlock", () => {
-  it("detects explicit Socket Firewall policy blocks", () => {
-    expect(
-      isSocketFirewallPolicyBlock(
-        new CommandExecutionError({
-          message: "blocked by policy",
-          stderr: "Socket Firewall blocked react\nPolicy: malware",
-          exitCode: 1,
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it("detects the real Socket Firewall cli package-block output", () => {
-    expect(
-      isSocketFirewallPolicyBlock(
-        new CommandExecutionError({
-          message: "pnpm blocked",
-          stderr:
-            " - blocked npm package: name: axois; version: 0.0.1-security; reason: malware (critical)",
-          exitCode: 1,
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it("does not treat generic runtime failures as policy blocks", () => {
-    expect(
-      isSocketFirewallPolicyBlock(new Error("Socket Firewall timed out")),
-    ).toBe(false);
   });
 });

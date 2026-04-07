@@ -46,6 +46,7 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
+import { deleteMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -873,6 +874,7 @@ export async function handleLocalAgentStream(
                 clearPendingConsentsForChat(req.chatId);
                 clearPendingQuestionnairesForChat(req.chatId);
                 clearPendingMiniPlanApprovalsForChat(req.chatId);
+                deleteMiniPlanForChat(req.chatId);
                 break;
               }
 
@@ -1279,6 +1281,7 @@ export async function handleLocalAgentStream(
     clearPendingConsentsForChat(req.chatId);
     clearPendingQuestionnairesForChat(req.chatId);
     clearPendingMiniPlanApprovalsForChat(req.chatId);
+    deleteMiniPlanForChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation

@@ -90,7 +90,6 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-step-limit",
   // Mini plan tags
   "dyad-mini-plan",
-  "dyad-mini-plan-visuals", // Rendered inside DyadMiniPlanCard, not standalone
 ];
 
 interface DyadMarkdownParserProps {
@@ -855,14 +854,8 @@ function renderCustomTag(
               state: getState({ isStreaming, inProgress }),
             },
           }}
-        >
-          {content}
-        </DyadMiniPlanCard>
+        />
       );
-
-    case "dyad-mini-plan-visuals":
-      // Visuals are rendered inside DyadMiniPlanCard, not standalone
-      return null;
 
     default:
       return null;

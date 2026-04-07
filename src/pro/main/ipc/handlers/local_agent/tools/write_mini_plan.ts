@@ -110,6 +110,9 @@ export const writeMiniPlanTool: ToolDefinition<
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Writing mini plan: ${args.app_name}`);
 
+    // Preserve visuals from an existing plan (e.g. when updating after user edits)
+    const existingPlan = getMiniPlanForChat(ctx.chatId);
+
     const data = {
       appName: args.app_name,
       userPrompt: args.user_prompt,
@@ -118,7 +121,7 @@ export const writeMiniPlanTool: ToolDefinition<
       themeId: args.theme_id ?? "default",
       designDirection: args.design_direction,
       mainColor: args.main_color,
-      visuals: [],
+      visuals: existingPlan?.visuals ?? [],
     };
 
     setMiniPlanForChat(ctx.chatId, data);

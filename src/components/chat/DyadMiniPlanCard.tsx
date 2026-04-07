@@ -35,18 +35,14 @@ interface DyadMiniPlanCardProps {
   node: {
     properties: {
       "app-name"?: string;
-      appName?: string;
       template?: string;
       theme?: string;
       "design-direction"?: string;
-      designDirection?: string;
       "main-color"?: string;
-      mainColor?: string;
       complete?: string;
       state?: CustomTagState;
     };
   };
-  children?: React.ReactNode;
 }
 
 export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
@@ -64,16 +60,12 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   const isApproved = chatId ? miniPlanState.approvedChatIds.has(chatId) : false;
   const planData = chatId ? miniPlanState.plansByChatId.get(chatId) : null;
   // Use atom data if available, fall back to XML attributes
-  const appName = planData?.appName || props["app-name"] || props.appName || "";
+  const appName = planData?.appName || props["app-name"] || "";
   const templateId = planData?.templateId || props.template || "react";
   const themeId = planData?.themeId || props.theme || "default";
   const designDirection =
-    planData?.designDirection ||
-    props["design-direction"] ||
-    props.designDirection ||
-    "";
-  const mainColor =
-    planData?.mainColor || props["main-color"] || props.mainColor || "";
+    planData?.designDirection || props["design-direction"] || "";
+  const mainColor = planData?.mainColor || props["main-color"] || "";
   const userPrompt = planData?.userPrompt || "";
   const attachments = planData?.attachments || [];
   const visuals = planData?.visuals || [];
@@ -102,6 +94,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(appName);
+  const [colorTextValue, setColorTextValue] = useState(mainColor);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
 
@@ -605,8 +598,20 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                   id={mainColorTextFieldId}
                   type="text"
                   aria-label="Main Color Hex Code"
-                  value={mainColor}
-                  onChange={(e) => handleFieldEdit("mainColor", e.target.value)}
+                  value={colorTextValue}
+                  onChange={(e) => setColorTextValue(e.target.value)}
+                  onBlur={() => {
+                    if (/^#[0-9a-fA-F]{6}$/.test(colorTextValue)) {
+                      handleFieldEdit("mainColor", colorTextValue);
+                    } else {
+                      setColorTextValue(mainColor);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
                   className="text-sm font-mono bg-background border border-border/50 rounded-md px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 w-28"
                   placeholder="#000000"
                 />
@@ -617,7 +622,10 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                   type="color"
                   aria-label="Main Color Picker"
                   value={mainColor}
-                  onChange={(e) => handleFieldEdit("mainColor", e.target.value)}
+                  onChange={(e) => {
+                    setColorTextValue(e.target.value);
+                    handleFieldEdit("mainColor", e.target.value);
+                  }}
                   className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer"
                 />
               )}
@@ -655,7 +663,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       </div>
 
       {/* Footer */}
-      {appName && (
+      {!isInProgress && (
         <div
           className={`px-4 py-3 border-t border-border/50 flex gap-3 ${
             approvalError ? "items-start justify-between" : "justify-end"
@@ -695,19 +703,16 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             <button
               type="button"
               onClick={handleApprove}
-              disabled={isInProgress || isApproving}
+              disabled={!appName || isApproving}
               className="flex items-center gap-1.5 text-sm font-medium text-primary-foreground px-5 py-2 bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isInProgress ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Generating plan...
-                </>
-              ) : isApproving ? (
+              {isApproving ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
                   Applying plan...
                 </>
+              ) : !appName ? (
+                "Add an app name to continue"
               ) : (
                 <>
                   <Check size={14} />

@@ -151,7 +151,8 @@ const EditableText: React.FC<EditableTextProps> = ({
           <button
             type="button"
             onClick={handleSave}
-            className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2 py-0.5 rounded transition-colors"
+            disabled={!editValue.trim()}
+            className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2 py-0.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label={`Save ${field}`}
           >
             <Check size={12} />
@@ -173,7 +174,7 @@ const EditableText: React.FC<EditableTextProps> = ({
               setEditValue(value);
               setIsEditing(true);
             }}
-            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded"
+            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded"
             aria-label={`Edit ${field}`}
           >
             <Pencil size={12} />
@@ -242,7 +243,7 @@ const VisualEntry: React.FC<{
             <button
               type="button"
               onClick={() => onRemove(visual.id)}
-              className="opacity-0 group-hover/entry:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5 rounded"
+              className="opacity-0 group-hover/entry:opacity-100 group-focus-within/entry:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5 rounded"
               aria-label="Remove visual"
             >
               <Trash2 size={13} />

@@ -31,6 +31,10 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
   safeSend: (...args: unknown[]) => safeSend(...args),
 }));
 
+vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
+  waitForMiniPlanApproval: vi.fn(async () => true),
+}));
+
 function createAgentContext(chatId: number): AgentContext {
   const sender = {
     isDestroyed: () => false,

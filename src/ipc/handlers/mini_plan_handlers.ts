@@ -22,6 +22,10 @@ export function setMiniPlanForChat(chatId: number, data: MiniPlanData) {
   miniPlanStore.set(chatId, { ...data, approved: false });
 }
 
+export function deleteMiniPlanForChat(chatId: number) {
+  miniPlanStore.delete(chatId);
+}
+
 export function updateMiniPlanVisuals(
   chatId: number,
   visuals: MiniPlanVisual[],
@@ -35,18 +39,24 @@ export function updateMiniPlanVisuals(
 export function registerMiniPlanHandlers() {
   createTypedHandler(miniPlanContracts.approve, async (event, params) => {
     const plan = miniPlanStore.get(params.chatId);
-    if (plan) {
-      plan.approved = true;
-      logger.info(`Mini plan approved for chat ${params.chatId}`);
-
-      // Notify renderer that approval is confirmed
-      safeSend(event.sender, "mini-plan:approved", {
-        chatId: params.chatId,
-      });
-
-      // Resolve the pending promise so the agent can continue
+    if (!plan) {
+      logger.warn(
+        `No mini plan found for chat ${params.chatId} on approve — resolving agent anyway`,
+      );
       resolveMiniPlanApproval(params.chatId, true);
+      return;
     }
+
+    plan.approved = true;
+    logger.info(`Mini plan approved for chat ${params.chatId}`);
+
+    // Notify renderer that approval is confirmed
+    safeSend(event.sender, "mini-plan:approved", {
+      chatId: params.chatId,
+    });
+
+    // Resolve the pending promise so the agent can continue
+    resolveMiniPlanApproval(params.chatId, true);
   });
 
   createTypedHandler(miniPlanContracts.editField, async (_, params) => {
@@ -112,17 +122,15 @@ export function registerMiniPlanHandlers() {
   createTypedHandler(miniPlanContracts.addVisual, async (_, params) => {
     const plan = miniPlanStore.get(params.chatId);
     if (!plan) {
-      logger.warn(
+      throw new Error(
         `No mini plan found for chat ${params.chatId} when adding visual`,
       );
-      return { visualId: "" };
     }
 
     if (plan.approved) {
-      logger.warn(
+      throw new Error(
         `Cannot add visual to approved mini plan for chat ${params.chatId}`,
       );
-      return { visualId: "" };
     }
 
     const visualId = `visual_${crypto.randomUUID().split("-")[0]}`;

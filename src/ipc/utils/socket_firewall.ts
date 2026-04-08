@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
+const SOCKET_FIREWALL_PACKAGE = "sfw@2.0.4";
 
 export interface CommandExecutionOptions {
   cwd?: string;
@@ -137,19 +138,13 @@ export async function ensureSocketFirewallInstalled(
   warningMessage?: string;
 }> {
   try {
-    await runner("sfw", ["--help"]);
+    await runner("npx", [SOCKET_FIREWALL_PACKAGE, "--help"]);
     return { available: true };
   } catch {
-    try {
-      await runner("npm", ["install", "-g", "sfw"]);
-      await runner("sfw", ["--help"]);
-      return { available: true };
-    } catch {
-      return {
-        available: false,
-        warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
-      };
-    }
+    return {
+      available: false,
+      warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
+    };
   }
 }
 
@@ -176,8 +171,9 @@ export function buildAddDependencyCommand(
 
   if (useSocketFirewall) {
     return {
-      command: "sfw",
-      args: [packageManager, ...packageManagerArgs],
+      // Use a pinned npx package so sfw stays reproducible and avoids global path issues on Windows.
+      command: "npx",
+      args: [SOCKET_FIREWALL_PACKAGE, packageManager, ...packageManagerArgs],
     };
   }
 

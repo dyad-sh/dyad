@@ -36,7 +36,15 @@ describe("buildAddDependencyCommand", () => {
       true,
       {
         command: "npx",
-        args: ["sfw@2.0.4", "pnpm", "add", "react", "zod"],
+        args: [
+          "--prefer-offline",
+          "--yes",
+          "sfw@2.0.4",
+          "pnpm",
+          "add",
+          "react",
+          "zod",
+        ],
       },
     ],
     [
@@ -45,6 +53,8 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "npx",
         args: [
+          "--prefer-offline",
+          "--yes",
           "sfw@2.0.4",
           "npm",
           "install",
@@ -83,7 +93,12 @@ describe("ensureSocketFirewallInstalled", () => {
       available: true,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("npx", ["sfw@2.0.4", "--help"]);
+    expect(runner).toHaveBeenCalledWith("npx", [
+      "--prefer-offline",
+      "--yes",
+      "sfw@2.0.4",
+      "--help",
+    ]);
   });
 
   it("returns a warning when sfw cannot be run through npx", async () => {
@@ -96,7 +111,12 @@ describe("ensureSocketFirewallInstalled", () => {
       warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("npx", ["sfw@2.0.4", "--help"]);
+    expect(runner).toHaveBeenCalledWith("npx", [
+      "--prefer-offline",
+      "--yes",
+      "sfw@2.0.4",
+      "--help",
+    ]);
   });
 });
 

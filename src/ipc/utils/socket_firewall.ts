@@ -178,7 +178,11 @@ export function buildAddDependencyCommand(
     return {
       // Use a pinned npx package so sfw stays reproducible and avoids global path issues on Windows.
       command: "npx",
-      args: [...SOCKET_FIREWALL_NPX_ARGS, packageManager, ...packageManagerArgs],
+      args: [
+        ...SOCKET_FIREWALL_NPX_ARGS,
+        packageManager,
+        ...packageManagerArgs,
+      ],
     };
   }
 

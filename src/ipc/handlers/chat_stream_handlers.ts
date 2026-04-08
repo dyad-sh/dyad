@@ -27,15 +27,12 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import {
-  getNeonAvailableSystemPrompt,
-  NEON_NOT_AVAILABLE_SYSTEM_PROMPT,
-} from "../../prompts/neon_prompt";
+import { getNeonAvailableSystemPrompt } from "../../prompts/neon_prompt";
 import {
   getNeonClientCode,
   getNeonContext,
 } from "../../neon_admin/neon_context";
-import { getCachedEmailPasswordConfig } from "../../neon_admin/neon_management_client";
+import { getNeonClient } from "../../neon_admin/neon_management_client";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
@@ -88,10 +85,6 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
-import {
-  appendCancelledResponseNotice,
-  filterCancelledMessagePairs,
-} from "@/shared/chatCancellation";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
@@ -700,16 +693,12 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistoryRaw = updatedChat.messages.map((message) => ({
+        const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
-
-        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
-        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
-        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
@@ -851,15 +840,16 @@ ${componentSnippet}
           let emailVerificationEnabled = false;
           if (branchId) {
             try {
-              const emailConfig = await getCachedEmailPasswordConfig(
-                updatedChat.app.neonProjectId,
-                branchId,
-              );
-              emailVerificationEnabled = emailConfig.require_email_verification;
+              const neonApiClient = await getNeonClient();
+              const emailConfig =
+                await neonApiClient.getNeonAuthEmailAndPasswordConfig(
+                  updatedChat.app.neonProjectId,
+                  branchId,
+                );
+              emailVerificationEnabled =
+                emailConfig.data.require_email_verification;
             } catch {
-              logger.warn(
-                "Failed to fetch email/password config, proceeding without email verification guidance",
-              );
+              // Best-effort: proceed without email verification guidance
             }
           }
 
@@ -871,11 +861,15 @@ ${componentSnippet}
             "\n\n";
 
           if (settings.selectedChatMode !== "local-agent" && branchId) {
-            systemPrompt += await getNeonContext({
-              projectId: updatedChat.app.neonProjectId,
-              branchId,
-              frameworkType,
-            });
+            try {
+              systemPrompt += await getNeonContext({
+                projectId: updatedChat.app.neonProjectId,
+                branchId,
+                frameworkType,
+              });
+            } catch {
+              // Best-effort: proceed without Neon context
+            }
           }
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
@@ -884,7 +878,6 @@ ${componentSnippet}
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
-          systemPrompt += "\n\n" + NEON_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
         const isSummarizeIntent = req.prompt.startsWith(
           "Summarize from chat-id=",
@@ -1667,49 +1660,34 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId) ?? "";
-            try {
-              // Update the placeholder assistant message with the partial content and cancellation note
-              await db
-                .update(messages)
-                .set({
-                  content: appendCancelledResponseNotice(partialResponse),
-                })
-                .where(eq(messages.id, placeholderAssistantMessage.id));
+            const partialResponse = partialResponses.get(req.chatId);
+            // If we have a partial response, save it to the database
+            if (partialResponse) {
+              try {
+                // Update the placeholder assistant message with the partial content and cancellation note
+                await db
+                  .update(messages)
+                  .set({
+                    content: `${partialResponse}
 
-              logger.log(
-                `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
-              );
-              partialResponses.delete(req.chatId);
-            } catch (error) {
-              logger.error(
-                `Error saving partial response for chat ${chatId}:`,
-                error,
-              );
+[Response cancelled by user]`,
+                  })
+                  .where(eq(messages.id, placeholderAssistantMessage.id));
+
+                logger.log(
+                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
+                );
+                partialResponses.delete(req.chatId);
+              } catch (error) {
+                logger.error(
+                  `Error saving partial response for chat ${chatId}:`,
+                  error,
+                );
+              }
             }
             return req.chatId;
           }
           throw streamError;
-        }
-      }
-
-      // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
-      // save the cancellation notice to the placeholder message.
-      if (abortController.signal.aborted) {
-        const partialResponse = partialResponses.get(req.chatId) ?? "";
-        try {
-          await db
-            .update(messages)
-            .set({
-              content: appendCancelledResponseNotice(partialResponse),
-            })
-            .where(eq(messages.id, placeholderAssistantMessage.id));
-          partialResponses.delete(req.chatId);
-        } catch (error) {
-          logger.error(
-            `Error saving cancelled response for chat ${req.chatId}:`,
-            error,
-          );
         }
       }
 

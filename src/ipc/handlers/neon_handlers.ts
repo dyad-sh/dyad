@@ -340,6 +340,23 @@ export function registerNeonHandlers() {
             `Failed to clean up orphan Neon project ${project.id}: ${deleteError}`,
           );
         }
+        // Clear stale Neon references from the app row so it doesn't
+        // point at the now-deleted project.
+        try {
+          await db
+            .update(apps)
+            .set({
+              neonProjectId: null,
+              neonDevelopmentBranchId: null,
+              neonPreviewBranchId: null,
+              neonActiveBranchId: null,
+            })
+            .where(eq(apps.id, appId));
+        } catch (dbCleanupError) {
+          logger.error(
+            `Failed to clear Neon fields from app ${appId} after project cleanup: ${dbCleanupError}`,
+          );
+        }
         throw postCreateError;
       }
     } catch (error: any) {

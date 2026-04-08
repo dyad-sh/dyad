@@ -446,13 +446,13 @@ export default function AppDetailsPage() {
               </div>
             )}
           </div>
-          {/* When providerFilter is set, show only the selected connector */}
-          {providerFilter === "supabase" && appId && (
-            <SupabaseConnector appId={appId} />
-          )}
-          {providerFilter === "neon" && appId && (
-            <NeonConnector appId={appId} />
-          )}
+          {/* When providerFilter is set, show the selected connector only if the other provider isn't already active */}
+          {providerFilter === "supabase" &&
+            appId &&
+            !selectedApp?.neonProjectId && <SupabaseConnector appId={appId} />}
+          {providerFilter === "neon" &&
+            appId &&
+            !selectedApp?.supabaseProjectId && <NeonConnector appId={appId} />}
           {/* When no providerFilter, show both with existing mutual exclusion */}
           {!providerFilter && (
             <>

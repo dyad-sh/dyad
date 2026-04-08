@@ -1,4 +1,5 @@
 import { windowsSign } from "./windowsSign";
+import { removeUnsupportedWindowsSigningFiles } from "./src/lib/windows_signing";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -74,6 +75,21 @@ if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
 const config: ForgeConfig = {
   packagerConfig: {
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
+    afterCopy: isWindowsSigningEnabled
+      ? [
+          (buildPath, _electronVersion, platform, _arch, callback) => {
+            if (platform !== "win32") {
+              callback();
+              return;
+            }
+
+            removeUnsupportedWindowsSigningFiles(buildPath).then(
+              () => callback(),
+              (error) => callback(error as Error),
+            );
+          },
+        ]
+      : undefined,
     protocols: [
       {
         name: "Dyad",

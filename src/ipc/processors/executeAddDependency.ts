@@ -48,7 +48,7 @@ const DISPLAY_SUMMARY_NOISE_PATTERNS = [
   /^packages:\s*[+-]?\d+/i,
   /^npm (?:notice|warn)\b/i,
   /^npm err!\s*(?:a complete log of this run can be found in:|this is probably not a problem with npm\.)/i,
-  /^npm err!\s*(?:[A-Za-z]:\\|\/).+/,
+  /^npm err!\s*(?:[A-Za-z]:\\|\/).+/i,
 ];
 
 function isDisplaySummaryNoise(line: string): boolean {

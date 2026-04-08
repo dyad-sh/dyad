@@ -185,9 +185,53 @@ describe("resolveExecutableName", () => {
 
 describe("buildPtyInvocation", () => {
   it("wraps Windows .cmd shims through cmd.exe for PTY execution", () => {
-    expect(buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32")).toEqual({
+    expect(
+      buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32", "cmd.exe"),
+    ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+      args: ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
+    });
+  });
+
+  it("quotes Windows arguments containing spaces and embedded quotes", () => {
+    expect(
+      buildPtyInvocation(
+        "npx",
+        ["--message", 'value with spaces and "quotes"'],
+        "win32",
+        "cmd.exe",
+      ),
+    ).toEqual({
+      command: "cmd.exe",
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        'npx.cmd --message "value with spaces and ""quotes"""',
+      ],
+    });
+  });
+
+  it("quotes Windows arguments containing cmd metacharacters without mutating them", () => {
+    expect(
+      buildPtyInvocation(
+        "npx",
+        ["--filter", "name&echo^(injected)"],
+        "win32",
+        "cmd.exe",
+      ),
+    ).toEqual({
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", 'npx.cmd --filter "name&echo^(injected)"'],
+    });
+  });
+
+  it("quotes empty Windows arguments so their position is preserved", () => {
+    expect(
+      buildPtyInvocation("npx", ["--flag", ""], "win32", "cmd.exe"),
+    ).toEqual({
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", 'npx.cmd --flag ""'],
     });
   });
 
@@ -220,7 +264,7 @@ describe("runCommand", () => {
 
       expect(runPtyCommandMock).toHaveBeenCalledWith(
         "cmd.exe",
-        ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+        ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
         expect.objectContaining({
           displayCommand: "npx --yes sfw@2.0.4",
         }),

@@ -365,6 +365,25 @@ describe("executeAddDependency", () => {
     });
   });
 
+  it("rejects invalid npm package specs before invoking the shell", async () => {
+    await expect(
+      executeAddDependency({
+        packages: ["react@^18.0.0"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react@^18.0.0"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toMatchObject({
+      displaySummary: "Invalid npm package name: react@^18.0.0",
+      warningMessages: [],
+    });
+
+    expect(runCommandMock).not.toHaveBeenCalled();
+  });
+
   it("escapes package attributes and install output before storing the tag", async () => {
     ensureSocketFirewallInstalledMock.mockResolvedValue({
       available: false,
@@ -376,18 +395,18 @@ describe("executeAddDependency", () => {
     });
 
     await executeAddDependency({
-      packages: ['react"&<safe>'],
+      packages: ["react-safe"],
       message: {
         id: 1,
         content:
-          '<dyad-add-dependency packages="react&quot;&amp;&lt;safe&gt;"></dyad-add-dependency>',
+          '<dyad-add-dependency packages="react-safe"></dyad-add-dependency>',
       } as any,
       appPath: "/tmp/app",
     });
 
     expect(dbUpdateSetMock).toHaveBeenCalledWith({
       content:
-        '<dyad-add-dependency packages="react&quot;&amp;&lt;safe&gt;">installed &lt;react&gt;</dyad-add-dependency>',
+        '<dyad-add-dependency packages="react-safe">installed &lt;react&gt;</dyad-add-dependency>',
     });
   });
 });

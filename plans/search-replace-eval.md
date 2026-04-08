@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add a new **evals** test suite that verifies real LLMs (Claude Sonnet 4.6, GPT-5, Gemini 3 Flash) can correctly invoke the `search_replace` tool when given a source file and a natural-language edit instruction. The eval runs against the providers' real APIs, reuses the production `searchReplaceTool` definition (schema + description) and the `applySearchReplace` processor, and is isolated behind a new `npm run eval` script so it never runs as part of normal CI.
+Add a new **evals** test suite that verifies real LLMs (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) can correctly invoke the `search_replace` tool when given a source file and a natural-language edit instruction. The eval runs against the **Dyad Engine** (which proxies all providers) using a single `DYAD_PRO_API_KEY`, reuses the production `searchReplaceTool` definition (schema + description) and the `applySearchReplace` processor, and is isolated behind a new `npm run eval` script so it never runs as part of normal CI.
 
 ## Problem Statement
 
@@ -21,18 +21,18 @@ We need a lightweight eval harness that:
 
 ### In Scope
 
-- New directory `src/__tests__/evals/` with a small reusable helper for instantiating LLM clients from env-var API keys.
+- New directory `src/__tests__/evals/` with a small reusable helper for instantiating LLM clients via the Dyad Engine.
 - New eval file `src/__tests__/evals/search_replace_tool_use.eval.ts` containing 3–5 representative edit cases.
-- Target models: **`claude-sonnet-4-6`** (Anthropic), **`gpt-5`** (OpenAI, responses API), **`gemini-3-flash-preview`** (Google). Model names come from `src/ipc/shared/language_model_constants.ts` so the eval drifts with Dyad's canonical model identifiers.
+- Target models: **`claude-sonnet-4-6`** (Anthropic), **`gpt-5.4`** (OpenAI, responses API), **`gemini-3-flash-preview`** (Google). All routed through the Dyad Engine using a single `DYAD_PRO_API_KEY`. Model names come from `src/ipc/shared/language_model_constants.ts` where available so the eval drifts with Dyad's canonical model identifiers.
 - Separate `vitest.eval.config.ts` with `environment: "node"`, long `testTimeout`, and an `include` pattern of `src/__tests__/evals/**/*.eval.ts`.
 - New `npm run eval` script — the eval is **not** included in `npm test`.
-- `describe.skipIf(!hasApiKey(provider))` gating so each provider's block is silently skipped when its env var is missing (safe in CI).
+- `describe.skipIf` gating so the entire eval suite is skipped when `DYAD_PRO_API_KEY` is missing.
 - Reuse of `searchReplaceTool.inputSchema` and `searchReplaceTool.description` — the LLM sees the exact same tool contract it sees in production.
 - Reuse of `applySearchReplace` from `src/pro/main/ipc/processors/search_replace_processor.ts` for semantic assertion — the eval verifies that the edit _actually produces the right file_, not just that the args look plausible.
 
 ### Out of Scope
 
-- Running the eval in CI. This is a local-only / on-demand quality gate. A follow-up can add a nightly workflow that sets the API keys from GitHub secrets.
+- Running the eval in CI. This is a local-only / on-demand quality gate. A follow-up can add a nightly workflow that sets the Dyad Pro key from GitHub secrets.
 - Testing every model in Dyad's catalog. We test one representative model per major provider.
 - Testing other file-edit tools (`edit_file`, `write_file`). The same harness can be extended to them in a follow-up.
 - A scoring / regression-tracking dashboard. Pass/fail is sufficient for v1.
@@ -44,7 +44,7 @@ We need a lightweight eval harness that:
 
 A single eval file drives a matrix of **(model × test case)**. For each combination:
 
-1. Instantiate a raw AI SDK `LanguageModel` via a thin helper.
+1. Instantiate a `LanguageModel` via `createDyadEngine` from `llm_engine_provider.ts`.
 2. Call `generateText` with:
    - The eval's file content embedded in the user message.
    - A minimal system prompt instructing the model to emit a `search_replace` tool call.
@@ -61,21 +61,22 @@ Each of these was considered and rejected for specific reasons:
 
 - **`local_agent_handler.ts`** is a 1,600-line orchestrator tightly coupled to Electron IPC events, the SQLite chat DB, consent callbacks, XML streaming, telemetry, and file-edit tracking. Running it in a unit test requires dozens of mocks (see `src/__tests__/local_agent_handler.test.ts`) and still only exercises a fake stream. Using it for an eval would add enormous complexity for no signal gain.
 - **`buildAgentToolSet`** (`tool_definitions.ts:412`) requires an `AgentContext` with `event`, `appPath`, `requireConsent`, `onXmlStream`, etc. We do not want consent dialogs, file writes, or XML streaming during an eval. Instead we inline the ~3 lines `buildAgentToolSet` uses to wrap a `ToolDefinition` for the AI SDK (`{ description: tool.description, inputSchema: tool.inputSchema }`), which is the part worth reusing.
-- **`getModelClient`** (`get_model_client.ts`) is the most tempting reuse target, but it pulls in `electron-log`, `getLanguageModelProviders` (hits the settings DB), the Dyad Pro engine wrapper, Vertex service-account JSON handling, Ollama URL resolution, and a `UserSettings` object. For a standalone Node process this is all dead weight. Its core logic — pick a provider package and call it with an API key — is 5 lines per provider and is what our helper replicates.
+- **`getModelClient`** (`get_model_client.ts`) pulls in `electron-log`, `getLanguageModelProviders` (hits the settings DB), Vertex service-account JSON handling, Ollama URL resolution, and a `UserSettings` object. For a standalone Node process this is all dead weight. Instead, the eval calls `createDyadEngine` from `llm_engine_provider.ts` directly — the same factory `getModelClient` uses internally when Dyad Pro is enabled — but with minimal options (just the API key and base URL).
 
 **What _is_ reused from Dyad:**
 
 - `searchReplaceTool.inputSchema` — zod schema identical to production.
 - `searchReplaceTool.description` — LLM sees the exact same instructions.
 - `applySearchReplace` — same processor that runs in production.
-- Model IDs (`SONNET_4_6`, GPT-5, `GEMINI_3_FLASH`) imported from `language_model_constants.ts` so they can't drift.
-- Env var names (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) that match `PROVIDER_TO_ENV_VAR` in `language_model_constants.ts`.
-- AI SDK provider packages (`@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`) that are already Dyad dependencies — we use them the same way `get_model_client.ts` does, including OpenAI's `.responses()` API for GPT-5 (which is what `getModelClient` uses for `selectedChatMode === "local-agent"` + `provider === "openai"` at `get_model_client.ts:256`).
+- `createDyadEngine` from `llm_engine_provider.ts` — same factory production uses for Dyad Pro. The eval calls it with `DYAD_PRO_API_KEY` and the default engine URL, bypassing all Electron/DB/settings coupling.
+- Model IDs (`SONNET_4_6`, `GEMINI_3_FLASH`) imported from `language_model_constants.ts` so they can't drift.
+- Gateway prefixes from `CLOUD_PROVIDERS` in `language_model_constants.ts` (`""` for OpenAI, `"anthropic/"` for Anthropic, `"gemini/"` for Google) — these are prepended to model names exactly as `getModelClient` does at `get_model_client.ts:107`.
+- OpenAI models use `provider.responses()` (not the default chat model) — matching `getProModelClient`'s behavior for `local-agent` + `openai` at `get_model_client.ts:257-258`.
 
 ### Components Affected
 
 - **New file:** `vitest.eval.config.ts` — separate vitest config.
-- **New file:** `src/__tests__/evals/helpers/get_eval_model.ts` — thin provider-to-client helper.
+- **New file:** `src/__tests__/evals/helpers/get_eval_model.ts` — thin helper that wraps `createDyadEngine` for the eval.
 - **New file:** `src/__tests__/evals/search_replace_tool_use.eval.ts` — the eval suite itself.
 - **Modified:** `package.json` — add an `eval` script.
 - **No changes to:** production code in `src/pro/main/ipc/handlers/local_agent/` or `src/ipc/utils/get_model_client.ts`.
@@ -94,41 +95,59 @@ None.
 
 ```typescript
 // src/__tests__/evals/helpers/get_eval_model.ts
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
+import {
+  createDyadEngine,
+  type DyadEngineProvider,
+} from "@/ipc/utils/llm_engine_provider";
 import type { LanguageModel } from "ai";
+import type { UserSettings } from "@/lib/schemas";
 
 export type EvalProvider = "anthropic" | "openai" | "google";
 
-const ENV_VARS: Record<EvalProvider, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
-  google: "GEMINI_API_KEY", // matches PROVIDER_TO_ENV_VAR in language_model_constants.ts
+// Gateway prefixes must match CLOUD_PROVIDERS in language_model_constants.ts.
+const GATEWAY_PREFIXES: Record<EvalProvider, string> = {
+  openai: "",          // OpenAI has an empty-string prefix
+  anthropic: "anthropic/",
+  google: "gemini/",
 };
 
-export function hasApiKey(provider: EvalProvider): boolean {
-  return !!process.env[ENV_VARS[provider]];
+export function hasDyadProKey(): boolean {
+  return !!process.env.DYAD_PRO_API_KEY;
+}
+
+let _provider: DyadEngineProvider | null = null;
+
+function getProvider(): DyadEngineProvider {
+  if (!_provider) {
+    _provider = createDyadEngine({
+      apiKey: process.env.DYAD_PRO_API_KEY,
+      baseURL: process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1",
+      dyadOptions: {
+        enableLazyEdits: false,
+        enableSmartFilesContext: false,
+        enableWebSearch: false,
+      },
+      // Minimal UserSettings — the engine only needs these for
+      // getExtraProviderOptions, which is a no-op for our eval.
+      settings: {} as UserSettings,
+    });
+  }
+  return _provider;
 }
 
 export function getEvalModel(
   provider: EvalProvider,
   modelName: string,
 ): LanguageModel {
-  switch (provider) {
-    case "anthropic":
-      return createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })(
-        modelName,
-      );
-    case "openai":
-      // Matches getModelClient's behavior for local-agent + openai:
-      // use the responses API so GPT-5 gets full tool-call functionality.
-      return createOpenAI({ apiKey: process.env.OPENAI_API_KEY }).responses(
-        modelName,
-      );
-    case "google":
-      return createGoogle({ apiKey: process.env.GEMINI_API_KEY })(modelName);
+  const dyadProvider = getProvider();
+  const modelId = `${GATEWAY_PREFIXES[provider]}${modelName}`;
+
+  if (provider === "openai") {
+    // Matches getProModelClient's behavior for local-agent + openai:
+    // use the responses API so GPT-5 gets full tool-call functionality.
+    return dyadProvider.responses(modelId, { providerId: provider });
   }
+  return dyadProvider(modelId, { providerId: provider });
 }
 ```
 
@@ -147,7 +166,7 @@ import {
 } from "@/ipc/shared/language_model_constants";
 import {
   getEvalModel,
-  hasApiKey,
+  hasDyadProKey,
   type EvalProvider,
 } from "./helpers/get_eval_model";
 
@@ -180,7 +199,7 @@ const MODELS: Array<{
     label: "Claude Sonnet 4.6",
     temperature: 0,
   },
-  { provider: "openai", modelName: "gpt-5", label: "GPT-5", temperature: 1 },
+  { provider: "openai", modelName: "gpt-5.4", label: "GPT 5.4", temperature: 1 },
   {
     provider: "google",
     modelName: GEMINI_3_FLASH,
@@ -190,7 +209,7 @@ const MODELS: Array<{
 ];
 
 for (const { provider, modelName, label, temperature } of MODELS) {
-  describe.skipIf(!hasApiKey(provider))(
+  describe.skipIf(!hasDyadProKey())(
     `search_replace eval — ${label}`,
     () => {
       for (const c of CASES) {
@@ -283,7 +302,7 @@ Add next to the existing `test` script:
 ### Phase 1: Harness
 
 - [ ] Create `vitest.eval.config.ts` with the config shown above.
-- [ ] Create `src/__tests__/evals/helpers/get_eval_model.ts` implementing `EvalProvider`, `hasApiKey`, and `getEvalModel`. Mirror the provider instantiation in `get_model_client.ts` (note `.responses()` for OpenAI).
+- [ ] Create `src/__tests__/evals/helpers/get_eval_model.ts` implementing `EvalProvider`, `hasDyadProKey`, and `getEvalModel`. Use `createDyadEngine` from `llm_engine_provider.ts` with gateway prefixes matching `CLOUD_PROVIDERS` (note `.responses()` for OpenAI).
 - [ ] Add `"eval"` script to `package.json`.
 - [ ] Verify the harness by running `npm run eval` with no test file — expect an empty pass.
 
@@ -297,12 +316,12 @@ Add next to the existing `test` script:
   4. **Change a condition in one branch of a complex function** — add `"delete"` to a permissions array in `permissions.ts`.
   5. **Swap an import in a file with many imports** — change an import path in `Dashboard.tsx`.
 - [ ] Add a `MAX_OLD_STRING_RATIO` guard (e.g. 0.8) that fails the test if `old_string` covers more than 80% of the file — this catches full-file rewrites at the eval level.
-- [ ] Wire up the model matrix with `SONNET_4_6`, `"gpt-5"`, `GEMINI_3_FLASH` imported from `language_model_constants.ts` where available.
-- [ ] Confirm `describe.skipIf` correctly skips when env vars are absent (run with no keys set → all suites should be SKIPPED, not FAILED).
+- [ ] Wire up the model matrix with `SONNET_4_6`, `"gpt-5.4"`, `GEMINI_3_FLASH` imported from `language_model_constants.ts` where available.
+- [ ] Confirm `describe.skipIf` correctly skips when `DYAD_PRO_API_KEY` is absent (run with no key set → all suites should be SKIPPED, not FAILED).
 
 ### Phase 3: Run & Tune
 
-- [ ] Run `ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... npm run eval`.
+- [ ] Run `DYAD_PRO_API_KEY=... npm run eval`.
 - [ ] Investigate any failures. Common failure modes:
   - Model produces `old_string` with slightly different whitespace — `applySearchReplace` has fuzzy whitespace matching (see `search_replace.spec.ts:236-263`), which should handle this, but confirm.
   - Model picks a different-but-also-valid edit. If this happens, either tighten the prompt or relax the assertion to a semantic check.
@@ -369,14 +388,14 @@ Roughly in order of smallest-to-largest:
 ### Phase 5 (follow-up, not in this PR)
 
 - [ ] Extend the harness to `edit_file` and `write_file` (prerequisite for Phase 4 step 2).
-- [ ] Add a nightly GitHub Actions workflow that injects API keys from secrets and runs `npm run eval`.
+- [ ] Add a nightly GitHub Actions workflow that injects `DYAD_PRO_API_KEY` from secrets and runs `npm run eval`.
 - [ ] Add eval-result archival so regressions over time are visible.
 
 ## Testing Strategy
 
 This plan **is** a testing plan — the eval is itself the test. Meta-validation:
 
-- [ ] Unit-level: run `npm run eval` with no API keys set. All suites must be SKIPPED, no failures.
+- [ ] Unit-level: run `npm run eval` with `DYAD_PRO_API_KEY` unset. All suites must be SKIPPED, no failures.
 - [ ] With keys set: all cases must pass at each model's production temperature for all three target models, deterministically, across 3 consecutive runs.
 - [ ] Confirm the eval does NOT run during `npm test` (different `include` pattern).
 - [ ] Confirm the eval file is caught by `npm run lint` / `npm run fmt:check` (it lives under `src/` so it's in scope).
@@ -389,12 +408,11 @@ This plan **is** a testing plan — the eval is itself the test. Meta-validation
 | Non-determinism (especially at `temperature: 1` for GPT-5/Gemini) | Medium     | Medium | Start with small, unambiguous edits; if flaky, widen assertion from exact-equals to semantic equivalence (AST or normalized-whitespace compare).             |
 | API cost creep as eval grows                                      | Low        | Low    | Eval is opt-in (`npm run eval`), not part of CI. Keep case count small. Use the cheapest model in each family.                                               |
 | AI SDK v5 tool shape drifts                                       | Low        | Medium | Harness mirrors `buildAgentToolSet` exactly — if the production shape changes, the eval will surface the mismatch.                                           |
-| Test runs leak API keys into logs                                 | Low        | High   | `getEvalModel` reads keys from `process.env` only; no logging of key values. Vitest does not print env to test output by default.                            |
+| Test runs leak Dyad Pro key into logs                             | Low        | High   | `getEvalModel` reads the key from `process.env` only; no logging of key values. Vitest does not print env to test output by default.                         |
 | `applySearchReplace` fuzzy matching masks real model failures     | Low        | Medium | Eval asserts on _final file content_, not on `old_string` being byte-identical, so fuzzy matching is actually desired here — it matches production behavior. |
 
 ## Open Questions
 
-- **Should we also exercise the Dyad Pro engine path (`createDyadEngine`) as a fourth provider?** This would test the production-actual call route. Requires a Dyad Pro API key and the engine URL. Defer to a follow-up unless we already have CI access.
 - **Should cases include multi-file / multi-edit scenarios?** Those depend on `search_replace` being called multiple times in sequence, which requires re-feeding the edited file into the next turn. Out of scope for v1; a good Phase 4 addition.
 - **Gemini 3 Flash is marked Preview in the constants file.** If it's unstable for tool-calling at eval time, fall back to `gemini-flash-latest` (also in the constants file) — it's functionally equivalent for this eval.
 
@@ -404,13 +422,13 @@ This plan **is** a testing plan — the eval is itself the test. Meta-validation
 | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | New directory `src/__tests__/evals/`                                          | Evals and unit tests have fundamentally different runtime characteristics (network calls, API keys, slow, non-deterministic) and must not share a runner. A dedicated directory + `.eval.ts` suffix makes this separation obvious at a glance. |
 | Separate `vitest.eval.config.ts` + `npm run eval`                             | Prevents evals from running in `npm test` / CI. An opt-in runner is the standard way to keep network-dependent, key-gated tests out of the default developer loop.                                                                             |
-| Bypass `getModelClient` and `buildAgentToolSet`                               | Both carry heavy Electron/DB/IPC/settings coupling. Eval only needs the 5-line core of each. See "Why not reuse..." section.                                                                                                                   |
+| Use `createDyadEngine` directly, bypass `getModelClient` and `buildAgentToolSet` | `getModelClient` carries Electron/DB/settings coupling. `createDyadEngine` is the pure factory underneath it — calling it directly with just an API key and base URL gives us the same Dyad Engine routing production uses, with zero Electron deps. |
 | Reuse `searchReplaceTool.inputSchema` + `.description` + `applySearchReplace` | These are the only pieces whose exact identity matters for eval fidelity — they are what production LLMs see and what processes their output.                                                                                                  |
 | No `execute` in the tool definition passed to `generateText`                  | Standard AI SDK pattern for inspecting a tool call without executing it. Removes need for file I/O, temp dirs, or cleanup.                                                                                                                     |
 | Assert on final file content, not on raw `old_string`/`new_string`            | Semantic check is more robust to phrasing variance and exercises the production processor end-to-end.                                                                                                                                          |
 | Per-model temperature from `language_model_constants.ts`                      | GPT-5 and Gemini 3 reasoning models reject or require `temperature: 1`; Anthropic models use `0`. Using each model's production temperature avoids API errors and matches real behavior.                                                       |
 | Single model per provider (not a full matrix)                                 | Balances signal vs. cost/runtime. Easy to extend later.                                                                                                                                                                                        |
-| `describe.skipIf(!hasApiKey(...))` (not `it.skipIf`)                          | Skipping at the describe level is clearer in output: when OPENAI_API_KEY is absent, the entire OpenAI block is reported as one skip rather than one per case.                                                                                  |
+| `describe.skipIf(!hasDyadProKey())` (not `it.skipIf`)                         | Skipping at the describe level is clearer in output: when `DYAD_PRO_API_KEY` is absent, the entire suite is reported as skipped rather than one skip per case.                                                                                 |
 
 ---
 

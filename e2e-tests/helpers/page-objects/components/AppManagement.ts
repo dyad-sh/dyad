@@ -140,7 +140,10 @@ export class AppManagement {
     await branchSelect.click();
     await this.page
       .getByRole("option", {
-        name: new RegExp(`^${branchName}\\b`, "i"),
+        name: new RegExp(
+          `^${branchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          "i",
+        ),
       })
       .click();
   }

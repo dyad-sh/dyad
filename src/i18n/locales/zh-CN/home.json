@@ -588,7 +588,8 @@
       "selectBranch": "选择一个分支...",
       "selectProjectDescription": "选择一个现有的 Neon 项目或创建一个新项目",
       "openInConsole": "在 Neon 控制台中打开",
-      "completingSignIn": "请在浏览器中完成登录…"
+      "completingSignIn": "请在浏览器中完成登录…",
+      "projectDisconnected": "项目已成功断开连接"
     },
     "db": {
       "projectInfo": "{{provider}} 项目信息",
@@ -619,8 +620,8 @@
           "name": "Neon",
           "features": {
             "serverlessPostgres": "托管 Postgres 与分支",
-            "databaseBranching": "身份验证与邮箱验证",
-            "autoscaling": "无服务器按需缩容到零"
+            "authAndEmailVerification": "身份验证与邮箱验证",
+            "serverlessScaleToZero": "无服务器按需缩容到零"
           }
         }
       }

@@ -87,8 +87,10 @@ export const PublishPanel = () => {
             <PortalMigrate appId={selectedAppId} />
           )}
 
-        {/* Database Migration - Show only if app has neon project */}
-        {app.neonProjectId && <MigrationPanel appId={selectedAppId} />}
+        {/* Database Migration - Show only if app has neon project and active branch */}
+        {app.neonProjectId && app.neonActiveBranchId && (
+          <MigrationPanel appId={selectedAppId} />
+        )}
 
         {/* GitHub Section */}
         <Card>

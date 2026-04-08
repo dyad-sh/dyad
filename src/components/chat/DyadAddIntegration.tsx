@@ -53,9 +53,11 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           "integrations.databaseSetup.providers.neon.features.serverlessPostgres",
         ),
         t(
-          "integrations.databaseSetup.providers.neon.features.databaseBranching",
+          "integrations.databaseSetup.providers.neon.features.authAndEmailVerification",
         ),
-        t("integrations.databaseSetup.providers.neon.features.autoscaling"),
+        t(
+          "integrations.databaseSetup.providers.neon.features.serverlessScaleToZero",
+        ),
       ],
     },
   ];
@@ -177,7 +179,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
               type="button"
               onClick={() => setSelectedProvider(option.id)}
               aria-pressed={effectiveSelectedProvider === option.id}
-              className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors ${
+              className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                 effectiveSelectedProvider === option.id
                   ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
                   : "border-border hover:border-blue-400"

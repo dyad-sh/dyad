@@ -140,7 +140,8 @@ export async function processFullResponseActions(
 
   if (
     chatWithApp.app.neonProjectId &&
-    chatWithApp.app.neonDevelopmentBranchId
+    (chatWithApp.app.neonActiveBranchId ||
+      chatWithApp.app.neonDevelopmentBranchId)
   ) {
     try {
       await storeDbTimestampAtCurrentVersion({

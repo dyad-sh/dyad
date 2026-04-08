@@ -107,10 +107,8 @@ export function registerTokenCountHandlers() {
             frameworkType,
             includeContext: settings.selectedChatMode !== "local-agent",
           }));
-      } else if (
-        // Neon projects don't need Supabase.
-        !chat.app?.neonProjectId
-      ) {
+      } else {
+        // Neon projects don't need Supabase (already handled above).
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 

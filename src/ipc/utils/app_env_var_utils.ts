@@ -220,6 +220,13 @@ export async function updateNeonEnvVars({
     if (!existingSecret || previousAuthUrl !== neonAuthBaseUrl) {
       upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", generateCookieSecret());
     }
+  } else {
+    // Auth activation failed or is not available on this branch —
+    // remove stale auth env vars so the old branch's values don't linger.
+    envVars = envVars.filter(
+      (v) =>
+        v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
+    );
   }
 
   const envFileContents = serializeEnvFile(envVars);

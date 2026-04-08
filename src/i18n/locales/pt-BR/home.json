@@ -588,7 +588,8 @@
       "selectBranch": "Selecione uma branch...",
       "selectProjectDescription": "Selecione um projeto Neon existente ou crie um novo",
       "openInConsole": "Abrir no Console Neon",
-      "completingSignIn": "Complete o login no seu navegador…"
+      "completingSignIn": "Complete o login no seu navegador…",
+      "projectDisconnected": "Projeto desconectado com sucesso"
     },
     "db": {
       "projectInfo": "{{provider}} Informações do Projeto",
@@ -619,8 +620,8 @@
           "name": "Neon",
           "features": {
             "serverlessPostgres": "Postgres gerenciado com branching",
-            "databaseBranching": "Auth e verificação por email",
-            "autoscaling": "Escala serverless até zero"
+            "authAndEmailVerification": "Auth e verificação por email",
+            "serverlessScaleToZero": "Escala serverless até zero"
           }
         }
       }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +62,9 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isUpdatingEmailVerification, setIsUpdatingEmailVerification] =
     useState(false);
   const [isOpeningOauth, setIsOpeningOauth] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
+  const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     isConnected,
@@ -81,6 +84,10 @@ export function NeonConnector({ appId }: { appId: number }) {
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "neon-oauth-return") {
+        if (oauthTimeoutRef.current) {
+          clearTimeout(oauthTimeoutRef.current);
+          oauthTimeoutRef.current = null;
+        }
         setIsOpeningOauth(false);
         await refreshSettings();
         await refetchProjects();
@@ -91,6 +98,15 @@ export function NeonConnector({ appId }: { appId: number }) {
     };
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
+
+  useEffect(() => {
+    return () => {
+      if (oauthTimeoutRef.current) {
+        clearTimeout(oauthTimeoutRef.current);
+        oauthTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const handleConnect = async () => {
     try {
@@ -103,7 +119,10 @@ export function NeonConnector({ appId }: { appId: number }) {
         );
       }
       // Reset after 60s if the OAuth return never arrives
-      setTimeout(() => setIsOpeningOauth(false), 60_000);
+      oauthTimeoutRef.current = setTimeout(() => {
+        setIsOpeningOauth(false);
+        oauthTimeoutRef.current = null;
+      }, 60_000);
     } catch (error) {
       setIsOpeningOauth(false);
       toast.error(String(error));
@@ -176,9 +195,11 @@ export function NeonConnector({ appId }: { appId: number }) {
   };
 
   const handleUnsetProject = async () => {
+    setIsDisconnecting(true);
     try {
       await ipc.neon.unsetAppProject({ appId });
-      toast.success(t("integrations.neon.disconnectProject"));
+      toast.success(t("integrations.neon.projectDisconnected"));
+      setIsDisconnectDialogOpen(false);
       await refreshApp();
       queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
       queryClient.invalidateQueries({
@@ -188,6 +209,8 @@ export function NeonConnector({ appId }: { appId: number }) {
     } catch (error) {
       console.error("Failed to disconnect project:", error);
       toast.error(t("integrations.neon.failedDisconnectProject"));
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -324,16 +347,29 @@ export function NeonConnector({ appId }: { appId: number }) {
                 {t("integrations.neon.activeBranch")}
               </Label>
               {branchesError ? (
-                <p className="text-sm text-red-500">
-                  {t("integrations.neon.errorLoadingBranches", {
-                    message:
-                      branchesError instanceof Error
-                        ? branchesError.message
-                        : typeof branchesError === "string"
-                          ? branchesError
-                          : JSON.stringify(branchesError),
-                  })}
-                </p>
+                <div className="text-sm text-red-500">
+                  <p>
+                    {t("integrations.neon.errorLoadingBranches", {
+                      message:
+                        branchesError instanceof Error
+                          ? branchesError.message
+                          : typeof branchesError === "string"
+                            ? branchesError
+                            : JSON.stringify(branchesError),
+                    })}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() =>
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.neon.project({ appId }),
+                      })
+                    }
+                  >
+                    {t("integrations.neon.retry")}
+                  </Button>
+                </div>
               ) : isLoadingBranches ? (
                 <Skeleton className="h-10 w-full" />
               ) : (
@@ -390,7 +426,12 @@ export function NeonConnector({ appId }: { appId: number }) {
               </div>
             )}
 
-            <AlertDialog>
+            <AlertDialog
+              open={isDisconnectDialogOpen}
+              onOpenChange={(open) => {
+                if (!isDisconnecting) setIsDisconnectDialogOpen(open);
+              }}
+            >
               <AlertDialogTrigger
                 className={buttonVariants({ variant: "destructive" })}
               >
@@ -407,13 +448,20 @@ export function NeonConnector({ appId }: { appId: number }) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>
+                  <AlertDialogCancel disabled={isDisconnecting}>
                     {t("integrations.neon.cancel")}
                   </AlertDialogCancel>
                   <AlertDialogAction
-                    onClick={handleUnsetProject}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleUnsetProject();
+                    }}
+                    disabled={isDisconnecting}
                     className="bg-destructive text-white hover:bg-destructive/90"
                   >
+                    {isDisconnecting && (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    )}
                     {t("integrations.neon.disconnectProject")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -478,8 +526,11 @@ export function NeonConnector({ appId }: { appId: number }) {
             </div>
           ) : showCreateForm ? (
             <div className="space-y-3">
-              <Label>{t("integrations.neon.projectName")}</Label>
+              <Label htmlFor="neon-new-project-name">
+                {t("integrations.neon.projectName")}
+              </Label>
               <Input
+                id="neon-new-project-name"
                 value={newProjectName}
                 onChange={(e) => {
                   setNewProjectName(e.target.value);
@@ -586,6 +637,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           disabled={isOpeningOauth}
           className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           data-testid="connect-neon-button"
+          aria-label={t("integrations.neon.connectTo") + " Neon"}
         >
           {isOpeningOauth ? (
             <>

@@ -62,19 +62,28 @@ export function registerMigrationHandlers() {
     );
 
     // 4. Validate dev schema has at least one table
-    const tableCount = IS_TEST_BUILD
-      ? 1
-      : parseInt(
-          JSON.parse(
-            await executeNeonSql({
-              projectId,
-              branchId: devBranchId,
-              query:
-                "SELECT count(*) as cnt FROM information_schema.tables WHERE table_schema = 'public'",
-            }),
-          )?.[0]?.cnt ?? "0",
-          10,
+    let tableCount: number;
+    if (IS_TEST_BUILD) {
+      tableCount = 1;
+    } else {
+      let parsed;
+      try {
+        parsed = JSON.parse(
+          await executeNeonSql({
+            projectId,
+            branchId: devBranchId,
+            query:
+              "SELECT count(*) as cnt FROM information_schema.tables WHERE table_schema = 'public'",
+          }),
         );
+      } catch {
+        throw new DyadError(
+          "Unable to verify development table count",
+          DyadErrorKind.Precondition,
+        );
+      }
+      tableCount = parseInt(parsed?.[0]?.cnt ?? "0", 10);
+    }
     if (!tableCount || tableCount === 0) {
       throw new DyadError(
         "Development database has no tables. Create at least one table before migrating.",

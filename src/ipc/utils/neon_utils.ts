@@ -8,7 +8,7 @@ import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { updateNeonEnvVars } from "../utils/app_env_var_utils";
 
-export const logger = log.scope("neon_handlers");
+export const logger = log.scope("neon_utils");
 
 type AppRow = typeof apps.$inferSelect;
 

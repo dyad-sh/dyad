@@ -378,7 +378,10 @@ export function registerNeonHandlers() {
     } catch (error: any) {
       const errorMessage = getNeonErrorMessage(error);
       logger.error(`Failed to list Neon projects: ${errorMessage}`);
-      throw new Error(`Failed to list Neon projects: ${errorMessage}`);
+      throw new DyadError(
+        `Failed to list Neon projects: ${errorMessage}`,
+        DyadErrorKind.External,
+      );
     }
   });
 
@@ -465,8 +468,9 @@ export function registerNeonHandlers() {
       logger.error(
         `Failed to set Neon project for app ${appId}: ${errorMessage}`,
       );
-      throw new Error(
+      throw new DyadError(
         `Failed to set Neon project for app ${appId}: ${errorMessage}`,
+        DyadErrorKind.External,
       );
     }
   });
@@ -503,8 +507,14 @@ export function registerNeonHandlers() {
       logger.info(`Successfully unlinked Neon project from app ${appId}`);
       return { success: true };
     } catch (error: any) {
-      logger.error(`Failed to unset Neon project for app ${appId}:`, error);
-      throw new Error(`Failed to unset Neon project for app ${appId}`);
+      const errorMessage = getNeonErrorMessage(error);
+      logger.error(
+        `Failed to unset Neon project for app ${appId}: ${errorMessage}`,
+      );
+      throw new DyadError(
+        `Failed to unset Neon project for app ${appId}: ${errorMessage}`,
+        DyadErrorKind.External,
+      );
     }
   });
 
@@ -568,8 +578,14 @@ export function registerNeonHandlers() {
       return { success: true, warning };
     } catch (error: any) {
       if (error instanceof DyadError) throw error;
-      logger.error(`Failed to set active branch for app ${appId}:`, error);
-      throw new Error(`Failed to set active branch for app ${appId}`);
+      const errorMessage = getNeonErrorMessage(error);
+      logger.error(
+        `Failed to set active branch for app ${appId}: ${errorMessage}`,
+      );
+      throw new DyadError(
+        `Failed to set active branch for app ${appId}: ${errorMessage}`,
+        DyadErrorKind.External,
+      );
     }
   });
 

@@ -591,7 +591,8 @@
       "errorLoadingBranches": "Failed to load branches: {{message}}",
       "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app.",
       "openInConsole": "Open in Neon Console",
-      "completingSignIn": "Complete sign-in in your browser…"
+      "completingSignIn": "Complete sign-in in your browser…",
+      "projectDisconnected": "Project disconnected successfully"
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",
@@ -622,8 +623,8 @@
           "name": "Neon",
           "features": {
             "serverlessPostgres": "Managed Postgres with branching",
-            "databaseBranching": "Auth & email verification",
-            "autoscaling": "Serverless scale-to-zero"
+            "authAndEmailVerification": "Auth & email verification",
+            "serverlessScaleToZero": "Serverless scale-to-zero"
           }
         }
       }

@@ -119,6 +119,7 @@ If this happens:
 
 ## Real Socket Firewall E2E tests
 
+- If you change the add-dependency/socket-firewall command launch path (for example `spawn` vs PTY execution), proactively run `npm run e2e e2e-tests/socket_firewall.spec.ts` after `npm run build`. Unit tests and package builds do not cover the real packaged-Electron Socket Firewall flow.
 - When exercising the real `sfw` binary in E2E, set fresh per-test `npm_config_cache`, `npm_config_store_dir`, and `pnpm_config_store_dir` in the launch hooks. Reused caches/stores can make Socket Firewall report that it did not detect package fetches, which turns blocked-package tests into false negatives.
 - For real-path blocked-package coverage, prefer `axois` over `lodahs`. `lodahs` can resolve to `0.0.1-security` and install successfully under `pnpm`, so it does not reliably reach the blocked-package UI.
 

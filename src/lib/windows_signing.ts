@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 export const UNSUPPORTED_WINDOWS_SIGNING_RELATIVE_PATHS = [
-  "resources/app.asar.unpacked/node_modules/node-pty/deps/winpty/misc/ConinMode.ps1",
-  "resources/app.asar.unpacked/node_modules/node-pty/deps/winpty/misc/IdentifyConsoleWindow.ps1",
+  "node_modules/node-pty/deps/winpty/misc/ConinMode.ps1",
+  "node_modules/node-pty/deps/winpty/misc/IdentifyConsoleWindow.ps1",
 ] as const;
 
 export async function removeUnsupportedWindowsSigningFiles(

@@ -29,7 +29,7 @@ const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
 
   // Modify an existing file
   const indexPath = path.join(appPath, "index.html");
-  let originalContent = "";
+  let originalContent: string | null = null;
   if (fs.existsSync(indexPath)) {
     originalContent = fs.readFileSync(indexPath, "utf-8");
     fs.writeFileSync(
@@ -71,7 +71,7 @@ const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
   expect(fs.existsSync(newFilePath)).toBe(false);
 
   // Verify the modified file was restored
-  if (originalContent) {
+  if (originalContent !== null) {
     const restoredContent = fs.readFileSync(indexPath, "utf-8");
     expect(restoredContent).toBe(originalContent);
   }

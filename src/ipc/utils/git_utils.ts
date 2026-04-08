@@ -542,11 +542,11 @@ export async function gitDiscardAllChanges({
 }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    // Restore all tracked files to HEAD state
+    // Reset all tracked files (index + working tree) to HEAD state
     await execOrThrow(
-      ["restore", "."],
+      ["reset", "--hard", "HEAD"],
       path,
-      "Failed to restore tracked files",
+      "Failed to reset to HEAD",
     );
     // Remove untracked files and directories
     await execOrThrow(
@@ -557,12 +557,13 @@ export async function gitDiscardAllChanges({
   } else {
     const matrix = await git.statusMatrix({ fs, dir: path });
 
-    for (const [filepath, headStatus, workdirStatus] of matrix) {
+    for (const row of matrix) {
+      const [filepath, headStatus, workdirStatus, stageStatus] = row;
       const fullPath = pathModule.join(path, filepath);
 
       if (headStatus === 1) {
-        // File exists in HEAD — restore it if changed
-        if (workdirStatus !== 1) {
+        // Tracked file: restore if changed in workdir or stage
+        if (workdirStatus !== 1 || stageStatus !== 1) {
           await git.checkout({
             fs,
             dir: path,
@@ -571,11 +572,17 @@ export async function gitDiscardAllChanges({
             force: true,
           });
         }
-      } else if (headStatus === 0 && workdirStatus !== 0) {
-        // File is untracked — delete it
+      } else if (stageStatus !== 0) {
+        // Staged new file: remove from index
+        await git.remove({ fs, dir: path, filepath });
+        // Delete from disk if still present
         if (fs.existsSync(fullPath)) {
-          await fsPromises.unlink(fullPath);
-          await git.remove({ fs, dir: path, filepath });
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+        }
+      } else if (workdirStatus !== 0) {
+        // Purely untracked file/directory: just delete from disk
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
         }
       }
     }

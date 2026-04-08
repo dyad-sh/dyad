@@ -586,6 +586,22 @@ export async function gitDiscardAllChanges({
         }
       }
     }
+
+    // Prune empty directories left behind (matching native git clean -fd behavior)
+    const pruneEmptyDirs = async (dir: string) => {
+      const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name !== ".git") {
+          const fullDir = pathModule.join(dir, entry.name);
+          await pruneEmptyDirs(fullDir);
+          const remaining = await fsPromises.readdir(fullDir);
+          if (remaining.length === 0) {
+            await fsPromises.rmdir(fullDir);
+          }
+        }
+      }
+    };
+    await pruneEmptyDirs(path);
   }
 }
 

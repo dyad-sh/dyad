@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   FileWarning,
   Plus,
@@ -91,13 +91,15 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const confirmPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (showDiscardConfirm) {
-      const btn = document.querySelector<HTMLButtonElement>(
-        '[data-testid="confirm-discard-button"]',
-      );
-      btn?.focus();
+      confirmPanelRef.current
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="confirm-discard-button"]',
+        )
+        ?.focus();
     }
   }, [showDiscardConfirm]);
 
@@ -231,15 +233,21 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
 
           {showDiscardConfirm && (
             <div
-              role="alert"
+              ref={confirmPanelRef}
+              role="alertdialog"
+              aria-labelledby="discard-confirm-title"
+              aria-describedby="discard-confirm-desc"
               className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3"
             >
               <TriangleAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1 space-y-2">
-                <p className="text-sm text-destructive font-medium">
+                <p
+                  id="discard-confirm-title"
+                  className="text-sm text-destructive font-medium"
+                >
                   Discard changes to {uncommittedFiles.length}{" "}
-                  {uncommittedFiles.length === 1 ? "file" : "files"}? This
-                  cannot be undone.
+                  {uncommittedFiles.length === 1 ? "file" : "files"}?{" "}
+                  <span id="discard-confirm-desc">This cannot be undone.</span>
                 </p>
                 <div className="flex gap-2">
                   <Button

@@ -15,6 +15,9 @@ export function useDiscardChanges() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
       });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      });
     },
     onError: (error: Error) => {
       showError(`Failed to discard changes: ${error.message}`);

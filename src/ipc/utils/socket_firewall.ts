@@ -1,4 +1,7 @@
-import { spawn } from "node:child_process";
+import {
+  PtyCommandExecutionError,
+  runPtyCommand,
+} from "@/ipc/utils/pty_command_runner";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -12,6 +15,7 @@ const SOCKET_FIREWALL_NPX_ARGS = [
 export interface CommandExecutionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
 }
 
 export interface CommandExecutionResult {
@@ -51,14 +55,11 @@ export type CommandRunner = (
 
 export type PackageManager = "pnpm" | "npm";
 
-export function shouldUseCommandShell(
+export function resolveExecutableName(
+  command: string,
   platform: NodeJS.Platform = process.platform,
-): boolean {
-  return platform === "win32";
-}
-
-export function resolveExecutableName(command: string): string {
-  if (process.platform === "win32" && !command.includes(".")) {
+): string {
+  if (platform === "win32" && !command.includes(".")) {
     return `${command}.cmd`;
   }
   return command;
@@ -69,51 +70,35 @@ export async function runCommand(
   args: string[],
   options: CommandExecutionOptions = {},
 ): Promise<CommandExecutionResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(resolveExecutableName(command), args, {
-      cwd: options.cwd,
-      env: options.env,
-      shell: shouldUseCommandShell(),
-      stdio: "pipe",
+  try {
+    const { output } = await runPtyCommand(
+      resolveExecutableName(command),
+      args,
+      {
+        cwd: options.cwd,
+        env: options.env,
+        timeoutMs: options.timeoutMs,
+      },
+    );
+
+    return {
+      stdout: output,
+      stderr: "",
+    };
+  } catch (error) {
+    if (error instanceof PtyCommandExecutionError) {
+      throw new CommandExecutionError({
+        message: error.message,
+        stdout: error.output,
+        exitCode: error.exitCode,
+      });
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CommandExecutionError({
+      message: `Failed to run command '${command} ${args.join(" ")}': ${message}`,
     });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      reject(
-        new CommandExecutionError({
-          message: `Failed to run command '${command} ${args.join(" ")}': ${error.message}`,
-          stdout,
-          stderr,
-        }),
-      );
-    });
-
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-        return;
-      }
-
-      reject(
-        new CommandExecutionError({
-          message: `Command '${command} ${args.join(" ")}' exited with code ${code ?? "unknown"}`,
-          stdout,
-          stderr,
-          exitCode: code,
-        }),
-      );
-    });
-  });
+  }
 }
 
 export function getCommandExecutionDisplayDetails(

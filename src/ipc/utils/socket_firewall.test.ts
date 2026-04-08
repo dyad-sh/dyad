@@ -3,8 +3,8 @@ import {
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
+  resolveExecutableName,
   SOCKET_FIREWALL_WARNING_MESSAGE,
-  shouldUseCommandShell,
   type CommandRunner,
   type PackageManager,
 } from "./socket_firewall";
@@ -120,13 +120,14 @@ describe("ensureSocketFirewallInstalled", () => {
   });
 });
 
-describe("shouldUseCommandShell", () => {
-  it("uses a shell on Windows so npm-style .cmd shims can execute", () => {
-    expect(shouldUseCommandShell("win32")).toBe(true);
+describe("resolveExecutableName", () => {
+  it("uses Windows cmd shims for package-manager commands", () => {
+    expect(resolveExecutableName("npx", "win32")).toBe("npx.cmd");
+    expect(resolveExecutableName("pnpm", "win32")).toBe("pnpm.cmd");
   });
 
-  it("avoids the shell on Unix platforms", () => {
-    expect(shouldUseCommandShell("darwin")).toBe(false);
-    expect(shouldUseCommandShell("linux")).toBe(false);
+  it("preserves explicit executables and Unix command names", () => {
+    expect(resolveExecutableName("node.exe", "win32")).toBe("node.exe");
+    expect(resolveExecutableName("npx", "darwin")).toBe("npx");
   });
 });

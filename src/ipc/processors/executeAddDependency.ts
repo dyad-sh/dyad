@@ -38,7 +38,22 @@ const DISPLAY_SUMMARY_PATTERNS = [
   /\btimed out\b/i,
   /\btimeout\b/i,
   /\betimedout\b/i,
+  /\bnpm err!\b/i,
+  /\berr_pnpm_[a-z0-9_]+\b/i,
+  /\bE[A-Z][A-Z0-9_]{2,}\b/,
 ];
+
+const DISPLAY_SUMMARY_NOISE_PATTERNS = [
+  /^progress:/i,
+  /^packages:\s*[+-]?\d+/i,
+  /^npm (?:notice|warn)\b/i,
+  /^npm err!\s*(?:a complete log of this run can be found in:|this is probably not a problem with npm\.)/i,
+  /^npm err!\s*(?:[A-Za-z]:\\|\/).+/,
+];
+
+function isDisplaySummaryNoise(line: string): boolean {
+  return DISPLAY_SUMMARY_NOISE_PATTERNS.some((pattern) => pattern.test(line));
+}
 
 function getDisplaySummary(value: string): string | undefined {
   const lines = value
@@ -48,7 +63,17 @@ function getDisplaySummary(value: string): string | undefined {
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
-    if (DISPLAY_SUMMARY_PATTERNS.some((pattern) => pattern.test(line))) {
+    if (
+      !isDisplaySummaryNoise(line) &&
+      DISPLAY_SUMMARY_PATTERNS.some((pattern) => pattern.test(line))
+    ) {
+      return line;
+    }
+  }
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!isDisplaySummaryNoise(line)) {
       return line;
     }
   }

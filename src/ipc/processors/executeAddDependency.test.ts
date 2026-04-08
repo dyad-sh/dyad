@@ -133,6 +133,73 @@ describe("executeAddDependency", () => {
     });
   });
 
+  it("ignores npm log-noise lines and keeps the actionable npm ERR summary", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+      warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
+    });
+    runCommandMock.mockRejectedValueOnce(
+      new CommandExecutionError({
+        message: "npm install failed",
+        stdout: [
+          "npm ERR! code ERESOLVE",
+          "npm ERR! ERESOLVE unable to resolve dependency tree",
+          "npm ERR! A complete log of this run can be found in:",
+          "npm ERR!     /Users/me/.npm/_logs/2026-04-08-debug-0.log",
+        ].join("\n"),
+        exitCode: 1,
+      }),
+    );
+
+    await expect(
+      executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toMatchObject({
+      displaySummary: "npm ERR! ERESOLVE unable to resolve dependency tree",
+      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
+  });
+
+  it("keeps ERR_PNPM summaries instead of falling back to progress output", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+      warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
+    });
+    runCommandMock.mockRejectedValueOnce(
+      new CommandExecutionError({
+        message: "pnpm add failed",
+        stdout: [
+          "Progress: resolved 1, reused 0, downloaded 0, added 0",
+          "ERR_PNPM_FETCH_404 GET https://registry.npmjs.org/react: Not Found",
+        ].join("\n"),
+        exitCode: 1,
+      }),
+    );
+
+    await expect(
+      executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toMatchObject({
+      displaySummary:
+        "ERR_PNPM_FETCH_404 GET https://registry.npmjs.org/react: Not Found",
+      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
+  });
+
   it("does not fall back to a direct install when the real sfw cli blocks a dependency", async () => {
     ensureSocketFirewallInstalledMock.mockResolvedValue({
       available: true,

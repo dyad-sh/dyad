@@ -1,3 +1,4 @@
+import { spawn as spawnProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
 
 const DEFAULT_PTY_NAME = "xterm-color";
@@ -16,6 +17,7 @@ export interface PtyCommandExecutionOptions {
   cols?: number;
   rows?: number;
   name?: string;
+  displayCommand?: string;
 }
 
 export interface PtyCommandExecutionResult {
@@ -51,11 +53,17 @@ export class PtyCommandExecutionError extends Error {
 }
 
 export interface PtyProcessLike {
+  pid?: number;
   kill(signal?: string): void;
   onData(listener: (data: string) => void): { dispose(): void };
   onExit(listener: (event: { exitCode: number; signal?: number }) => void): {
     dispose(): void;
   };
+}
+
+interface SpawnedProcessLike {
+  once(event: "error", listener: () => void): SpawnedProcessLike;
+  unref(): void;
 }
 
 type PtySpawner = (
@@ -71,8 +79,28 @@ type PtySpawner = (
   },
 ) => PtyProcessLike;
 
+type ProcessSpawner = (
+  file: string,
+  args: string[],
+  options: {
+    stdio: "ignore";
+    windowsHide: true;
+  },
+) => SpawnedProcessLike;
+
 function buildDisplayedCommand(command: string, args: string[]): string {
   return [command, ...args].join(" ");
+}
+
+function buildTimeoutMessage(
+  displayedCommand: string,
+  timeoutMs: number,
+): string {
+  return `Command '${displayedCommand}' timed out after ${formatDuration(timeoutMs)}. The command may be stuck. Check your network or environment and try again.`;
+}
+
+function appendCommandMessage(output: string, message: string): string {
+  return output ? `${output}\n${message}` : message;
 }
 
 function stripAnsiSequences(value: string): string {
@@ -120,6 +148,38 @@ function buildExitMessage(
   }
 
   return `Command '${displayedCommand}' exited with code ${exitCode}`;
+}
+
+function terminatePtyProcess(
+  ptyProcess: PtyProcessLike,
+  platform: NodeJS.Platform = process.platform,
+  processSpawner: ProcessSpawner = spawnProcess,
+): void {
+  if (platform === "win32" && typeof ptyProcess.pid === "number") {
+    try {
+      const taskkillProcess = processSpawner(
+        "taskkill",
+        ["/F", "/T", "/PID", String(ptyProcess.pid)],
+        {
+          stdio: "ignore",
+          windowsHide: true,
+        },
+      );
+      taskkillProcess.once("error", () => {
+        try {
+          ptyProcess.kill();
+        } catch {
+          // Best effort only. The timeout error remains the source of truth.
+        }
+      });
+      taskkillProcess.unref();
+      return;
+    } catch {
+      // Fall back to the PTY kill below.
+    }
+  }
+
+  ptyProcess.kill();
 }
 
 export function normalizePtyOutput(
@@ -174,7 +234,8 @@ export async function runPtyCommand(
   ptySpawner: PtySpawner = spawnPty,
 ): Promise<PtyCommandExecutionResult> {
   return new Promise((resolve, reject) => {
-    const displayedCommand = buildDisplayedCommand(command, args);
+    const displayedCommand =
+      options.displayCommand ?? buildDisplayedCommand(command, args);
     const timeoutMs = options.timeoutMs ?? DEFAULT_PTY_COMMAND_TIMEOUT_MS;
     const outputChunks: string[] = [];
     let didSettle = false;
@@ -246,18 +307,24 @@ export async function runPtyCommand(
 
     timeoutId = setTimeout(() => {
       try {
-        ptyProcess.kill();
+        terminatePtyProcess(ptyProcess);
       } catch {
         // Best effort only. The timeout error below remains the source of truth.
       }
 
+      const timeoutMessage = buildTimeoutMessage(displayedCommand, timeoutMs);
+      const output = appendCommandMessage(
+        normalizePtyOutput(outputChunks.join(""), {
+          preserveCarriageReturnFrames: true,
+        }),
+        timeoutMessage,
+      );
+
       settle(() =>
         reject(
           new PtyCommandExecutionError({
-            message: `Command '${displayedCommand}' timed out after ${formatDuration(timeoutMs)}. The command may be stuck. Check your network or environment and try again.`,
-            output: normalizePtyOutput(outputChunks.join(""), {
-              preserveCarriageReturnFrames: true,
-            }),
+            message: timeoutMessage,
+            output,
           }),
         ),
       );

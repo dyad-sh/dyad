@@ -28,6 +28,10 @@ export interface CommandExecutionResult {
   stderr: string;
 }
 
+function buildCommandDisplay(command: string, args: string[]): string {
+  return [command, ...args].join(" ");
+}
+
 export class CommandExecutionError extends Error {
   stdout: string;
   stderr: string;
@@ -115,6 +119,7 @@ export async function runCommand(
       invocation.args,
       {
         cwd: options.cwd,
+        displayCommand: buildCommandDisplay(command, args),
         env: options.env,
         timeoutMs: options.timeoutMs,
       },
@@ -135,7 +140,7 @@ export async function runCommand(
 
     const message = error instanceof Error ? error.message : String(error);
     throw new CommandExecutionError({
-      message: `Failed to run command '${command} ${args.join(" ")}': ${message}`,
+      message: `Failed to run command '${buildCommandDisplay(command, args)}': ${message}`,
     });
   }
 }

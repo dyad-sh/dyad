@@ -1,4 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
+
+const { runPtyCommandMock } = vi.hoisted(() => ({
+  runPtyCommandMock: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/pty_command_runner", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/pty_command_runner")
+  >("@/ipc/utils/pty_command_runner");
+
+  return {
+    ...actual,
+    runPtyCommand: runPtyCommandMock,
+  };
+});
+
 import {
   buildPtyInvocation,
   buildAddDependencyCommand,
@@ -6,11 +23,36 @@ import {
   ensureSocketFirewallInstalled,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   resolveExecutableName,
+  runCommand,
   SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
   type CommandRunner,
   type PackageManager,
 } from "./socket_firewall";
+
+async function withPlatform<T>(
+  platform: NodeJS.Platform,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const originalPlatform = process.platform;
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: originalPlatform,
+    });
+  }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("detectPreferredPackageManager", () => {
   it("prefers pnpm when available", async () => {
@@ -153,6 +195,36 @@ describe("buildPtyInvocation", () => {
     expect(buildPtyInvocation("pnpm", ["add", "react"], "darwin")).toEqual({
       command: "pnpm",
       args: ["add", "react"],
+    });
+  });
+});
+
+describe("runCommand", () => {
+  it("preserves the original command in Windows-facing PTY errors", async () => {
+    await withPlatform("win32", async () => {
+      runPtyCommandMock.mockRejectedValueOnce(
+        new PtyCommandExecutionError({
+          message: "Command 'npx --yes sfw@2.0.4' exited with code 1",
+          output: "npm ERR! ERESOLVE unable to resolve dependency tree",
+          exitCode: 1,
+        }),
+      );
+
+      await expect(
+        runCommand("npx", ["--yes", "sfw@2.0.4"]),
+      ).rejects.toMatchObject({
+        message: "Command 'npx --yes sfw@2.0.4' exited with code 1",
+        stdout: "npm ERR! ERESOLVE unable to resolve dependency tree",
+        exitCode: 1,
+      });
+
+      expect(runPtyCommandMock).toHaveBeenCalledWith(
+        "cmd.exe",
+        ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+        expect.objectContaining({
+          displayCommand: "npx --yes sfw@2.0.4",
+        }),
+      );
     });
   });
 });

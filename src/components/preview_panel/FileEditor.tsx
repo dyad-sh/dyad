@@ -18,6 +18,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
+import { enqueueFileSave, getFileSaveQueueKey } from "./fileSaveQueue";
 
 interface FileEditorProps {
   appId: number | null;
@@ -209,6 +210,13 @@ export const FileEditor = ({
     const saveAppId = appId;
     const saveFilePath = filePath;
     const savedValue = currentValueRef.current;
+    const saveQueueKey = getFileSaveQueueKey(saveAppId, saveFilePath);
+    const performSave = () =>
+      ipc.app.editAppFile({
+        appId: saveAppId,
+        filePath: saveFilePath,
+        content: savedValue,
+      });
 
     try {
       isSavingRef.current = true;
@@ -216,11 +224,7 @@ export const FileEditor = ({
         setIsSaving(true);
       }
 
-      const { warning } = await ipc.app.editAppFile({
-        appId: saveAppId,
-        filePath: saveFilePath,
-        content: savedValue,
-      });
+      const { warning } = await enqueueFileSave(saveQueueKey, performSave);
       queryClient.setQueryData(
         queryKeys.appFiles.content({
           appId: saveAppId,

@@ -48,7 +48,13 @@ test("edit code", async ({ po }) => {
   await po.previewPanel.clickTogglePreviewPanel();
 
   await po.previewPanel.selectPreviewMode("code");
-  await po.page.getByText("made-with-dyad.tsx").click();
+  await expect(
+    po.page.getByText("Loading files...", { exact: false }),
+  ).toBeHidden({
+    timeout: Timeout.LONG,
+  });
+
+  await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
   await replaceEditorContent(po.page, "export const MadeWithDyad = ;");
 
   // Save the file

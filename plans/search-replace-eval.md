@@ -48,7 +48,7 @@ A single eval file drives a matrix of **(model × test case)**. For each combina
 2. Call `generateText` with:
    - The eval's file content embedded in the user message.
    - A minimal system prompt instructing the model to use `search_replace`.
-   - A **single tool** — `search_replace` — wrapped to match the AI SDK v5 shape used by `buildAgentToolSet` (`{ description, inputSchema }`). For exact-match cases, we omit `execute` so the AI SDK returns the tool call for direct inspection. For judge-verified cases, we provide an `execute` function and set `maxSteps: 10` so the model can make multiple sequential edits.
+   - A **single tool** — `search_replace` — wrapped to match the AI SDK v5 shape used by `buildAgentToolSet` (`{ description, inputSchema }`). For exact-match cases, we omit `execute` so the AI SDK returns the tool call for direct inspection. For judge-verified cases, we provide an `execute` function and set `stopWhen: stepCountIs(10)` so the model can make multiple sequential edits.
 3. Extract the tool call from `result.toolCalls`.
 4. Apply it via `applySearchReplace` against the original file content.
 5. Assert correctness: for exact-match cases, compare byte-for-byte against `expectedContent`; for judge-verified cases, run `structuralChecks` then call the GPT 5.4 judge for a PASS/FAIL verdict.
@@ -106,7 +106,7 @@ export type EvalProvider = "anthropic" | "openai" | "google";
 
 // Gateway prefixes must match CLOUD_PROVIDERS in language_model_constants.ts.
 const GATEWAY_PREFIXES: Record<EvalProvider, string> = {
-  openai: "",          // OpenAI has an empty-string prefix
+  openai: "", // OpenAI has an empty-string prefix
   anthropic: "anthropic/",
   google: "gemini/",
 };
@@ -156,12 +156,12 @@ export function getEvalModel(
 The eval has two tiers of test cases, each with its own assertion strategy:
 
 - **Exact-match cases** use a single `search_replace` call (no `execute`, tool call inspected directly). The edit is applied via `applySearchReplace` and the result is compared byte-for-byte against `expectedContent`. These are the deterministic regression backbone — fast, cheap, no LLM cost for verification.
-- **Judge-verified cases** allow **multiple** `search_replace` calls via `maxSteps`, since complex edits (e.g. splitting a 700-line component into 3) naturally require several sequential operations. The tool is given an `execute` function that applies each edit to a running copy of the file and returns a confirmation message. After all steps complete, the final file state is evaluated by a **judge model** (GPT 5.4 via the same Dyad Engine) that receives the original file, the prompt, and the result, and renders a PASS/FAIL verdict with explanation. Optional `structuralChecks` (simple string-contains assertions) run as a precondition before the judge, catching gross errors cheaply without an LLM call.
+- **Judge-verified cases** allow **multiple** `search_replace` calls via `stopWhen: stepCountIs(10)`, since complex edits (e.g. splitting a 700-line component into 3) naturally require several sequential operations. The tool is given an `execute` function that applies each edit to a running copy of the file and returns a confirmation message. After all steps complete, the final file state is evaluated by a **judge model** (GPT 5.4 via the same Dyad Engine) that receives the original file, the prompt, and the result, and renders a PASS/FAIL verdict with explanation. Optional `structuralChecks` (simple string-contains assertions) run as a precondition before the judge, catching gross errors cheaply without an LLM call.
 
 ```typescript
 // src/__tests__/evals/search_replace_tool_use.eval.ts
 import { describe, it, expect } from "vitest";
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { searchReplaceTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_replace";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
@@ -284,7 +284,12 @@ const MODELS: Array<{
     label: "Claude Sonnet 4.6",
     temperature: 0,
   },
-  { provider: "openai", modelName: "gpt-5.4", label: "GPT 5.4", temperature: 1 },
+  {
+    provider: "openai",
+    modelName: "gpt-5.4",
+    label: "GPT 5.4",
+    temperature: 1,
+  },
   {
     provider: "google",
     modelName: GEMINI_3_FLASH,
@@ -296,117 +301,113 @@ const MODELS: Array<{
 // ── Test runner ─────────────────────────────────────────────
 
 for (const { provider, modelName, label, temperature } of MODELS) {
-  describe.skipIf(!hasDyadProKey())(
-    `search_replace eval — ${label}`,
-    () => {
-      for (const c of ALL_CASES) {
-        it.concurrent(c.name, async () => {
-          if (c.kind === "exact") {
-            // ── Exact-match: single tool call, no execute ──
-            const result = await generateText({
-              model: getEvalModel(provider, modelName),
-              temperature,
-              system:
-                "You are a precise code editor. When asked to change a file, " +
-                "call the search_replace tool exactly once. Do not explain.",
-              messages: [
-                {
-                  role: "user",
-                  content: `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`,
-                },
-              ],
-              tools: {
-                search_replace: {
-                  description: searchReplaceTool.description,
-                  inputSchema: searchReplaceTool.inputSchema,
-                  // No execute — tool call returned directly.
+  describe.skipIf(!hasDyadProKey())(`search_replace eval — ${label}`, () => {
+    for (const c of ALL_CASES) {
+      it.concurrent(c.name, async () => {
+        if (c.kind === "exact") {
+          // ── Exact-match: single tool call, no execute ──
+          const result = await generateText({
+            model: getEvalModel(provider, modelName),
+            temperature,
+            system:
+              "You are a precise code editor. When asked to change a file, " +
+              "call the search_replace tool exactly once. Do not explain.",
+            messages: [
+              {
+                role: "user",
+                content: `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`,
+              },
+            ],
+            tools: {
+              search_replace: {
+                description: searchReplaceTool.description,
+                inputSchema: searchReplaceTool.inputSchema,
+                // No execute — tool call returned directly.
+              },
+            },
+          });
+
+          const call = result.toolCalls.find(
+            (t) => t.toolName === "search_replace",
+          );
+          expect(call, `${label} did not call search_replace`).toBeDefined();
+
+          const args = call!.input as {
+            file_path: string;
+            old_string: string;
+            new_string: string;
+          };
+          expect(args.file_path).toBe(c.fileName);
+
+          const resultContent = applyEdit(c.fileContent, args);
+          expect(resultContent.trim()).toBe(c.expectedContent.trim());
+        } else {
+          // ── Judge-verified: multiple calls allowed via stopWhen ──
+          // Mutable state: each execute call updates the running file.
+          let currentContent = c.fileContent;
+
+          const result = await generateText({
+            model: getEvalModel(provider, modelName),
+            temperature,
+            stopWhen: stepCountIs(10),
+            system:
+              "You are a precise code editor. When asked to change a file, " +
+              "use the search_replace tool. You may call it multiple times " +
+              "to make sequential edits. Do not explain.",
+            messages: [
+              {
+                role: "user",
+                content: `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`,
+              },
+            ],
+            tools: {
+              search_replace: {
+                description: searchReplaceTool.description,
+                inputSchema: searchReplaceTool.inputSchema,
+                execute: async (args) => {
+                  currentContent = applyEdit(currentContent, args);
+                  return "Edit applied successfully.";
                 },
               },
-            });
+            },
+          });
 
-            const call = result.toolCalls.find(
-              (t) => t.toolName === "search_replace",
-            );
-            expect(call, `${label} did not call search_replace`).toBeDefined();
+          // Must have made at least one tool call.
+          const totalCalls = result.steps.reduce(
+            (n, s) => n + s.toolCalls.length,
+            0,
+          );
+          expect(
+            totalCalls,
+            `${label} made no search_replace calls`,
+          ).toBeGreaterThan(0);
 
-            const args = call!.input as {
-              file_path: string;
-              old_string: string;
-              new_string: string;
-            };
-            expect(args.file_path).toBe(c.fileName);
-
-            const resultContent = applyEdit(c.fileContent, args);
-            expect(resultContent.trim()).toBe(c.expectedContent.trim());
-          } else {
-            // ── Judge-verified: multiple calls allowed via maxSteps ──
-            // Mutable state: each execute call updates the running file.
-            let currentContent = c.fileContent;
-
-            const result = await generateText({
-              model: getEvalModel(provider, modelName),
-              temperature,
-              maxSteps: 10,
-              system:
-                "You are a precise code editor. When asked to change a file, " +
-                "use the search_replace tool. You may call it multiple times " +
-                "to make sequential edits. Do not explain.",
-              messages: [
-                {
-                  role: "user",
-                  content: `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`,
-                },
-              ],
-              tools: {
-                search_replace: {
-                  description: searchReplaceTool.description,
-                  inputSchema: searchReplaceTool.inputSchema,
-                  execute: async (args) => {
-                    currentContent = applyEdit(currentContent, args);
-                    return "Edit applied successfully.";
-                  },
-                },
-              },
-            });
-
-            // Must have made at least one tool call.
-            const totalCalls = result.steps.reduce(
-              (n, s) => n + s.toolCalls.length,
-              0,
-            );
+          // Run structural checks, then the judge.
+          for (const check of c.structuralChecks ?? []) {
             expect(
-              totalCalls,
-              `${label} made no search_replace calls`,
-            ).toBeGreaterThan(0);
-
-            // Run structural checks, then the judge.
-            for (const check of c.structuralChecks ?? []) {
-              expect(
-                currentContent,
-                `Structural check failed: expected output to contain "${check}"`,
-              ).toContain(check);
-            }
-            const verdict = await judgeResult(
-              c.fileContent,
-              c.prompt,
               currentContent,
-            );
-            expect(
-              verdict.pass,
-              `Judge (GPT 5.4) said FAIL for ${label}:\n${verdict.explanation}`,
-            ).toBe(true);
+              `Structural check failed: expected output to contain "${check}"`,
+            ).toContain(check);
           }
-        });
-      }
-    },
-  );
+          const verdict = await judgeResult(
+            c.fileContent,
+            c.prompt,
+            currentContent,
+          );
+          expect(
+            verdict.pass,
+            `Judge (GPT 5.4) said FAIL for ${label}:\n${verdict.explanation}`,
+          ).toBe(true);
+        }
+      });
+    }
+  });
 }
 ```
 
 Important details:
 
-- **AI SDK v5 tool shape.** The AI SDK version in `package.json` (`@ai-sdk/anthropic ^3`, `@ai-sdk/openai ^3`, `ai` v5) uses `inputSchema` (not `parameters`), and tool calls expose their validated arguments on `.input` (not `.args`). This matches `buildAgentToolSet` at `tool_definitions.ts:452-454`.
-- **Two tool-call patterns.** Exact-match cases omit `execute` so the AI SDK surfaces the single tool call directly in `result.toolCalls` — the standard single-turn inspection pattern. Judge-verified cases provide an `execute` function and set `maxSteps: 10`, allowing the model to make multiple sequential edits (e.g. extracting three components from a large file). The `execute` function applies each edit to a running `currentContent` variable and returns a confirmation string, so the model sees the result of each step.
+- **Two tool-call patterns.** Exact-match cases omit `execute` so the AI SDK surfaces the single tool call directly in `result.toolCalls` — the standard single-turn inspection pattern. Judge-verified cases provide an `execute` function and set `stopWhen: stepCountIs(10)`, allowing the model to make multiple sequential edits (e.g. extracting three components from a large file). The `execute` function applies each edit to a running `currentContent` variable and returns a confirmation string, so the model sees the result of each step.
 - **Judge independence.** The judge is always GPT 5.4 regardless of which model is being evaluated. When evaluating GPT 5.4 itself, the judge is still GPT 5.4 — this is a known limitation but acceptable for v1 because (a) the judge task (verifying an edit) is much simpler than the generation task (producing the edit), and (b) the structural checks catch the most obvious failures before the judge runs. If this becomes a concern, a follow-up can rotate judges so no model evaluates its own output.
 
 #### 3. Vitest config
@@ -422,7 +423,7 @@ export default defineConfig({
     include: ["src/__tests__/evals/**/*.eval.ts"],
     globals: true,
     testTimeout: 120_000, // LLM calls can be slow; judge-verified cases make multiple calls
-    maxConcurrency: 5,   // parallelize across cases; keeps Dyad Engine rate-limit safe
+    maxConcurrency: 5, // parallelize across cases; keeps Dyad Engine rate-limit safe
   },
   resolve: {
     alias: { "@": resolve(__dirname, "./src") },
@@ -555,17 +556,17 @@ This plan **is** a testing plan — the eval is itself the test. Meta-validation
 
 ## Risks & Mitigations
 
-| Risk                                                              | Likelihood | Impact | Mitigation                                                                                                                                                   |
-| ----------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Provider model IDs change (e.g., `gpt-5.4` renamed)               | Medium     | Low    | Model names are imported from `language_model_constants.ts` where available, so renames propagate.                                                           |
-| Non-determinism (especially at `temperature: 1` for GPT-5/Gemini) | Medium     | Medium | Exact-match cases use small, unambiguous edits. Judge-verified cases tolerate variance by design — the judge evaluates semantic correctness, not byte-equality. |
-| Judge too lenient (rubber-stamps bad output)                       | Medium     | Medium | `structuralChecks` run before the judge as a cheap precondition. The judge prompt requires step-by-step reasoning before the verdict, reducing snap approvals. If a pattern emerges, add more structural checks or convert to exact-match. |
-| Judge too strict (rejects valid output)                            | Low        | Low    | Judge failures include the full explanation in the test error. Easy to diagnose and fix by adjusting the judge prompt or the case's structural checks.         |
-| GPT 5.4 judging its own output                                    | Low        | Low    | Only affects GPT 5.4 eval runs. The judge task (verify an edit) is much simpler than the generation task (produce it). Can rotate judges in a follow-up if needed. |
+| Risk                                                              | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------- | ---------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider model IDs change (e.g., `gpt-5.4` renamed)               | Medium     | Low    | Model names are imported from `language_model_constants.ts` where available, so renames propagate.                                                                                                                                                 |
+| Non-determinism (especially at `temperature: 1` for GPT-5/Gemini) | Medium     | Medium | Exact-match cases use small, unambiguous edits. Judge-verified cases tolerate variance by design — the judge evaluates semantic correctness, not byte-equality.                                                                                    |
+| Judge too lenient (rubber-stamps bad output)                      | Medium     | Medium | `structuralChecks` run before the judge as a cheap precondition. The judge prompt requires step-by-step reasoning before the verdict, reducing snap approvals. If a pattern emerges, add more structural checks or convert to exact-match.         |
+| Judge too strict (rejects valid output)                           | Low        | Low    | Judge failures include the full explanation in the test error. Easy to diagnose and fix by adjusting the judge prompt or the case's structural checks.                                                                                             |
+| GPT 5.4 judging its own output                                    | Low        | Low    | Only affects GPT 5.4 eval runs. The judge task (verify an edit) is much simpler than the generation task (produce it). Can rotate judges in a follow-up if needed.                                                                                 |
 | API cost creep from judge calls                                   | Medium     | Low    | Judge calls only run for ~5 judge-verified cases × 3 models = ~15 extra LLM calls per eval run. Structural checks fail fast and skip the judge when possible. All calls route through the Dyad Engine on a single key, so cost is easy to monitor. |
-| AI SDK v5 tool shape drifts                                       | Low        | Medium | Harness mirrors `buildAgentToolSet` exactly — if the production shape changes, the eval will surface the mismatch.                                           |
-| Test runs leak Dyad Pro key into logs                             | Low        | High   | `getEvalModel` reads the key from `process.env` only; no logging of key values. Vitest does not print env to test output by default.                         |
-| `applySearchReplace` fuzzy matching masks real model failures     | Low        | Medium | Eval asserts on _final file content_, not on `old_string` being byte-identical, so fuzzy matching is actually desired here — it matches production behavior. |
+| AI SDK v5 tool shape drifts                                       | Low        | Medium | Harness mirrors `buildAgentToolSet` exactly — if the production shape changes, the eval will surface the mismatch.                                                                                                                                 |
+| Test runs leak Dyad Pro key into logs                             | Low        | High   | `getEvalModel` reads the key from `process.env` only; no logging of key values. Vitest does not print env to test output by default.                                                                                                               |
+| `applySearchReplace` fuzzy matching masks real model failures     | Low        | Medium | Eval asserts on _final file content_, not on `old_string` being byte-identical, so fuzzy matching is actually desired here — it matches production behavior.                                                                                       |
 
 ## Open Questions
 
@@ -574,20 +575,20 @@ This plan **is** a testing plan — the eval is itself the test. Meta-validation
 
 ## Decision Log
 
-| Decision                                                                      | Reasoning                                                                                                                                                                                                                                      |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New directory `src/__tests__/evals/`                                          | Evals and unit tests have fundamentally different runtime characteristics (network calls, API keys, slow, non-deterministic) and must not share a runner. A dedicated directory + `.eval.ts` suffix makes this separation obvious at a glance. |
-| Separate `vitest.eval.config.ts` + `npm run eval`                             | Prevents evals from running in `npm test` / CI. An opt-in runner is the standard way to keep network-dependent, key-gated tests out of the default developer loop.                                                                             |
+| Decision                                                                         | Reasoning                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New directory `src/__tests__/evals/`                                             | Evals and unit tests have fundamentally different runtime characteristics (network calls, API keys, slow, non-deterministic) and must not share a runner. A dedicated directory + `.eval.ts` suffix makes this separation obvious at a glance.       |
+| Separate `vitest.eval.config.ts` + `npm run eval`                                | Prevents evals from running in `npm test` / CI. An opt-in runner is the standard way to keep network-dependent, key-gated tests out of the default developer loop.                                                                                   |
 | Use `createDyadEngine` directly, bypass `getModelClient` and `buildAgentToolSet` | `getModelClient` carries Electron/DB/settings coupling. `createDyadEngine` is the pure factory underneath it — calling it directly with just an API key and base URL gives us the same Dyad Engine routing production uses, with zero Electron deps. |
-| Reuse `searchReplaceTool.inputSchema` + `.description` + `applySearchReplace` | These are the only pieces whose exact identity matters for eval fidelity — they are what production LLMs see and what processes their output.                                                                                                  |
-| No `execute` in the tool definition passed to `generateText`                  | Standard AI SDK pattern for inspecting a tool call without executing it. Removes need for file I/O, temp dirs, or cleanup.                                                                                                                     |
-| Two-tier cases: exact-match + judge-verified                                  | Exact-match cases are the deterministic regression backbone (cheap, fast, no LLM verification cost). Judge-verified cases unlock complex refactors where multiple valid outputs exist — without them, the eval can only test trivial edits.     |
-| GPT 5.4 as judge model                                                       | Strong reasoning model available through the same Dyad Engine. Using a single fixed judge (rather than rotating) keeps the eval simple and the verdicts comparable across runs. Self-judging for GPT 5.4 runs is an accepted v1 trade-off.      |
-| `structuralChecks` as precondition before judge                               | Cheap string-contains assertions catch gross failures (missing function name, missing import) without an LLM call. Reduces judge cost and gives faster, more debuggable feedback when the output is clearly wrong.                              |
-| Assert on final file content, not on raw `old_string`/`new_string`            | Semantic check is more robust to phrasing variance and exercises the production processor end-to-end.                                                                                                                                          |
-| Per-model temperature from `language_model_constants.ts`                      | GPT-5 and Gemini 3 reasoning models reject or require `temperature: 1`; Anthropic models use `0`. Using each model's production temperature avoids API errors and matches real behavior.                                                       |
-| Single model per provider (not a full matrix)                                 | Balances signal vs. cost/runtime. Easy to extend later.                                                                                                                                                                                        |
-| `describe.skipIf(!hasDyadProKey())` (not `it.skipIf`)                         | Skipping at the describe level is clearer in output: when `DYAD_PRO_API_KEY` is absent, the entire suite is reported as skipped rather than one skip per case.                                                                                 |
+| Reuse `searchReplaceTool.inputSchema` + `.description` + `applySearchReplace`    | These are the only pieces whose exact identity matters for eval fidelity — they are what production LLMs see and what processes their output.                                                                                                        |
+| No `execute` in the tool definition passed to `generateText`                     | Standard AI SDK pattern for inspecting a tool call without executing it. Removes need for file I/O, temp dirs, or cleanup.                                                                                                                           |
+| Two-tier cases: exact-match + judge-verified                                     | Exact-match cases are the deterministic regression backbone (cheap, fast, no LLM verification cost). Judge-verified cases unlock complex refactors where multiple valid outputs exist — without them, the eval can only test trivial edits.          |
+| GPT 5.4 as judge model                                                           | Strong reasoning model available through the same Dyad Engine. Using a single fixed judge (rather than rotating) keeps the eval simple and the verdicts comparable across runs. Self-judging for GPT 5.4 runs is an accepted v1 trade-off.           |
+| `structuralChecks` as precondition before judge                                  | Cheap string-contains assertions catch gross failures (missing function name, missing import) without an LLM call. Reduces judge cost and gives faster, more debuggable feedback when the output is clearly wrong.                                   |
+| Assert on final file content, not on raw `old_string`/`new_string`               | Semantic check is more robust to phrasing variance and exercises the production processor end-to-end.                                                                                                                                                |
+| Per-model temperature from `language_model_constants.ts`                         | GPT-5 and Gemini 3 reasoning models reject or require `temperature: 1`; Anthropic models use `0`. Using each model's production temperature avoids API errors and matches real behavior.                                                             |
+| Single model per provider (not a full matrix)                                    | Balances signal vs. cost/runtime. Easy to extend later.                                                                                                                                                                                              |
+| `describe.skipIf(!hasDyadProKey())` (not `it.skipIf`)                            | Skipping at the describe level is clearer in output: when `DYAD_PRO_API_KEY` is absent, the entire suite is reported as skipped rather than one skip per case.                                                                                       |
 
 ---
 

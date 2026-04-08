@@ -3,7 +3,13 @@ import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
 import { getNeonProjectInfo } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
-const getNeonProjectInfoSchema = z.object({});
+// Note: At least one property is needed because Vertex AI rejects empty parameter schemas.
+const getNeonProjectInfoSchema = z.object({
+  includeDbFunctions: z
+    .boolean()
+    .optional()
+    .describe("Include database functions in the response. Defaults to false."),
+});
 
 export const getNeonProjectInfoTool: ToolDefinition<
   z.infer<typeof getNeonProjectInfoSchema>

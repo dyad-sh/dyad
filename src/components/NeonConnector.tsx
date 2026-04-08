@@ -30,7 +30,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { NEXTJS_CONFIG_FILES } from "@/lib/framework_constants";
+import { isNextJsProject } from "@/lib/framework_constants";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,11 +42,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
-function isNextJsProject(files: string[] | undefined): boolean {
-  if (!files) return false;
-  return files.some((file) => NEXTJS_CONFIG_FILES.includes(file));
-}
 
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");

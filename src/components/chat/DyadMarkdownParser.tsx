@@ -583,7 +583,17 @@ function renderCustomTag(
       );
 
     case "dyad-add-integration":
-      return <DyadAddIntegration>{content}</DyadAddIntegration>;
+      return (
+        <DyadAddIntegration
+          provider={
+            attributes.provider === "neon" || attributes.provider === "supabase"
+              ? attributes.provider
+              : undefined
+          }
+        >
+          {content}
+        </DyadAddIntegration>
+      );
 
     case "dyad-edit":
       return (

@@ -28,10 +28,6 @@ import {
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { buildNeonPromptAdditions } from "../../neon_admin/neon_prompt_context";
-import {
-  appendCancelledResponseNotice,
-  filterCancelledMessagePairs,
-} from "../../shared/chatCancellation";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
@@ -84,6 +80,10 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
+import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
@@ -691,15 +691,17 @@ ${componentSnippet}
           codebaseInfo.length / 4,
         );
 
-        // Prepare message history for the AI, filtering out cancelled message pairs
-        const messageHistory = filterCancelledMessagePairs(
-          updatedChat.messages.map((message) => ({
-            role: message.role as "user" | "assistant" | "system",
-            content: message.content,
-            sourceCommitHash: message.sourceCommitHash,
-            commitHash: message.commitHash,
-          })),
-        );
+        // Prepare message history for the AI
+        const messageHistoryRaw = updatedChat.messages.map((message) => ({
+          role: message.role as "user" | "assistant" | "system",
+          content: message.content,
+          sourceCommitHash: message.sourceCommitHash,
+          commitHash: message.commitHash,
+        }));
+
+        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
@@ -1634,13 +1636,13 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId);
+            const partialResponse = partialResponses.get(req.chatId) ?? "";
             try {
               // Update the placeholder assistant message with the partial content and cancellation note
               await db
                 .update(messages)
                 .set({
-                  content: appendCancelledResponseNotice(partialResponse ?? ""),
+                  content: appendCancelledResponseNotice(partialResponse),
                 })
                 .where(eq(messages.id, placeholderAssistantMessage.id));
 
@@ -1657,6 +1659,26 @@ ${problemReport.problems
             return req.chatId;
           }
           throw streamError;
+        }
+      }
+
+      // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
+      // save the cancellation notice to the placeholder message.
+      if (abortController.signal.aborted) {
+        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        try {
+          await db
+            .update(messages)
+            .set({
+              content: appendCancelledResponseNotice(partialResponse),
+            })
+            .where(eq(messages.id, placeholderAssistantMessage.id));
+          partialResponses.delete(req.chatId);
+        } catch (error) {
+          logger.error(
+            `Error saving cancelled response for chat ${req.chatId}:`,
+            error,
+          );
         }
       }
 

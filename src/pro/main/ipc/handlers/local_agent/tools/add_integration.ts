@@ -1,7 +1,16 @@
 import { z } from "zod";
-import { ToolDefinition } from "./types";
+import { ToolDefinition, escapeXmlAttr } from "./types";
 
-const addIntegrationSchema = z.object({});
+// Note: At least one property is needed because Vertex AI rejects empty parameter schemas.
+// The AI SDK converts z.object({}) to undefined parameters, which Vertex AI does not accept.
+const addIntegrationSchema = z.object({
+  provider: z
+    .enum(["supabase", "neon"])
+    .optional()
+    .describe(
+      "Optional preferred database provider. If omitted, the user will be prompted to choose.",
+    ),
+});
 
 export const addIntegrationTool: ToolDefinition<
   z.infer<typeof addIntegrationSchema>
@@ -16,7 +25,10 @@ export const addIntegrationTool: ToolDefinition<
 
   getConsentPreview: () => "Add database integration",
 
-  buildXml: (_args, _isComplete) => {
+  buildXml: (args, _isComplete) => {
+    if (args.provider) {
+      return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
+    }
     return `<dyad-add-integration></dyad-add-integration>`;
   },
 

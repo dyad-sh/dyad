@@ -9,16 +9,19 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useNeon } from "@/hooks/useNeon";
 import { useTranslation } from "react-i18next";
+import { isNextJsProject } from "@/lib/framework_constants";
 import { CheckCircle2, Database } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
+  provider?: "neon" | "supabase";
 }
 
 export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   children,
+  provider: requestedProvider,
 }) => {
   const { t } = useTranslation("home");
   const navigate = useNavigate();
@@ -30,6 +33,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
   const { projectInfo } = useNeon(appId);
+  const isNextJs = isNextJsProject(app?.files);
 
   const providerOptions = [
     {
@@ -55,6 +59,29 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       ],
     },
   ];
+
+  // Determine which providers to show
+  const availableProviders = (() => {
+    // If a specific provider was requested, show only that one
+    // (but fall back to supabase if neon was requested for non-Next.js)
+    if (requestedProvider) {
+      if (requestedProvider === "neon" && !isNextJs) {
+        return providerOptions.filter((p) => p.id === "supabase");
+      }
+      return providerOptions.filter((p) => p.id === requestedProvider);
+    }
+    // No provider specified: show neon only for Next.js projects
+    if (!isNextJs) {
+      return providerOptions.filter((p) => p.id !== "neon");
+    }
+    return providerOptions;
+  })();
+
+  // When only one provider is available, treat it as pre-selected
+  const effectiveSelectedProvider =
+    availableProviders.length === 1
+      ? availableProviders[0].id
+      : selectedProvider;
 
   const completedProvider = getCompletedIntegrationProvider(app);
   const completedProviderName =
@@ -142,16 +169,16 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
         <div
           role="group"
           aria-label={t("integrations.databaseSetup.chooseProvider")}
-          className="grid grid-cols-2 gap-3"
+          className={`grid ${availableProviders.length > 1 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
         >
-          {providerOptions.map((option) => (
+          {availableProviders.map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => setSelectedProvider(option.id)}
-              aria-pressed={selectedProvider === option.id}
+              aria-pressed={effectiveSelectedProvider === option.id}
               className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors ${
-                selectedProvider === option.id
+                effectiveSelectedProvider === option.id
                   ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
                   : "border-border hover:border-blue-400"
               }`}
@@ -178,16 +205,19 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           ))}
         </div>
         <Button
-          onClick={() => selectedProvider && handleSetupClick(selectedProvider)}
-          disabled={!selectedProvider}
+          onClick={() =>
+            effectiveSelectedProvider &&
+            handleSetupClick(effectiveSelectedProvider)
+          }
+          disabled={!effectiveSelectedProvider}
           className="w-full mt-3"
           size="sm"
         >
-          {selectedProvider
+          {effectiveSelectedProvider
             ? t("integrations.databaseSetup.setUpProvider", {
                 provider:
-                  providerOptions.find(
-                    (option) => option.id === selectedProvider,
+                  availableProviders.find(
+                    (option) => option.id === effectiveSelectedProvider,
                   )?.name ?? t("integrations.databaseSetup.setUpDatabase"),
               })
             : t("integrations.databaseSetup.setUpDatabase")}

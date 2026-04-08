@@ -82,13 +82,7 @@ function quoteWindowsCmdArg(value: string): string {
     return value;
   }
 
-  const escapedValue = value
-    .replace(/\^/g, "^^")
-    .replace(/%/g, "%%")
-    .replace(/!/g, "^!")
-    .replace(/"/g, '""');
-
-  return `"${escapedValue}"`;
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 export function buildPtyInvocation(

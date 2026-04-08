@@ -3,6 +3,7 @@ import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { Message } from "@/ipc/types";
 import { readEffectiveSettings } from "@/main/settings";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
@@ -29,6 +30,8 @@ export interface ExecuteAddDependencyResult {
   installResults: string;
   warningMessages: string[];
 }
+
+const NPM_PACKAGE_NAME_PATTERN = /^(@[a-z0-9-_.]+\/)?[a-z0-9-_.]+$/;
 
 const DISPLAY_SUMMARY_PATTERNS = [
   /\bblocked\b/i,
@@ -161,6 +164,19 @@ export async function executeAddDependency({
   message: Message;
   appPath: string;
 }): Promise<ExecuteAddDependencyResult> {
+  const invalidPackage = packages.find(
+    (pkg) => !NPM_PACKAGE_NAME_PATTERN.test(pkg),
+  );
+  if (invalidPackage) {
+    throw new ExecuteAddDependencyError({
+      error: new DyadError(
+        `Invalid npm package name: ${invalidPackage}`,
+        DyadErrorKind.Validation,
+      ),
+      warningMessages: [],
+    });
+  }
+
   const settings = await readEffectiveSettings();
   const warningMessages: string[] = [];
 

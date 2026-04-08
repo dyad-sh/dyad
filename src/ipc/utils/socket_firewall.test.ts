@@ -212,17 +212,17 @@ describe("buildPtyInvocation", () => {
     });
   });
 
-  it("quotes and escapes Windows arguments containing cmd metacharacters", () => {
+  it("quotes Windows arguments containing cmd metacharacters without mutating them", () => {
     expect(
       buildPtyInvocation(
         "npx",
-        ["--filter", "name&echo^%injected%!"],
+        ["--filter", "name&echo^(injected)"],
         "win32",
         "cmd.exe",
       ),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", 'npx.cmd --filter "name&echo^^%%injected%%^!"'],
+      args: ["/d", "/s", "/c", 'npx.cmd --filter "name&echo^(injected)"'],
     });
   });
 

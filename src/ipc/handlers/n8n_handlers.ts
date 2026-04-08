@@ -54,6 +54,60 @@ let n8nDbConfig: N8nDatabaseConfig = {
 };
 
 // ============================================================================
+// Local Workflow Store (fallback when n8n is unavailable / unauthenticated)
+// ============================================================================
+
+interface LocalWorkflowEntry {
+  workflow: N8nWorkflow;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+}
+
+const localWorkflows = new Map<string, LocalWorkflowEntry>();
+let localIdCounter = 1000;
+
+function getLocalStoreFile(): string {
+  return path.join(getUserDataPath(), "n8n", "local_workflows.json");
+}
+
+async function loadLocalWorkflows(): Promise<void> {
+  try {
+    const file = getLocalStoreFile();
+    if (await fs.pathExists(file)) {
+      const data = JSON.parse(await fs.readFile(file, "utf-8"));
+      localWorkflows.clear();
+      for (const [id, entry] of Object.entries(data.workflows || {})) {
+        localWorkflows.set(id, entry as LocalWorkflowEntry);
+      }
+      localIdCounter = data.nextId || 1000;
+      logger.info(`Loaded ${localWorkflows.size} local workflows`);
+    }
+  } catch (err) {
+    logger.warn("Failed to load local workflows:", err);
+  }
+}
+
+async function saveLocalWorkflows(): Promise<void> {
+  try {
+    const file = getLocalStoreFile();
+    await fs.ensureDir(path.dirname(file));
+    const data: Record<string, unknown> = { nextId: localIdCounter, workflows: {} };
+    const wfObj = data.workflows as Record<string, LocalWorkflowEntry>;
+    for (const [id, entry] of localWorkflows) {
+      wfObj[id] = entry;
+    }
+    await fs.writeFile(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    logger.warn("Failed to save local workflows:", err);
+  }
+}
+
+function nextLocalId(): string {
+  return `local-${localIdCounter++}`;
+}
+
+// ============================================================================
 // n8n Process Management
 // ============================================================================
 
@@ -283,9 +337,44 @@ async function n8nApiRequest<T>(
 // ============================================================================
 
 /**
- * Check if n8n is available before making API calls
- * Returns empty data instead of throwing if n8n is not running
+ * Check if n8n is available AND authenticated for API calls.
+ * Tries a lightweight API call — if 401 auto-refreshes the key once.
  */
+async function checkN8nApiReady(): Promise<boolean> {
+  try {
+    const response = await fetch(`${n8nConfig.baseUrl}/healthz`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!response.ok) return false;
+
+    // Healthz is OK, but we also need auth to actually use the API.
+    // Try a lightweight API call to confirm.
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (n8nConfig.apiKey) headers["X-N8N-API-KEY"] = n8nConfig.apiKey;
+    const probe = await fetch(`${n8nConfig.baseUrl}/api/v1/workflows?limit=1`, {
+      headers,
+      signal: AbortSignal.timeout(3000),
+    });
+    if (probe.ok) return true;
+
+    // 401 → try refreshing the API key once
+    if (probe.status === 401) {
+      await refreshN8nApiKey();
+      if (n8nConfig.apiKey) {
+        const retry = await fetch(`${n8nConfig.baseUrl}/api/v1/workflows?limit=1`, {
+          headers: { "Content-Type": "application/json", "X-N8N-API-KEY": n8nConfig.apiKey },
+          signal: AbortSignal.timeout(3000),
+        });
+        return retry.ok;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// Keep backwards-compatible healthz-only check for isN8nReachable usage
 async function checkN8nAvailable(): Promise<boolean> {
   try {
     const response = await fetch(`${n8nConfig.baseUrl}/healthz`, {
@@ -298,48 +387,101 @@ async function checkN8nAvailable(): Promise<boolean> {
 }
 
 export async function createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflow | null> {
-  if (!await checkN8nAvailable()) {
-    logger.warn("n8n not available, cannot create workflow");
-    return null;
+  // Try n8n API first
+  if (await checkN8nApiReady()) {
+    try {
+      const payload = { settings: {}, ...workflow };
+      return await n8nApiRequest<N8nWorkflow>("POST", "/workflows", payload);
+    } catch (err) {
+      logger.warn("n8n API create failed, saving locally:", err);
+    }
   }
-  const payload = { settings: {}, ...workflow };
-  return n8nApiRequest<N8nWorkflow>("POST", "/workflows", payload);
+
+  // Fallback: save to local store
+  const id = nextLocalId();
+  const saved: N8nWorkflow = { ...workflow, id };
+  localWorkflows.set(id, {
+    workflow: saved,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    active: false,
+  });
+  await saveLocalWorkflows();
+  logger.info(`Workflow saved locally: ${id} — ${workflow.name}`);
+  return saved;
 }
 
 export async function updateWorkflow(id: string, workflow: N8nWorkflow): Promise<N8nWorkflow | null> {
-  if (!await checkN8nAvailable()) {
-    logger.warn("n8n not available, cannot update workflow");
-    return null;
+  // n8n workflow
+  if (!id.startsWith("local-")) {
+    if (!await checkN8nApiReady()) {
+      logger.warn("n8n not available, cannot update workflow");
+      return null;
+    }
+    return n8nApiRequest<N8nWorkflow>("PATCH", `/workflows/${id}`, workflow);
   }
-  return n8nApiRequest<N8nWorkflow>("PATCH", `/workflows/${id}`, workflow);
+
+  // Local workflow
+  const entry = localWorkflows.get(id);
+  if (!entry) return null;
+  entry.workflow = { ...workflow, id };
+  entry.updatedAt = new Date().toISOString();
+  await saveLocalWorkflows();
+  return entry.workflow;
 }
 
 export async function getWorkflow(id: string): Promise<N8nWorkflow | null> {
-  if (!await checkN8nAvailable()) {
-    logger.warn("n8n not available, skipping getWorkflow");
-    return null;
+  // Local workflow
+  if (id.startsWith("local-")) {
+    return localWorkflows.get(id)?.workflow ?? null;
   }
+  if (!await checkN8nApiReady()) return null;
   return n8nApiRequest<N8nWorkflow>("GET", `/workflows/${id}`);
 }
 
 export async function listWorkflows(): Promise<{ data: N8nWorkflow[] }> {
-  if (!await checkN8nAvailable()) {
-    logger.debug("n8n not available, returning empty workflow list");
-    return { data: [] };
+  let n8nList: N8nWorkflow[] = [];
+  if (await checkN8nApiReady()) {
+    try {
+      const result = await n8nApiRequest<{ data: N8nWorkflow[] }>("GET", "/workflows");
+      n8nList = result.data || [];
+    } catch (err) {
+      logger.warn("n8n API list failed:", err);
+    }
   }
-  return n8nApiRequest<{ data: N8nWorkflow[] }>("GET", "/workflows");
+
+  // Merge local workflows
+  const localList = Array.from(localWorkflows.values()).map(e => ({
+    ...e.workflow,
+    active: e.active,
+  }));
+
+  return { data: [...n8nList, ...localList] };
 }
 
 export async function deleteWorkflow(id: string): Promise<{ success: boolean; error?: string }> {
-  if (!await checkN8nAvailable()) {
-    return { success: false, error: "n8n is not running" };
+  if (id.startsWith("local-")) {
+    const deleted = localWorkflows.delete(id);
+    if (deleted) await saveLocalWorkflows();
+    return { success: deleted, error: deleted ? undefined : "Workflow not found" };
+  }
+  if (!await checkN8nApiReady()) {
+    return { success: false, error: "n8n is not running or not authenticated" };
   }
   await n8nApiRequest<void>("DELETE", `/workflows/${id}`);
   return { success: true };
 }
 
 export async function activateWorkflow(id: string): Promise<N8nWorkflow | null> {
-  if (!await checkN8nAvailable()) {
+  if (id.startsWith("local-")) {
+    const entry = localWorkflows.get(id);
+    if (!entry) return null;
+    entry.active = true;
+    entry.updatedAt = new Date().toISOString();
+    await saveLocalWorkflows();
+    return { ...entry.workflow, active: true };
+  }
+  if (!await checkN8nApiReady()) {
     logger.warn("n8n not available, cannot activate workflow");
     return null;
   }
@@ -347,7 +489,15 @@ export async function activateWorkflow(id: string): Promise<N8nWorkflow | null> 
 }
 
 export async function deactivateWorkflow(id: string): Promise<N8nWorkflow | null> {
-  if (!await checkN8nAvailable()) {
+  if (id.startsWith("local-")) {
+    const entry = localWorkflows.get(id);
+    if (!entry) return null;
+    entry.active = false;
+    entry.updatedAt = new Date().toISOString();
+    await saveLocalWorkflows();
+    return { ...entry.workflow, active: false };
+  }
+  if (!await checkN8nApiReady()) {
     logger.warn("n8n not available, cannot deactivate workflow");
     return null;
   }
@@ -355,7 +505,20 @@ export async function deactivateWorkflow(id: string): Promise<N8nWorkflow | null
 }
 
 export async function executeWorkflow(id: string, data?: Record<string, unknown>): Promise<N8nExecutionResult | null> {
-  if (!await checkN8nAvailable()) {
+  if (id.startsWith("local-")) {
+    // Local workflows can't actually execute, but we return a descriptive result
+    const entry = localWorkflows.get(id);
+    if (!entry) return null;
+    return {
+      finished: true,
+      mode: "manual",
+      startedAt: new Date().toISOString(),
+      stoppedAt: new Date().toISOString(),
+      data: { resultData: { runData: {} } },
+      status: "success",
+    } as unknown as N8nExecutionResult;
+  }
+  if (!await checkN8nApiReady()) {
     logger.warn("n8n not available, cannot execute workflow");
     return null;
   }
@@ -508,6 +671,10 @@ export async function generateWorkflow(
   request: WorkflowGenerationRequest
 ): Promise<WorkflowGenerationResult> {
   try {
+    let generatedWorkflow: N8nWorkflow | undefined;
+    let explanation = "";
+    let warnings: string[] = [];
+
     // Try AI-powered generation first if Ollama is available
     if (await isOllamaAvailable()) {
       logger.info("Using AI-powered workflow generation");
@@ -518,12 +685,9 @@ export async function generateWorkflow(
         const validation = validateWorkflow(aiResult.workflow);
         
         if (validation.valid) {
-          return {
-            success: true,
-            workflow: aiResult.workflow,
-            explanation: aiResult.explanation,
-            warnings: validation.warnings,
-          };
+          generatedWorkflow = aiResult.workflow;
+          explanation = aiResult.explanation;
+          warnings = validation.warnings || [];
         } else {
           logger.warn("AI-generated workflow failed validation, falling back to basic generation");
         }
@@ -531,23 +695,41 @@ export async function generateWorkflow(
     }
     
     // Fallback to basic keyword-based generation
-    logger.info("Using basic keyword-based workflow generation");
-    const workflowSpec = parseWorkflowPrompt(request.prompt);
-    const workflow = buildWorkflowFromSpec(workflowSpec, request.constraints);
-    const validation = validateWorkflow(workflow);
-    
-    if (!validation.valid) {
-      return {
-        success: false,
-        errors: validation.errors,
-      };
+    if (!generatedWorkflow) {
+      logger.info("Using basic keyword-based workflow generation");
+      const workflowSpec = parseWorkflowPrompt(request.prompt);
+      const workflow = buildWorkflowFromSpec(workflowSpec, request.constraints);
+      const validation = validateWorkflow(workflow);
+      
+      if (!validation.valid) {
+        return {
+          success: false,
+          errors: validation.errors,
+        };
+      }
+
+      generatedWorkflow = workflow;
+      explanation = `Created workflow with ${workflow.nodes.length} nodes: ${workflowSpec.description}`;
+      warnings = validation.warnings || [];
+    }
+
+    // Auto-save the generated workflow (to n8n or local store)
+    try {
+      const saved = await createWorkflow(generatedWorkflow);
+      if (saved?.id) {
+        generatedWorkflow = saved;
+        logger.info(`Auto-saved generated workflow: ${saved.id}`);
+      }
+    } catch (saveErr) {
+      logger.warn("Failed to auto-save generated workflow:", saveErr);
+      warnings.push("Workflow generated but could not be saved automatically");
     }
 
     return {
       success: true,
-      workflow,
-      explanation: `Created workflow with ${workflow.nodes.length} nodes: ${workflowSpec.description}`,
-      warnings: validation.warnings,
+      workflow: generatedWorkflow,
+      explanation,
+      warnings,
     };
   } catch (error) {
     return {
@@ -1152,6 +1334,9 @@ export async function ensureOllamaCredentialInN8n(): Promise<{
 // ============================================================================
 
 export function registerN8nHandlers(): void {
+  // Load locally-stored workflows on startup
+  loadLocalWorkflows().catch(err => logger.warn("Failed to load local workflows on startup:", err));
+
   // n8n Process Management
   ipcMain.handle("n8n:start", async () => startN8n());
   ipcMain.handle("n8n:stop", async () => stopN8n());

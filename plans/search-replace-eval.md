@@ -300,7 +300,7 @@ for (const { provider, modelName, label, temperature } of MODELS) {
     `search_replace eval — ${label}`,
     () => {
       for (const c of ALL_CASES) {
-        it(c.name, async () => {
+        it.concurrent(c.name, async () => {
           if (c.kind === "exact") {
             // ── Exact-match: single tool call, no execute ──
             const result = await generateText({
@@ -421,7 +421,8 @@ export default defineConfig({
     environment: "node",
     include: ["src/__tests__/evals/**/*.eval.ts"],
     globals: true,
-    testTimeout: 120_000, // LLM calls can be slow; judge-verified cases make two calls
+    testTimeout: 120_000, // LLM calls can be slow; judge-verified cases make multiple calls
+    maxConcurrency: 5,   // parallelize across cases; keeps Dyad Engine rate-limit safe
   },
   resolve: {
     alias: { "@": resolve(__dirname, "./src") },

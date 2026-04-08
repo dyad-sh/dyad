@@ -186,8 +186,8 @@ describe("resolveExecutableName", () => {
 describe("buildPtyInvocation", () => {
   it("wraps Windows .cmd shims through cmd.exe for PTY execution", () => {
     expect(buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32")).toEqual({
-      command: "cmd.exe",
-      args: ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+      command: process.env.ComSpec ?? "cmd.exe",
+      args: ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
     });
   });
 
@@ -219,8 +219,8 @@ describe("runCommand", () => {
       });
 
       expect(runPtyCommandMock).toHaveBeenCalledWith(
-        "cmd.exe",
-        ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+        process.env.ComSpec ?? "cmd.exe",
+        ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
         expect.objectContaining({
           displayCommand: "npx --yes sfw@2.0.4",
         }),

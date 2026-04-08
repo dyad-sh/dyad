@@ -75,6 +75,10 @@ export function resolveExecutableName(
 }
 
 function quoteWindowsCmdArg(value: string): string {
+  if (!/[\s"]/u.test(value)) {
+    return value;
+  }
+
   return `"${value.replace(/"/g, '""')}"`;
 }
 

@@ -13,6 +13,7 @@ const SOCKET_FIREWALL_NPX_ARGS = [
   SOCKET_FIREWALL_PACKAGE,
 ];
 const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
+const WINDOWS_CMD_NEEDS_QUOTING_PATTERN = /[\s"&|<>^%!()]/u;
 export const SOCKET_FIREWALL_PROBE_TIMEOUT_MS = 30 * 1000;
 export const PACKAGE_MANAGER_PROBE_TIMEOUT_MS = 30 * 1000;
 export const ADD_DEPENDENCY_INSTALL_TIMEOUT_MS = DEFAULT_PTY_COMMAND_TIMEOUT_MS;
@@ -75,11 +76,19 @@ export function resolveExecutableName(
 }
 
 function quoteWindowsCmdArg(value: string): string {
-  if (!/[\s"]/u.test(value)) {
+  // `cmd.exe /d /s /c` strips an outer quoted command string, so simple args
+  // stay unquoted while empty or shell-significant values are quoted/escaped.
+  if (value !== "" && !WINDOWS_CMD_NEEDS_QUOTING_PATTERN.test(value)) {
     return value;
   }
 
-  return `"${value.replace(/"/g, '""')}"`;
+  const escapedValue = value
+    .replace(/\^/g, "^^")
+    .replace(/%/g, "%%")
+    .replace(/!/g, "^!")
+    .replace(/"/g, '""');
+
+  return `"${escapedValue}"`;
 }
 
 export function buildPtyInvocation(

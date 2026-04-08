@@ -52,11 +52,10 @@ export function WorkflowsPage() {
     refetchInterval: 5000,
   });
 
-  // Query workflows
+  // Query workflows (loads from n8n + local fallback store)
   const { data: workflowsData, isLoading: isWorkflowsLoading } = useQuery({
     queryKey: ["n8n-workflows"],
     queryFn: () => n8nClient.listWorkflows(),
-    enabled: n8nStatus?.running,
   });
 
   // Query collaborations
@@ -95,16 +94,11 @@ export function WorkflowsPage() {
     mutationFn: (prompt: string) => n8nClient.generateWorkflow({ prompt }),
     onSuccess: async (result) => {
       if (result.success && result.workflow) {
-        // Create the workflow in n8n
-        try {
-          await n8nClient.createWorkflow(result.workflow);
-          toast.success("Workflow generated and created!");
-          queryClient.invalidateQueries({ queryKey: ["n8n-workflows"] });
-          setIsGenerateDialogOpen(false);
-          setWorkflowPrompt("");
-        } catch (error) {
-          toast.error(`Failed to create workflow: ${error}`);
-        }
+        // Workflow is auto-saved by the backend, just refresh the list
+        toast.success("Workflow generated and saved!");
+        queryClient.invalidateQueries({ queryKey: ["n8n-workflows"] });
+        setIsGenerateDialogOpen(false);
+        setWorkflowPrompt("");
       } else {
         toast.error(`Generation failed: ${result.errors?.join(", ")}`);
       }

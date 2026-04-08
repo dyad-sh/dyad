@@ -68,6 +68,10 @@ export class OpenClawGatewayService extends EventEmitter {
   /** WebSocket client used in bridge mode */
   private bridgeClient: WebSocket | null = null;
   private bridgeReconnectTimer: NodeJS.Timeout | null = null;
+  /** True when an external gateway is reachable via HTTP health (even if WS bridge fails) */
+  private externalGatewayAlive = false;
+  /** Count of consecutive bridge WS connect failures (to throttle retries) */
+  private bridgeConnectFailures = 0;
   
   private constructor() {
     super();
@@ -306,6 +310,8 @@ export class OpenClawGatewayService extends EventEmitter {
       this.bridgeClient = null;
       this.bridgeMode = false;
     }
+    this.externalGatewayAlive = false;
+    this.bridgeConnectFailures = 0;
     
     // Close all client connections
     for (const [id, ws] of this.clients) {
@@ -366,18 +372,62 @@ export class OpenClawGatewayService extends EventEmitter {
     const wsHost = host === "0.0.0.0" ? "127.0.0.1" : host;
     const url = `ws://${wsHost}:${port}`;
     
-    return new Promise<void>((resolve, reject) => {
+    // Mark external gateway as alive — even if WS bridge fails, the gateway IS running
+    this.externalGatewayAlive = true;
+    this.updateStatus("connected");
+    this.state.connectedAt = this.state.connectedAt || Date.now();
+    this.state.version = "bridge";
+    
+    // Start a periodic health check that maintains the alive flag
+    if (!this.bridgeReconnectTimer) {
+      this.bridgeReconnectTimer = setInterval(async () => {
+        const alive = await this.probeExternalGateway(
+          host === "0.0.0.0" ? "127.0.0.1" : host, port);
+        this.externalGatewayAlive = alive;
+        if (alive) {
+          // As long as external gateway is reachable, show connected
+          if (this.state.status !== "connected") {
+            this.updateStatus("connected");
+          }
+          // Try WS bridge reconnect if not connected (throttled)
+          if (!this.bridgeClient || this.bridgeClient.readyState !== WebSocket.OPEN) {
+            if (this.bridgeConnectFailures < 3) {
+              this.attemptBridgeWs(wsHost, port);
+            }
+            // After 3 failures, stop retrying — the connect frame is being
+            // rejected by the gateway (1008), so retrying won't help until
+            // the gateway restarts or the client ID format changes.
+          }
+        } else {
+          // External gateway went down
+          this.externalGatewayAlive = false;
+          this.bridgeClient = null;
+          this.bridgeMode = false;
+          this.updateStatus("disconnected");
+          logger.warn("External gateway no longer reachable");
+        }
+      }, 15_000);
+    }
+    
+    // Attempt the WS bridge (non-blocking — status is already "connected")
+    this.attemptBridgeWs(wsHost, port);
+  }
+
+  /** Non-blocking attempt to establish WS bridge to external gateway */
+  private attemptBridgeWs(wsHost: string, port: number): void {
+    const url = `ws://${wsHost}:${port}`;
+    
+    try {
       const ws = new WebSocket(url);
-      
-      const connectTimeout = setTimeout(() => {
-        ws.terminate();
-        reject(new Error("Bridge connection to external gateway timed out"));
-      }, 5000);
-      
+      const connectTimeout = setTimeout(() => { ws.terminate(); }, 5000);
+
       ws.on("open", () => {
         clearTimeout(connectTimeout);
         this.bridgeClient = ws;
         this.bridgeMode = true;
+        // Don't reset bridgeConnectFailures here — the server may accept the WS
+        // upgrade but then reject the connect frame with 1008, causing an
+        // infinite retry loop if we reset the counter on every open event.
         
         // Send the OpenClaw protocol connect frame
         const token = process.env.OPENCLAW_GATEWAY_TOKEN || "";
@@ -402,34 +452,18 @@ export class OpenClawGatewayService extends EventEmitter {
         };
         ws.send(JSON.stringify(connectFrame));
         
-        this.updateStatus("connected");
-        this.state.connectedAt = Date.now();
-        this.state.version = "bridge";
-        
         this.emitEvent("gateway:connected", { host: wsHost, port, url, bridge: true });
-        logger.info(`Bridge mode active — connected to external gateway at ${url}`);
-        
-        // Periodic health check for the bridge connection
-        this.bridgeReconnectTimer = setInterval(async () => {
-          if (!this.bridgeClient || this.bridgeClient.readyState !== WebSocket.OPEN) {
-            logger.warn("Bridge connection lost, attempting reconnect...");
-            this.handleBridgeDisconnect();
-          }
-        }, 15_000);
-        
-        resolve();
+        logger.info(`Bridge WS connected to external gateway at ${url}`);
       });
       
       ws.on("message", (data: Buffer | string) => {
         try {
           const message = JSON.parse(data.toString());
-          // Forward all messages from the external gateway as local events
+          // Successfully receiving messages means bridge is fully working
+          this.bridgeConnectFailures = 0;
           this.emitEvent("message:received", { clientId: "external-gateway", message });
-          
-          // Persist channel messages (Discord, Telegram, etc.) to DB
           this.persistChannelMessage(message).catch(() => {});
           
-          // Emit typed events for specific message types
           if (message.type === "heartbeat") {
             this.state.lastHeartbeat = Date.now();
           } else if (message.type) {
@@ -441,28 +475,39 @@ export class OpenClawGatewayService extends EventEmitter {
       });
       
       ws.on("close", (code, reason) => {
-        clearTimeout(connectTimeout);
-        logger.warn(`Bridge connection closed: ${code} ${reason}`);
-        this.handleBridgeDisconnect();
+        if (code === 1008) {
+          // Protocol/auth rejection — don't spam reconnect, just log once
+          this.bridgeConnectFailures++;
+          if (this.bridgeConnectFailures <= 1) {
+            logger.warn(`Bridge WS connect frame rejected (${code}): ${reason} — gateway is still reachable via HTTP`);
+          }
+        } else {
+          logger.debug(`Bridge WS closed: ${code} ${reason}`);
+        }
+        this.bridgeClient = null;
+        // Don't change status — externalGatewayAlive controls that now
       });
       
       ws.on("error", (error) => {
         clearTimeout(connectTimeout);
-        logger.error("Bridge WebSocket error:", error);
-        if (!this.bridgeMode) {
-          reject(error);
-        }
+        this.bridgeConnectFailures++;
+        logger.debug("Bridge WS error:", error.message);
+        // Don't change status — externalGatewayAlive controls that
       });
-    });
+    } catch (err) {
+      this.bridgeConnectFailures++;
+      logger.debug("Failed to create bridge WS:", err);
+    }
   }
   
-  /** Handle bridge disconnect — try to reconnect or fall back */
+  /** Handle bridge disconnect — the periodic health timer will handle reconnect */
   private handleBridgeDisconnect(): void {
-    if (this.bridgeReconnectTimer) {
-      clearInterval(this.bridgeReconnectTimer);
-      this.bridgeReconnectTimer = null;
-    }
     this.bridgeClient = null;
+    // If external gateway is still alive via HTTP, keep status as connected
+    if (this.externalGatewayAlive) {
+      // Status stays "connected" — the gateway is reachable
+      return;
+    }
     this.bridgeMode = false;
     this.updateStatus("reconnecting");
     
@@ -1744,7 +1789,11 @@ ${this.claudeCodeConfig.sandboxMode ? "SANDBOX MODE: Changes will be previewed b
   }
   
   getGatewayState(): OpenClawGatewayState {
-    return { ...this.state, bridged: this.bridgeMode };
+    // In bridge mode, reflect the external gateway's reachability as our status
+    if (this.externalGatewayAlive && this.state.status !== "connected") {
+      this.state.status = "connected";
+    }
+    return { ...this.state, bridged: this.bridgeMode || this.externalGatewayAlive };
   }
   
   // ===========================================================================

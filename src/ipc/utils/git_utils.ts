@@ -556,6 +556,7 @@ export async function gitDiscardAllChanges({
     );
   } else {
     const matrix = await git.statusMatrix({ fs, dir: path });
+    const removedFileDirs = new Set<string>();
 
     for (const row of matrix) {
       const [filepath, headStatus, workdirStatus, stageStatus] = row;
@@ -578,30 +579,40 @@ export async function gitDiscardAllChanges({
         // Delete from disk if still present
         if (fs.existsSync(fullPath)) {
           await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
         }
       } else if (workdirStatus !== 0) {
         // Purely untracked file/directory: just delete from disk
         if (fs.existsSync(fullPath)) {
           await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
         }
       }
     }
 
-    // Prune empty directories left behind (matching native git clean -fd behavior)
-    const pruneEmptyDirs = async (dir: string) => {
-      const entries = await fsPromises.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory() && entry.name !== ".git") {
-          const fullDir = pathModule.join(dir, entry.name);
-          await pruneEmptyDirs(fullDir);
-          const remaining = await fsPromises.readdir(fullDir);
-          if (remaining.length === 0) {
-            await fsPromises.rmdir(fullDir);
-          }
-        }
+    // Prune empty directories only where files were actually removed.
+    // Collect each dir and its parent chain up to the repo root, then
+    // sort deepest-first so children are removed before parents.
+    const dirsToCheck = new Set<string>();
+    for (const dir of removedFileDirs) {
+      let current = dir;
+      while (current !== path && current.startsWith(path)) {
+        dirsToCheck.add(current);
+        current = pathModule.dirname(current);
       }
-    };
-    await pruneEmptyDirs(path);
+    }
+    const sorted = [...dirsToCheck].sort((a, b) => b.length - a.length);
+    for (const dir of sorted) {
+      try {
+        const remaining = await fsPromises.readdir(dir);
+        if (remaining.length === 0) {
+          await fsPromises.rmdir(dir);
+        }
+      } catch {
+        // Ignore errors (broken symlinks, permission issues) so the
+        // discard operation isn't aborted by a single failing directory.
+      }
+    }
   }
 }
 

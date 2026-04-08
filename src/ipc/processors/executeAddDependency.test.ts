@@ -127,8 +127,77 @@ describe("executeAddDependency", () => {
     expect(caughtError).toBeInstanceOf(ExecuteAddDependencyError);
     expect(caughtError).toMatchObject({
       displaySummary: "Socket Firewall blocked react",
+      displayDetails: "Socket Firewall blocked react\nPolicy: malware",
+      warningMessages: [],
+    });
+  });
+
+  it("filters PTY progress noise out of expanded display details", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+      warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
+    });
+    runCommandMock.mockRejectedValueOnce(
+      new CommandExecutionError({
+        message: "npm install failed",
+        stdout: [
+          "Progress: resolved 1, reused 0, downloaded 0, added 0",
+          "npm warn deprecated left-pad@1.3.0: use String.prototype.padStart()",
+          "npm ERR! code ERESOLVE",
+          "npm ERR! ERESOLVE unable to resolve dependency tree",
+          "npm ERR! A complete log of this run can be found in:",
+          "npm ERR!     /Users/me/.npm/_logs/2026-04-08-debug-0.log",
+        ].join("\n"),
+        exitCode: 1,
+      }),
+    );
+
+    await expect(
+      executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toMatchObject({
       displayDetails:
-        "Progress: resolved 12, reused 0, downloaded 0, added 0\nSocket Firewall blocked react\nPolicy: malware",
+        "npm ERR! code ERESOLVE\nnpm ERR! ERESOLVE unable to resolve dependency tree",
+      displaySummary: "npm ERR! ERESOLVE unable to resolve dependency tree",
+      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
+  });
+
+  it("falls back to the error message when PTY output only contains progress noise", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: true,
+    });
+    runCommandMock.mockRejectedValueOnce(
+      new CommandExecutionError({
+        message: "Command 'pnpm add react' was terminated by signal 15",
+        stdout: [
+          "Progress: resolved 50, reused 0, downloaded 0, added 0",
+          "Packages: +1",
+        ].join("\n"),
+        exitCode: 0,
+      }),
+    );
+
+    await expect(
+      executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toMatchObject({
+      displayDetails: "Command 'pnpm add react' was terminated by signal 15",
+      displaySummary: "Command 'pnpm add react' was terminated by signal 15",
       warningMessages: [],
     });
   });

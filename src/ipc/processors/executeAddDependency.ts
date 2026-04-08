@@ -55,11 +55,27 @@ function isDisplaySummaryNoise(line: string): boolean {
   return DISPLAY_SUMMARY_NOISE_PATTERNS.some((pattern) => pattern.test(line));
 }
 
-function getDisplaySummary(value: string): string | undefined {
-  const lines = value
+function getDisplayLines(value: string): string[] {
+  return value
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function getFilteredDisplayDetails(value: string): string | undefined {
+  const lines = getDisplayLines(value).filter(
+    (line) => !isDisplaySummaryNoise(line),
+  );
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return lines.join("\n");
+}
+
+function getDisplaySummary(value: string): string | undefined {
+  const lines = getDisplayLines(value);
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
@@ -95,7 +111,10 @@ export class ExecuteAddDependencyError extends Error {
     warningMessages: string[];
   }) {
     const message = error instanceof Error ? error.message : String(error);
-    const displayDetails = getCommandExecutionDisplayDetails(error) ?? message;
+    const commandDisplayDetails = getCommandExecutionDisplayDetails(error);
+    const displayDetails = commandDisplayDetails
+      ? (getFilteredDisplayDetails(commandDisplayDetails) ?? message)
+      : message;
 
     super(message);
     this.name = "ExecuteAddDependencyError";

@@ -130,6 +130,9 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(contentUpdate?.content).toContain(
       "Socket Firewall blocked react&lt;malware&gt;\nPolicy: malware package",
     );
+    expect(contentUpdate?.content).not.toContain(
+      "Progress: resolved 12, reused 0, downloaded 0, added 0",
+    );
   });
 
   it("preserves warning messages when a later processing step throws", async () => {

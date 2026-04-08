@@ -122,7 +122,11 @@ async function spawnDrizzleKit({
     const proc = spawn("node", [drizzleKitBin, ...args], {
       cwd,
       stdio: "pipe",
-      env: { ...process.env, NODE_PATH: nodeModulesPath },
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        NODE_PATH: nodeModulesPath,
+      },
     });
 
     let stdout = "";

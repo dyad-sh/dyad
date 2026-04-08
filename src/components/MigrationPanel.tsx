@@ -64,21 +64,32 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
         {pushMutation.isSuccess &&
           pushMutation.data?.success &&
           !pushMutation.data?.noChanges && (
-            <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3"
+            >
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
               {t("integrations.migration.success")}
             </div>
           )}
 
         {pushMutation.isSuccess && pushMutation.data?.noChanges && (
-          <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3"
+          >
             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
             {t("integrations.migration.alreadyInSync")}
           </div>
         )}
 
         {pushMutation.isError && (
-          <div className="text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 space-y-2">
+          <div
+            role="alert"
+            className="text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 space-y-2"
+          >
             <div className="flex items-start gap-2">
               <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>{t("integrations.migration.errorMessage")}</span>

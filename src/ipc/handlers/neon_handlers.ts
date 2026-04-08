@@ -132,21 +132,14 @@ async function ensureNeonAuth({
  * if Neon Auth activation fails.
  */
 async function autoInjectNeonEnvVars({
-  appId,
+  appPath,
   projectId,
   branchId,
 }: {
-  appId: number;
+  appPath: string;
   projectId: string;
   branchId: string;
 }): Promise<string | undefined> {
-  const appRecord = await db
-    .select()
-    .from(apps)
-    .where(eq(apps.id, appId))
-    .limit(1);
-  if (appRecord.length === 0) return;
-
   const connectionUri = await getConnectionUri({ projectId, branchId });
   // Attempt to ensure Neon Auth is active; capture any error as a warning
   let neonAuthBaseUrl: string | undefined;
@@ -160,7 +153,7 @@ async function autoInjectNeonEnvVars({
 
   // Always write env vars (DATABASE_URL, POSTGRES_URL, and auth URL if available)
   await updateNeonEnvVars({
-    appPath: appRecord[0].path,
+    appPath,
     connectionUri,
     neonAuthBaseUrl,
   });
@@ -195,6 +188,20 @@ export function registerNeonHandlers() {
     logger.info(`Creating Neon project: ${name} for app ${appId}`);
 
     await assertNoSupabaseProject(appId);
+
+    // Fetch app path upfront for env-var injection later
+    const appRecord = await db
+      .select({ path: apps.path })
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (appRecord.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+    const appPath = appRecord[0].path;
 
     try {
       // Get the organization ID
@@ -310,7 +317,7 @@ export function registerNeonHandlers() {
 
         // Auto-inject env vars into the app's .env.local
         const warning = await autoInjectNeonEnvVars({
-          appId,
+          appPath,
           projectId: project.id,
           branchId: developmentBranch.id,
         });
@@ -518,6 +525,20 @@ export function registerNeonHandlers() {
 
     await assertNoSupabaseProject(appId);
 
+    // Fetch app path upfront for env-var injection later
+    const appRecord = await db
+      .select({ path: apps.path })
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (appRecord.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+    const appPath = appRecord[0].path;
+
     try {
       const neonClient = await getNeonClient();
 
@@ -564,7 +585,7 @@ export function registerNeonHandlers() {
       let warning: string | undefined;
       if (activeBranchId) {
         warning = await autoInjectNeonEnvVars({
-          appId,
+          appPath,
           projectId,
           branchId: activeBranchId,
         });
@@ -663,8 +684,8 @@ export function registerNeonHandlers() {
         .where(eq(apps.id, appId));
 
       const warning = await autoInjectNeonEnvVars({
-        appId,
-        projectId: appData.neonProjectId,
+        appPath: appData.path,
+        projectId: appData.neonProjectId!,
         branchId,
       });
 

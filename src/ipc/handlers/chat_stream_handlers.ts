@@ -32,7 +32,11 @@ import {
   getNeonClientCode,
   getNeonContext,
 } from "../../neon_admin/neon_context";
-import { getNeonClient } from "../../neon_admin/neon_management_client";
+import { getCachedEmailPasswordConfig } from "../../neon_admin/neon_management_client";
+import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "../../shared/chatCancellation";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
@@ -692,13 +696,15 @@ ${componentSnippet}
           codebaseInfo.length / 4,
         );
 
-        // Prepare message history for the AI
-        const messageHistory = updatedChat.messages.map((message) => ({
-          role: message.role as "user" | "assistant" | "system",
-          content: message.content,
-          sourceCommitHash: message.sourceCommitHash,
-          commitHash: message.commitHash,
-        }));
+        // Prepare message history for the AI, filtering out cancelled message pairs
+        const messageHistory = filterCancelledMessagePairs(
+          updatedChat.messages.map((message) => ({
+            role: message.role as "user" | "assistant" | "system",
+            content: message.content,
+            sourceCommitHash: message.sourceCommitHash,
+            commitHash: message.commitHash,
+          })),
+        );
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
@@ -836,18 +842,15 @@ ${componentSnippet}
             updatedChat.app.neonActiveBranchId ??
             updatedChat.app.neonDevelopmentBranchId;
 
-          // Fetch email verification state for the active branch
+          // Fetch email verification state for the active branch (uses TTL cache)
           let emailVerificationEnabled = false;
           if (branchId) {
             try {
-              const neonApiClient = await getNeonClient();
-              const emailConfig =
-                await neonApiClient.getNeonAuthEmailAndPasswordConfig(
-                  updatedChat.app.neonProjectId,
-                  branchId,
-                );
-              emailVerificationEnabled =
-                emailConfig.data.require_email_verification;
+              const emailConfig = await getCachedEmailPasswordConfig(
+                updatedChat.app.neonProjectId,
+                branchId,
+              );
+              emailVerificationEnabled = emailConfig.require_email_verification;
             } catch {
               // Best-effort: proceed without email verification guidance
             }
@@ -1668,9 +1671,9 @@ ${problemReport.problems
                 await db
                   .update(messages)
                   .set({
-                    content: `${partialResponse}
-
-[Response cancelled by user]`,
+                    content: appendCancelledResponseNotice(
+                      partialResponse ?? "",
+                    ),
                   })
                   .where(eq(messages.id, placeholderAssistantMessage.id));
 

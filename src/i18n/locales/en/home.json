@@ -561,6 +561,7 @@
       "selectAProject": "Select a project...",
       "noProjectsFound": "No projects found. Create a new project to get started.",
       "refreshProjects": "Refresh projects",
+      "retry": "Retry",
       "errorLoadingProjects": "Failed to load projects: {{message}}",
       "projectConnected": "Neon project connected successfully",
       "failedConnectProject": "Failed to connect project: {{error}}",

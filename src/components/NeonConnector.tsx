@@ -120,14 +120,9 @@ export function NeonConnector({ appId }: { appId: number }) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
       });
+      // Invalidate all neon queries by prefix so stale branchId keys are covered
       queryClient.invalidateQueries({
-        queryKey: queryKeys.neon.project({ appId }),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.neon.emailPasswordConfig({
-          appId,
-          branchId: app?.neonActiveBranchId ?? null,
-        }),
+        queryKey: queryKeys.neon.all,
       });
     } catch (error) {
       toast.error(
@@ -412,6 +407,8 @@ export function NeonConnector({ appId }: { appId: number }) {
                 onClick={() => refetchProjects()}
                 disabled={isFetchingProjects}
                 title={t("integrations.neon.refreshProjects")}
+                aria-label={t("integrations.neon.refreshProjects")}
+                aria-busy={isFetchingProjects}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
@@ -439,7 +436,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                 className="mt-2"
                 onClick={() => refetchProjects()}
               >
-                Retry
+                {t("integrations.neon.retry")}
               </Button>
             </div>
           ) : showCreateForm ? (

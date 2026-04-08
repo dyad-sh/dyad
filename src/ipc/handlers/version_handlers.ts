@@ -26,7 +26,7 @@ import {
   getNeonClient,
   getNeonErrorMessage,
 } from "../../neon_admin/neon_management_client";
-import { getBranchRoleName } from "../../neon_admin/neon_context";
+import { getConnectionUri } from "../../neon_admin/neon_context";
 import {
   updatePostgresUrlEnvVar,
   updateDbPushEnvVar,
@@ -417,16 +417,9 @@ export function registerVersionHandlers() {
 
           if (version && version.neonDbTimestamp) {
             // SWITCH the env var for POSTGRES_URL to the preview branch
-            const neonClient = await getNeonClient();
-            const previewRoleName = await getBranchRoleName({
+            const connectionUri = await getConnectionUri({
               projectId: app.neonProjectId,
               branchId: app.neonPreviewBranchId,
-            });
-            const connectionUri = await neonClient.getConnectionUri({
-              projectId: app.neonProjectId,
-              branch_id: app.neonPreviewBranchId,
-              database_name: "neondb",
-              role_name: previewRoleName,
             });
 
             await restoreBranchForPreview({
@@ -439,7 +432,7 @@ export function registerVersionHandlers() {
 
             await updatePostgresUrlEnvVar({
               appPath: app.path,
-              connectionUri: connectionUri.data.uri,
+              connectionUri,
             });
             logger.info(
               `Switched Postgres to preview branch for app ${appId} commit ${version.commitHash} dbTimestamp=${version.neonDbTimestamp}`,
@@ -466,21 +459,14 @@ async function switchPostgresToDevelopmentBranch({
   appPath: string;
 }) {
   // SWITCH the env var for POSTGRES_URL to the development branch
-  const neonClient = await getNeonClient();
-  const devRoleName = await getBranchRoleName({
+  const connectionUri = await getConnectionUri({
     projectId: neonProjectId,
     branchId: neonDevelopmentBranchId,
-  });
-  const connectionUri = await neonClient.getConnectionUri({
-    projectId: neonProjectId,
-    branch_id: neonDevelopmentBranchId,
-    database_name: "neondb",
-    role_name: devRoleName,
   });
 
   await updatePostgresUrlEnvVar({
     appPath,
-    connectionUri: connectionUri.data.uri,
+    connectionUri,
   });
 
   await updateDbPushEnvVar({

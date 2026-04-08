@@ -27,12 +27,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { getNeonAvailableSystemPrompt } from "../../prompts/neon_prompt";
-import {
-  getNeonClientCode,
-  getNeonContext,
-} from "../../neon_admin/neon_context";
-import { getCachedEmailPasswordConfig } from "../../neon_admin/neon_management_client";
+import { buildNeonPromptAdditions } from "../../neon_admin/neon_prompt_context";
 import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
@@ -837,43 +832,19 @@ ${componentSnippet}
           // Neon is connected — inject Neon prompt instead of Supabase
           const appPath = getDyadAppPath(updatedChat.app.path);
           const frameworkType = detectFrameworkType(appPath);
-          const neonClientCode = getNeonClientCode(frameworkType);
           const branchId =
             updatedChat.app.neonActiveBranchId ??
             updatedChat.app.neonDevelopmentBranchId;
 
-          // Fetch email verification state for the active branch (uses TTL cache)
-          let emailVerificationEnabled = false;
-          if (branchId) {
-            try {
-              const emailConfig = await getCachedEmailPasswordConfig(
-                updatedChat.app.neonProjectId,
-                branchId,
-              );
-              emailVerificationEnabled = emailConfig.require_email_verification;
-            } catch {
-              // Best-effort: proceed without email verification guidance
-            }
-          }
-
           systemPrompt +=
             "\n\n" +
-            getNeonAvailableSystemPrompt(neonClientCode, frameworkType, {
-              emailVerificationEnabled,
-            }) +
+            (await buildNeonPromptAdditions({
+              projectId: updatedChat.app.neonProjectId,
+              branchId,
+              frameworkType,
+              includeContext: settings.selectedChatMode !== "local-agent",
+            })) +
             "\n\n";
-
-          if (settings.selectedChatMode !== "local-agent" && branchId) {
-            try {
-              systemPrompt += await getNeonContext({
-                projectId: updatedChat.app.neonProjectId,
-                branchId,
-                frameworkType,
-              });
-            } catch {
-              // Best-effort: proceed without Neon context
-            }
-          }
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
           settings.selectedChatMode !== "local-agent" &&

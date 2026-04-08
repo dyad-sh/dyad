@@ -609,9 +609,9 @@
         "neon": {
           "name": "Neon",
           "features": {
-            "serverlessPostgres": "无服务器 Postgres",
-            "databaseBranching": "数据库分支",
-            "autoscaling": "自动扩缩容"
+            "serverlessPostgres": "托管 Postgres 与分支",
+            "databaseBranching": "身份验证与邮箱验证",
+            "autoscaling": "无服务器按需缩容到零"
           }
         }
       }

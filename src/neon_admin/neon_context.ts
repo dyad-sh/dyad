@@ -331,7 +331,7 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function getNeonContext({
   projectId,
   branchId,
-  frameworkType,
+  frameworkType: _frameworkType,
 }: {
   projectId: string;
   branchId: string;
@@ -341,14 +341,5 @@ export async function getNeonContext({
     return "[[TEST_BUILD_NEON_CONTEXT]]";
   }
 
-  const projectInfo = await getNeonProjectInfo({ projectId, branchId });
-  const clientCode = getNeonClientCode(frameworkType);
-
-  return `${projectInfo}
-
-## Client Code
-\`\`\`typescript
-${clientCode}
-\`\`\`
-`;
+  return getNeonProjectInfo({ projectId, branchId });
 }

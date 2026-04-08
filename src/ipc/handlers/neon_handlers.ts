@@ -10,11 +10,7 @@ import {
   getNeonOrganizationId,
   invalidateEmailPasswordConfigCache,
 } from "../../neon_admin/neon_management_client";
-import {
-  executeNeonSql,
-  getNeonTableSchema,
-  getConnectionUri,
-} from "../../neon_admin/neon_context";
+import { getConnectionUri } from "../../neon_admin/neon_context";
 import { neonContracts, type NeonBranch } from "../types/neon";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -742,53 +738,6 @@ export function registerNeonHandlers() {
     }
   });
 
-  // Execute SQL on a Neon database
-  createTypedHandler(neonContracts.executeSql, async (_, params) => {
-    const { appId, query } = params;
-    logger.info(`Executing SQL for app ${appId}`);
-
-    const { appData, branchId } = await getAppWithNeonBranch(appId);
-
-    const result = await executeNeonSql({
-      projectId: appData.neonProjectId!,
-      branchId,
-      query,
-    });
-
-    return { result };
-  });
-
-  // Get connection URI for a Neon project
-  createTypedHandler(neonContracts.getConnectionUri, async (_, params) => {
-    const { appId } = params;
-    logger.info(`Getting connection URI for app ${appId}`);
-
-    const { appData, branchId } = await getAppWithNeonBranch(appId);
-
-    const connectionUri = await getConnectionUri({
-      projectId: appData.neonProjectId!,
-      branchId,
-    });
-
-    return { connectionUri };
-  });
-
-  // Get table schema from a Neon database
-  createTypedHandler(neonContracts.getTableSchema, async (_, params) => {
-    const { appId, tableName } = params;
-    logger.info(`Getting table schema for app ${appId}`);
-
-    const { appData, branchId } = await getAppWithNeonBranch(appId);
-
-    const schema = await getNeonTableSchema({
-      projectId: appData.neonProjectId!,
-      branchId,
-      tableName,
-    });
-
-    return { schema };
-  });
-
   // Get email and password config for the active branch
   createTypedHandler(
     neonContracts.getEmailPasswordConfig,
@@ -810,9 +759,7 @@ export function registerNeonHandlers() {
         branchId,
         {
           require_email_verification: params.requireEmailVerification,
-          ...(params.requireEmailVerification && {
-            send_verification_email_on_sign_up: true,
-          }),
+          send_verification_email_on_sign_up: params.requireEmailVerification,
         },
       );
       invalidateEmailPasswordConfigCache(appData.neonProjectId!, branchId);

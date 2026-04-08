@@ -5,8 +5,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { neon } from "@neondatabase/serverless";
 
 import log from "electron-log";
-import { getNeonClient } from "@/neon_admin/neon_management_client";
-import { getBranchRoleName } from "@/neon_admin/neon_context";
+import { getConnectionUri } from "@/neon_admin/neon_context";
 import { getCurrentCommitHash } from "./git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -77,21 +76,14 @@ export async function storeDbTimestampAtCurrentVersion({
 
     logger.info(`Current commit hash: ${currentCommitHash}`);
 
-    const neonClient = await getNeonClient();
-    const roleName = await getBranchRoleName({
+    const connectionUri = await getConnectionUri({
       projectId: app.neonProjectId,
       branchId,
-    });
-    const connectionUri = await neonClient.getConnectionUri({
-      projectId: app.neonProjectId,
-      branch_id: branchId,
-      database_name: "neondb",
-      role_name: roleName,
     });
 
     // 3. Get the current timestamp from Neon
     const currentTimestamp = await getLastUpdatedTimestampFromNeon({
-      neonConnectionUri: connectionUri.data.uri,
+      neonConnectionUri: connectionUri,
     });
 
     logger.info(`Current timestamp from Neon: ${currentTimestamp}`);

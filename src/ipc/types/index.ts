@@ -206,15 +206,7 @@ export type {
   GetNeonProjectParams,
   GetNeonProjectResponse,
   ListNeonProjectsResponse,
-  SetNeonAppProjectParams,
-  UnsetNeonAppProjectParams,
-  SetNeonActiveBranchParams,
-  ExecuteNeonSqlParams,
-  GetNeonConnectionUriParams,
-  GetNeonTableSchemaParams,
   NeonAuthEmailAndPasswordConfig,
-  GetNeonEmailPasswordConfigParams,
-  UpdateNeonEmailVerificationParams,
 } from "./neon";
 
 // Migration types

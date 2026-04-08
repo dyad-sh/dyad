@@ -75,50 +75,14 @@ export const SetNeonAppProjectParamsSchema = z.object({
   projectId: z.string(),
 });
 
-export type SetNeonAppProjectParams = z.infer<
-  typeof SetNeonAppProjectParamsSchema
->;
-
 export const UnsetNeonAppProjectParamsSchema = z.object({
   appId: z.number(),
 });
-
-export type UnsetNeonAppProjectParams = z.infer<
-  typeof UnsetNeonAppProjectParamsSchema
->;
 
 export const SetNeonActiveBranchParamsSchema = z.object({
   appId: z.number(),
   branchId: z.string(),
 });
-
-export type SetNeonActiveBranchParams = z.infer<
-  typeof SetNeonActiveBranchParamsSchema
->;
-
-export const ExecuteNeonSqlParamsSchema = z.object({
-  appId: z.number(),
-  query: z.string(),
-});
-
-export type ExecuteNeonSqlParams = z.infer<typeof ExecuteNeonSqlParamsSchema>;
-
-export const GetNeonConnectionUriParamsSchema = z.object({
-  appId: z.number(),
-});
-
-export type GetNeonConnectionUriParams = z.infer<
-  typeof GetNeonConnectionUriParamsSchema
->;
-
-export const GetNeonTableSchemaParamsSchema = z.object({
-  appId: z.number(),
-  tableName: z.string().optional(),
-});
-
-export type GetNeonTableSchemaParams = z.infer<
-  typeof GetNeonTableSchemaParamsSchema
->;
 
 export const NeonAuthEmailAndPasswordConfigSchema = z.object({
   enabled: z.boolean(),
@@ -138,18 +102,10 @@ export const GetNeonEmailPasswordConfigParamsSchema = z.object({
   appId: z.number(),
 });
 
-export type GetNeonEmailPasswordConfigParams = z.infer<
-  typeof GetNeonEmailPasswordConfigParamsSchema
->;
-
 export const UpdateNeonEmailVerificationParamsSchema = z.object({
   appId: z.number(),
   requireEmailVerification: z.boolean(),
 });
-
-export type UpdateNeonEmailVerificationParams = z.infer<
-  typeof UpdateNeonEmailVerificationParamsSchema
->;
 
 // =============================================================================
 // Neon Contracts
@@ -196,24 +152,6 @@ export const neonContracts = {
       success: z.boolean(),
       warning: z.string().optional(),
     }),
-  }),
-
-  executeSql: defineContract({
-    channel: "neon:execute-sql",
-    input: ExecuteNeonSqlParamsSchema,
-    output: z.object({ result: z.string() }),
-  }),
-
-  getConnectionUri: defineContract({
-    channel: "neon:get-connection-uri",
-    input: GetNeonConnectionUriParamsSchema,
-    output: z.object({ connectionUri: z.string() }),
-  }),
-
-  getTableSchema: defineContract({
-    channel: "neon:get-table-schema",
-    input: GetNeonTableSchemaParamsSchema,
-    output: z.object({ schema: z.string() }),
   }),
 
   getEmailPasswordConfig: defineContract({

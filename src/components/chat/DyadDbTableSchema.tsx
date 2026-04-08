@@ -40,7 +40,9 @@ export function DyadDbTableSchema({
       isExpanded={isContentVisible}
     >
       <DyadCardHeader icon={<Table2 size={15} />} accentColor="teal">
-        <DyadBadge color="teal">{provider} Table Schema</DyadBadge>
+        <DyadBadge color="teal">
+          {table ? "Table Schema" : `${provider} Table Schema`}
+        </DyadBadge>
         {table && (
           <span className="font-medium text-sm text-foreground truncate">
             {table}

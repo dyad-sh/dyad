@@ -609,9 +609,9 @@
         "neon": {
           "name": "Neon",
           "features": {
-            "serverlessPostgres": "Postgres serverless",
-            "databaseBranching": "Branching de banco de dados",
-            "autoscaling": "Escalonamento automático"
+            "serverlessPostgres": "Postgres gerenciado com branching",
+            "databaseBranching": "Auth e verificação por email",
+            "autoscaling": "Escala serverless até zero"
           }
         }
       }

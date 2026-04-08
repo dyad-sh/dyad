@@ -1,13 +1,58 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
+
+const { runPtyCommandMock } = vi.hoisted(() => ({
+  runPtyCommandMock: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/pty_command_runner", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/pty_command_runner")
+  >("@/ipc/utils/pty_command_runner");
+
+  return {
+    ...actual,
+    runPtyCommand: runPtyCommandMock,
+  };
+});
+
 import {
+  buildPtyInvocation,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
+  PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+  resolveExecutableName,
+  runCommand,
+  SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
-  shouldUseCommandShell,
   type CommandRunner,
   type PackageManager,
 } from "./socket_firewall";
+
+async function withPlatform<T>(
+  platform: NodeJS.Platform,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const originalPlatform = process.platform;
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: originalPlatform,
+    });
+  }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("detectPreferredPackageManager", () => {
   it("prefers pnpm when available", async () => {
@@ -16,7 +61,9 @@ describe("detectPreferredPackageManager", () => {
       .mockResolvedValue({ stdout: "10.0.0", stderr: "" });
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"]);
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
   });
 
   it("falls back to npm when pnpm is unavailable", async () => {
@@ -25,7 +72,9 @@ describe("detectPreferredPackageManager", () => {
       .mockRejectedValue(new Error("ENOENT"));
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"]);
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
   });
 });
 
@@ -93,12 +142,13 @@ describe("ensureSocketFirewallInstalled", () => {
       available: true,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("npx", [
-      "--prefer-offline",
-      "--yes",
-      "sfw@2.0.4",
-      "--help",
-    ]);
+    expect(runner).toHaveBeenCalledWith(
+      "npx",
+      ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
+      {
+        timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 
   it("returns a warning when sfw cannot be run through npx", async () => {
@@ -111,22 +161,70 @@ describe("ensureSocketFirewallInstalled", () => {
       warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("npx", [
-      "--prefer-offline",
-      "--yes",
-      "sfw@2.0.4",
-      "--help",
-    ]);
+    expect(runner).toHaveBeenCalledWith(
+      "npx",
+      ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
+      {
+        timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 });
 
-describe("shouldUseCommandShell", () => {
-  it("uses a shell on Windows so npm-style .cmd shims can execute", () => {
-    expect(shouldUseCommandShell("win32")).toBe(true);
+describe("resolveExecutableName", () => {
+  it("uses Windows cmd shims for package-manager commands", () => {
+    expect(resolveExecutableName("npx", "win32")).toBe("npx.cmd");
+    expect(resolveExecutableName("pnpm", "win32")).toBe("pnpm.cmd");
   });
 
-  it("avoids the shell on Unix platforms", () => {
-    expect(shouldUseCommandShell("darwin")).toBe(false);
-    expect(shouldUseCommandShell("linux")).toBe(false);
+  it("preserves explicit executables and Unix command names", () => {
+    expect(resolveExecutableName("node.exe", "win32")).toBe("node.exe");
+    expect(resolveExecutableName("npx", "darwin")).toBe("npx");
+  });
+});
+
+describe("buildPtyInvocation", () => {
+  it("wraps Windows .cmd shims through cmd.exe for PTY execution", () => {
+    expect(buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32")).toEqual({
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+    });
+  });
+
+  it("passes Unix commands directly to the PTY", () => {
+    expect(buildPtyInvocation("pnpm", ["add", "react"], "darwin")).toEqual({
+      command: "pnpm",
+      args: ["add", "react"],
+    });
+  });
+});
+
+describe("runCommand", () => {
+  it("preserves the original command in Windows-facing PTY errors", async () => {
+    await withPlatform("win32", async () => {
+      runPtyCommandMock.mockRejectedValueOnce(
+        new PtyCommandExecutionError({
+          message: "Command 'npx --yes sfw@2.0.4' exited with code 1",
+          output: "npm ERR! ERESOLVE unable to resolve dependency tree",
+          exitCode: 1,
+        }),
+      );
+
+      await expect(
+        runCommand("npx", ["--yes", "sfw@2.0.4"]),
+      ).rejects.toMatchObject({
+        message: "Command 'npx --yes sfw@2.0.4' exited with code 1",
+        stdout: "npm ERR! ERESOLVE unable to resolve dependency tree",
+        exitCode: 1,
+      });
+
+      expect(runPtyCommandMock).toHaveBeenCalledWith(
+        "cmd.exe",
+        ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+        expect.objectContaining({
+          displayCommand: "npx --yes sfw@2.0.4",
+        }),
+      );
+    });
   });
 });

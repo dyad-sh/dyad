@@ -1,4 +1,8 @@
-import { spawn } from "node:child_process";
+import {
+  DEFAULT_PTY_COMMAND_TIMEOUT_MS,
+  PtyCommandExecutionError,
+  runPtyCommand,
+} from "@/ipc/utils/pty_command_runner";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -8,15 +12,24 @@ const SOCKET_FIREWALL_NPX_ARGS = [
   "--yes",
   SOCKET_FIREWALL_PACKAGE,
 ];
+const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
+export const SOCKET_FIREWALL_PROBE_TIMEOUT_MS = 30 * 1000;
+export const PACKAGE_MANAGER_PROBE_TIMEOUT_MS = 30 * 1000;
+export const ADD_DEPENDENCY_INSTALL_TIMEOUT_MS = DEFAULT_PTY_COMMAND_TIMEOUT_MS;
 
 export interface CommandExecutionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
 }
 
 export interface CommandExecutionResult {
   stdout: string;
   stderr: string;
+}
+
+function buildCommandDisplay(command: string, args: string[]): string {
+  return [command, ...args].join(" ");
 }
 
 export class CommandExecutionError extends Error {
@@ -51,17 +64,47 @@ export type CommandRunner = (
 
 export type PackageManager = "pnpm" | "npm";
 
-export function shouldUseCommandShell(
+export function resolveExecutableName(
+  command: string,
   platform: NodeJS.Platform = process.platform,
-): boolean {
-  return platform === "win32";
-}
-
-export function resolveExecutableName(command: string): string {
-  if (process.platform === "win32" && !command.includes(".")) {
+): string {
+  if (platform === "win32" && !command.includes(".")) {
     return `${command}.cmd`;
   }
   return command;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+export function buildPtyInvocation(
+  command: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  comSpec = process.env.ComSpec ?? "cmd.exe",
+): { command: string; args: string[] } {
+  const resolvedCommand = resolveExecutableName(command, platform);
+
+  if (
+    platform === "win32" &&
+    WINDOWS_BATCH_COMMAND_PATTERN.test(resolvedCommand)
+  ) {
+    return {
+      command: comSpec,
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        [resolvedCommand, ...args].map(quoteWindowsCmdArg).join(" "),
+      ],
+    };
+  }
+
+  return {
+    command: resolvedCommand,
+    args,
+  };
 }
 
 export async function runCommand(
@@ -69,51 +112,37 @@ export async function runCommand(
   args: string[],
   options: CommandExecutionOptions = {},
 ): Promise<CommandExecutionResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(resolveExecutableName(command), args, {
-      cwd: options.cwd,
-      env: options.env,
-      shell: shouldUseCommandShell(),
-      stdio: "pipe",
+  try {
+    const invocation = buildPtyInvocation(command, args);
+    const { output } = await runPtyCommand(
+      invocation.command,
+      invocation.args,
+      {
+        cwd: options.cwd,
+        displayCommand: buildCommandDisplay(command, args),
+        env: options.env,
+        timeoutMs: options.timeoutMs,
+      },
+    );
+
+    return {
+      stdout: output,
+      stderr: "",
+    };
+  } catch (error) {
+    if (error instanceof PtyCommandExecutionError) {
+      throw new CommandExecutionError({
+        message: error.message,
+        stdout: error.output,
+        exitCode: error.exitCode,
+      });
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CommandExecutionError({
+      message: `Failed to run command '${buildCommandDisplay(command, args)}': ${message}`,
     });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      reject(
-        new CommandExecutionError({
-          message: `Failed to run command '${command} ${args.join(" ")}': ${error.message}`,
-          stdout,
-          stderr,
-        }),
-      );
-    });
-
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-        return;
-      }
-
-      reject(
-        new CommandExecutionError({
-          message: `Command '${command} ${args.join(" ")}' exited with code ${code ?? "unknown"}`,
-          stdout,
-          stderr,
-          exitCode: code,
-        }),
-      );
-    });
-  });
+  }
 }
 
 export function getCommandExecutionDisplayDetails(
@@ -143,7 +172,9 @@ export async function ensureSocketFirewallInstalled(
   warningMessage?: string;
 }> {
   try {
-    await runner("npx", [...SOCKET_FIREWALL_NPX_ARGS, "--help"]);
+    await runner("npx", [...SOCKET_FIREWALL_NPX_ARGS, "--help"], {
+      timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
+    });
     return { available: true };
   } catch {
     return {
@@ -157,7 +188,9 @@ export async function detectPreferredPackageManager(
   runner: CommandRunner = runCommand,
 ): Promise<PackageManager> {
   try {
-    await runner("pnpm", ["--version"]);
+    await runner("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
     return "pnpm";
   } catch {
     return "npm";

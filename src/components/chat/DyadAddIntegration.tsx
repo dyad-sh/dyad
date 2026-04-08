@@ -8,33 +8,19 @@ import { showError } from "@/lib/toast";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useNeon } from "@/hooks/useNeon";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, Database } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
+import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
 }
 
-const PROVIDER_OPTIONS = [
-  {
-    id: "supabase" as const,
-    name: "Supabase",
-    features: [
-      "Auth & row-level security",
-      "Realtime subscriptions",
-      "Storage & edge functions",
-    ],
-  },
-  {
-    id: "neon" as const,
-    name: "Neon",
-    features: ["Serverless Postgres", "Database branching", "Autoscaling"],
-  },
-];
-
 export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   children,
 }) => {
+  const { t } = useTranslation("home");
   const navigate = useNavigate();
   const { streamMessage, isStreaming } = useStreamChat();
   const [selectedProvider, setSelectedProvider] = useState<
@@ -45,11 +31,38 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { app } = useLoadApp(appId);
   const { projectInfo } = useNeon(appId);
 
-  const completedProvider = app?.supabaseProjectName
-    ? "supabase"
-    : app?.neonProjectId && app?.neonActiveBranchId
-      ? "neon"
-      : null;
+  const providerOptions = [
+    {
+      id: "supabase" as const,
+      name: t("integrations.databaseSetup.providers.supabase.name"),
+      features: [
+        t("integrations.databaseSetup.providers.supabase.features.auth"),
+        t("integrations.databaseSetup.providers.supabase.features.realtime"),
+        t("integrations.databaseSetup.providers.supabase.features.storage"),
+      ],
+    },
+    {
+      id: "neon" as const,
+      name: t("integrations.databaseSetup.providers.neon.name"),
+      features: [
+        t(
+          "integrations.databaseSetup.providers.neon.features.serverlessPostgres",
+        ),
+        t(
+          "integrations.databaseSetup.providers.neon.features.databaseBranching",
+        ),
+        t("integrations.databaseSetup.providers.neon.features.autoscaling"),
+      ],
+    },
+  ];
+
+  const completedProvider = getCompletedIntegrationProvider(app);
+  const completedProviderName =
+    completedProvider === "supabase"
+      ? t("integrations.databaseSetup.providers.supabase.name")
+      : completedProvider === "neon"
+        ? t("integrations.databaseSetup.providers.neon.name")
+        : null;
 
   const handleKeepGoingClick = () => {
     if (chatId === null) {
@@ -81,16 +94,20 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     return (
       <DyadCard accentColor="green" state="finished">
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
-          <DyadBadge color="green">Integration Complete</DyadBadge>
+          <DyadBadge color="green">
+            {t("integrations.databaseSetup.integrationComplete")}
+          </DyadBadge>
           <span className="text-sm font-medium text-foreground">
-            {completedProvider === "supabase" ? "Supabase" : "Neon"} integration
-            complete
+            {t("integrations.databaseSetup.completeDescription", {
+              provider: completedProviderName,
+            })}
           </span>
         </DyadCardHeader>
         <div className="px-3 pb-3">
           <p className="text-sm text-muted-foreground mb-2">
-            This app is connected to{" "}
-            {completedProvider === "supabase" ? "Supabase" : "Neon"} project:{" "}
+            {t("integrations.databaseSetup.connectedToProject", {
+              provider: completedProviderName,
+            })}{" "}
             <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
               {integrationLabel}
             </span>
@@ -101,7 +118,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             disabled={isStreaming}
             size="sm"
           >
-            Continue
+            {t("integrations.databaseSetup.continue")}
           </Button>
         </div>
       </DyadCard>
@@ -111,21 +128,28 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   return (
     <DyadCard accentColor="blue">
       <DyadCardHeader icon={<Database size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Integration</DyadBadge>
+        <DyadBadge color="blue">
+          {t("integrations.databaseSetup.badge")}
+        </DyadBadge>
         <span className="text-sm font-medium text-foreground">
-          Choose a database provider
+          {t("integrations.databaseSetup.chooseProvider")}
         </span>
       </DyadCardHeader>
       <div className="px-3 pb-3">
         {children && (
           <div className="text-xs text-muted-foreground mb-3">{children}</div>
         )}
-        <div className="grid grid-cols-2 gap-3">
-          {PROVIDER_OPTIONS.map((option) => (
+        <div
+          role="group"
+          aria-label={t("integrations.databaseSetup.chooseProvider")}
+          className="grid grid-cols-2 gap-3"
+        >
+          {providerOptions.map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => setSelectedProvider(option.id)}
+              aria-pressed={selectedProvider === option.id}
               className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors ${
                 selectedProvider === option.id
                   ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
@@ -159,12 +183,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           className="w-full mt-3"
           size="sm"
         >
-          Set up{" "}
           {selectedProvider
-            ? selectedProvider === "supabase"
-              ? "Supabase"
-              : "Neon"
-            : "database"}
+            ? t("integrations.databaseSetup.setUpProvider", {
+                provider:
+                  providerOptions.find(
+                    (option) => option.id === selectedProvider,
+                  )?.name ?? t("integrations.databaseSetup.setUpDatabase"),
+              })
+            : t("integrations.databaseSetup.setUpDatabase")}
         </Button>
       </div>
     </DyadCard>

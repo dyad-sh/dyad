@@ -106,6 +106,31 @@ async function spawnDrizzleKit({
   cwd: string;
   timeoutMs?: number;
 }): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  if (IS_TEST_BUILD) {
+    const drizzleCommand = args[0];
+
+    if (drizzleCommand === "introspect") {
+      const schemaOutDir = path.join(cwd, "schema-out");
+      await fs.mkdir(schemaOutDir, { recursive: true });
+      await fs.writeFile(path.join(schemaOutDir, "schema.ts"), "export {};\n", {
+        encoding: "utf-8",
+      });
+      return {
+        stdout: "Mock drizzle-kit introspection completed.\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+
+    if (drizzleCommand === "push") {
+      return {
+        stdout: "Mock drizzle-kit push completed.\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+  }
+
   const drizzleKitBin = getDrizzleKitPath();
 
   return new Promise((resolve, reject) => {
@@ -132,16 +157,21 @@ async function spawnDrizzleKit({
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let timeoutError: DyadError | null = null;
+    let forceKillTimer: NodeJS.Timeout | null = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill();
-      reject(
-        new DyadError(
-          `drizzle-kit timed out after ${timeoutMs}ms. The database endpoint may be suspended or unreachable.`,
-          DyadErrorKind.External,
-        ),
+      timeoutError = new DyadError(
+        `drizzle-kit timed out after ${timeoutMs}ms. The database endpoint may be suspended or unreachable.`,
+        DyadErrorKind.External,
       );
+      proc.kill();
+      forceKillTimer = setTimeout(() => {
+        if (!proc.killed) {
+          proc.kill("SIGKILL");
+        }
+      }, 5_000);
     }, timeoutMs);
 
     proc.stdout?.on("data", (data) => {
@@ -157,8 +187,14 @@ async function spawnDrizzleKit({
     });
 
     proc.on("close", (code) => {
-      if (timedOut) return;
       clearTimeout(timer);
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+      }
+      if (timedOut && timeoutError) {
+        reject(timeoutError);
+        return;
+      }
       resolve({ stdout, stderr, exitCode: code ?? 1 });
     });
 
@@ -205,15 +241,6 @@ export function registerMigrationHandlers() {
       );
     }
 
-    // In test builds, skip the actual drizzle-kit operations since the mock
-    // connection URIs don't point to real databases.
-    if (IS_TEST_BUILD) {
-      logger.info(
-        `Test build: skipping actual migration for app ${appId}, returning mock success`,
-      );
-      return { success: true, noChanges: false };
-    }
-
     // 3. Get connection URIs for both branches
     const devUri = await getConnectionUri({
       projectId,
@@ -229,14 +256,20 @@ export function registerMigrationHandlers() {
     );
 
     // 4. Validate dev schema has at least one table
-    const tableCheckResult = await executeNeonSql({
-      projectId,
-      branchId: devBranchId,
-      query:
-        "SELECT count(*) as cnt FROM information_schema.tables WHERE table_schema = 'public'",
-    });
-    const tableCount = JSON.parse(tableCheckResult);
-    if (!tableCount?.[0]?.cnt || parseInt(tableCount[0].cnt) === 0) {
+    const tableCount = IS_TEST_BUILD
+      ? 1
+      : parseInt(
+          JSON.parse(
+            await executeNeonSql({
+              projectId,
+              branchId: devBranchId,
+              query:
+                "SELECT count(*) as cnt FROM information_schema.tables WHERE table_schema = 'public'",
+            }),
+          )?.[0]?.cnt ?? "0",
+          10,
+        );
+    if (!tableCount || tableCount === 0) {
       throw new DyadError(
         "Development database has no tables. Create at least one table before migrating.",
         DyadErrorKind.Precondition,

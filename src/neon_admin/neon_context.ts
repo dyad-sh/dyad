@@ -21,15 +21,22 @@ export async function getBranchRoleName({
   projectId: string;
   branchId: string;
 }): Promise<string> {
-  const neonClient = await getNeonClient();
-  const rolesResponse = await neonClient.listProjectBranchRoles(
-    projectId,
-    branchId,
-  );
-  const roles = rolesResponse.data.roles ?? [];
-  // Prefer the first non-protected role (user-created), fall back to any role
-  const userRole = roles.find((r) => !r.protected) ?? roles[0];
-  return userRole?.name ?? "neondb_owner";
+  try {
+    const neonClient = await getNeonClient();
+    const rolesResponse = await neonClient.listProjectBranchRoles(
+      projectId,
+      branchId,
+    );
+    const roles = rolesResponse.data.roles ?? [];
+    // Prefer the first non-protected role (user-created), fall back to any role
+    const userRole = roles.find((r) => !r.protected) ?? roles[0];
+    return userRole?.name ?? "neondb_owner";
+  } catch (error) {
+    logger.warn(
+      `Failed to fetch Neon branch roles for ${projectId}/${branchId}, falling back to neondb_owner: ${error}`,
+    );
+    return "neondb_owner";
+  }
 }
 
 /**

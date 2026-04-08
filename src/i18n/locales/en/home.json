@@ -591,15 +591,44 @@
       "errorLoadingBranches": "Failed to load branches: {{message}}",
       "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app."
     },
+    "databaseSetup": {
+      "badge": "Integration",
+      "integrationComplete": "Integration Complete",
+      "completeDescription": "{{provider}} integration complete",
+      "connectedToProject": "This app is connected to the {{provider}} project:",
+      "continue": "Continue",
+      "chooseProvider": "Choose a database provider",
+      "setUpProvider": "Set up {{provider}}",
+      "setUpDatabase": "Set up database",
+      "providers": {
+        "supabase": {
+          "name": "Supabase",
+          "features": {
+            "auth": "Auth & row-level security",
+            "realtime": "Realtime subscriptions",
+            "storage": "Storage & edge functions"
+          }
+        },
+        "neon": {
+          "name": "Neon",
+          "features": {
+            "serverlessPostgres": "Serverless Postgres",
+            "databaseBranching": "Database branching",
+            "autoscaling": "Autoscaling"
+          }
+        }
+      }
+    },
     "migration": {
       "title": "Database Migration",
-      "description": "Push your active development branch schema to the default (production) branch.",
+      "description": "Copy the schema from your active development branch to your production branch.",
       "migrateToProduction": "Migrate to Production",
       "migrating": "Migrating...",
       "success": "Migration applied successfully.",
-      "errorMessage": "Migration failed. Check that your development database has a valid schema.",
+      "errorMessage": "Migration couldn't be applied.",
       "showDetails": "Show details",
-      "alreadyInSync": "Development and production databases are already in sync. No migration needed."
+      "hideDetails": "Hide details",
+      "alreadyInSync": "Your development and production databases are already in sync."
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",

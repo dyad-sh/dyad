@@ -553,6 +553,45 @@
       "disconnect": "Desconectar do Neon",
       "disconnected": "Desconectado do Neon com sucesso",
       "failedDisconnect": "Falha ao desconectar do Neon"
+    },
+    "databaseSetup": {
+      "badge": "Integração",
+      "integrationComplete": "Integração concluída",
+      "completeDescription": "Integração com {{provider}} concluída",
+      "connectedToProject": "Este app está conectado ao projeto {{provider}}:",
+      "continue": "Continuar",
+      "chooseProvider": "Escolha um provedor de banco de dados",
+      "setUpProvider": "Configurar {{provider}}",
+      "setUpDatabase": "Configurar banco de dados",
+      "providers": {
+        "supabase": {
+          "name": "Supabase",
+          "features": {
+            "auth": "Auth e segurança em nível de linha",
+            "realtime": "Assinaturas em tempo real",
+            "storage": "Storage e edge functions"
+          }
+        },
+        "neon": {
+          "name": "Neon",
+          "features": {
+            "serverlessPostgres": "Postgres serverless",
+            "databaseBranching": "Branching de banco de dados",
+            "autoscaling": "Escalonamento automático"
+          }
+        }
+      }
+    },
+    "migration": {
+      "title": "Migração de Banco de Dados",
+      "description": "Copie o schema da sua branch de desenvolvimento ativa para a branch de produção.",
+      "migrateToProduction": "Migrar para Produção",
+      "migrating": "Migrando...",
+      "success": "Migração aplicada com sucesso.",
+      "errorMessage": "Não foi possível aplicar a migração.",
+      "showDetails": "Mostrar detalhes",
+      "hideDetails": "Ocultar detalhes",
+      "alreadyInSync": "Os bancos de desenvolvimento e produção já estão sincronizados."
     }
   }
 }

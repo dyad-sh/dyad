@@ -553,6 +553,45 @@
       "disconnect": "断开与 Neon 的连接",
       "disconnected": "已成功断开与 Neon 的连接",
       "failedDisconnect": "断开与 Neon 的连接失败"
+    },
+    "databaseSetup": {
+      "badge": "集成",
+      "integrationComplete": "集成已完成",
+      "completeDescription": "{{provider}} 集成已完成",
+      "connectedToProject": "此应用已连接到 {{provider}} 项目：",
+      "continue": "继续",
+      "chooseProvider": "选择数据库提供商",
+      "setUpProvider": "设置 {{provider}}",
+      "setUpDatabase": "设置数据库",
+      "providers": {
+        "supabase": {
+          "name": "Supabase",
+          "features": {
+            "auth": "身份验证与行级安全",
+            "realtime": "实时订阅",
+            "storage": "存储与边缘函数"
+          }
+        },
+        "neon": {
+          "name": "Neon",
+          "features": {
+            "serverlessPostgres": "无服务器 Postgres",
+            "databaseBranching": "数据库分支",
+            "autoscaling": "自动扩缩容"
+          }
+        }
+      }
+    },
+    "migration": {
+      "title": "数据库迁移",
+      "description": "将当前开发分支的 schema 复制到生产分支。",
+      "migrateToProduction": "迁移到生产环境",
+      "migrating": "迁移中...",
+      "success": "迁移已成功应用。",
+      "errorMessage": "无法应用此次迁移。",
+      "showDetails": "显示详情",
+      "hideDetails": "隐藏详情",
+      "alreadyInSync": "开发数据库和生产数据库已经同步。"
     }
   }
 }

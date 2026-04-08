@@ -59,6 +59,9 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(
+    null,
+  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
   const [isUpdatingEmailVerification, setIsUpdatingEmailVerification] =
@@ -138,25 +141,33 @@ export function NeonConnector({ appId }: { appId: number }) {
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
 
+    setCreateProjectError(null);
     setIsCreating(true);
     try {
-      await ipc.neon.createProject({
+      const result = await ipc.neon.createProject({
         name: newProjectName.trim(),
         appId,
       });
       toast.success(t("integrations.neon.projectConnected"));
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
       setShowCreateForm(false);
       setNewProjectName("");
       await refetchProjects();
       await refreshApp();
       queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.neon.all });
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
       });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setCreateProjectError(errorMessage);
       toast.error(
         t("integrations.neon.failedConnectProject", {
-          error: String(error),
+          error: errorMessage,
         }),
       );
     } finally {
@@ -170,6 +181,10 @@ export function NeonConnector({ appId }: { appId: number }) {
       toast.success(t("integrations.neon.disconnectProject"));
       await refreshApp();
       queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.appEnvVars.byApp({ appId }),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.neon.all });
     } catch (error) {
       console.error("Failed to disconnect project:", error);
       toast.error(t("integrations.neon.failedDisconnectProject"));
@@ -444,13 +459,24 @@ export function NeonConnector({ appId }: { appId: number }) {
               <Label>{t("integrations.neon.projectName")}</Label>
               <Input
                 value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
+                onChange={(e) => {
+                  setNewProjectName(e.target.value);
+                  if (createProjectError) {
+                    setCreateProjectError(null);
+                  }
+                }}
                 placeholder="my-app-db"
                 autoFocus
+                disabled={isCreating}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreateProject();
                 }}
               />
+              {createProjectError && (
+                <p role="alert" className="text-sm text-red-600">
+                  {createProjectError}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button
                   onClick={handleCreateProject}
@@ -466,7 +492,9 @@ export function NeonConnector({ appId }: { appId: number }) {
                   onClick={() => {
                     setShowCreateForm(false);
                     setNewProjectName("");
+                    setCreateProjectError(null);
                   }}
+                  disabled={isCreating}
                   size="sm"
                 >
                   {t("integrations.neon.cancel")}

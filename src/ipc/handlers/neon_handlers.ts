@@ -36,6 +36,20 @@ const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 type AppRow = typeof apps.$inferSelect;
 
+function combineWarnings(
+  ...warnings: Array<string | undefined>
+): string | undefined {
+  const filteredWarnings = warnings.filter((warning): warning is string =>
+    Boolean(warning),
+  );
+
+  return filteredWarnings.length > 0 ? filteredWarnings.join(" ") : undefined;
+}
+
+function buildNeonAuthActivationWarning(branchName: string): string {
+  return `Neon Auth could not be fully activated for the ${branchName} branch.`;
+}
+
 /**
  * Fetches an app record and resolves the active Neon branch ID.
  * Throws if the app is not found, has no Neon project, or has no branch.
@@ -146,6 +160,10 @@ async function autoInjectNeonEnvVars({
   let warning: string | undefined;
   try {
     neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
+    if (!neonAuthBaseUrl) {
+      warning =
+        "Neon Auth could not be fully activated for the active branch. DATABASE_URL was updated, but NEON_AUTH_BASE_URL was not added to .env.local.";
+    }
   } catch (error: any) {
     const message = error instanceof Error ? error.message : String(error);
     warning = `Failed to activate Neon Auth: ${message}`;
@@ -228,14 +246,19 @@ export function registerNeonHandlers() {
 
       const project = response.data.project;
       const mainBranch = response.data.branch;
+      const authWarnings: string[] = [];
 
       // Post-creation steps: if any fail, best-effort delete the orphan project
       try {
         // Enable Neon Auth on the main branch
-        await ensureNeonAuth({
-          projectId: project.id,
-          branchId: mainBranch.id,
-        });
+        if (
+          !(await ensureNeonAuth({
+            projectId: project.id,
+            branchId: mainBranch.id,
+          }))
+        ) {
+          authWarnings.push(buildNeonAuthActivationWarning("production"));
+        }
 
         // Create development branch as a child of main (production)
         const developmentBranchResponse = await retryOnLocked(
@@ -264,10 +287,14 @@ export function registerNeonHandlers() {
         const developmentBranch = developmentBranchResponse.data.branch;
 
         // Enable Neon Auth on the development branch
-        await ensureNeonAuth({
-          projectId: project.id,
-          branchId: developmentBranch.id,
-        });
+        if (
+          !(await ensureNeonAuth({
+            projectId: project.id,
+            branchId: developmentBranch.id,
+          }))
+        ) {
+          authWarnings.push(buildNeonAuthActivationWarning("development"));
+        }
 
         // Create preview branch as a child of development
         const previewBranchResponse = await retryOnLocked(
@@ -296,10 +323,14 @@ export function registerNeonHandlers() {
         const previewBranch = previewBranchResponse.data.branch;
 
         // Enable Neon Auth on the preview branch
-        await ensureNeonAuth({
-          projectId: project.id,
-          branchId: previewBranch.id,
-        });
+        if (
+          !(await ensureNeonAuth({
+            projectId: project.id,
+            branchId: previewBranch.id,
+          }))
+        ) {
+          authWarnings.push(buildNeonAuthActivationWarning("preview"));
+        }
 
         // Store project and branch info in the app's DB row
         await db
@@ -316,11 +347,14 @@ export function registerNeonHandlers() {
           developmentBranchResponse.data.connection_uris[0].connection_uri;
 
         // Auto-inject env vars into the app's .env.local
-        const warning = await autoInjectNeonEnvVars({
-          appPath,
-          projectId: project.id,
-          branchId: developmentBranch.id,
-        });
+        const warning = combineWarnings(
+          ...authWarnings,
+          await autoInjectNeonEnvVars({
+            appPath,
+            projectId: project.id,
+            branchId: developmentBranch.id,
+          }),
+        );
 
         logger.info(
           `Successfully created Neon project: ${project.id} with main branch: ${mainBranch.id} and development branch: ${developmentBranch.id} for app ${appId}`,
@@ -403,7 +437,6 @@ export function registerNeonHandlers() {
       }
 
       const neonClient = await getNeonClient();
-      console.log("PROJECT ID", appData.neonProjectId);
 
       // Get project info
       const projectResponse = await neonClient.getProject(
@@ -674,7 +707,16 @@ export function registerNeonHandlers() {
 
       // Validate that the branch belongs to this project
       const neonClient = await getNeonClient();
-      await neonClient.getProjectBranch(appData.neonProjectId, branchId);
+      const branchResponse = await neonClient.getProjectBranch(
+        appData.neonProjectId,
+        branchId,
+      );
+      if (branchResponse.data.branch?.project_id !== appData.neonProjectId) {
+        throw new DyadError(
+          `Branch ${branchId} does not belong to Neon project ${appData.neonProjectId}`,
+          DyadErrorKind.Precondition,
+        );
+      }
 
       // Update DB first, then inject env vars.
       // If env injection fails, DB is correct and a retry is safe.

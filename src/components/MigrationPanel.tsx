@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,7 @@ interface MigrationPanelProps {
 export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const errorDetailsId = useId();
   const pushMutation = useMutation({
     mutationFn: () => ipc.migration.push({ appId }),
   });
@@ -30,6 +31,17 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
       return () => clearTimeout(timer);
     }
   }, [pushMutation.isSuccess, pushMutation.data?.success]);
+
+  const errorSummary =
+    pushMutation.error instanceof Error
+      ? pushMutation.error.message
+      : pushMutation.isError
+        ? String(pushMutation.error)
+        : t("integrations.migration.errorMessage");
+  const errorDetails =
+    pushMutation.error instanceof Error && pushMutation.error.stack
+      ? pushMutation.error.stack
+      : null;
 
   return (
     <Card>
@@ -45,7 +57,10 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
         </p>
 
         <Button
-          onClick={() => pushMutation.mutate()}
+          onClick={() => {
+            setShowErrorDetails(false);
+            pushMutation.mutate();
+          }}
           disabled={pushMutation.isPending}
         >
           {pushMutation.isPending ? (
@@ -92,23 +107,32 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           >
             <div className="flex items-start gap-2">
               <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>{t("integrations.migration.errorMessage")}</span>
+              <span>{errorSummary}</span>
             </div>
-            <button
-              onClick={() => setShowErrorDetails(!showErrorDetails)}
-              className="flex items-center gap-1 text-xs text-red-600 dark:text-red-300 hover:underline"
-            >
-              <ChevronDown
-                className={`w-3 h-3 transition-transform ${showErrorDetails ? "rotate-180" : ""}`}
-              />
-              {t("integrations.migration.showDetails")}
-            </button>
-            {showErrorDetails && (
-              <pre className="text-xs font-mono bg-red-100 dark:bg-red-900/40 rounded p-2 overflow-x-auto whitespace-pre-wrap">
-                {pushMutation.error instanceof Error
-                  ? pushMutation.error.message
-                  : String(pushMutation.error)}
-              </pre>
+            {errorDetails && (
+              <>
+                <button
+                  onClick={() => setShowErrorDetails(!showErrorDetails)}
+                  aria-expanded={showErrorDetails}
+                  aria-controls={errorDetailsId}
+                  className="flex items-center gap-1 text-xs text-red-600 dark:text-red-300 hover:underline"
+                >
+                  <ChevronDown
+                    className={`w-3 h-3 transition-transform ${showErrorDetails ? "rotate-180" : ""}`}
+                  />
+                  {showErrorDetails
+                    ? t("integrations.migration.hideDetails")
+                    : t("integrations.migration.showDetails")}
+                </button>
+                {showErrorDetails && (
+                  <pre
+                    id={errorDetailsId}
+                    className="text-xs font-mono bg-red-100 dark:bg-red-900/40 rounded p-2 overflow-x-auto whitespace-pre-wrap"
+                  >
+                    {errorDetails}
+                  </pre>
+                )}
+              </>
             )}
           </div>
         )}

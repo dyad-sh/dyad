@@ -586,7 +586,16 @@
       "retry": "Tentar novamente",
       "selectAProject": "Selecione um projeto...",
       "selectBranch": "Selecione uma branch...",
-      "selectProjectDescription": "Selecione um projeto Neon existente ou crie um novo"
+      "selectProjectDescription": "Selecione um projeto Neon existente ou crie um novo",
+      "openInConsole": "Abrir no Console Neon",
+      "completingSignIn": "Complete o login no seu navegador…"
+    },
+    "db": {
+      "projectInfo": "{{provider}} Informações do Projeto",
+      "tableSchema": "Esquema da Tabela",
+      "tableSchemaProvider": "{{provider}} Esquema da Tabela",
+      "fetching": "Buscando...",
+      "didNotFinish": "Não foi concluído"
     },
     "databaseSetup": {
       "badge": "Integração",

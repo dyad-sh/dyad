@@ -10,7 +10,6 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { NEON_NOT_AVAILABLE_SYSTEM_PROMPT } from "../../prompts/neon_prompt";
 import { buildNeonPromptAdditions } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
@@ -113,7 +112,6 @@ export function registerTokenCountHandlers() {
         !chat.app?.neonProjectId
       ) {
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
-        systemPrompt += "\n\n" + NEON_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 
       const systemPromptTokens = estimateTokens(systemPrompt + supabaseContext);

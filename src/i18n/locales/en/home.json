@@ -589,7 +589,16 @@
       "nextjsOnly": "Neon integration is currently available for Next.js projects.",
       "disconnectConfirmation": "Are you sure you want to disconnect this Neon project? This may break your app's database connection.",
       "errorLoadingBranches": "Failed to load branches: {{message}}",
-      "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app."
+      "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app.",
+      "openInConsole": "Open in Neon Console",
+      "completingSignIn": "Complete sign-in in your browser…"
+    },
+    "db": {
+      "projectInfo": "{{provider}} Project Info",
+      "tableSchema": "Table Schema",
+      "tableSchemaProvider": "{{provider}} Table Schema",
+      "fetching": "Fetching...",
+      "didNotFinish": "Did not finish"
     },
     "databaseSetup": {
       "badge": "Integration",

@@ -586,7 +586,16 @@
       "retry": "重试",
       "selectAProject": "选择一个项目...",
       "selectBranch": "选择一个分支...",
-      "selectProjectDescription": "选择一个现有的 Neon 项目或创建一个新项目"
+      "selectProjectDescription": "选择一个现有的 Neon 项目或创建一个新项目",
+      "openInConsole": "在 Neon 控制台中打开",
+      "completingSignIn": "请在浏览器中完成登录…"
+    },
+    "db": {
+      "projectInfo": "{{provider}} 项目信息",
+      "tableSchema": "表结构",
+      "tableSchemaProvider": "{{provider}} 表结构",
+      "fetching": "获取中...",
+      "didNotFinish": "未完成"
     },
     "databaseSetup": {
       "badge": "集成",

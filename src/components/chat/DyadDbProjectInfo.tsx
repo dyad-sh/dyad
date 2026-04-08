@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CustomTagState } from "./stateTypes";
 import { Database } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ export function DyadDbProjectInfo({
   node,
   children,
 }: DyadDbProjectInfoProps) {
+  const { t } = useTranslation("home");
   const [isContentVisible, setIsContentVisible] = useState(false);
   const { state } = node.properties;
   const isLoading = state === "pending";
@@ -39,12 +41,20 @@ export function DyadDbProjectInfo({
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <DyadCardHeader icon={<Database size={15} />} accentColor="teal">
-        <DyadBadge color="teal">{provider} Project Info</DyadBadge>
+        <DyadBadge color="teal">
+          {t("integrations.db.projectInfo", { provider })}
+        </DyadBadge>
         {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Fetching..." />
+          <DyadStateIndicator
+            state="pending"
+            pendingLabel={t("integrations.db.fetching")}
+          />
         )}
         {isAborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("integrations.db.didNotFinish")}
+          />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />

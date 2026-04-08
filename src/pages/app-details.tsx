@@ -450,9 +450,39 @@ export default function AppDetailsPage() {
           {providerFilter === "supabase" &&
             appId &&
             !selectedApp?.neonProjectId && <SupabaseConnector appId={appId} />}
+          {providerFilter === "supabase" &&
+            appId &&
+            selectedApp?.neonProjectId && (
+              <Card className="mt-1">
+                <CardHeader className="flex flex-row items-center gap-3 py-3">
+                  <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <CardTitle className="text-sm">Supabase</CardTitle>
+                    <CardDescription className="text-xs">
+                      {t("integrations.mutualExclusion.supabaseUnavailable")}
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+              </Card>
+            )}
           {providerFilter === "neon" &&
             appId &&
             !selectedApp?.supabaseProjectId && <NeonConnector appId={appId} />}
+          {providerFilter === "neon" &&
+            appId &&
+            selectedApp?.supabaseProjectId && (
+              <Card className="mt-1">
+                <CardHeader className="flex flex-row items-center gap-3 py-3">
+                  <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <CardTitle className="text-sm">Neon</CardTitle>
+                    <CardDescription className="text-xs">
+                      {t("integrations.mutualExclusion.neonUnavailable")}
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+              </Card>
+            )}
           {/* When no providerFilter, show both with existing mutual exclusion */}
           {!providerFilter && (
             <>

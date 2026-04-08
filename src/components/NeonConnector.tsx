@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { Switch } from "@/components/ui/switch";
-import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
@@ -66,6 +66,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
   const [isUpdatingEmailVerification, setIsUpdatingEmailVerification] =
     useState(false);
+  const [isOpeningOauth, setIsOpeningOauth] = useState(false);
 
   const {
     isConnected,
@@ -85,6 +86,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "neon-oauth-return") {
+        setIsOpeningOauth(false);
         await refreshSettings();
         await refetchProjects();
         await refreshApp();
@@ -96,12 +98,20 @@ export function NeonConnector({ appId }: { appId: number }) {
   }, [lastDeepLink?.timestamp]);
 
   const handleConnect = async () => {
-    if (settings?.isTestMode) {
-      await ipc.neon.fakeConnect();
-    } else {
-      await ipc.system.openExternalUrl(
-        "https://oauth.dyad.sh/api/integrations/neon/login",
-      );
+    try {
+      setIsOpeningOauth(true);
+      if (settings?.isTestMode) {
+        await ipc.neon.fakeConnect();
+      } else {
+        await ipc.system.openExternalUrl(
+          "https://oauth.dyad.sh/api/integrations/neon/login",
+        );
+      }
+      // Reset after 60s if the OAuth return never arrives
+      setTimeout(() => setIsOpeningOauth(false), 60_000);
+    } catch (error) {
+      setIsOpeningOauth(false);
+      toast.error(String(error));
     }
   };
 
@@ -288,6 +298,8 @@ export function NeonConnector({ appId }: { appId: number }) {
             {t("integrations.neon.project")}
             <Button
               variant="outline"
+              aria-label={t("integrations.neon.openInConsole")}
+              title={t("integrations.neon.openInConsole")}
               onClick={() => {
                 ipc.system.openExternalUrl(
                   `https://console.neon.tech/app/projects/${app.neonProjectId}`,
@@ -295,8 +307,8 @@ export function NeonConnector({ appId }: { appId: number }) {
               }}
               className="ml-2 px-2 py-1 inline-flex items-center gap-2"
             >
-              <NeonSvg isDarkMode={isDarkMode} />
-              <ExternalLink className="h-4 w-4" />
+              <NeonSvg isDarkMode={isDarkMode} aria-hidden="true" />
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </Button>
           </CardTitle>
           <CardDescription className="flex flex-col gap-1.5 text-sm">
@@ -576,11 +588,21 @@ export function NeonConnector({ appId }: { appId: number }) {
         <Button
           variant="outline"
           onClick={handleConnect}
+          disabled={isOpeningOauth}
           className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           data-testid="connect-neon-button"
         >
-          <span className="mr-2">{t("integrations.neon.connectTo")}</span>
-          <NeonSvg isDarkMode={isDarkMode} />
+          {isOpeningOauth ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <span>{t("integrations.neon.completingSignIn")}</span>
+            </>
+          ) : (
+            <>
+              <span className="mr-2">{t("integrations.neon.connectTo")}</span>
+              <NeonSvg isDarkMode={isDarkMode} />
+            </>
+          )}
         </Button>
       </CardContent>
     </Card>

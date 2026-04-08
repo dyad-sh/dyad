@@ -26,7 +26,7 @@ const logger = log.scope("migration_handlers");
  */
 async function getProductionBranchId(
   projectId: string,
-): Promise<{ branchId: string; branchName: string }> {
+): Promise<{ branchId: string }> {
   const neonClient = await getNeonClient();
   const response = await neonClient.listProjectBranches({ projectId });
 
@@ -45,7 +45,7 @@ async function getProductionBranchId(
     );
   }
 
-  return { branchId: prodBranch.id, branchName: prodBranch.name };
+  return { branchId: prodBranch.id };
 }
 
 /**

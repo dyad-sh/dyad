@@ -1,6 +1,20 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DyadDbTableSchema } from "./DyadDbTableSchema";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, string>) => {
+      const map: Record<string, string> = {
+        "integrations.db.tableSchema": "Table Schema",
+        "integrations.db.tableSchemaProvider": `${opts?.provider} Table Schema`,
+        "integrations.db.fetching": "Fetching...",
+        "integrations.db.didNotFinish": "Did not finish",
+      };
+      return map[key] ?? key;
+    },
+  }),
+}));
 
 describe("DyadDbTableSchema", () => {
   it("uses the generic badge label when a table name is present", () => {

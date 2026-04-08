@@ -320,14 +320,7 @@ function getGenericNeonPrompt(): string {
   return `
 ## Generic Database Instructions
 
-Use the Neon serverless driver to connect:
-
-<code-template label="generic-neon-client" language="typescript">
-import { neon } from '@neondatabase/serverless';
-
-const sql = neon(process.env.DATABASE_URL!);
-const result = await sql\`SELECT * FROM table_name\`;
-</code-template>
+Use the Neon client setup defined above to connect to the database.
 
 Add the \`@neondatabase/serverless\` dependency to the project.
 

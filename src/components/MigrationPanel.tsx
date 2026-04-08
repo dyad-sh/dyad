@@ -111,7 +111,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
               <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>{errorSummary}</span>
             </div>
-            {errorDetails && (
+            {errorDetails && errorDetails !== errorSummary && (
               <>
                 <button
                   onClick={() => setShowErrorDetails(!showErrorDetails)}

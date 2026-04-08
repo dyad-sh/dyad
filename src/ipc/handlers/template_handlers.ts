@@ -20,11 +20,15 @@ const logger = log.scope("template_handlers");
 
 const PRESERVED_TEMPLATE_PATHS = new Set([".git", ".dyad"]);
 
+function shouldPreservePath(name: string): boolean {
+  return PRESERVED_TEMPLATE_PATHS.has(name) || name.startsWith(".env");
+}
+
 async function clearAppDirectoryForTemplateSwap(appPath: string) {
   const entries = await fsPromises.readdir(appPath, { withFileTypes: true });
   await Promise.all(
     entries.map(async (entry) => {
-      if (PRESERVED_TEMPLATE_PATHS.has(entry.name)) {
+      if (shouldPreservePath(entry.name)) {
         return;
       }
 
@@ -101,10 +105,16 @@ export function registerTemplateHandlers() {
       });
 
       if (chatId) {
-        await db
-          .update(chats)
-          .set({ initialCommitHash: commitHash })
-          .where(eq(chats.id, chatId));
+        const chatRecord = await db.query.chats.findFirst({
+          where: eq(chats.id, chatId),
+          columns: { initialCommitHash: true },
+        });
+        if (!chatRecord?.initialCommitHash) {
+          await db
+            .update(chats)
+            .set({ initialCommitHash: commitHash })
+            .where(eq(chats.id, chatId));
+        }
       }
 
       return { applied: true };

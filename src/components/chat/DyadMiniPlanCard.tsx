@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -97,6 +97,17 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   const [colorTextValue, setColorTextValue] = useState(mainColor);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+
+  // Sync local state when props change (e.g. from streaming updates)
+  useEffect(() => {
+    if (!editingName) {
+      setNameValue(appName);
+    }
+  }, [appName, editingName]);
+
+  useEffect(() => {
+    setColorTextValue(mainColor);
+  }, [mainColor]);
 
   const handleVisualEdit = useCallback(
     (visualId: string, field: MiniPlanVisualEditableField, value: string) => {
@@ -530,6 +541,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                 onChange={(e) => handleFieldEdit("templateId", e.target.value)}
                 className="w-full text-sm bg-background border border-border/50 rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
               >
+                {!(templates ?? []).some((t) => t.id === templateId) && (
+                  <option value={templateId} disabled>
+                    Unknown template ({templateId})
+                  </option>
+                )}
                 {(templates ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
@@ -558,6 +574,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                 onChange={(e) => handleFieldEdit("themeId", e.target.value)}
                 className="w-full text-sm bg-background border border-border/50 rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
               >
+                {!allThemeOptions.some((t) => t.id === themeId) && (
+                  <option value={themeId} disabled>
+                    Unknown theme ({themeId})
+                  </option>
+                )}
                 {(themes ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -578,17 +599,19 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         </div>
 
         {/* Main Color */}
-        {mainColor && (
+        {(mainColor || !isApproved) && (
           <div className="space-y-1">
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
               <Palette size={10} />
               Main Color
             </div>
             <div className="flex items-center gap-2">
-              <div
-                className="w-7 h-7 rounded-md border border-border/50 shrink-0"
-                style={{ backgroundColor: mainColor }}
-              />
+              {mainColor && (
+                <div
+                  className="w-7 h-7 rounded-md border border-border/50 shrink-0"
+                  style={{ backgroundColor: mainColor }}
+                />
+              )}
               {isApproved ? (
                 <span className="text-sm text-foreground/80 font-mono">
                   {mainColor}
@@ -621,7 +644,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                   id={mainColorPickerFieldId}
                   type="color"
                   aria-label="Main Color Picker"
-                  value={mainColor}
+                  value={mainColor || "#000000"}
                   onChange={(e) => {
                     setColorTextValue(e.target.value);
                     handleFieldEdit("mainColor", e.target.value);

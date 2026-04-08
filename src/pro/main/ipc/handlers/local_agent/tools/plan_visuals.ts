@@ -11,14 +11,13 @@ import {
   getMiniPlanForChat,
   updateMiniPlanVisuals,
 } from "@/ipc/handlers/mini_plan_handlers";
+import { MiniPlanVisualTypeSchema } from "@/ipc/types/mini_plan";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("plan_visuals");
 
 const VisualEntrySchema = z.object({
-  type: z
-    .enum(["logo", "photo", "illustration", "icon", "background", "other"])
-    .describe("The type of visual asset needed"),
+  type: MiniPlanVisualTypeSchema.describe("The type of visual asset needed"),
   description: z
     .string()
     .describe("What this visual is for and where it will be used in the app"),

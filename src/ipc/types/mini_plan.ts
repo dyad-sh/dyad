@@ -10,16 +10,20 @@ import {
 // Mini Plan Schemas
 // =============================================================================
 
+export const MINI_PLAN_VISUAL_TYPES = [
+  "logo",
+  "photo",
+  "illustration",
+  "icon",
+  "background",
+  "other",
+] as const;
+
+export const MiniPlanVisualTypeSchema = z.enum(MINI_PLAN_VISUAL_TYPES);
+
 export const MiniPlanVisualSchema = z.object({
   id: z.string(),
-  type: z.enum([
-    "logo",
-    "photo",
-    "illustration",
-    "icon",
-    "background",
-    "other",
-  ]),
+  type: MiniPlanVisualTypeSchema,
   description: z.string(),
   prompt: z.string(),
 });
@@ -107,14 +111,7 @@ export type MiniPlanVisualEditPayload = z.infer<
 
 export const MiniPlanAddVisualSchema = z.object({
   chatId: z.number(),
-  type: z.enum([
-    "logo",
-    "photo",
-    "illustration",
-    "icon",
-    "background",
-    "other",
-  ]),
+  type: MiniPlanVisualTypeSchema,
   description: z.string(),
   prompt: z.string(),
 });

@@ -148,8 +148,7 @@ async function spawnDrizzleKit({
       cwd,
       stdio: "pipe",
       env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
+        ...process.env,
         NODE_PATH: nodeModulesPath,
       },
     });
@@ -276,8 +275,11 @@ export function registerMigrationHandlers() {
       );
     }
 
-    // 5. Create temp directory
+    // 5. Create temp directory with restricted permissions
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-migration-"));
+    if (process.platform !== "win32") {
+      await fs.chmod(tmpDir, 0o700);
+    }
 
     try {
       // 6. Write introspect config pointing at dev branch

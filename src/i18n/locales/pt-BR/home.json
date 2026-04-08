@@ -552,7 +552,41 @@
       "connectedSuccess": "Conectado ao Neon com sucesso!",
       "disconnect": "Desconectar do Neon",
       "disconnected": "Desconectado do Neon com sucesso",
-      "failedDisconnect": "Falha ao desconectar do Neon"
+      "failedDisconnect": "Falha ao desconectar do Neon",
+      "activeBranch": "Branch Ativa",
+      "branchSwitched": "Mudou para a branch",
+      "cancel": "Cancelar",
+      "connectedToProject": "Conectado ao projeto",
+      "create": "Criar",
+      "createNewProject": "Criar Novo Projeto",
+      "creating": "Criando...",
+      "development": "desenvolvimento",
+      "disconnectConfirmation": "Tem certeza de que deseja desconectar este projeto Neon? Isso pode quebrar a conexão com o banco de dados do seu app.",
+      "disconnectProject": "Desconectar projeto",
+      "emailVerificationDisabled": "Verificação de e-mail desativada",
+      "emailVerificationEnabled": "Verificação de e-mail ativada",
+      "emailVerificationHelp": "Quando ativada, os usuários devem verificar seu endereço de e-mail antes de poderem fazer login no seu app.",
+      "envUpdated": "DATABASE_URL atualizado em .env.local.",
+      "errorLoadingBranches": "Falha ao carregar branches: {{message}}",
+      "errorLoadingProjects": "Falha ao carregar projetos: {{message}}",
+      "failedConnectProject": "Falha ao conectar projeto: {{error}}",
+      "failedDisconnectProject": "Falha ao desconectar projeto",
+      "failedSetBranch": "Falha ao mudar de branch: {{error}}",
+      "failedUpdateEmailVerification": "Falha ao atualizar verificação de e-mail: {{error}}",
+      "nextjsOnly": "A integração com Neon está disponível apenas para projetos Next.js.",
+      "noProjectsFound": "Nenhum projeto encontrado. Crie um novo projeto para começar.",
+      "preview": "pré-visualização",
+      "production": "produção",
+      "project": "Projeto Neon",
+      "projectConnected": "Projeto Neon conectado com sucesso",
+      "projectName": "Nome do projeto",
+      "projects": "Projetos Neon",
+      "refreshProjects": "Atualizar projetos",
+      "requireEmailVerification": "Exigir verificação de e-mail",
+      "retry": "Tentar novamente",
+      "selectAProject": "Selecione um projeto...",
+      "selectBranch": "Selecione uma branch...",
+      "selectProjectDescription": "Selecione um projeto Neon existente ou crie um novo"
     },
     "databaseSetup": {
       "badge": "Integração",
@@ -592,6 +626,10 @@
       "showDetails": "Mostrar detalhes",
       "hideDetails": "Ocultar detalhes",
       "alreadyInSync": "Os bancos de desenvolvimento e produção já estão sincronizados."
+    },
+    "mutualExclusion": {
+      "supabaseUnavailable": "O Supabase não está disponível porque um banco de dados Neon já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",
+      "neonUnavailable": "O Neon não está disponível porque um projeto Supabase já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez."
     }
   }
 }

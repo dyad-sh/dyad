@@ -39,9 +39,11 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
         ? String(pushMutation.error)
         : t("integrations.migration.errorMessage");
   const errorDetails =
-    pushMutation.error instanceof Error && pushMutation.error.stack
-      ? pushMutation.error.stack
-      : null;
+    pushMutation.error instanceof Error
+      ? pushMutation.error.message
+      : pushMutation.error
+        ? String(pushMutation.error)
+        : null;
 
   return (
     <Card>

@@ -106,11 +106,6 @@ export function NeonConnector({ appId }: { appId: number }) {
   };
 
   const handleProjectSelect = async (projectId: string) => {
-    if (projectId === "__create_new__") {
-      setShowCreateForm(true);
-      return;
-    }
-
     setIsConnecting(true);
     try {
       const result = await ipc.neon.setAppProject({ appId, projectId });
@@ -261,7 +256,17 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   // Neon is only available for Next.js projects
   if (isLoadingApp) {
-    return null;
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-48" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    );
   }
   if (!isNextJsProject(app?.files)) {
     return (
@@ -314,7 +319,12 @@ export function NeonConnector({ appId }: { appId: number }) {
               {branchesError ? (
                 <p className="text-sm text-red-500">
                   {t("integrations.neon.errorLoadingBranches", {
-                    message: String(branchesError),
+                    message:
+                      branchesError instanceof Error
+                        ? branchesError.message
+                        : typeof branchesError === "string"
+                          ? branchesError
+                          : JSON.stringify(branchesError),
                   })}
                 </p>
               ) : isLoadingBranches ? (
@@ -444,7 +454,12 @@ export function NeonConnector({ appId }: { appId: number }) {
           ) : projectsError ? (
             <div className="text-red-500">
               {t("integrations.neon.errorLoadingProjects", {
-                message: String(projectsError),
+                message:
+                  projectsError instanceof Error
+                    ? projectsError.message
+                    : typeof projectsError === "string"
+                      ? projectsError
+                      : JSON.stringify(projectsError),
               })}
               <Button
                 variant="outline"
@@ -526,12 +541,6 @@ export function NeonConnector({ appId }: { appId: number }) {
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__create_new__">
-                        <span className="flex items-center gap-1">
-                          <Plus className="h-4 w-4" />
-                          {t("integrations.neon.createNewProject")}
-                        </span>
-                      </SelectItem>
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>
                           {project.name}
@@ -541,16 +550,14 @@ export function NeonConnector({ appId }: { appId: number }) {
                   </Select>
                 </div>
               )}
-              {projects.length === 0 && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCreateForm(true)}
-                  className="gap-1"
-                >
-                  <Plus className="h-4 w-4" />
-                  {t("integrations.neon.createNewProject")}
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                onClick={() => setShowCreateForm(true)}
+                className="gap-1"
+              >
+                <Plus className="h-4 w-4" />
+                {t("integrations.neon.createNewProject")}
+              </Button>
             </div>
           )}
         </CardContent>

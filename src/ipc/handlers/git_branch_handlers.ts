@@ -20,6 +20,7 @@ import {
   getGitUncommittedFilesWithStatus,
   gitAddAll,
   gitCommit,
+  gitDiscardAllChanges,
 } from "../utils/git_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
@@ -404,6 +405,33 @@ async function handleCommitChanges(
   });
 }
 
+async function handleDiscardChanges(
+  _event: IpcMainInvokeEvent,
+  { appId }: GitBranchAppIdParams,
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
+  const appPath = getDyadAppPath(app.path);
+
+  return withLock(appId, async () => {
+    if (isGitMergeInProgress({ path: appPath })) {
+      throw GitStateError(
+        "Cannot discard changes: merge in progress. Please complete or abort the merge first.",
+        GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+      );
+    }
+
+    if (isGitRebaseInProgress({ path: appPath })) {
+      throw GitStateError(
+        "Cannot discard changes: rebase in progress. Please complete or abort the rebase first.",
+        GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+      );
+    }
+
+    await gitDiscardAllChanges({ path: appPath });
+  });
+}
+
 // --- GitHub Pull Handler ---
 async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
@@ -478,4 +506,5 @@ export function registerGithubBranchHandlers() {
     handleGetUncommittedFiles,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
+  createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);
 }

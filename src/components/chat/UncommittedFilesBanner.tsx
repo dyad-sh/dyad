@@ -5,6 +5,7 @@ import {
   Pencil,
   Trash2,
   ArrowRightLeft,
+  TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ import {
   type UncommittedFile,
 } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
+import { useDiscardChanges } from "@/hooks/useDiscardChanges";
 import { cn } from "@/lib/utils";
 
 interface UncommittedFilesBannerProps {
@@ -85,8 +87,10 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const { uncommittedFiles, hasUncommittedFiles, isLoading } =
     useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
+  const { discardChanges, isDiscarding } = useDiscardChanges();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   if (!appId || isLoading || !hasUncommittedFiles) {
     return null;
@@ -105,6 +109,14 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     await commitChanges({ appId, message: commitMessage.trim() });
     setIsDialogOpen(false);
     setCommitMessage("");
+  };
+
+  const handleDiscard = async () => {
+    if (!appId) return;
+
+    await discardChanges({ appId });
+    setShowDiscardConfirm(false);
+    setIsDialogOpen(false);
   };
 
   return (
@@ -133,8 +145,9 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
       <Dialog
         open={isDialogOpen}
         onOpenChange={(open) => {
-          // Prevent closing while committing
-          if (!open && isCommitting) return;
+          // Prevent closing while committing or discarding
+          if (!open && (isCommitting || isDiscarding)) return;
+          if (!open) setShowDiscardConfirm(false);
           setIsDialogOpen(open);
         }}
       >
@@ -206,17 +219,57 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </div>
           </div>
 
+          {showDiscardConfirm && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">
+              <TriangleAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-2">
+                <p className="text-sm text-destructive font-medium">
+                  This will permanently discard all uncommitted changes. This
+                  action cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDiscard}
+                    disabled={isDiscarding}
+                    data-testid="confirm-discard-button"
+                  >
+                    {isDiscarding ? "Discarding..." : "Yes, discard all"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDiscardConfirm(false)}
+                    disabled={isDiscarding}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <DialogFooter>
             <Button
               variant="outline"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"
+              onClick={() => setShowDiscardConfirm(true)}
+              disabled={isCommitting || isDiscarding || showDiscardConfirm}
+              data-testid="discard-button"
+            >
+              Discard all
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setIsDialogOpen(false)}
-              disabled={isCommitting}
+              disabled={isCommitting || isDiscarding}
             >
               Cancel
             </Button>
             <Button
               onClick={handleCommit}
-              disabled={!commitMessage.trim() || isCommitting}
+              disabled={!commitMessage.trim() || isCommitting || isDiscarding}
               data-testid="commit-button"
             >
               {isCommitting ? "Committing..." : "Commit"}

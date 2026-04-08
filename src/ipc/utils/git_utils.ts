@@ -537,6 +537,51 @@ export async function gitReset({ path }: GitBaseParams): Promise<void> {
   }
 }
 
+export async function gitDiscardAllChanges({
+  path,
+}: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Restore all tracked files to HEAD state
+    await execOrThrow(
+      ["restore", "."],
+      path,
+      "Failed to restore tracked files",
+    );
+    // Remove untracked files and directories
+    await execOrThrow(
+      ["clean", "-fd"],
+      path,
+      "Failed to remove untracked files",
+    );
+  } else {
+    const matrix = await git.statusMatrix({ fs, dir: path });
+
+    for (const [filepath, headStatus, workdirStatus] of matrix) {
+      const fullPath = pathModule.join(path, filepath);
+
+      if (headStatus === 1) {
+        // File exists in HEAD — restore it if changed
+        if (workdirStatus !== 1) {
+          await git.checkout({
+            fs,
+            dir: path,
+            ref: "HEAD",
+            filepaths: [filepath],
+            force: true,
+          });
+        }
+      } else if (headStatus === 0 && workdirStatus !== 0) {
+        // File is untracked — delete it
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.unlink(fullPath);
+          await git.remove({ fs, dir: path, filepath });
+        }
+      }
+    }
+  }
+}
+
 export async function gitInit({
   path,
   ref = "main",

@@ -104,6 +104,7 @@ If the request needs Neon Auth and \`@neondatabase/auth\` is not already in \`pa
 - Use \`@neondatabase/auth/react\` as the default UI import path for \`NeonAuthUIProvider\`, \`AuthView\`, and \`UserButton\`.
 - Keep \`NeonAuthUIProvider\`, \`AuthView\`, and \`UserButton\` imported from the same module path.
 - If the app already has a working Neon Auth UI import path, reuse it instead of changing it.
+- **must-set-defaultTheme**: \`NeonAuthUIProvider\` defaults to \`defaultTheme="system"\`, which can override the app's theme (e.g., applying dark mode styles when the app uses light mode, or vice versa). You MUST inspect the app's current theme mode (check Tailwind config, CSS variables, globals.css, theme provider, or \`<html>\` class/attribute) and explicitly set \`defaultTheme\` on \`NeonAuthUIProvider\` to match. Use \`"light"\` if the app is light-themed, \`"dark"\` if dark-themed, and only \`"system"\` if the app itself uses system-based theme switching.
 
 <anti-patterns>
 - Do NOT browse/search the web for Neon Auth package exports or setup instructions.
@@ -291,7 +292,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <NeonAuthUIProvider authClient={authClient}>
+    {/* Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching */}
+    <NeonAuthUIProvider authClient={authClient} defaultTheme="light">
       <header>
         <UserButton />
       </header>

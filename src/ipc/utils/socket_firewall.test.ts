@@ -31,13 +31,37 @@ describe("detectPreferredPackageManager", () => {
 
 describe("buildAddDependencyCommand", () => {
   it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
-    ["pnpm", true, { command: "sfw", args: ["pnpm", "add", "react", "zod"] }],
+    [
+      "pnpm",
+      true,
+      {
+        command: "npx",
+        args: [
+          "--prefer-offline",
+          "--yes",
+          "sfw@2.0.4",
+          "pnpm",
+          "add",
+          "react",
+          "zod",
+        ],
+      },
+    ],
     [
       "npm",
       true,
       {
-        command: "sfw",
-        args: ["npm", "install", "--legacy-peer-deps", "react", "zod"],
+        command: "npx",
+        args: [
+          "--prefer-offline",
+          "--yes",
+          "sfw@2.0.4",
+          "npm",
+          "install",
+          "--legacy-peer-deps",
+          "react",
+          "zod",
+        ],
       },
     ],
     ["pnpm", false, { command: "pnpm", args: ["add", "react", "zod"] }],
@@ -69,34 +93,30 @@ describe("ensureSocketFirewallInstalled", () => {
       available: true,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("sfw", ["--help"]);
+    expect(runner).toHaveBeenCalledWith("npx", [
+      "--prefer-offline",
+      "--yes",
+      "sfw@2.0.4",
+      "--help",
+    ]);
   });
 
-  it("installs sfw when missing and returns available", async () => {
+  it("returns a warning when sfw cannot be run through npx", async () => {
     const runner = vi
       .fn<CommandRunner>()
-      .mockRejectedValueOnce(new Error("sfw missing"))
-      .mockResolvedValueOnce({ stdout: "installed", stderr: "" })
-      .mockResolvedValueOnce({ stdout: "", stderr: "" });
-
-    await expect(ensureSocketFirewallInstalled(runner)).resolves.toEqual({
-      available: true,
-    });
-    expect(runner).toHaveBeenNthCalledWith(1, "sfw", ["--help"]);
-    expect(runner).toHaveBeenNthCalledWith(2, "npm", ["install", "-g", "sfw"]);
-    expect(runner).toHaveBeenNthCalledWith(3, "sfw", ["--help"]);
-  });
-
-  it("returns a warning when sfw cannot be installed", async () => {
-    const runner = vi
-      .fn<CommandRunner>()
-      .mockRejectedValueOnce(new Error("sfw missing"))
-      .mockRejectedValueOnce(new Error("npm install failed"));
+      .mockRejectedValueOnce(new Error("npx sfw failed"));
 
     await expect(ensureSocketFirewallInstalled(runner)).resolves.toEqual({
       available: false,
       warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
     });
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner).toHaveBeenCalledWith("npx", [
+      "--prefer-offline",
+      "--yes",
+      "sfw@2.0.4",
+      "--help",
+    ]);
   });
 });
 

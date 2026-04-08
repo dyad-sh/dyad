@@ -102,7 +102,7 @@ describe("processFullResponseActions add dependency errors", () => {
       new ExecuteAddDependencyError({
         error: new CommandExecutionError({
           message:
-            "Command 'sfw npm install --legacy-peer-deps react' exited with code 1",
+            "Command 'npx sfw@2.0.4 npm install --legacy-peer-deps react' exited with code 1",
           stderr:
             "Socket Firewall blocked react<malware>\nPolicy: malware package",
           exitCode: 1,

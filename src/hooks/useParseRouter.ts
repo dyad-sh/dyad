@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { ipc } from "@/ipc/types";
 
 export interface ParsedRoute {
   path: string;
@@ -19,6 +20,35 @@ export function buildRouteLabel(path: string): string {
         .pop()
         ?.replace(/[-_]/g, " ")
         .replace(/^\w/, (c) => c.toUpperCase()) || path;
+}
+
+/**
+ * Finds files in the app's file list that are likely to contain route definitions.
+ * Matches filenames containing "route" or "routes" (case-insensitive).
+ */
+export function findRouteFiles(files: string[]): string[] {
+  return files.filter((f) => {
+    const basename = f.split("/").pop() || "";
+    return /routes?\./i.test(basename) && /\.[jt]sx?$/.test(basename);
+  });
+}
+
+/**
+ * Merges route arrays, deduplicating by path.
+ */
+function mergeRoutes(
+  primary: ParsedRoute[],
+  ...rest: ParsedRoute[][]
+): ParsedRoute[] {
+  const merged = [...primary];
+  for (const routes of rest) {
+    for (const route of routes) {
+      if (!merged.some((r) => r.path === route.path)) {
+        merged.push(route);
+      }
+    }
+  }
+  return merged;
 }
 
 /**
@@ -130,9 +160,11 @@ export function parseRoutesFromNextFiles(files: string[]): ParsedRoute[] {
 
 /**
  * Loads the app router file and parses available routes for quick navigation.
+ * Falls back to scanning imported route files when App.tsx contains no inline routes.
  */
 export function useParseRouter(appId: number | null) {
   const [routes, setRoutes] = useState<ParsedRoute[]>([]);
+  const [importedRoutes, setImportedRoutes] = useState<ParsedRoute[]>([]);
 
   // Load app to access the file list
   const {
@@ -156,14 +188,50 @@ export function useParseRouter(appId: number | null) {
     return app.files.some((f) => f.toLowerCase().includes("next.config"));
   }, [app?.files]);
 
+  // When no routes found in App.tsx, scan route-named files for route definitions
+  useEffect(() => {
+    if (isNextApp || !appId || !app?.files) {
+      setImportedRoutes([]);
+      return;
+    }
+    const directRoutes = parseRoutesFromRouterFile(routerContent ?? null);
+    if (directRoutes.length > 0) {
+      setImportedRoutes([]);
+      return;
+    }
+    const routeFiles = findRouteFiles(app.files);
+    if (routeFiles.length === 0) {
+      setImportedRoutes([]);
+      return;
+    }
+    Promise.all(
+      routeFiles.map((filePath) =>
+        ipc.app.readAppFile({ appId, filePath }).catch(() => null),
+      ),
+    ).then((contents) => {
+      const discovered: ParsedRoute[] = [];
+      for (const content of contents) {
+        if (!content) continue;
+        const fileRoutes = parseRoutesFromRouterFile(content);
+        for (const route of fileRoutes) {
+          if (!discovered.some((r) => r.path === route.path)) {
+            discovered.push(route);
+          }
+        }
+      }
+      setImportedRoutes(discovered);
+    });
+  }, [appId, isNextApp, app?.files, routerContent]);
+
   // Parse routes either from Next.js file-based routing or from router file
   useEffect(() => {
     if (isNextApp && app?.files) {
       setRoutes(parseRoutesFromNextFiles(app.files));
     } else {
-      setRoutes(parseRoutesFromRouterFile(routerContent ?? null));
+      const directRoutes = parseRoutesFromRouterFile(routerContent ?? null);
+      setRoutes(mergeRoutes(directRoutes, importedRoutes));
     }
-  }, [isNextApp, app?.files, routerContent]);
+  }, [isNextApp, app?.files, routerContent, importedRoutes]);
 
   const combinedLoading = appLoading || routerFileLoading;
   const combinedError = appError || routerFileError || null;

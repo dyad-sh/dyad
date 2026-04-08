@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRouteLabel,
+  findRouteFiles,
   parseRoutesFromRouterFile,
   parseRoutesFromNextFiles,
 } from "@/hooks/useParseRouter";
@@ -23,6 +24,46 @@ describe("buildRouteLabel", () => {
 
   it("should handle deeply nested paths", () => {
     expect(buildRouteLabel("/admin/settings/security")).toBe("Security");
+  });
+});
+
+describe("findRouteFiles", () => {
+  it("should find files with 'routes' in their name", () => {
+    const files = [
+      "src/routes/publicRoutes.tsx",
+      "src/routes/protectedRoutes.tsx",
+      "src/App.tsx",
+      "src/components/Header.tsx",
+    ];
+    const result = findRouteFiles(files);
+    expect(result).toEqual([
+      "src/routes/publicRoutes.tsx",
+      "src/routes/protectedRoutes.tsx",
+    ]);
+  });
+
+  it("should find files with 'route' (singular) in their name", () => {
+    const files = ["src/AppRoute.tsx", "src/index.ts"];
+    const result = findRouteFiles(files);
+    expect(result).toEqual(["src/AppRoute.tsx"]);
+  });
+
+  it("should be case-insensitive", () => {
+    const files = ["src/Routes.tsx", "src/ROUTES.ts", "src/routes.jsx"];
+    const result = findRouteFiles(files);
+    expect(result).toHaveLength(3);
+  });
+
+  it("should only match JS/TS extensions", () => {
+    const files = ["src/routes.md", "src/routes.tsx", "src/routes.css"];
+    const result = findRouteFiles(files);
+    expect(result).toEqual(["src/routes.tsx"]);
+  });
+
+  it("should return empty array when no route files found", () => {
+    const files = ["src/App.tsx", "src/main.ts", "src/components/Button.tsx"];
+    const result = findRouteFiles(files);
+    expect(result).toEqual([]);
   });
 });
 

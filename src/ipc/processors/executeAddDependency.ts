@@ -38,7 +38,7 @@ const DISPLAY_SUMMARY_PATTERNS = [
   /\btimed out\b/i,
   /\btimeout\b/i,
   /\betimedout\b/i,
-  /\bnpm err!\b/i,
+  /\bnpm err!/i,
   /\berr_pnpm_[a-z0-9_]+\b/i,
   /\bE[A-Z][A-Z0-9_]{2,}\b/,
 ];

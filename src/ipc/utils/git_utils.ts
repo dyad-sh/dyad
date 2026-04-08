@@ -537,6 +537,85 @@ export async function gitReset({ path }: GitBaseParams): Promise<void> {
   }
 }
 
+export async function gitDiscardAllChanges({
+  path,
+}: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Reset all tracked files (index + working tree) to HEAD state
+    await execOrThrow(
+      ["reset", "--hard", "HEAD"],
+      path,
+      "Failed to reset to HEAD",
+    );
+    // Remove untracked files and directories
+    await execOrThrow(
+      ["clean", "-fd"],
+      path,
+      "Failed to remove untracked files",
+    );
+  } else {
+    const matrix = await git.statusMatrix({ fs, dir: path });
+    const removedFileDirs = new Set<string>();
+
+    for (const row of matrix) {
+      const [filepath, headStatus, workdirStatus, stageStatus] = row;
+      const fullPath = pathModule.join(path, filepath);
+
+      if (headStatus === 1) {
+        // Tracked file: restore if changed in workdir or stage
+        if (workdirStatus !== 1 || stageStatus !== 1) {
+          await git.checkout({
+            fs,
+            dir: path,
+            ref: "HEAD",
+            filepaths: [filepath],
+            force: true,
+          });
+        }
+      } else if (stageStatus !== 0) {
+        // Staged new file: remove from index
+        await git.remove({ fs, dir: path, filepath });
+        // Delete from disk if still present
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
+        }
+      } else if (workdirStatus !== 0) {
+        // Purely untracked file/directory: just delete from disk
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
+        }
+      }
+    }
+
+    // Prune empty directories only where files were actually removed.
+    // Collect each dir and its parent chain up to the repo root, then
+    // sort deepest-first so children are removed before parents.
+    const dirsToCheck = new Set<string>();
+    for (const dir of removedFileDirs) {
+      let current = dir;
+      while (current !== path && current.startsWith(path)) {
+        dirsToCheck.add(current);
+        current = pathModule.dirname(current);
+      }
+    }
+    const sorted = [...dirsToCheck].sort((a, b) => b.length - a.length);
+    for (const dir of sorted) {
+      try {
+        const remaining = await fsPromises.readdir(dir);
+        if (remaining.length === 0) {
+          await fsPromises.rmdir(dir);
+        }
+      } catch {
+        // Ignore errors (broken symlinks, permission issues) so the
+        // discard operation isn't aborted by a single failing directory.
+      }
+    }
+  }
+}
+
 export async function gitInit({
   path,
   ref = "main",

@@ -15,7 +15,6 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
@@ -31,7 +30,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
-  const setChatInput = useSetAtom(chatInputValueAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
 
@@ -100,7 +98,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   }, [refreshAppIframe, previewMode]);
 
   useEffect(() => {
-    setChatInput("");
     setSelectedComponentsPreview([]);
     setConsoleEntries([]);
   }, [selectedAppId]);

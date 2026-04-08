@@ -97,14 +97,14 @@ describe("processFullResponseActions add dependency errors", () => {
     } as any);
   });
 
-  it("stores the socket stderr verdict in the appended error card", async () => {
+  it("stores the relevant combined PTY verdict in the appended error card", async () => {
     executeAddDependencyMock.mockRejectedValue(
       new ExecuteAddDependencyError({
         error: new CommandExecutionError({
           message:
             "Command 'npx sfw@2.0.4 npm install --legacy-peer-deps react' exited with code 1",
-          stderr:
-            "Socket Firewall blocked react<malware>\nPolicy: malware package",
+          stdout:
+            "Progress: resolved 12, reused 0, downloaded 0, added 0\nSocket Firewall blocked react<malware>\nPolicy: malware package",
           exitCode: 1,
         }),
         warningMessages: [],

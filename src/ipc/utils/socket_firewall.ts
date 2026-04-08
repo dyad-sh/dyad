@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PTY_COMMAND_TIMEOUT_MS,
   PtyCommandExecutionError,
   runPtyCommand,
 } from "@/ipc/utils/pty_command_runner";
@@ -11,6 +12,10 @@ const SOCKET_FIREWALL_NPX_ARGS = [
   "--yes",
   SOCKET_FIREWALL_PACKAGE,
 ];
+const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
+export const SOCKET_FIREWALL_PROBE_TIMEOUT_MS = 30 * 1000;
+export const PACKAGE_MANAGER_PROBE_TIMEOUT_MS = 30 * 1000;
+export const ADD_DEPENDENCY_INSTALL_TIMEOUT_MS = DEFAULT_PTY_COMMAND_TIMEOUT_MS;
 
 export interface CommandExecutionOptions {
   cwd?: string;
@@ -65,15 +70,49 @@ export function resolveExecutableName(
   return command;
 }
 
+function quoteWindowsCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+export function buildPtyInvocation(
+  command: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  comSpec = process.env.ComSpec ?? "cmd.exe",
+): { command: string; args: string[] } {
+  const resolvedCommand = resolveExecutableName(command, platform);
+
+  if (
+    platform === "win32" &&
+    WINDOWS_BATCH_COMMAND_PATTERN.test(resolvedCommand)
+  ) {
+    return {
+      command: comSpec,
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        [resolvedCommand, ...args].map(quoteWindowsCmdArg).join(" "),
+      ],
+    };
+  }
+
+  return {
+    command: resolvedCommand,
+    args,
+  };
+}
+
 export async function runCommand(
   command: string,
   args: string[],
   options: CommandExecutionOptions = {},
 ): Promise<CommandExecutionResult> {
   try {
+    const invocation = buildPtyInvocation(command, args);
     const { output } = await runPtyCommand(
-      resolveExecutableName(command),
-      args,
+      invocation.command,
+      invocation.args,
       {
         cwd: options.cwd,
         env: options.env,
@@ -128,7 +167,9 @@ export async function ensureSocketFirewallInstalled(
   warningMessage?: string;
 }> {
   try {
-    await runner("npx", [...SOCKET_FIREWALL_NPX_ARGS, "--help"]);
+    await runner("npx", [...SOCKET_FIREWALL_NPX_ARGS, "--help"], {
+      timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
+    });
     return { available: true };
   } catch {
     return {
@@ -142,7 +183,9 @@ export async function detectPreferredPackageManager(
   runner: CommandRunner = runCommand,
 ): Promise<PackageManager> {
   try {
-    await runner("pnpm", ["--version"]);
+    await runner("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
     return "pnpm";
   } catch {
     return "npm";

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   CommandExecutionError,
   SOCKET_FIREWALL_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
@@ -95,14 +96,15 @@ describe("executeAddDependency", () => {
     });
   });
 
-  it("includes socket stderr verdict details when sfw blocks a dependency", async () => {
+  it("uses the most relevant combined PTY output line as the display summary", async () => {
     ensureSocketFirewallInstalledMock.mockResolvedValue({
       available: true,
     });
     runCommandMock.mockRejectedValueOnce(
       new CommandExecutionError({
         message: "pnpm blocked",
-        stderr: "Socket Firewall blocked react\nPolicy: malware",
+        stdout:
+          "Progress: resolved 12, reused 0, downloaded 0, added 0\nSocket Firewall blocked react\nPolicy: malware",
         exitCode: 1,
       }),
     );
@@ -125,7 +127,8 @@ describe("executeAddDependency", () => {
     expect(caughtError).toBeInstanceOf(ExecuteAddDependencyError);
     expect(caughtError).toMatchObject({
       displaySummary: "Socket Firewall blocked react",
-      displayDetails: "Socket Firewall blocked react\nPolicy: malware",
+      displayDetails:
+        "Progress: resolved 12, reused 0, downloaded 0, added 0\nSocket Firewall blocked react\nPolicy: malware",
       warningMessages: [],
     });
   });
@@ -137,7 +140,7 @@ describe("executeAddDependency", () => {
     runCommandMock.mockRejectedValueOnce(
       new CommandExecutionError({
         message: "pnpm blocked",
-        stderr:
+        stdout:
           " - blocked npm package: name: axois; version: 0.0.1-security; reason: malware (critical)",
         exitCode: 1,
       }),
@@ -169,7 +172,7 @@ describe("executeAddDependency", () => {
     runCommandMock.mockRejectedValueOnce(
       new CommandExecutionError({
         message: "sfw pnpm failed",
-        stderr: "Socket Firewall timed out",
+        stdout: "Socket Firewall timed out",
         exitCode: 1,
       }),
     );
@@ -214,7 +217,10 @@ describe("executeAddDependency", () => {
     expect(runCommandMock).toHaveBeenCalledWith(
       "npm",
       ["install", "--legacy-peer-deps", "react"],
-      { cwd: "/tmp/app" },
+      {
+        cwd: "/tmp/app",
+        timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+      },
     );
     expect(runCommandMock).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({

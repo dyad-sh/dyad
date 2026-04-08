@@ -22,23 +22,31 @@ export interface PtyCommandExecutionResult {
   output: string;
 }
 
+export interface NormalizePtyOutputOptions {
+  preserveCarriageReturnFrames?: boolean;
+}
+
 export class PtyCommandExecutionError extends Error {
   output: string;
   exitCode: number | null;
+  signal?: number;
 
   constructor({
     message,
     output = "",
     exitCode = null,
+    signal,
   }: {
     message: string;
     output?: string;
     exitCode?: number | null;
+    signal?: number;
   }) {
     super(message);
     this.name = "PtyCommandExecutionError";
     this.output = output;
     this.exitCode = exitCode;
+    this.signal = signal;
   }
 }
 
@@ -74,13 +82,59 @@ function stripAnsiSequences(value: string): string {
     .replace(ANSI_SINGLE_CHAR_PATTERN, "");
 }
 
-export function normalizePtyOutput(value: string): string {
+function formatDurationUnit(value: number, unit: string): string {
+  if (unit === "ms") {
+    return `${value} ${unit}`;
+  }
+
+  return `${value} ${unit}${value === 1 ? "" : "s"}`;
+}
+
+export function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return formatDurationUnit(durationMs, "ms");
+  }
+
+  if (durationMs % (60 * 1000) === 0) {
+    return formatDurationUnit(durationMs / (60 * 1000), "minute");
+  }
+
+  if (durationMs % 1000 === 0) {
+    return formatDurationUnit(durationMs / 1000, "second");
+  }
+
+  return formatDurationUnit(Math.ceil(durationMs / 1000), "second");
+}
+
+function hasSignal(signal: number | undefined): signal is number {
+  return signal !== undefined && signal !== 0;
+}
+
+function buildExitMessage(
+  displayedCommand: string,
+  exitCode: number,
+  signal: number | undefined,
+): string {
+  if (hasSignal(signal)) {
+    return `Command '${displayedCommand}' was terminated by signal ${signal}`;
+  }
+
+  return `Command '${displayedCommand}' exited with code ${exitCode}`;
+}
+
+export function normalizePtyOutput(
+  value: string,
+  options: NormalizePtyOutputOptions = {},
+): string {
   const strippedValue = stripAnsiSequences(value).replace(/\r\n/g, "\n");
   const normalizedLines: string[] = [];
   let currentLine = "";
 
   for (const character of strippedValue) {
     if (character === "\r") {
+      if (options.preserveCarriageReturnFrames && currentLine) {
+        normalizedLines.push(currentLine);
+      }
       currentLine = "";
       continue;
     }
@@ -167,10 +221,13 @@ export async function runPtyCommand(
       outputChunks.push(chunk);
     });
 
-    exitSubscription = ptyProcess.onExit(({ exitCode }) => {
-      const output = normalizePtyOutput(outputChunks.join(""));
+    exitSubscription = ptyProcess.onExit(({ exitCode, signal }) => {
+      const failed = exitCode !== 0 || hasSignal(signal);
+      const output = normalizePtyOutput(outputChunks.join(""), {
+        preserveCarriageReturnFrames: failed,
+      });
 
-      if (exitCode === 0) {
+      if (!failed) {
         settle(() => resolve({ output }));
         return;
       }
@@ -178,9 +235,10 @@ export async function runPtyCommand(
       settle(() =>
         reject(
           new PtyCommandExecutionError({
-            message: `Command '${displayedCommand}' exited with code ${exitCode}`,
+            message: buildExitMessage(displayedCommand, exitCode, signal),
             output,
             exitCode,
+            signal,
           }),
         ),
       );
@@ -196,8 +254,10 @@ export async function runPtyCommand(
       settle(() =>
         reject(
           new PtyCommandExecutionError({
-            message: `Command '${displayedCommand}' timed out after ${timeoutMs}ms`,
-            output: normalizePtyOutput(outputChunks.join("")),
+            message: `Command '${displayedCommand}' timed out after ${formatDuration(timeoutMs)}. The command may be stuck. Check your network or environment and try again.`,
+            output: normalizePtyOutput(outputChunks.join(""), {
+              preserveCarriageReturnFrames: true,
+            }),
           }),
         ),
       );

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { Message } from "@/ipc/types";
 import { readEffectiveSettings } from "@/main/settings";
 import {
+  ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
@@ -29,11 +30,30 @@ export interface ExecuteAddDependencyResult {
   warningMessages: string[];
 }
 
-function getFirstNonEmptyLine(value: string): string | undefined {
-  return value
+const DISPLAY_SUMMARY_PATTERNS = [
+  /\bblocked\b/i,
+  /\bfailed\b/i,
+  /\berror\b/i,
+  /\bdenied\b/i,
+  /\btimed out\b/i,
+  /\btimeout\b/i,
+  /\betimedout\b/i,
+];
+
+function getDisplaySummary(value: string): string | undefined {
+  const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find(Boolean);
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (DISPLAY_SUMMARY_PATTERNS.some((pattern) => pattern.test(line))) {
+      return line;
+    }
+  }
+
+  return lines.at(-1);
 }
 
 export class ExecuteAddDependencyError extends Error {
@@ -57,7 +77,7 @@ export class ExecuteAddDependencyError extends Error {
     this.warningMessages = warningMessages;
     this.originalError = error;
     this.displayDetails = displayDetails;
-    this.displaySummary = getFirstNonEmptyLine(displayDetails) ?? message;
+    this.displaySummary = getDisplaySummary(displayDetails) ?? message;
   }
 }
 
@@ -72,6 +92,7 @@ async function runAddDependencyCommand(
   try {
     const { stdout, stderr } = await runCommand(command.command, command.args, {
       cwd: appPath,
+      timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
     });
     return {
       succeeded: true,

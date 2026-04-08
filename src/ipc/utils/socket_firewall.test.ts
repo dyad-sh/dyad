@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildPtyInvocation,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
+  PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   resolveExecutableName,
+  SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
   type CommandRunner,
   type PackageManager,
@@ -16,7 +19,9 @@ describe("detectPreferredPackageManager", () => {
       .mockResolvedValue({ stdout: "10.0.0", stderr: "" });
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"]);
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
   });
 
   it("falls back to npm when pnpm is unavailable", async () => {
@@ -25,7 +30,9 @@ describe("detectPreferredPackageManager", () => {
       .mockRejectedValue(new Error("ENOENT"));
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"]);
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
   });
 });
 
@@ -93,12 +100,13 @@ describe("ensureSocketFirewallInstalled", () => {
       available: true,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("npx", [
-      "--prefer-offline",
-      "--yes",
-      "sfw@2.0.4",
-      "--help",
-    ]);
+    expect(runner).toHaveBeenCalledWith(
+      "npx",
+      ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
+      {
+        timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 
   it("returns a warning when sfw cannot be run through npx", async () => {
@@ -111,12 +119,13 @@ describe("ensureSocketFirewallInstalled", () => {
       warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
     });
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner).toHaveBeenCalledWith("npx", [
-      "--prefer-offline",
-      "--yes",
-      "sfw@2.0.4",
-      "--help",
-    ]);
+    expect(runner).toHaveBeenCalledWith(
+      "npx",
+      ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
+      {
+        timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 });
 
@@ -129,5 +138,21 @@ describe("resolveExecutableName", () => {
   it("preserves explicit executables and Unix command names", () => {
     expect(resolveExecutableName("node.exe", "win32")).toBe("node.exe");
     expect(resolveExecutableName("npx", "darwin")).toBe("npx");
+  });
+});
+
+describe("buildPtyInvocation", () => {
+  it("wraps Windows .cmd shims through cmd.exe for PTY execution", () => {
+    expect(buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32")).toEqual({
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", '"npx.cmd" "--yes" "sfw@2.0.4"'],
+    });
+  });
+
+  it("passes Unix commands directly to the PTY", () => {
+    expect(buildPtyInvocation("pnpm", ["add", "react"], "darwin")).toEqual({
+      command: "pnpm",
+      args: ["add", "react"],
+    });
   });
 });

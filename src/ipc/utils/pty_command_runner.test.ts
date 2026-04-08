@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  formatDuration,
   normalizePtyOutput,
   PtyCommandExecutionError,
   runPtyCommand,
@@ -68,6 +69,22 @@ describe("normalizePtyOutput", () => {
       ),
     ).toBe("fetched\nabXY");
   });
+
+  it("preserves carriage-return frames when requested", () => {
+    expect(
+      normalizePtyOutput("Progress 1\rProgress 2\rFailed to download\n", {
+        preserveCarriageReturnFrames: true,
+      }),
+    ).toBe("Progress 1\nProgress 2\nFailed to download");
+  });
+});
+
+describe("formatDuration", () => {
+  it("formats user-facing timeout durations in readable units", () => {
+    expect(formatDuration(25)).toBe("25 ms");
+    expect(formatDuration(30_000)).toBe("30 seconds");
+    expect(formatDuration(10 * 60 * 1000)).toBe("10 minutes");
+  });
 });
 
 describe("runPtyCommand", () => {
@@ -123,6 +140,23 @@ describe("runPtyCommand", () => {
     } satisfies Partial<PtyCommandExecutionError>);
   });
 
+  it("rejects when the PTY exits due to a signal even with exit code zero", async () => {
+    const controller = createMockPtyController();
+    spawnMock.mockReturnValue(controller.pty);
+
+    const promise = runPtyCommand("pnpm", ["add", "react"]);
+
+    controller.emitData("Progress 1\rProgress 2\r");
+    controller.emitExit({ exitCode: 0, signal: 15 });
+
+    await expect(promise).rejects.toMatchObject({
+      exitCode: 0,
+      message: "Command 'pnpm add react' was terminated by signal 15",
+      output: "Progress 1\nProgress 2",
+      signal: 15,
+    } satisfies Partial<PtyCommandExecutionError>);
+  });
+
   it("kills the PTY and rejects when the command times out", async () => {
     vi.useFakeTimers();
     const controller = createMockPtyController();
@@ -132,15 +166,15 @@ describe("runPtyCommand", () => {
       timeoutMs: 25,
     });
     controller.emitData("still running");
-
-    const rejection = expect(promise).rejects.toMatchObject({
-      exitCode: null,
-      message: "Command 'npx sfw' timed out after 25ms",
-      output: "still running",
-    } satisfies Partial<PtyCommandExecutionError>);
+    const handledPromise = promise.catch((error) => error);
 
     await vi.advanceTimersByTimeAsync(25);
-    await rejection;
+    await expect(handledPromise).resolves.toMatchObject({
+      exitCode: null,
+      message:
+        "Command 'npx sfw' timed out after 25 ms. The command may be stuck. Check your network or environment and try again.",
+      output: "still running",
+    } satisfies Partial<PtyCommandExecutionError>);
     expect(controller.pty.kill).toHaveBeenCalledTimes(1);
   });
 });

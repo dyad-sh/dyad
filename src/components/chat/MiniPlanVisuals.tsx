@@ -9,22 +9,14 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import type {
-  MiniPlanVisual,
-  MiniPlanVisualEditableField,
+import {
+  MINI_PLAN_VISUAL_TYPES,
+  type MiniPlanVisual,
+  type MiniPlanVisualEditableField,
 } from "@/ipc/types/mini_plan";
 import type { CustomTagState } from "./stateTypes";
 
-const VISUAL_TYPES = [
-  "logo",
-  "photo",
-  "illustration",
-  "icon",
-  "background",
-  "other",
-] as const;
-
-type VisualType = (typeof VISUAL_TYPES)[number];
+type VisualType = (typeof MINI_PLAN_VISUAL_TYPES)[number];
 
 interface MiniPlanVisualsProps {
   visuals: MiniPlanVisual[];
@@ -298,7 +290,7 @@ const AddVisualForm: React.FC<{
           className="text-xs bg-background border border-border/50 rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           aria-label="Visual type"
         >
-          {VISUAL_TYPES.map((t) => (
+          {MINI_PLAN_VISUAL_TYPES.map((t) => (
             <option key={t} value={t}>
               {TYPE_LABELS[t].label}
             </option>
@@ -309,6 +301,7 @@ const AddVisualForm: React.FC<{
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Description"
+          aria-label="Visual description"
           className="flex-1 text-sm bg-background border border-border/50 rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           autoFocus
         />
@@ -321,6 +314,7 @@ const AddVisualForm: React.FC<{
           if (e.key === "Escape") onCancel();
         }}
         placeholder="Image generation prompt..."
+        aria-label="Image generation prompt"
         className="w-full text-xs font-mono bg-background border border-border/50 rounded p-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 resize-y min-h-[48px]"
       />
       <div className="flex items-center gap-1.5 justify-end">

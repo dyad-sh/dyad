@@ -183,7 +183,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
-  const { routes: availableRoutes } = useParseRouter(selectedAppId);
+  const {
+    routes: availableRoutes,
+    loading: routesLoading,
+    error: routesError,
+  } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
@@ -1243,7 +1247,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <ChevronDown size={14} className="flex-shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-full">
-                {availableRoutes.length > 0 ? (
+                {routesLoading ? (
+                  <DropdownMenuItem disabled>
+                    Loading routes...
+                  </DropdownMenuItem>
+                ) : routesError ? (
+                  <DropdownMenuItem disabled>
+                    Unable to load routes
+                  </DropdownMenuItem>
+                ) : availableRoutes.length > 0 ? (
                   availableRoutes.map((route) => (
                     <DropdownMenuItem
                       key={route.path}
@@ -1258,7 +1270,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   ))
                 ) : (
                   <DropdownMenuItem disabled>
-                    Loading routes...
+                    No routes detected
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

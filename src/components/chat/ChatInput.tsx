@@ -58,7 +58,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo } from "@/lib/toast";
+import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -620,6 +620,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           error: result.extraFilesError,
           posthog,
         });
+      }
+      for (const warningMessage of result.warningMessages ?? []) {
+        showWarning(warningMessage);
+      }
+      if (!result.success) {
+        setError(result.error ?? "An error occurred while approving");
       }
     } catch (err) {
       console.error("Error approving proposal:", err);

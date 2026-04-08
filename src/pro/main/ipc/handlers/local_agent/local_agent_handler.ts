@@ -470,6 +470,7 @@ export async function handleLocalAgentStream(
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Get model client
@@ -562,6 +563,9 @@ export async function handleLocalAgentStream(
           chatId: chat.id,
           todos,
         });
+      },
+      onWarningMessage: (message) => {
+        warningMessages.push(message);
       },
     };
 
@@ -1287,6 +1291,8 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       updatedFiles: !readOnly,
       chatSummary: ctx.chatSummary,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     } satisfies ChatResponseEnd);
 
     return true; // Success
@@ -1311,6 +1317,8 @@ export async function handleLocalAgentStream(
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error: `Error: ${getErrorMessage(error)}`,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
     return false; // Error - don't consume quota
   }

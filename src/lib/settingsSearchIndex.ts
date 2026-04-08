@@ -34,6 +34,7 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
@@ -338,6 +339,14 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Use native Git for faster performance without external installation",
     keywords: ["git", "native", "experiment", "beta", "performance"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.blockUnsafeNpmPackages,
+    label: "Block unsafe npm packages",
+    description: "Uses socket.dev to detect unsafe packages and blocks them",
+    keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

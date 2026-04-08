@@ -15,6 +15,10 @@ import log from "electron-log";
 import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 import { DEFAULT_THEME_ID } from "@/shared/themes";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import {
+  getRemoteDesktopConfig,
+  type RemoteDesktopConfig,
+} from "@/ipc/shared/remote_desktop_config";
 
 const logger = log.scope("settings");
 
@@ -181,6 +185,27 @@ export function readSettings(): UserSettings {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;
   }
+}
+
+export function resolveEffectiveSettings(
+  settings: UserSettings,
+  remoteConfig: RemoteDesktopConfig | null,
+): UserSettings {
+  if (typeof settings.blockUnsafeNpmPackages === "boolean") {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    blockUnsafeNpmPackages:
+      remoteConfig?.defaults?.blockUnsafeNpmPackages ?? true,
+  };
+}
+
+export async function readEffectiveSettings(): Promise<UserSettings> {
+  const settings = readSettings();
+  const remoteConfig = await getRemoteDesktopConfig();
+  return resolveEffectiveSettings(settings, remoteConfig);
 }
 
 export function writeSettings(settings: Partial<UserSettings>): void {

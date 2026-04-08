@@ -50,6 +50,24 @@ import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+
+function getToolErrorDisplayDetails(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displayDetails;
+  }
+
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getToolErrorSummary(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displaySummary;
+  }
+
+  return error instanceof Error ? error.message : String(error);
+}
+
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
@@ -503,11 +521,11 @@ export function buildAgentToolSet(
 
           return convertToolResultForAiSdk(result);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
+          const errorMessage = getToolErrorSummary(error);
+          const errorDetails = getToolErrorDisplayDetails(error);
 
           ctx.onXmlComplete(
-            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorMessage)}</dyad-output>`,
+            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorDetails)}</dyad-output>`,
           );
           throw error;
         }

@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 describe("removeUnsupportedWindowsSigningFiles", () => {
-  it("removes the node-pty PowerShell scripts that signtool cannot sign", async () => {
+  it("removes node-pty artifacts that Windows signtool should not touch", async () => {
     const buildPath = await fs.mkdtemp(
       path.join(os.tmpdir(), "dyad-windows-signing-"),
     );
@@ -27,8 +27,24 @@ describe("removeUnsupportedWindowsSigningFiles", () => {
     for (const relativePath of UNSUPPORTED_WINDOWS_SIGNING_RELATIVE_PATHS) {
       const absolutePath = path.join(buildPath, relativePath);
       await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, "Write-Host 'hello'\n");
+
+      if (path.extname(relativePath)) {
+        await fs.writeFile(absolutePath, "Write-Host 'hello'\n");
+      } else {
+        await fs.mkdir(absolutePath, { recursive: true });
+        await fs.writeFile(
+          path.join(absolutePath, "placeholder.node"),
+          "not-a-windows-binary",
+        );
+      }
     }
+
+    const supportedWindowsBinary = path.join(
+      buildPath,
+      "node_modules/node-pty/prebuilds/win32-x64/pty.node",
+    );
+    await fs.mkdir(path.dirname(supportedWindowsBinary), { recursive: true });
+    await fs.writeFile(supportedWindowsBinary, "windows-binary");
 
     await removeUnsupportedWindowsSigningFiles(buildPath);
 
@@ -38,6 +54,10 @@ describe("removeUnsupportedWindowsSigningFiles", () => {
           fs.stat(path.join(buildPath, relativePath)),
         ).rejects.toThrow();
       }),
+    );
+
+    await expect(fs.readFile(supportedWindowsBinary, "utf8")).resolves.toBe(
+      "windows-binary",
     );
   });
 });

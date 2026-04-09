@@ -169,7 +169,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           <div className="text-xs text-muted-foreground mb-3">{children}</div>
         )}
         <div
-          role="group"
+          role="radiogroup"
           aria-label={t("integrations.databaseSetup.chooseProvider")}
           className={`grid ${availableProviders.length > 1 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
         >
@@ -177,8 +177,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             <button
               key={option.id}
               type="button"
+              role="radio"
               onClick={() => setSelectedProvider(option.id)}
-              aria-pressed={effectiveSelectedProvider === option.id}
+              aria-checked={effectiveSelectedProvider === option.id}
               className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                 effectiveSelectedProvider === option.id
                   ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"

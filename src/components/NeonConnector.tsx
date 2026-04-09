@@ -329,16 +329,16 @@ export function NeonConnector({ appId }: { appId: number }) {
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </Button>
           </CardTitle>
-          <CardDescription className="flex flex-col gap-1.5 text-sm">
+          <CardDescription className="text-sm">
             {t("integrations.neon.connectedToProject")}
-            <Badge
-              variant="secondary"
-              className="ml-2 max-w-full truncate text-base font-bold px-3 py-1"
-              title={projectInfo?.projectName ?? app.neonProjectId}
-            >
-              {projectInfo?.projectName ?? app.neonProjectId}
-            </Badge>
           </CardDescription>
+          <Badge
+            variant="secondary"
+            className="ml-2 max-w-full truncate text-base font-bold px-3 py-1"
+            title={projectInfo?.projectName ?? app.neonProjectId}
+          >
+            {projectInfo?.projectName ?? app.neonProjectId}
+          </Badge>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -478,24 +478,22 @@ export function NeonConnector({ appId }: { appId: number }) {
     return (
       <Card className="mt-1">
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            {t("integrations.neon.projects")}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => refetchProjects()}
-                disabled={isFetchingProjects}
-                title={t("integrations.neon.refreshProjects")}
-                aria-label={t("integrations.neon.refreshProjects")}
-                aria-busy={isFetchingProjects}
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
-                />
-              </Button>
-            </div>
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>{t("integrations.neon.projects")}</CardTitle>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => refetchProjects()}
+              disabled={isFetchingProjects}
+              title={t("integrations.neon.refreshProjects")}
+              aria-label={t("integrations.neon.refreshProjects")}
+              aria-busy={isFetchingProjects}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
           <CardDescription>
             {t("integrations.neon.selectProjectDescription")}
           </CardDescription>

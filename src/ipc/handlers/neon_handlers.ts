@@ -229,6 +229,14 @@ export function registerNeonHandlers() {
             `Failed to clear Neon fields from app ${appId} after project cleanup: ${dbCleanupError}`,
           );
         }
+        // Remove env vars that may have been injected before the failure
+        try {
+          await removeNeonEnvVars({ appPath });
+        } catch (envCleanupError) {
+          logger.error(
+            `Failed to remove Neon env vars from app ${appId} after project cleanup: ${envCleanupError}`,
+          );
+        }
         throw postCreateError;
       }
     } catch (error: any) {

@@ -89,7 +89,7 @@ export async function spawnDrizzleKit({
   args,
   cwd,
   connectionUri,
-  timeoutMs = 60_000,
+  timeoutMs = 120_000,
 }: {
   args: string[];
   cwd: string;
@@ -139,7 +139,8 @@ export async function spawnDrizzleKit({
       cwd,
       stdio: "pipe",
       env: {
-        ...process.env,
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
         NODE_PATH: nodeModulesPath,
         DRIZZLE_DATABASE_URL: connectionUri,
       },

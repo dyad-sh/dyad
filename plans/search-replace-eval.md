@@ -409,6 +409,26 @@ function applyEdit(
   return applied.content!;
 }
 
+// ── Full-file-rewrite guard ─────────────────────────────────
+// If `old_string` covers more than 80% of the file, the model
+// is effectively rewriting the whole file rather than making a
+// surgical edit — this is the failure mode the eval is
+// specifically designed to catch.
+const MAX_OLD_STRING_RATIO = 0.8;
+
+function assertNotFullFileRewrite(
+  fileContent: string,
+  oldString: string,
+  context: string,
+): void {
+  const ratio = oldString.length / fileContent.length;
+  expect(
+    ratio,
+    `${context}: old_string covers ${(ratio * 100).toFixed(1)}% of the file ` +
+      `(max ${MAX_OLD_STRING_RATIO * 100}%) — looks like a full-file rewrite`,
+  ).toBeLessThanOrEqual(MAX_OLD_STRING_RATIO);
+}
+
 // ── Model matrix ────────────────────────────────────────────
 
 // Temperature per model must match language_model_constants.ts.
@@ -628,7 +648,7 @@ Add next to the existing `test` script:
   3. **Convert a class component to a function component** (~300-line React file) — "Convert `UserProfile` from a class component to a function component using hooks." `structuralChecks: ["function UserProfile", "useState", "useEffect"]`.
   4. **Refactor a giant component into 3 smaller ones** (~700-line React file) — "Extract `AvatarSection` (the avatar/upload logic around lines 100-200), `StatsPanel` (the stats grid around lines 280-420), and `ActivityFeed` (the activity list around lines 480-620) into their own components in the same file, then use them in the main `UserProfile` component." `structuralChecks: ["function AvatarSection", "function StatsPanel", "function ActivityFeed", "<AvatarSection", "<StatsPanel", "<ActivityFeed"]`.
   5. **Reorganize a switch statement into a strategy map** (~200-line file) — "Refactor the `handleEvent` switch statement into a `Record<EventType, handler>` map and a dispatch function." `structuralChecks: ["Record<", "handleEvent"]`.
-- [ ] Add a `MAX_OLD_STRING_RATIO` guard (e.g. 0.8) that fails the test if `old_string` covers more than 80% of the file — this catches full-file rewrites at the eval level.
+- [ ] Implement the `assertNotFullFileRewrite` helper with `MAX_OLD_STRING_RATIO = 0.8` (definition shown in the "Full-file-rewrite guard" section of the eval suite code). Call it from both the exact-match branch and the judge-mode `execute` function so every individual `search_replace` call is checked per-call, before its edit is applied.
 - [ ] Wire up the model matrix with `SONNET_4_6`, `GPT_5_4`, and `GEMINI_3_FLASH` — all imported from `language_model_constants.ts`. The judge also uses `GPT_5_4` via the same import.
 - [ ] Confirm `describe.skipIf` correctly skips when `DYAD_PRO_API_KEY` is absent (run with no key set → all suites should be SKIPPED, not FAILED).
 

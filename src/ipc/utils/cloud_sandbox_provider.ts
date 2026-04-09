@@ -14,10 +14,21 @@ const DYAD_ENGINE_URL =
 const CLOUD_SANDBOX_EXCLUDED_DIRS = new Set(["node_modules", ".git", ".next"]);
 const CLOUD_SANDBOX_ROOT_ALLOWLIST = new Set([".env", ".env.local"]);
 
-export type CloudSandboxFileMap = Record<string, string>;
+type CloudSandboxFileBytes = Uint8Array;
+
+export type CloudSandboxFileMap = Record<string, CloudSandboxFileBytes>;
 export type CloudSandboxSyncUpdate = {
   appId: number;
   errorMessage: string | null;
+};
+
+type CloudSandboxUploadManifest = {
+  replaceAll: boolean;
+  deletedFiles: string[];
+  files: Array<{
+    path: string;
+    fieldName: string;
+  }>;
 };
 
 const CloudSandboxCreateResponseSchema = z.object({
@@ -216,7 +227,10 @@ async function cloudSandboxFetch(
 ): Promise<Response> {
   const apiKey = getDyadEngineApiKey();
   const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type") && init.body) {
+  const isMultipartBody =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+
+  if (!headers.has("Content-Type") && init.body && !isMultipartBody) {
     headers.set("Content-Type", "application/json");
   }
   if (apiKey) {
@@ -284,6 +298,40 @@ async function parseResponseJson<T>(
   return result.data;
 }
 
+function buildCloudSandboxUploadFormData(input: {
+  files: CloudSandboxFileMap;
+  replaceAll: boolean;
+  deletedFiles: string[];
+}): FormData {
+  const formData = new FormData();
+  const manifest: CloudSandboxUploadManifest = {
+    replaceAll: input.replaceAll,
+    deletedFiles: input.deletedFiles,
+    files: [],
+  };
+  const sortedFiles = Object.entries(input.files).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+
+  for (const [filePath, content] of sortedFiles) {
+    const fieldName = `file_${manifest.files.length}`;
+    manifest.files.push({
+      path: filePath,
+      fieldName,
+    });
+    formData.append(
+      fieldName,
+      new Blob([Uint8Array.from(content)], {
+        type: "application/octet-stream",
+      }),
+      path.posix.basename(filePath) || fieldName,
+    );
+  }
+
+  formData.append("manifest", JSON.stringify(manifest));
+  return formData;
+}
+
 export async function buildCloudSandboxFileMap(
   appPath: string,
 ): Promise<CloudSandboxFileMap> {
@@ -292,7 +340,7 @@ export async function buildCloudSandboxFileMap(
     files.map(async (relativePath) => {
       const normalizedPath = normalizePath(relativePath);
       const fullPath = path.join(appPath, normalizedPath);
-      const content = await fsPromises.readFile(fullPath, "utf-8");
+      const content = await fsPromises.readFile(fullPath);
       return [normalizedPath, content] as const;
     }),
   );
@@ -448,7 +496,7 @@ async function buildCloudSandboxPartialFileMap(input: {
         continue;
       }
 
-      const content = await fsPromises.readFile(fullPath, "utf-8");
+      const content = await fsPromises.readFile(fullPath);
       files[normalizedPath] = content;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -698,7 +746,7 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
   ) {
     const response = await cloudSandboxFetch(`/sandboxes/${sandboxId}/files`, {
       method: "POST",
-      body: JSON.stringify({
+      body: buildCloudSandboxUploadFormData({
         files,
         replaceAll: options?.replaceAll ?? false,
         deletedFiles: options?.deletedFiles ?? [],

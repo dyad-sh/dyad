@@ -77,7 +77,7 @@ export const CANNED_MESSAGE = `
 
 type FakeCloudSandbox = {
   id: string;
-  files: Record<string, string>;
+  files: Record<string, Buffer>;
   createdAt: number;
   previewAuthToken: string;
   syncRevision: number;
@@ -101,6 +101,81 @@ function createServiceResponse<T>(responseObject: T) {
   };
 }
 
+async function parseMultipartFormData(req: express.Request) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        headers.append(key, entry);
+      }
+      continue;
+    }
+
+    if (value !== undefined) {
+      headers.set(key, value);
+    }
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const request = new Request("http://localhost/fake-cloud-upload", {
+    method: req.method,
+    headers,
+    body: Buffer.concat(chunks),
+  });
+
+  return request.formData();
+}
+
+async function parseCloudSandboxUpload(req: express.Request) {
+  if (!req.is("multipart/form-data")) {
+    return {
+      replaceAll: req.body.replaceAll === true,
+      deletedFiles: Array.isArray(req.body.deletedFiles)
+        ? req.body.deletedFiles
+        : [],
+      files: Object.fromEntries(
+        Object.entries(req.body.files ?? {}).map(([filePath, content]) => [
+          filePath,
+          Buffer.from(String(content), "utf8"),
+        ]),
+      ) as Record<string, Buffer>,
+    };
+  }
+
+  const formData = await parseMultipartFormData(req);
+  const manifestValue = formData.get("manifest");
+
+  if (typeof manifestValue !== "string") {
+    throw new Error("Expected multipart sandbox upload manifest.");
+  }
+
+  const manifest = JSON.parse(manifestValue) as {
+    replaceAll: boolean;
+    deletedFiles?: string[];
+    files?: Array<{ path: string; fieldName: string }>;
+  };
+  const files: Record<string, Buffer> = {};
+
+  for (const entry of manifest.files ?? []) {
+    const filePart = formData.get(entry.fieldName);
+    if (!(filePart instanceof File)) {
+      throw new Error(`Expected multipart file part ${entry.fieldName}.`);
+    }
+
+    files[entry.path] = Buffer.from(await filePart.arrayBuffer());
+  }
+
+  return {
+    replaceAll: manifest.replaceAll === true,
+    deletedFiles: manifest.deletedFiles ?? [],
+    files,
+  };
+}
+
 function escapeHtml(text: string) {
   return text
     .replace(/&/g, "&amp;")
@@ -110,10 +185,10 @@ function escapeHtml(text: string) {
 
 function getSandboxPreviewHtml(sandbox: FakeCloudSandbox) {
   const interestingSource =
-    sandbox.files["src/App.tsx"] ??
-    sandbox.files["src/App.jsx"] ??
-    sandbox.files["app/page.tsx"] ??
-    sandbox.files["index.html"] ??
+    sandbox.files["src/App.tsx"]?.toString("utf8") ??
+    sandbox.files["src/App.jsx"]?.toString("utf8") ??
+    sandbox.files["app/page.tsx"]?.toString("utf8") ??
+    sandbox.files["index.html"]?.toString("utf8") ??
     "";
 
   const fileList = Object.keys(sandbox.files)
@@ -121,17 +196,16 @@ function getSandboxPreviewHtml(sandbox: FakeCloudSandbox) {
     .slice(0, 12)
     .map((file) => `<li>${escapeHtml(file)}</li>`)
     .join("");
-  const snapshotDigest = crypto
-    .createHash("sha1")
-    .update(
-      JSON.stringify(
-        Object.entries(sandbox.files).sort(([leftPath], [rightPath]) =>
-          leftPath.localeCompare(rightPath),
-        ),
-      ),
-    )
-    .digest("hex")
-    .slice(0, 12);
+  const snapshotHasher = crypto.createHash("sha1");
+  for (const [filePath, content] of Object.entries(sandbox.files).sort(
+    ([leftPath], [rightPath]) => leftPath.localeCompare(rightPath),
+  )) {
+    snapshotHasher.update(filePath);
+    snapshotHasher.update("\0");
+    snapshotHasher.update(content);
+    snapshotHasher.update("\0");
+  }
+  const snapshotDigest = snapshotHasher.digest("hex").slice(0, 12);
 
   return `<!doctype html>
 <html>
@@ -561,29 +635,31 @@ app.delete("/engine/v1/sandboxes/:sandboxId", (req, res) => {
   res.status(204).end();
 });
 
-app.post("/engine/v1/sandboxes/:sandboxId/files", (req, res) => {
+app.post("/engine/v1/sandboxes/:sandboxId/files", async (req, res) => {
   const sandbox = cloudSandboxes.get(req.params.sandboxId);
   if (!sandbox) {
     res.status(404).json({ error: "Sandbox not found" });
     return;
   }
 
+  const upload = await parseCloudSandboxUpload(req);
+
   console.log(
-    `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(req.body.replaceAll)} fileCount=${Object.keys(req.body.files ?? {}).length} deletedCount=${(req.body.deletedFiles ?? []).length}`,
+    `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(upload.replaceAll)} fileCount=${Object.keys(upload.files).length} deletedCount=${upload.deletedFiles.length}`,
   );
 
   sandbox.lastActiveAt = Date.now();
   sandbox.lastSuccessfulSyncAt = Date.now();
   sandbox.initialSyncCompleted = true;
   sandbox.syncRevision += 1;
-  sandbox.files = req.body.replaceAll
-    ? { ...req.body.files }
+  sandbox.files = upload.replaceAll
+    ? { ...upload.files }
     : {
         ...sandbox.files,
-        ...req.body.files,
+        ...upload.files,
       };
 
-  for (const deletedFile of req.body.deletedFiles ?? []) {
+  for (const deletedFile of upload.deletedFiles) {
     delete sandbox.files[deletedFile];
   }
 

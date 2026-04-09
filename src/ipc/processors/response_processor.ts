@@ -653,7 +653,7 @@ export async function processFullResponseActions(
         appId: chatWithApp.app.id,
         changedPaths: [...writtenFiles, ...renamedFiles],
         deletedPaths: [
-          ...deletedFiles,
+          ...dyadDeletePaths,
           ...dyadRenameTags.map((renameTag) => renameTag.from),
         ],
       });

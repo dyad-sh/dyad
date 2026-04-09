@@ -295,7 +295,15 @@ export type { DeepLinkData } from "../deep_link_data";
 // =============================================================================
 
 export const AppOutputSchema = z.object({
-  type: z.enum(["stdout", "stderr", "input-requested", "client-error", "info"]),
+  type: z.enum([
+    "stdout",
+    "stderr",
+    "input-requested",
+    "client-error",
+    "info",
+    "sync-error",
+    "sync-recovered",
+  ]),
   message: z.string(),
   appId: z.number(),
   timestamp: z.number().optional(),

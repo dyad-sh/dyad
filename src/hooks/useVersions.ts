@@ -8,12 +8,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { useRunApp } from "./useRunApp";
+import { useSettings } from "./useSettings";
 
 export function useVersions(appId: number | null) {
   const [, setVersionsAtom] = useAtom(versionsListAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const queryClient = useQueryClient();
+  const { restartApp } = useRunApp();
+  const { settings } = useSettings();
 
   const {
     data: versions,
@@ -87,6 +91,9 @@ export function useVersions(appId: number | null) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.problems.byApp({ appId }),
       });
+      if (settings?.runtimeMode2 === "cloud") {
+        await restartApp();
+      }
     },
     meta: { showErrorToast: true },
   });

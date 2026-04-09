@@ -15,15 +15,18 @@ const path = require("path");
 const LISTEN_HOST = "localhost";
 const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
+let rememberedBaseUrl = null;
+const fixedHeaders = workerData?.fixedHeaders || {};
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
   const fixed = workerData?.targetOrigin;
   if (fixed) {
     try {
-      rememberedOrigin = new URL(fixed).origin;
+      rememberedBaseUrl = new URL(fixed);
+      rememberedOrigin = rememberedBaseUrl.origin;
       parentPort?.postMessage(
-        `[proxy-worker] fixed upstream: ${rememberedOrigin}`,
+        `[proxy-worker] fixed upstream origin: ${rememberedOrigin}`,
       );
     } catch {
       throw new Error(
@@ -273,10 +276,29 @@ function injectHTML(buf) {
 
 /* ---------------- helper: build upstream URL from request -------------- */
 function buildTargetURL(clientReq) {
-  if (!rememberedOrigin) throw new Error("No upstream configured.");
+  if (!rememberedOrigin || !rememberedBaseUrl)
+    throw new Error("No upstream configured.");
 
-  // Forward to the remembered origin keeping path & query
-  return new URL(clientReq.url, rememberedOrigin);
+  const incomingUrl = new URL(clientReq.url, rememberedOrigin);
+  const basePath = rememberedBaseUrl.pathname.replace(/\/$/, "");
+  let incomingPath = incomingUrl.pathname;
+
+  if (
+    basePath &&
+    (incomingPath === basePath || incomingPath.startsWith(`${basePath}/`))
+  ) {
+    incomingPath = incomingPath.slice(basePath.length) || "/";
+  }
+
+  const targetPath =
+    incomingPath === "/"
+      ? rememberedBaseUrl.pathname
+      : `${basePath}${incomingPath}`;
+
+  return new URL(
+    `${targetPath}${incomingUrl.search}`,
+    rememberedBaseUrl.origin,
+  );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -313,7 +335,7 @@ const server = http.createServer((clientReq, clientRes) => {
   const lib = isTLS ? https : http;
 
   /* Copy request headers but rewrite Host / Origin / Referer */
-  const headers = { ...clientReq.headers, host: target.host };
+  const headers = { ...clientReq.headers, host: target.host, ...fixedHeaders };
   if (headers.origin) headers.origin = target.origin;
   if (headers.referer) {
     try {
@@ -402,7 +424,7 @@ server.on("upgrade", (req, socket, _head) => {
   }
 
   const isTLS = target.protocol === "https:";
-  const headers = { ...req.headers, host: target.host };
+  const headers = { ...req.headers, host: target.host, ...fixedHeaders };
   if (headers.origin) headers.origin = target.origin;
 
   const upReq = (isTLS ? https : http).request({

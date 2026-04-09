@@ -138,6 +138,14 @@ export class PreviewPanel {
     await this.page.getByTestId("preview-open-browser-button").click();
   }
 
+  async clickCopyShareableLink() {
+    await this.page.getByTestId("preview-copy-shareable-link-button").click();
+  }
+
+  getCloudBadge() {
+    return this.page.getByTestId("preview-cloud-badge");
+  }
+
   async clickPreviewAnnotatorButton() {
     await this.page
       .getByTestId("preview-annotator-button")
@@ -169,9 +177,9 @@ export class PreviewPanel {
     return this.page.getByTestId("preview-iframe-element");
   }
 
-  expectPreviewIframeIsVisible() {
+  expectPreviewIframeIsVisible(timeout = Timeout.LONG) {
     return expect(this.getPreviewIframeElement()).toBeVisible({
-      timeout: Timeout.LONG,
+      timeout,
     });
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { atom } from "jotai";
 import { ipc, type AppOutput } from "@/ipc/types";
 import {
@@ -11,9 +11,11 @@ import {
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { showInputRequest } from "@/lib/toast";
+import { showError, showInputRequest } from "@/lib/toast";
+import type { RuntimeMode2 } from "@/lib/schemas";
 
 const useRunAppLoadingAtom = atom(false);
+const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
 
 /**
  * Hook to subscribe to app output events from the main process.
@@ -23,8 +25,12 @@ const useRunAppLoadingAtom = atom(false);
 export function useAppOutputSubscription() {
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
+  const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
+  const syncErrorToastRef = useRef(
+    new Map<number, { message: string; shownAt: number }>(),
+  );
 
   const processProxyServerOutput = useCallback(
     (output: AppOutput) => {
@@ -37,14 +43,17 @@ export function useAppOutputSubscription() {
           /\[dyad-proxy-server\]started=\[(.*?)\]/,
         );
         const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
+        const modeMatch = output.message.match(/mode=\[(.*?)\]/);
 
         if (proxyUrlMatch && proxyUrlMatch[1]) {
           const proxyUrl = proxyUrlMatch[1];
           const originalUrl = originalUrlMatch && originalUrlMatch[1];
+          const mode = (modeMatch?.[1] as RuntimeMode2 | undefined) ?? "host";
           setAppUrlObj({
             appUrl: proxyUrl,
             appId: output.appId,
             originalUrl: originalUrl!,
+            mode,
           });
         }
       }
@@ -73,6 +82,39 @@ export function useAppOutputSubscription() {
         return null; // Don't add to regular output
       }
 
+      if (output.type === "sync-error") {
+        const previousToast = syncErrorToastRef.current.get(output.appId);
+        const now = Date.now();
+
+        if (
+          !previousToast ||
+          previousToast.message !== output.message ||
+          now - previousToast.shownAt >= CLOUD_SYNC_ERROR_TOAST_WINDOW_MS
+        ) {
+          showError(output.message);
+          syncErrorToastRef.current.set(output.appId, {
+            message: output.message,
+            shownAt: now,
+          });
+        }
+
+        setPreviewErrorMessage((current) =>
+          current && current.source !== "dyad-sync"
+            ? current
+            : {
+                message: output.message,
+                source: "dyad-sync",
+              },
+        );
+      }
+
+      if (output.type === "sync-recovered") {
+        syncErrorToastRef.current.delete(output.appId);
+        setPreviewErrorMessage((current) =>
+          current?.source === "dyad-sync" ? undefined : current,
+        );
+      }
+
       // Handle HMR updates
       if (
         output.message.includes("hmr update") &&
@@ -88,7 +130,9 @@ export function useAppOutputSubscription() {
       // Server logs (stdout/stderr) are already stored in the main process
       const logEntry = {
         level:
-          output.type === "stderr" || output.type === "client-error"
+          output.type === "stderr" ||
+          output.type === "client-error" ||
+          output.type === "sync-error"
             ? ("error" as const)
             : ("info" as const),
         type: "server" as const,
@@ -103,7 +147,7 @@ export function useAppOutputSubscription() {
 
       return logEntry;
     },
-    [processProxyServerOutput, onHotModuleReload],
+    [onHotModuleReload, processProxyServerOutput, setPreviewErrorMessage],
   );
 
   // Subscribe to immediate app output events (input-requested)
@@ -163,7 +207,7 @@ export function useRunApp() {
       // Clear the URL and add restart message
       setAppUrlObj((prevAppUrlObj) => {
         if (prevAppUrlObj?.appId !== appId) {
-          return { appUrl: null, appId: null, originalUrl: null };
+          return { appUrl: null, appId: null, originalUrl: null, mode: null };
         }
         return prevAppUrlObj; // No change needed
       });
@@ -228,7 +272,8 @@ export function useRunApp() {
   const restartApp = useCallback(
     async ({
       removeNodeModules = false,
-    }: { removeNodeModules?: boolean } = {}) => {
+      recreateSandbox = false,
+    }: { removeNodeModules?: boolean; recreateSandbox?: boolean } = {}) => {
       if (appId === null) {
         return;
       }
@@ -237,11 +282,17 @@ export function useRunApp() {
         console.debug(
           "Restarting app",
           appId,
+          recreateSandbox ? "with sandbox recreation" : "",
           removeNodeModules ? "with node_modules cleanup" : "",
         );
 
         // Clear the URL and add restart message
-        setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
+        setAppUrlObj({
+          appUrl: null,
+          appId: null,
+          originalUrl: null,
+          mode: null,
+        });
 
         // Clear preserved URL to prevent stale route restoration after restart
         setPreservedUrls((prev) => {
@@ -270,7 +321,7 @@ export function useRunApp() {
 
         const app = await ipc.app.getApp(appId);
         setApp(app);
-        await ipc.app.restartApp({ appId, removeNodeModules });
+        await ipc.app.restartApp({ appId, removeNodeModules, recreateSandbox });
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(

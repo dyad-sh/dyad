@@ -9,6 +9,7 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 const logger = log.scope("write_file");
 
 const writeFileSchema = z.object({
@@ -54,6 +55,10 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
     // Write file content
     fs.writeFileSync(fullFilePath, args.content);
     logger.log(`Successfully wrote file: ${fullFilePath}`);
+    queueCloudSandboxSnapshotSync({
+      appId: ctx.appId,
+      changedPaths: [args.path],
+    });
 
     // Deploy Supabase function if applicable
     if (

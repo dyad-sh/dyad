@@ -5,16 +5,25 @@ import {
 } from "@/ipc/utils/socket_firewall";
 import { ExecuteAddDependencyError } from "./executeAddDependency";
 
-const { executeAddDependencyMock, readSettingsMock } = vi.hoisted(() => ({
+const mocks = vi.hoisted(() => ({
   executeAddDependencyMock: vi.fn(),
+  queueCloudSandboxSnapshotSyncMock: vi.fn(),
   readSettingsMock: vi.fn(),
 }));
+
+const {
+  executeAddDependencyMock,
+  queueCloudSandboxSnapshotSyncMock,
+  readSettingsMock,
+} = mocks;
 
 const dbUpdates: Array<Record<string, unknown>> = [];
 
 vi.mock("node:fs", async () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(false),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
     promises: {
       readFile: vi.fn().mockResolvedValue(""),
     },
@@ -56,7 +65,11 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("@/main/settings", () => ({
-  readSettings: readSettingsMock,
+  readSettings: mocks.readSettingsMock,
+}));
+
+vi.mock("../utils/cloud_sandbox_provider", () => ({
+  queueCloudSandboxSnapshotSync: mocks.queueCloudSandboxSnapshotSyncMock,
 }));
 
 vi.mock("./executeAddDependency", async () => {
@@ -66,12 +79,12 @@ vi.mock("./executeAddDependency", async () => {
 
   return {
     ...actual,
-    executeAddDependency: executeAddDependencyMock,
+    executeAddDependency: mocks.executeAddDependencyMock,
   };
 });
 
 import { db } from "../../db";
-import { gitAdd } from "../utils/git_utils";
+import { gitAdd, hasStagedChanges } from "../utils/git_utils";
 import { processFullResponseActions } from "./response_processor";
 
 describe("processFullResponseActions add dependency errors", () => {
@@ -154,6 +167,31 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(result).toMatchObject({
       error: "Error: git add failed",
       warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
+  });
+
+  it("queues delete tags for cloud sync even when the local path is already missing", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+
+    const result = await processFullResponseActions(
+      `
+      <dyad-write path="src/file1.js">console.log("Hello");</dyad-write>
+      <dyad-delete path="src/missing.js"></dyad-delete>
+      `,
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(result).toMatchObject({
+      updatedFiles: true,
+    });
+    expect(queueCloudSandboxSnapshotSyncMock).toHaveBeenCalledWith({
+      appId: 1,
+      changedPaths: ["src/file1.js"],
+      deletedPaths: ["src/missing.js"],
     });
   });
 });

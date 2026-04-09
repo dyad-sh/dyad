@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 test("tabs appear after navigating between chats", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.importApp("minimal-with-ai-rules");
 
   // Chat 1
   await po.sendPrompt("[dump] build a todo app");
@@ -11,7 +11,6 @@ test("tabs appear after navigating between chats", async ({ po }) => {
 
   // Chat 2
   await po.chatActions.clickNewChat();
-  await po.sleep(2_000);
   await po.sendPrompt("[dump] build a weather app");
   await po.chatActions.waitForChatCompletion();
 
@@ -25,7 +24,7 @@ test("tabs appear after navigating between chats", async ({ po }) => {
 
 test("clicking a tab switches to that chat", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.importApp("minimal-with-ai-rules");
 
   // Chat 1 - send a unique message
   await po.sendPrompt("First chat unique message alpha");
@@ -58,7 +57,7 @@ test("clicking a tab switches to that chat", async ({ po }) => {
 
 test("closing a tab removes it and selects adjacent tab", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.importApp("minimal-with-ai-rules");
 
   // Chat 1
   await po.sendPrompt("First chat message gamma");
@@ -100,7 +99,7 @@ test("closing a tab removes it and selects adjacent tab", async ({ po }) => {
 
 test("right-click context menu: Close other tabs", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.importApp("minimal-with-ai-rules");
 
   // Chat 1
   await po.sendPrompt("[dump] Chat one context menu");
@@ -139,7 +138,7 @@ test("right-click context menu: Close other tabs", async ({ po }) => {
 
 test("right-click context menu: Close tabs to the right", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.importApp("minimal-with-ai-rules");
 
   // Chat 1
   await po.sendPrompt("[dump] Left tab one");
@@ -183,7 +182,7 @@ test("right-click context menu: Close tabs to the right", async ({ po }) => {
 
 test("only shows tabs for chats opened in current session", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.importApp("minimal-with-ai-rules");
 
   // Initially no tabs should be visible (no chats opened yet in this session)
   const closeButtons = po.page.getByLabel(/^Close tab:/);

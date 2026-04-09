@@ -128,17 +128,25 @@ export async function spawnDrizzleKit({
 
   const drizzleKitBin = getDrizzleKitPath();
 
+  // Create a node_modules symlink in the working directory so that generated
+  // schema files can resolve drizzle-orm and other dependencies through
+  // standard Node.js module resolution (walking up to find node_modules),
+  // in addition to the NODE_PATH env var set below.
+  const nodeModulesPath = app.isPackaged
+    ? process.resourcesPath
+    : path.join(app.getAppPath(), "node_modules");
+  const symlinkTarget = path.join(cwd, "node_modules");
+  try {
+    await fs.symlink(nodeModulesPath, symlinkTarget, "junction");
+  } catch (symlinkErr) {
+    logger.warn(
+      `Failed to create node_modules symlink: ${symlinkErr}. Falling back to NODE_PATH.`,
+    );
+  }
+
   return new Promise((resolve, reject) => {
     logger.info(`Running drizzle-kit: ${drizzleKitBin} ${args.join(" ")}`);
 
-    // Set NODE_PATH so that schema files in the temp dir can resolve
-    // drizzle-orm and other dependencies.
-    // In packaged builds, node_modules lives inside app.asar. drizzle-orm is
-    // copied to resources/ via extraResource in forge.config.ts, so we point
-    // NODE_PATH there instead.
-    const nodeModulesPath = app.isPackaged
-      ? process.resourcesPath
-      : path.join(app.getAppPath(), "node_modules");
     let proc;
     try {
       proc = utilityProcess.fork(drizzleKitBin, args, {

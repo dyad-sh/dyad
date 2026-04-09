@@ -5,6 +5,7 @@ import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "./test_utils";
+import { z } from "zod";
 
 const logger = log.scope("cloud_sandbox_provider");
 
@@ -13,11 +14,43 @@ const DYAD_ENGINE_URL =
 
 export type CloudSandboxFileMap = Record<string, string>;
 
+const CloudSandboxCreateResponseSchema = z.object({
+  sandboxId: z.string().trim().min(1),
+  previewUrl: z.string().trim().min(1),
+});
+
+const CloudSandboxUploadFilesResponseSchema = z.object({
+  previewUrl: z.string().trim().min(1).optional(),
+});
+
+const CloudSandboxReconcileResponseSchema = z.object({
+  reconciledSandboxIds: z.array(z.string().trim().min(1)).optional(),
+});
+
 type ActiveCloudSandbox = {
   appId: number;
   appPath: string;
   sandboxId: string;
 };
+
+function getDefaultInstallCommand(): string {
+  return "pnpm install";
+}
+
+function getDefaultStartCommand(): string {
+  return "pnpm run dev";
+}
+
+function resolveCloudSandboxCommands(input: {
+  appId: number;
+  installCommand?: string | null;
+  startCommand?: string | null;
+}): { installCommand: string; startCommand: string } {
+  return {
+    installCommand: input.installCommand?.trim() || getDefaultInstallCommand(),
+    startCommand: input.startCommand?.trim() || getDefaultStartCommand(),
+  };
+}
 
 export interface CloudSandboxProvider {
   name: string;
@@ -88,8 +121,21 @@ async function cloudSandboxFetch(
   return response;
 }
 
-async function readResponseJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
+async function parseResponseJson<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+  context: string,
+): Promise<T> {
+  const parsed = await response.json();
+  const result = schema.safeParse(parsed);
+
+  if (!result.success) {
+    throw new Error(
+      `Invalid ${context} response from cloud sandbox API: ${result.error.message}`,
+    );
+  }
+
+  return result.data;
 }
 
 export async function buildCloudSandboxFileMap(
@@ -295,18 +341,21 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     installCommand?: string | null;
     startCommand?: string | null;
   }) {
+    const { installCommand, startCommand } = resolveCloudSandboxCommands(input);
     const response = await cloudSandboxFetch("/sandboxes", {
       method: "POST",
       body: JSON.stringify({
         appId: input.appId,
         appPath: input.appPath,
-        installCommand: input.installCommand ?? null,
-        startCommand: input.startCommand ?? null,
+        installCommand,
+        startCommand,
       }),
     });
 
-    return readResponseJson<{ sandboxId: string; previewUrl: string }>(
+    return parseResponseJson(
       response,
+      CloudSandboxCreateResponseSchema,
+      "create sandbox",
     );
   }
 
@@ -348,7 +397,11 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
       }),
     });
 
-    return readResponseJson<{ previewUrl?: string }>(response);
+    return parseResponseJson(
+      response,
+      CloudSandboxUploadFilesResponseSchema,
+      "upload sandbox files",
+    );
   }
 }
 
@@ -503,9 +556,11 @@ export async function reconcileCloudSandboxes(): Promise<string[]> {
     const response = await cloudSandboxFetch("/sandboxes/reconcile", {
       method: "POST",
     });
-    const result = await readResponseJson<{
-      reconciledSandboxIds?: string[];
-    }>(response);
+    const result = await parseResponseJson(
+      response,
+      CloudSandboxReconcileResponseSchema,
+      "reconcile sandboxes",
+    );
     return result.reconciledSandboxIds ?? [];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

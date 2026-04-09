@@ -1479,6 +1479,7 @@ export function registerAppHandlers() {
         return;
       } catch (error) {
         logger.error(`Error restarting app ${appId}:`, error);
+        console.error(error);
         throw error;
       }
     });

@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -27,11 +20,14 @@ vi.mock("./test_utils", () => ({
 }));
 
 import {
+  createCloudSandbox,
+  reconcileCloudSandboxes,
   registerRunningCloudSandbox,
   syncCloudSandboxDirtyPaths,
   stopCloudSandboxFileSync,
   syncCloudSandboxSnapshot,
   unregisterRunningCloudSandbox,
+  uploadCloudSandboxFiles,
 } from "./cloud_sandbox_provider";
 
 describe("cloud_sandbox_provider incremental sync", () => {
@@ -128,5 +124,144 @@ describe("cloud_sandbox_provider incremental sync", () => {
       replaceAll: true,
       deletedFiles: [],
     });
+  });
+});
+
+describe("cloud_sandbox_provider sandbox creation", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchSpy: { mockRestore: () => void };
+
+  beforeEach(() => {
+    fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          sandboxId: "sandbox-1",
+          previewUrl: "https://preview.example.test",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    });
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it("uses default commands when custom commands are missing", async () => {
+    await createCloudSandbox({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: null,
+      startCommand: undefined,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: "pnpm install",
+      startCommand: "pnpm run dev",
+    });
+  });
+
+  it("preserves explicit custom commands after trimming", async () => {
+    await createCloudSandbox({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: "  npm ci  ",
+      startCommand: "  npm run dev -- --port 3000  ",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: "npm ci",
+      startCommand: "npm run dev -- --port 3000",
+    });
+  });
+
+  it("throws when the engine response is missing sandboxId", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          previewUrl: "https://preview.example.test",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(
+      createCloudSandbox({
+        appId: 42,
+        appPath: "/tmp/app",
+      }),
+    ).rejects.toThrow(
+      "Invalid create sandbox response from cloud sandbox API:",
+    );
+  });
+});
+
+describe("cloud_sandbox_provider response validation", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchSpy: { mockRestore: () => void };
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it("throws when upload files response has an invalid previewUrl", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          previewUrl: 123,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(
+      uploadCloudSandboxFiles({
+        sandboxId: "sandbox-1",
+        files: {},
+      }),
+    ).rejects.toThrow(
+      "Invalid upload sandbox files response from cloud sandbox API:",
+    );
+  });
+
+  it("throws when reconcile response has invalid sandbox ids", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          reconciledSandboxIds: ["sandbox-1", ""],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(reconcileCloudSandboxes()).rejects.toThrow(
+      "Invalid reconcile sandboxes response from cloud sandbox API:",
+    );
   });
 });

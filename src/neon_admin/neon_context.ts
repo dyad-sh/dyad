@@ -37,8 +37,11 @@ export async function getBranchRoleName({
       branchId,
     );
     const roles = rolesResponse.data.roles ?? [];
-    // Prefer the first non-protected role (user-created), fall back to any role
-    const userRole = roles.find((r) => !r.protected) ?? roles[0];
+    // Prefer neondb_owner (the default admin role), then any non-protected role, then any role
+    const userRole =
+      roles.find((r) => r.name === "neondb_owner") ??
+      roles.find((r) => !r.protected) ??
+      roles[0];
     if (!userRole?.name) {
       logger.warn(
         `No Neon branch roles found for ${projectId}/${branchId}, falling back to neondb_owner`,

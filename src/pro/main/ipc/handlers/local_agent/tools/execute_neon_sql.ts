@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -25,7 +30,7 @@ export const executeNeonSqlTool: ToolDefinition<
   buildXml: (args, isComplete) => {
     if (args.query == undefined) return undefined;
 
-    let xml = `<dyad-execute-sql description="${escapeXmlAttr(args.description ?? "")}">\n${args.query}`;
+    let xml = `<dyad-execute-sql description="${escapeXmlAttr(args.description ?? "")}">\n${escapeXmlContent(args.query)}`;
     if (isComplete) {
       xml += "\n</dyad-execute-sql>";
     }

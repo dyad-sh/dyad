@@ -187,8 +187,7 @@ export function NeonConnector({ appId }: { appId: number }) {
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
       });
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = formatToastError(error);
       setCreateProjectError(errorMessage);
       toast.error(
         t("integrations.neon.failedConnectProject", {
@@ -451,19 +450,24 @@ export function NeonConnector({ appId }: { appId: number }) {
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {branches.map((branch) => (
-                      <SelectItem key={branch.branchId} value={branch.branchId}>
-                        <span className="flex items-center gap-2">
-                          {branch.branchName}
-                          <Badge
-                            variant={getBranchBadgeVariant(branch.type)}
-                            className="text-xs"
-                          >
-                            {t(`integrations.neon.${branch.type}`)}
-                          </Badge>
-                        </span>
-                      </SelectItem>
-                    ))}
+                    {branches
+                      .filter((branch) => branch.type !== "preview")
+                      .map((branch) => (
+                        <SelectItem
+                          key={branch.branchId}
+                          value={branch.branchId}
+                        >
+                          <span className="flex items-center gap-2">
+                            {branch.branchName}
+                            <Badge
+                              variant={getBranchBadgeVariant(branch.type)}
+                              className="text-xs"
+                            >
+                              {t(`integrations.neon.${branch.type}`)}
+                            </Badge>
+                          </span>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               )}

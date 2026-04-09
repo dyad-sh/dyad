@@ -88,9 +88,10 @@ export const PublishPanel = () => {
           )}
 
         {/* Database Migration - Show only if app has neon project and active branch */}
-        {app.neonProjectId && app.neonActiveBranchId && (
-          <MigrationPanel appId={selectedAppId} />
-        )}
+        {app.neonProjectId &&
+          (app.neonActiveBranchId || app.neonDevelopmentBranchId) && (
+            <MigrationPanel appId={selectedAppId} />
+          )}
 
         {/* GitHub Section */}
         <Card>

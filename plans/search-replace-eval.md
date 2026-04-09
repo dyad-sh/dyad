@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add a new **evals** test suite (~12 cases) that verifies real LLMs (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) can correctly invoke the `search_replace` tool when given a source file and a natural-language edit instruction. Cases are split into two tiers: **exact-match** cases (~7) with a single correct output asserted byte-for-byte, and **judge-verified** cases (~5) for complex refactors where multiple valid outputs exist, evaluated by a GPT 5.4 judge call. The eval runs against the **Dyad Engine** (which proxies all providers) using a single `DYAD_PRO_API_KEY`, reuses the production `searchReplaceTool` definition (schema + description) and the `applySearchReplace` processor, and is isolated behind a new `npm run eval` script so it never runs as part of normal CI.
+Add a new **evals** test suite (~12 cases) that verifies real LLMs (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) can correctly invoke the `search_replace` tool when given a source file and a natural-language edit instruction. Cases are split into two tiers: **exact-match** cases (~7) with a single correct output asserted byte-for-byte, and **judge-verified** cases (~5) for complex refactors where multiple valid outputs exist, evaluated by a GPT 5.4 judge call. The eval runs against the **Dyad Engine** (which proxies all providers) using a single `DYAD_PRO_API_KEY`, reuses the production `searchReplaceTool` definition (schema + description) and the `applySearchReplace` processor, and is isolated behind a new `npm run eval` script so it never runs as part of normal CI. All models are accessed via the chat completions API through `createDyadEngine`, with a custom fetch adapter that bridges the Dyad Engine's streaming-only behavior with the AI SDK's non-streaming `generateText` calls.
 
 ## Problem Statement
 
@@ -23,7 +23,7 @@ We need a lightweight eval harness that:
 
 - New directory `src/__tests__/evals/` with a small reusable helper for instantiating LLM clients via the Dyad Engine.
 - New eval file `src/__tests__/evals/search_replace_tool_use.eval.ts` containing ~12 eval cases in two tiers: ~7 exact-match and ~5 judge-verified.
-- Target models: **`claude-sonnet-4-6`** (Anthropic), **`gpt-5.4`** (OpenAI, responses API), **`gemini-3-flash-preview`** (Google). All routed through the Dyad Engine using a single `DYAD_PRO_API_KEY`. Model names come from `src/ipc/shared/language_model_constants.ts` where available so the eval drifts with Dyad's canonical model identifiers.
+- Target models: **`claude-sonnet-4-6`** (Anthropic), **`gpt-5.4`** (OpenAI), **`gemini-3-flash-preview`** (Google). All routed through the Dyad Engine's chat completions endpoint using a single `DYAD_PRO_API_KEY`. Model names come from `src/ipc/shared/language_model_constants.ts` where available so the eval drifts with Dyad's canonical model identifiers.
 - Separate `vitest.eval.config.ts` with `environment: "node"`, long `testTimeout`, and an `include` pattern of `src/__tests__/evals/**/*.eval.ts`.
 - New `npm run eval` script — the eval is **not** included in `npm test`.
 - `describe.skipIf` gating so the entire eval suite is skipped when `DYAD_PRO_API_KEY` is missing.
@@ -71,7 +71,8 @@ Each of these was considered and rejected for specific reasons:
 - `createDyadEngine` from `llm_engine_provider.ts` — same factory production uses for Dyad Pro. The eval calls it with `DYAD_PRO_API_KEY` and the default engine URL, bypassing all Electron/DB/settings coupling.
 - Model IDs (`SONNET_4_6`, `GEMINI_3_FLASH`) imported from `language_model_constants.ts` so they can't drift.
 - Gateway prefixes from `CLOUD_PROVIDERS` in `language_model_constants.ts` (`""` for OpenAI, `"anthropic/"` for Anthropic, `"gemini/"` for Google) — these are prepended to model names exactly as `getModelClient` does at `get_model_client.ts:107`.
-- OpenAI models use `provider.responses()` (not the default chat model) — matching `getProModelClient`'s behavior for `local-agent` + `openai` at `get_model_client.ts:257-258`.
+
+**Why chat completions for all models (not `.responses()` for OpenAI):** Production uses `provider.responses()` for OpenAI in local-agent mode, but the eval uses `provider()` (chat completions) for all providers. The Dyad Engine only supports streaming (`stream: true`), and the eval's fetch adapter (`sseToNonStreamingResponse`) reassembles SSE chat-completion chunks into a single JSON response for the SDK's non-streaming `generateText` path. The OpenAI Responses API uses a different SSE event format (`response.created`, `response.completed`, etc.) that would require a separate adapter. Since the eval tests model quality (correct tool calls), not transport-layer compatibility, using chat completions for all providers is sufficient.
 
 ### Components Affected
 
@@ -106,7 +107,7 @@ export type EvalProvider = "anthropic" | "openai" | "google";
 
 // Gateway prefixes must match CLOUD_PROVIDERS in language_model_constants.ts.
 const GATEWAY_PREFIXES: Record<EvalProvider, string> = {
-  openai: "", // OpenAI has an empty-string prefix
+  openai: "",
   anthropic: "anthropic/",
   google: "gemini/",
 };
@@ -116,6 +117,146 @@ export function hasDyadProKey(): boolean {
 }
 
 let _provider: DyadEngineProvider | null = null;
+
+/**
+ * Reassemble an SSE stream of OpenAI chat-completion chunks into a single
+ * non-streaming JSON response that the AI SDK's `doGenerate` path can parse.
+ *
+ * The Dyad Engine only supports `stream: true`, but the AI SDK sends
+ * non-streaming requests for `generateText`. This adapter bridges the gap.
+ */
+async function sseToNonStreamingResponse(
+  response: Response,
+): Promise<Response> {
+  const text = await response.text();
+  const lines = text.split("\n");
+
+  let id = "";
+  let model = "";
+  const choices: Map<
+    number,
+    {
+      role: string;
+      content: string;
+      tool_calls: Map<
+        number,
+        {
+          id: string;
+          type: string;
+          function: { name: string; arguments: string };
+        }
+      >;
+      finish_reason: string | null;
+    }
+  > = new Map();
+
+  for (const line of lines) {
+    if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+    let chunk: any;
+    try {
+      chunk = JSON.parse(line.slice(6));
+    } catch {
+      continue;
+    }
+
+    // Surface engine errors as JSON error responses for the SDK's retry logic.
+    if (chunk.error) {
+      return new Response(JSON.stringify(chunk), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (chunk.id) id = chunk.id;
+    if (chunk.model) model = chunk.model;
+
+    for (const c of chunk.choices ?? []) {
+      const idx = c.index ?? 0;
+      if (!choices.has(idx)) {
+        choices.set(idx, {
+          role: "assistant",
+          content: "",
+          tool_calls: new Map(),
+          finish_reason: null,
+        });
+      }
+      const choice = choices.get(idx)!;
+      const delta = c.delta ?? {};
+      if (delta.role) choice.role = delta.role;
+      if (delta.content) choice.content += delta.content;
+      if (c.finish_reason) choice.finish_reason = c.finish_reason;
+      for (const tc of delta.tool_calls ?? []) {
+        const tcIdx = tc.index ?? 0;
+        if (!choice.tool_calls.has(tcIdx)) {
+          choice.tool_calls.set(tcIdx, {
+            id: tc.id ?? "",
+            type: tc.type ?? "function",
+            function: { name: "", arguments: "" },
+          });
+        }
+        const existing = choice.tool_calls.get(tcIdx)!;
+        if (tc.id) existing.id = tc.id;
+        if (tc.function?.name) existing.function.name += tc.function.name;
+        if (tc.function?.arguments)
+          existing.function.arguments += tc.function.arguments;
+      }
+    }
+  }
+
+  const assembled = {
+    id,
+    object: "chat.completion",
+    model,
+    choices: Array.from(choices.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([idx, c]) => ({
+        index: idx,
+        message: {
+          role: c.role,
+          content: c.content || null,
+          ...(c.tool_calls.size > 0
+            ? {
+                tool_calls: Array.from(c.tool_calls.entries())
+                  .sort(([a], [b]) => a - b)
+                  .map(([, tc]) => tc),
+              }
+            : {}),
+        },
+        finish_reason: c.finish_reason ?? "stop",
+      })),
+    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+  };
+
+  return new Response(JSON.stringify(assembled), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/**
+ * Fetch wrapper that adapts requests for the Dyad Engine, which only supports
+ * streaming. For non-streaming SDK calls (e.g. `generateText`), this forces
+ * `stream: true` in the request and reassembles the SSE response into the
+ * single JSON object the SDK expects.
+ */
+const evalFetch: typeof fetch = async (input, init) => {
+  if (init?.body && typeof init.body === "string") {
+    try {
+      const parsed = JSON.parse(init.body);
+      const wasNonStreaming = !parsed.stream;
+      parsed.stream = true;
+      init = { ...init, body: JSON.stringify(parsed) };
+      const response = await fetch(input, init);
+      if (wasNonStreaming) {
+        return sseToNonStreamingResponse(response);
+      }
+      return response;
+    } catch {
+      return fetch(input, init);
+    }
+  }
+  return fetch(input, init);
+};
 
 function getProvider(): DyadEngineProvider {
   if (!_provider) {
@@ -130,6 +271,7 @@ function getProvider(): DyadEngineProvider {
       // Minimal UserSettings — the engine only needs these for
       // getExtraProviderOptions, which is a no-op for our eval.
       settings: {} as UserSettings,
+      fetch: evalFetch,
     });
   }
   return _provider;
@@ -141,15 +283,13 @@ export function getEvalModel(
 ): LanguageModel {
   const dyadProvider = getProvider();
   const modelId = `${GATEWAY_PREFIXES[provider]}${modelName}`;
-
-  if (provider === "openai") {
-    // Matches getProModelClient's behavior for local-agent + openai:
-    // use the responses API so GPT-5 gets full tool-call functionality.
-    return dyadProvider.responses(modelId, { providerId: provider });
-  }
+  // Use the chat completions model for all providers. See the note above
+  // "Why chat completions for all models" for the rationale.
   return dyadProvider(modelId, { providerId: provider });
 }
 ```
+
+**Dyad Engine streaming constraint.** The Dyad Engine (a litellm proxy) only supports `stream: true` for the `/chat/completions` endpoint — non-streaming requests return a generic 500. Since the AI SDK's `generateText` sends non-streaming requests (`stream` absent or `false`), the eval's `evalFetch` wrapper forces `stream: true` on every outgoing request and then reassembles the SSE chunks into a single JSON response via `sseToNonStreamingResponse`. This adapter handles content deltas, tool-call deltas (including streamed function arguments), and in-stream error events. It is transparent to the rest of the eval code — `generateText` works exactly as if the engine supported non-streaming requests.
 
 #### 2. The eval suite (shape only)
 
@@ -337,8 +477,12 @@ for (const { provider, modelName, label, temperature } of MODELS) {
             old_string: string;
             new_string: string;
           };
-          expect(args.file_path).toBe(c.fileName);
 
+          assertNotFullFileRewrite(
+            c.fileContent,
+            args.old_string,
+            `${label} / ${c.name}`,
+          );
           const resultContent = applyEdit(c.fileContent, args);
           expect(resultContent.trim()).toBe(c.expectedContent.trim());
         } else {
@@ -444,7 +588,7 @@ Add next to the existing `test` script:
 ### Phase 1: Harness
 
 - [ ] Create `vitest.eval.config.ts` with the config shown above.
-- [ ] Create `src/__tests__/evals/helpers/get_eval_model.ts` implementing `EvalProvider`, `hasDyadProKey`, and `getEvalModel`. Use `createDyadEngine` from `llm_engine_provider.ts` with gateway prefixes matching `CLOUD_PROVIDERS` (note `.responses()` for OpenAI).
+- [ ] Create `src/__tests__/evals/helpers/get_eval_model.ts` implementing `EvalProvider`, `hasDyadProKey`, and `getEvalModel`. Use `createDyadEngine` from `llm_engine_provider.ts` with gateway prefixes matching `CLOUD_PROVIDERS`. All models use the chat completions path (`provider()`, not `.responses()`). Include the `evalFetch` wrapper with `sseToNonStreamingResponse` to bridge the Dyad Engine's streaming-only constraint.
 - [ ] Add `"eval"` script to `package.json`.
 - [ ] Verify the harness by running `npm run eval` with no test file — expect an empty pass.
 

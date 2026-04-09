@@ -41,3 +41,32 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
     po.page.getByText("Migration applied successfully."),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
 });
+
+testSkipIfWindows(
+  "neon migration stays disabled on the production branch",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+    await po.chatActions.selectChatMode("build");
+    await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
+    await po.sendPrompt("tc=add-neon");
+
+    await po.appManagement.startDatabaseIntegrationSetup("neon");
+    await po.appManagement.clickConnectNeonButton();
+    await po.appManagement.selectNeonProject("Test Project");
+    await po.appManagement.selectNeonBranch("main");
+
+    await po.navigation.clickBackButton();
+    await po.previewPanel.selectPreviewMode("publish");
+
+    const migrateButton = po.page.getByRole("button", {
+      name: "Migrate to Production",
+    });
+    await expect(migrateButton).toBeDisabled({ timeout: Timeout.MEDIUM });
+    await expect(
+      po.page.getByText(
+        "Switch to a non-production branch in the Neon panel before migrating.",
+      ),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);

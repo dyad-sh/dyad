@@ -391,9 +391,51 @@ export async function getNeonOrganizationId(): Promise<string> {
   }
 }
 
-export function getNeonErrorMessage(error: any): string {
-  const detailedMessage = error.response?.data?.message ?? "";
-  return error.message + " " + detailedMessage;
+export function getNeonErrorMessage(error: unknown): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof error.message === "string"
+        ? error.message
+        : null;
+  const detailedMessage =
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "data" in error.response &&
+    typeof error.response.data === "object" &&
+    error.response.data !== null &&
+    "message" in error.response.data &&
+    typeof error.response.data.message === "string"
+      ? error.response.data.message
+      : null;
+
+  if (message && detailedMessage) {
+    return `${message} ${detailedMessage}`;
+  }
+  if (message) {
+    return message;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  if (error == null) {
+    return "Unknown Neon error";
+  }
+
+  try {
+    const serializedError = JSON.stringify(error);
+    return serializedError && serializedError !== "{}"
+      ? serializedError
+      : "Unknown Neon error";
+  } catch {
+    return String(error);
+  }
 }
 
 const DEFAULT_EMAIL_PASSWORD_CONFIG = {

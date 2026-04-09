@@ -5,10 +5,12 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // At least one property is needed because Vertex AI rejects empty parameter schemas.
 const getNeonProjectInfoSchema = z.object({
-  includeDbFunctions: z
+  _reserved: z
     .boolean()
     .optional()
-    .describe("Include database functions in the response. Defaults to false."),
+    .describe(
+      "Reserved placeholder because some model providers reject empty parameter schemas. Leave this unset.",
+    ),
 });
 
 export const getNeonProjectInfoTool: ToolDefinition<

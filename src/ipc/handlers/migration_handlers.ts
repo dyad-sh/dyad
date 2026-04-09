@@ -93,11 +93,12 @@ export function registerMigrationHandlers() {
 
     // 5. Create temp directory with restricted permissions
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-migration-"));
-    if (process.platform !== "win32") {
-      await fs.chmod(tmpDir, 0o700);
-    }
 
     try {
+      if (process.platform !== "win32") {
+        await fs.chmod(tmpDir, 0o700);
+      }
+
       // 6. Write introspect config pointing at dev branch
       const introspectConfigPath = await createTempDrizzleConfig({
         tmpDir,
@@ -165,7 +166,8 @@ export function registerMigrationHandlers() {
         );
       }
 
-      const noChanges = pushResult.stdout.includes("No changes detected");
+      // drizzle-kit does not expose a machine-readable "already in sync" flag.
+      const noChanges = /no\s+changes\s+detected/i.test(pushResult.stdout);
       logger.info(
         noChanges
           ? `Schemas already in sync for app ${appId}, nothing to migrate.`

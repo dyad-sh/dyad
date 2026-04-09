@@ -127,7 +127,14 @@ export class AppManagement {
     const projectSelect = this.page.getByTestId("neon-project-select");
     await expect(projectSelect).toBeVisible({ timeout: Timeout.MEDIUM });
     await projectSelect.click();
-    await this.page.getByRole("option", { name: projectName }).click();
+    await this.page
+      .getByRole("option", {
+        name: new RegExp(
+          `^${projectName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          "i",
+        ),
+      })
+      .click();
     await expect(this.page.getByTestId("neon-branch-select")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });

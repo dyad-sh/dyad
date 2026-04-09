@@ -561,6 +561,7 @@
       "createNewProject": "创建新项目",
       "creating": "创建中...",
       "development": "开发",
+      "snapshot": "快照",
       "disconnectConfirmation": "确定要断开此 Neon 项目的连接吗？这可能会导致应用的数据库连接中断。",
       "disconnectProject": "断开项目连接",
       "emailVerificationDisabled": "邮箱验证已禁用",
@@ -639,6 +640,7 @@
       "showDetails": "显示详情",
       "hideDetails": "隐藏详情",
       "alreadyInSync": "开发数据库和生产数据库已经同步。",
+      "switchBranchHint": "迁移前，请先在 Neon 面板中切换到非生产分支。",
       "confirmDescription": "此操作将修改您的生产数据库 schema。确定要继续吗？",
       "confirmDescriptionWithBranches": "此操作将使用 {{sourceBranchName}} 的 schema 修改 {{projectName}} 中 {{targetBranchName}} 的 schema。确定要继续吗？",
       "cancel": "取消"

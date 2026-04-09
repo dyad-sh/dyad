@@ -49,7 +49,6 @@ export interface AgentContext {
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;
-  neonDevelopmentBranchId: string | null;
   neonActiveBranchId: string | null;
   frameworkType: "nextjs" | "vite" | "other" | null;
   messageId: number;

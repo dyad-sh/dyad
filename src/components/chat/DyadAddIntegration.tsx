@@ -11,6 +11,7 @@ import { useNeon } from "@/hooks/useNeon";
 import { useTranslation } from "react-i18next";
 import { isNextJsProject } from "@/lib/framework_constants";
 import { CheckCircle2, Database, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 
@@ -32,7 +33,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
-  const { projectInfo } = useNeon(appId);
+  const { projectInfo, isLoadingBranches } = useNeon(appId);
   const isNextJs = isNextJsProject({
     files: app?.files,
     frameworkType: app?.frameworkType ?? null,
@@ -145,8 +146,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     completedProvider === "supabase" && app?.supabaseProjectName
       ? app.supabaseProjectName
       : completedProvider === "neon" && app?.neonProjectId
-        ? (projectInfo?.projectName ?? app.neonProjectId)
+        ? (projectInfo?.projectName ??
+          (isLoadingBranches ? null : app.neonProjectId))
         : null;
+  const showIntegrationLabelSkeleton =
+    completedProvider === "neon" &&
+    !!app?.neonProjectId &&
+    isLoadingBranches &&
+    !projectInfo?.projectName;
 
   if (completedProvider) {
     return (
@@ -166,9 +173,13 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             {t("integrations.databaseSetup.connectedToProject", {
               provider: completedProviderName,
             })}{" "}
-            <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
-              {integrationLabel}
-            </span>
+            {showIntegrationLabelSkeleton ? (
+              <Skeleton className="inline-block h-6 w-28 align-middle rounded bg-green-100/80 dark:bg-green-900/50" />
+            ) : (
+              <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
+                {integrationLabel ?? "—"}
+              </span>
+            )}
           </p>
           <Button
             onClick={handleKeepGoingClick}

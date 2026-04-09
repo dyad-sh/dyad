@@ -14,6 +14,14 @@ describe("detectFrameworkType", () => {
     vi.clearAllMocks();
   });
 
+  it("detects Next.js from next.config.cjs", () => {
+    vi.mocked(fs.existsSync).mockImplementation((candidate) =>
+      String(candidate).endsWith("next.config.cjs"),
+    );
+
+    expect(detectFrameworkType("/tmp/example-app")).toBe("nextjs");
+  });
+
   it("detects Next.js from package.json when no config file exists", () => {
     vi.mocked(fs.existsSync).mockImplementation((candidate) =>
       String(candidate).endsWith("package.json"),

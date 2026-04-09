@@ -45,7 +45,6 @@ describe("deleteFileTool", () => {
     supabaseProjectId: null,
     supabaseOrganizationSlug: null,
     neonProjectId: null,
-    neonDevelopmentBranchId: null,
     neonActiveBranchId: null,
     frameworkType: null,
     messageId: 1,

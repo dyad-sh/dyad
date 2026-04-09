@@ -40,13 +40,17 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
     mutationFn: () => ipc.migration.push({ appId }),
   });
 
+  const productionBranch = branches.find(
+    (branch) => branch.type === "production",
+  );
   const sourceBranchName = branches.find(
     (branch) => branch.branchId === app?.neonActiveBranchId,
   )?.branchName;
-  const targetBranchName = branches.find(
-    (branch) => branch.type === "production",
-  )?.branchName;
+  const targetBranchName = productionBranch?.branchName;
   const projectName = projectInfo?.projectName ?? app?.neonProjectId ?? null;
+  const isProductionBranchActive =
+    !!app?.neonActiveBranchId &&
+    app.neonActiveBranchId === productionBranch?.branchId;
   const hasBranchContext = Boolean(
     projectName && sourceBranchName && targetBranchName,
   );
@@ -98,8 +102,12 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
 
         <AlertDialog>
           <AlertDialogTrigger
-            disabled={pushMutation.isPending}
-            render={<Button />}
+            disabled={pushMutation.isPending || isProductionBranchActive}
+            render={
+              <Button
+                disabled={pushMutation.isPending || isProductionBranchActive}
+              />
+            }
           >
             {pushMutation.isPending ? (
               <>
@@ -138,6 +146,12 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {isProductionBranchActive && (
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            {t("integrations.migration.switchBranchHint")}
+          </p>
+        )}
 
         {pushMutation.isSuccess &&
           pushMutation.data?.success &&

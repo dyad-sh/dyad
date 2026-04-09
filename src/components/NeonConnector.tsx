@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ipc } from "@/ipc/types";
+import { ipc, type NeonProjectListItem } from "@/ipc/types";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
 import {
@@ -46,7 +46,7 @@ import {
 
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
-  const { settings, refreshSettings } = useSettings();
+  const { settings, refreshSettings, updateSettings } = useSettings();
   const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const queryClient = useQueryClient();
@@ -64,9 +64,13 @@ export function NeonConnector({ appId }: { appId: number }) {
     useState(false);
   const [isOpeningOauth, setIsOpeningOauth] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isDisconnectingAccount, setIsDisconnectingAccount] = useState(false);
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formatToastError = (error: unknown) => getErrorMessage(error);
+  const projectDateFormatter = new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  });
 
   const {
     isConnected,
@@ -216,6 +220,23 @@ export function NeonConnector({ appId }: { appId: number }) {
     }
   };
 
+  const handleDisconnectAccount = async () => {
+    setIsDisconnectingAccount(true);
+    try {
+      await updateSettings({ neon: undefined });
+      setShowCreateForm(false);
+      setNewProjectName("");
+      setCreateProjectError(null);
+      queryClient.removeQueries({ queryKey: queryKeys.neon.all });
+      toast.success(t("integrations.neon.disconnected"));
+    } catch (error) {
+      console.error("Failed to disconnect from Neon:", error);
+      toast.error(t("integrations.neon.failedDisconnect"));
+    } finally {
+      setIsDisconnectingAccount(false);
+    }
+  };
+
   const handleEmailVerificationToggle = async (checked: boolean) => {
     setIsUpdatingEmailVerification(true);
     try {
@@ -269,6 +290,17 @@ export function NeonConnector({ appId }: { appId: number }) {
     } finally {
       setIsSwitchingBranch(false);
     }
+  };
+
+  const formatProjectDetails = (project: NeonProjectListItem) => {
+    const details = [project.regionId];
+    const createdAtMs = Date.parse(project.createdAt);
+
+    if (Number.isFinite(createdAtMs)) {
+      details.push(projectDateFormatter.format(new Date(createdAtMs)));
+    }
+
+    return details.join(" • ");
   };
 
   const getBranchBadgeVariant = (
@@ -427,9 +459,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                             variant={getBranchBadgeVariant(branch.type)}
                             className="text-xs"
                           >
-                            {t(`integrations.neon.${branch.type}`, {
-                              defaultValue: branch.type,
-                            })}
+                            {t(`integrations.neon.${branch.type}`)}
                           </Badge>
                         </span>
                       </SelectItem>
@@ -512,19 +542,32 @@ export function NeonConnector({ appId }: { appId: number }) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>{t("integrations.neon.projects")}</CardTitle>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => refetchProjects()}
-              disabled={isFetchingProjects}
-              title={t("integrations.neon.refreshProjects")}
-              aria-label={t("integrations.neon.refreshProjects")}
-              aria-busy={isFetchingProjects}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
-              />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDisconnectAccount}
+                disabled={isDisconnectingAccount}
+              >
+                {isDisconnectingAccount && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {t("integrations.neon.disconnect")}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => refetchProjects()}
+                disabled={isFetchingProjects}
+                title={t("integrations.neon.refreshProjects")}
+                aria-label={t("integrations.neon.refreshProjects")}
+                aria-busy={isFetchingProjects}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                />
+              </Button>
+            </div>
           </div>
           <CardDescription>
             {t("integrations.neon.selectProjectDescription")}
@@ -626,7 +669,14 @@ export function NeonConnector({ appId }: { appId: number }) {
                     <SelectContent>
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>
-                          {project.name}
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium">
+                              {project.name}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {formatProjectDetails(project)}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -4,6 +4,7 @@ export type AppFrameworkType = (typeof APP_FRAMEWORK_TYPES)[number];
 export const NEXTJS_CONFIG_FILES = [
   "next.config.js",
   "next.config.mjs",
+  "next.config.cjs",
   "next.config.ts",
 ];
 

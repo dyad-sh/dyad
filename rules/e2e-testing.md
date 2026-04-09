@@ -112,6 +112,7 @@ If this happens:
 ## Common flaky test patterns and fixes
 
 - **After `po.importApp(...)`**: Some imports trigger an initial assistant turn (for example `minimal` generating `AI_RULES.md`) that can leave a visible `Retry` button in the chat. If the test is about a later prompt, first wait for that import-time turn to finish, then start a new chat before calling `sendPrompt()`, or helper methods that wait on `Retry` visibility may return too early.
+- **Context Files Picker add/remove actions**: After clicking `Add` for manual, auto-include, or exclude paths, wait for the new row text to appear before adding or removing another path. Likewise, after clicking a remove button, wait for the row count to drop before the next click. Chained clicks can race React state updates and only fail on later `--repeat-each` runs.
 - **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.
 - **Keyboard navigation events (ArrowUp/ArrowDown)**: Add `await page.waitForTimeout(100)` between sequential keyboard presses to let the UI state settle. Rapid keypresses can cause race conditions in menu navigation.
 - **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: Timeout.EXTRA_LONG })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.

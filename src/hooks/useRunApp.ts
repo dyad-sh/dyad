@@ -233,7 +233,8 @@ export function useRunApp() {
   const restartApp = useCallback(
     async ({
       removeNodeModules = false,
-    }: { removeNodeModules?: boolean } = {}) => {
+      recreateSandbox = false,
+    }: { removeNodeModules?: boolean; recreateSandbox?: boolean } = {}) => {
       if (appId === null) {
         return;
       }
@@ -242,6 +243,7 @@ export function useRunApp() {
         console.debug(
           "Restarting app",
           appId,
+          recreateSandbox ? "with sandbox recreation" : "",
           removeNodeModules ? "with node_modules cleanup" : "",
         );
 
@@ -280,7 +282,7 @@ export function useRunApp() {
 
         const app = await ipc.app.getApp(appId);
         setApp(app);
-        await ipc.app.restartApp({ appId, removeNodeModules });
+        await ipc.app.restartApp({ appId, removeNodeModules, recreateSandbox });
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(

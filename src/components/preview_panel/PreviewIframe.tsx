@@ -14,8 +14,6 @@ import {
   RefreshCw,
   ExternalLink,
   Cloud,
-  Copy,
-  Check,
   Loader2,
   X,
   Sparkles,
@@ -74,7 +72,6 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
-import { showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
@@ -260,7 +257,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
-  const [isCopiedShareLink, setIsCopiedShareLink] = useState(false);
   const queryClient = useQueryClient();
 
   // Device configurations
@@ -327,35 +323,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     queryClient,
   ]);
 
-  const createShareableCloudUrl = async () => {
-    if (!selectedAppId || !isCloudMode) {
+  const getCloudPreviewUrl = () => {
+    if (!isCloudMode) {
       throw new Error("Cloud sandbox is not running.");
     }
 
-    const shareLink = await ipc.app.createCloudSandboxShareLink({
-      appId: selectedAppId,
-    });
-    return shareLink.url;
-  };
-
-  const handleCopyShareableLink = async () => {
-    if (!isCloudMode || !selectedAppId) {
-      return;
+    const previewUrl = cloudSandboxStatus?.previewUrl ?? originalUrl;
+    if (!previewUrl) {
+      throw new Error("Cloud sandbox preview URL is unavailable.");
     }
 
-    try {
-      const shareUrl = await createShareableCloudUrl();
-      await navigator.clipboard.writeText(shareUrl);
-      setIsCopiedShareLink(true);
-      showSuccess("Link copied!");
-      setTimeout(() => setIsCopiedShareLink(false), 2000);
-    } catch (error) {
-      showError(
-        error instanceof Error
-          ? error.message
-          : "Failed to copy shareable link.",
-      );
-    }
+    return previewUrl;
   };
 
   const analyzeComponent = async (componentId: string) => {
@@ -1223,13 +1201,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
             {isCloudMode && (
-              <div
-                className="flex items-center gap-1 rounded-md bg-sky-100 px-2 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                data-testid="preview-cloud-badge"
-              >
-                <Cloud size={14} />
-                <span>Cloud</span>
-              </div>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      className="flex items-center rounded-md bg-sky-100 px-2 py-1 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                      data-testid="preview-cloud-badge"
+                    />
+                  }
+                >
+                  <Cloud size={14} />
+                </TooltipTrigger>
+                <TooltipContent>Running in a Cloud sandbox</TooltipContent>
+              </Tooltip>
             )}
             <Tooltip>
               <TooltipTrigger
@@ -1398,25 +1382,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
               </TooltipContent>
             </Tooltip>
-            {isCloudMode && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      data-testid="preview-copy-shareable-link-button"
-                      onClick={handleCopyShareableLink}
-                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-                      disabled={!selectedAppId}
-                    />
-                  }
-                >
-                  {isCopiedShareLink ? <Check size={16} /> : <Copy size={16} />}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isCopiedShareLink ? "Copied!" : "Copy shareable link"}
-                </TooltipContent>
-              </Tooltip>
-            )}
             <button
               data-testid="preview-open-browser-button"
               onClick={async () => {
@@ -1426,8 +1391,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   }
 
                   try {
-                    const shareUrl = await createShareableCloudUrl();
-                    ipc.system.openExternalUrl(shareUrl);
+                    ipc.system.openExternalUrl(getCloudPreviewUrl());
                   } catch (error) {
                     showError(
                       error instanceof Error

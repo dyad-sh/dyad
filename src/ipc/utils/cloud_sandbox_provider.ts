@@ -25,6 +25,11 @@ const CloudSandboxUploadFilesResponseSchema = z.object({
   previewAuthToken: z.string().trim().min(1).optional(),
 });
 
+const CloudSandboxRestartResponseSchema = z.object({
+  previewUrl: z.string().trim().min(1),
+  previewAuthToken: z.string().trim().min(1),
+});
+
 const CloudSandboxReconcileResponseSchema = z.object({
   reconciledSandboxIds: z.array(z.string().trim().min(1)).optional(),
 });
@@ -56,7 +61,12 @@ const CloudSandboxStatusSchema = z.object({
   billingSlicesCharged: z.number().int().nonnegative(),
   creditsCharged: z.number().nonnegative(),
   terminationReason: z
-    .enum(["manual", "idle_timeout", "credits_exhausted", "billing_unavailable"])
+    .enum([
+      "manual",
+      "idle_timeout",
+      "credits_exhausted",
+      "billing_unavailable",
+    ])
     .nullable(),
   lastErrorCode: z.string().trim().min(1).nullable(),
   lastErrorMessage: z.string().trim().min(1).nullable(),
@@ -136,6 +146,9 @@ export interface CloudSandboxProvider {
     files: CloudSandboxFileMap,
     options?: { replaceAll?: boolean; deletedFiles?: string[] },
   ): Promise<{ previewUrl?: string; previewAuthToken?: string }>;
+  restartSandbox(
+    sandboxId: string,
+  ): Promise<{ previewUrl: string; previewAuthToken: string }>;
   getStatus(sandboxId: string): Promise<CloudSandboxStatus>;
   createShareLink(
     sandboxId: string,
@@ -190,7 +203,10 @@ async function cloudSandboxFetch(
     let message = `Cloud sandbox request failed with ${response.status}.`;
     let code: string | undefined;
     try {
-      const parsed = JSON.parse(errorText) as { code?: string; message?: string };
+      const parsed = JSON.parse(errorText) as {
+        code?: string;
+        message?: string;
+      };
       message = parsed.message || message;
       code = parsed.code;
     } catch {
@@ -506,6 +522,21 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     );
   }
 
+  async restartSandbox(sandboxId: string) {
+    const response = await cloudSandboxFetch(
+      `/sandboxes/${sandboxId}/restart`,
+      {
+        method: "POST",
+      },
+    );
+
+    return parseResponseJson(
+      response,
+      CloudSandboxRestartResponseSchema,
+      "restart sandbox",
+    );
+  }
+
   async getStatus(sandboxId: string) {
     const response = await cloudSandboxFetch(`/sandboxes/${sandboxId}/status`);
     return parseServiceResponse(
@@ -519,12 +550,15 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     sandboxId: string,
     options?: { expiresInSeconds?: number },
   ) {
-    const response = await cloudSandboxFetch(`/sandboxes/${sandboxId}/share-links`, {
-      method: "POST",
-      body: JSON.stringify({
-        expiresInSeconds: options?.expiresInSeconds,
-      }),
-    });
+    const response = await cloudSandboxFetch(
+      `/sandboxes/${sandboxId}/share-links`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expiresInSeconds: options?.expiresInSeconds,
+        }),
+      },
+    );
     return parseServiceResponse(
       response,
       CloudSandboxShareLinkSchema,
@@ -559,6 +593,10 @@ export async function uploadCloudSandboxFiles(input: {
     replaceAll: input.replaceAll,
     deletedFiles: input.deletedFiles,
   });
+}
+
+export async function restartCloudSandbox(sandboxId: string) {
+  return defaultProvider.restartSandbox(sandboxId);
 }
 
 export function streamCloudSandboxLogs(

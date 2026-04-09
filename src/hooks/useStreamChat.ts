@@ -58,7 +58,7 @@ export function useStreamChat({
 
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
-  const { refreshAppIframe, restartApp } = useRunApp();
+  const { refreshAppIframe } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
@@ -278,11 +278,7 @@ export function useStreamChat({
                 if (settings?.autoExpandPreviewPanel) {
                   setIsPreviewOpen(true);
                 }
-                if (settings?.runtimeMode2 === "cloud") {
-                  await restartApp();
-                } else {
-                  refreshAppIframe();
-                }
+                refreshAppIframe();
                 if (settings?.enableAutoFixProblems) {
                   checkProblems();
                 }

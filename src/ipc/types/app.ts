@@ -112,6 +112,7 @@ export const AppIdParamsSchema = z.object({
 export const RestartAppParamsSchema = z.object({
   appId: z.number(),
   removeNodeModules: z.boolean().optional(),
+  recreateSandbox: z.boolean().optional(),
 });
 
 export const CloudSandboxStatusSchema = z.object({
@@ -141,7 +142,12 @@ export const CloudSandboxStatusSchema = z.object({
   billingSlicesCharged: z.number().int().nonnegative(),
   creditsCharged: z.number().nonnegative(),
   terminationReason: z
-    .enum(["manual", "idle_timeout", "credits_exhausted", "billing_unavailable"])
+    .enum([
+      "manual",
+      "idle_timeout",
+      "credits_exhausted",
+      "billing_unavailable",
+    ])
     .nullable(),
   lastErrorCode: z.string().nullable(),
   lastErrorMessage: z.string().nullable(),

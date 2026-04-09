@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 testSkipIfWindows(
-  "cloud sandbox runtime mode runs previews with a shareable link",
+  "cloud sandbox runtime mode runs previews",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
 
@@ -25,13 +25,6 @@ testSkipIfWindows(
         .contentFrame()
         .getByRole("heading", { name: "Cloud Sandbox Preview" }),
     ).toBeVisible({ timeout: Timeout.LONG });
-
-    await po.previewPanel.clickCopyShareableLink();
-
-    const clipboardText = await po.page.evaluate(() =>
-      navigator.clipboard.readText(),
-    );
-    expect(clipboardText).toContain("/cloud-preview/");
   },
 );
 

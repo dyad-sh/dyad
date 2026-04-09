@@ -81,7 +81,12 @@ import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 
 interface ErrorBannerProps {
-  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
+  error:
+    | {
+        message: string;
+        source: "preview-app" | "dyad-app" | "dyad-sync";
+      }
+    | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -91,6 +96,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const { isStreaming } = useStreamChat();
   if (!error) return null;
   const isDockerError = error.message.includes("Cannot connect to the Docker");
+  const isInternalDyadError = error.source === "dyad-app";
+  const isSyncError = error.source === "dyad-sync";
 
   const getTruncatedError = () => {
     const firstLine = error.message.split("\n")[0];
@@ -114,10 +121,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
-      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
-      {error.source === "dyad-app" && (
+      {(isInternalDyadError || isSyncError) && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          Internal Dyad error
+          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
         </div>
       )}
 
@@ -125,7 +131,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       <div
         className={cn(
           "px-6 py-1 text-sm",
-          error.source === "dyad-app" && "pt-6",
+          (isInternalDyadError || isSyncError) && "pt-6",
         )}
       >
         <div
@@ -151,9 +157,11 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : error.source === "dyad-app"
-                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
-                : "Check if restarting the app fixes the error."}
+              : isSyncError
+                ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
+                : isInternalDyadError
+                  ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                  : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
@@ -306,6 +314,30 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         source: "dyad-app",
       });
     }
+  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    const localSyncErrorMessage = cloudSandboxStatus.localSyncErrorMessage;
+
+    if (localSyncErrorMessage) {
+      setErrorMessage((current) =>
+        current && current.source !== "dyad-sync"
+          ? current
+          : {
+              message: localSyncErrorMessage,
+              source: "dyad-sync",
+            },
+      );
+      return;
+    }
+
+    setErrorMessage((current) =>
+      current?.source === "dyad-sync" ? undefined : current,
+    );
   }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
 
   useEffect(() => {

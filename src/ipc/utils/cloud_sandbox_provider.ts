@@ -1,18 +1,24 @@
 import { readSettings } from "@/main/settings";
-import { getFilesRecursively } from "./file_utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
+import { gitIsIgnoredIso } from "./git_utils";
 
 const logger = log.scope("cloud_sandbox_provider");
 
 const DYAD_ENGINE_URL =
   process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+const CLOUD_SANDBOX_EXCLUDED_DIRS = new Set(["node_modules", ".git", ".next"]);
+const CLOUD_SANDBOX_ROOT_ALLOWLIST = new Set([".env", ".env.local"]);
 
 export type CloudSandboxFileMap = Record<string, string>;
+export type CloudSandboxSyncUpdate = {
+  appId: number;
+  errorMessage: string | null;
+};
 
 const CloudSandboxCreateResponseSchema = z.object({
   sandboxId: z.string().trim().min(1),
@@ -70,6 +76,7 @@ const CloudSandboxStatusSchema = z.object({
     .nullable(),
   lastErrorCode: z.string().trim().min(1).nullable(),
   lastErrorMessage: z.string().trim().min(1).nullable(),
+  localSyncErrorMessage: z.string().trim().min(1).nullable().optional(),
 });
 
 const CloudSandboxShareLinkSchema = z.object({
@@ -168,6 +175,9 @@ const pendingUploads = new Map<
 >();
 const activeCloudSandboxesByAppId = new Map<number, ActiveCloudSandbox>();
 const activeCloudSandboxesByPath = new Map<string, ActiveCloudSandbox>();
+let cloudSandboxSyncUpdateListener:
+  | ((update: CloudSandboxSyncUpdate) => void)
+  | undefined;
 
 function getDyadEngineApiKey() {
   const settings = readSettings();
@@ -259,7 +269,7 @@ async function parseResponseJson<T>(
 export async function buildCloudSandboxFileMap(
   appPath: string,
 ): Promise<CloudSandboxFileMap> {
-  const files = getFilesRecursively(appPath, appPath).sort();
+  const files = (await collectCloudSandboxFiles(appPath, appPath)).sort();
   const entries = await Promise.all(
     files.map(async (relativePath) => {
       const normalizedPath = normalizePath(relativePath);
@@ -272,30 +282,169 @@ export async function buildCloudSandboxFileMap(
   return Object.fromEntries(entries);
 }
 
+function isRootCloudSandboxAllowlisted(relativePath: string): boolean {
+  return CLOUD_SANDBOX_ROOT_ALLOWLIST.has(normalizePath(relativePath));
+}
+
+function hasCloudSandboxExcludedSegment(relativePath: string): boolean {
+  return normalizePath(relativePath)
+    .split("/")
+    .some((segment) => CLOUD_SANDBOX_EXCLUDED_DIRS.has(segment));
+}
+
+function shouldForceCloudSandboxFullSyncForPath(relativePath: string): boolean {
+  return path.posix.basename(normalizePath(relativePath)) === ".gitignore";
+}
+
+function shouldForceCloudSandboxFullSync(input: {
+  changedPaths?: Iterable<string>;
+  deletedPaths?: Iterable<string>;
+}): boolean {
+  for (const relativePath of input.changedPaths ?? []) {
+    if (shouldForceCloudSandboxFullSyncForPath(relativePath)) {
+      return true;
+    }
+  }
+
+  for (const relativePath of input.deletedPaths ?? []) {
+    if (shouldForceCloudSandboxFullSyncForPath(relativePath)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function isCloudSandboxGitIgnored(
+  appPath: string,
+  relativePath: string,
+): Promise<boolean> {
+  try {
+    return await gitIsIgnoredIso({
+      path: appPath,
+      filepath: normalizePath(relativePath),
+    });
+  } catch (error) {
+    logger.warn(
+      `Failed to evaluate gitignore rules for cloud sandbox path ${relativePath}:`,
+      error,
+    );
+    return false;
+  }
+}
+
+async function shouldIncludeCloudSandboxPath(
+  appPath: string,
+  relativePath: string,
+): Promise<boolean> {
+  const normalizedPath = normalizePath(relativePath);
+
+  if (isRootCloudSandboxAllowlisted(normalizedPath)) {
+    return true;
+  }
+
+  if (hasCloudSandboxExcludedSegment(normalizedPath)) {
+    return false;
+  }
+
+  return !(await isCloudSandboxGitIgnored(appPath, normalizedPath));
+}
+
+async function collectCloudSandboxFiles(
+  dir: string,
+  appPath: string,
+): Promise<string[]> {
+  let entries;
+
+  try {
+    entries = await fsPromises.readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  entries.sort((left, right) => left.name.localeCompare(right.name));
+
+  const nestedFiles = await Promise.all(
+    entries.map(async (entry) => {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = normalizePath(path.relative(appPath, fullPath));
+
+      if (entry.isSymbolicLink()) {
+        return [];
+      }
+
+      if (entry.isDirectory()) {
+        if (CLOUD_SANDBOX_EXCLUDED_DIRS.has(entry.name)) {
+          return [];
+        }
+
+        if (!(await shouldIncludeCloudSandboxPath(appPath, relativePath))) {
+          return [];
+        }
+
+        return collectCloudSandboxFiles(fullPath, appPath);
+      }
+
+      if (!entry.isFile()) {
+        return [];
+      }
+
+      if (!(await shouldIncludeCloudSandboxPath(appPath, relativePath))) {
+        return [];
+      }
+
+      return [relativePath];
+    }),
+  );
+
+  return nestedFiles.flat();
+}
+
 async function buildCloudSandboxPartialFileMap(input: {
   appPath: string;
   changedPaths: Iterable<string>;
 }): Promise<{ files: CloudSandboxFileMap; deletedFiles: string[] }> {
   const files: CloudSandboxFileMap = {};
-  const deletedFiles: string[] = [];
+  const deletedFiles = new Set<string>();
 
   for (const relativePath of input.changedPaths) {
     const normalizedPath = normalizePath(relativePath);
     const fullPath = path.join(input.appPath, normalizedPath);
 
     try {
+      const stats = await fsPromises.lstat(fullPath);
+
+      if (stats.isSymbolicLink() || !stats.isFile()) {
+        deletedFiles.add(normalizedPath);
+        continue;
+      }
+
+      if (
+        hasCloudSandboxExcludedSegment(normalizedPath) ||
+        !(await shouldIncludeCloudSandboxPath(input.appPath, normalizedPath))
+      ) {
+        deletedFiles.add(normalizedPath);
+        continue;
+      }
+
       const content = await fsPromises.readFile(fullPath, "utf-8");
       files[normalizedPath] = content;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        deletedFiles.push(normalizedPath);
+        deletedFiles.add(normalizedPath);
         continue;
       }
       throw error;
     }
   }
 
-  return { files, deletedFiles };
+  return {
+    files,
+    deletedFiles: [...deletedFiles].sort(),
+  };
 }
 
 async function* parseSseLines(response: Response, signal?: AbortSignal) {
@@ -365,6 +514,10 @@ async function uploadFullSnapshot(activeSandbox: ActiveCloudSandbox) {
     files,
     replaceAll: true,
   });
+  notifyCloudSandboxSyncUpdate({
+    appId: activeSandbox.appId,
+    errorMessage: null,
+  });
 }
 
 async function uploadPendingSnapshot(input: {
@@ -401,6 +554,10 @@ async function uploadPendingSnapshot(input: {
     deletedFiles,
     replaceAll: false,
   });
+  notifyCloudSandboxSyncUpdate({
+    appId: input.activeSandbox.appId,
+    errorMessage: null,
+  });
   logger.info(
     `Synced incremental app snapshot to cloud sandbox ${input.activeSandbox.sandboxId} for app ${input.activeSandbox.appId}. fileCount=${Object.keys(files).length} deletedCount=${deletedFiles.length}.`,
   );
@@ -415,11 +572,19 @@ export async function syncCloudSandboxSnapshot(input: {
     return;
   }
 
-  stopCloudSandboxFileSync(activeSandbox.appId);
-  await uploadFullSnapshot(activeSandbox);
-  logger.info(
-    `Synced full app snapshot to cloud sandbox ${activeSandbox.sandboxId} for app ${activeSandbox.appId}.`,
-  );
+  try {
+    stopCloudSandboxFileSync(activeSandbox.appId);
+    await uploadFullSnapshot(activeSandbox);
+    logger.info(
+      `Synced full app snapshot to cloud sandbox ${activeSandbox.sandboxId} for app ${activeSandbox.appId}.`,
+    );
+  } catch (error) {
+    notifyCloudSandboxSyncUpdate({
+      appId: activeSandbox.appId,
+      errorMessage: formatCloudSandboxSyncError(error),
+    });
+    throw error;
+  }
 }
 
 export async function syncCloudSandboxDirtyPaths(input: {
@@ -433,21 +598,28 @@ export async function syncCloudSandboxDirtyPaths(input: {
     return;
   }
 
-  stopCloudSandboxFileSync(activeSandbox.appId);
-  await uploadPendingSnapshot({
-    activeSandbox,
-    changedPaths: new Set(
-      (input.changedPaths ?? []).map((changedPath) =>
-        normalizePath(changedPath),
-      ),
-    ),
-    deletedPaths: new Set(
-      (input.deletedPaths ?? []).map((deletedPath) =>
-        normalizePath(deletedPath),
-      ),
-    ),
-    fullSync: false,
-  });
+  const changedPaths = new Set(
+    (input.changedPaths ?? []).map((changedPath) => normalizePath(changedPath)),
+  );
+  const deletedPaths = new Set(
+    (input.deletedPaths ?? []).map((deletedPath) => normalizePath(deletedPath)),
+  );
+
+  try {
+    stopCloudSandboxFileSync(activeSandbox.appId);
+    await uploadPendingSnapshot({
+      activeSandbox,
+      changedPaths,
+      deletedPaths,
+      fullSync: shouldForceCloudSandboxFullSync({ changedPaths, deletedPaths }),
+    });
+  } catch (error) {
+    notifyCloudSandboxSyncUpdate({
+      appId: activeSandbox.appId,
+      errorMessage: formatCloudSandboxSyncError(error),
+    });
+    throw error;
+  }
 }
 
 class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
@@ -619,6 +791,21 @@ export async function createCloudSandboxShareLink(
   return defaultProvider.createShareLink(sandboxId, options);
 }
 
+export function setCloudSandboxSyncUpdateListener(
+  listener?: (update: CloudSandboxSyncUpdate) => void,
+): void {
+  cloudSandboxSyncUpdateListener = listener;
+}
+
+function notifyCloudSandboxSyncUpdate(update: CloudSandboxSyncUpdate): void {
+  cloudSandboxSyncUpdateListener?.(update);
+}
+
+function formatCloudSandboxSyncError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Cloud sandbox sync failed: ${message}`;
+}
+
 export function registerRunningCloudSandbox(input: ActiveCloudSandbox): void {
   const activeSandbox = {
     ...input,
@@ -685,7 +872,13 @@ export function queueCloudSandboxSnapshotSync(input: {
     changedPaths.delete(normalizedPath);
   }
 
-  const fullSync = input.fullSync === true || existing?.fullSync === true;
+  const fullSync =
+    input.fullSync === true ||
+    existing?.fullSync === true ||
+    shouldForceCloudSandboxFullSync({
+      changedPaths,
+      deletedPaths,
+    });
 
   const timeoutId = setTimeout(
     async () => {

@@ -151,6 +151,7 @@ export const CloudSandboxStatusSchema = z.object({
     .nullable(),
   lastErrorCode: z.string().nullable(),
   lastErrorMessage: z.string().nullable(),
+  localSyncErrorMessage: z.string().nullable().optional(),
 });
 
 export const CreateCloudSandboxShareLinkParamsSchema = z.object({

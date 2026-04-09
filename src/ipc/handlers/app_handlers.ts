@@ -58,6 +58,7 @@ import {
   reconcileCloudSandboxes,
   registerRunningCloudSandbox,
   restartCloudSandbox,
+  setCloudSandboxSyncUpdateListener,
   streamCloudSandboxLogs,
   uploadCloudSandboxFiles,
 } from "../utils/cloud_sandbox_provider";
@@ -404,6 +405,7 @@ Details: ${details || "n/a"}
     process: spawnedProcess,
     processId: currentProcessId,
     mode: "host",
+    rendererSender: event.sender,
     lastViewedAt: Date.now(),
   });
 
@@ -450,6 +452,73 @@ function flushAllAppOutputs(): void {
     }
   }
   pendingOutputs.clear();
+}
+
+let cloudSandboxSyncUpdateListenerRegistered = false;
+
+function registerCloudSandboxSyncUpdateListener(): void {
+  if (cloudSandboxSyncUpdateListenerRegistered) {
+    return;
+  }
+
+  setCloudSandboxSyncUpdateListener(({ appId, errorMessage }) => {
+    const appInfo = runningApps.get(appId);
+    if (!appInfo || appInfo.mode !== "cloud") {
+      return;
+    }
+
+    const previousErrorMessage = appInfo.cloudSyncErrorMessage ?? null;
+    appInfo.cloudSyncErrorMessage = errorMessage ?? undefined;
+
+    const sender = appInfo.rendererSender;
+    if (!sender) {
+      return;
+    }
+
+    if (errorMessage) {
+      if (previousErrorMessage === errorMessage) {
+        return;
+      }
+
+      addLog({
+        level: "error",
+        type: "server",
+        message: errorMessage,
+        timestamp: Date.now(),
+        appId,
+      });
+
+      safeSend(sender, "app:output", {
+        type: "sync-error",
+        message: errorMessage,
+        appId,
+      });
+      return;
+    }
+
+    if (!previousErrorMessage) {
+      return;
+    }
+
+    const recoveredMessage =
+      "Cloud sandbox sync recovered. Local changes are uploading again.";
+
+    addLog({
+      level: "info",
+      type: "server",
+      message: recoveredMessage,
+      timestamp: Date.now(),
+      appId,
+    });
+
+    safeSend(sender, "app:output", {
+      type: "sync-recovered",
+      message: recoveredMessage,
+      appId,
+    });
+  });
+
+  cloudSandboxSyncUpdateListenerRegistered = true;
 }
 
 function listenToProcess({
@@ -749,6 +818,7 @@ ${errorOutput || "(empty)"}`,
     process,
     processId: currentProcessId,
     mode: "docker",
+    rendererSender: event.sender,
     containerName,
     lastViewedAt: Date.now(),
   });
@@ -815,6 +885,7 @@ async function executeAppInCloud({
     process: null,
     processId: currentProcessId,
     mode: "cloud",
+    rendererSender: event.sender,
     cloudSandboxId: sandboxId,
     cloudPreviewUrl: resolvedPreviewUrl,
     cloudPreviewAuthToken: resolvedPreviewAuthToken,
@@ -1071,6 +1142,8 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
+  registerCloudSandboxSyncUpdateListener();
+
   createTypedHandler(systemContracts.restartDyad, async () => {
     app.relaunch();
     app.quit();
@@ -1471,7 +1544,10 @@ export function registerAppHandlers() {
       appInfo.cloudPreviewUrl = status.previewUrl;
       appInfo.cloudPreviewAuthToken = status.previewAuthToken;
       appInfo.originalUrl = status.previewUrl;
-      return status;
+      return {
+        ...status,
+        localSyncErrorMessage: appInfo.cloudSyncErrorMessage ?? null,
+      };
     } catch (error) {
       logger.error(
         `Failed to fetch cloud sandbox status for app ${appId}:`,

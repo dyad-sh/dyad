@@ -308,9 +308,9 @@ export const ActionHeader = () => {
               <DropdownMenuItem onClick={onRecreateSandbox}>
                 <Cog size={16} />
                 <div className="flex flex-col">
-                  <span>Recreate Sandbox</span>
+                  <span>{t("preview.recreateSandbox")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Destroys the current sandbox and creates a new one
+                    {t("preview.recreateSandboxDescription")}
                   </span>
                 </div>
               </DropdownMenuItem>

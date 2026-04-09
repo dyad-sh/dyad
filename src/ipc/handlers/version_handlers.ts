@@ -37,6 +37,17 @@ import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("version_handlers");
 
+async function syncCloudSandboxSnapshotBestEffort(appId: number) {
+  try {
+    await syncCloudSandboxSnapshot({ appId });
+  } catch (error) {
+    logger.warn(
+      `Cloud sandbox sync failed after version operation for app ${appId}:`,
+      error,
+    );
+  }
+}
+
 async function restoreBranchForPreview({
   appId,
   dbTimestamp,
@@ -366,7 +377,7 @@ export function registerVersionHandlers() {
           // Continue with the revert operation even if function deployment fails
         }
       }
-      await syncCloudSandboxSnapshot({ appId });
+      await syncCloudSandboxSnapshotBestEffort(appId);
       if (warningMessage) {
         return { warningMessage };
       }
@@ -451,7 +462,7 @@ export function registerVersionHandlers() {
         path: fullAppPath,
         ref: gitRef,
       });
-      await syncCloudSandboxSnapshot({ appId });
+      await syncCloudSandboxSnapshotBestEffort(appId);
     });
   });
 }

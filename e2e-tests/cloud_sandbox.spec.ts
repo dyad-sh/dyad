@@ -7,6 +7,8 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
 
     await po.navigation.goToSettingsTab();
+    await po.page.getByRole("button", { name: "Experiments" }).click();
+    await po.settings.toggleCloudSandboxExperiment();
     await po.settings.changeRuntimeMode("cloud");
     expect(po.settings.recordSettings()).toMatchObject({
       runtimeMode2: "cloud",
@@ -15,7 +17,7 @@ testSkipIfWindows(
     await po.navigation.goToAppsTab();
     await po.sendPrompt("hi");
 
-    await po.previewPanel.expectPreviewIframeIsVisible();
+    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
     await expect(po.previewPanel.getCloudBadge()).toBeVisible({
       timeout: Timeout.LONG,
     });
@@ -34,12 +36,14 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
 
     await po.navigation.goToSettingsTab();
+    await po.page.getByRole("button", { name: "Experiments" }).click();
+    await po.settings.toggleCloudSandboxExperiment();
     await po.settings.changeRuntimeMode("cloud");
 
     await po.navigation.goToAppsTab();
     await po.sendPrompt("hi");
 
-    await po.previewPanel.expectPreviewIframeIsVisible();
+    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
     let iframe = po.previewPanel.getPreviewIframeElement().contentFrame();
     const updatedDigestText = await iframe
       .getByTestId("cloud-snapshot-digest")

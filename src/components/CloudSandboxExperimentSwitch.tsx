@@ -5,6 +5,7 @@ import { useSettings } from "@/hooks/useSettings";
 export function CloudSandboxExperimentSwitch() {
   const { settings, updateSettings } = useSettings();
   const isEnabled = !!settings?.experiments?.enableCloudSandbox;
+  const isCloudModeActive = settings?.runtimeMode2 === "cloud";
 
   return (
     <div className="space-y-1">
@@ -30,6 +31,12 @@ export function CloudSandboxExperimentSwitch() {
         Run your app on the Cloud (more secure and uses less local system
         resources. Note: using Cloud resources consumes Pro credits)
       </div>
+      {!isEnabled && isCloudModeActive && (
+        <div className="rounded bg-amber-50 p-2 text-sm text-amber-700 dark:bg-amber-950/20 dark:text-amber-300">
+          Cloud Sandbox is still active for the current app. Switch the runtime
+          mode back to Local to fully turn it off.
+        </div>
+      )}
     </div>
   );
 }

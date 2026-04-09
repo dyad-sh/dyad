@@ -366,6 +366,9 @@ export type AppQueryKey =
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
   | QueryKeyOf<
+      (typeof queryKeys.cloudSandboxes)[keyof typeof queryKeys.cloudSandboxes]
+    >
+  | QueryKeyOf<
       (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
     >
   | QueryKeyOf<(typeof queryKeys.vercel)[keyof typeof queryKeys.vercel]>

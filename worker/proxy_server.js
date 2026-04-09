@@ -16,7 +16,7 @@ const LISTEN_HOST = "localhost";
 const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
-const fixedHeaders = workerData?.fixedHeaders || null;
+const fixedHeaders = workerData?.fixedHeaders || {};
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
@@ -26,7 +26,7 @@ const fixedHeaders = workerData?.fixedHeaders || null;
       rememberedBaseUrl = new URL(fixed);
       rememberedOrigin = rememberedBaseUrl.origin;
       parentPort?.postMessage(
-        `[proxy-worker] fixed upstream: ${rememberedBaseUrl.toString()}`,
+        `[proxy-worker] fixed upstream origin: ${rememberedOrigin}`,
       );
     } catch {
       throw new Error(
@@ -281,10 +281,19 @@ function buildTargetURL(clientReq) {
 
   const incomingUrl = new URL(clientReq.url, rememberedOrigin);
   const basePath = rememberedBaseUrl.pathname.replace(/\/$/, "");
+  let incomingPath = incomingUrl.pathname;
+
+  if (
+    basePath &&
+    (incomingPath === basePath || incomingPath.startsWith(`${basePath}/`))
+  ) {
+    incomingPath = incomingPath.slice(basePath.length) || "/";
+  }
+
   const targetPath =
-    incomingUrl.pathname === "/"
+    incomingPath === "/"
       ? rememberedBaseUrl.pathname
-      : `${basePath}${incomingUrl.pathname}`;
+      : `${basePath}${incomingPath}`;
 
   return new URL(
     `${targetPath}${incomingUrl.search}`,

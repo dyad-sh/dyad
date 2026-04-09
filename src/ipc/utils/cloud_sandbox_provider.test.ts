@@ -28,8 +28,10 @@ vi.mock("./git_utils", () => ({
 }));
 
 import {
+  CloudSandboxApiError,
   createCloudSandbox,
   buildCloudSandboxFileMap,
+  queueCloudSandboxSnapshotSync,
   reconcileCloudSandboxes,
   registerRunningCloudSandbox,
   setCloudSandboxSyncUpdateListener,
@@ -259,6 +261,61 @@ describe("cloud_sandbox_provider incremental sync", () => {
       errorMessage: null,
     });
   });
+
+  it("does not drop queued changes that arrive while an upload is in flight", async () => {
+    vi.useRealTimers();
+
+    const makeUploadResponse = () =>
+      new Response(
+        JSON.stringify({
+          previewUrl: "https://preview.example.test",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+
+    await fs.writeFile(path.join(appPath, "first.ts"), "first");
+    await fs.writeFile(path.join(appPath, "second.ts"), "second");
+
+    let resolveFirstUpload: ((response: Response) => void) | undefined;
+    fetchMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirstUpload = resolve;
+          }),
+      )
+      .mockImplementation(async () => makeUploadResponse());
+
+    queueCloudSandboxSnapshotSync({
+      appId: 1,
+      changedPaths: ["first.ts"],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    queueCloudSandboxSnapshotSync({
+      appId: 1,
+      changedPaths: ["second.ts"],
+    });
+
+    resolveFirstUpload?.(makeUploadResponse());
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const [, secondInit] = fetchMock.mock.calls[1];
+    expect(JSON.parse(String(secondInit?.body))).toEqual({
+      files: {
+        "second.ts": "second",
+      },
+      replaceAll: false,
+      deletedFiles: [],
+    });
+  });
 });
 
 describe("cloud_sandbox_provider sandbox creation", () => {
@@ -398,5 +455,55 @@ describe("cloud_sandbox_provider response validation", () => {
     await expect(reconcileCloudSandboxes()).rejects.toThrow(
       "Invalid reconcile sandboxes response from cloud sandbox API:",
     );
+  });
+
+  it("treats reconcile 404s as an unsupported endpoint and ignores them", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "Not Found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(reconcileCloudSandboxes()).resolves.toEqual([]);
+  });
+
+  it("does not swallow non-404 reconcile failures", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: "Upstream mentioned 404 while returning a 503",
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(reconcileCloudSandboxes()).rejects.toThrow(
+      "Upstream mentioned 404 while returning a 503",
+    );
+  });
+
+  it("uses status-based messages instead of surfacing raw error bodies", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("<html>upstream exploded</html>", {
+        status: 503,
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    const error = await uploadCloudSandboxFiles({
+      sandboxId: "sandbox-1",
+      files: {},
+    }).catch((caughtError) => caughtError);
+
+    expect(error).toBeInstanceOf(CloudSandboxApiError);
+    expect(error).toMatchObject({
+      message:
+        "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.",
+      status: 503,
+    });
   });
 });

@@ -79,9 +79,27 @@ type FakeCloudSandbox = {
   id: string;
   files: Record<string, string>;
   createdAt: number;
+  previewAuthToken: string;
+  syncRevision: number;
+  initialSyncCompleted: boolean;
+  lastActiveAt: number;
+  lastSuccessfulSyncAt: number | null;
 };
 
 const cloudSandboxes = new Map<string, FakeCloudSandbox>();
+
+function getFakeCloudPreviewUrl(sandboxId: string) {
+  return `http://localhost:${PORT}/cloud-preview/${sandboxId}`;
+}
+
+function createServiceResponse<T>(responseObject: T) {
+  return {
+    success: true,
+    message: "ok",
+    responseObject,
+    statusCode: 200,
+  };
+}
 
 function escapeHtml(text: string) {
   return text
@@ -516,17 +534,25 @@ app.post("/engine/v1/tools/web-crawl", (req, res) => {
   }
 });
 
-app.post("/engine/v1/sandboxes", (req, res) => {
+app.post("/engine/v1/sandboxes", (_req, res) => {
   const sandboxId = `sandbox-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+  const previewAuthToken = `fake-preview-auth-token-${sandboxId}`;
+  const createdAt = Date.now();
   cloudSandboxes.set(sandboxId, {
     id: sandboxId,
     files: {},
-    createdAt: Date.now(),
+    createdAt,
+    previewAuthToken,
+    syncRevision: 0,
+    initialSyncCompleted: false,
+    lastActiveAt: createdAt,
+    lastSuccessfulSyncAt: null,
   });
 
   res.json({
     sandboxId,
-    previewUrl: `http://localhost:${PORT}/cloud-preview/${sandboxId}`,
+    previewUrl: getFakeCloudPreviewUrl(sandboxId),
+    previewAuthToken,
   });
 });
 
@@ -546,6 +572,10 @@ app.post("/engine/v1/sandboxes/:sandboxId/files", (req, res) => {
     `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(req.body.replaceAll)} fileCount=${Object.keys(req.body.files ?? {}).length} deletedCount=${(req.body.deletedFiles ?? []).length}`,
   );
 
+  sandbox.lastActiveAt = Date.now();
+  sandbox.lastSuccessfulSyncAt = Date.now();
+  sandbox.initialSyncCompleted = true;
+  sandbox.syncRevision += 1;
   sandbox.files = req.body.replaceAll
     ? { ...req.body.files }
     : {
@@ -558,7 +588,8 @@ app.post("/engine/v1/sandboxes/:sandboxId/files", (req, res) => {
   }
 
   res.json({
-    previewUrl: `http://localhost:${PORT}/cloud-preview/${sandbox.id}`,
+    previewUrl: getFakeCloudPreviewUrl(sandbox.id),
+    previewAuthToken: sandbox.previewAuthToken,
   });
 });
 
@@ -566,6 +597,84 @@ app.post("/engine/v1/sandboxes/reconcile", (_req, res) => {
   res.json({
     reconciledSandboxIds: [],
   });
+});
+
+app.get("/engine/v1/sandboxes/:sandboxId/status", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  sandbox.lastActiveAt = Date.now();
+
+  res.json(
+    createServiceResponse({
+      sandboxId: sandbox.id,
+      status: "running",
+      previewUrl: getFakeCloudPreviewUrl(sandbox.id),
+      previewAuthToken: sandbox.previewAuthToken,
+      previewPort: PORT,
+      syncRevision: sandbox.syncRevision,
+      initialSyncCompleted: sandbox.initialSyncCompleted,
+      appStatus: "running",
+      syncAgentHealthy: true,
+      createdAt: new Date(sandbox.createdAt).toISOString(),
+      lastActiveAt: new Date(sandbox.lastActiveAt).toISOString(),
+      lastSuccessfulSyncAt: sandbox.lastSuccessfulSyncAt
+        ? new Date(sandbox.lastSuccessfulSyncAt).toISOString()
+        : null,
+      expiresAt: new Date(sandbox.lastActiveAt + 10 * 60 * 1000).toISOString(),
+      billingState: "active",
+      billingStartedAt: new Date(sandbox.createdAt).toISOString(),
+      billingLockedAt: null,
+      lastChargedAt: null,
+      nextChargeAt: new Date(sandbox.createdAt + 60 * 1000).toISOString(),
+      billingSlicesCharged: 0,
+      creditsCharged: 0,
+      terminationReason: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    }),
+  );
+});
+
+app.post("/engine/v1/sandboxes/:sandboxId/restart", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  sandbox.lastActiveAt = Date.now();
+
+  res.json({
+    previewUrl: getFakeCloudPreviewUrl(sandbox.id),
+    previewAuthToken: sandbox.previewAuthToken,
+  });
+});
+
+app.post("/engine/v1/sandboxes/:sandboxId/share-links", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  const expiresInSeconds =
+    typeof req.body.expiresInSeconds === "number"
+      ? req.body.expiresInSeconds
+      : 600;
+  const shareLinkId = `share-link-${sandbox.id}`;
+
+  res.json(
+    createServiceResponse({
+      sandboxId: sandbox.id,
+      shareLinkId,
+      url: `${getFakeCloudPreviewUrl(sandbox.id)}?share=${shareLinkId}`,
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+    }),
+  );
 });
 
 app.get("/engine/v1/sandboxes/:sandboxId/logs", (req, res) => {

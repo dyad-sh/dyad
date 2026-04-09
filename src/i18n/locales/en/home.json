@@ -205,6 +205,8 @@
     "rebuildDescription": "Re-installs node_modules and restarts",
     "clearCache": "Clear Cache",
     "clearCacheDescription": "Clears cookies and local storage and other app cache",
+    "recreateSandbox": "Recreate Sandbox",
+    "recreateSandboxDescription": "Destroys the current sandbox and creates a new one",
     "loadingFiles": "Loading files...",
     "noAppSelected": "No app selected",
     "refreshFiles": "Refresh Files",

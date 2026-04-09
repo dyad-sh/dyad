@@ -214,110 +214,124 @@ export function useStreamChat({
                 });
               }
             },
-            onEnd: async (response: ChatResponseEnd) => {
-              // Remove from pending set now that stream is complete
+            onEnd: (response: ChatResponseEnd) => {
               pendingStreamChatIds.delete(chatId);
-              // Only mark as successful if NOT cancelled - wasCancelled flag is set
-              // by the backend when user cancels the stream
-              if (response.wasCancelled) {
-                setMessagesById((prev) => {
-                  const existingMessages = prev.get(chatId);
-                  if (!existingMessages) return prev;
+              void (async () => {
+                // Only mark as successful if NOT cancelled - wasCancelled flag is set
+                // by the backend when user cancels the stream
+                if (response.wasCancelled) {
+                  setMessagesById((prev) => {
+                    const existingMessages = prev.get(chatId);
+                    if (!existingMessages) return prev;
 
-                  const updatedMessages =
-                    applyCancellationNoticeToLastAssistantMessage(
-                      existingMessages,
-                    );
-                  if (updatedMessages === existingMessages) {
-                    return prev;
+                    const updatedMessages =
+                      applyCancellationNoticeToLastAssistantMessage(
+                        existingMessages,
+                      );
+                    if (updatedMessages === existingMessages) {
+                      return prev;
+                    }
+
+                    const next = new Map(prev);
+                    next.set(chatId, updatedMessages);
+                    return next;
+                  });
+                }
+
+                if (!response.wasCancelled) {
+                  setStreamCompletedSuccessfullyById((prev) => {
+                    const next = new Map(prev);
+                    next.set(chatId, true);
+                    return next;
+                  });
+                }
+
+                // Show native notification if enabled and window is not focused
+                // Fire-and-forget to avoid blocking UI updates
+                const notificationsEnabled =
+                  settings?.enableChatEventNotifications === true;
+                if (
+                  notificationsEnabled &&
+                  Notification.permission === "granted" &&
+                  !document.hasFocus()
+                ) {
+                  const app = queryClient.getQueryData<App | null>(
+                    queryKeys.apps.detail({ appId: selectedAppId }),
+                  );
+                  const chats = queryClient.getQueryData<ChatSummary[]>(
+                    queryKeys.chats.list({ appId: selectedAppId }),
+                  );
+                  const chat = chats?.find((c) => c.id === chatId);
+                  const appName = app?.name ?? "Dyad";
+                  const rawTitle = response.chatSummary ?? chat?.title;
+                  const body = rawTitle
+                    ? rawTitle.length > 80
+                      ? rawTitle.slice(0, 80) + "…"
+                      : rawTitle
+                    : "Chat response completed";
+                  new Notification(appName, {
+                    body,
+                  });
+                }
+
+                if (response.updatedFiles) {
+                  if (settings?.autoExpandPreviewPanel) {
+                    setIsPreviewOpen(true);
                   }
+                  refreshAppIframe();
+                  if (settings?.enableAutoFixProblems) {
+                    checkProblems();
+                  }
+                }
+                if (response.extraFiles) {
+                  showExtraFilesToast({
+                    files: response.extraFiles,
+                    error: response.extraFilesError,
+                    posthog,
+                  });
+                }
+                for (const warningMessage of response.warningMessages ?? []) {
+                  showWarning(warningMessage);
+                }
+                // Use queryClient directly with the chatId parameter to avoid stale closure issues
+                queryClient.invalidateQueries({
+                  queryKey: ["proposal", chatId],
+                });
 
+                refetchUserBudget();
+
+                // Invalidate free agent quota to update the UI after message
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.freeAgentQuota.status,
+                });
+
+                // Keep the same as below
+                setIsStreamingById((prev) => {
                   const next = new Map(prev);
-                  next.set(chatId, updatedMessages);
+                  next.set(chatId, false);
                   return next;
                 });
-              }
-
-              if (!response.wasCancelled) {
-                setStreamCompletedSuccessfullyById((prev) => {
+                // Use queryClient directly with the chatId parameter to avoid stale closure issues
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.proposals.detail({ chatId }),
+                });
+                invalidateChats();
+                refreshApp();
+                refreshVersions();
+                invalidateTokenCount();
+                onSettled?.({ success: true });
+              })().catch((error) => {
+                console.error(
+                  `[CHAT] Failed to finalize stream for ${chatId}:`,
+                  error,
+                );
+                setIsStreamingById((prev) => {
                   const next = new Map(prev);
-                  next.set(chatId, true);
+                  next.set(chatId, false);
                   return next;
                 });
-              }
-
-              // Show native notification if enabled and window is not focused
-              // Fire-and-forget to avoid blocking UI updates
-              const notificationsEnabled =
-                settings?.enableChatEventNotifications === true;
-              if (
-                notificationsEnabled &&
-                Notification.permission === "granted" &&
-                !document.hasFocus()
-              ) {
-                const app = queryClient.getQueryData<App | null>(
-                  queryKeys.apps.detail({ appId: selectedAppId }),
-                );
-                const chats = queryClient.getQueryData<ChatSummary[]>(
-                  queryKeys.chats.list({ appId: selectedAppId }),
-                );
-                const chat = chats?.find((c) => c.id === chatId);
-                const appName = app?.name ?? "Dyad";
-                const rawTitle = response.chatSummary ?? chat?.title;
-                const body = rawTitle
-                  ? rawTitle.length > 80
-                    ? rawTitle.slice(0, 80) + "…"
-                    : rawTitle
-                  : "Chat response completed";
-                new Notification(appName, {
-                  body,
-                });
-              }
-
-              if (response.updatedFiles) {
-                if (settings?.autoExpandPreviewPanel) {
-                  setIsPreviewOpen(true);
-                }
-                refreshAppIframe();
-                if (settings?.enableAutoFixProblems) {
-                  checkProblems();
-                }
-              }
-              if (response.extraFiles) {
-                showExtraFilesToast({
-                  files: response.extraFiles,
-                  error: response.extraFilesError,
-                  posthog,
-                });
-              }
-              for (const warningMessage of response.warningMessages ?? []) {
-                showWarning(warningMessage);
-              }
-              // Use queryClient directly with the chatId parameter to avoid stale closure issues
-              queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
-
-              refetchUserBudget();
-
-              // Invalidate free agent quota to update the UI after message
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.freeAgentQuota.status,
+                onSettled?.({ success: false });
               });
-
-              // Keep the same as below
-              setIsStreamingById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, false);
-                return next;
-              });
-              // Use queryClient directly with the chatId parameter to avoid stale closure issues
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.proposals.detail({ chatId }),
-              });
-              invalidateChats();
-              refreshApp();
-              refreshVersions();
-              invalidateTokenCount();
-              onSettled?.({ success: true });
             },
             onError: ({ error: errorMessage, warningMessages }) => {
               // Remove from pending set now that stream ended with error

@@ -1237,8 +1237,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <TooltipTrigger
                   render={
                     <div
-                      className="flex items-center rounded-md bg-sky-100 px-2 py-1 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                      aria-label="Running in a cloud sandbox"
+                      className="flex items-center rounded-full bg-sky-100 px-2 py-1 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
                       data-testid="preview-cloud-badge"
+                      role="status"
                     />
                   }
                 >
@@ -1408,7 +1410,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 }
               >
                 <Power size={16} />
-                <span>Restart</span>
+                <span>{isCloudMode ? "Restart Sandbox" : "Restart"}</span>
               </TooltipTrigger>
               <TooltipContent>
                 {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}

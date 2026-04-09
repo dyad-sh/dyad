@@ -12,6 +12,7 @@ import {
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { showError, showInputRequest } from "@/lib/toast";
+import type { RuntimeMode2 } from "@/lib/schemas";
 
 const useRunAppLoadingAtom = atom(false);
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
@@ -47,9 +48,7 @@ export function useAppOutputSubscription() {
         if (proxyUrlMatch && proxyUrlMatch[1]) {
           const proxyUrl = proxyUrlMatch[1];
           const originalUrl = originalUrlMatch && originalUrlMatch[1];
-          const mode =
-            (modeMatch?.[1] as "host" | "docker" | "cloud" | undefined) ??
-            "host";
+          const mode = (modeMatch?.[1] as RuntimeMode2 | undefined) ?? "host";
           setAppUrlObj({
             appUrl: proxyUrl,
             appId: output.appId,

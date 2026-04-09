@@ -177,9 +177,9 @@ export class PreviewPanel {
     return this.page.getByTestId("preview-iframe-element");
   }
 
-  expectPreviewIframeIsVisible() {
+  expectPreviewIframeIsVisible(timeout = Timeout.LONG) {
     return expect(this.getPreviewIframeElement()).toBeVisible({
-      timeout: Timeout.LONG,
+      timeout,
     });
   }
 

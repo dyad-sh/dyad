@@ -2,6 +2,7 @@ import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
 import log from "electron-log";
 import type { Worker } from "node:worker_threads";
+import type { RuntimeMode2 } from "@/lib/schemas";
 import { withLock } from "./lock_utils";
 import {
   destroyCloudSandbox,
@@ -15,12 +16,13 @@ const logger = log.scope("process_manager");
 export interface RunningAppInfo {
   process: ChildProcess | null;
   processId: number;
-  mode: "host" | "docker" | "cloud";
+  mode: RuntimeMode2;
   rendererSender?: Electron.WebContents;
   containerName?: string;
   cloudSandboxId?: string;
   cloudPreviewUrl?: string;
   cloudPreviewAuthToken?: string;
+  proxyAuthToken?: string;
   cloudSyncErrorMessage?: string;
   cloudLogAbortController?: AbortController;
   /** Timestamp of when this app was last viewed/selected in the preview panel */
@@ -362,6 +364,7 @@ export function stopAllAppsSync(): void {
     if (appInfo.mode === "cloud") {
       appInfo.cloudLogAbortController?.abort();
       appInfo.cloudLogAbortController = undefined;
+      stopCloudSandboxFileSync(appId);
       unregisterRunningCloudSandbox({ appId });
       if (appInfo.cloudSandboxId) {
         void destroyCloudSandbox(appInfo.cloudSandboxId).catch((error) => {

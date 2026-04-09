@@ -123,6 +123,26 @@ function getDefaultStartCommand(): string {
   return "pnpm run dev";
 }
 
+function getDefaultCloudSandboxErrorMessage(status: number): string {
+  if (status === 401 || status === 403) {
+    return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
+  }
+
+  if (status === 404) {
+    return "The cloud sandbox could not be found.";
+  }
+
+  if (status === 429) {
+    return "Dyad is rate limiting cloud sandbox requests right now. Please try again.";
+  }
+
+  if (status >= 500) {
+    return "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.";
+  }
+
+  return `Cloud sandbox request failed with ${status}.`;
+}
+
 function resolveCloudSandboxCommands(input: {
   appId: number;
   installCommand?: string | null;
@@ -210,7 +230,7 @@ async function cloudSandboxFetch(
 
   if (!response.ok) {
     const errorText = await response.text();
-    let message = `Cloud sandbox request failed with ${response.status}.`;
+    let message = getDefaultCloudSandboxErrorMessage(response.status);
     let code: string | undefined;
     try {
       const parsed = JSON.parse(errorText) as {
@@ -220,9 +240,7 @@ async function cloudSandboxFetch(
       message = parsed.message || message;
       code = parsed.code;
     } catch {
-      if (errorText) {
-        message = errorText;
-      }
+      // Keep the generic status-based message instead of surfacing raw HTML/JSON.
     }
     throw new CloudSandboxApiError(message, code, response.status);
   }
@@ -898,10 +916,11 @@ export function queueCloudSandboxSnapshotSync(input: {
             fullSync: true,
           });
         } else {
-          await syncCloudSandboxDirtyPaths({
-            appId: pending.activeSandbox.appId,
-            changedPaths: [...pending.changedPaths],
-            deletedPaths: [...pending.deletedPaths],
+          await uploadPendingSnapshot({
+            activeSandbox: pending.activeSandbox,
+            changedPaths: pending.changedPaths,
+            deletedPaths: pending.deletedPaths,
+            fullSync: false,
           });
         }
       } catch (error) {
@@ -935,11 +954,7 @@ export async function reconcileCloudSandboxes(): Promise<string[]> {
     );
     return result.reconciledSandboxIds ?? [];
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (
-      message.includes("404") ||
-      message.includes("Cannot POST /sandboxes/reconcile")
-    ) {
+    if (error instanceof CloudSandboxApiError && error.status === 404) {
       return [];
     }
     throw error;

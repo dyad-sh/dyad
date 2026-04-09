@@ -36,6 +36,12 @@ export class Settings {
       .click();
   }
 
+  async toggleCloudSandboxExperiment() {
+    await this.page
+      .getByRole("switch", { name: "Enable Cloud Sandbox" })
+      .click();
+  }
+
   async toggleEnableSelectAppFromHomeChatInput() {
     await this.page
       .getByRole("switch", {

@@ -1,6 +1,6 @@
 import { atom } from "jotai";
 import type { App, Version, ConsoleEntry } from "@/ipc/types";
-import type { UserSettings } from "@/lib/schemas";
+import type { RuntimeMode2, UserSettings } from "@/lib/schemas";
 
 export const currentAppAtom = atom<App | null>(null);
 export const selectedAppIdAtom = atom<number | null>(null);
@@ -22,7 +22,7 @@ export const appUrlAtom = atom<
       appUrl: string;
       appId: number;
       originalUrl: string;
-      mode: "host" | "docker" | "cloud";
+      mode: RuntimeMode2;
     }
   | {
       appUrl: null;

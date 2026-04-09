@@ -13,12 +13,24 @@ import { ipc } from "@/ipc/types";
 import { useAtomValue } from "jotai";
 import { appUrlAtom } from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
+import type { RuntimeMode2 } from "@/lib/schemas";
+import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export function shouldShowCloudSandboxOption({
   runtimeMode,
   cloudSandboxExperimentEnabled,
 }: {
-  runtimeMode: "host" | "docker" | "cloud";
+  runtimeMode: RuntimeMode2;
   cloudSandboxExperimentEnabled: boolean;
 }) {
   return cloudSandboxExperimentEnabled || runtimeMode === "cloud";
@@ -26,9 +38,12 @@ export function shouldShowCloudSandboxOption({
 
 export function RuntimeModeSelector() {
   const { settings, updateSettings } = useSettings();
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation(["settings", "common"]);
   const { userBudget } = useUserBudgetInfo();
   const currentAppUrl = useAtomValue(appUrlAtom);
+  const [pendingRuntimeMode, setPendingRuntimeMode] =
+    useState<RuntimeMode2 | null>(null);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   if (!settings) {
     return null;
@@ -42,9 +57,15 @@ export function RuntimeModeSelector() {
     cloudSandboxExperimentEnabled: !!settings.experiments?.enableCloudSandbox,
   });
 
-  const handleRuntimeModeChange = async (
-    value: "host" | "docker" | "cloud",
-  ) => {
+  const applyRuntimeModeChange = async (value: RuntimeMode2) => {
+    try {
+      await updateSettings({ runtimeMode2: value });
+    } catch (error: any) {
+      showError(`Failed to update runtime mode: ${error.message}`);
+    }
+  };
+
+  const handleRuntimeModeChange = (value: RuntimeMode2) => {
     if (
       value === "cloud" &&
       (!hasCloudSandboxAccess || !showCloudSandboxOption)
@@ -52,21 +73,13 @@ export function RuntimeModeSelector() {
       return;
     }
 
-    if (
-      currentAppUrl.appUrl &&
-      value !== (settings.runtimeMode2 ?? "host") &&
-      !window.confirm(
-        "Switching runtime mode will stop your currently running app. Continue?",
-      )
-    ) {
+    if (currentAppUrl.appUrl && value !== (settings.runtimeMode2 ?? "host")) {
+      setPendingRuntimeMode(value);
+      setIsConfirmDialogOpen(true);
       return;
     }
 
-    try {
-      await updateSettings({ runtimeMode2: value });
-    } catch (error: any) {
-      showError(`Failed to update runtime mode: ${error.message}`);
-    }
+    void applyRuntimeModeChange(value);
   };
 
   return (
@@ -130,9 +143,42 @@ export function RuntimeModeSelector() {
       {isCloudMode && hasCloudSandboxAccess && (
         <div className="text-sm text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/30 p-2 rounded">
           Cloud Sandbox runs previews remotely and gives you a shareable preview
-          link.
+          link. Note: running in cloud mode consumes Pro credits.
         </div>
       )}
+      <AlertDialog
+        open={isConfirmDialogOpen}
+        onOpenChange={(open) => {
+          setIsConfirmDialogOpen(open);
+          if (!open) {
+            setPendingRuntimeMode(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("general.runtimeModeSwitchTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("general.runtimeModeSwitchDescription")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingRuntimeMode) {
+                  return;
+                }
+                void applyRuntimeModeChange(pendingRuntimeMode);
+              }}
+            >
+              {t("general.runtimeModeSwitchAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

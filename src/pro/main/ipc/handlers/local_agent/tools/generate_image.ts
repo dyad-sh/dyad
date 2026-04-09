@@ -13,7 +13,6 @@ import { engineFetch } from "./engine_fetch";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { ImageGenerationApiResponseSchema } from "@/ipc/types/image_generation";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("generate_image");
 
@@ -145,10 +144,6 @@ export const generateImageTool: ToolDefinition<
       const imageData = await callGenerateImage(args.prompt, ctx);
 
       const relativePath = await saveGeneratedImage(imageData, ctx.appPath);
-      queueCloudSandboxSnapshotSync({
-        appId: ctx.appId,
-        changedPaths: [relativePath],
-      });
 
       ctx.onXmlComplete(
         `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}" path="${escapeXmlAttr(relativePath)}">${escapeXmlContent(relativePath)}</dyad-image-generation>`,

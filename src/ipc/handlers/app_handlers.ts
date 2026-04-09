@@ -53,6 +53,7 @@ import {
   CloudSandboxApiError,
   createCloudSandboxShareLink,
   createCloudSandbox,
+  destroyCloudSandbox,
   getCloudSandboxStatus,
   queueCloudSandboxSnapshotSync,
   reconcileCloudSandboxes,
@@ -81,7 +82,7 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { AppSearchResult } from "@/lib/schemas";
+import type { AppSearchResult, RuntimeMode2 } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -109,6 +110,18 @@ function formatCloudSandboxError(error: unknown) {
     case "sandbox_credits_exhausted":
       return "This cloud sandbox stopped because your credits ran out.";
     default:
+      if (error.status === 404) {
+        return "This cloud sandbox is no longer available.";
+      }
+      if (error.status === 401 || error.status === 403) {
+        return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
+      }
+      if (error.status === 429) {
+        return "Dyad is rate limiting cloud sandbox requests right now. Please try again.";
+      }
+      if (typeof error.status === "number" && error.status >= 500) {
+        return "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.";
+      }
       return error.message;
   }
 }
@@ -255,7 +268,7 @@ function emitProxyServerStarted({
   event: Electron.IpcMainInvokeEvent;
   proxyUrl: string;
   originalUrl: string;
-  mode: "host" | "docker" | "cloud";
+  mode: RuntimeMode2;
 }) {
   safeSend(event.sender, "app:output", {
     type: "stdout",
@@ -273,16 +286,20 @@ async function ensureProxyForRunningApp({
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   originalUrl: string;
-  mode: "host" | "docker" | "cloud";
+  mode: RuntimeMode2;
 }): Promise<void> {
   const appInfo = runningApps.get(appId);
   if (!appInfo) {
     return;
   }
 
+  const proxyAuthToken =
+    mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;
+
   if (
     appInfo.proxyWorker &&
     appInfo.originalUrl === originalUrl &&
+    appInfo.proxyAuthToken === proxyAuthToken &&
     appInfo.proxyUrl
   ) {
     emitProxyServerStarted({
@@ -306,6 +323,7 @@ async function ensureProxyForRunningApp({
       if (latestAppInfo) {
         latestAppInfo.proxyUrl = proxyUrl;
         latestAppInfo.originalUrl = originalUrl;
+        latestAppInfo.proxyAuthToken = proxyAuthToken;
       }
       emitProxyServerStarted({
         appId,
@@ -316,9 +334,9 @@ async function ensureProxyForRunningApp({
       });
     },
     fixedHeaders:
-      mode === "cloud" && appInfo.cloudPreviewAuthToken
+      mode === "cloud" && proxyAuthToken
         ? {
-            Authorization: `Bearer ${appInfo.cloudPreviewAuthToken}`,
+            Authorization: `Bearer ${proxyAuthToken}`,
           }
         : undefined,
   });
@@ -327,6 +345,7 @@ async function ensureProxyForRunningApp({
   if (latestAppInfo) {
     latestAppInfo.proxyWorker = proxyWorker;
     latestAppInfo.originalUrl = originalUrl;
+    latestAppInfo.proxyAuthToken = proxyAuthToken;
   } else {
     await proxyWorker.terminate();
   }
@@ -869,6 +888,16 @@ async function executeAppInCloud({
     previewUrl = uploadResult.previewUrl ?? previewUrl;
     previewAuthToken = uploadResult.previewAuthToken ?? previewAuthToken;
   } catch (error) {
+    if (sandboxId) {
+      try {
+        await destroyCloudSandbox(sandboxId);
+      } catch (cleanupError) {
+        logger.warn(
+          `Failed to clean up cloud sandbox ${sandboxId} after startup error for app ${appId}:`,
+          cleanupError,
+        );
+      }
+    }
     throw new Error(formatCloudSandboxError(error));
   }
 
@@ -1531,34 +1560,51 @@ export function registerAppHandlers() {
     });
   });
 
-  createTypedHandler(appContracts.getCloudSandboxStatus, async (_, params) => {
-    const { appId } = params;
-    const appInfo = runningApps.get(appId);
+  createTypedHandler(
+    appContracts.getCloudSandboxStatus,
+    async (event, params) => {
+      const { appId } = params;
+      const appInfo = runningApps.get(appId);
 
-    if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
-      return null;
-    }
+      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+        return null;
+      }
 
-    try {
-      const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
-      appInfo.cloudPreviewUrl = status.previewUrl;
-      appInfo.cloudPreviewAuthToken = status.previewAuthToken;
-      appInfo.originalUrl = status.previewUrl;
-      return {
-        ...status,
-        localSyncErrorMessage: appInfo.cloudSyncErrorMessage ?? null,
-      };
-    } catch (error) {
-      logger.error(
-        `Failed to fetch cloud sandbox status for app ${appId}:`,
-        error,
-      );
-      throw new DyadError(
-        formatCloudSandboxError(error),
-        DyadErrorKind.External,
-      );
-    }
-  });
+      try {
+        const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
+        const previewChanged =
+          appInfo.cloudPreviewUrl !== status.previewUrl ||
+          appInfo.cloudPreviewAuthToken !== status.previewAuthToken;
+        appInfo.cloudPreviewUrl = status.previewUrl;
+        appInfo.cloudPreviewAuthToken = status.previewAuthToken;
+
+        if (previewChanged && appInfo.proxyWorker) {
+          await ensureProxyForRunningApp({
+            appId,
+            event,
+            originalUrl: status.previewUrl,
+            mode: "cloud",
+          });
+        } else {
+          appInfo.originalUrl = status.previewUrl;
+        }
+
+        return {
+          ...status,
+          localSyncErrorMessage: appInfo.cloudSyncErrorMessage ?? null,
+        };
+      } catch (error) {
+        logger.error(
+          `Failed to fetch cloud sandbox status for app ${appId}:`,
+          error,
+        );
+        throw new DyadError(
+          formatCloudSandboxError(error),
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
 
   createTypedHandler(
     appContracts.createCloudSandboxShareLink,
@@ -1620,7 +1666,6 @@ export function registerAppHandlers() {
           );
           appInfo.cloudPreviewUrl = restartResult.previewUrl;
           appInfo.cloudPreviewAuthToken = restartResult.previewAuthToken;
-          appInfo.originalUrl = restartResult.previewUrl;
           appInfo.lastViewedAt = Date.now();
 
           appInfo.cloudLogAbortController?.abort();
@@ -1773,6 +1818,11 @@ export function registerAppHandlers() {
       );
     }
 
+    queueCloudSandboxSnapshotSync({
+      appId,
+      changedPaths: [filePath],
+    });
+
     if (app.supabaseProjectId) {
       // Check if shared module was modified - redeploy all functions
       if (isSharedServerModule(filePath)) {
@@ -1819,11 +1869,6 @@ export function registerAppHandlers() {
         }
       }
     }
-
-    queueCloudSandboxSnapshotSync({
-      appId,
-      changedPaths: [filePath],
-    });
 
     return {};
   });

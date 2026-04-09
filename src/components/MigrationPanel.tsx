@@ -10,6 +10,17 @@ import {
   XCircle,
   ChevronDown,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useTranslation } from "react-i18next";
 
 interface MigrationPanelProps {
@@ -40,7 +51,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
         : t("integrations.migration.errorMessage");
   const errorDetails =
     pushMutation.error instanceof Error
-      ? pushMutation.error.message
+      ? (pushMutation.error.stack ?? pushMutation.error.message)
       : pushMutation.error
         ? String(pushMutation.error)
         : null;
@@ -58,25 +69,47 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           {t("integrations.migration.description")}
         </p>
 
-        <Button
-          onClick={() => {
-            setShowErrorDetails(false);
-            pushMutation.mutate();
-          }}
-          disabled={pushMutation.isPending}
-        >
-          {pushMutation.isPending ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {t("integrations.migration.migrating")}
-            </>
-          ) : (
-            <>
-              <Database className="w-4 h-4 mr-2" />
-              {t("integrations.migration.migrateToProduction")}
-            </>
-          )}
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger>
+            <Button disabled={pushMutation.isPending}>
+              {pushMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("integrations.migration.migrating")}
+                </>
+              ) : (
+                <>
+                  <Database className="w-4 h-4 mr-2" />
+                  {t("integrations.migration.migrateToProduction")}
+                </>
+              )}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("integrations.migration.migrateToProduction")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("integrations.migration.confirmDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("integrations.migration.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setShowErrorDetails(false);
+                  pushMutation.mutate();
+                }}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                {t("integrations.migration.migrateToProduction")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {pushMutation.isSuccess &&
           pushMutation.data?.success &&

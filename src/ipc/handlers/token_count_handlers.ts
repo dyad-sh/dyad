@@ -10,7 +10,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { buildNeonPromptAdditions } from "../../neon_admin/neon_prompt_context";
+import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
@@ -23,7 +23,6 @@ import { TokenCountParams, TokenCountResult } from "@/ipc/types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { detectFrameworkType } from "../utils/framework_utils";
 import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
@@ -95,17 +94,14 @@ export function registerTokenCountHandlers() {
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
       } else if (chat.app?.neonProjectId) {
-        const appPath = getDyadAppPath(chat.app.path);
-        const frameworkType = detectFrameworkType(appPath);
-        const branchId =
-          chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId;
         systemPrompt +=
           "\n\n" +
-          (await buildNeonPromptAdditions({
-            projectId: chat.app.neonProjectId,
-            branchId,
-            frameworkType,
-            includeContext: settings.selectedChatMode !== "local-agent",
+          (await buildNeonPromptForApp({
+            appPath: chat.app.path,
+            neonProjectId: chat.app.neonProjectId!,
+            neonActiveBranchId: chat.app.neonActiveBranchId,
+            neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
+            selectedChatMode: settings.selectedChatMode ?? "",
           }));
       } else {
         // Neon projects don't need Supabase (already handled above).

@@ -27,8 +27,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { buildNeonPromptAdditions } from "../../neon_admin/neon_prompt_context";
-import { detectFrameworkType } from "../utils/framework_utils";
+import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
@@ -832,19 +831,14 @@ ${componentSnippet}
                 }));
         } else if (updatedChat.app?.neonProjectId) {
           // Neon is connected — inject Neon prompt instead of Supabase
-          const appPath = getDyadAppPath(updatedChat.app.path);
-          const frameworkType = detectFrameworkType(appPath);
-          const branchId =
-            updatedChat.app.neonActiveBranchId ??
-            updatedChat.app.neonDevelopmentBranchId;
-
           systemPrompt +=
             "\n\n" +
-            (await buildNeonPromptAdditions({
-              projectId: updatedChat.app.neonProjectId,
-              branchId,
-              frameworkType,
-              includeContext: settings.selectedChatMode !== "local-agent",
+            (await buildNeonPromptForApp({
+              appPath: updatedChat.app.path,
+              neonProjectId: updatedChat.app.neonProjectId!,
+              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
+              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
+              selectedChatMode: settings.selectedChatMode ?? "",
             })) +
             "\n\n";
         } else if (

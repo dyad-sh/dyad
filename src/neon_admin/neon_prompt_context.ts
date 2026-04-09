@@ -1,6 +1,8 @@
 import { getNeonAvailableSystemPrompt } from "../prompts/neon_prompt";
 import { getCachedEmailPasswordConfig } from "./neon_management_client";
 import { getNeonClientCode, getNeonContext } from "./neon_context";
+import { getDyadAppPath } from "../paths/paths";
+import { detectFrameworkType } from "../ipc/utils/framework_utils";
 
 interface BuildNeonPromptAdditionsParams {
   projectId: string;
@@ -53,4 +55,33 @@ export async function buildNeonPromptAdditions({
   }
 
   return neonPromptAddition;
+}
+
+/**
+ * High-level helper that computes framework type, resolves branch fallback,
+ * and returns the full Neon prompt additions for a given app.
+ * Use this instead of duplicating the resolve-and-call pattern.
+ */
+export async function buildNeonPromptForApp({
+  appPath,
+  neonProjectId,
+  neonActiveBranchId,
+  neonDevelopmentBranchId,
+  selectedChatMode,
+}: {
+  appPath: string;
+  neonProjectId: string;
+  neonActiveBranchId?: string | null;
+  neonDevelopmentBranchId?: string | null;
+  selectedChatMode: string;
+}): Promise<string> {
+  const resolvedPath = getDyadAppPath(appPath);
+  const frameworkType = detectFrameworkType(resolvedPath);
+  const branchId = neonActiveBranchId ?? neonDevelopmentBranchId;
+  return buildNeonPromptAdditions({
+    projectId: neonProjectId,
+    branchId,
+    frameworkType,
+    includeContext: selectedChatMode !== "local-agent",
+  });
 }

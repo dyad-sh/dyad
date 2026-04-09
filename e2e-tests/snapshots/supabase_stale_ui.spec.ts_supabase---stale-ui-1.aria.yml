@@ -8,12 +8,12 @@
     - listitem: • Auth & row-level security
     - listitem: • Realtime subscriptions
     - listitem: • Storage & edge functions
-- button "Neon • Serverless Postgres • Database branching • Autoscaling":
+- button "Neon • Managed Postgres with branching • Auth & email verification • Serverless scale-to-zero":
   - text: ""
   - list:
-    - listitem: • Serverless Postgres
-    - listitem: • Database branching
-    - listitem: • Autoscaling
+    - listitem: • Managed Postgres with branching
+    - listitem: • Auth & email verification
+    - listitem: • Serverless scale-to-zero
 - button "Set up database" [disabled]
 - button "Copy":
   - img

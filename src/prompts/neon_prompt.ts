@@ -476,21 +476,3 @@ export default function VerifyEmailPage() {
 - Style the verification page to match the app's design.
 `;
 }
-
-export const NEON_NOT_AVAILABLE_SYSTEM_PROMPT = `
-<neon-not-available>
-
-If the user wants to use Neon or do something that requires a database, auth, or backend functionality, tell them they need to add a database to their app and show the integration prompt:
-
-\`<dyad-add-integration></dyad-add-integration>\`
-
-**Example 1:** "I want to add a database to my app."
-→ You need to first add a database to your app.
-<dyad-add-integration></dyad-add-integration>
-
-**Example 2:** "I want to add auth to my app."
-→ You need to first add a database to your app and then we can add auth.
-<dyad-add-integration></dyad-add-integration>
-
-</neon-not-available>
-`;

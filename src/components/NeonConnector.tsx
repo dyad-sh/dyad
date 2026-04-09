@@ -118,11 +118,11 @@ export function NeonConnector({ appId }: { appId: number }) {
           "https://oauth.dyad.sh/api/integrations/neon/login",
         );
       }
-      // Reset after 60s if the OAuth return never arrives
+      // Reset after 20s if the OAuth return never arrives
       oauthTimeoutRef.current = setTimeout(() => {
         setIsOpeningOauth(false);
         oauthTimeoutRef.current = null;
-      }, 60_000);
+      }, 20_000);
     } catch (error) {
       setIsOpeningOauth(false);
       toast.error(String(error));

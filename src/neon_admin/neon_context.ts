@@ -40,6 +40,34 @@ export async function getBranchRoleName({
 }
 
 /**
+ * Get the primary database name for a given project branch by querying the Neon API.
+ * Falls back to "neondb" if no databases are found.
+ */
+export async function getBranchDatabaseName({
+  projectId,
+  branchId,
+}: {
+  projectId: string;
+  branchId: string;
+}): Promise<string> {
+  try {
+    const neonClient = await getNeonClient();
+    const databasesResponse = await neonClient.listProjectBranchDatabases(
+      projectId,
+      branchId,
+    );
+    const databases = databasesResponse.data.databases ?? [];
+    const database = databases[0];
+    return database?.name ?? "neondb";
+  } catch (error) {
+    logger.warn(
+      `Failed to fetch Neon branch databases for ${projectId}/${branchId}, falling back to neondb: ${error}`,
+    );
+    return "neondb";
+  }
+}
+
+/**
  * Get a Neon connection URI for a given project and branch.
  */
 export async function getConnectionUri({
@@ -50,11 +78,14 @@ export async function getConnectionUri({
   branchId: string;
 }): Promise<string> {
   const neonClient = await getNeonClient();
-  const roleName = await getBranchRoleName({ projectId, branchId });
+  const [roleName, databaseName] = await Promise.all([
+    getBranchRoleName({ projectId, branchId }),
+    getBranchDatabaseName({ projectId, branchId }),
+  ]);
   const response = await neonClient.getConnectionUri({
     projectId,
     branch_id: branchId,
-    database_name: "neondb",
+    database_name: databaseName,
     role_name: roleName,
   });
   return response.data.uri;
@@ -101,7 +132,7 @@ const TABLE_NAMES_QUERY = `
   ORDER BY table_name;
 `;
 
-const TABLE_SCHEMA_QUERY = `
+const TABLE_SCHEMA_QUERY_ALL = `
   SELECT
     c.table_name,
     c.column_name,
@@ -123,21 +154,38 @@ const TABLE_SCHEMA_QUERY = `
   ORDER BY c.table_name, c.ordinal_position;
 `;
 
+const TABLE_SCHEMA_QUERY_ONE = `
+  SELECT
+    c.table_name,
+    c.column_name,
+    c.data_type,
+    c.is_nullable,
+    c.column_default,
+    c.character_maximum_length,
+    tc.constraint_type,
+    kcu.constraint_name
+  FROM information_schema.columns c
+  LEFT JOIN information_schema.key_column_usage kcu
+    ON c.table_schema = kcu.table_schema
+    AND c.table_name = kcu.table_name
+    AND c.column_name = kcu.column_name
+  LEFT JOIN information_schema.table_constraints tc
+    ON kcu.constraint_name = tc.constraint_name
+    AND kcu.table_schema = tc.table_schema
+  WHERE c.table_schema = 'public'
+    AND c.table_name = $1
+  ORDER BY c.ordinal_position;
+`;
+
 function buildTableSchemaQuery(tableName?: string): {
   query: string;
   params: string[];
 } {
-  if (!tableName) return { query: TABLE_SCHEMA_QUERY, params: [] };
-  // Append a table filter to the base query, replacing the final ORDER BY
-  // so we can inject the AND clause and use a single-column ordering.
-  const filtered = TABLE_SCHEMA_QUERY.replace(
-    /ORDER BY c\.table_name, c\.ordinal_position;\s*$/,
-    `AND c.table_name = $1\n  ORDER BY c.ordinal_position;\n`,
-  );
-  return { query: filtered, params: [tableName] };
+  if (!tableName) return { query: TABLE_SCHEMA_QUERY_ALL, params: [] };
+  return { query: TABLE_SCHEMA_QUERY_ONE, params: [tableName] };
 }
 
-const INDEXES_QUERY = `
+const INDEXES_QUERY_ALL = `
   SELECT
     tablename AS table_name,
     indexname AS index_name,
@@ -147,18 +195,23 @@ const INDEXES_QUERY = `
   ORDER BY tablename, indexname;
 `;
 
+const INDEXES_QUERY_ONE = `
+  SELECT
+    tablename AS table_name,
+    indexname AS index_name,
+    indexdef AS index_definition
+  FROM pg_indexes
+  WHERE schemaname = 'public'
+    AND tablename = $1
+  ORDER BY indexname;
+`;
+
 function buildIndexesQuery(tableName?: string): {
   query: string;
   params: string[];
 } {
-  if (!tableName) return { query: INDEXES_QUERY, params: [] };
-  // Append a table filter to the base query, replacing the final ORDER BY
-  // so we can inject the AND clause and use a single-column ordering.
-  const filtered = INDEXES_QUERY.replace(
-    /ORDER BY tablename, indexname;\s*$/,
-    `AND tablename = $1\n  ORDER BY indexname;\n`,
-  );
-  return { query: filtered, params: [tableName] };
+  if (!tableName) return { query: INDEXES_QUERY_ALL, params: [] };
+  return { query: INDEXES_QUERY_ONE, params: [tableName] };
 }
 
 // =============================================================================

@@ -638,7 +638,9 @@
       "errorMessage": "Migration couldn't be applied.",
       "showDetails": "Show details",
       "hideDetails": "Hide details",
-      "alreadyInSync": "Your development and production databases are already in sync."
+      "alreadyInSync": "Your development and production databases are already in sync.",
+      "confirmDescription": "This will modify your production database schema. Are you sure you want to continue?",
+      "cancel": "Cancel"
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",

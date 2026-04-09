@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -85,6 +85,32 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       ? availableProviders[0].id
       : selectedProvider;
 
+  const radioGroupRef = useRef<HTMLDivElement>(null);
+
+  const handleRadioKeyDown = (e: React.KeyboardEvent) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key))
+      return;
+    e.preventDefault();
+
+    const buttons =
+      radioGroupRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="radio"]',
+      );
+    if (!buttons || buttons.length === 0) return;
+
+    const currentIndex = Array.from(buttons).findIndex(
+      (btn) => btn === document.activeElement,
+    );
+    const nextIndex =
+      e.key === "ArrowRight" || e.key === "ArrowDown"
+        ? (currentIndex + 1) % buttons.length
+        : (currentIndex - 1 + buttons.length) % buttons.length;
+
+    buttons[nextIndex].focus();
+    const providerId = availableProviders[nextIndex]?.id;
+    if (providerId) setSelectedProvider(providerId);
+  };
+
   const completedProvider = getCompletedIntegrationProvider(app);
   const completedProviderName =
     completedProvider === "supabase"
@@ -169,15 +195,23 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           <div className="text-xs text-muted-foreground mb-3">{children}</div>
         )}
         <div
+          ref={radioGroupRef}
           role="radiogroup"
           aria-label={t("integrations.databaseSetup.chooseProvider")}
+          onKeyDown={handleRadioKeyDown}
           className={`grid ${availableProviders.length > 1 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
         >
-          {availableProviders.map((option) => (
+          {availableProviders.map((option, index) => (
             <button
               key={option.id}
               type="button"
               role="radio"
+              tabIndex={
+                effectiveSelectedProvider === option.id ||
+                (!effectiveSelectedProvider && index === 0)
+                  ? 0
+                  : -1
+              }
               onClick={() => setSelectedProvider(option.id)}
               aria-checked={effectiveSelectedProvider === option.id}
               className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${

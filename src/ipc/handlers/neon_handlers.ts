@@ -459,11 +459,34 @@ export function registerNeonHandlers() {
       // Auto-inject env vars into the app's .env.local
       let warning: string | undefined;
       if (activeBranchId) {
-        warning = await autoInjectNeonEnvVars({
-          appPath,
-          projectId,
-          branchId: activeBranchId,
-        });
+        try {
+          warning = await autoInjectNeonEnvVars({
+            appPath,
+            projectId,
+            branchId: activeBranchId,
+          });
+        } catch (envError) {
+          // Revert the DB update so the app doesn't end up half-linked
+          logger.warn(
+            `autoInjectNeonEnvVars failed for app ${appId}, reverting DB update: ${envError}`,
+          );
+          try {
+            await db
+              .update(apps)
+              .set({
+                neonProjectId: null,
+                neonDevelopmentBranchId: null,
+                neonPreviewBranchId: null,
+                neonActiveBranchId: null,
+              })
+              .where(eq(apps.id, appId));
+          } catch (revertError) {
+            logger.error(
+              `Failed to revert Neon fields from app ${appId}: ${revertError}`,
+            );
+          }
+          throw envError;
+        }
       }
 
       logger.info(

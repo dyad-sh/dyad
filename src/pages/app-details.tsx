@@ -55,8 +55,33 @@ import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManage
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { useTranslation } from "react-i18next";
 
-export default function AppDetailsPage() {
+function UnavailableIntegrationCard({
+  provider,
+}: {
+  provider: "supabase" | "neon";
+}) {
   const { t } = useTranslation("home");
+  const label = provider === "supabase" ? "Supabase" : "Neon";
+  const descriptionKey =
+    provider === "supabase"
+      ? "integrations.mutualExclusion.supabaseUnavailable"
+      : "integrations.mutualExclusion.neonUnavailable";
+  return (
+    <Card className="mt-1">
+      <CardHeader className="flex flex-row items-center gap-3 py-3">
+        <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+        <div>
+          <CardTitle className="text-sm">{label}</CardTitle>
+          <CardDescription className="text-xs">
+            {t(descriptionKey)}
+          </CardDescription>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
+
+export default function AppDetailsPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
@@ -453,17 +478,7 @@ export default function AppDetailsPage() {
           {providerFilter === "supabase" &&
             appId &&
             selectedApp?.neonProjectId && (
-              <Card className="mt-1">
-                <CardHeader className="flex flex-row items-center gap-3 py-3">
-                  <Info className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div>
-                    <CardTitle className="text-sm">Supabase</CardTitle>
-                    <CardDescription className="text-xs">
-                      {t("integrations.mutualExclusion.supabaseUnavailable")}
-                    </CardDescription>
-                  </div>
-                </CardHeader>
-              </Card>
+              <UnavailableIntegrationCard provider="supabase" />
             )}
           {providerFilter === "neon" &&
             appId &&
@@ -471,17 +486,7 @@ export default function AppDetailsPage() {
           {providerFilter === "neon" &&
             appId &&
             selectedApp?.supabaseProjectId && (
-              <Card className="mt-1">
-                <CardHeader className="flex flex-row items-center gap-3 py-3">
-                  <Info className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div>
-                    <CardTitle className="text-sm">Neon</CardTitle>
-                    <CardDescription className="text-xs">
-                      {t("integrations.mutualExclusion.neonUnavailable")}
-                    </CardDescription>
-                  </div>
-                </CardHeader>
-              </Card>
+              <UnavailableIntegrationCard provider="neon" />
             )}
           {/* When no providerFilter, show both with existing mutual exclusion */}
           {!providerFilter && (
@@ -490,33 +495,13 @@ export default function AppDetailsPage() {
                 <SupabaseConnector appId={appId} />
               )}
               {appId && selectedApp?.neonProjectId && (
-                <Card className="mt-1">
-                  <CardHeader className="flex flex-row items-center gap-3 py-3">
-                    <Info className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <div>
-                      <CardTitle className="text-sm">Supabase</CardTitle>
-                      <CardDescription className="text-xs">
-                        {t("integrations.mutualExclusion.supabaseUnavailable")}
-                      </CardDescription>
-                    </div>
-                  </CardHeader>
-                </Card>
+                <UnavailableIntegrationCard provider="supabase" />
               )}
               {appId && !selectedApp?.supabaseProjectId && (
                 <NeonConnector appId={appId} />
               )}
               {appId && selectedApp?.supabaseProjectId && (
-                <Card className="mt-1">
-                  <CardHeader className="flex flex-row items-center gap-3 py-3">
-                    <Info className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <div>
-                      <CardTitle className="text-sm">Neon</CardTitle>
-                      <CardDescription className="text-xs">
-                        {t("integrations.mutualExclusion.neonUnavailable")}
-                      </CardDescription>
-                    </div>
-                  </CardHeader>
-                </Card>
+                <UnavailableIntegrationCard provider="neon" />
               )}
             </>
           )}

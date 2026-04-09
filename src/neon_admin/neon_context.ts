@@ -384,11 +384,9 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function getNeonContext({
   projectId,
   branchId,
-  frameworkType: _frameworkType,
 }: {
   projectId: string;
   branchId: string;
-  frameworkType: "nextjs" | "vite" | "other" | null;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "[[TEST_BUILD_NEON_CONTEXT]]";

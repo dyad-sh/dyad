@@ -70,20 +70,21 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
         </p>
 
         <AlertDialog>
-          <AlertDialogTrigger>
-            <Button disabled={pushMutation.isPending}>
-              {pushMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("integrations.migration.migrating")}
-                </>
-              ) : (
-                <>
-                  <Database className="w-4 h-4 mr-2" />
-                  {t("integrations.migration.migrateToProduction")}
-                </>
-              )}
-            </Button>
+          <AlertDialogTrigger
+            disabled={pushMutation.isPending}
+            render={<Button />}
+          >
+            {pushMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {t("integrations.migration.migrating")}
+              </>
+            ) : (
+              <>
+                <Database className="w-4 h-4 mr-2" />
+                {t("integrations.migration.migrateToProduction")}
+              </>
+            )}
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>

@@ -47,7 +47,6 @@ export async function buildNeonPromptAdditions({
         (await getNeonContext({
           projectId,
           branchId,
-          frameworkType,
         }));
     } catch {
       // Best-effort: proceed without Neon project context.

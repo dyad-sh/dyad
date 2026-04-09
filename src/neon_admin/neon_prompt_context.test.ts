@@ -46,7 +46,6 @@ describe("buildNeonPromptAdditions", () => {
     expect(getNeonContext).toHaveBeenCalledWith({
       projectId: "project-123",
       branchId: "branch-123",
-      frameworkType: "nextjs",
     });
   });
 

@@ -1,8 +1,7 @@
 import log from "electron-log";
-import { app } from "electron";
+import { app, utilityProcess } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { spawn } from "child_process";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "../utils/test_utils";
@@ -83,7 +82,8 @@ export async function createTempDrizzleConfig({
 }
 
 /**
- * Spawns drizzle-kit as a child process via system node.
+ * Spawns drizzle-kit in an Electron utility process so packaged builds do not
+ * rely on a separate system Node.js binary.
  */
 export async function spawnDrizzleKit({
   args,
@@ -120,37 +120,51 @@ export async function spawnDrizzleKit({
         exitCode: 0,
       };
     }
+
+    throw new Error(
+      `Unsupported drizzle-kit command in test build: ${drizzleCommand}`,
+    );
   }
 
   const drizzleKitBin = getDrizzleKitPath();
 
   return new Promise((resolve, reject) => {
-    logger.info(`Running: node ${drizzleKitBin} ${args.join(" ")}`);
+    logger.info(`Running drizzle-kit: ${drizzleKitBin} ${args.join(" ")}`);
 
     // Set NODE_PATH so that schema files in the temp dir can resolve
     // drizzle-orm and other dependencies.
-    // In packaged builds, node_modules lives inside app.asar which spawned
-    // node processes cannot read. drizzle-orm is copied to resources/ via
-    // extraResource in forge.config.ts, so we point NODE_PATH there instead.
+    // In packaged builds, node_modules lives inside app.asar. drizzle-orm is
+    // copied to resources/ via extraResource in forge.config.ts, so we point
+    // NODE_PATH there instead.
     const nodeModulesPath = app.isPackaged
       ? process.resourcesPath
       : path.join(app.getAppPath(), "node_modules");
-    const proc = spawn("node", [drizzleKitBin, ...args], {
-      cwd,
-      stdio: "pipe",
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        NODE_PATH: nodeModulesPath,
-        DRIZZLE_DATABASE_URL: connectionUri,
-      },
-    });
+    let proc;
+    try {
+      proc = utilityProcess.fork(drizzleKitBin, args, {
+        cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        serviceName: "drizzle-kit",
+        env: {
+          ...process.env,
+          NODE_PATH: nodeModulesPath,
+          DRIZZLE_DATABASE_URL: connectionUri,
+        },
+      });
+    } catch (error) {
+      reject(
+        new DyadError(
+          `Failed to spawn drizzle-kit: ${error instanceof Error ? error.message : String(error)}`,
+          DyadErrorKind.Internal,
+        ),
+      );
+      return;
+    }
 
     let stdout = "";
     let stderr = "";
     let timedOut = false;
     let timeoutError: DyadError | null = null;
-    let forceKillTimer: NodeJS.Timeout | null = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -159,11 +173,6 @@ export async function spawnDrizzleKit({
         DyadErrorKind.External,
       );
       proc.kill();
-      forceKillTimer = setTimeout(() => {
-        if (!proc.killed) {
-          proc.kill("SIGKILL");
-        }
-      }, 5_000);
     }, timeoutMs);
 
     proc.stdout?.on("data", (data) => {
@@ -178,24 +187,21 @@ export async function spawnDrizzleKit({
       logger.warn(`drizzle-kit stderr: ${output}`);
     });
 
-    proc.on("close", (code) => {
+    proc.on("exit", (code) => {
       clearTimeout(timer);
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
       if (timedOut && timeoutError) {
         reject(timeoutError);
         return;
       }
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
+      resolve({ stdout, stderr, exitCode: code });
     });
 
-    proc.on("error", (err) => {
+    proc.on("error", (type, location, report) => {
       if (timedOut) return;
       clearTimeout(timer);
       reject(
         new DyadError(
-          `Failed to spawn drizzle-kit: ${err.message}`,
+          `drizzle-kit utility process failed (${type}) at ${location}. ${report}`,
           DyadErrorKind.Internal,
         ),
       );

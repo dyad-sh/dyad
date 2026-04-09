@@ -635,7 +635,9 @@
       "errorMessage": "Não foi possível aplicar a migração.",
       "showDetails": "Mostrar detalhes",
       "hideDetails": "Ocultar detalhes",
-      "alreadyInSync": "Os bancos de desenvolvimento e produção já estão sincronizados."
+      "alreadyInSync": "Os bancos de desenvolvimento e produção já estão sincronizados.",
+      "confirmDescription": "Isso modificará o schema do seu banco de dados de produção. Tem certeza de que deseja continuar?",
+      "cancel": "Cancelar"
     },
     "mutualExclusion": {
       "supabaseUnavailable": "O Supabase não está disponível porque um banco de dados Neon já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",

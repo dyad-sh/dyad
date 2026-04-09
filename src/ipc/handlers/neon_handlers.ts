@@ -591,17 +591,36 @@ export function registerNeonHandlers() {
       }
 
       // Update DB first, then inject env vars.
-      // If env injection fails, DB is correct and a retry is safe.
+      // If env injection fails, revert the DB update so the app and env stay in sync.
+      const previousActiveBranchId = appData.neonActiveBranchId;
       await db
         .update(apps)
         .set({ neonActiveBranchId: branchId })
         .where(eq(apps.id, appId));
 
-      const warning = await autoInjectNeonEnvVars({
-        appPath: appData.path,
-        projectId: appData.neonProjectId!,
-        branchId,
-      });
+      let warning: string | undefined;
+      try {
+        warning = await autoInjectNeonEnvVars({
+          appPath: appData.path,
+          projectId: appData.neonProjectId!,
+          branchId,
+        });
+      } catch (envError) {
+        logger.warn(
+          `autoInjectNeonEnvVars failed for app ${appId}, reverting active branch: ${envError}`,
+        );
+        try {
+          await db
+            .update(apps)
+            .set({ neonActiveBranchId: previousActiveBranchId })
+            .where(eq(apps.id, appId));
+        } catch (revertError) {
+          logger.error(
+            `Failed to revert active branch for app ${appId}: ${revertError}`,
+          );
+        }
+        throw envError;
+      }
 
       logger.info(
         `Successfully set active branch ${branchId} for app ${appId}`,

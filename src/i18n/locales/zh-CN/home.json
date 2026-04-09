@@ -635,7 +635,9 @@
       "errorMessage": "无法应用此次迁移。",
       "showDetails": "显示详情",
       "hideDetails": "隐藏详情",
-      "alreadyInSync": "开发数据库和生产数据库已经同步。"
+      "alreadyInSync": "开发数据库和生产数据库已经同步。",
+      "confirmDescription": "此操作将修改您的生产数据库 schema。确定要继续吗？",
+      "cancel": "取消"
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase 不可用，因为已连接 Neon 数据库。一次只能激活一个数据库集成。",

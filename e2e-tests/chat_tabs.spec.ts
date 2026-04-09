@@ -11,6 +11,7 @@ test("tabs appear after navigating between chats", async ({ po }) => {
 
   // Chat 2
   await po.chatActions.clickNewChat();
+  await po.sleep(2_000);
   await po.sendPrompt("[dump] build a weather app");
   await po.chatActions.waitForChatCompletion();
 

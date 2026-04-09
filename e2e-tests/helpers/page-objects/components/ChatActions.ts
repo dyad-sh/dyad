@@ -88,9 +88,20 @@ export class ChatActions {
       timeout,
     }: { skipWaitForCompletion?: boolean; timeout?: number } = {},
   ) {
-    await this.getChatInput().click();
-    await this.getChatInput().fill(prompt);
-    await this.page.getByRole("button", { name: "Send message" }).click();
+    const chatInput = this.getChatInputContainer().locator(
+      '[data-lexical-editor="true"]',
+    );
+    const sendButton = this.page.getByRole("button", { name: "Send message" });
+
+    await expect(chatInput).toBeVisible();
+    await expect(async () => {
+      await chatInput.click();
+      await chatInput.fill(prompt);
+      await expect(chatInput).toContainText(prompt);
+      await expect(sendButton).toBeEnabled();
+    }).toPass({ timeout: Timeout.SHORT });
+
+    await sendButton.click();
     if (!skipWaitForCompletion) {
       await this.waitForChatCompletion({ timeout });
     }

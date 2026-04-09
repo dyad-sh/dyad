@@ -142,15 +142,6 @@ export async function stopAppByInfo(
   appInfo: RunningAppInfo,
 ): Promise<void> {
   stopCloudSandboxFileSync(appId);
-  unregisterRunningCloudSandbox({ appId });
-
-  if (appInfo.proxyWorker) {
-    await appInfo.proxyWorker.terminate();
-    appInfo.proxyWorker = undefined;
-  }
-
-  appInfo.cloudLogAbortController?.abort();
-  appInfo.cloudLogAbortController = undefined;
 
   if (appInfo.mode === "cloud") {
     if (appInfo.cloudSandboxId) {
@@ -162,6 +153,15 @@ export async function stopAppByInfo(
   } else if (appInfo.process) {
     await killProcess(appInfo.process);
   }
+
+  if (appInfo.proxyWorker) {
+    await appInfo.proxyWorker.terminate();
+    appInfo.proxyWorker = undefined;
+  }
+
+  appInfo.cloudLogAbortController?.abort();
+  appInfo.cloudLogAbortController = undefined;
+  unregisterRunningCloudSandbox({ appId });
   runningApps.delete(appId);
 }
 

@@ -1549,7 +1549,7 @@ export function registerAppHandlers() {
         // Attempt cleanup even if an error occurred during the stop process
         if (process) {
           removeAppIfCurrentProcess(appId, process);
-        } else {
+        } else if (appInfo.mode !== "cloud") {
           runningApps.delete(appId);
         }
         throw new DyadError(

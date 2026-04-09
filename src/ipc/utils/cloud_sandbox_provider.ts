@@ -928,6 +928,10 @@ export function queueCloudSandboxSnapshotSync(input: {
           `Failed to sync app snapshot to cloud sandbox ${activeSandbox.sandboxId} for app ${activeSandbox.appId}:`,
           error,
         );
+        notifyCloudSandboxSyncUpdate({
+          appId: pending.activeSandbox.appId,
+          errorMessage: formatCloudSandboxSyncError(error),
+        });
       }
     },
     input.immediate ? 0 : 300,

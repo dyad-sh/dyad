@@ -7,7 +7,7 @@ import {
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -79,6 +79,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 
 interface ErrorBannerProps {
   error:
@@ -266,6 +267,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
   const queryClient = useQueryClient();
+  const {
+    mutateAsync: createCloudSandboxShareLink,
+    isPending: isCreatingCloudSandboxShareLink,
+  } = useMutation({
+    mutationFn: async ({ appId }: { appId: number }) => {
+      return ipc.app.createCloudSandboxShareLink({ appId });
+    },
+  });
 
   // Device configurations
   const deviceWidthConfig = {
@@ -354,19 +363,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     isCloudMode,
     queryClient,
   ]);
-
-  const getCloudPreviewUrl = () => {
-    if (!isCloudMode) {
-      throw new Error("Cloud sandbox is not running.");
-    }
-
-    const previewUrl = cloudSandboxStatus?.previewUrl ?? originalUrl;
-    if (!previewUrl) {
-      throw new Error("Cloud sandbox preview URL is unavailable.");
-    }
-
-    return previewUrl;
-  };
 
   const analyzeComponent = async (componentId: string) => {
     if (!componentId || !selectedAppId) return;
@@ -1419,27 +1415,27 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             <button
               data-testid="preview-open-browser-button"
               onClick={async () => {
-                if (isCloudMode) {
-                  if (!selectedAppId) {
-                    return;
-                  }
-
-                  try {
-                    ipc.system.openExternalUrl(getCloudPreviewUrl());
-                  } catch (error) {
-                    showError(
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to open cloud sandbox share link.",
-                    );
-                  }
-                  return;
-                }
-
-                if (originalUrl) {
-                  ipc.system.openExternalUrl(originalUrl);
+                try {
+                  const url = await resolvePreviewBrowserUrl({
+                    isCloudMode,
+                    selectedAppId,
+                    originalUrl,
+                    createCloudSandboxShareLink,
+                  });
+                  await ipc.system.openExternalUrl(url);
+                } catch (error) {
+                  showError(
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to open cloud sandbox share link.",
+                  );
                 }
               }}
+              disabled={
+                isCloudMode
+                  ? selectedAppId === null || isCreatingCloudSandboxShareLink
+                  : !originalUrl
+              }
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             >
               <ExternalLink size={16} />

@@ -316,6 +316,40 @@ describe("cloud_sandbox_provider incremental sync", () => {
       deletedFiles: [],
     });
   });
+
+  it("notifies listeners when queued sync uploads fail and later recover", async () => {
+    vi.useRealTimers();
+
+    const syncUpdateListener = vi.fn();
+    setCloudSandboxSyncUpdateListener(syncUpdateListener);
+    await fs.writeFile(path.join(appPath, "src.ts"), "console.log('hi');");
+
+    fetchMock.mockRejectedValueOnce(new Error("network down"));
+
+    queueCloudSandboxSnapshotSync({
+      appId: 1,
+      changedPaths: ["src.ts"],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(syncUpdateListener).toHaveBeenCalledWith({
+      appId: 1,
+      errorMessage: "Cloud sandbox sync failed: network down",
+    });
+
+    queueCloudSandboxSnapshotSync({
+      appId: 1,
+      changedPaths: ["src.ts"],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(syncUpdateListener).toHaveBeenLastCalledWith({
+      appId: 1,
+      errorMessage: null,
+    });
+  });
 });
 
 describe("cloud_sandbox_provider sandbox creation", () => {

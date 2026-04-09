@@ -296,7 +296,7 @@ export function getEvalModel(
 
 The eval has two tiers of test cases, each with its own assertion strategy:
 
-- **Exact-match cases** use a single `search_replace` call (no `execute`, tool call inspected directly). The edit is applied via `applySearchReplace` and the result is compared byte-for-byte against `expectedContent`. These are the deterministic regression backbone — fast, cheap, no LLM cost for verification.
+- **Exact-match cases** require exactly one `search_replace` call (no `execute`, tool call inspected directly). The eval asserts the call count is `=== 1` — over-editing (multiple calls) fails the case rather than silently passing on the first call. The edit is applied via `applySearchReplace` and the result is compared byte-for-byte against `expectedContent`. These are the deterministic regression backbone — fast, cheap, no LLM cost for verification.
 - **Judge-verified cases** allow **multiple** `search_replace` calls via `stopWhen: stepCountIs(10)`, since complex edits (e.g. splitting a 700-line component into 3) naturally require several sequential operations. The tool is given an `execute` function that applies each edit to a running copy of the file and returns a confirmation message. After all steps complete, the final file state is evaluated by a **judge model** (GPT 5.4 via the same Dyad Engine) that receives the original file, the prompt, and the result, and renders a PASS/FAIL verdict with explanation. Optional `structuralChecks` (simple string-contains assertions) run as a precondition before the judge, catching gross errors cheaply without an LLM call.
 
 ```typescript
@@ -469,12 +469,16 @@ for (const { provider, modelName, label, temperature } of MODELS) {
             },
           });
 
-          const call = result.toolCalls.find(
+          const calls = result.toolCalls.filter(
             (t) => t.toolName === "search_replace",
           );
-          expect(call, `${label} did not call search_replace`).toBeDefined();
+          expect(
+            calls.length,
+            `${label} expected exactly 1 search_replace call, got ${calls.length}`,
+          ).toBe(1);
+          const call = calls[0];
 
-          const args = call!.input as {
+          const args = call.input as {
             file_path: string;
             old_string: string;
             new_string: string;
@@ -554,7 +558,7 @@ for (const { provider, modelName, label, temperature } of MODELS) {
 
 Important details:
 
-- **Two tool-call patterns.** Exact-match cases omit `execute` so the AI SDK surfaces the single tool call directly in `result.toolCalls` — the standard single-turn inspection pattern. Judge-verified cases provide an `execute` function and set `stopWhen: stepCountIs(10)`, allowing the model to make multiple sequential edits (e.g. extracting three components from a large file). The `execute` function applies each edit to a running `currentContent` variable and returns a confirmation string, so the model sees the result of each step.
+- **Two tool-call patterns.** Exact-match cases omit `execute` so the AI SDK surfaces tool calls directly in `result.toolCalls`, and the eval asserts exactly one `search_replace` call was emitted — over-editing fails the case rather than silently passing on the first call. Judge-verified cases provide an `execute` function and set `stopWhen: stepCountIs(10)`, allowing the model to make multiple sequential edits (e.g. extracting three components from a large file). The `execute` function applies each edit to a running `currentContent` variable and returns a confirmation string, so the model sees the result of each step.
 - **Judge independence.** The judge is always GPT 5.4 regardless of which model is being evaluated. When evaluating GPT 5.4 itself, the judge is still GPT 5.4 — this is a known limitation but acceptable for v1 because (a) the judge task (verifying an edit) is much simpler than the generation task (producing the edit), and (b) the structural checks catch the most obvious failures before the judge runs. If this becomes a concern, a follow-up can rotate judges so no model evaluates its own output.
 
 #### 3. Vitest config

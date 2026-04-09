@@ -61,6 +61,7 @@ The chat input uses a Lexical editor (contenteditable). Standard Playwright meth
 
 - **Clearing input**: `fill("")` doesn't reliably clear Lexical. Use keyboard shortcuts instead: `Meta+a` then `Backspace`.
 - **Timing issues**: Lexical may need time to update its internal state. Use `toPass()` with retries for resilient tests.
+- **Avoid locator drift**: When both home/chat inputs may exist, scope the editor locator to the specific container (for example `chat-input-container`) and reuse one locator instance for click/fill/assertions.
 - **Helper methods**: Use `po.clearChatInput()` and `po.openChatHistoryMenu()` from test_helper.ts for reliable Lexical interactions.
 
 ```ts

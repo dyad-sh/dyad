@@ -22,6 +22,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useTranslation } from "react-i18next";
+import { getErrorMessage } from "@/lib/errors";
+import { useLoadApp } from "@/hooks/useLoadApp";
+import { useNeon } from "@/hooks/useNeon";
 
 interface MigrationPanelProps {
   appId: number;
@@ -29,11 +32,38 @@ interface MigrationPanelProps {
 
 export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
+  const { app } = useLoadApp(appId);
+  const { projectInfo, branches } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
   const pushMutation = useMutation({
     mutationFn: () => ipc.migration.push({ appId }),
   });
+
+  const sourceBranchName = branches.find(
+    (branch) => branch.branchId === app?.neonActiveBranchId,
+  )?.branchName;
+  const targetBranchName = branches.find(
+    (branch) => branch.type === "production",
+  )?.branchName;
+  const projectName = projectInfo?.projectName ?? app?.neonProjectId ?? null;
+  const hasBranchContext = Boolean(
+    projectName && sourceBranchName && targetBranchName,
+  );
+  const description = hasBranchContext
+    ? t("integrations.migration.descriptionWithBranches", {
+        projectName,
+        sourceBranchName,
+        targetBranchName,
+      })
+    : t("integrations.migration.description");
+  const confirmDescription = hasBranchContext
+    ? t("integrations.migration.confirmDescriptionWithBranches", {
+        projectName,
+        sourceBranchName,
+        targetBranchName,
+      })
+    : t("integrations.migration.confirmDescription");
 
   // Auto-dismiss success/info banners after 5 seconds
   useEffect(() => {
@@ -43,17 +73,14 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
     }
   }, [pushMutation.isSuccess, pushMutation.data?.success]);
 
-  const errorSummary =
-    pushMutation.error instanceof Error
-      ? pushMutation.error.message
-      : pushMutation.isError
-        ? String(pushMutation.error)
-        : t("integrations.migration.errorMessage");
+  const errorSummary = pushMutation.isError
+    ? getErrorMessage(pushMutation.error)
+    : t("integrations.migration.errorMessage");
   const errorDetails =
     pushMutation.error instanceof Error
       ? (pushMutation.error.stack ?? pushMutation.error.message)
       : pushMutation.error
-        ? String(pushMutation.error)
+        ? getErrorMessage(pushMutation.error)
         : null;
 
   return (
@@ -66,7 +93,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          {t("integrations.migration.description")}
+          {description}
         </p>
 
         <AlertDialog>
@@ -92,7 +119,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
                 {t("integrations.migration.migrateToProduction")}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {t("integrations.migration.confirmDescription")}
+                {confirmDescription}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -163,7 +190,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
                 {showErrorDetails && (
                   <pre
                     id={errorDetailsId}
-                    className="text-xs font-mono bg-red-100 dark:bg-red-900/40 rounded p-2 overflow-x-auto whitespace-pre-wrap"
+                    className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-red-100 p-2 font-mono text-xs dark:bg-red-900/40"
                   >
                     {errorDetails}
                   </pre>

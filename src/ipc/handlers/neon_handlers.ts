@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
@@ -13,9 +15,14 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
+import { getDyadAppPath } from "../../paths/paths";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { removeNeonEnvVars } from "../utils/app_env_var_utils";
+import {
+  ENV_FILE_NAME,
+  readEnvFileIfExists,
+  removeNeonEnvVars,
+} from "../utils/app_env_var_utils";
 import {
   logger,
   combineWarnings,
@@ -27,6 +34,26 @@ import {
 } from "../utils/neon_utils";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
+
+function getEnvFilePath(appPath: string): string {
+  return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
+}
+
+async function restoreEnvFileSnapshot({
+  appPath,
+  snapshot,
+}: {
+  appPath: string;
+  snapshot: string | null;
+}): Promise<void> {
+  const envFilePath = getEnvFilePath(appPath);
+  if (snapshot === null) {
+    await fs.rm(envFilePath, { force: true });
+    return;
+  }
+
+  await fs.writeFile(envFilePath, snapshot);
+}
 
 export function registerNeonHandlers() {
   // Do not use log handler because there's sensitive data in the response
@@ -413,6 +440,7 @@ export function registerNeonHandlers() {
       );
     }
     const appPath = appRecord[0].path;
+    const envFileSnapshot = await readEnvFileIfExists({ appPath });
 
     try {
       const neonClient = await getNeonClient();
@@ -445,6 +473,13 @@ export function registerNeonHandlers() {
       // against the production/default branch.
       const activeBranchId =
         dedicatedDevBranch?.id ?? defaultBranch?.id ?? null;
+
+      if (!activeBranchId) {
+        throw new DyadError(
+          "Linked Neon project has no writable branch. Create a development branch in Neon before connecting this app.",
+          DyadErrorKind.Precondition,
+        );
+      }
 
       await db
         .update(apps)
@@ -483,6 +518,16 @@ export function registerNeonHandlers() {
           } catch (revertError) {
             logger.error(
               `Failed to revert Neon fields from app ${appId}: ${revertError}`,
+            );
+          }
+          try {
+            await restoreEnvFileSnapshot({
+              appPath,
+              snapshot: envFileSnapshot,
+            });
+          } catch (restoreError) {
+            logger.error(
+              `Failed to restore .env.local for app ${appId}: ${restoreError}`,
             );
           }
           throw envError;
@@ -569,6 +614,9 @@ export function registerNeonHandlers() {
       }
 
       const appData = appRecord[0];
+      const envFileSnapshot = await readEnvFileIfExists({
+        appPath: appData.path,
+      });
 
       if (!appData.neonProjectId) {
         throw new DyadError(
@@ -586,6 +634,13 @@ export function registerNeonHandlers() {
       if (branchResponse.data.branch?.project_id !== appData.neonProjectId) {
         throw new DyadError(
           `Branch ${branchId} does not belong to Neon project ${appData.neonProjectId}`,
+          DyadErrorKind.Precondition,
+        );
+      }
+
+      if (branchId === appData.neonPreviewBranchId) {
+        throw new DyadError(
+          "Preview branches are read-only and cannot be selected as the active Neon branch.",
           DyadErrorKind.Precondition,
         );
       }
@@ -617,6 +672,16 @@ export function registerNeonHandlers() {
         } catch (revertError) {
           logger.error(
             `Failed to revert active branch for app ${appId}: ${revertError}`,
+          );
+        }
+        try {
+          await restoreEnvFileSnapshot({
+            appPath: appData.path,
+            snapshot: envFileSnapshot,
+          });
+        } catch (restoreError) {
+          logger.error(
+            `Failed to restore .env.local for app ${appId}: ${restoreError}`,
           );
         }
         throw envError;

@@ -108,11 +108,7 @@ export class AppManagement {
 
   async startDatabaseIntegrationSetup(provider: "supabase" | "neon") {
     const providerLabel = provider === "supabase" ? "Supabase" : "Neon";
-    await this.page
-      .getByRole("button", {
-        name: new RegExp(`^${providerLabel}\\b`),
-      })
-      .click();
+    await this.page.getByText(providerLabel, { exact: true }).click();
 
     const setupButton = this.page.getByRole("button", {
       name: `Set up ${providerLabel}`,
@@ -132,6 +128,9 @@ export class AppManagement {
     await expect(projectSelect).toBeVisible({ timeout: Timeout.MEDIUM });
     await projectSelect.click();
     await this.page.getByRole("option", { name: projectName }).click();
+    await expect(this.page.getByTestId("neon-branch-select")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async selectNeonBranch(branchName: string) {

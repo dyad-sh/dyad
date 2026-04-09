@@ -265,6 +265,11 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           roles: [{ name: "neondb_owner", protected: false }],
         },
       }),
+      listProjectBranchDatabases: async () => ({
+        data: {
+          databases: [{ name: "neondb" }],
+        },
+      }),
       getConnectionUri: async (params: any) => ({
         data: {
           uri: getMockConnectionUri(params.branch_id),

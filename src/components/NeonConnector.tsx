@@ -31,6 +31,7 @@ import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { isNextJsProject } from "@/lib/framework_constants";
+import { getErrorMessage } from "@/lib/errors";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,6 +66,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formatToastError = (error: unknown) => getErrorMessage(error);
 
   const {
     isConnected,
@@ -125,7 +127,7 @@ export function NeonConnector({ appId }: { appId: number }) {
       }, 20_000);
     } catch (error) {
       setIsOpeningOauth(false);
-      toast.error(String(error));
+      toast.error(formatToastError(error));
     }
   };
 
@@ -149,7 +151,7 @@ export function NeonConnector({ appId }: { appId: number }) {
     } catch (error) {
       toast.error(
         t("integrations.neon.failedConnectProject", {
-          error: String(error),
+          error: formatToastError(error),
         }),
       );
     } finally {
@@ -235,7 +237,7 @@ export function NeonConnector({ appId }: { appId: number }) {
     } catch (error) {
       toast.error(
         t("integrations.neon.failedUpdateEmailVerification", {
-          error: String(error),
+          error: formatToastError(error),
         }),
       );
     } finally {
@@ -261,7 +263,7 @@ export function NeonConnector({ appId }: { appId: number }) {
     } catch (error) {
       toast.error(
         t("integrations.neon.failedSetBranch", {
-          error: String(error),
+          error: formatToastError(error),
         }),
       );
     } finally {
@@ -296,7 +298,12 @@ export function NeonConnector({ appId }: { appId: number }) {
       </Card>
     );
   }
-  if (!isNextJsProject(app?.files)) {
+  if (
+    !isNextJsProject({
+      files: app?.files,
+      frameworkType: app?.frameworkType ?? null,
+    })
+  ) {
     return (
       <Card className="mt-1">
         <CardHeader>
@@ -312,8 +319,22 @@ export function NeonConnector({ appId }: { appId: number }) {
     return (
       <Card className="mt-1">
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            {t("integrations.neon.project")}
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <CardTitle className="flex flex-wrap items-center gap-2">
+                <span>{t("integrations.neon.project")}</span>
+                <Badge
+                  variant="secondary"
+                  className="max-w-full truncate px-3 py-1 text-base font-bold"
+                  title={projectInfo?.projectName ?? app.neonProjectId}
+                >
+                  {projectInfo?.projectName ?? app.neonProjectId}
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-sm">
+                {t("integrations.neon.connectedToProject")}
+              </CardDescription>
+            </div>
             <Button
               variant="outline"
               aria-label={t("integrations.neon.openInConsole")}
@@ -323,22 +344,12 @@ export function NeonConnector({ appId }: { appId: number }) {
                   `https://console.neon.tech/app/projects/${app.neonProjectId}`,
                 );
               }}
-              className="ml-2 px-2 py-1 inline-flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-2 py-1"
             >
               <NeonSvg isDarkMode={isDarkMode} aria-hidden="true" />
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </Button>
-          </CardTitle>
-          <CardDescription className="text-sm">
-            {t("integrations.neon.connectedToProject")}
-          </CardDescription>
-          <Badge
-            variant="secondary"
-            className="ml-2 max-w-full truncate text-base font-bold px-3 py-1"
-            title={projectInfo?.projectName ?? app.neonProjectId}
-          >
-            {projectInfo?.projectName ?? app.neonProjectId}
-          </Badge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -350,12 +361,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                 <div className="text-sm text-red-500">
                   <p>
                     {t("integrations.neon.errorLoadingBranches", {
-                      message:
-                        branchesError instanceof Error
-                          ? branchesError.message
-                          : typeof branchesError === "string"
-                            ? branchesError
-                            : JSON.stringify(branchesError),
+                      message: formatToastError(branchesError),
                     })}
                   </p>
                   <Button
@@ -372,6 +378,32 @@ export function NeonConnector({ appId }: { appId: number }) {
                 </div>
               ) : isLoadingBranches ? (
                 <Skeleton className="h-10 w-full" />
+              ) : branches.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  <p>{t("integrations.neon.noBranchesFound")}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        queryClient.invalidateQueries({
+                          queryKey: queryKeys.neon.project({ appId }),
+                        })
+                      }
+                    >
+                      {t("integrations.neon.retry")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        ipc.system.openExternalUrl(
+                          `https://console.neon.tech/app/projects/${app.neonProjectId}`,
+                        );
+                      }}
+                    >
+                      {t("integrations.neon.openInConsole")}
+                    </Button>
+                  </div>
+                </div>
               ) : (
                 <Select
                   value={app.neonActiveBranchId ?? ""}
@@ -507,12 +539,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           ) : projectsError ? (
             <div className="text-red-500">
               {t("integrations.neon.errorLoadingProjects", {
-                message:
-                  projectsError instanceof Error
-                    ? projectsError.message
-                    : typeof projectsError === "string"
-                      ? projectsError
-                      : JSON.stringify(projectsError),
+                message: formatToastError(projectsError),
               })}
               <Button
                 variant="outline"

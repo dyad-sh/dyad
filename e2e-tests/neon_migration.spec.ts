@@ -26,6 +26,16 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
   // Click the migrate button
   await migrateButton.click();
 
+  await expect(
+    po.page.getByText(
+      "This will modify the main schema in Test Project using the schema from development.",
+    ),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await po.page
+    .getByRole("button", { name: "Migrate to Production" })
+    .last()
+    .click();
+
   // Verify success message appears
   await expect(
     po.page.getByText("Migration applied successfully."),

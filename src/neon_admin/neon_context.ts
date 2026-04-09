@@ -6,6 +6,15 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("neon_context");
 
+function getNeonErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  const maybeResponse = (error as { response?: { status?: number } }).response;
+  return maybeResponse?.status;
+}
+
 // =============================================================================
 // SQL Execution
 // =============================================================================
@@ -30,12 +39,25 @@ export async function getBranchRoleName({
     const roles = rolesResponse.data.roles ?? [];
     // Prefer the first non-protected role (user-created), fall back to any role
     const userRole = roles.find((r) => !r.protected) ?? roles[0];
-    return userRole?.name ?? "neondb_owner";
+    if (!userRole?.name) {
+      logger.warn(
+        `No Neon branch roles found for ${projectId}/${branchId}, falling back to neondb_owner`,
+      );
+      return "neondb_owner";
+    }
+    return userRole.name;
   } catch (error) {
+    if (getNeonErrorStatus(error) === 404) {
+      logger.warn(
+        `Neon branch roles not found for ${projectId}/${branchId}, falling back to neondb_owner`,
+      );
+      return "neondb_owner";
+    }
     logger.warn(
-      `Failed to fetch Neon branch roles for ${projectId}/${branchId}, falling back to neondb_owner: ${error}`,
+      `Failed to fetch Neon branch roles for ${projectId}/${branchId}`,
+      error,
     );
-    return "neondb_owner";
+    throw error;
   }
 }
 
@@ -58,12 +80,25 @@ export async function getBranchDatabaseName({
     );
     const databases = databasesResponse.data.databases ?? [];
     const database = databases[0];
-    return database?.name ?? "neondb";
+    if (!database?.name) {
+      logger.warn(
+        `No Neon branch databases found for ${projectId}/${branchId}, falling back to neondb`,
+      );
+      return "neondb";
+    }
+    return database.name;
   } catch (error) {
+    if (getNeonErrorStatus(error) === 404) {
+      logger.warn(
+        `Neon branch databases not found for ${projectId}/${branchId}, falling back to neondb`,
+      );
+      return "neondb";
+    }
     logger.warn(
-      `Failed to fetch Neon branch databases for ${projectId}/${branchId}, falling back to neondb: ${error}`,
+      `Failed to fetch Neon branch databases for ${projectId}/${branchId}`,
+      error,
     );
-    return "neondb";
+    throw error;
   }
 }
 

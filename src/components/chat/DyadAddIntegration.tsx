@@ -10,7 +10,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useNeon } from "@/hooks/useNeon";
 import { useTranslation } from "react-i18next";
 import { isNextJsProject } from "@/lib/framework_constants";
-import { CheckCircle2, Database } from "lucide-react";
+import { CheckCircle2, Database, Loader2 } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 
@@ -33,7 +33,10 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
   const { projectInfo } = useNeon(appId);
-  const isNextJs = isNextJsProject(app?.files);
+  const isNextJs = isNextJsProject({
+    files: app?.files,
+    frameworkType: app?.frameworkType ?? null,
+  });
 
   const providerOptions = [
     {
@@ -173,7 +176,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             disabled={isStreaming}
             size="sm"
           >
-            {t("integrations.databaseSetup.continue")}
+            {isStreaming ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t("integrations.databaseSetup.continuing")}
+              </>
+            ) : (
+              t("integrations.databaseSetup.continue")
+            )}
           </Button>
         </div>
       </DyadCard>

@@ -678,6 +678,44 @@ NEON_AUTH_COOKIE_SECRET=${existingSecret}`);
           ?.value,
       ).not.toBe(existingSecret);
     });
+
+    it("preserves existing Neon auth vars when auth activation fails transiently", async () => {
+      const existingSecret = "c".repeat(64);
+      vi.mocked(fs.promises.readFile).mockResolvedValueOnce(`KEEP_ME=value
+DATABASE_URL=postgresql://old.neon.tech/test
+POSTGRES_URL=postgresql://old.neon.tech/test
+NEON_AUTH_BASE_URL=https://old.neonauth.us-east-2.aws.neon.tech/neondb/auth
+NEON_AUTH_COOKIE_SECRET=${existingSecret}`);
+
+      await updateNeonEnvVars({
+        appPath: "my-app",
+        connectionUri: "postgresql://test:test@test-development.neon.tech/test",
+        preserveExistingAuth: true,
+      });
+
+      const envVars = getWrittenEnvVars();
+      expect(envVars).toEqual(
+        expect.arrayContaining([
+          { key: "KEEP_ME", value: "value" },
+          {
+            key: "DATABASE_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "POSTGRES_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "NEON_AUTH_BASE_URL",
+            value: "https://old.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+          },
+          {
+            key: "NEON_AUTH_COOKIE_SECRET",
+            value: existingSecret,
+          },
+        ]),
+      );
+    });
   });
 
   describe("removeNeonEnvVars", () => {

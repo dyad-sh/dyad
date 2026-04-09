@@ -134,14 +134,17 @@ export async function autoInjectNeonEnvVars({
   // Attempt to ensure Neon Auth is active; capture any error as a warning
   let neonAuthBaseUrl: string | undefined;
   let warning: string | undefined;
+  let preserveExistingAuth = false;
   try {
     neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
     if (!neonAuthBaseUrl) {
+      preserveExistingAuth = true;
       warning =
         "Neon Auth could not be fully activated for the active branch. DATABASE_URL was updated, but NEON_AUTH_BASE_URL was not added to .env.local.";
     }
   } catch (error: any) {
     const message = error instanceof Error ? error.message : String(error);
+    preserveExistingAuth = true;
     warning = `Failed to activate Neon Auth: ${message}`;
   }
 
@@ -150,6 +153,7 @@ export async function autoInjectNeonEnvVars({
     appPath,
     connectionUri,
     neonAuthBaseUrl,
+    preserveExistingAuth,
   });
 
   return warning;

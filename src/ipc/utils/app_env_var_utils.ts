@@ -52,18 +52,7 @@ export async function updateDbPushEnvVar({
   disabled: boolean;
 }) {
   try {
-    // Try to read existing env file
-    let envVars: EnvVar[];
-    try {
-      const content = await readEnvFile({ appPath });
-      envVars = parseEnvFile(content);
-    } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        envVars = [];
-      } else {
-        throw error;
-      }
-    }
+    const envVars = await readEnvVarsOrEmpty({ appPath });
 
     // Update or add DYAD_DISABLE_DB_PUSH
     const existingVar = envVars.find(
@@ -113,6 +102,30 @@ export async function readEnvFile({
   appPath: string;
 }): Promise<string> {
   return fs.promises.readFile(getEnvFilePath({ appPath }), "utf8");
+}
+
+export async function readEnvFileIfExists({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<string | null> {
+  try {
+    return await readEnvFile({ appPath });
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function readEnvVarsOrEmpty({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<EnvVar[]> {
+  const content = await readEnvFileIfExists({ appPath });
+  return content ? parseEnvFile(content) : [];
 }
 
 // Helper function to parse .env.local file content
@@ -186,23 +199,16 @@ export async function updateNeonEnvVars({
   appPath,
   connectionUri,
   neonAuthBaseUrl,
+  preserveExistingAuth = false,
 }: {
   appPath: string;
   connectionUri: string;
   /** Auth base URL returned by the Neon Auth API */
   neonAuthBaseUrl?: string;
+  /** Preserve existing auth vars when auth activation failed transiently. */
+  preserveExistingAuth?: boolean;
 }): Promise<void> {
-  let envVars: EnvVar[];
-  try {
-    const content = await readEnvFile({ appPath });
-    envVars = parseEnvFile(content);
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      envVars = [];
-    } else {
-      throw error;
-    }
-  }
+  let envVars = await readEnvVarsOrEmpty({ appPath });
 
   upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
   upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
@@ -223,10 +229,12 @@ export async function updateNeonEnvVars({
   } else {
     // Auth activation failed or is not available on this branch —
     // remove stale auth env vars so the old branch's values don't linger.
-    envVars = envVars.filter(
-      (v) =>
-        v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
-    );
+    if (!preserveExistingAuth) {
+      envVars = envVars.filter(
+        (v) =>
+          v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
+      );
+    }
   }
 
   const envFileContents = serializeEnvFile(envVars);
@@ -247,16 +255,12 @@ export async function removeNeonEnvVars({
 }: {
   appPath: string;
 }): Promise<void> {
-  let envVars: EnvVar[];
-  try {
-    const content = await readEnvFile({ appPath });
-    envVars = parseEnvFile(content);
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return;
-    }
-    throw error;
+  const existingContent = await readEnvFileIfExists({ appPath });
+  if (!existingContent) {
+    return;
   }
+
+  const envVars = parseEnvFile(existingContent);
 
   const filtered = envVars.filter((envVar) => {
     if (NEON_ONLY_ENV_VAR_KEYS.includes(envVar.key)) return false;

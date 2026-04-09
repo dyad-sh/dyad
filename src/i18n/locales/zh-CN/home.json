@@ -575,6 +575,7 @@
       "failedUpdateEmailVerification": "更新邮箱验证失败：{{error}}",
       "nextjsOnly": "Neon 集成目前仅适用于 Next.js 项目。",
       "noProjectsFound": "未找到项目。创建一个新项目以开始使用。",
+      "noBranchesFound": "这个 Neon 项目暂时还没有可用分支。",
       "preview": "预览",
       "production": "生产",
       "project": "Neon 项目",
@@ -604,6 +605,7 @@
       "completeDescription": "{{provider}} 集成已完成",
       "connectedToProject": "此应用已连接到 {{provider}} 项目：",
       "continue": "继续",
+      "continuing": "继续中...",
       "chooseProvider": "选择数据库提供商",
       "setUpProvider": "设置 {{provider}}",
       "setUpDatabase": "设置数据库",
@@ -629,6 +631,7 @@
     "migration": {
       "title": "数据库迁移",
       "description": "将当前开发分支的 schema 复制到生产分支。",
+      "descriptionWithBranches": "将 {{projectName}} 中 {{sourceBranchName}} 的 schema 复制到 {{targetBranchName}}。",
       "migrateToProduction": "迁移到生产环境",
       "migrating": "迁移中...",
       "success": "迁移已成功应用。",
@@ -637,6 +640,7 @@
       "hideDetails": "隐藏详情",
       "alreadyInSync": "开发数据库和生产数据库已经同步。",
       "confirmDescription": "此操作将修改您的生产数据库 schema。确定要继续吗？",
+      "confirmDescriptionWithBranches": "此操作将使用 {{sourceBranchName}} 的 schema 修改 {{projectName}} 中 {{targetBranchName}} 的 schema。确定要继续吗？",
       "cancel": "取消"
     },
     "mutualExclusion": {

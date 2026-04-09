@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import * as path from "path";
-import { NEXTJS_CONFIG_FILES } from "@/lib/framework_constants";
+import {
+  NEXTJS_CONFIG_FILES,
+  type AppFrameworkType,
+} from "@/lib/framework_constants";
 
 /**
  * Detect the framework type for an app by checking config files and package.json.
  */
-export function detectFrameworkType(
-  appPath: string,
-): "nextjs" | "vite" | "other" | null {
+export function detectFrameworkType(appPath: string): AppFrameworkType | null {
   try {
     for (const config of NEXTJS_CONFIG_FILES) {
       if (fs.existsSync(path.join(appPath, config))) {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
 
 // =============================================================================
 // App Schemas
@@ -40,6 +41,7 @@ export const AppBaseSchema = z.object({
  */
 export const AppSchema = AppBaseSchema.extend({
   files: z.array(z.string()),
+  frameworkType: z.enum(APP_FRAMEWORK_TYPES).nullable().optional(),
   supabaseProjectName: z.string().nullable(),
   vercelTeamSlug: z.string().nullable(),
   resolvedPath: z.string().optional(),

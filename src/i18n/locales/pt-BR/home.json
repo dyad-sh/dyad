@@ -575,6 +575,7 @@
       "failedUpdateEmailVerification": "Falha ao atualizar verificação de e-mail: {{error}}",
       "nextjsOnly": "A integração com Neon está disponível apenas para projetos Next.js.",
       "noProjectsFound": "Nenhum projeto encontrado. Crie um novo projeto para começar.",
+      "noBranchesFound": "Ainda não foram encontradas branches para este projeto Neon.",
       "preview": "pré-visualização",
       "production": "produção",
       "project": "Projeto Neon",
@@ -604,6 +605,7 @@
       "completeDescription": "Integração com {{provider}} concluída",
       "connectedToProject": "Este app está conectado ao projeto {{provider}}:",
       "continue": "Continuar",
+      "continuing": "Continuando...",
       "chooseProvider": "Escolha um provedor de banco de dados",
       "setUpProvider": "Configurar {{provider}}",
       "setUpDatabase": "Configurar banco de dados",
@@ -629,6 +631,7 @@
     "migration": {
       "title": "Migração de Banco de Dados",
       "description": "Copie o schema da sua branch de desenvolvimento ativa para a branch de produção.",
+      "descriptionWithBranches": "Copie o schema em {{projectName}} de {{sourceBranchName}} para {{targetBranchName}}.",
       "migrateToProduction": "Migrar para Produção",
       "migrating": "Migrando...",
       "success": "Migração aplicada com sucesso.",
@@ -637,6 +640,7 @@
       "hideDetails": "Ocultar detalhes",
       "alreadyInSync": "Os bancos de desenvolvimento e produção já estão sincronizados.",
       "confirmDescription": "Isso modificará o schema do seu banco de dados de produção. Tem certeza de que deseja continuar?",
+      "confirmDescriptionWithBranches": "Isso modificará o schema de {{targetBranchName}} em {{projectName}} usando o schema de {{sourceBranchName}}. Tem certeza de que deseja continuar?",
       "cancel": "Cancelar"
     },
     "mutualExclusion": {

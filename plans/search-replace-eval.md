@@ -23,7 +23,7 @@ We need a lightweight eval harness that:
 
 - New directory `src/__tests__/evals/` with a small reusable helper for instantiating LLM clients via the Dyad Engine.
 - New eval file `src/__tests__/evals/search_replace_tool_use.eval.ts` containing ~12 eval cases in two tiers: ~7 exact-match and ~5 judge-verified.
-- Target models: **`claude-sonnet-4-6`** (Anthropic), **`gpt-5.4`** (OpenAI), **`gemini-3-flash-preview`** (Google). All routed through the Dyad Engine's chat completions endpoint using a single `DYAD_PRO_API_KEY`. Model names come from `src/ipc/shared/language_model_constants.ts` where available so the eval drifts with Dyad's canonical model identifiers.
+- Target models: **`claude-sonnet-4-6`** (`SONNET_4_6`), **`gpt-5.4`** (`GPT_5_4`), **`gemini-3-flash-preview`** (`GEMINI_3_FLASH`). All routed through the Dyad Engine's chat completions endpoint using a single `DYAD_PRO_API_KEY`. All model names are imported from `src/ipc/shared/language_model_constants.ts` so the eval tracks Dyad's canonical identifiers and cannot drift.
 - Separate `vitest.eval.config.ts` with `environment: "node"`, long `testTimeout`, and an `include` pattern of `src/__tests__/evals/**/*.eval.ts`.
 - New `npm run eval` script — the eval is **not** included in `npm test`.
 - `describe.skipIf` gating so the entire eval suite is skipped when `DYAD_PRO_API_KEY` is missing.
@@ -69,7 +69,7 @@ Each of these was considered and rejected for specific reasons:
 - `searchReplaceTool.description` — LLM sees the exact same instructions.
 - `applySearchReplace` — same processor that runs in production.
 - `createDyadEngine` from `llm_engine_provider.ts` — same factory production uses for Dyad Pro. The eval calls it with `DYAD_PRO_API_KEY` and the default engine URL, bypassing all Electron/DB/settings coupling.
-- Model IDs (`SONNET_4_6`, `GEMINI_3_FLASH`) imported from `language_model_constants.ts` so they can't drift.
+- Model IDs (`SONNET_4_6`, `GPT_5_4`, `GEMINI_3_FLASH`) imported from `language_model_constants.ts` so they can't drift. `GPT_5_4` is a new constant added as part of this plan (see Phase 1).
 - Gateway prefixes from `CLOUD_PROVIDERS` in `language_model_constants.ts` (`""` for OpenAI, `"anthropic/"` for Anthropic, `"gemini/"` for Google) — these are prepended to model names exactly as `getModelClient` does at `get_model_client.ts:107`.
 
 **Why chat completions for all models (not `.responses()` for OpenAI):** Production uses `provider.responses()` for OpenAI in local-agent mode, but the eval uses `provider()` (chat completions) for all providers. The Dyad Engine only supports streaming (`stream: true`), and the eval's fetch adapter (`sseToNonStreamingResponse`) reassembles SSE chat-completion chunks into a single JSON response for the SDK's non-streaming `generateText` path. The OpenAI Responses API uses a different SSE event format (`response.created`, `response.completed`, etc.) that would require a separate adapter. Since the eval tests model quality (correct tool calls), not transport-layer compatibility, using chat completions for all providers is sufficient.
@@ -80,6 +80,7 @@ Each of these was considered and rejected for specific reasons:
 - **New file:** `src/__tests__/evals/helpers/get_eval_model.ts` — thin helper that wraps `createDyadEngine` for the eval.
 - **New file:** `src/__tests__/evals/search_replace_tool_use.eval.ts` — the eval suite itself.
 - **Modified:** `package.json` — add an `eval` script.
+- **Modified:** `src/ipc/shared/language_model_constants.ts` — add `GPT_5_4` constant and `MODEL_OPTIONS` entry.
 - **No changes to:** production code in `src/pro/main/ipc/handlers/local_agent/` or `src/ipc/utils/get_model_client.ts`.
 
 ### Data Model Changes
@@ -307,6 +308,7 @@ import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_pro
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
 import {
   SONNET_4_6,
+  GPT_5_4,
   GEMINI_3_FLASH,
 } from "@/ipc/shared/language_model_constants";
 import {
@@ -363,7 +365,7 @@ async function judgeResult(
   const result = await generateText({
     // GPT 5.4 via Dyad Engine — used as an independent judge so
     // it never evaluates its own output.
-    model: getEvalModel("openai", "gpt-5.4"),
+    model: getEvalModel("openai", GPT_5_4),
     temperature: 1, // required for GPT-5 family
     system:
       "You are a code-review judge. You will be given an original file, " +
@@ -426,7 +428,7 @@ const MODELS: Array<{
   },
   {
     provider: "openai",
-    modelName: "gpt-5.4",
+    modelName: GPT_5_4,
     label: "GPT 5.4",
     temperature: 1,
   },
@@ -478,6 +480,7 @@ for (const { provider, modelName, label, temperature } of MODELS) {
             new_string: string;
           };
 
+          expect(args.file_path, `${label} targeted wrong file`).toBe(c.fileName);
           assertNotFullFileRewrite(
             c.fileContent,
             args.old_string,
@@ -587,6 +590,7 @@ Add next to the existing `test` script:
 
 ### Phase 1: Harness
 
+- [ ] Add `export const GPT_5_4 = "gpt-5.4"` to `src/ipc/shared/language_model_constants.ts` (alongside the existing `SONNET_4_6`, `GEMINI_3_FLASH`, etc.). Add a corresponding entry in the `openai` section of `MODEL_OPTIONS` with `temperature: 1` and appropriate display metadata.
 - [ ] Create `vitest.eval.config.ts` with the config shown above.
 - [ ] Create `src/__tests__/evals/helpers/get_eval_model.ts` implementing `EvalProvider`, `hasDyadProKey`, and `getEvalModel`. Use `createDyadEngine` from `llm_engine_provider.ts` with gateway prefixes matching `CLOUD_PROVIDERS`. All models use the chat completions path (`provider()`, not `.responses()`). Include the `evalFetch` wrapper with `sseToNonStreamingResponse` to bridge the Dyad Engine's streaming-only constraint.
 - [ ] Add `"eval"` script to `package.json`.
@@ -612,7 +616,7 @@ Add next to the existing `test` script:
   4. **Refactor a giant component into 3 smaller ones** (~700-line React file) — "Extract `AvatarSection` (the avatar/upload logic around lines 100-200), `StatsPanel` (the stats grid around lines 280-420), and `ActivityFeed` (the activity list around lines 480-620) into their own components in the same file, then use them in the main `UserProfile` component." `structuralChecks: ["function AvatarSection", "function StatsPanel", "function ActivityFeed", "<AvatarSection", "<StatsPanel", "<ActivityFeed"]`.
   5. **Reorganize a switch statement into a strategy map** (~200-line file) — "Refactor the `handleEvent` switch statement into a `Record<EventType, handler>` map and a dispatch function." `structuralChecks: ["Record<", "handleEvent"]`.
 - [ ] Add a `MAX_OLD_STRING_RATIO` guard (e.g. 0.8) that fails the test if `old_string` covers more than 80% of the file — this catches full-file rewrites at the eval level.
-- [ ] Wire up the model matrix with `SONNET_4_6`, `"gpt-5.4"`, `GEMINI_3_FLASH` imported from `language_model_constants.ts` where available.
+- [ ] Wire up the model matrix with `SONNET_4_6`, `GPT_5_4`, and `GEMINI_3_FLASH` — all imported from `language_model_constants.ts`. The judge also uses `GPT_5_4` via the same import.
 - [ ] Confirm `describe.skipIf` correctly skips when `DYAD_PRO_API_KEY` is absent (run with no key set → all suites should be SKIPPED, not FAILED).
 
 ### Phase 3: Run & Tune
@@ -702,7 +706,7 @@ This plan **is** a testing plan — the eval is itself the test. Meta-validation
 
 | Risk                                                              | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                         |
 | ----------------------------------------------------------------- | ---------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider model IDs change (e.g., `gpt-5.4` renamed)               | Medium     | Low    | Model names are imported from `language_model_constants.ts` where available, so renames propagate.                                                                                                                                                 |
+| Provider model IDs change (e.g., `gpt-5.4` renamed)               | Medium     | Low    | All model names (including the judge) are imported from `language_model_constants.ts`, so renames propagate automatically.                                                                                                                          |
 | Non-determinism (especially at `temperature: 1` for GPT-5/Gemini) | Medium     | Medium | Exact-match cases use small, unambiguous edits. Judge-verified cases tolerate variance by design — the judge evaluates semantic correctness, not byte-equality.                                                                                    |
 | Judge too lenient (rubber-stamps bad output)                      | Medium     | Medium | `structuralChecks` run before the judge as a cheap precondition. The judge prompt requires step-by-step reasoning before the verdict, reducing snap approvals. If a pattern emerges, add more structural checks or convert to exact-match.         |
 | Judge too strict (rejects valid output)                           | Low        | Low    | Judge failures include the full explanation in the test error. Easy to diagnose and fix by adjusting the judge prompt or the case's structural checks.                                                                                             |

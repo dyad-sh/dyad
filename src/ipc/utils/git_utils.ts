@@ -9,7 +9,7 @@ import {
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import pathModule from "node:path";
-import { platform } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
@@ -383,21 +383,41 @@ export async function gitStageToRevert({
       );
     }
 
-    // Reset the working directory and index to match the target commit state
-    // This effectively undoes all changes since the target commit
-    await execOrThrow(
-      ["reset", "--hard", targetOid],
+    // Use git diff + apply to stage changes without ever moving branch pointers.
+    // The old approach (git reset --hard targetOid; git reset --soft currentCommit)
+    // is crash-unsafe: if the process is killed between the two resets, the branch
+    // pointer is left at targetOid and all newer commits appear lost to the user.
+    // With diff+apply, no branch pointers are touched at any point.
+    const diffResult = await execGit(
+      ["diff", "--binary", "HEAD", targetOid],
       path,
-      `Failed to reset to target commit '${targetOid}'`,
     );
+    if (diffResult.exitCode !== 0) {
+      throw new DyadError(
+        `Failed to compute diff to target commit '${targetOid}': ${diffResult.stderr.trim()}`,
+        DyadErrorKind.Conflict,
+      );
+    }
 
-    // Reset back to the original HEAD but keep the working directory as it is
-    // This stages all the changes needed to revert to the target state
-    await execOrThrow(
-      ["reset", "--soft", currentCommit],
-      path,
-      "Failed to reset back to original HEAD",
-    );
+    if (diffResult.stdout.trim()) {
+      // Write the patch to a temp file so git apply can consume it.
+      // --index applies the patch to both the staging area and the working tree.
+      const tmpDir = await fsPromises.mkdtemp(
+        pathModule.join(tmpdir(), "dyad-revert-"),
+      );
+      const tmpPatchFile = pathModule.join(tmpDir, "changes.patch");
+      try {
+        await fsPromises.writeFile(tmpPatchFile, diffResult.stdout);
+        await execOrThrow(
+          ["apply", "--index", tmpPatchFile],
+          path,
+          `Failed to apply changes when reverting to '${targetOid}'`,
+        );
+      } finally {
+        await fsPromises.unlink(tmpPatchFile).catch(() => {});
+        await fsPromises.rmdir(tmpDir).catch(() => {});
+      }
+    }
   } else {
     // Get status matrix comparing the target commit (previousVersionId as HEAD) with current working directory
     const matrix = await git.statusMatrix({

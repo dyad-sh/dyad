@@ -19,6 +19,7 @@ export interface RunningAppInfo {
   containerName?: string;
   cloudSandboxId?: string;
   cloudPreviewUrl?: string;
+  cloudPreviewAuthToken?: string;
   cloudLogAbortController?: AbortController;
   /** Timestamp of when this app was last viewed/selected in the preview panel */
   lastViewedAt: number;

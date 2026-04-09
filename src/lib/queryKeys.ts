@@ -225,6 +225,11 @@ export const queryKeys = {
     info: ["userBudgetInfo"] as const,
   },
 
+  cloudSandboxes: {
+    status: ({ appId }: { appId: number | null }) =>
+      ["cloudSandboxStatus", appId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Free Agent Quota
   // ─────────────────────────────────────────────────────────────────────────────

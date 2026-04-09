@@ -50,7 +50,10 @@ import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import {
   buildCloudSandboxFileMap,
+  CloudSandboxApiError,
+  createCloudSandboxShareLink,
   createCloudSandbox,
+  getCloudSandboxStatus,
   queueCloudSandboxSnapshotSync,
   reconcileCloudSandboxes,
   registerRunningCloudSandbox,
@@ -88,6 +91,50 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
+
+function formatCloudSandboxError(error: unknown) {
+  if (!(error instanceof CloudSandboxApiError)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  switch (error.code) {
+    case "sandbox_pro_required":
+      return "Dyad Pro is required to use cloud sandboxes.";
+    case "sandbox_insufficient_credits":
+      return "You need at least 1 credit available to start a cloud sandbox.";
+    case "sandbox_billing_unavailable":
+      return "Dyad couldn’t verify sandbox billing right now. Please try again.";
+    case "sandbox_credits_exhausted":
+      return "This cloud sandbox stopped because your credits ran out.";
+    default:
+      return error.message;
+  }
+}
+
+function getCloudSandboxTerminationMessage(input: {
+  terminationReason: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+}) {
+  if (
+    input.terminationReason === "credits_exhausted" ||
+    input.lastErrorCode === "sandbox_credits_exhausted"
+  ) {
+    return "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again.";
+  }
+
+  if (
+    input.terminationReason === "billing_unavailable" ||
+    input.lastErrorCode === "sandbox_billing_unavailable"
+  ) {
+    return "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again.";
+  }
+
+  return (
+    input.lastErrorMessage ||
+    "This cloud sandbox is no longer running. Start it again to reconnect."
+  );
+}
 
 function sanitizeSnippetText(text: string) {
   return text.replace(/\s+/g, " ").trim();
@@ -291,6 +338,12 @@ async function ensureProxyForRunningApp({
         mode,
       });
     },
+    fixedHeaders:
+      mode === "cloud" && appInfo.cloudPreviewAuthToken
+        ? {
+            Authorization: `Bearer ${appInfo.cloudPreviewAuthToken}`,
+          }
+        : undefined,
   });
 
   const latestAppInfo = runningApps.get(appId);
@@ -746,20 +799,38 @@ async function executeAppInCloud({
   startCommand?: string | null;
 }): Promise<void> {
   const currentProcessId = processCounter.increment();
-  const { sandboxId, previewUrl } = await createCloudSandbox({
-    appId,
-    appPath,
-    installCommand,
-    startCommand,
-  });
+  let sandboxId: string | undefined;
+  let previewUrl: string | undefined;
+  let previewAuthToken: string | undefined;
 
-  const files = await buildCloudSandboxFileMap(appPath);
-  const uploadResult = await uploadCloudSandboxFiles({
-    sandboxId,
-    files,
-    replaceAll: true,
-  });
-  const resolvedPreviewUrl = uploadResult.previewUrl ?? previewUrl;
+  try {
+    const createResult = await createCloudSandbox({
+      appId,
+      appPath,
+      installCommand,
+      startCommand,
+    });
+    sandboxId = createResult.sandboxId;
+    previewUrl = createResult.previewUrl;
+    previewAuthToken = createResult.previewAuthToken;
+
+    const files = await buildCloudSandboxFileMap(appPath);
+    const uploadResult = await uploadCloudSandboxFiles({
+      sandboxId,
+      files,
+      replaceAll: true,
+    });
+    previewUrl = uploadResult.previewUrl ?? previewUrl;
+    previewAuthToken = uploadResult.previewAuthToken ?? previewAuthToken;
+  } catch (error) {
+    throw new Error(formatCloudSandboxError(error));
+  }
+
+  const resolvedPreviewUrl = previewUrl;
+  const resolvedPreviewAuthToken = previewAuthToken;
+  if (!sandboxId || !resolvedPreviewUrl || !resolvedPreviewAuthToken) {
+    throw new Error("Cloud sandbox startup returned incomplete preview credentials.");
+  }
 
   const cloudLogAbortController = new AbortController();
   runningApps.set(appId, {
@@ -768,6 +839,7 @@ async function executeAppInCloud({
     mode: "cloud",
     cloudSandboxId: sandboxId,
     cloudPreviewUrl: resolvedPreviewUrl,
+    cloudPreviewAuthToken: resolvedPreviewAuthToken,
     cloudLogAbortController,
     lastViewedAt: Date.now(),
     originalUrl: resolvedPreviewUrl,
@@ -1393,6 +1465,56 @@ export function registerAppHandlers() {
       }
     });
   });
+
+  createTypedHandler(appContracts.getCloudSandboxStatus, async (_, params) => {
+    const { appId } = params;
+    const appInfo = runningApps.get(appId);
+
+    if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+      return null;
+    }
+
+    try {
+      const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
+      appInfo.cloudPreviewUrl = status.previewUrl;
+      appInfo.cloudPreviewAuthToken = status.previewAuthToken;
+      appInfo.originalUrl = status.previewUrl;
+      return status;
+    } catch (error) {
+      logger.error(`Failed to fetch cloud sandbox status for app ${appId}:`, error);
+      throw new DyadError(
+        formatCloudSandboxError(error),
+        DyadErrorKind.External,
+      );
+    }
+  });
+
+  createTypedHandler(
+    appContracts.createCloudSandboxShareLink,
+    async (_, params) => {
+      const { appId, expiresInSeconds } = params;
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+        throw new DyadError(
+          `App ${appId} is not running in cloud mode`,
+          DyadErrorKind.External,
+        );
+      }
+
+      try {
+        return await createCloudSandboxShareLink(appInfo.cloudSandboxId, {
+          expiresInSeconds,
+        });
+      } catch (error) {
+        logger.error(`Failed to create cloud sandbox share link for app ${appId}:`, error);
+        throw new DyadError(
+          formatCloudSandboxError(error),
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
 
   createTypedHandler(appContracts.restartApp, async (event, params) => {
     const { appId, removeNodeModules } = params;

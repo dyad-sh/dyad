@@ -16,6 +16,7 @@ const LISTEN_HOST = "localhost";
 const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
+const fixedHeaders = workerData?.fixedHeaders || null;
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
@@ -325,7 +326,7 @@ const server = http.createServer((clientReq, clientRes) => {
   const lib = isTLS ? https : http;
 
   /* Copy request headers but rewrite Host / Origin / Referer */
-  const headers = { ...clientReq.headers, host: target.host };
+  const headers = { ...clientReq.headers, host: target.host, ...fixedHeaders };
   if (headers.origin) headers.origin = target.origin;
   if (headers.referer) {
     try {
@@ -414,7 +415,7 @@ server.on("upgrade", (req, socket, _head) => {
   }
 
   const isTLS = target.protocol === "https:";
-  const headers = { ...req.headers, host: target.host };
+  const headers = { ...req.headers, host: target.host, ...fixedHeaders };
   if (headers.origin) headers.origin = target.origin;
 
   const upReq = (isTLS ? https : http).request({

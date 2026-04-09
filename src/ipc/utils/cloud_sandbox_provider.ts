@@ -17,20 +17,85 @@ export type CloudSandboxFileMap = Record<string, string>;
 const CloudSandboxCreateResponseSchema = z.object({
   sandboxId: z.string().trim().min(1),
   previewUrl: z.string().trim().min(1),
+  previewAuthToken: z.string().trim().min(1),
 });
 
 const CloudSandboxUploadFilesResponseSchema = z.object({
   previewUrl: z.string().trim().min(1).optional(),
+  previewAuthToken: z.string().trim().min(1).optional(),
 });
 
 const CloudSandboxReconcileResponseSchema = z.object({
   reconciledSandboxIds: z.array(z.string().trim().min(1)).optional(),
 });
 
+const CloudSandboxStatusSchema = z.object({
+  sandboxId: z.string().trim().min(1),
+  status: z.string().trim().min(1),
+  previewUrl: z.string().trim().min(1),
+  previewAuthToken: z.string().trim().min(1),
+  previewPort: z.number().int(),
+  syncRevision: z.number().int().nonnegative(),
+  initialSyncCompleted: z.boolean(),
+  appStatus: z.enum(["starting", "running", "standby", "failed"]),
+  syncAgentHealthy: z.boolean(),
+  createdAt: z.string().trim().min(1),
+  lastActiveAt: z.string().trim().min(1),
+  lastSuccessfulSyncAt: z.string().trim().min(1).nullable(),
+  expiresAt: z.string().trim().min(1),
+  billingState: z.enum([
+    "active",
+    "charging",
+    "terminated",
+    "billing_unavailable",
+  ]),
+  billingStartedAt: z.string().trim().min(1),
+  billingLockedAt: z.string().trim().min(1).nullable(),
+  lastChargedAt: z.string().trim().min(1).nullable(),
+  nextChargeAt: z.string().trim().min(1),
+  billingSlicesCharged: z.number().int().nonnegative(),
+  creditsCharged: z.number().nonnegative(),
+  terminationReason: z
+    .enum(["manual", "idle_timeout", "credits_exhausted", "billing_unavailable"])
+    .nullable(),
+  lastErrorCode: z.string().trim().min(1).nullable(),
+  lastErrorMessage: z.string().trim().min(1).nullable(),
+});
+
+const CloudSandboxShareLinkSchema = z.object({
+  sandboxId: z.string().trim().min(1),
+  shareLinkId: z.string().trim().min(1),
+  url: z.string().trim().min(1),
+  expiresAt: z.string().trim().min(1),
+});
+
+const ServiceResponseSchema = <T extends z.ZodTypeAny>(schema: T) =>
+  z.object({
+    success: z.boolean(),
+    message: z.string(),
+    responseObject: schema.optional(),
+    statusCode: z.number(),
+  });
+
+export type CloudSandboxStatus = z.infer<typeof CloudSandboxStatusSchema>;
+export type CloudSandboxShareLink = z.infer<typeof CloudSandboxShareLinkSchema>;
+
+export class CloudSandboxApiError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "CloudSandboxApiError";
+  }
+}
+
 type ActiveCloudSandbox = {
   appId: number;
   appPath: string;
   sandboxId: string;
+  previewAuthToken?: string;
 };
 
 function getDefaultInstallCommand(): string {
@@ -59,14 +124,23 @@ export interface CloudSandboxProvider {
     appPath: string;
     installCommand?: string | null;
     startCommand?: string | null;
-  }): Promise<{ sandboxId: string; previewUrl: string }>;
+  }): Promise<{
+    sandboxId: string;
+    previewUrl: string;
+    previewAuthToken: string;
+  }>;
   destroySandbox(sandboxId: string): Promise<void>;
   streamLogs(sandboxId: string, signal?: AbortSignal): AsyncIterable<string>;
   uploadFiles(
     sandboxId: string,
     files: CloudSandboxFileMap,
     options?: { replaceAll?: boolean; deletedFiles?: string[] },
-  ): Promise<{ previewUrl?: string }>;
+  ): Promise<{ previewUrl?: string; previewAuthToken?: string }>;
+  getStatus(sandboxId: string): Promise<CloudSandboxStatus>;
+  createShareLink(
+    sandboxId: string,
+    options?: { expiresInSeconds?: number },
+  ): Promise<CloudSandboxShareLink>;
 }
 
 const pendingUploads = new Map<
@@ -112,13 +186,41 @@ async function cloudSandboxFetch(
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(
-      errorBody || `Cloud sandbox request failed with ${response.status}.`,
-    );
+    const errorText = await response.text();
+    let message = `Cloud sandbox request failed with ${response.status}.`;
+    let code: string | undefined;
+    try {
+      const parsed = JSON.parse(errorText) as { code?: string; message?: string };
+      message = parsed.message || message;
+      code = parsed.code;
+    } catch {
+      if (errorText) {
+        message = errorText;
+      }
+    }
+    throw new CloudSandboxApiError(message, code, response.status);
   }
 
   return response;
+}
+
+async function parseServiceResponse<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+  context: string,
+): Promise<T> {
+  const parsed = await response.json();
+  const result = ServiceResponseSchema(schema).safeParse(parsed);
+
+  if (!result.success || !result.data.responseObject) {
+    throw new Error(
+      `Invalid ${context} response from cloud sandbox API: ${
+        result.success ? "Missing responseObject" : result.error.message
+      }`,
+    );
+  }
+
+  return result.data.responseObject;
 }
 
 async function parseResponseJson<T>(
@@ -403,6 +505,32 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
       "upload sandbox files",
     );
   }
+
+  async getStatus(sandboxId: string) {
+    const response = await cloudSandboxFetch(`/sandboxes/${sandboxId}/status`);
+    return parseServiceResponse(
+      response,
+      CloudSandboxStatusSchema,
+      "cloud sandbox status",
+    );
+  }
+
+  async createShareLink(
+    sandboxId: string,
+    options?: { expiresInSeconds?: number },
+  ) {
+    const response = await cloudSandboxFetch(`/sandboxes/${sandboxId}/share-links`, {
+      method: "POST",
+      body: JSON.stringify({
+        expiresInSeconds: options?.expiresInSeconds,
+      }),
+    });
+    return parseServiceResponse(
+      response,
+      CloudSandboxShareLinkSchema,
+      "cloud sandbox share link",
+    );
+  }
 }
 
 const defaultProvider: CloudSandboxProvider =
@@ -438,6 +566,19 @@ export function streamCloudSandboxLogs(
   signal?: AbortSignal,
 ) {
   return defaultProvider.streamLogs(sandboxId, signal);
+}
+
+export async function getCloudSandboxStatus(
+  sandboxId: string,
+): Promise<CloudSandboxStatus> {
+  return defaultProvider.getStatus(sandboxId);
+}
+
+export async function createCloudSandboxShareLink(
+  sandboxId: string,
+  options?: { expiresInSeconds?: number },
+): Promise<CloudSandboxShareLink> {
+  return defaultProvider.createShareLink(sandboxId, options);
 }
 
 export function registerRunningCloudSandbox(input: ActiveCloudSandbox): void {

@@ -7,6 +7,7 @@ import {
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -75,6 +76,7 @@ import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
 import { showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
+import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -259,6 +261,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
   const [isCopiedShareLink, setIsCopiedShareLink] = useState(false);
+  const queryClient = useQueryClient();
 
   // Device configurations
   const deviceWidthConfig = {
@@ -269,14 +272,80 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const isCloudMode = mode === "cloud";
+  const { data: cloudSandboxStatus } = useQuery({
+    queryKey: queryKeys.cloudSandboxes.status({ appId: selectedAppId }),
+    queryFn: async () => {
+      if (selectedAppId === null) {
+        return null;
+      }
+      return ipc.app.getCloudSandboxStatus({ appId: selectedAppId });
+    },
+    enabled: isCloudMode && selectedAppId !== null,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    if (
+      cloudSandboxStatus.status === "destroyed" &&
+      (cloudSandboxStatus.terminationReason === "credits_exhausted" ||
+        cloudSandboxStatus.terminationReason === "billing_unavailable" ||
+        cloudSandboxStatus.lastErrorCode === "sandbox_credits_exhausted" ||
+        cloudSandboxStatus.lastErrorCode === "sandbox_billing_unavailable")
+    ) {
+      setErrorMessage({
+        message: cloudSandboxStatus.lastErrorMessage
+          ? cloudSandboxStatus.lastErrorMessage.includes("Dyad stopped")
+            ? cloudSandboxStatus.lastErrorMessage
+            : cloudSandboxStatus.terminationReason === "credits_exhausted"
+              ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
+              : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again."
+          : cloudSandboxStatus.terminationReason === "credits_exhausted"
+            ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
+            : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again.",
+        source: "dyad-app",
+      });
+    }
+  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.userBudget.info,
+    });
+  }, [
+    cloudSandboxStatus?.billingSlicesCharged,
+    cloudSandboxStatus?.terminationReason,
+    isCloudMode,
+    queryClient,
+  ]);
+
+  const createShareableCloudUrl = async () => {
+    if (!selectedAppId || !isCloudMode) {
+      throw new Error("Cloud sandbox is not running.");
+    }
+
+    const shareLink = await ipc.app.createCloudSandboxShareLink({
+      appId: selectedAppId,
+    });
+    return shareLink.url;
+  };
 
   const handleCopyShareableLink = async () => {
-    if (!originalUrl) {
+    if (!isCloudMode || !selectedAppId) {
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(originalUrl);
+      const shareUrl = await createShareableCloudUrl();
+      await navigator.clipboard.writeText(shareUrl);
       setIsCopiedShareLink(true);
       showSuccess("Link copied!");
       setTimeout(() => setIsCopiedShareLink(false), 2000);
@@ -1337,7 +1406,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       data-testid="preview-copy-shareable-link-button"
                       onClick={handleCopyShareableLink}
                       className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-                      disabled={!originalUrl}
+                      disabled={!selectedAppId}
                     />
                   }
                 >
@@ -1350,7 +1419,25 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             )}
             <button
               data-testid="preview-open-browser-button"
-              onClick={() => {
+              onClick={async () => {
+                if (isCloudMode) {
+                  if (!selectedAppId) {
+                    return;
+                  }
+
+                  try {
+                    const shareUrl = await createShareableCloudUrl();
+                    ipc.system.openExternalUrl(shareUrl);
+                  } catch (error) {
+                    showError(
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to open cloud sandbox share link.",
+                    );
+                  }
+                  return;
+                }
+
                 if (originalUrl) {
                   ipc.system.openExternalUrl(originalUrl);
                 }

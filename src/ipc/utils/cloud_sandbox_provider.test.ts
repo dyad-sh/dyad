@@ -137,6 +137,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
         JSON.stringify({
           sandboxId: "sandbox-1",
           previewUrl: "https://preview.example.test",
+          previewAuthToken: "preview-auth-token",
         }),
         {
           status: 200,

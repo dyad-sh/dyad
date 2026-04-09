@@ -114,6 +114,51 @@ export const RestartAppParamsSchema = z.object({
   removeNodeModules: z.boolean().optional(),
 });
 
+export const CloudSandboxStatusSchema = z.object({
+  sandboxId: z.string(),
+  status: z.string(),
+  previewUrl: z.string(),
+  previewAuthToken: z.string(),
+  previewPort: z.number().int(),
+  syncRevision: z.number().int().nonnegative(),
+  initialSyncCompleted: z.boolean(),
+  appStatus: z.enum(["starting", "running", "standby", "failed"]),
+  syncAgentHealthy: z.boolean(),
+  createdAt: z.string(),
+  lastActiveAt: z.string(),
+  lastSuccessfulSyncAt: z.string().nullable(),
+  expiresAt: z.string(),
+  billingState: z.enum([
+    "active",
+    "charging",
+    "terminated",
+    "billing_unavailable",
+  ]),
+  billingStartedAt: z.string(),
+  billingLockedAt: z.string().nullable(),
+  lastChargedAt: z.string().nullable(),
+  nextChargeAt: z.string(),
+  billingSlicesCharged: z.number().int().nonnegative(),
+  creditsCharged: z.number().nonnegative(),
+  terminationReason: z
+    .enum(["manual", "idle_timeout", "credits_exhausted", "billing_unavailable"])
+    .nullable(),
+  lastErrorCode: z.string().nullable(),
+  lastErrorMessage: z.string().nullable(),
+});
+
+export const CreateCloudSandboxShareLinkParamsSchema = z.object({
+  appId: z.number(),
+  expiresInSeconds: z.number().int().positive().optional(),
+});
+
+export const CreateCloudSandboxShareLinkResultSchema = z.object({
+  sandboxId: z.string(),
+  shareLinkId: z.string(),
+  url: z.string(),
+  expiresAt: z.string(),
+});
+
 /**
  * Schema for edit app file params.
  */
@@ -316,6 +361,18 @@ export const appContracts = {
     output: z.void(),
   }),
 
+  getCloudSandboxStatus: defineContract({
+    channel: "get-cloud-sandbox-status",
+    input: AppIdParamsSchema,
+    output: CloudSandboxStatusSchema.nullable(),
+  }),
+
+  createCloudSandboxShareLink: defineContract({
+    channel: "create-cloud-sandbox-share-link",
+    input: CreateCloudSandboxShareLinkParamsSchema,
+    output: CreateCloudSandboxShareLinkResultSchema,
+  }),
+
   editAppFile: defineContract({
     channel: "edit-app-file",
     input: EditAppFileParamsSchema,
@@ -431,3 +488,4 @@ export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema
 >;
+export type CloudSandboxStatus = z.infer<typeof CloudSandboxStatusSchema>;

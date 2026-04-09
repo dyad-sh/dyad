@@ -297,7 +297,7 @@ export function getEvalModel(
 The eval has two tiers of test cases, each with its own assertion strategy:
 
 - **Exact-match cases** require exactly one `search_replace` call (no `execute`, tool call inspected directly). The eval asserts the call count is `=== 1` — over-editing (multiple calls) fails the case rather than silently passing on the first call. The edit is applied via `applySearchReplace` and the result is compared byte-for-byte against `expectedContent`. These are the deterministic regression backbone — fast, cheap, no LLM cost for verification.
-- **Judge-verified cases** allow **multiple** `search_replace` calls via `stopWhen: stepCountIs(10)`, since complex edits (e.g. splitting a 700-line component into 3) naturally require several sequential operations. The tool is given an `execute` function that applies each edit to a running copy of the file and returns a confirmation message. After all steps complete, the final file state is evaluated by a **judge model** (GPT 5.4 via the same Dyad Engine) that receives the original file, the prompt, and the result, and renders a PASS/FAIL verdict with explanation. Optional `structuralChecks` (simple string-contains assertions) run as a precondition before the judge, catching gross errors cheaply without an LLM call.
+- **Judge-verified cases** allow **multiple** `search_replace` calls via `stopWhen: stepCountIs(10)`, since complex edits (e.g. splitting a 700-line component into 3) naturally require several sequential operations. The tool is given an `execute` function that, for each call, asserts `args.file_path === c.fileName` (catching routing confusion) and runs `assertNotFullFileRewrite` against the running content (catching the cheat-via-total-replacement failure mode per-call, before the edit is applied). The edit is then applied to a running copy of the file and a confirmation message is returned. After all steps complete, the final file state is evaluated by a **judge model** (GPT 5.4 via the same Dyad Engine) that receives the original file, the prompt, and the result, and renders a PASS/FAIL verdict with explanation. Optional `structuralChecks` (simple string-contains assertions) run as a precondition before the judge, catching gross errors cheaply without an LLM call.
 
 ```typescript
 // src/__tests__/evals/search_replace_tool_use.eval.ts
@@ -516,6 +516,15 @@ for (const { provider, modelName, label, temperature } of MODELS) {
                 description: searchReplaceTool.description,
                 inputSchema: searchReplaceTool.inputSchema,
                 execute: async (args) => {
+                  expect(
+                    args.file_path,
+                    `${label} / ${c.name} targeted wrong file`,
+                  ).toBe(c.fileName);
+                  assertNotFullFileRewrite(
+                    currentContent,
+                    args.old_string,
+                    `${label} / ${c.name}`,
+                  );
                   currentContent = applyEdit(currentContent, args);
                   return "Edit applied successfully.";
                 },

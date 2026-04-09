@@ -27,6 +27,8 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { buildNeonPromptAdditions } from "../../neon_admin/neon_prompt_context";
+import { detectFrameworkType } from "../utils/framework_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
@@ -828,12 +830,27 @@ ${componentSnippet}
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
+        } else if (updatedChat.app?.neonProjectId) {
+          // Neon is connected — inject Neon prompt instead of Supabase
+          const appPath = getDyadAppPath(updatedChat.app.path);
+          const frameworkType = detectFrameworkType(appPath);
+          const branchId =
+            updatedChat.app.neonActiveBranchId ??
+            updatedChat.app.neonDevelopmentBranchId;
+
+          systemPrompt +=
+            "\n\n" +
+            (await buildNeonPromptAdditions({
+              projectId: updatedChat.app.neonProjectId,
+              branchId,
+              frameworkType,
+              includeContext: settings.selectedChatMode !== "local-agent",
+            })) +
+            "\n\n";
         } else if (
-          // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId &&
-          // In local agent mode, we will suggest supabase as part of the add-integration tool
+          // In local agent mode, we will suggest integrations as part of the add-integration tool
           settings.selectedChatMode !== "local-agent" &&
-          // If in security review mode, we don't need to mention supabase is available.
+          // If in security review mode, we don't need to mention integrations are available.
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;

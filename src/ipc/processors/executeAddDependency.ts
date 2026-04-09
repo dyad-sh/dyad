@@ -3,7 +3,9 @@ import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { Message } from "@/ipc/types";
 import { readEffectiveSettings } from "@/main/settings";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
@@ -29,11 +31,73 @@ export interface ExecuteAddDependencyResult {
   warningMessages: string[];
 }
 
-function getFirstNonEmptyLine(value: string): string | undefined {
+const NPM_PACKAGE_NAME_PATTERN = /^(@[a-z0-9-_.]+\/)?[a-z0-9-_.]+$/;
+
+const DISPLAY_SUMMARY_PATTERNS = [
+  /\bblocked\b/i,
+  /\bfailed\b/i,
+  /\berror\b/i,
+  /\bdenied\b/i,
+  /\btimed out\b/i,
+  /\btimeout\b/i,
+  /\betimedout\b/i,
+  /\bnpm err!/i,
+  /\berr_pnpm_[a-z0-9_]+\b/i,
+  /\bE[A-Z][A-Z0-9_]{2,}\b/,
+];
+
+const DISPLAY_SUMMARY_NOISE_PATTERNS = [
+  /^progress:/i,
+  /^packages:\s*[+-]?\d+/i,
+  /^npm (?:notice|warn)\b/i,
+  /^npm err!\s*(?:a complete log of this run can be found in:|this is probably not a problem with npm\.)/i,
+  /^npm err!\s*(?:[A-Za-z]:\\|\/).+/i,
+];
+
+function isDisplaySummaryNoise(line: string): boolean {
+  return DISPLAY_SUMMARY_NOISE_PATTERNS.some((pattern) => pattern.test(line));
+}
+
+function getDisplayLines(value: string): string[] {
   return value
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find(Boolean);
+    .filter(Boolean);
+}
+
+function getFilteredDisplayDetails(value: string): string | undefined {
+  const lines = getDisplayLines(value).filter(
+    (line) => !isDisplaySummaryNoise(line),
+  );
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return lines.join("\n");
+}
+
+function getDisplaySummary(value: string): string | undefined {
+  const lines = getDisplayLines(value);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (
+      !isDisplaySummaryNoise(line) &&
+      DISPLAY_SUMMARY_PATTERNS.some((pattern) => pattern.test(line))
+    ) {
+      return line;
+    }
+  }
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!isDisplaySummaryNoise(line)) {
+      return line;
+    }
+  }
+
+  return lines.at(-1);
 }
 
 export class ExecuteAddDependencyError extends Error {
@@ -50,14 +114,17 @@ export class ExecuteAddDependencyError extends Error {
     warningMessages: string[];
   }) {
     const message = error instanceof Error ? error.message : String(error);
-    const displayDetails = getCommandExecutionDisplayDetails(error) ?? message;
+    const commandDisplayDetails = getCommandExecutionDisplayDetails(error);
+    const displayDetails = commandDisplayDetails
+      ? (getFilteredDisplayDetails(commandDisplayDetails) ?? message)
+      : message;
 
     super(message);
     this.name = "ExecuteAddDependencyError";
     this.warningMessages = warningMessages;
     this.originalError = error;
     this.displayDetails = displayDetails;
-    this.displaySummary = getFirstNonEmptyLine(displayDetails) ?? message;
+    this.displaySummary = getDisplaySummary(displayDetails) ?? message;
   }
 }
 
@@ -72,6 +139,7 @@ async function runAddDependencyCommand(
   try {
     const { stdout, stderr } = await runCommand(command.command, command.args, {
       cwd: appPath,
+      timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
     });
     return {
       succeeded: true,
@@ -96,6 +164,19 @@ export async function executeAddDependency({
   message: Message;
   appPath: string;
 }): Promise<ExecuteAddDependencyResult> {
+  const invalidPackage = packages.find(
+    (pkg) => !NPM_PACKAGE_NAME_PATTERN.test(pkg),
+  );
+  if (invalidPackage) {
+    throw new ExecuteAddDependencyError({
+      error: new DyadError(
+        `Invalid npm package name: ${invalidPackage}`,
+        DyadErrorKind.Validation,
+      ),
+      warningMessages: [],
+    });
+  }
+
   const settings = await readEffectiveSettings();
   const warningMessages: string[] = [];
 

@@ -552,7 +552,94 @@
       "connectedSuccess": "已成功连接到 Neon！",
       "disconnect": "断开与 Neon 的连接",
       "disconnected": "已成功断开与 Neon 的连接",
-      "failedDisconnect": "断开与 Neon 的连接失败"
+      "failedDisconnect": "断开与 Neon 的连接失败",
+      "activeBranch": "活跃分支",
+      "branchSwitched": "已切换到分支",
+      "cancel": "取消",
+      "connectedToProject": "已连接到项目",
+      "create": "创建",
+      "createNewProject": "创建新项目",
+      "creating": "创建中...",
+      "development": "开发",
+      "disconnectConfirmation": "确定要断开此 Neon 项目的连接吗？这可能会导致应用的数据库连接中断。",
+      "disconnectProject": "断开项目连接",
+      "emailVerificationDisabled": "邮箱验证已禁用",
+      "emailVerificationEnabled": "邮箱验证已启用",
+      "emailVerificationHelp": "启用后，用户必须验证其电子邮件地址才能登录您的应用。",
+      "envUpdated": "DATABASE_URL 已在 .env.local 中更新。",
+      "errorLoadingBranches": "加载分支失败：{{message}}",
+      "errorLoadingProjects": "加载项目失败：{{message}}",
+      "failedConnectProject": "连接项目失败：{{error}}",
+      "failedDisconnectProject": "断开项目连接失败",
+      "failedSetBranch": "切换分支失败：{{error}}",
+      "failedUpdateEmailVerification": "更新邮箱验证失败：{{error}}",
+      "nextjsOnly": "Neon 集成目前仅适用于 Next.js 项目。",
+      "noProjectsFound": "未找到项目。创建一个新项目以开始使用。",
+      "preview": "预览",
+      "production": "生产",
+      "project": "Neon 项目",
+      "projectConnected": "Neon 项目连接成功",
+      "projectName": "项目名称",
+      "projects": "Neon 项目",
+      "refreshProjects": "刷新项目",
+      "requireEmailVerification": "要求邮箱验证",
+      "retry": "重试",
+      "selectAProject": "选择一个项目...",
+      "selectBranch": "选择一个分支...",
+      "selectProjectDescription": "选择一个现有的 Neon 项目或创建一个新项目",
+      "openInConsole": "在 Neon 控制台中打开",
+      "completingSignIn": "请在浏览器中完成登录…",
+      "projectDisconnected": "项目已成功断开连接"
+    },
+    "db": {
+      "projectInfo": "{{provider}} 项目信息",
+      "tableSchema": "表结构",
+      "tableSchemaProvider": "{{provider}} 表结构",
+      "fetching": "获取中...",
+      "didNotFinish": "未完成"
+    },
+    "databaseSetup": {
+      "badge": "集成",
+      "integrationComplete": "集成已完成",
+      "completeDescription": "{{provider}} 集成已完成",
+      "connectedToProject": "此应用已连接到 {{provider}} 项目：",
+      "continue": "继续",
+      "chooseProvider": "选择数据库提供商",
+      "setUpProvider": "设置 {{provider}}",
+      "setUpDatabase": "设置数据库",
+      "providers": {
+        "supabase": {
+          "name": "Supabase",
+          "features": {
+            "auth": "身份验证与行级安全",
+            "realtime": "实时订阅",
+            "storage": "存储与边缘函数"
+          }
+        },
+        "neon": {
+          "name": "Neon",
+          "features": {
+            "serverlessPostgres": "托管 Postgres 与分支",
+            "authAndEmailVerification": "身份验证与邮箱验证",
+            "serverlessScaleToZero": "无服务器按需缩容到零"
+          }
+        }
+      }
+    },
+    "migration": {
+      "title": "数据库迁移",
+      "description": "将当前开发分支的 schema 复制到生产分支。",
+      "migrateToProduction": "迁移到生产环境",
+      "migrating": "迁移中...",
+      "success": "迁移已成功应用。",
+      "errorMessage": "无法应用此次迁移。",
+      "showDetails": "显示详情",
+      "hideDetails": "隐藏详情",
+      "alreadyInSync": "开发数据库和生产数据库已经同步。"
+    },
+    "mutualExclusion": {
+      "supabaseUnavailable": "Supabase 不可用，因为已连接 Neon 数据库。一次只能激活一个数据库集成。",
+      "neonUnavailable": "Neon 不可用，因为已连接 Supabase 项目。一次只能激活一个数据库集成。"
     }
   }
 }

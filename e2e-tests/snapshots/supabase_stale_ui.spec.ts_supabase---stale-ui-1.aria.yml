@@ -1,8 +1,20 @@
 - paragraph: tc=add-supabase
 - paragraph: Adding supabase...
 - img
-- text: Integration Integrate with supabase?
-- button "Set up supabase"
+- text: Integration Choose a database provider
+- button "Supabase • Auth & row-level security • Realtime subscriptions • Storage & edge functions":
+  - text: ""
+  - list:
+    - listitem: • Auth & row-level security
+    - listitem: • Realtime subscriptions
+    - listitem: • Storage & edge functions
+- button "Neon • Serverless Postgres • Database branching • Autoscaling":
+  - text: ""
+  - list:
+    - listitem: • Serverless Postgres
+    - listitem: • Database branching
+    - listitem: • Autoscaling
+- button "Set up database" [disabled]
 - button "Copy":
   - img
 - img

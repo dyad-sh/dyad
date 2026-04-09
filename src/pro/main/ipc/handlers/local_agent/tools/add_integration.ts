@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { ToolDefinition, escapeXmlAttr } from "./types";
 
-const SUPPORTED_PROVIDERS = ["supabase"] as const;
-
 const addIntegrationSchema = z.object({
   provider: z
-    .enum(SUPPORTED_PROVIDERS)
-    .describe("The integration provider to add (e.g., 'supabase')"),
+    .enum(["supabase", "neon"])
+    .optional()
+    .describe(
+      "Optional preferred database provider. Only set this if the user specifically mentions the provider name in their prompt.",
+    ),
 });
 
 export const addIntegrationTool: ToolDefinition<
@@ -14,22 +15,22 @@ export const addIntegrationTool: ToolDefinition<
 > = {
   name: "add_integration",
   description:
-    "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+    "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
   inputSchema: addIntegrationSchema,
   defaultConsent: "always",
   modifiesState: true,
-  isEnabled: (ctx) => !ctx.supabaseProjectId,
+  isEnabled: (ctx) => !ctx.supabaseProjectId && !ctx.neonProjectId,
 
-  getConsentPreview: (args) => `Add ${args.provider} integration`,
+  getConsentPreview: () => "Add database integration",
 
   buildXml: (args, _isComplete) => {
-    if (!args.provider) return undefined;
-    return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
+    if (args.provider) {
+      return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
+    }
+    return `<dyad-add-integration></dyad-add-integration>`;
   },
 
-  execute: async (args) => {
-    // The actual integration setup is handled by the UI when user clicks the button
-    // This tool just emits the XML that renders the integration prompt
-    return `Integration prompt for ${args.provider} displayed. User can click to set up the integration.`;
+  execute: async () => {
+    return "Integration prompt displayed. User will choose and set up their preferred database provider.";
   },
 };

@@ -7,6 +7,7 @@ import { getDyadAppPath } from "@/paths/paths";
 import { EnvVar } from "@/ipc/types";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -56,9 +57,12 @@ export async function updateDbPushEnvVar({
     try {
       const content = await readEnvFile({ appPath });
       envVars = parseEnvFile(content);
-    } catch {
-      // If file doesn't exist, start with empty array
-      envVars = [];
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        envVars = [];
+      } else {
+        throw error;
+      }
     }
 
     // Update or add DYAD_DISABLE_DB_PUSH
@@ -160,6 +164,113 @@ export function parseEnvFile(content: string): EnvVar[] {
   }
 
   return envVars;
+}
+
+function upsertEnvVar(envVars: EnvVar[], key: string, value: string): void {
+  const existing = envVars.find((envVar) => envVar.key === key);
+  if (existing) {
+    existing.value = value;
+  } else {
+    envVars.push({ key, value });
+  }
+}
+
+/**
+ * Generate a random cookie secret for Neon Auth session signing.
+ */
+export function generateCookieSecret(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+export async function updateNeonEnvVars({
+  appPath,
+  connectionUri,
+  neonAuthBaseUrl,
+}: {
+  appPath: string;
+  connectionUri: string;
+  /** Auth base URL returned by the Neon Auth API */
+  neonAuthBaseUrl?: string;
+}): Promise<void> {
+  let envVars: EnvVar[];
+  try {
+    const content = await readEnvFile({ appPath });
+    envVars = parseEnvFile(content);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      envVars = [];
+    } else {
+      throw error;
+    }
+  }
+
+  upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
+  upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
+
+  if (neonAuthBaseUrl) {
+    const previousAuthUrl = envVars.find(
+      (v) => v.key === "NEON_AUTH_BASE_URL",
+    )?.value;
+    upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", neonAuthBaseUrl);
+    // Regenerate the cookie secret when the auth URL changes (e.g. branch switch)
+    // to prevent cross-branch session reuse, or generate one if absent
+    const existingSecret = envVars.find(
+      (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
+    );
+    if (!existingSecret || previousAuthUrl !== neonAuthBaseUrl) {
+      upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", generateCookieSecret());
+    }
+  } else {
+    // Auth activation failed or is not available on this branch —
+    // remove stale auth env vars so the old branch's values don't linger.
+    envVars = envVars.filter(
+      (v) =>
+        v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
+    );
+  }
+
+  const envFileContents = serializeEnvFile(envVars);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+}
+
+/** Keys that are unambiguously Neon-owned and always safe to remove. */
+const NEON_ONLY_ENV_VAR_KEYS = [
+  "NEON_AUTH_BASE_URL",
+  "NEON_AUTH_COOKIE_SECRET",
+];
+
+/** Generic DB keys that should only be removed if their value looks Neon-owned. */
+const GENERIC_DB_ENV_VAR_KEYS = ["DATABASE_URL", "POSTGRES_URL"];
+
+export async function removeNeonEnvVars({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<void> {
+  let envVars: EnvVar[];
+  try {
+    const content = await readEnvFile({ appPath });
+    envVars = parseEnvFile(content);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  const filtered = envVars.filter((envVar) => {
+    if (NEON_ONLY_ENV_VAR_KEYS.includes(envVar.key)) return false;
+    if (
+      GENERIC_DB_ENV_VAR_KEYS.includes(envVar.key) &&
+      envVar.value.includes(".neon.tech")
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const envFileContents = serializeEnvFile(filtered);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
 }
 
 // Helper function to serialize environment variables to .env.local format

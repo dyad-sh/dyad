@@ -91,6 +91,25 @@ export async function refreshNeonToken(): Promise<void> {
 // Function to get the Neon API client
 export async function getNeonClient(): Promise<Api<unknown>> {
   if (IS_TEST_BUILD) {
+    const getMockBranchName = (branchId: string) => {
+      switch (branchId) {
+        case "test-main-branch-id":
+          return "main";
+        case "test-development-branch-id":
+          return "development";
+        case "test-preview-branch-id":
+          return "preview";
+        default:
+          return branchId.replace(/^test-/, "").replace(/-branch-id$/, "");
+      }
+    };
+
+    const getMockConnectionUri = (branchId: string) =>
+      `postgresql://test:test@test-${getMockBranchName(branchId)}.neon.tech/test`;
+
+    const getMockAuthBaseUrl = (branchId: string) =>
+      `https://test-${getMockBranchName(branchId)}.neonauth.us-east-2.aws.neon.tech/neondb/auth`;
+
     // Return a mock client for testing
     return {
       createProject: async (params: any) => ({
@@ -101,32 +120,43 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             region_id: "aws-us-east-1",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            default_branch_id: "test-branch-id",
           },
-          connection_uris: [
-            {
-              connection_uri: "postgresql://test:test@test.neon.tech/test",
-            },
-          ],
-        },
-      }),
-      createProjectBranch: async (projectId: string, params: any) => ({
-        data: {
           branch: {
-            id: "test-dev-branch-id",
-            name: params.branch?.name || "development",
-            project_id: projectId,
-            parent_id: "test-branch-id",
+            id: "test-main-branch-id",
+            name: "main",
+            project_id: "test-project-id",
+            default: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
           connection_uris: [
             {
-              connection_uri: "postgresql://test:test@test-dev.neon.tech/test",
+              connection_uri: getMockConnectionUri("test-main-branch-id"),
             },
           ],
         },
       }),
+      createProjectBranch: async (projectId: string, params: any) => {
+        const branchId = `test-${params.branch?.name || "child"}-branch-id`;
+        return {
+          data: {
+            branch: {
+              id: branchId,
+              name: params.branch?.name || "development",
+              project_id: projectId,
+              parent_id: params.branch?.parent_id || "test-main-branch-id",
+              default: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            connection_uris: [
+              {
+                connection_uri: getMockConnectionUri(branchId),
+              },
+            ],
+          },
+        };
+      },
       getProject: async (projectId: string) => ({
         data: {
           project: {
@@ -135,7 +165,6 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             org_id: "test-org-id",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            default_branch_id: "test-branch-id",
           },
         },
       }),
@@ -143,7 +172,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
         data: {
           branches: [
             {
-              id: "test-branch-id",
+              id: "test-main-branch-id",
               name: "main",
               project_id: projectId,
               created_at: new Date().toISOString(),
@@ -151,12 +180,36 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               default: true,
             },
             {
-              id: "test-dev-branch-id",
+              id: "test-development-branch-id",
               name: "development",
               project_id: projectId,
+              parent_id: "test-main-branch-id",
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
               default: false,
+            },
+            {
+              id: "test-preview-branch-id",
+              name: "preview",
+              project_id: projectId,
+              parent_id: "test-development-branch-id",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              default: false,
+            },
+          ],
+        },
+      }),
+      listProjects: async () => ({
+        data: {
+          projects: [
+            {
+              id: "test-project-id",
+              name: "Test Project",
+              region_id: "aws-us-east-2",
+              platform_id: "aws",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
             },
           ],
         },
@@ -177,6 +230,86 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             id: branchId,
             project_id: projectId,
           },
+        },
+      }),
+      getNeonAuth: async (projectId: string, branchId: string) => ({
+        data: {
+          auth_provider: "better_auth",
+          auth_provider_project_id: "test-auth-project-id",
+          branch_id: branchId,
+          db_name: "neondb",
+          created_at: new Date().toISOString(),
+          owned_by: "neon",
+          jwks_url: "https://test.neon.tech/.well-known/jwks.json",
+          base_url: getMockAuthBaseUrl(branchId),
+        },
+      }),
+      createNeonAuth: async (
+        projectId: string,
+        branchId: string,
+        data: any,
+      ) => ({
+        data: {
+          auth_provider: data.auth_provider || "better_auth",
+          auth_provider_project_id: "test-auth-project-id",
+          pub_client_key: "test-pub-key",
+          secret_server_key: "test-secret-key",
+          jwks_url: "https://test.neon.tech/.well-known/jwks.json",
+          schema_name: "neon_auth",
+          table_name: "users",
+          base_url: getMockAuthBaseUrl(branchId),
+        },
+      }),
+      listProjectBranchRoles: async () => ({
+        data: {
+          roles: [{ name: "neondb_owner", protected: false }],
+        },
+      }),
+      getConnectionUri: async (params: any) => ({
+        data: {
+          uri: getMockConnectionUri(params.branch_id),
+        },
+      }),
+      getProjectBranch: async (projectId: string, branchId: string) => ({
+        data: {
+          branch: {
+            id: branchId,
+            project_id: projectId,
+            name: getMockBranchName(branchId),
+            default: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        },
+      }),
+      getNeonAuthEmailAndPasswordConfig: async (
+        _projectId: string,
+        _branchId: string,
+      ) => ({
+        data: {
+          enabled: true,
+          email_verification_method: "otp",
+          require_email_verification: false,
+          auto_sign_in_after_verification: true,
+          send_verification_email_on_sign_up: false,
+          send_verification_email_on_sign_in: false,
+          disable_sign_up: false,
+        },
+      }),
+      updateNeonAuthEmailAndPasswordConfig: async (
+        _projectId: string,
+        _branchId: string,
+        data: any,
+      ) => ({
+        data: {
+          enabled: true,
+          email_verification_method: "otp",
+          require_email_verification: data.require_email_verification ?? false,
+          auto_sign_in_after_verification: true,
+          send_verification_email_on_sign_up:
+            data.send_verification_email_on_sign_up ?? false,
+          send_verification_email_on_sign_in: false,
+          disable_sign_up: false,
         },
       }),
     } as unknown as Api<unknown>;
@@ -256,4 +389,68 @@ export async function getNeonOrganizationId(): Promise<string> {
 export function getNeonErrorMessage(error: any): string {
   const detailedMessage = error.response?.data?.message ?? "";
   return error.message + " " + detailedMessage;
+}
+
+const DEFAULT_EMAIL_PASSWORD_CONFIG = {
+  enabled: false,
+  email_verification_method: "otp" as const,
+  require_email_verification: false,
+  auto_sign_in_after_verification: true,
+  send_verification_email_on_sign_up: false,
+  send_verification_email_on_sign_in: false,
+  disable_sign_up: false,
+};
+
+type EmailPasswordConfig = typeof DEFAULT_EMAIL_PASSWORD_CONFIG;
+
+const EMAIL_PASSWORD_CONFIG_TTL_MS = 60_000;
+
+const emailPasswordConfigCache = new Map<
+  string,
+  { data: EmailPasswordConfig; expiry: number }
+>();
+
+export function invalidateEmailPasswordConfigCache(
+  projectId: string,
+  branchId: string,
+): void {
+  emailPasswordConfigCache.delete(`${projectId}:${branchId}`);
+}
+
+export async function getCachedEmailPasswordConfig(
+  projectId: string,
+  branchId: string,
+): Promise<EmailPasswordConfig> {
+  const key = `${projectId}:${branchId}`;
+  const cached = emailPasswordConfigCache.get(key);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+
+  const neonClient = await getNeonClient();
+  try {
+    const response = await neonClient.getNeonAuthEmailAndPasswordConfig(
+      projectId,
+      branchId,
+    );
+    const data = response.data as EmailPasswordConfig;
+    emailPasswordConfigCache.set(key, {
+      data,
+      expiry: Date.now() + EMAIL_PASSWORD_CONFIG_TTL_MS,
+    });
+    return data;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      emailPasswordConfigCache.set(key, {
+        data: DEFAULT_EMAIL_PASSWORD_CONFIG,
+        expiry: Date.now() + EMAIL_PASSWORD_CONFIG_TTL_MS,
+      });
+      return DEFAULT_EMAIL_PASSWORD_CONFIG;
+    }
+    logger.error(
+      "Failed to fetch Neon Auth email/password config:",
+      getNeonErrorMessage(error),
+    );
+    throw error;
+  }
 }

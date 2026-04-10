@@ -284,19 +284,48 @@ const ChatMessage = ({
               <span>{formatTimestamp(message.createdAt)}</span>
             </div>
             {messageVersion && messageVersion.message && (
-              <div className="flex items-center space-x-1">
-                <GitCommit className="h-3 w-3" />
-                {messageVersion && messageVersion.message && (
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1">
+                  <GitCommit className="h-3 w-3" />
                   <span
                     className="max-w-50 truncate font-medium"
-                    title={messageVersion.message}
+                    title={message.commitHash ?? ""}
                   >
                     {
                       messageVersion.message
-                        .replace(/^\[dyad\]\s*/i, "")
+                        .replace(/^[[dyad\]]\s*/i, "")
                         .split("\n")[0]
                     }
                   </span>
+                </div>
+                {message.commitHash && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          onClick={() => {
+                            if (typeof message.commitHash === "string") {
+                              navigator.clipboard.writeText(message.commitHash);
+                            }
+                          }}
+                          aria-label="Copy Commit Hash"
+                          className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                        />
+                      }
+                    >
+                      <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {typeof message.commitHash === "string"
+                          ? message.commitHash.slice(0, 7)
+                          : ""}
+                      </span>
+                      <Copy className="h-3 w-3 ml-1" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {typeof message.commitHash === "string"
+                        ? message.commitHash
+                        : ""}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             )}

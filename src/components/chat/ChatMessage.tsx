@@ -126,6 +126,11 @@ const ChatMessage = ({
   // handle copy request id
   const [copiedRequestId, setCopiedRequestId] = useState(false);
   const copiedRequestIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // handle copy commit hash
+  const [copiedCommitHash, setCopiedCommitHash] = useState(false);
+  const copiedCommitHashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     return () => {
       if (copiedRequestIdTimeoutRef.current) {
@@ -304,9 +309,24 @@ const ChatMessage = ({
                       render={
                         <button
                           onClick={() => {
-                            if (typeof message.commitHash === "string") {
-                              navigator.clipboard.writeText(message.commitHash);
-                            }
+                            if (!message.commitHash) return;
+                            navigator.clipboard
+                              .writeText(message.commitHash)
+                              .then(() => {
+                                setCopiedCommitHash(true);
+                                if (copiedCommitHashTimeoutRef.current) {
+                                  clearTimeout(
+                                    copiedCommitHashTimeoutRef.current,
+                                  );
+                                }
+                                copiedCommitHashTimeoutRef.current = setTimeout(
+                                  () => setCopiedCommitHash(false),
+                                  2000,
+                                );
+                              })
+                              .catch(() => {
+                                // noop
+                              });
                           }}
                           aria-label="Copy Commit Hash"
                           className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
@@ -314,16 +334,16 @@ const ChatMessage = ({
                       }
                     >
                       <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {typeof message.commitHash === "string"
-                          ? message.commitHash.slice(0, 7)
-                          : ""}
+                        {message.commitHash.slice(0, 7)}
                       </span>
-                      <Copy className="h-3 w-3 ml-1" />
+                      {copiedCommitHash ? (
+                        <Check className="h-3 w-3 text-green-500 ml-1" />
+                      ) : (
+                        <Copy className="h-3 w-3 ml-1" />
+                      )}
                     </TooltipTrigger>
                     <TooltipContent>
-                      {typeof message.commitHash === "string"
-                        ? message.commitHash
-                        : ""}
+                      {copiedCommitHash ? "Copied!" : message.commitHash}
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -349,7 +369,7 @@ const ChatMessage = ({
                             );
                           })
                           .catch(() => {
-                            // noop
+                            //i can display toast error
                           });
                       }}
                       aria-label="Copy Request ID"

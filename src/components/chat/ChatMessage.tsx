@@ -289,11 +289,11 @@ const ChatMessage = ({
                   <GitCommit className="h-3 w-3" />
                   <span
                     className="max-w-50 truncate font-medium"
-                    title={message.commitHash ?? ""}
+                    title={messageVersion.message}
                   >
                     {
                       messageVersion.message
-                        .replace(/^[[dyad\]]\s*/i, "")
+                        .replace(/^\[dyad\]\s*/i, "")
                         .split("\n")[0]
                     }
                   </span>

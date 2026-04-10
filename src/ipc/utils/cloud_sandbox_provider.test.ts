@@ -42,6 +42,55 @@ import {
   uploadCloudSandboxFiles,
 } from "./cloud_sandbox_provider";
 
+type ParsedMultipartUpload = {
+  manifest: {
+    replaceAll: boolean;
+    deletedFiles: string[];
+    files: Array<{
+      path: string;
+      fieldName: string;
+    }>;
+  };
+  files: Record<string, Buffer>;
+};
+
+async function parseMultipartUpload(
+  init: RequestInit | undefined,
+): Promise<ParsedMultipartUpload> {
+  const request = new Request("https://dyad.test/upload", {
+    method: "POST",
+    body: init?.body as BodyInit,
+    headers: init?.headers,
+  });
+  const formData = await request.formData();
+  const manifestValue = formData.get("manifest");
+
+  if (typeof manifestValue !== "string") {
+    throw new Error("Expected manifest form field.");
+  }
+
+  const manifest = JSON.parse(
+    manifestValue,
+  ) as ParsedMultipartUpload["manifest"];
+  const files = Object.fromEntries(
+    await Promise.all(
+      manifest.files.map(async ({ path, fieldName }) => {
+        const filePart = formData.get(fieldName);
+        if (!(filePart instanceof File)) {
+          throw new Error(`Expected file part for ${fieldName}.`);
+        }
+
+        return [path, Buffer.from(await filePart.arrayBuffer())] as const;
+      }),
+    ),
+  );
+
+  return {
+    manifest,
+    files,
+  };
+}
+
 describe("cloud_sandbox_provider incremental sync", () => {
   let appPath: string;
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -91,12 +140,19 @@ describe("cloud_sandbox_provider incremental sync", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({
-      files: {
-        "src.ts": "console.log('hi');",
-      },
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest).toEqual({
       replaceAll: false,
       deletedFiles: [],
+      files: [
+        {
+          path: "src.ts",
+          fieldName: "file_0",
+        },
+      ],
+    });
+    expect(upload.files).toEqual({
+      "src.ts": Buffer.from("console.log('hi');"),
     });
   });
 
@@ -113,12 +169,19 @@ describe("cloud_sandbox_provider incremental sync", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toEqual({
-      files: {
-        "keep.ts": "updated",
-      },
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest).toEqual({
       replaceAll: false,
       deletedFiles: ["old.ts"],
+      files: [
+        {
+          path: "keep.ts",
+          fieldName: "file_0",
+        },
+      ],
+    });
+    expect(upload.files).toEqual({
+      "keep.ts": Buffer.from("updated"),
     });
   });
 
@@ -131,14 +194,51 @@ describe("cloud_sandbox_provider incremental sync", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toEqual({
-      files: {
-        "a.ts": "A",
-        "nested/b.ts": "B",
-      },
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest).toEqual({
       replaceAll: true,
       deletedFiles: [],
+      files: [
+        {
+          path: "a.ts",
+          fieldName: "file_0",
+        },
+        {
+          path: "nested/b.ts",
+          fieldName: "file_1",
+        },
+      ],
     });
+    expect(upload.files).toEqual({
+      "a.ts": Buffer.from("A"),
+      "nested/b.ts": Buffer.from("B"),
+    });
+  });
+
+  it("uploads binary files without utf-8 transcoding", async () => {
+    const originalBytes = Buffer.from([0x00, 0xff, 0x10, 0x80, 0x41, 0x42]);
+    await fs.writeFile(path.join(appPath, "assets.bin"), originalBytes);
+
+    await syncCloudSandboxDirtyPaths({
+      appId: 1,
+      changedPaths: ["assets.bin"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const upload = await parseMultipartUpload(init);
+
+    expect(upload.manifest).toEqual({
+      replaceAll: false,
+      deletedFiles: [],
+      files: [
+        {
+          path: "assets.bin",
+          fieldName: "file_0",
+        },
+      ],
+    });
+    expect(upload.files["assets.bin"]).toEqual(originalBytes);
   });
 
   it("excludes gitignored paths, keeps root env files, and skips symlinks", async () => {
@@ -173,10 +273,10 @@ describe("cloud_sandbox_provider incremental sync", () => {
     });
 
     await expect(buildCloudSandboxFileMap(appPath)).resolves.toEqual({
-      ".env": "ROOT_ENV=1",
-      ".env.local": "ROOT_ENV_LOCAL=1",
-      "symlink-target.ts": "outside",
-      "visible.ts": "export const ok = true;",
+      ".env": Buffer.from("ROOT_ENV=1"),
+      ".env.local": Buffer.from("ROOT_ENV_LOCAL=1"),
+      "symlink-target.ts": Buffer.from("outside"),
+      "visible.ts": Buffer.from("export const ok = true;"),
     });
   });
 
@@ -201,13 +301,24 @@ describe("cloud_sandbox_provider incremental sync", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toEqual({
-      files: {
-        ".env.local": "SAFE_ENV=1",
-        "changed.ts": "updated",
-      },
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest).toEqual({
       replaceAll: false,
       deletedFiles: ["ignored.ts", "linked.ts"],
+      files: [
+        {
+          path: ".env.local",
+          fieldName: "file_0",
+        },
+        {
+          path: "changed.ts",
+          fieldName: "file_1",
+        },
+      ],
+    });
+    expect(upload.files).toEqual({
+      ".env.local": Buffer.from("SAFE_ENV=1"),
+      "changed.ts": Buffer.from("updated"),
     });
   });
 
@@ -222,13 +333,24 @@ describe("cloud_sandbox_provider incremental sync", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toEqual({
-      files: {
-        ".gitignore": "dist\n",
-        "index.ts": "console.log('ok');",
-      },
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest).toEqual({
       replaceAll: true,
       deletedFiles: [],
+      files: [
+        {
+          path: ".gitignore",
+          fieldName: "file_0",
+        },
+        {
+          path: "index.ts",
+          fieldName: "file_1",
+        },
+      ],
+    });
+    expect(upload.files).toEqual({
+      ".gitignore": Buffer.from("dist\n"),
+      "index.ts": Buffer.from("console.log('ok');"),
     });
   });
 
@@ -308,12 +430,19 @@ describe("cloud_sandbox_provider incremental sync", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     const [, secondInit] = fetchMock.mock.calls[1];
-    expect(JSON.parse(String(secondInit?.body))).toEqual({
-      files: {
-        "second.ts": "second",
-      },
+    const upload = await parseMultipartUpload(secondInit);
+    expect(upload.manifest).toEqual({
       replaceAll: false,
       deletedFiles: [],
+      files: [
+        {
+          path: "second.ts",
+          fieldName: "file_0",
+        },
+      ],
+    });
+    expect(upload.files).toEqual({
+      "second.ts": Buffer.from("second"),
     });
   });
 

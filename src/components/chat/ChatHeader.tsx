@@ -209,8 +209,8 @@ export function ChatHeader({
               variant="ghost"
               className="hidden @2xs:flex items-center justify-start gap-2 py-3"
               data-testid="summarize-chat-button"
-              title={t("summarizeToNewChat")}
-              aria-label={t("summarizeToNewChat")}
+              title={t("summarize")}
+              aria-label={t("summarize")}
               disabled={isSummarizing || isStreaming}
             >
               {isSummarizing ? (
@@ -221,9 +221,7 @@ export function ChatHeader({
               ) : (
                 <>
                   <MessageSquarePlus size={16} />
-                  <span className="hidden @4xs:inline">
-                    {t("summarizeToNewChat")}
-                  </span>
+                  <span className="hidden @4xs:inline">{t("summarize")}</span>
                 </>
               )}
             </Button>

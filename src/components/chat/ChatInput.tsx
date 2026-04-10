@@ -1044,7 +1044,7 @@ function SummarizeInNewChatButton() {
       onClick={handleSummarize}
       tooltipText={t("summarizeNewChatTip")}
     >
-      {t("summarizeToNewChat")}
+      {t("summarize")}
     </SuggestionButton>
   );
 }

@@ -22,6 +22,7 @@ export type AssistantIntent =
   | "search"       // Search marketplace, library, or knowledge base
   | "configure"    // Change settings or preferences
   | "analyze"      // Analyze data, assets, or performance
+  | "system"       // System-level operations (files, commands, apps)
   | "general";     // General conversation / catch-all
 
 /** User-selected interaction mode */
@@ -95,6 +96,67 @@ export interface OpenDialogAction {
   label: string;
 }
 
+// ============================================================================
+// System-Level Actions — OpenClaw-style capabilities
+// ============================================================================
+
+export interface RunCommandAction {
+  type: "run-command";
+  /** Shell command to execute */
+  command: string;
+  /** Working directory (default: user home) */
+  cwd?: string;
+  label: string;
+  /** If true, requires explicit user approval before execution */
+  requiresApproval?: boolean;
+}
+
+export interface ReadFileAction {
+  type: "read-file";
+  /** Absolute path to the file */
+  filePath: string;
+  label: string;
+}
+
+export interface WriteFileAction {
+  type: "write-file";
+  /** Absolute path for the file */
+  filePath: string;
+  /** Content to write */
+  content: string;
+  label: string;
+  requiresApproval?: boolean;
+}
+
+export interface ListDirectoryAction {
+  type: "list-directory";
+  /** Absolute path to directory */
+  dirPath: string;
+  label: string;
+}
+
+export interface OpenAppAction {
+  type: "open-app";
+  /** Application name or path */
+  appName: string;
+  /** Arguments to pass */
+  args?: string[];
+  label: string;
+}
+
+export interface OpenUrlAction {
+  type: "open-url";
+  url: string;
+  label: string;
+}
+
+export interface SystemInfoAction {
+  type: "system-info";
+  /** What info to retrieve: "os", "hardware", "processes", "disk", "memory", "network" */
+  infoType: "os" | "hardware" | "processes" | "disk" | "memory" | "network";
+  label: string;
+}
+
 /** Union of all possible actions */
 export type AssistantAction =
   | NavigateAction
@@ -104,7 +166,14 @@ export type AssistantAction =
   | ShowTooltipAction
   | CreateDocumentAction
   | SearchAction
-  | OpenDialogAction;
+  | OpenDialogAction
+  | RunCommandAction
+  | ReadFileAction
+  | WriteFileAction
+  | ListDirectoryAction
+  | OpenAppAction
+  | OpenUrlAction
+  | SystemInfoAction;
 
 // ============================================================================
 // Messages & Sessions

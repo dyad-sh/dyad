@@ -1884,6 +1884,53 @@ export class IpcClient {
     return this.ipcRenderer.invoke("decentralized:get-platforms");
   }
 
+  // --- Auto-Deploy (One-Click Deploy Pipeline) ---
+  public async autoDeploy(params: {
+    appId: number;
+    target: "vercel" | "4everland" | "fleek" | "ipfs-pinata" | "ipfs-web3storage" | "arweave" | "spheron";
+    skipCompletenessCheck?: boolean;
+    buildCommand?: string;
+    outputDir?: string;
+  }): Promise<{
+    success: boolean;
+    steps: Array<{
+      step: string;
+      status: string;
+      message: string;
+      details?: string;
+    }>;
+    deploymentUrl?: string;
+    error?: string;
+    completenessReport?: {
+      isComplete: boolean;
+      issues: Array<{ file: string; line: number; type: string; message: string }>;
+    };
+  }> {
+    return this.ipcRenderer.invoke("deploy:auto-deploy", params);
+  }
+
+  public async checkSiteCompleteness(appId: number): Promise<{
+    isComplete: boolean;
+    issues: Array<{ file: string; line: number; type: string; message: string }>;
+    followUpPrompt: string | null;
+  }> {
+    return this.ipcRenderer.invoke("deploy:check-completeness", { appId });
+  }
+
+  public onAutoDeployProgress(
+    handler: (data: {
+      appId: number;
+      steps: Array<{
+        step: string;
+        status: string;
+        message: string;
+        details?: string;
+      }>;
+    }) => void,
+  ): () => void {
+    return this.ipcRenderer.on("auto-deploy:progress", handler as any);
+  }
+
   // Project Methods
   public async createProject(
     params: import("../types/project_types").CreateProjectParams

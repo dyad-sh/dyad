@@ -132,7 +132,7 @@ class JoyAssistantClient {
   async executeAction(
     sessionId: string,
     action: AssistantAction,
-  ): Promise<{ approved: boolean; action: AssistantAction }> {
+  ): Promise<{ approved: boolean; action: AssistantAction; result?: unknown }> {
     return this.ipcRenderer.invoke(
       "joy-assistant:execute-action",
       sessionId,

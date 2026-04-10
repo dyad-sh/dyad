@@ -920,6 +920,8 @@ export interface OpenClawGatewayStatus {
   version?: string;
   activePlugins: string[];
   connectedClients: number;
+  /** True when operating in bridge mode (client to external OpenClaw gateway) */
+  bridged?: boolean;
 }
 
 export interface OpenClawProviderStatus {

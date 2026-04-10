@@ -128,6 +128,18 @@ export class OpenClawGatewayService extends EventEmitter {
   private getConfigPath(): string {
     return path.join(app.getPath("userData"), "OpenClaw", "OpenClaw.json");
   }
+
+  /** Read the auth token from the daemon's own config (~/.openclaw/openclaw.json) */
+  private resolveDaemonAuthToken(): string {
+    try {
+      const daemonConfigPath = path.join(app.getPath("home"), ".openclaw", "openclaw.json");
+      const raw = nodeFs.readFileSync(daemonConfigPath, "utf8");
+      const cfg = JSON.parse(raw);
+      return cfg?.gateway?.auth?.token || "";
+    } catch {
+      return "";
+    }
+  }
   
   private getClaudeCodeConfigPath(): string {
     return path.join(app.getPath("userData"), "OpenClaw", "claude-code.json");
@@ -430,16 +442,16 @@ export class OpenClawGatewayService extends EventEmitter {
         // infinite retry loop if we reset the counter on every open event.
         
         // Send the OpenClaw protocol connect frame
-        const token = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+        const token = process.env.OPENCLAW_GATEWAY_TOKEN || this.resolveDaemonAuthToken();
         const connectFrame = {
           type: "req",
           method: "connect",
           id: uuidv4(),
           params: {
             client: {
-              id: "joycreate-bridge",
+              id: "gateway-client",
               displayName: "JoyCreate",
-              mode: "bridge",
+              mode: "backend",
               version: app.getVersion(),
               platform: "electron",
             },

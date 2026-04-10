@@ -581,6 +581,17 @@ const validInvokeChannels = [
   "marketplace:install-asset",
   "marketplace:featured",
   "marketplace:categories",
+  // Subgraph — On-chain marketplace data (Goldsky)
+  "subgraph:my-assets",
+  "subgraph:tokens",
+  "subgraph:user-balances",
+  "subgraph:purchases",
+  "subgraph:drop-stats",
+  "subgraph:user-stores",
+  "subgraph:all-stores",
+  "subgraph:user-domains",
+  "subgraph:all-domains",
+  "subgraph:store-stats",
   // Creator Dashboard
   "creator:get-overview",
   "creator:get-all-assets",
@@ -844,6 +855,9 @@ const validInvokeChannels = [
   "decentralized:get-deployment",
   "decentralized:check-pin-status",
   "decentralized:get-platforms",
+  // Auto-Deploy (one-click build + push + deploy)
+  "deploy:auto-deploy",
+  "deploy:check-completeness",
   // Project Management
   "project:create",
   "project:list",
@@ -1336,6 +1350,25 @@ const validInvokeChannels = [
   "openclaw:quick:fix-error",
   "openclaw:subscribe",
   "openclaw:unsubscribe",
+  // OpenClaw Autonomous Brain — Cross-feature AI orchestration
+  "openclaw:autonomous:execute",
+  "openclaw:autonomous:plan",
+  "openclaw:autonomous:approve",
+  "openclaw:autonomous:cancel",
+  "openclaw:autonomous:get",
+  "openclaw:autonomous:list",
+  "openclaw:autonomous:status",
+  "openclaw:autonomous:actions",
+  // OpenClaw Cost Engine - Smart cost tracking & budget
+  "openclaw:cost:summary",
+  "openclaw:cost:records",
+  "openclaw:cost:budget:get",
+  "openclaw:cost:budget:set",
+  "openclaw:cost:estimate",
+  "openclaw:cost:check-budget",
+  "openclaw:cost:task-routing:get",
+  "openclaw:cost:task-routing:set",
+  "openclaw:cost:task-routing:reset",
   // OpenClaw Data Pipeline - Scraping, Data Collection & Image Generation
   "openclaw:data:initialize",
   "openclaw:data:scrape",
@@ -1392,6 +1425,7 @@ const validInvokeChannels = [
   // EXFOLIATE! EXFOLIATE!
   "openclaw:gateway:health",
   "openclaw:gateway:restart",
+  "openclaw:gateway:yield-to-daemon",
   "openclaw:connection:status",
   "openclaw:agent:run",
   "openclaw:message:send",
@@ -1895,6 +1929,8 @@ const validReceiveChannels = [
   "github:flow-error",
   "deep-link-received",
   "force-close-detected",
+  // Auto-Deploy progress events
+  "auto-deploy:progress",
   // Help bot
   "help:chat:response:chunk",
   "help:chat:response:end",

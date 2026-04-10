@@ -154,6 +154,16 @@ export function executeAction(
       return { success: true };
     }
 
+    // System actions are executed server-side via IPC, not in the renderer
+    case "run-command":
+    case "read-file":
+    case "write-file":
+    case "list-directory":
+    case "open-app":
+    case "open-url":
+    case "system-info":
+      return { success: true, message: "Executed on system" };
+
     default:
       return { success: false, message: `Unknown action type` };
   }
@@ -225,6 +235,22 @@ export function guideAction(
       }
       return { success: true, message: `Open the ${action.dialogId} dialog` };
     }
+
+    // System actions — guide mode just describes what will happen
+    case "run-command":
+      return { success: true, message: `Run command: ${action.command}` };
+    case "read-file":
+      return { success: true, message: `Read file: ${action.filePath}` };
+    case "write-file":
+      return { success: true, message: `Write to file: ${action.filePath}` };
+    case "list-directory":
+      return { success: true, message: `List directory: ${action.directory}` };
+    case "open-app":
+      return { success: true, message: `Open application: ${action.appName}` };
+    case "open-url":
+      return { success: true, message: `Open URL: ${action.url}` };
+    case "system-info":
+      return { success: true, message: `Get system info: ${action.infoType}` };
 
     default:
       return { success: false, message: "Unknown action type" };

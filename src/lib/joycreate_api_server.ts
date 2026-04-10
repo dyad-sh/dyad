@@ -366,8 +366,12 @@ async function handleBuildApp(body: Record<string, unknown>) {
     chatId = chat.id;
   }
 
+  // Enrich the prompt with year context for API callers
+  const currentYear = new Date().getFullYear();
+  const enrichedPrompt = `[Context: The current year is ${currentYear}. Use ${currentYear} for all dates, model years, and references — never 2024 or 2025. Implement fully — no placeholders or TODOs.]\n\n${prompt}`;
+
   // Invoke the chat stream — this is the core builder
-  const result = await invokeChatStream({ chatId, prompt });
+  const result = await invokeChatStream({ chatId, prompt: enrichedPrompt });
 
   return {
     chatId,
@@ -523,10 +527,38 @@ async function handleCreateAndBuildApp(body: Record<string, unknown>) {
     chatId: number;
   };
 
-  // Step 2: Send the build prompt
+  // Step 2: Enrich the prompt — external callers (OpenClaw daemon) often send
+  // thin descriptions. Wrap them with explicit builder instructions so the AI
+  // generates a complete, production-quality app on the first pass.
+  const currentYear = new Date().getFullYear();
+  const enrichedPrompt = [
+    `# Build Request: ${name}`,
+    ``,
+    `## IMPORTANT CONTEXT`,
+    `- The current year is ${currentYear}. Use ${currentYear} dates, model years, and references everywhere — never use outdated years like 2024 or 2025.`,
+    `- Build a COMPLETE, fully-functional application — not a skeleton or demo.`,
+    `- Implement EVERY feature described below with real UI, real state management, real routing, and real interactivity.`,
+    `- Use modern, visually polished design with proper spacing, typography, animations, and responsive layouts.`,
+    `- Include realistic sample/seed data so the app looks populated and professional on first load.`,
+    `- Wire up all navigation, forms, modals, filters, search, and CRUD operations end-to-end.`,
+    ``,
+    `## APP DESCRIPTION`,
+    prompt,
+    ``,
+    `## IMPLEMENTATION REQUIREMENTS`,
+    `- Create ALL pages and components referenced in the description.`,
+    `- Every button, link, and action must be wired up and functional.`,
+    `- Forms must validate input and show success/error feedback.`,
+    `- Use localStorage or in-memory state so the app is fully interactive without a backend.`,
+    `- Include at least 5-10 realistic sample records per data type (e.g. products, users, orders).`,
+    `- Apply consistent theming: if custom colors are specified, use them throughout.`,
+    `- Add subtle animations and transitions for a polished feel.`,
+  ].join("\n");
+
+  // Step 3: Send the enriched build prompt
   const buildResult = await invokeChatStream({
     chatId: createResult.chatId,
-    prompt,
+    prompt: enrichedPrompt,
   });
 
   return {

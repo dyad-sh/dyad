@@ -95,6 +95,7 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
+import { checkSiteCompleteness } from "../utils/site_completeness";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -1698,6 +1699,107 @@ ${problemReport.problems
                 settings.enableAutoFixProblems,
                 error,
               );
+            }
+          }
+
+          // ── Site Completeness Check ──
+          // After auto-fix, verify the site is complete (no missing files,
+          // no TODOs, no stub components). If incomplete, send follow-up
+          // prompts to the AI to finish the job.
+          if (
+            !abortController.signal.aborted &&
+            settings.selectedChatMode !== "ask" &&
+            settings.autoApproveChanges
+          ) {
+            try {
+              const currentAppPath = getJoyAppPath(updatedChat.app.path);
+
+              // Apply pending file changes first so we scan the latest state
+              const pendingWriteTags = getJoyWriteTags(fullResponse);
+              for (const tag of pendingWriteTags) {
+                const targetPath = path.join(currentAppPath, tag.path);
+                const targetDir = path.dirname(targetPath);
+                if (!fs.existsSync(targetDir)) {
+                  fs.mkdirSync(targetDir, { recursive: true });
+                }
+              }
+
+              let completenessReport = await checkSiteCompleteness(currentAppPath);
+              let completionAttempts = 0;
+              const MAX_COMPLETION_ATTEMPTS = 3;
+
+              while (
+                !completenessReport.isComplete &&
+                completenessReport.followUpPrompt &&
+                completionAttempts < MAX_COMPLETION_ATTEMPTS &&
+                !abortController.signal.aborted
+              ) {
+                completionAttempts++;
+                logger.info(
+                  `Site incomplete (${completenessReport.issues.length} issues), ` +
+                    `auto-completing attempt #${completionAttempts}/${MAX_COMPLETION_ATTEMPTS}`,
+                );
+
+                // Notify user about auto-completion
+                fullResponse += `\n\n<joy-auto-complete attempt="${completionAttempts}" issues="${completenessReport.issues.length}">`;
+
+                const virtualFileSystem = new AsyncVirtualFileSystem(
+                  currentAppPath,
+                  {
+                    fileExists: (fileName: string) => fileExists(fileName),
+                    readFile: (fileName: string) => readFileWithCache(fileName),
+                  },
+                );
+                const writeTags = getJoyWriteTags(fullResponse);
+                const renameTags = getJoyRenameTags(fullResponse);
+                const deletePaths = getJoyDeleteTags(fullResponse);
+                virtualFileSystem.applyResponseChanges({
+                  deletePaths,
+                  renameTags,
+                  writeTags,
+                });
+
+                const { files: completionFiles } = await extractCodebase({
+                  appPath,
+                  chatContext,
+                  virtualFileSystem,
+                });
+                const { modelClient: completionModelClient } = await getModelClient(
+                  settings.selectedModel,
+                  settings,
+                );
+
+                const { fullStream: completionStream } = await simpleStreamText({
+                  modelClient: completionModelClient,
+                  files: completionFiles,
+                  chatMessages: [
+                    { role: "assistant", content: removeNonEssentialTags(fullResponse) },
+                    { role: "user", content: completenessReport.followUpPrompt },
+                  ],
+                });
+
+                const completionResult = await processStreamChunks({
+                  fullStream: completionStream,
+                  fullResponse,
+                  abortController,
+                  chatId: req.chatId,
+                  processResponseChunkUpdate,
+                });
+                fullResponse = completionResult.fullResponse;
+                fullResponse += `</joy-auto-complete>`;
+
+                // Re-check completeness
+                completenessReport = await checkSiteCompleteness(currentAppPath);
+              }
+
+              if (completionAttempts > 0) {
+                logger.info(
+                  `Site completion finished after ${completionAttempts} attempts, ` +
+                    `remaining issues: ${completenessReport.issues.length}`,
+                );
+              }
+            } catch (error) {
+              logger.error("Error during site completeness check:", error);
             }
           }
         } catch (streamError) {

@@ -5,6 +5,7 @@
 
 import { ipcMain, IpcMainInvokeEvent, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
+import { execFile } from "node:child_process";
 import log from "electron-log";
 
 import {
@@ -76,6 +77,63 @@ export function registerOpenClawHandlers(): void {
     return { success: true };
   });
 
+  ipcMain.handle("openclaw:gateway:restart", async () => {
+    await gateway.stopGateway();
+    await gateway.startGateway();
+    return { success: true };
+  });
+
+  // Yield port 18790 to the external OpenClaw daemon, then reconnect in bridge mode.
+  // Flow: stop internal server → launch daemon process → wait for it to bind → re-probe → bridge mode.
+  ipcMain.handle("openclaw:gateway:yield-to-daemon", async () => {
+    const homedir = require("node:os").homedir();
+    const gatewayCmdPath = require("node:path").join(homedir, ".openclaw", "gateway.cmd");
+
+    if (!require("node:fs").existsSync(gatewayCmdPath)) {
+      throw new Error("gateway.cmd not found at " + gatewayCmdPath);
+    }
+
+    logger.info("Yielding gateway to external daemon...");
+
+    // 1. Stop internal gateway (release port 18790)
+    await gateway.stopGateway();
+    logger.info("Internal gateway stopped — port 18790 released");
+
+    // 2. Start the external daemon process (detached, survives JoyCreate restart)
+    const child = execFile(gatewayCmdPath, [], {
+      cwd: homedir,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    logger.info("External daemon process spawned (PID: " + child.pid + ")");
+
+    // 3. Wait for the daemon to bind (up to 8 seconds)
+    const deadline = Date.now() + 8000;
+    let daemonReady = false;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        const resp = await fetch("http://127.0.0.1:18790/health", { signal: AbortSignal.timeout(1500) });
+        if (resp.ok) { daemonReady = true; break; }
+      } catch { /* not ready yet */ }
+    }
+
+    if (!daemonReady) {
+      // Daemon didn't bind — fall back to internal server
+      logger.warn("External daemon did not bind in time — falling back to internal gateway");
+      await gateway.startGateway();
+      return { success: false, bridged: false, reason: "daemon_timeout" };
+    }
+
+    // 4. Re-init internal gateway — it will probe, find daemon, enter bridge mode
+    await gateway.startGateway();
+    logger.info("Gateway restarted — bridge mode: " + (gateway.getGatewayState() as any).bridged);
+
+    return { success: true, bridged: (gateway.getGatewayState() as any).bridged };
+  });
+
   ipcMain.handle("openclaw:gateway:status", async () => {
     return gateway.getGatewayState();
   });
@@ -106,6 +164,22 @@ export function registerOpenClawHandlers(): void {
       }
     } catch {
       // .env file not found or unreadable
+    }
+    // Fallback: read from daemon config (~/.openclaw/openclaw.json → gateway.auth.token)
+    try {
+      const nodeFs = require("node:fs") as typeof import("node:fs");
+      const nodePath = require("node:path") as typeof import("node:path");
+      const os = require("node:os") as typeof import("node:os");
+      const cfgPath = nodePath.join(os.homedir(), ".openclaw", "openclaw.json");
+      const raw = nodeFs.readFileSync(cfgPath, "utf8");
+      const cfg = JSON.parse(raw);
+      const token = cfg?.gateway?.auth?.token;
+      if (typeof token === "string" && token.length > 0) {
+        process.env.OPENCLAW_GATEWAY_TOKEN = token; // cache for next call
+        return token;
+      }
+    } catch {
+      // daemon config not found or unreadable
     }
     return "";
   });

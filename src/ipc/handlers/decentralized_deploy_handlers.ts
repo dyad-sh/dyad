@@ -587,7 +587,7 @@ function createArweaveManifest(
 // Main Deploy Function
 // ============================================================================
 
-async function deployToPlatform(
+export async function deployToPlatform(
   request: DecentralizedDeployRequest
 ): Promise<DecentralizedDeployResult> {
   const credentials = await getCredentials(request.platform);

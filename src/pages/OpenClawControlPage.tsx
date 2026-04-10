@@ -11,6 +11,25 @@ import { OpenClawIntegrationClient } from "@/ipc/openclaw_integration_client";
 import { useCNSStatus, useCNSChat, useOllama } from "@/hooks/useOpenClawCNS";
 import { CNSDashboard } from "@/components/openclaw/CNSDashboard";
 import { useActivityLog, useActivityStats, useChannelMessages } from "@/hooks/useOpenClawActivity";
+import {
+  useAutonomousStatus,
+  useAutonomousExecutions,
+  useAutonomousExecution,
+  useAutonomousActions,
+  useAutonomousExecute,
+  useAutonomousPlan,
+  useAutonomousApprove,
+  useAutonomousCancel,
+} from "@/hooks/useOpenClawAutonomous";
+import {
+  useCostSummary,
+  useCostBudget,
+  useSetCostBudget,
+  useCostRecords,
+  useTaskRouting,
+  useSetTaskRouting,
+  useResetTaskRouting,
+} from "@/hooks/useOpenClawCost";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -48,6 +67,15 @@ import {
   Maximize2,
   Minimize2,
   Brain,
+  Zap,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  ListChecks,
+  DollarSign,
+  TrendingDown,
+  Wallet,
+  RotateCcw,
 } from "lucide-react";
 
 const integrationClient = OpenClawIntegrationClient.getInstance();
@@ -60,6 +88,38 @@ export function OpenClawControlPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("portal");
   const [isPortalFullscreen, setIsPortalFullscreen] = useState(false);
+  const [portalLoadError, setPortalLoadError] = useState(false);
+  const [portalKey, setPortalKey] = useState(0);
+
+  // ---------------------------------------------------------------------------
+  // Real-time event subscription — daemon events invalidate queries instantly
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    openclawClient.subscribe().catch(() => {});
+
+    const handler = () => {
+      queryClient.invalidateQueries({ queryKey: ["openclaw-gateway-status"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw-activity-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw-channel-messages"] });
+    };
+
+    openclawClient.addEventListener("message:received", handler);
+    openclawClient.addEventListener("message:sent", handler);
+    openclawClient.addEventListener("agent:task:started", handler);
+    openclawClient.addEventListener("agent:task:completed", handler);
+    openclawClient.addEventListener("gateway:connected", handler);
+    openclawClient.addEventListener("gateway:disconnected", handler);
+
+    return () => {
+      openclawClient.removeEventListener("message:received", handler);
+      openclawClient.removeEventListener("message:sent", handler);
+      openclawClient.removeEventListener("agent:task:started", handler);
+      openclawClient.removeEventListener("agent:task:completed", handler);
+      openclawClient.removeEventListener("gateway:connected", handler);
+      openclawClient.removeEventListener("gateway:disconnected", handler);
+    };
+  }, [queryClient]);
 
   // ---------------------------------------------------------------------------
   // Queries
@@ -135,11 +195,26 @@ export function OpenClawControlPage() {
     onError: (err) => toast.error(`Failed to restart: ${err}`),
   });
 
+  const yieldToDaemonMutation = useMutation({
+    mutationFn: async () => integrationClient.yieldToDaemon(),
+    onSuccess: (result) => {
+      if (result.bridged) {
+        toast.success("Connected to external OpenClaw daemon (bridge mode)");
+      } else {
+        toast.warning("Daemon didn't start in time — using internal gateway");
+      }
+      queryClient.invalidateQueries({ queryKey: ["openclaw-gateway-status"] });
+    },
+    onError: (err) => toast.error(`Failed to bridge: ${err}`),
+  });
+
+  const isBridged = gatewayStatus?.bridged === true;
   const isConnected = gatewayStatus?.status === "connected";
   const isLoading =
     startMutation.isPending ||
     stopMutation.isPending ||
-    restartMutation.isPending;
+    restartMutation.isPending ||
+    yieldToDaemonMutation.isPending;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -177,7 +252,9 @@ export function OpenClawControlPage() {
             {isStatusLoading
               ? "Checking…"
               : isConnected
-                ? "Connected"
+                ? isBridged
+                  ? "Bridged to Daemon"
+                  : "Connected (Internal)"
                 : "Disconnected"}
           </Badge>
 
@@ -195,6 +272,23 @@ export function OpenClawControlPage() {
                 />
                 Restart
               </Button>
+              {!isBridged && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => yieldToDaemonMutation.mutate()}
+                  disabled={isLoading}
+                  title="Stop internal gateway and connect to the external OpenClaw daemon"
+                >
+                  <Plug className={`h-4 w-4 mr-1 ${yieldToDaemonMutation.isPending ? "animate-spin" : ""}`} />
+                  {yieldToDaemonMutation.isPending ? "Bridging…" : "Bridge to Daemon"}
+                </Button>
+              )}
+              {isBridged && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <Plug className="h-3 w-3" /> Bridged
+                </Badge>
+              )}
               <Button
                 size="sm"
                 variant="destructive"
@@ -264,6 +358,14 @@ export function OpenClawControlPage() {
             <Settings className="h-3.5 w-3.5" />
             Settings
           </TabsTrigger>
+          <TabsTrigger value="autonomous" className="gap-1">
+            <Zap className="h-3.5 w-3.5" />
+            Autonomous
+          </TabsTrigger>
+          <TabsTrigger value="costs" className="gap-1">
+            <DollarSign className="h-3.5 w-3.5" />
+            Costs
+          </TabsTrigger>
         </TabsList>
 
         {/* ================================================================= */}
@@ -271,33 +373,98 @@ export function OpenClawControlPage() {
         {/* ================================================================= */}
         <TabsContent
           value="portal"
-          className={`flex-1 m-0 ${isPortalFullscreen ? "fixed inset-0 z-50 bg-background" : ""}`}
+          className={`flex-1 m-0 ${isPortalFullscreen ? "fixed inset-0 z-50 bg-background flex flex-col" : "flex flex-col"}`}
         >
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-4 py-1 border-b">
+          <div className="flex flex-col flex-1 min-h-0 h-full">
+            <div className="flex items-center justify-between px-4 py-1 border-b shrink-0">
               <span className="text-xs text-muted-foreground">
                 http://127.0.0.1:18790
               </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                onClick={() => setIsPortalFullscreen((f) => !f)}
-              >
-                {isPortalFullscreen ? (
-                  <Minimize2 className="h-3.5 w-3.5" />
-                ) : (
-                  <Maximize2 className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  title="Reload portal"
+                  onClick={() => {
+                    setPortalLoadError(false);
+                    setPortalKey((k) => k + 1);
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => setIsPortalFullscreen((f) => !f)}
+                >
+                  {isPortalFullscreen ? (
+                    <Minimize2 className="h-3.5 w-3.5" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
             </div>
             {isConnected ? (
-              <iframe
-                src={portalUrl}
-                className="flex-1 w-full border-0"
-                title="OpenClaw Portal"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-              />
+              portalLoadError ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <Card className="max-w-sm text-center">
+                    <CardHeader>
+                      <AlertTriangle className="h-10 w-10 mx-auto text-orange-500 mb-2" />
+                      <CardTitle>Portal Failed to Load</CardTitle>
+                      <CardDescription>
+                        The gateway is running but the control UI could not be loaded.
+                        This can happen if the external gateway restarted or the assets are missing.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <Button
+                        onClick={() => {
+                          setPortalLoadError(false);
+                          setPortalKey((k) => k + 1);
+                        }}
+                        className="w-full"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                        Retry
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.open(portalUrl, "_blank")}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-1" />
+                        Open in Browser
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (
+                <iframe
+                  key={`portal-${portalKey}-${gatewayToken}`}
+                  src={portalUrl}
+                  className="flex-1 w-full border-0 min-h-0"
+                  style={{ height: isPortalFullscreen ? "calc(100vh - 2rem)" : undefined }}
+                  title="OpenClaw Portal"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
+                  allow="clipboard-read; clipboard-write"
+                  onLoad={(e) => {
+                    // Check if the iframe actually loaded content
+                    try {
+                      const frame = e.currentTarget;
+                      // If we can access contentDocument and it's empty/null, there was an error
+                      if (frame.contentDocument === null && frame.contentWindow === null) {
+                        setPortalLoadError(true);
+                      }
+                    } catch {
+                      // Cross-origin - means it loaded something, which is good
+                    }
+                  }}
+                  onError={() => setPortalLoadError(true)}
+                />
+              )
             ) : (
               <div className="flex-1 flex items-center justify-center">
                 <Card className="max-w-sm text-center">
@@ -364,6 +531,20 @@ export function OpenClawControlPage() {
         {/* ================================================================= */}
         <TabsContent value="settings" className="flex-1 m-0 p-4 overflow-auto">
           <SettingsPanel config={config} />
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* AUTONOMOUS TAB — AI-driven multi-step orchestration                */}
+        {/* ================================================================= */}
+        <TabsContent value="autonomous" className="flex-1 m-0 p-4 overflow-auto">
+          <AutonomousPanel />
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* COSTS TAB — Smart cost tracking & budget management               */}
+        {/* ================================================================= */}
+        <TabsContent value="costs" className="flex-1 m-0 p-4 overflow-auto">
+          <CostsPanel />
         </TabsContent>
       </Tabs>
     </div>
@@ -1192,4 +1373,697 @@ function CNSPanel() {
   );
 }
 
+// =============================================================================
+// AUTONOMOUS PANEL — AI-driven multi-step orchestration brain
+// =============================================================================
+
+function AutonomousPanel() {
+  const [input, setInput] = useState("");
+  const [selectedExecId, setSelectedExecId] = useState<string | null>(null);
+  const [showActions, setShowActions] = useState(false);
+
+  const { data: status } = useAutonomousStatus();
+  const { data: executions } = useAutonomousExecutions();
+  const { data: selectedExec } = useAutonomousExecution(selectedExecId ?? undefined);
+  const { data: actions } = useAutonomousActions();
+
+  const executeMut = useAutonomousExecute();
+  const planMut = useAutonomousPlan();
+  const approveMut = useAutonomousApprove();
+  const cancelMut = useAutonomousCancel();
+
+  const handleExecute = (opts?: { requireApproval?: boolean; planOnly?: boolean }) => {
+    const text = input.trim();
+    if (!text) return;
+    const request = { input: text, ...opts };
+    if (opts?.planOnly) {
+      planMut.mutate(request, {
+        onSuccess: (exec) => {
+          toast.success("Plan created — review steps below");
+          setSelectedExecId(exec.id);
+          setInput("");
+        },
+        onError: (err) => toast.error(`Plan failed: ${err.message}`),
+      });
+    } else {
+      executeMut.mutate(request, {
+        onSuccess: (exec) => {
+          toast.success("Execution started");
+          setSelectedExecId(exec.id);
+          setInput("");
+        },
+        onError: (err) => toast.error(`Execution failed: ${err.message}`),
+      });
+    }
+  };
+
+  const statusColor = (s: string) => {
+    switch (s) {
+      case "completed": return "default";
+      case "executing": case "planning": return "secondary";
+      case "failed": return "destructive";
+      case "paused": return "outline";
+      default: return "secondary";
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Autonomous Brain 🦞</h2>
+            <p className="text-sm text-muted-foreground">
+              AI-driven multi-step orchestration across all JoyCreate features
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {status && (
+            <>
+              <Badge variant="secondary" className="gap-1">
+                <Activity className="h-3 w-3" />
+                {status.activeExecutions} active
+              </Badge>
+              <Badge variant="outline" className="gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                {status.completedExecutions} done
+              </Badge>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Input Card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">What should OpenClaw do?</CardTitle>
+          <CardDescription>
+            Describe a task in natural language. The AI will plan steps across apps,
+            agents, workflows, email, studios, and more — then execute them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="e.g. Create a landing page app, deploy it to Vercel, then email the link to my team…"
+            className="w-full min-h-[80px] rounded-md border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.ctrlKey) handleExecute();
+            }}
+          />
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              onClick={() => handleExecute()}
+              disabled={!input.trim() || executeMut.isPending}
+              className="bg-gradient-to-r from-amber-500 to-orange-500 text-white"
+            >
+              {executeMut.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Zap className="h-4 w-4 mr-1" />
+              )}
+              Execute
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleExecute({ requireApproval: true })}
+              disabled={!input.trim() || executeMut.isPending}
+            >
+              <Shield className="h-4 w-4 mr-1" />
+              Execute with Approval
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleExecute({ planOnly: true })}
+              disabled={!input.trim() || planMut.isPending}
+            >
+              {planMut.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <ListChecks className="h-4 w-4 mr-1" />
+              )}
+              Plan Only
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Selected Execution Detail */}
+      {selectedExec && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <ListChecks className="h-4 w-4" />
+                Execution: {selectedExec.input.slice(0, 60)}
+                {selectedExec.input.length > 60 ? "…" : ""}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Badge variant={statusColor(selectedExec.status)}>
+                  {selectedExec.status}
+                </Badge>
+                {selectedExec.status === "paused" && (
+                  <Button
+                    size="sm"
+                    onClick={() => approveMut.mutate(selectedExec.id)}
+                    disabled={approveMut.isPending}
+                    className="bg-gradient-to-r from-green-500 to-emerald-500 text-white"
+                  >
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Approve
+                  </Button>
+                )}
+                {(selectedExec.status === "executing" || selectedExec.status === "paused") && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => cancelMut.mutate(selectedExec.id)}
+                    disabled={cancelMut.isPending}
+                  >
+                    <XCircle className="h-3 w-3 mr-1" />
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+            {selectedExec.plan && (
+              <CardDescription className="mt-1">
+                {selectedExec.plan.reasoning}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            {/* Progress */}
+            {selectedExec.progress > 0 && (
+              <div className="mb-3">
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <span>Progress</span>
+                  <span>{Math.round(selectedExec.progress * 100)}%</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-300"
+                    style={{ width: `${selectedExec.progress * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Steps */}
+            {selectedExec.plan?.steps && (
+              <div className="space-y-2">
+                {selectedExec.plan.steps.map((step, idx) => (
+                  <div
+                    key={step.id}
+                    className={`flex items-start gap-2 p-2 rounded-md text-sm ${
+                      step.status === "completed"
+                        ? "bg-green-500/10"
+                        : step.status === "executing"
+                          ? "bg-amber-500/10"
+                          : step.status === "failed"
+                            ? "bg-red-500/10"
+                            : "bg-muted/50"
+                    }`}
+                  >
+                    <span className="font-mono text-xs text-muted-foreground mt-0.5 w-5">
+                      {idx + 1}.
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{step.description}</span>
+                        <Badge variant="outline" className="text-[10px] px-1">
+                          {step.actionId}
+                        </Badge>
+                      </div>
+                      {step.error && (
+                        <p className="text-xs text-red-500 mt-1">{step.error}</p>
+                      )}
+                      {step.durationMs != null && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          <Clock className="inline h-3 w-3 mr-0.5" />
+                          {(step.durationMs / 1000).toFixed(1)}s
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant={statusColor(step.status)} className="text-[10px]">
+                      {step.status === "completed" && <CheckCircle2 className="h-3 w-3" />}
+                      {step.status === "executing" && <Loader2 className="h-3 w-3 animate-spin" />}
+                      {step.status === "failed" && <XCircle className="h-3 w-3" />}
+                      {step.status === "pending" && <Clock className="h-3 w-3" />}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedExec.error && (
+              <div className="mt-3 p-2 rounded-md bg-red-500/10 text-sm text-red-500">
+                <AlertTriangle className="inline h-4 w-4 mr-1" />
+                {selectedExec.error}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Execution History */}
+      {executions && executions.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Recent Executions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              {executions.map((exec) => (
+                <button
+                  key={exec.id}
+                  onClick={() => setSelectedExecId(exec.id)}
+                  className={`w-full flex items-center justify-between p-2 rounded-md text-sm hover:bg-muted transition-colors text-left ${
+                    selectedExecId === exec.id ? "bg-muted" : ""
+                  }`}
+                >
+                  <div className="flex-1 min-w-0 mr-2">
+                    <p className="truncate font-medium">{exec.input}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(exec.createdAt).toLocaleString()}
+                      {exec.durationMs != null && ` · ${(exec.durationMs / 1000).toFixed(1)}s`}
+                    </p>
+                  </div>
+                  <Badge variant={statusColor(exec.status)} className="text-[10px] shrink-0">
+                    {exec.status}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Available Actions */}
+      <Card>
+        <CardHeader className="pb-2">
+          <button
+            onClick={() => setShowActions(!showActions)}
+            className="flex items-center gap-2 text-left w-full"
+          >
+            {showActions ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            <CardTitle className="text-sm">
+              Available Actions ({actions?.length ?? 0})
+            </CardTitle>
+          </button>
+          <CardDescription>
+            Actions the autonomous brain can dispatch across JoyCreate
+          </CardDescription>
+        </CardHeader>
+        {showActions && actions && (
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {actions.map((action) => (
+                <div
+                  key={action.id}
+                  className="p-2 rounded-md border text-sm"
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[10px]">
+                      {action.category}
+                    </Badge>
+                    <span className="font-medium">{action.name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {action.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// =============================================================================
+// COSTS PANEL — Smart cost tracking & budget management
+// =============================================================================
+
+function CostsPanel() {
+  const { data: summary } = useCostSummary();
+  const { data: budget } = useCostBudget();
+  const { data: records } = useCostRecords(20);
+  const setBudgetMut = useSetCostBudget();
+  const { data: taskRouting } = useTaskRouting();
+  const setTaskRoutingMut = useSetTaskRouting();
+  const resetTaskRoutingMut = useResetTaskRouting();
+
+  const [dailyLimit, setDailyLimit] = useState("");
+  const [monthlyLimit, setMonthlyLimit] = useState("");
+  const [autoDowngrade, setAutoDowngrade] = useState(true);
+  const [preferFree, setPreferFree] = useState(true);
+
+  // Sync form state with loaded budget
+  useEffect(() => {
+    if (budget) {
+      setDailyLimit(String(budget.dailyLimitUsd));
+      setMonthlyLimit(String(budget.monthlyLimitUsd));
+      setAutoDowngrade(budget.autoDowngrade);
+      setPreferFree(budget.preferFree);
+    }
+  }, [budget]);
+
+  const handleSaveBudget = () => {
+    const daily = parseFloat(dailyLimit);
+    const monthly = parseFloat(monthlyLimit);
+    if (isNaN(daily) || isNaN(monthly) || daily <= 0 || monthly <= 0) {
+      toast.error("Budget limits must be positive numbers");
+      return;
+    }
+    setBudgetMut.mutate(
+      { dailyLimitUsd: daily, monthlyLimitUsd: monthly, autoDowngrade, preferFree },
+      { onSuccess: () => toast.success("Budget settings saved") },
+    );
+  };
+
+  const dailyPct = summary
+    ? Math.min(100, (summary.todayUsd / summary.budget.dailyLimitUsd) * 100)
+    : 0;
+  const monthlyPct = summary
+    ? Math.min(100, (summary.monthUsd / summary.budget.monthlyLimitUsd) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
+            <Wallet className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Smart Costing 🦞</h2>
+            <p className="text-sm text-muted-foreground">
+              Track API spend, set budgets, auto-downgrade to save money
+            </p>
+          </div>
+        </div>
+        {summary && (
+          <div className="flex items-center gap-2">
+            {summary.overBudget && (
+              <Badge variant="destructive" className="gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Over Budget
+              </Badge>
+            )}
+            {summary.warningActive && !summary.overBudget && (
+              <Badge variant="secondary" className="gap-1 text-amber-600">
+                <AlertTriangle className="h-3 w-3" />
+                Approaching Limit
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Spend Overview */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground">Today</p>
+              <p className="text-xl font-bold">${summary.todayUsd.toFixed(4)}</p>
+              <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${dailyPct > 80 ? "bg-red-500" : dailyPct > 50 ? "bg-amber-500" : "bg-emerald-500"}`}
+                  style={{ width: `${dailyPct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                of ${summary.budget.dailyLimitUsd.toFixed(2)} daily limit
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground">This Month</p>
+              <p className="text-xl font-bold">${summary.monthUsd.toFixed(4)}</p>
+              <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${monthlyPct > 80 ? "bg-red-500" : monthlyPct > 50 ? "bg-amber-500" : "bg-emerald-500"}`}
+                  style={{ width: `${monthlyPct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                of ${summary.budget.monthlyLimitUsd.toFixed(2)} monthly limit
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground">Requests Today</p>
+              <p className="text-xl font-bold">{summary.todayRequests}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {summary.todayTokens.toLocaleString()} tokens
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <TrendingDown className="h-3 w-3 text-emerald-500" />
+                Saved by Local
+              </p>
+              <p className="text-xl font-bold text-emerald-600">
+                ${summary.savedByLocal.toFixed(4)}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                by using free Ollama models
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Budget Settings */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <DollarSign className="h-4 w-4" />
+            Budget Settings
+          </CardTitle>
+          <CardDescription>
+            Set spending limits. When exceeded, OpenClaw auto-downgrades to cheaper or free models.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Daily Limit (USD)</Label>
+              <Input
+                type="number"
+                step="0.50"
+                min="0"
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(e.target.value)}
+                placeholder="5.00"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Monthly Limit (USD)</Label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={monthlyLimit}
+                onChange={(e) => setMonthlyLimit(e.target.value)}
+                placeholder="50.00"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">Auto-downgrade when near limit</Label>
+              <p className="text-xs text-muted-foreground">
+                Switch to cheaper models when spending hits {summary?.budget.warningThresholdPct ?? 80}% of the daily limit
+              </p>
+            </div>
+            <Switch checked={autoDowngrade} onCheckedChange={setAutoDowngrade} />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">Prefer free / local models</Label>
+              <p className="text-xs text-muted-foreground">
+                Route to Ollama or free OpenRouter models whenever they can handle the task
+              </p>
+            </div>
+            <Switch checked={preferFree} onCheckedChange={setPreferFree} />
+          </div>
+
+          <Button
+            size="sm"
+            onClick={handleSaveBudget}
+            disabled={setBudgetMut.isPending}
+            className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
+          >
+            {setBudgetMut.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+            )}
+            Save Budget
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Task-to-Model Routing */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Cpu className="h-4 w-4" />
+            Task → Model Routing
+          </CardTitle>
+          <CardDescription>
+            Assign a preferred model per module. Telegram/Discord chat uses the Chat model instead of
+            expensive ones.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {taskRouting &&
+            (
+              Object.entries(taskRouting) as Array<
+                [string, { model: string; provider: string; reason: string }]
+              >
+            ).map(([module, route]) => (
+              <div
+                key={module}
+                className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium capitalize">{module}</span>
+                  <p className="text-[10px] text-muted-foreground truncate">{route.reason}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Input
+                    className="h-7 text-xs w-56"
+                    value={route.model}
+                    onChange={(e) => {
+                      setTaskRoutingMut.mutate(
+                        {
+                          [module]: { ...route, model: e.target.value },
+                        },
+                        {
+                          onSuccess: () => toast.success(`${module} model updated`),
+                        },
+                      );
+                    }}
+                    onBlur={(e) => {
+                      if (!e.target.value.trim()) return;
+                    }}
+                  />
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {route.provider}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+
+          <div className="flex justify-end pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                resetTaskRoutingMut.mutate(undefined, {
+                  onSuccess: () => toast.success("Task routing reset to defaults"),
+                })
+              }
+              disabled={resetTaskRoutingMut.isPending}
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Reset to Defaults
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Top Spending Models */}
+      {summary && summary.topModels.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Top Spending Models</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {summary.topModels.map((m) => (
+                <div
+                  key={m.model}
+                  className="flex items-center justify-between text-sm p-2 rounded-md bg-muted/50"
+                >
+                  <div>
+                    <span className="font-medium">{m.model}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {m.requests} requests
+                    </span>
+                  </div>
+                  <span className={`font-mono ${m.cost === 0 ? "text-emerald-600" : ""}`}>
+                    ${m.cost.toFixed(4)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Cost Records */}
+      {records && records.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Recent API Calls</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {records.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between text-xs p-1.5 rounded border-b last:border-0"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge
+                      variant={r.totalCost === 0 ? "outline" : "secondary"}
+                      className="text-[10px] shrink-0"
+                    >
+                      {r.source}
+                    </Badge>
+                    <span className="truncate">{r.model}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-muted-foreground">
+                      {r.totalTokens.toLocaleString()} tok
+                    </span>
+                    <span className={`font-mono ${r.totalCost === 0 ? "text-emerald-600" : ""}`}>
+                      ${r.totalCost.toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
 

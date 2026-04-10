@@ -140,6 +140,11 @@ export class OpenClawSystemIntegration extends EventEmitter {
     logger.info("Initializing OpenClaw system integration...");
     
     // Initialize gateway
+    // The internal gateway probes port 18790 first — if an external OpenClaw
+    // daemon is already running (registered as a Windows Scheduled Task / systemd
+    // service), JoyCreate enters **bridge mode** and connects as a WS client.
+    // If nothing is listening, JoyCreate binds 18790 as its own fallback server.
+    // We do NOT spawn the external daemon here — it runs independently.
     const gateway = getOpenClawGateway();
     await gateway.initialize();
     

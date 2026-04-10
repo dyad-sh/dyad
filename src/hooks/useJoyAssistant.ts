@@ -159,7 +159,21 @@ export function useJoyAssistant(sessionId: string) {
 
   const executeAction = useCallback(
     async (action: AssistantAction) => {
-      return JoyAssistantClient.getInstance().executeAction(sessionId, action);
+      const response = await JoyAssistantClient.getInstance().executeAction(sessionId, action);
+      // If the action returned a result (system actions), append it to the chat
+      if (response.result !== undefined) {
+        const resultText = typeof response.result === "string"
+          ? response.result
+          : JSON.stringify(response.result, null, 2);
+        const resultMsg: AssistantMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `\`\`\`\n${resultText}\n\`\`\``,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, resultMsg]);
+      }
+      return response;
     },
     [sessionId],
   );

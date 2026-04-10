@@ -93,6 +93,10 @@ export class OpenClawIntegrationClient {
     return this.ipcRenderer.invoke("openclaw:gateway:restart");
   }
 
+  async yieldToDaemon(): Promise<{ success: boolean; bridged?: boolean; reason?: string }> {
+    return this.ipcRenderer.invoke("openclaw:gateway:yield-to-daemon");
+  }
+
   async getConnectionStatus(): Promise<{ connected: boolean; status: "connected" | "disconnected" | "connecting" | "error" }> {
     return this.ipcRenderer.invoke("openclaw:connection:status");
   }

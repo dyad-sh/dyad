@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useAtomValue } from "jotai";
 import { Link } from "@tanstack/react-router";
-import { Layers, ExternalLink } from "lucide-react";
+import { Layers, ExternalLink, Rocket, CheckCircle2, XCircle, Loader2, ChevronDown } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
@@ -9,6 +10,152 @@ import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useAutoDeploy, type AutoDeployStep } from "@/hooks/useAutoDeploy";
+
+type DeployTarget = "vercel" | "4everland" | "fleek" | "ipfs-pinata" | "ipfs-web3storage" | "arweave" | "spheron";
+
+const DEPLOY_TARGETS: Array<{ id: DeployTarget; label: string; description: string }> = [
+  { id: "vercel", label: "Vercel", description: "Fast global CDN, automatic HTTPS" },
+  { id: "4everland", label: "4everland", description: "Decentralized hosting on IPFS" },
+  { id: "fleek", label: "Fleek", description: "Web3 native deployment" },
+  { id: "ipfs-pinata", label: "IPFS (Pinata)", description: "Pinned IPFS hosting" },
+  { id: "arweave", label: "Arweave", description: "Permanent on-chain storage" },
+  { id: "spheron", label: "Spheron", description: "Decentralized cloud" },
+];
+
+function StepIndicator({ step }: { step: AutoDeployStep }) {
+  const icon =
+    step.status === "running" ? (
+      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+    ) : step.status === "success" ? (
+      <CheckCircle2 className="w-4 h-4 text-green-500" />
+    ) : step.status === "error" ? (
+      <XCircle className="w-4 h-4 text-red-500" />
+    ) : step.status === "skipped" ? (
+      <CheckCircle2 className="w-4 h-4 text-gray-400" />
+    ) : (
+      <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+    );
+
+  return (
+    <div className="flex items-start gap-2 py-1">
+      <div className="mt-0.5">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm ${step.status === "error" ? "text-red-600 dark:text-red-400" : "text-gray-700 dark:text-gray-300"}`}>
+          {step.message}
+        </p>
+        {step.details && (
+          <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap">{step.details}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OneClickDeployCard({ appId }: { appId: number }) {
+  const [target, setTarget] = useState<DeployTarget>("vercel");
+  const [showTargets, setShowTargets] = useState(false);
+  const { deploy, isDeploying, steps, deployResult, error } = useAutoDeploy(appId);
+
+  const selectedTarget = DEPLOY_TARGETS.find((t) => t.id === target)!;
+
+  return (
+    <Card className="border-2 border-blue-200 dark:border-blue-800">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2">
+          <Rocket className="w-5 h-5 text-blue-500" />
+          One-Click Deploy
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Verify completeness, push to GitHub, and deploy — all in one step.
+        </p>
+
+        {/* Target selector */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowTargets(!showTargets)}
+            disabled={isDeploying}
+            className="w-full flex items-center justify-between px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 disabled:opacity-50"
+          >
+            <span className="text-sm font-medium">{selectedTarget.label}</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showTargets ? "rotate-180" : ""}`} />
+          </button>
+          {showTargets && (
+            <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              {DEPLOY_TARGETS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => { setTarget(t.id); setShowTargets(false); }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg"
+                >
+                  <span className="text-sm font-medium">{t.label}</span>
+                  <span className="block text-xs text-gray-500">{t.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Deploy button */}
+        <Button
+          className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600"
+          disabled={isDeploying}
+          onClick={() => deploy(target)}
+        >
+          {isDeploying ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Deploying...
+            </>
+          ) : (
+            <>
+              <Rocket className="w-4 h-4 mr-2" />
+              Deploy to {selectedTarget.label}
+            </>
+          )}
+        </Button>
+
+        {/* Progress steps */}
+        {steps.length > 0 && (
+          <div className="border rounded-lg p-3 space-y-1 bg-gray-50 dark:bg-gray-900/50">
+            {steps.map((step, i) => (
+              <StepIndicator key={i} step={step} />
+            ))}
+          </div>
+        )}
+
+        {/* Result */}
+        {deployResult?.deploymentUrl && (
+          <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-green-800 dark:text-green-200">Deployed!</p>
+              <button
+                type="button"
+                onClick={() => IpcClient.getInstance().openExternalUrl(deployResult.deploymentUrl!)}
+                className="text-xs text-green-600 dark:text-green-400 underline truncate block"
+              >
+                {deployResult.deploymentUrl}
+              </button>
+            </div>
+            <ExternalLink className="w-4 h-4 text-green-500 flex-shrink-0" />
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -81,6 +228,9 @@ export const PublishPanel = () => {
             Publish App
           </h1>
         </div>
+
+        {/* One-Click Deploy Section */}
+        <OneClickDeployCard appId={selectedAppId} />
 
         {/* Portal Section - Show only if app has neon project */}
         {app.neonProjectId && <PortalMigrate appId={selectedAppId} />}

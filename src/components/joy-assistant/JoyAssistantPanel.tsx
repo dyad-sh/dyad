@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Bot,
   ChevronDown,
@@ -29,7 +31,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -90,7 +92,7 @@ export function JoyAssistantPanel() {
   const [input, setInput] = useState("");
   const [minimized, setMinimized] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // ── Keyboard shortcut: Ctrl+Shift+A ────────────────────────────────────
   useEffect(() => {
@@ -272,12 +274,16 @@ export function JoyAssistantPanel() {
           {/* ── Messages ────────────────────────────────────────────── */}
           <ScrollArea className="flex-1 px-3 py-2" ref={scrollRef}>
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full gap-3 py-12 text-muted-foreground">
-                <Sparkles className="h-8 w-8" />
-                <p className="text-sm text-center max-w-[260px]">
-                  Hi! I&apos;m your Joy Assistant. Ask me anything about the
-                  platform, or let me help you get things done.
-                </p>
+              <div className="flex flex-col items-center justify-center h-full gap-4 py-12 text-muted-foreground">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                </div>
+                <div className="text-center max-w-[280px] space-y-1">
+                  <p className="text-sm font-medium text-foreground">Hey! I&apos;m Joy</p>
+                  <p className="text-xs">
+                    Your AI assistant for everything in JoyCreate. I can navigate, create, explain, run commands, and more. Try me!
+                  </p>
+                </div>
               </div>
             )}
 
@@ -292,11 +298,24 @@ export function JoyAssistantPanel() {
                 )}
               >
                 {/* Message text */}
-                <div className="whitespace-pre-wrap break-words">
-                  {msg.content || (streaming && msg.role === "assistant" ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : null)}
-                </div>
+                {msg.content ? (
+                  msg.role === "assistant" ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  )
+                ) : (
+                  streaming && msg.role === "assistant" ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span className="text-xs text-muted-foreground">Thinking...</span>
+                    </div>
+                  ) : null
+                )}
 
                 {/* Action cards */}
                 {msg.actions && msg.actions.length > 0 && (
@@ -367,19 +386,20 @@ export function JoyAssistantPanel() {
 
           {/* ── Input ───────────────────────────────────────────────── */}
           <div className="border-t px-3 py-2">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend();
-              }}
-              className="flex items-center gap-2"
-            >
-              <Input
+            <div className="flex items-end gap-2">
+              <Textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask anything..."
-                className="flex-1 h-8 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Ask anything... (Enter to send, Shift+Enter for new line)"
+                className="flex-1 min-h-[36px] max-h-[120px] text-sm resize-none"
+                rows={1}
                 disabled={streaming}
               />
               {streaming ? (
@@ -394,15 +414,16 @@ export function JoyAssistantPanel() {
                 </Button>
               ) : (
                 <Button
-                  type="submit"
+                  type="button"
                   size="icon"
                   className="h-8 w-8 shrink-0"
                   disabled={!input.trim()}
+                  onClick={handleSend}
                 >
                   <Send className="h-3.5 w-3.5" />
                 </Button>
               )}
-            </form>
+            </div>
           </div>
         </>
       )}
@@ -464,6 +485,20 @@ function actionLabel(action: AssistantAction): string {
       return `Search: ${action.query}`;
     case "open-dialog":
       return `Open ${action.dialogId}`;
+    case "run-command":
+      return `Run: ${action.command.slice(0, 50)}`;
+    case "read-file":
+      return `Read file: ${action.filePath}`;
+    case "write-file":
+      return `Write file: ${action.filePath}`;
+    case "list-directory":
+      return `List directory: ${action.directory}`;
+    case "open-app":
+      return `Open app: ${action.appName}`;
+    case "open-url":
+      return `Open URL: ${action.url}`;
+    case "system-info":
+      return `System info: ${action.infoType}`;
     default:
       return "Unknown action";
   }

@@ -47,6 +47,7 @@ import { emailHubRoute } from "./routes/email-hub";
 
 import { integrationsRoute } from "./routes/integrations";
 import { marketplaceExplorerRoute } from "./routes/marketplace-explorer";
+import { myMarketplaceAssetsRoute } from "./routes/my-marketplace-assets";
 import { creatorDashboardRoute } from "./routes/creator-dashboard";
 
 const routeTree = rootRoute.addChildren([
@@ -102,6 +103,7 @@ const routeTree = rootRoute.addChildren([
 
   integrationsRoute,
   marketplaceExplorerRoute,
+  myMarketplaceAssetsRoute,
   creatorDashboardRoute,
 ]);
 

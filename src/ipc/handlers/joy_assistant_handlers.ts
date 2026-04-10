@@ -174,6 +174,8 @@ export function registerJoyAssistantHandlers() {
       const validTypes = [
         "navigate", "fill", "click", "highlight", "tooltip",
         "create-document", "search", "open-dialog",
+        "run-command", "read-file", "write-file", "list-directory",
+        "open-app", "open-url", "system-info",
       ];
       if (!validTypes.includes(action.type)) {
         throw new Error(`Invalid action type: ${action.type}`);
@@ -189,6 +191,49 @@ export function registerJoyAssistantHandlers() {
         if (action.targetId.includes("<") || action.targetId.includes(">")) {
           throw new Error("Invalid targetId — no HTML allowed");
         }
+      }
+
+      // For system-level actions, execute them on the main process side
+      if (action.type === "run-command" || action.type === "read-file" ||
+          action.type === "write-file" || action.type === "list-directory" ||
+          action.type === "open-app" || action.type === "open-url" ||
+          action.type === "system-info") {
+        const tools = await import("@/lib/joy_assistant_tools");
+        let result: unknown;
+
+        switch (action.type) {
+          case "run-command":
+            result = await tools.runCommand(action.command, action.cwd);
+            break;
+          case "read-file":
+            result = await tools.readFileContent(action.filePath);
+            break;
+          case "write-file":
+            await tools.writeFileContent(action.filePath, action.content);
+            result = { success: true, filePath: action.filePath };
+            break;
+          case "list-directory":
+            result = await tools.listDirectory(action.dirPath);
+            break;
+          case "open-app":
+            await tools.openApp(action.appName, action.args);
+            result = { success: true, appName: action.appName };
+            break;
+          case "open-url":
+            await tools.openUrl(action.url);
+            result = { success: true, url: action.url };
+            break;
+          case "system-info":
+            result = await tools.getSystemInfo(action.infoType);
+            break;
+        }
+
+        logger.info("System action executed", {
+          sessionId,
+          actionType: action.type,
+        });
+
+        return { approved: true, action, result } as const;
       }
 
       logger.info("Action approved for execution", {

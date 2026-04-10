@@ -37,6 +37,7 @@ import {
   recordTaskOutcome,
   type ModelSelection,
 } from "./openclaw_registry_bridge";
+import { getOpenClawCostEngine, resolveTaskModule } from "./openclaw_cost_engine";
 
 const logger = log.scope("openclaw_cns");
 
@@ -360,6 +361,23 @@ export class OpenClawCNS extends EventEmitter {
         tokensPerSecond: response.timing?.tokensPerSecond,
       };
       
+      // ── Record cost ──
+      if (response.usage) {
+        try {
+          const costEngine = getOpenClawCostEngine();
+          costEngine.recordUsage({
+            model: response.model,
+            provider: route.provider ?? (route.useLocal ? "ollama" : "cloud"),
+            inputTokens: response.usage.promptTokens,
+            outputTokens: response.usage.completionTokens,
+            taskType: request.type,
+            source: "cns",
+          });
+        } catch {
+          // Cost tracking is best-effort
+        }
+      }
+      
       this.activeOperations.delete(request.id);
       this.emit("request:complete", response);
       
@@ -395,6 +413,56 @@ export class OpenClawCNS extends EventEmitter {
         : "general";
       
       const complexity = this.estimateComplexity(request);
+
+      // ── Cost-aware routing: check if budget pressure forces cheaper model ──
+      try {
+        const costEngine = getOpenClawCostEngine();
+        const budget = costEngine.getBudget();
+        const summary = costEngine.getSummary();
+
+        if (summary.overBudget || (budget.autoDowngrade && summary.warningActive)) {
+          // Gather locally available models
+          const ollamaBridge = getOpenClawOllamaBridge();
+          if (ollamaBridge.isOllamaAvailable()) {
+            const localModel = this.getLocalModel(request);
+            logger.info(
+              `🦞 Cost engine: ${summary.overBudget ? "budget exceeded" : "approaching limit"} — routing to local model ${localModel}`,
+            );
+            return {
+              useLocal: true,
+              model: localModel,
+              provider: "ollama",
+            };
+          }
+        }
+      } catch {
+        // Cost engine check is best-effort
+      }
+
+      // ── Task-to-model routing: use configured model per module ──
+      // Skip if user explicitly set a model in options (user override wins)
+      if (!request.options?.model) {
+        try {
+          const costEngine = getOpenClawCostEngine();
+          // Resolve using task type, then channel if present
+          const routeKey = request.options?.channel ?? taskType;
+          const taskRoute = costEngine.getModelForTask(routeKey);
+          if (taskRoute) {
+            const isLocal = taskRoute.provider === "ollama";
+            logger.info(
+              `🦞 Task routing: ${routeKey} → ${resolveTaskModule(routeKey)} → ${taskRoute.model} (${taskRoute.reason})`,
+            );
+            return {
+              useLocal: isLocal,
+              model: taskRoute.model,
+              provider: taskRoute.provider as "ollama" | "cloud" | "peer",
+            };
+          }
+        } catch {
+          // Task routing is best-effort
+        }
+      }
+
       const selection = await selectModelForTask(
         taskType,
         complexity,

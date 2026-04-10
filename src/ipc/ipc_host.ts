@@ -133,6 +133,10 @@ import { registerAgentMarketplaceHandlers } from "./handlers/agent_marketplace_h
 import { registerWorkflowMarketplaceHandlers } from "./handlers/workflow_marketplace_handlers";
 import { registerMcpServerHandlers } from "./handlers/mcp_server_handlers";
 import { registerJoyAssistantHandlers } from "./handlers/joy_assistant_handlers";
+import { registerAutoDeployHandlers } from "./handlers/auto_deploy_handlers";
+import { registerSubgraphHandlers } from "./handlers/subgraph_handlers";
+import { registerOpenClawAutonomousHandlers } from "./handlers/openclaw_autonomous_handlers";
+import { registerOpenClawCostHandlers } from "./handlers/openclaw_cost_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -416,4 +420,16 @@ export function registerIpcHandlers() {
 
   // Joy Assistant — AI platform assistant with smart routing
   registerJoyAssistantHandlers();
+
+  // Auto-Deploy — One-click completeness check + GitHub push + deploy
+  registerAutoDeployHandlers();
+
+  // Subgraph — Goldsky-indexed on-chain marketplace data (tokens, stores, domains)
+  registerSubgraphHandlers();
+
+  // OpenClaw Autonomous — Cross-feature AI orchestration
+  registerOpenClawAutonomousHandlers();
+
+  // OpenClaw Cost Engine — Smart cost tracking & budget management
+  registerOpenClawCostHandlers();
 }

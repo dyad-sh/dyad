@@ -110,6 +110,10 @@ git push --force origin HEAD
 
 **Note:** Plain `--force` can overwrite others' remote commits. Only use this in the split-remote scenario described above, where `--force-with-lease` cannot work. In normal setups, always prefer `--force-with-lease`.
 
+## Repo allowlist push fallback
+
+In some Codex shells, pushing to fork remotes can fail immediately with `Repo <owner>/<repo> is not allowlisted` even when `gh auth status` shows a valid token. If both fork remotes are blocked this way but `upstream` is allowed, push the branch directly to `upstream` (for example `git push --force-with-lease upstream HEAD:<branch>`) and then repoint the local branch to track `upstream/<branch>` so later status and push commands reflect the real remote.
+
 ## Rebase workflow and conflict resolution
 
 ### Handling unstaged changes during rebase

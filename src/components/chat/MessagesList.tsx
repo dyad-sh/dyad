@@ -99,13 +99,26 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     const currentMessage = messages[messages.length - 1];
                     // The user message that triggered this assistant response
                     const userMessage = messages[messages.length - 2];
-                    if (currentMessage?.sourceCommitHash) {
+                    const currentCommitIndex = currentMessage?.commitHash
+                      ? versions.findIndex(
+                          (version) =>
+                            version.oid === currentMessage.commitHash,
+                        )
+                      : -1;
+                    const previousVersionId =
+                      currentCommitIndex >= 0
+                        ? versions[currentCommitIndex + 1]?.oid
+                        : undefined;
+                    const revertTargetVersionId =
+                      previousVersionId ?? currentMessage?.sourceCommitHash;
+
+                    if (revertTargetVersionId) {
                       console.debug(
-                        "Reverting to source commit hash",
-                        currentMessage.sourceCommitHash,
+                        "Reverting to previous version",
+                        revertTargetVersionId,
                       );
                       await revertVersion({
-                        versionId: currentMessage.sourceCommitHash,
+                        versionId: revertTargetVersionId,
                         currentChatMessageId: userMessage
                           ? {
                               chatId: selectedChatId,

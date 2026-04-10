@@ -225,6 +225,11 @@ export const queryKeys = {
     info: ["userBudgetInfo"] as const,
   },
 
+  cloudSandboxes: {
+    status: ({ appId }: { appId: number | null }) =>
+      ["cloudSandboxStatus", appId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Free Agent Quota
   // ─────────────────────────────────────────────────────────────────────────────
@@ -360,6 +365,9 @@ export type AppQueryKey =
       (typeof queryKeys.languageModels)[keyof typeof queryKeys.languageModels]
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
+  | QueryKeyOf<
+      (typeof queryKeys.cloudSandboxes)[keyof typeof queryKeys.cloudSandboxes]
+    >
   | QueryKeyOf<
       (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
     >

@@ -1065,7 +1065,7 @@ function RefactorFileButton({ path }: { path: string }) {
     });
   };
   return (
-    <SuggestionButton onClick={onClick} tooltipText={t("refactorDescription")}>
+    <SuggestionButton onClick={onClick} tooltipText={path}>
       <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
         {t("refactorFile", { path: path.split("/").slice(-2).join("/") })}
       </span>

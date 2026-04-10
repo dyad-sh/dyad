@@ -6,6 +6,7 @@
   "closeTab": "Close",
   "closeOtherTabs": "Close other tabs",
   "closeTabsToRight": "Close tabs to the right",
+  "groupTabsByApp": "Group tabs by app",
   "chatInProgress": "Chat in progress",
   "newActivity": "New activity",
   "openOverflowTabs": "Open more tabs ({{count}})",

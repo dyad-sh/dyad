@@ -210,6 +210,8 @@ function TitleBarActions() {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { restartApp, refreshAppIframe } = useRunApp();
+  const { settings } = useSettings();
+  const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
 
   const onCleanRestart = useCallback(() => {
     restartApp({ removeNodeModules: true });
@@ -235,6 +237,10 @@ function TitleBarActions() {
   const onClearSessionData = useCallback(() => {
     clearSessionData();
   }, [clearSessionData]);
+
+  const onRecreateSandbox = useCallback(() => {
+    restartApp({ recreateSandbox: true });
+  }, [restartApp]);
 
   return (
     <div
@@ -267,6 +273,17 @@ function TitleBarActions() {
               </span>
             </div>
           </DropdownMenuItem>
+          {isCloudSandboxMode && (
+            <DropdownMenuItem onClick={onRecreateSandbox}>
+              <Cog size={16} />
+              <div className="flex flex-col">
+                <span>Recreate Sandbox</span>
+                <span className="text-xs text-muted-foreground">
+                  Destroys the current sandbox and creates a new one
+                </span>
+              </div>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

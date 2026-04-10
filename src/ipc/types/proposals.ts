@@ -100,6 +100,7 @@ export const ApproveProposalResultSchema = z.object({
   error: z.string().optional(),
   extraFiles: z.array(z.string()).optional(),
   extraFilesError: z.string().optional(),
+  warningMessages: z.array(z.string()).optional(),
 });
 
 export type ApproveProposalResult = z.infer<typeof ApproveProposalResultSchema>;

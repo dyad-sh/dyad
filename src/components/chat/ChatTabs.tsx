@@ -170,6 +170,31 @@ export function partitionChatsByVisibleCount(
   };
 }
 
+/**
+ * Reorders chat IDs so that tabs for the same app are grouped together.
+ * Within each app group the original relative order is preserved.
+ * App groups are ordered by the position of their first chat in the input.
+ */
+export function groupChatIdsByApp(
+  orderedChatIds: number[],
+  chatsById: Map<number, ChatSummary>,
+): number[] {
+  // Build groups keyed by appId, preserving encounter order via a Map.
+  const groups = new Map<number, number[]>();
+  for (const chatId of orderedChatIds) {
+    const chat = chatsById.get(chatId);
+    const appId = chat?.appId ?? -1;
+    let group = groups.get(appId);
+    if (!group) {
+      group = [];
+      groups.set(appId, group);
+    }
+    group.push(chatId);
+  }
+  // Flatten groups (Map preserves insertion order → first-seen app comes first).
+  return Array.from(groups.values()).flat();
+}
+
 export function getFallbackChatIdAfterClose(
   tabs: ChatSummary[],
   closedChatId: number,
@@ -481,6 +506,24 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     closeTabsAndClearNotifications(idsToClose, fallback);
   };
 
+  const handleGroupByApp = () => {
+    const grouped = groupChatIdsByApp(orderedChatIds, chatsById);
+    if (!isSameIdOrder(orderedChatIds, grouped)) {
+      setRecentViewedChatIds(grouped);
+    }
+  };
+
+  // Check whether tabs span more than one app (used to enable/disable grouping)
+  const hasMultipleApps = useMemo(() => {
+    const appIds = new Set<number>();
+    for (const chatId of orderedChatIds) {
+      const chat = chatsById.get(chatId);
+      if (chat) appIds.add(chat.appId);
+      if (appIds.size > 1) return true;
+    }
+    return false;
+  }, [orderedChatIds, chatsById]);
+
   if (orderedChats.length === 0) return null;
 
   return (
@@ -655,6 +698,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     disabled={!hasTabsToRight}
                   >
                     {t("closeTabsToRight")}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onClick={handleGroupByApp}
+                    disabled={!hasMultipleApps}
+                  >
+                    {t("groupTabsByApp")}
                   </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>

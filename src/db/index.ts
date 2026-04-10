@@ -52,6 +52,15 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   const sqlite = new Database(dbPath, { timeout: 10000 });
   sqlite.pragma("foreign_keys = ON");
 
+  try {
+    sqlite.pragma("journal_mode = WAL");
+  } catch (error) {
+    logger.warn(
+      "Could not enable WAL mode, falling back to default journal mode:",
+      error,
+    );
+  }
+
   _db = drizzle(sqlite, { schema });
 
   try {

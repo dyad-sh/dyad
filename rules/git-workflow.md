@@ -24,6 +24,10 @@ gh pr create --head <owner>:<branch> ...
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
 
+## GH auth allowlist and git push
+
+If `gh auth status` succeeds but `git push` fails with `Repo <owner>/<repo> is not allowlisted` followed by `fatal: could not read Username for 'https://github.com/...': Device not configured`, run `gh auth setup-git` first and then push to an allowlisted remote. In some bot workspaces, fork remotes are not allowlisted even when `upstream` is, so retry the push against `upstream` if project policy permits it.
+
 ## Empty branches cannot produce PRs
 
 Before creating a PR for a freshly pushed branch, check whether it is actually ahead of the base branch:
@@ -105,6 +109,10 @@ git push --force origin HEAD
 ```
 
 **Note:** Plain `--force` can overwrite others' remote commits. Only use this in the split-remote scenario described above, where `--force-with-lease` cannot work. In normal setups, always prefer `--force-with-lease`.
+
+## Repo allowlist push fallback
+
+In some Codex shells, pushing to fork remotes can fail immediately with `Repo <owner>/<repo> is not allowlisted` even when `gh auth status` shows a valid token. If both fork remotes are blocked this way but `upstream` is allowed, push the branch directly to `upstream` (for example `git push --force-with-lease upstream HEAD:<branch>`) and then repoint the local branch to track `upstream/<branch>` so later status and push commands reflect the real remote.
 
 ## Rebase workflow and conflict resolution
 

@@ -33,8 +33,20 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("version_handlers");
+
+async function syncCloudSandboxSnapshotBestEffort(appId: number) {
+  try {
+    await syncCloudSandboxSnapshot({ appId });
+  } catch (error) {
+    logger.warn(
+      `Cloud sandbox sync failed after version operation for app ${appId}:`,
+      error,
+    );
+  }
+}
 
 async function restoreBranchForPreview({
   appId,
@@ -365,6 +377,7 @@ export function registerVersionHandlers() {
           // Continue with the revert operation even if function deployment fails
         }
       }
+      await syncCloudSandboxSnapshotBestEffort(appId);
       if (warningMessage) {
         return { warningMessage };
       }
@@ -449,6 +462,7 @@ export function registerVersionHandlers() {
         path: fullAppPath,
         ref: gitRef,
       });
+      await syncCloudSandboxSnapshotBestEffort(appId);
     });
   });
 }

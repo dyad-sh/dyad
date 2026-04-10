@@ -57,7 +57,7 @@ export function registerDependencyHandlers() {
         );
       }
 
-      executeAddDependency({
+      await executeAddDependency({
         packages,
         message,
         appPath: getDyadAppPath(app.path),

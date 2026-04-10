@@ -1,7 +1,0 @@
-===
-role: system
-message: [[SYSTEM_MESSAGE]]
-
-===
-role: user
-message: [dump]

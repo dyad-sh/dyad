@@ -1,0 +1,22 @@
+- dialog "Codebase Context":
+  - heading "Codebase Context" [level=2]
+  - paragraph:
+    - text: Select the files to use as context.
+    - button:
+      - img
+  - textbox "src/**/*.tsx"
+  - button "Add"
+  - button "src/sub/**"
+  - text: /2 files, ~\d+ tokens/
+  - button:
+    - img
+  - heading "Exclude Paths" [level=3]
+  - paragraph:
+    - text: These files will be excluded from the context.
+    - button:
+      - img
+  - textbox "node_modules/**/*"
+  - button "Add"
+  - button "Close":
+    - img
+    - text: ""

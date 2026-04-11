@@ -1,0 +1,34 @@
+- dialog "Codebase Context":
+  - heading "Codebase Context" [level=2]
+  - paragraph:
+    - text: Select the files to use as context.
+    - button:
+      - img
+  - textbox "src/**/*.tsx"
+  - button "Add"
+  - paragraph: Dyad will use Smart Context to automatically find the most relevant files to use as context.
+  - heading "Exclude Paths" [level=3]
+  - paragraph:
+    - text: These files will be excluded from the context.
+    - button:
+      - img
+  - textbox "node_modules/**/*"
+  - button "Add"
+  - button "exclude/exclude.ts"
+  - text: /1 files, ~\d+ tokens/
+  - button:
+    - img
+  - heading "Smart Context Auto-includes" [level=3]
+  - paragraph:
+    - text: These files will always be included in the context.
+    - button:
+      - img
+  - textbox "src/**/*.config.ts"
+  - button "Add"
+  - button "a.ts"
+  - text: /1 files, ~\d+ tokens/
+  - button:
+    - img
+  - button "Close":
+    - img
+    - text: ""

@@ -21,13 +21,14 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { CopyButton } from "@/components/ui/copy-button";
 import { unescapeXmlAttr } from "../../../shared/xmlEscape";
 import {
   isCancelledResponseContent,
@@ -123,24 +124,7 @@ const ChatMessage = ({
     return null;
   }, [message.commitHash, message.role, liveVersions]);
 
-  // handle copy request id
-  const [copiedRequestId, setCopiedRequestId] = useState(false);
-  const copiedRequestIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // handle copy commit hash
-  const [copiedCommitHash, setCopiedCommitHash] = useState(false);
-  const copiedCommitHashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copiedRequestIdTimeoutRef.current) {
-        clearTimeout(copiedRequestIdTimeoutRef.current);
-      }
-      if (copiedCommitHashTimeoutRef.current) {
-        clearTimeout(copiedCommitHashTimeoutRef.current);
-      }
-    };
-  }, []);
+  // handle copy request id and commit hash using CopyButton
 
   // Format the message timestamp
   const formatTimestamp = (timestamp: string | Date) => {
@@ -307,94 +291,22 @@ const ChatMessage = ({
                   </span>
                 </div>
                 {message.commitHash && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          onClick={() => {
-                            if (!message.commitHash) return;
-                            navigator.clipboard
-                              .writeText(message.commitHash)
-                              .then(() => {
-                                setCopiedCommitHash(true);
-                                if (copiedCommitHashTimeoutRef.current) {
-                                  clearTimeout(
-                                    copiedCommitHashTimeoutRef.current,
-                                  );
-                                }
-                                copiedCommitHashTimeoutRef.current = setTimeout(
-                                  () => setCopiedCommitHash(false),
-                                  2000,
-                                );
-                              })
-                              .catch(() => {
-                                // noop
-                              });
-                          }}
-                          aria-label="Copy Commit Hash"
-                          className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                        />
-                      }
-                    >
-                      <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {message.commitHash.slice(0, 7)}
-                      </span>
-                      {copiedCommitHash ? (
-                        <Check className="h-3 w-3 text-green-500 ml-1" />
-                      ) : (
-                        <Copy className="h-3 w-3 ml-1" />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {copiedCommitHash ? "Copied!" : message.commitHash}
-                    </TooltipContent>
-                  </Tooltip>
+                  <CopyButton
+                    value={message.commitHash}
+                    ariaLabel="Copy Commit Hash"
+                    displayText={message.commitHash.slice(0, 7)}
+                    tooltipText={message.commitHash}
+                  />
                 )}
               </div>
             )}
             {message.requestId && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={() => {
-                        if (!message.requestId) return;
-                        navigator.clipboard
-                          .writeText(message.requestId)
-                          .then(() => {
-                            setCopiedRequestId(true);
-                            if (copiedRequestIdTimeoutRef.current) {
-                              clearTimeout(copiedRequestIdTimeoutRef.current);
-                            }
-                            copiedRequestIdTimeoutRef.current = setTimeout(
-                              () => setCopiedRequestId(false),
-                              2000,
-                            );
-                          })
-                          .catch(() => {
-                            //i can display toast error
-                          });
-                      }}
-                      aria-label="Copy Request ID"
-                      className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                    />
-                  }
-                >
-                  {copiedRequestId ? (
-                    <Check className="h-3 w-3 text-green-500" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                  <span className="text-xs">
-                    {copiedRequestId ? "Copied" : "Request ID"}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {copiedRequestId
-                    ? "Copied!"
-                    : `Copy Request ID: ${message.requestId.slice(0, 8)}...`}
-                </TooltipContent>
-              </Tooltip>
+              <CopyButton
+                value={message.requestId}
+                ariaLabel="Copy Request ID"
+                displayText="Request ID"
+                tooltipText={`Copy Request ID: ${message.requestId.slice(0, 8)}...`}
+              />
             )}
             {isLastMessage && message.totalTokens && (
               <div

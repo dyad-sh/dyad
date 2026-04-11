@@ -325,3 +325,4 @@ const DataList = () => {
 8. **NEVER** use `any` type. Define proper TypeScript interfaces.
 9. **ALWAYS** export page components as `export default`.
 10. **ALWAYS** use `key` prop when rendering lists.
+11. **NEVER** render objects or arrays directly as JSX children — React cannot render them. Always access a primitive property: `{item.name}` not `{item}`. For example, `<Badge>{category.name}</Badge>` NOT `<Badge>{category}</Badge>` when `category` is an object.

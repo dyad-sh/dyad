@@ -5,6 +5,8 @@
 
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "fs-extra";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -788,6 +790,7 @@ function getLocalStatus(): PeerStatus {
 }
 
 async function getSystemMetrics(): Promise<SystemMetrics> {
+  const execFileAsync = promisify(execFile);
   const cpus = os.cpus();
   const totalMemory = os.totalmem();
   const freeMemory = os.freemem();
@@ -801,10 +804,147 @@ async function getSystemMetrics(): Promise<SystemMetrics> {
   }
   cpuUsage /= cpus.length;
 
+  // Disk usage (platform-aware)
+  let diskTotalGB: number | undefined;
+  let diskFreeGB: number | undefined;
+  let diskUsage = 0;
+  try {
+    if (process.platform === "win32") {
+      const { stdout } = await execFileAsync("wmic", [
+        "logicaldisk",
+        "where",
+        "DeviceID='C:'",
+        "get",
+        "Size,FreeSpace",
+        "/format:csv",
+      ]);
+      const lines = stdout.trim().split("\n").filter((l) => l.includes(","));
+      if (lines.length > 0) {
+        const parts = lines[lines.length - 1].split(",");
+        const free = Number(parts[1]);
+        const total = Number(parts[2]);
+        if (total > 0) {
+          diskTotalGB = Math.round((total / 1073741824) * 10) / 10;
+          diskFreeGB = Math.round((free / 1073741824) * 10) / 10;
+          diskUsage = ((total - free) / total) * 100;
+        }
+      }
+    } else {
+      const { stdout } = await execFileAsync("df", ["-k", "/"]);
+      const lines = stdout.trim().split("\n");
+      if (lines.length >= 2) {
+        const parts = lines[1].split(/\s+/);
+        const total = Number(parts[1]) * 1024;
+        const used = Number(parts[2]) * 1024;
+        if (total > 0) {
+          diskTotalGB = Math.round((total / 1073741824) * 10) / 10;
+          diskFreeGB = Math.round(((total - used) / 1073741824) * 10) / 10;
+          diskUsage = (used / total) * 100;
+        }
+      }
+    }
+  } catch {
+    // disk detection failed — leave defaults
+  }
+
+  // GPU detection
+  const gpus: Array<{ name: string; memoryMB?: number; utilizationPct?: number }> = [];
+  let gpuUsage: number | undefined;
+  let vramUsage: number | undefined;
+  try {
+    const { stdout } = await execFileAsync("nvidia-smi", [
+      "--query-gpu=name,memory.total,memory.used,utilization.gpu",
+      "--format=csv,noheader,nounits",
+    ]);
+    for (const line of stdout.trim().split("\n")) {
+      const [name, memTotal, memUsed, util] = line.split(",").map((s) => s.trim());
+      if (name) {
+        const memTotalMB = Number(memTotal);
+        const memUsedMB = Number(memUsed);
+        const utilPct = Number(util);
+        gpus.push({ name, memoryMB: memTotalMB, utilizationPct: utilPct });
+        gpuUsage = utilPct;
+        if (memTotalMB > 0) vramUsage = (memUsedMB / memTotalMB) * 100;
+      }
+    }
+  } catch {
+    // nvidia-smi not available — try Windows WMIC for basic GPU name
+    if (process.platform === "win32") {
+      try {
+        const { stdout } = await execFileAsync("wmic", [
+          "path",
+          "win32_VideoController",
+          "get",
+          "Name,AdapterRAM",
+          "/format:csv",
+        ]);
+        for (const line of stdout.trim().split("\n").filter((l) => l.includes(","))) {
+          const parts = line.split(",");
+          if (parts.length >= 3 && parts[1]) {
+            const ram = Number(parts[1]);
+            gpus.push({
+              name: parts[2]?.trim() || "Unknown GPU",
+              memoryMB: ram > 0 ? Math.round(ram / 1048576) : undefined,
+            });
+          }
+        }
+      } catch {
+        // no GPU info available
+      }
+    }
+  }
+
+  // NPU detection (Intel/Qualcomm/Apple Neural Engine)
+  const npus: Array<{ name: string; available: boolean }> = [];
+  try {
+    if (process.platform === "win32") {
+      const { stdout } = await execFileAsync("wmic", [
+        "path",
+        "Win32_PnPEntity",
+        "where",
+        "Name like '%NPU%' or Name like '%Neural%' or Name like '%AI Accelerator%'",
+        "get",
+        "Name",
+        "/format:csv",
+      ]);
+      for (const line of stdout.trim().split("\n").filter((l) => l.includes(","))) {
+        const name = line.split(",").pop()?.trim();
+        if (name && name !== "Name") {
+          npus.push({ name, available: true });
+        }
+      }
+    } else if (process.platform === "darwin") {
+      // Apple Silicon always has an ANE
+      if (os.cpus()[0]?.model?.includes("Apple")) {
+        npus.push({ name: "Apple Neural Engine", available: true });
+      }
+    }
+  } catch {
+    // NPU detection not available
+  }
+
   return {
     cpuUsage,
     memoryUsage: ((totalMemory - freeMemory) / totalMemory) * 100,
-    diskUsage: 0, // Would need platform-specific detection
+    diskUsage,
+    gpuUsage,
+    vramUsage,
+    hardware: {
+      cpu: {
+        model: cpus[0]?.model || "Unknown",
+        cores: cpus.length,
+        threads: cpus.length,
+        speedMhz: cpus[0]?.speed || 0,
+      },
+      totalMemoryGB: Math.round((totalMemory / 1073741824) * 10) / 10,
+      freeMemoryGB: Math.round((freeMemory / 1073741824) * 10) / 10,
+      diskTotalGB,
+      diskFreeGB,
+      gpus: gpus.length > 0 ? gpus : undefined,
+      npus: npus.length > 0 ? npus : undefined,
+      platform: process.platform,
+      arch: process.arch,
+    },
   };
 }
 

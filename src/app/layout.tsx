@@ -93,7 +93,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <AssistantContextProvider>
               <div
                 id="layout-main-content-container"
-                className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border border-border/40 rounded-xl bg-background/80 backdrop-blur-sm shadow-sm"
+                className="flex h-screenish w-full overflow-x-hidden overflow-y-auto mt-12 mb-4 mr-4 border border-border/40 rounded-xl bg-background/80 backdrop-blur-sm shadow-sm"
               >
                 {children}
               </div>

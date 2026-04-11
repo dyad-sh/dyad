@@ -138,7 +138,7 @@ export default function DocumentEditorPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-full items-center justify-center bg-background">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -146,7 +146,7 @@ export default function DocumentEditorPage() {
 
   if (error || !doc) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-background">
         <AlertTriangle className="size-10 text-destructive" />
         <p className="text-sm text-muted-foreground">
           {error instanceof Error ? error.message : "Document not found."}
@@ -161,7 +161,7 @@ export default function DocumentEditorPage() {
   const currentText = editorRef.current?.getText() ?? textContent ?? "";
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* Toolbar */}
       <EditorToolbar
         docType={doc.type as "document" | "spreadsheet" | "presentation"}

@@ -64,6 +64,12 @@ function collectSourceFiles(dir: string, files: string[] = []): string[] {
         if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist" || entry.name === "build") {
           continue;
         }
+        // Skip scaffold/library UI components (shadcn/ui) — these are not
+        // user-authored and scanning them causes infinite completion loops
+        // when their heavy dependencies (recharts, react-hook-form) aren't installed.
+        if (entry.name === "ui" && dir.replace(/\\/g, "/").endsWith("components")) {
+          continue;
+        }
         collectSourceFiles(fullPath, files);
       } else if (SOURCE_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
         files.push(fullPath);

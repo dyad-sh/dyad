@@ -17,7 +17,7 @@ import { EventEmitter } from "node:events";
 export type AgentSessionId = string & { __brand: "AgentSessionId" };
 export type AgentTaskId = string & { __brand: "AgentTaskId" };
 export type AgentStatus = "idle" | "thinking" | "executing" | "waiting" | "error" | "completed";
-export type TaskType = "code" | "debug" | "refactor" | "test" | "document" | "explain" | "review";
+export type TaskType = "code" | "debug" | "refactor" | "test" | "document" | "explain" | "review" | "suggest";
 
 export interface AgentCapability {
   id: string;
@@ -592,12 +592,16 @@ export class CodingAgent extends EventEmitter {
       go: "go",
       java: "java",
       cpp: "cpp",
+      cc: "cpp",
+      cxx: "cpp",
       c: "c",
+      h: "c",
       cs: "csharp",
       rb: "ruby",
       php: "php",
       swift: "swift",
       kt: "kotlin",
+      kts: "kotlin",
       vue: "vue",
       svelte: "svelte",
       html: "html",
@@ -608,6 +612,22 @@ export class CodingAgent extends EventEmitter {
       yml: "yaml",
       md: "markdown",
       sql: "sql",
+      sol: "solidity",
+      dart: "dart",
+      lua: "lua",
+      zig: "zig",
+      ex: "elixir",
+      exs: "elixir",
+      fs: "fsharp",
+      fsx: "fsharp",
+      r: "r",
+      R: "r",
+      sh: "shell",
+      bash: "shell",
+      zsh: "shell",
+      ps1: "powershell",
+      tf: "terraform",
+      toml: "toml",
     };
     return map[ext] || ext;
   }
@@ -668,10 +688,11 @@ export class CodingAgent extends EventEmitter {
 
       case "debug":
         steps.push(
-          { type: "read_file", description: "Read error logs", reasoning: "Understand the error" },
-          { type: "search", description: "Search for related code", reasoning: "Find the source of the bug" },
-          { type: "edit_file", description: "Apply fix", reasoning: "Resolve the issue" },
-          { type: "run_command", description: "Run tests", reasoning: "Verify the fix" }
+          { type: "read_file", description: "Read source code and error context", reasoning: "Understand the full error context" },
+          { type: "analyze", description: "Identify root cause and affected code paths", reasoning: "Trace the bug to its origin" },
+          { type: "search", description: "Search for related patterns and similar issues", reasoning: "Find all occurrences and related code" },
+          { type: "edit_file", description: "Apply targeted fix with explanation", reasoning: "Resolve the root cause, not just the symptom" },
+          { type: "run_command", description: "Run tests to verify fix", reasoning: "Confirm the fix works and no regressions" }
         );
         break;
 
@@ -709,6 +730,14 @@ export class CodingAgent extends EventEmitter {
         steps.push(
           { type: "read_file", description: "Read code", reasoning: "Analyze for review" },
           { type: "analyze", description: "Identify issues", reasoning: "Find potential problems" }
+        );
+        break;
+
+      case "suggest":
+        steps.push(
+          { type: "read_file", description: "Read and understand the current code", reasoning: "Build full context before making suggestions" },
+          { type: "analyze", description: "Analyze code quality, patterns, and improvement opportunities", reasoning: "Identify what can be improved" },
+          { type: "analyze", description: "Generate smart suggestions with examples", reasoning: "Provide actionable improvements with code samples" }
         );
         break;
     }
@@ -940,7 +969,15 @@ export class CodingAgent extends EventEmitter {
   }
 
   private isCodeFile(filename: string): boolean {
-    const codeExtensions = [".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".go", ".java", ".cpp", ".c"];
+    const codeExtensions = [
+      ".ts", ".tsx", ".js", ".jsx",
+      ".py", ".rs", ".go", ".java",
+      ".cpp", ".cc", ".cxx", ".c", ".h",
+      ".cs", ".rb", ".php", ".swift",
+      ".kt", ".kts", ".sol", ".dart",
+      ".lua", ".zig", ".ex", ".exs",
+      ".fs", ".fsx", ".r", ".sh",
+    ];
     return codeExtensions.some((ext) => filename.endsWith(ext));
   }
 

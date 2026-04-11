@@ -33,6 +33,9 @@ import {
   Mail,
   Puzzle,
   ShoppingBag,
+  Brain,
+  GitMerge,
+  Calendar,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -120,6 +123,15 @@ const menuCategories = [
         hoverBg: "hover:bg-emerald-500/10",
         activeBg: "bg-emerald-500/15",
         activeText: "text-emerald-600 dark:text-emerald-400",
+      },
+      {
+        title: "Calendar",
+        to: "/calendar",
+        icon: Calendar,
+        gradient: "from-orange-500 to-amber-500",
+        hoverBg: "hover:bg-orange-500/10",
+        activeBg: "bg-orange-500/15",
+        activeText: "text-orange-600 dark:text-orange-400",
       },
       {
         title: "Marketplace",
@@ -256,6 +268,24 @@ const menuCategories = [
         hoverBg: "hover:bg-red-500/10",
         activeBg: "bg-red-500/15",
         activeText: "text-red-600 dark:text-red-400",
+      },
+      {
+        title: "Neural Builder",
+        to: "/neural-builder",
+        icon: Brain,
+        gradient: "from-purple-500 to-pink-500",
+        hoverBg: "hover:bg-purple-500/10",
+        activeBg: "bg-purple-500/15",
+        activeText: "text-purple-600 dark:text-purple-400",
+      },
+      {
+        title: "CI/CD Pipelines",
+        to: "/cicd-builder",
+        icon: GitMerge,
+        gradient: "from-slate-500 to-gray-500",
+        hoverBg: "hover:bg-slate-500/10",
+        activeBg: "bg-slate-500/15",
+        activeText: "text-slate-600 dark:text-slate-400",
       },
     ],
   },

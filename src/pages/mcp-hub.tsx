@@ -272,7 +272,7 @@ const McpHubPage: React.FC = () => {
   const totalTools = Object.values(toolsByServer).reduce((sum, tools) => sum + tools.length, 0);
 
   return (
-    <div className="min-h-screen">
+    <div className="h-full overflow-y-auto">
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto px-6 py-4">

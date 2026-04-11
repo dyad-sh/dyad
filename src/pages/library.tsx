@@ -207,7 +207,7 @@ function tierBadge(tier: string) {
 
 export default function LibraryPage() {
   return (
-    <div className="min-h-screen px-8 py-6">
+    <div className="h-full overflow-y-auto px-8 py-6">
       <div className="mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6 p-6 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 border border-amber-500/20">

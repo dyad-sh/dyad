@@ -20,7 +20,8 @@ import log from "electron-log";
 import { streamText, tool, type TextStreamPart, type ToolSet } from "ai";
 import { z } from "zod";
 import { readSettings } from "../main/settings";
-import { getModelClient } from "../ipc/utils/get_model_client";
+import { getModelClient, type ModelClient } from "../ipc/utils/get_model_client";
+import { recordAICost } from "../ipc/utils/cost_tracking";
 import {
   buildSystemPrompt,
   findFeatures,
@@ -36,6 +37,10 @@ import {
   getSystemInfo,
   isCommandSafe,
 } from "./joy_assistant_tools";
+import { createOllamaProvider } from "../ipc/utils/ollama_provider";
+import { getOllamaApiUrl } from "../ipc/handlers/local_model_ollama_handler";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { LM_STUDIO_BASE_URL } from "../ipc/utils/lm_studio_utils";
 import type {
   AssistantIntent,
   AssistantAction,
@@ -60,6 +65,9 @@ const INTENT_PATTERNS: { pattern: RegExp; intent: AssistantIntent }[] = [
   { pattern: /\b(how (do|can|to)|what (is|are|does)|explain|help me understand|tell me about|guide)\b/i, intent: "explain" },
   // Fill
   { pattern: /\b(fill|type|enter|put|set the|write in|input)\b.*(field|box|input|form)/i, intent: "fill" },
+  // Create — neural network (must come before generic "create" to win priority)
+  { pattern: /\b(create|make|build|train|design|generate)\b.*(neural|network|model|cnn|rnn|lstm|transformer|classifier|detector)/i, intent: "create" },
+  { pattern: /\b(neural|deep learning|machine learning|ml model|nn|conv2d|dense layer|automl)\b/i, intent: "create" },
   // Create
   { pattern: /\b(create|make|build|generate|new|start a)\b.*(document|doc|spreadsheet|presentation|agent|workflow|app|report)/i, intent: "create" },
   // Search
@@ -137,7 +145,9 @@ export function planActions(
 
   if (intent === "create") {
     const lower = message.toLowerCase();
-    if (/spreadsheet|excel/i.test(lower)) {
+    if (/neural|network|model|cnn|rnn|lstm|transformer|classifier|detector|deep learning|machine learning|ml model|conv2d|dense layer|automl/i.test(lower)) {
+      actions.push({ type: "navigate", route: "/neural-builder", label: "Open Neural Builder" });
+    } else if (/spreadsheet|excel/i.test(lower)) {
       actions.push({ type: "create-document", documentType: "spreadsheet", name: "New Spreadsheet" });
     } else if (/presentation|slide|powerpoint/i.test(lower)) {
       actions.push({ type: "create-document", documentType: "presentation", name: "New Presentation" });
@@ -192,10 +202,89 @@ export interface StreamCallbacks {
   onError: (error: string) => void;
 }
 
+// ============================================================================
+// Local-First Model Resolution
+// ============================================================================
+
+interface LocalProbeResult {
+  modelClient: ModelClient;
+  providerId: string;
+  modelId: string;
+}
+
+/** Probe Ollama for available models and return the first one ready. */
+async function probeOllama(): Promise<LocalProbeResult | null> {
+  try {
+    const baseUrl = getOllamaApiUrl();
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { models?: { name: string }[] };
+    const models = data.models ?? [];
+    if (models.length === 0) return null;
+
+    // Pick the first available model
+    const modelName = models[0].name;
+    const provider = createOllamaProvider({ baseURL: baseUrl });
+    logger.info(`Local-first: Ollama available with model "${modelName}"`);
+    return {
+      modelClient: { model: provider(modelName), builtinProviderId: "ollama" },
+      providerId: "ollama",
+      modelId: modelName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Probe LM Studio for availability and return the default model. */
+async function probeLMStudio(): Promise<LocalProbeResult | null> {
+  try {
+    const baseUrl = LM_STUDIO_BASE_URL;
+    const res = await fetch(`${baseUrl}/v1/models`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { data?: { id: string }[] };
+    const models = data.data ?? [];
+    if (models.length === 0) return null;
+
+    const modelName = models[0].id;
+    const provider = createOpenAICompatible({
+      name: "lmstudio",
+      baseURL: `${baseUrl}/v1`,
+    });
+    logger.info(`Local-first: LM Studio available with model "${modelName}"`);
+    return {
+      modelClient: { model: provider(modelName), builtinProviderId: "lmstudio" },
+      providerId: "lmstudio",
+      modelId: modelName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Try local providers (Ollama, then LM Studio). Returns null if none available. */
+async function tryGetLocalModelClient(): Promise<LocalProbeResult | null> {
+  // Try Ollama first (most common local provider)
+  const ollama = await probeOllama();
+  if (ollama) return ollama;
+
+  // Fall back to LM Studio
+  const lmStudio = await probeLMStudio();
+  if (lmStudio) return lmStudio;
+
+  return null;
+}
+
 /**
  * Stream a response from the assistant. Handles:
  * 1. Intent classification
- * 2. Smart router model selection (local-first)
+ * 2. Smart router model selection (local-first, cloud fallback)
  * 3. Streaming inference with tool calling
  * 4. Action planning (deterministic + AI-driven)
  * 5. Session history update
@@ -242,22 +331,37 @@ export async function chat(
     aiMessages.push({ role: msg.role, content: msg.content });
   }
 
-  // 6. Resolve model — use the same model resolution as the main chat
+  // 6. Resolve model — local-first, then fall back to configured provider
   // 7. Stream response with tool calling
   let assistantContent = "";
   let allActions: AssistantAction[] = [...plannedActions];
 
   try {
     const settings = readSettings();
-    const selectedModel = settings.selectedModel ?? { provider: "auto", name: "auto" };
 
-    // Use the same getModelClient that powers the main chat
-    const { modelClient } = await getModelClient(selectedModel, settings);
-    const providerId = modelClient.builtinProviderId ?? selectedModel.provider;
-    const modelId = selectedModel.name ?? "unknown";
-    const isLocal = providerId === "ollama" || providerId === "lmstudio";
+    // Local-first: probe Ollama / LM Studio before falling back to cloud
+    let modelClient: ModelClient;
+    let providerId: string;
+    let modelId: string;
+    let isLocal: boolean;
 
-    logger.info("Joy assistant using model", { providerId, modelId, isLocal });
+    const localResult = await tryGetLocalModelClient();
+    if (localResult) {
+      modelClient = localResult.modelClient;
+      providerId = localResult.providerId;
+      modelId = localResult.modelId;
+      isLocal = true;
+      logger.info("Joy assistant using LOCAL model", { providerId, modelId });
+    } else {
+      // No local model available — fall back to cloud/auto routing
+      const selectedModel = settings.selectedModel ?? { provider: "auto", name: "auto" };
+      const resolved = await getModelClient(selectedModel, settings);
+      modelClient = resolved.modelClient;
+      providerId = modelClient.builtinProviderId ?? selectedModel.provider;
+      modelId = selectedModel.name ?? "unknown";
+      isLocal = false;
+      logger.info("Joy assistant falling back to CLOUD model", { providerId, modelId });
+    }
 
     // Build AI SDK tools for the assistant
     const assistantTools = buildAssistantTools(intent);
@@ -285,15 +389,64 @@ export async function chat(
       }
     }
 
+    // Record cost with the smart cost engine
+    try {
+      const usage = await stream.usage;
+      if (usage) {
+        recordAICost({
+          model: modelId,
+          provider: providerId ?? "unknown",
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          taskType: "assistant",
+          source: "chat-stream",
+        });
+      }
+    } catch { /* best-effort */ }
+
     // Send actions to renderer
     if (allActions.length > 0) {
       callbacks.onActions(allActions);
     }
 
-    // Clean the response content (remove <actions> tags from displayed text)
-    const cleanContent = assistantContent
+    // ── Raw tool-call fallback for local models ──
+    // Local models may emit JSON tool calls as text instead of using
+    // the AI SDK's structured tool-calling protocol. Detect, execute,
+    // and stream back real results.
+    const rawCalls = parseRawToolCalls(assistantContent);
+    if (rawCalls.length > 0) {
+      logger.info(`Detected ${rawCalls.length} raw tool call(s) in text output — executing`);
+      for (const rawCall of rawCalls) {
+        try {
+          const { result, action } = await executeRawToolCall(rawCall);
+          if (result != null) {
+            // Stream the real result back to the user
+            const resultText = `\n\n${formatToolResult(rawCall.name, result)}`;
+            callbacks.onDelta(resultText);
+            assistantContent += resultText;
+          }
+          if (action) {
+            allActions.push(action);
+          }
+        } catch (toolErr) {
+          logger.warn(`Raw tool call "${rawCall.name}" failed:`, toolErr);
+          const errText = `\n\n> Tool "${rawCall.name}" failed: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`;
+          callbacks.onDelta(errText);
+          assistantContent += errText;
+        }
+      }
+      if (allActions.length > 0) {
+        callbacks.onActions(allActions);
+      }
+    }
+
+    // Clean the response content (remove <actions> tags and raw tool-call JSON)
+    let cleanContent = assistantContent
       .replace(/<actions>[\s\S]*?<\/actions>/g, "")
       .trim();
+    if (rawCalls.length > 0) {
+      cleanContent = stripRawToolCalls(cleanContent);
+    }
 
     // Parse any inline actions from model output (fallback for models without tool calling)
     const inlineActions = parseActionsFromResponse(assistantContent);
@@ -344,6 +497,189 @@ function parseActionsFromResponse(content: string): AssistantAction[] {
   } catch {
     return [];
   }
+}
+
+// ============================================================================
+// Raw Tool-Call Fallback (for local models without native tool calling)
+// ============================================================================
+
+interface RawToolCall {
+  name: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * Local models often emit raw JSON tool calls as text instead of using the
+ * structured tool-calling protocol. This parses all such patterns:
+ *
+ *   {"name": "system_info", "parameters": {"infoType": "os"}}
+ *   {"name": "run_command", "parameters": {"command": "dir"}}
+ *
+ * Also handles markdown-fenced JSON blocks and `arguments` as alias.
+ */
+function parseRawToolCalls(text: string): RawToolCall[] {
+  const calls: RawToolCall[] = [];
+  // Match JSON objects containing "name" and "parameters" or "arguments"
+  const pattern = /\{[^{}]*"name"\s*:\s*"([^"]+)"[^{}]*(?:"parameters"|"arguments")\s*:\s*(\{[^{}]*\})[^{}]*\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    try {
+      const name = match[1];
+      const params = JSON.parse(match[2]);
+      if (name && typeof params === "object") {
+        calls.push({ name, parameters: params });
+      }
+    } catch {
+      // Malformed JSON — skip
+    }
+  }
+  return calls;
+}
+
+/**
+ * Execute a parsed raw tool call using the real tool implementations.
+ * Returns the tool output or null if the tool name is unknown.
+ */
+async function executeRawToolCall(
+  call: RawToolCall,
+): Promise<{ result: unknown; action: AssistantAction | null }> {
+  const { name, parameters: p } = call;
+
+  switch (name) {
+    case "system_info": {
+      const infoType = (p.infoType as string) || "os";
+      const validTypes = ["os", "hardware", "processes", "disk", "memory", "network"] as const;
+      const safeType = validTypes.includes(infoType as any) ? (infoType as typeof validTypes[number]) : "os";
+      const info = await getSystemInfo(safeType);
+      return {
+        result: info,
+        action: { type: "system-info", infoType: safeType, label: `System info: ${safeType}` },
+      };
+    }
+    case "run_command": {
+      const command = p.command as string;
+      if (!command) return { result: { error: "No command provided" }, action: null };
+      const safety = isCommandSafe(command);
+      if (!safety.safe) return { result: { error: safety.reason }, action: null };
+      const result = await runCommand(command, p.cwd as string | undefined);
+      return {
+        result,
+        action: { type: "run-command", command, cwd: p.cwd as string | undefined, label: `Run: ${command.slice(0, 60)}` },
+      };
+    }
+    case "read_file": {
+      const filePath = p.filePath as string;
+      if (!filePath) return { result: { error: "No filePath provided" }, action: null };
+      const content = await readFileContent(filePath);
+      return {
+        result: { content: content.slice(0, 20_000) },
+        action: { type: "read-file", filePath, label: `Read: ${filePath}` },
+      };
+    }
+    case "write_file": {
+      const filePath = p.filePath as string;
+      const content = p.content as string;
+      if (!filePath || content == null) return { result: { error: "Missing filePath or content" }, action: null };
+      await writeFileContent(filePath, content);
+      return {
+        result: { filePath, size: content.length },
+        action: { type: "write-file", filePath, content, label: `Write: ${filePath}` },
+      };
+    }
+    case "list_directory": {
+      const dirPath = (p.dirPath ?? p.path ?? p.directory) as string;
+      if (!dirPath) return { result: { error: "No dirPath provided" }, action: null };
+      const entries = await listDirectory(dirPath);
+      return {
+        result: { entries },
+        action: { type: "list-directory", dirPath, label: `List: ${dirPath}` },
+      };
+    }
+    case "open_app": {
+      const appName = p.appName as string;
+      if (!appName) return { result: { error: "No appName provided" }, action: null };
+      await openApp(appName, p.args as string[] | undefined);
+      return {
+        result: { opened: appName },
+        action: { type: "open-app", appName, label: `Open: ${appName}` },
+      };
+    }
+    case "open_url": {
+      const url = p.url as string;
+      if (!url) return { result: { error: "No url provided" }, action: null };
+      await openUrl(url);
+      return {
+        result: { opened: url },
+        action: { type: "open-url", url, label: `Open: ${url}` },
+      };
+    }
+    case "navigate": {
+      const route = p.route as string;
+      return {
+        result: { navigated: route },
+        action: { type: "navigate", route: route || "/", label: (p.label as string) || `Go to ${route}` },
+      };
+    }
+    default:
+      logger.warn(`Unknown raw tool call: ${name}`);
+      return { result: null, action: null };
+  }
+}
+
+/**
+ * Strip raw JSON tool calls from displayed text so the user
+ * sees the actual results instead of the raw function-call JSON.
+ */
+function stripRawToolCalls(text: string): string {
+  // Remove JSON blocks that look like tool calls
+  return text
+    .replace(/\{[^{}]*"name"\s*:\s*"[^"]+?"[^{}]*(?:"parameters"|"arguments")\s*:\s*\{[^{}]*\}[^{}]*\}/g, "")
+    // Also remove surrounding markdown fences if the JSON was the only code block content
+    .replace(/```(?:json)?\s*\n?\s*\n?```/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Format a raw tool result into readable markdown for the user.
+ */
+function formatToolResult(toolName: string, result: unknown): string {
+  if (result == null) return "";
+
+  if (toolName === "system_info") {
+    const info = result as Record<string, unknown>;
+    const lines: string[] = [];
+    for (const [key, value] of Object.entries(info)) {
+      if (typeof value === "object" && value !== null) {
+        lines.push(`**${key}:** ${JSON.stringify(value, null, 2)}`);
+      } else {
+        lines.push(`**${key}:** ${value}`);
+      }
+    }
+    return lines.join("\n");
+  }
+
+  if (toolName === "run_command") {
+    const r = result as { stdout?: string; stderr?: string; exitCode?: number };
+    let out = "";
+    if (r.stdout) out += `\`\`\`\n${r.stdout}\n\`\`\`\n`;
+    if (r.stderr) out += `\n**stderr:**\n\`\`\`\n${r.stderr}\n\`\`\`\n`;
+    if (r.exitCode != null) out += `*Exit code: ${r.exitCode}*`;
+    return out || "*Command completed*";
+  }
+
+  if (toolName === "read_file") {
+    const r = result as { content?: string };
+    return r.content ? `\`\`\`\n${r.content.slice(0, 5000)}\n\`\`\`` : "*Empty file*";
+  }
+
+  if (toolName === "list_directory") {
+    const r = result as { entries?: string[] };
+    return r.entries?.length ? r.entries.join("\n") : "*Empty directory*";
+  }
+
+  // Generic fallback
+  return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
 }
 
 // ============================================================================

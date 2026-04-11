@@ -3879,4 +3879,114 @@ export class IpcClient {
   public async mcpServerGetConfig(): Promise<{ defaultPort: number; currentPort: number; running: boolean; url: string | null }> {
     return this.ipcRenderer.invoke("mcp-server:get-config");
   }
+
+  // ── Calendar ────────────────────────────────────────────────────────────
+
+  public async calendarListSources(): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("calendar:list-sources");
+  }
+
+  public async calendarAddSource(params: {
+    name: string;
+    type: string;
+    color?: string;
+    configJson?: Record<string, unknown>;
+    authJson?: Record<string, unknown>;
+    syncIntervalMinutes?: number;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("calendar:add-source", params);
+  }
+
+  public async calendarUpdateSource(params: {
+    id: string;
+    name?: string;
+    color?: string;
+    enabled?: boolean;
+    configJson?: Record<string, unknown>;
+    authJson?: Record<string, unknown>;
+    syncIntervalMinutes?: number;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("calendar:update-source", params);
+  }
+
+  public async calendarRemoveSource(params: { id: string }): Promise<{ deleted: boolean }> {
+    return this.ipcRenderer.invoke("calendar:remove-source", params);
+  }
+
+  public async calendarTestSource(params: { id: string }): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("calendar:test-source", params);
+  }
+
+  public async calendarSyncSource(params: { id: string }): Promise<{ synced: number; errors: number }> {
+    return this.ipcRenderer.invoke("calendar:sync-source", params);
+  }
+
+  public async calendarSyncAll(): Promise<{ done: boolean }> {
+    return this.ipcRenderer.invoke("calendar:sync-all");
+  }
+
+  public async calendarListCalendars(params: { sourceId: string }): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("calendar:list-calendars", params);
+  }
+
+  public async calendarListEvents(params: {
+    startAt: number;
+    endAt: number;
+    sourceIds?: string[];
+    types?: string[];
+    includeAgentActivity?: boolean;
+  }): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("calendar:list-events", params);
+  }
+
+  public async calendarGetEvent(params: { id: string }): Promise<unknown> {
+    return this.ipcRenderer.invoke("calendar:get-event", params);
+  }
+
+  public async calendarCreateEvent(params: {
+    sourceId: string;
+    event: { title: string; description?: string; startAt: number; endAt?: number; isAllDay?: boolean; location?: string; status?: string; recurrenceRule?: string; attendees?: Array<{ name?: string; email: string }> };
+    type?: string;
+    agentId?: string;
+    agentName?: string;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("calendar:create-event", params);
+  }
+
+  public async calendarUpdateEvent(params: {
+    id: string;
+    updates: Record<string, unknown>;
+    type?: string;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("calendar:update-event", params);
+  }
+
+  public async calendarDeleteEvent(params: { id: string }): Promise<{ deleted: boolean }> {
+    return this.ipcRenderer.invoke("calendar:delete-event", params);
+  }
+
+  public async calendarScheduleAgentEvent(params: {
+    title: string;
+    description?: string;
+    startAt: number;
+    endAt?: number;
+    type: "agent_run" | "agent_post" | "agent_task";
+    agentId: string;
+    agentName: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("calendar:schedule-agent-event", params);
+  }
+
+  public async calendarListAgentEvents(params: {
+    agentId?: string;
+    startAt?: number;
+    endAt?: number;
+  }): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("calendar:list-agent-events", params);
+  }
+
+  public async calendarExportIcs(params: { eventId: string }): Promise<string> {
+    return this.ipcRenderer.invoke("calendar:export-ics", params);
+  }
 }

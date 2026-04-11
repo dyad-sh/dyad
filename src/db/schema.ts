@@ -2421,3 +2421,72 @@ export const openclawChannelMessages = sqliteTable("openclaw_channel_messages", 
     .notNull()
     .default(sql`(unixepoch())`),
 });
+
+// ─── Calendar ─────────────────────────────────────────────────────────────────
+
+/**
+ * Calendar Sources — Connected calendar accounts and feeds.
+ * Each source is a Google, Outlook, iCal URL, CalDAV, or agent-activity provider.
+ */
+export const calendarSources = sqliteTable("calendar_sources", {
+  id: text("id").primaryKey(), // UUID v4
+  name: text("name").notNull(),
+  type: text("type", {
+    enum: ["google", "outlook", "ical", "caldav", "agent"],
+  }).notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(sql`1`),
+  color: text("color").notNull().default("#3b82f6"), // Hex color for UI overlay
+  authJson: text("auth_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  configJson: text("config_json", { mode: "json" }).$type<Record<string, unknown>>().default({}),
+  lastSyncAt: integer("last_sync_at", { mode: "timestamp" }),
+  syncIntervalMinutes: integer("sync_interval_minutes").notNull().default(15),
+  syncStatus: text("sync_status", {
+    enum: ["idle", "syncing", "error"],
+  }).notNull().default("idle"),
+  syncError: text("sync_error"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Calendar Events — Local cache of all events from every connected source.
+ * External events are synced periodically; local events are created directly.
+ */
+export const calendarEvents = sqliteTable("calendar_events", {
+  id: text("id").primaryKey(), // UUID v4
+  sourceId: text("source_id").references(() => calendarSources.id, { onDelete: "cascade" }),
+  externalId: text("external_id"), // Provider's event ID for dedup/sync
+  title: text("title").notNull(),
+  description: text("description"),
+  startAt: integer("start_at", { mode: "timestamp" }).notNull(),
+  endAt: integer("end_at", { mode: "timestamp" }),
+  isAllDay: integer("is_all_day", { mode: "boolean" }).notNull().default(sql`0`),
+  location: text("location"),
+  status: text("status", {
+    enum: ["confirmed", "tentative", "cancelled"],
+  }).notNull().default("confirmed"),
+  type: text("type", {
+    enum: ["meeting", "task", "agent_run", "agent_post", "agent_task", "reminder", "custom"],
+  }).notNull().default("meeting"),
+  recurrenceRule: text("recurrence_rule"), // RRULE string
+  attendeesJson: text("attendees_json", { mode: "json" }).$type<Array<{
+    name?: string;
+    email: string;
+    status?: string;
+  }> | null>(),
+  agentId: text("agent_id"),
+  agentName: text("agent_name"),
+  metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  icsData: text("ics_data"), // Raw iCal data if available
+  isReadOnly: integer("is_read_only", { mode: "boolean" }).notNull().default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

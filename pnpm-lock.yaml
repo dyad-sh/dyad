@@ -452,6 +452,9 @@ importers:
       tree-kill:
         specifier: ^1.2.2
         version: 1.2.2
+      tsdav:
+        specifier: ^2.1.8
+        version: 2.1.8(encoding@0.1.13)
       turndown:
         specifier: ^7.2.2
         version: 7.2.2
@@ -7227,6 +7230,9 @@ packages:
       bare-abort-controller:
         optional: true
 
+  base-64@1.0.0:
+    resolution: {integrity: sha512-kwDPIFCGx0NZHog36dj+tHiwP4QMzsZ3AgMViUBKI0+V5n4U0ufTCUMhnQ04diaRI8EX/QcPfql7zlhZ7j4zgg==}
+
   base-x@5.0.1:
     resolution: {integrity: sha512-M7uio8Zt++eg3jPj+rHMfCC+IuygQHHCOU+IYsVtik6FWjuYpVt/+MRKcgsAMHh8mMFAwnB+Bs+mTrFiXjMzKg==}
 
@@ -13883,6 +13889,10 @@ packages:
   tsconfig-paths@3.15.0:
     resolution: {integrity: sha512-2Ac2RgzDe/cn48GvOe3M+o82pEFewD3UPbyoUHHdKasHwJKjds4fLXWf/Ux5kATBKN20oaFGu+jbElp1pos0mg==}
 
+  tsdav@2.1.8:
+    resolution: {integrity: sha512-zvQvhZLzTaEmNNgJbBlUYT/JOq9Xpw/xkxCqs7IT2d2/7o7pss0iZOlZXuHJ5VcvSvTny42Vc6+6GyzZcrCJ1g==}
+    engines: {node: '>=18'}
+
   tslib@1.14.1:
     resolution: {integrity: sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==}
 
@@ -14577,6 +14587,10 @@ packages:
 
   xml-escape@1.1.0:
     resolution: {integrity: sha512-B/T4sDK8Z6aUh/qNr7mjKAwwncIljFuUP+DO/D5hloYFj+90O88z8Wf7oSucZTHxBAsC1/CTP4rtx/x1Uf72Mg==}
+
+  xml-js@1.6.11:
+    resolution: {integrity: sha512-7rVi2KMfwfWFl+GpPg6m80IVMWXLRjO+PxTq7V2CDhoGak0wzYzFgUY2m4XJ47OGdXd8eLE8EmwfAmdjw7lC1g==}
+    hasBin: true
 
   xml-name-validator@5.0.0:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
@@ -24347,6 +24361,8 @@ snapshots:
 
   bare-events@2.8.2: {}
 
+  base-64@1.0.0: {}
+
   base-x@5.0.1: {}
 
   base64-js@1.5.1: {}
@@ -32915,6 +32931,16 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
+  tsdav@2.1.8(encoding@0.1.13):
+    dependencies:
+      base-64: 1.0.0
+      cross-fetch: 4.1.0(encoding@0.1.13)
+      debug: 4.4.3
+      xml-js: 1.6.11
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
   tslib@1.14.1: {}
 
   tslib@2.7.0: {}
@@ -33638,6 +33664,10 @@ snapshots:
       xpath: 0.0.33
 
   xml-escape@1.1.0: {}
+
+  xml-js@1.6.11:
+    dependencies:
+      sax: 1.4.3
 
   xml-name-validator@5.0.0: {}
 

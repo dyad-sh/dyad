@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateText } from "ai";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { recordAICost } from "@/ipc/utils/cost_tracking";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -830,7 +831,7 @@ export function registerVideoStudioHandlers() {
     const settings = readSettings();
     const { modelClient } = await getModelClient(settings.selectedModel, settings);
 
-    const { text } = await generateText({
+    const { text, usage } = await generateText({
       model: modelClient.model,
       system: `You are an expert AI video prompt engineer. Your task is to enhance the user's video generation prompt to produce the best possible results.
 
@@ -844,6 +845,7 @@ Rules:
       prompt: `Enhance this video prompt:\n\n${prompt.trim()}`,
       maxOutputTokens: 400,
     });
+    recordAICost({ model: settings.selectedModel?.name ?? "unknown", provider: modelClient.builtinProviderId ?? settings.selectedModel?.provider ?? "unknown", inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "video-enhance", source: "agent" });
 
     return text.trim();
   });

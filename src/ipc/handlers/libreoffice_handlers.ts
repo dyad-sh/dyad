@@ -17,6 +17,7 @@ import { getModelClient } from "@/ipc/utils/get_model_client";
 import { readSettings } from "../../main/settings";
 import { smartRouter } from "@/lib/smart_router";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { recordAICost } from "@/ipc/utils/cost_tracking";
 import type {
   DocumentType,
   DocumentFormat,
@@ -1976,6 +1977,21 @@ ${bulletParagraphs}    </draw:text-box>
         });
       }
 
+      // Record cost with the smart cost engine
+      try {
+        const usage = await stream.usage;
+        if (usage) {
+          recordAICost({
+            model: selectedModel?.name ?? "unknown",
+            provider: modelClient.builtinProviderId ?? selectedModel?.provider ?? "unknown",
+            inputTokens: usage.inputTokens ?? 0,
+            outputTokens: usage.outputTokens ?? 0,
+            taskType: "document-assist",
+            source: "agent",
+          });
+        }
+      } catch { /* best-effort */ }
+
       safeSend(event.sender, "libreoffice:ai-assist-chunk", {
         requestId,
         text: "",
@@ -2045,6 +2061,21 @@ ${bulletParagraphs}    </draw:text-box>
           done: false,
         });
       }
+
+      // Record cost with the smart cost engine
+      try {
+        const usage = await stream.usage;
+        if (usage) {
+          recordAICost({
+            model: selectedModel?.name ?? "unknown",
+            provider: modelClient.builtinProviderId ?? selectedModel?.provider ?? "unknown",
+            inputTokens: usage.inputTokens ?? 0,
+            outputTokens: usage.outputTokens ?? 0,
+            taskType: "document-generate",
+            source: "agent",
+          });
+        }
+      } catch { /* best-effort */ }
 
       // Parse the streamed response and create the document
       const content = this.parseAIResponseToContent(type, fullText, options);

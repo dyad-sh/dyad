@@ -57,12 +57,16 @@ import {
   Terminal,
   ChevronRight,
   Sparkles,
+  Lightbulb,
+  Code2,
+  ChevronDown,
 } from "lucide-react";
-import type { TaskType, ApprovalRequest, AgentCapability } from "@/ipc/coding_agent_client";
+import type { TaskType, TaskContext, ApprovalRequest, AgentCapability } from "@/ipc/coding_agent_client";
 
 const TASK_TYPES: Array<{ value: TaskType; label: string; icon: React.ReactNode; description: string }> = [
   { value: "code", label: "Generate Code", icon: <FileCode2 className="h-4 w-4" />, description: "Write new code or features" },
-  { value: "debug", label: "Debug", icon: <Bug className="h-4 w-4" />, description: "Find and fix bugs" },
+  { value: "debug", label: "Debug", icon: <Bug className="h-4 w-4" />, description: "Find and fix bugs with root cause analysis" },
+  { value: "suggest", label: "Smart Suggest", icon: <Lightbulb className="h-4 w-4" />, description: "Get smart improvement suggestions for your code" },
   { value: "refactor", label: "Refactor", icon: <RefreshCw className="h-4 w-4" />, description: "Improve code structure" },
   { value: "test", label: "Write Tests", icon: <TestTube2 className="h-4 w-4" />, description: "Create test cases" },
   { value: "document", label: "Document", icon: <FileText className="h-4 w-4" />, description: "Add documentation" },
@@ -70,9 +74,40 @@ const TASK_TYPES: Array<{ value: TaskType; label: string; icon: React.ReactNode;
   { value: "review", label: "Review", icon: <CheckCircle2 className="h-4 w-4" />, description: "Review code for issues" },
 ];
 
+const LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: "", label: "Auto-detect" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "python", label: "Python" },
+  { value: "rust", label: "Rust" },
+  { value: "go", label: "Go" },
+  { value: "java", label: "Java" },
+  { value: "cpp", label: "C++" },
+  { value: "c", label: "C" },
+  { value: "csharp", label: "C#" },
+  { value: "solidity", label: "Solidity" },
+  { value: "kotlin", label: "Kotlin" },
+  { value: "swift", label: "Swift" },
+  { value: "ruby", label: "Ruby" },
+  { value: "php", label: "PHP" },
+  { value: "dart", label: "Dart" },
+  { value: "lua", label: "Lua" },
+  { value: "zig", label: "Zig" },
+  { value: "elixir", label: "Elixir" },
+  { value: "fsharp", label: "F#" },
+  { value: "shell", label: "Shell/Bash" },
+  { value: "powershell", label: "PowerShell" },
+  { value: "sql", label: "SQL" },
+  { value: "html", label: "HTML" },
+  { value: "css", label: "CSS" },
+];
+
 export default function CodingAgentPage() {
   const [taskType, setTaskType] = useState<TaskType>("code");
   const [taskDescription, setTaskDescription] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState("");
+  const [codeSnippet, setCodeSnippet] = useState("");
+  const [showCodeSnippet, setShowCodeSnippet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [autoApprove, setAutoApprove] = useState(false);
   const [safeMode, setSafeMode] = useState(true);
@@ -106,7 +141,22 @@ export default function CodingAgentPage() {
 
   const handleRunTask = async () => {
     if (!taskDescription.trim()) return;
-    await run(taskType, taskDescription);
+    const context: Partial<TaskContext> = {};
+    if (selectedLanguage) {
+      context.language = selectedLanguage;
+    }
+    if (codeSnippet.trim()) {
+      const ext = selectedLanguage || "txt";
+      context.files = [
+        {
+          path: `snippet.${ext}`,
+          content: codeSnippet,
+          language: selectedLanguage || "text",
+          relevance: 1.0,
+        },
+      ];
+    }
+    await run(taskType, taskDescription, Object.keys(context).length > 0 ? context : undefined);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -178,6 +228,23 @@ export default function CodingAgentPage() {
                 </Select>
               </div>
 
+              {/* Language Selector */}
+              <div className="space-y-2">
+                <Label>Language</Label>
+                <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Auto-detect" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGES.map((lang) => (
+                      <SelectItem key={lang.value || "__auto"} value={lang.value}>
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Task Description */}
               <div className="space-y-2">
                 <Label>Description</Label>
@@ -186,10 +253,37 @@ export default function CodingAgentPage() {
                   value={taskDescription}
                   onChange={(e) => setTaskDescription(e.target.value)}
                   onKeyDown={handleKeyPress}
-                  rows={6}
+                  rows={4}
                   className="resize-none"
                 />
                 <p className="text-xs text-muted-foreground">Press Ctrl+Enter to run</p>
+              </div>
+
+              {/* Code Snippet (optional context) */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm font-medium hover:text-primary transition-colors"
+                  onClick={() => setShowCodeSnippet((v) => !v)}
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  Code Snippet
+                  {showCodeSnippet ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">(optional context)</span>
+                </button>
+                {showCodeSnippet && (
+                  <Textarea
+                    placeholder={`Paste your ${selectedLanguage || "code"} here for context...`}
+                    value={codeSnippet}
+                    onChange={(e) => setCodeSnippet(e.target.value)}
+                    rows={8}
+                    className="resize-y font-mono text-xs"
+                  />
+                )}
               </div>
 
               {/* Run Button */}

@@ -218,19 +218,30 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Auto-fix: when a new error appears and auto-fix is enabled, debounce and
   // send a structured fix request to the AI after 1.5s.
+  const autoFixSeenErrorsRef = useRef<Set<string>>(new Set());
   const triggerAutoFix = useCallback(
     (errMsg: string, consoleErrors: string[]) => {
       if (!selectedChatId || !autoFixEnabled || isStreaming) return;
 
-      // Fingerprint to avoid sending the same error twice in a row
-      const fingerprint = errMsg.slice(0, 200);
+      // Fingerprint: normalize whitespace/line numbers so similar errors
+      // from the same component don't trigger multiple fixes.
+      const fingerprint = errMsg
+        .replace(/:\d+:\d+/g, "")          // strip line:col references
+        .replace(/\s+/g, " ")              // collapse whitespace
+        .slice(0, 200);
       if (fingerprint === lastAutoFixedError) return;
+      // Also skip if we've already attempted this fingerprint this session
+      if (autoFixSeenErrorsRef.current.has(fingerprint)) return;
 
       // Clear any pending timer
       if (autoFixTimerRef.current) clearTimeout(autoFixTimerRef.current);
 
       autoFixTimerRef.current = setTimeout(() => {
         setLastAutoFixedError(fingerprint);
+        autoFixSeenErrorsRef.current.add(fingerprint);
+
+        // Cap total auto-fix attempts per session to prevent runaway spending
+        if (autoFixSeenErrorsRef.current.size > 5) return;
 
         // Build a structured prompt with full context
         let prompt = `The app has a runtime error that needs to be fixed.\n\n`;

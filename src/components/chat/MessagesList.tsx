@@ -420,7 +420,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           data={messages}
           increaseViewportBy={{ top: 1000, bottom: 500 }}
           initialTopMostItemIndex={messages.length - 1}
-          followOutput="smooth"
+          followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}

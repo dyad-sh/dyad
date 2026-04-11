@@ -40,7 +40,7 @@ def extract_task_tool_calls(transcript_path: str) -> list[dict]:
         if not path.exists():
             return []
 
-        lines = path.read_text().strip().split("\n")
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
 
         for line in lines:
             try:
@@ -98,7 +98,7 @@ def read_transcript(transcript_path: str, max_chars: int = 32000) -> str:
         if not path.exists():
             return ""
 
-        lines = path.read_text().strip().split("\n")
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
 
         formatted = []
         for line in lines:

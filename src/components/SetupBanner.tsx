@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePostHog } from "posthog-js/react";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
+import { useLocalModels } from "@/hooks/useLocalModels";
+import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 // @ts-ignore
 import logo from "../../assets/logo.svg";
@@ -52,6 +54,18 @@ export function SetupBanner() {
   const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
+  const { models: ollamaModels, loadModels: loadOllamaModels } =
+    useLocalModels();
+  const { models: lmStudioModels, loadModels: loadLMStudioModels } =
+    useLocalLMSModels();
+
+  useEffect(() => {
+    loadOllamaModels();
+    loadLMStudioModels();
+  }, [loadOllamaModels, loadLMStudioModels]);
+
+  const hasLocalModels = ollamaModels.length > 0 || lmStudioModels.length > 0;
+
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
     null,
   );
@@ -152,7 +166,7 @@ export function SetupBanner() {
   if (!isNodeSetupComplete && nodeSystemInfo) {
     itemsNeedAction.push("node-setup");
   }
-  if (!isAnyProviderSetup() && !loading) {
+  if (!isAnyProviderSetup() && !hasLocalModels && !loading) {
     itemsNeedAction.push("ai-setup");
   }
 
@@ -300,7 +314,7 @@ export function SetupBanner() {
           <AccordionItem
             value="ai-setup"
             className={cn(
-              isAnyProviderSetup()
+              isAnyProviderSetup() || hasLocalModels
                 ? "bg-green-50 dark:bg-green-900/30"
                 : "bg-yellow-50 dark:bg-yellow-900/30",
             )}
@@ -312,7 +326,7 @@ export function SetupBanner() {
             >
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-3">
-                  {getStatusIcon(isAnyProviderSetup())}
+                  {getStatusIcon(isAnyProviderSetup() || hasLocalModels)}
                   <span className="font-medium text-sm">
                     2. Setup AI Access
                   </span>

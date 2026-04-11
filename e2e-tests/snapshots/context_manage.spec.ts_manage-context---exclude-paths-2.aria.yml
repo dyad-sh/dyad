@@ -6,6 +6,10 @@
       - img
   - textbox "src/**/*.tsx"
   - button "Add"
+  - button "src/**/*.ts"
+  - text: /4 files, ~\d+ tokens/
+  - button:
+    - img
   - button "manual/**"
   - text: /3 files, ~\d+ tokens/
   - button:
@@ -17,10 +21,13 @@
       - img
   - textbox "node_modules/**/*"
   - button "Add"
+  - button "src/components/**"
+  - text: /2 files, ~\d+ tokens/
+  - button:
+    - img
   - button "manual/exclude/**"
   - text: 0 files, ~0 tokens
   - button:
     - img
   - button "Close":
     - img
-    - text: ""

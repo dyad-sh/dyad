@@ -45,7 +45,7 @@
           },
           {
             "path": "a.ts",
-            "force": false,
+            "force": true,
             "fileId": "[[FILE_ID_3]]"
           },
           {

@@ -53,4 +53,25 @@ export const localTemplatesData: Template[] = [
     isExperimental: true,
     requiresNeon: true,
   },
+  {
+    id: "phaser",
+    title: "Phaser.js 2D Game",
+    description: "Uses Phaser 3, Vite, and TypeScript for 2D game development.",
+    imageUrl:
+      "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
+    githubUrl: "https://github.com/JonFermin/phaser-template",
+    isOfficial: true,
+    isExperimental: true,
+  },
+  {
+    id: "babylon",
+    title: "Babylon.js 3D Game",
+    description:
+      "Uses Babylon.js, Vite, and TypeScript for 3D game development.",
+    imageUrl:
+      "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
+    githubUrl: "https://github.com/JonFermin/babylon-template",
+    isOfficial: true,
+    isExperimental: true,
+  },
 ];

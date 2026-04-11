@@ -136,6 +136,9 @@ const ChatMessage = ({
       if (copiedRequestIdTimeoutRef.current) {
         clearTimeout(copiedRequestIdTimeoutRef.current);
       }
+      if (copiedCommitHashTimeoutRef.current) {
+        clearTimeout(copiedCommitHashTimeoutRef.current);
+      }
     };
   }, []);
 

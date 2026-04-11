@@ -10,6 +10,7 @@ import {
   OpenAIResponsesProviderOptions,
 } from "@ai-sdk/openai";
 import { StartHelpChatParams } from "../ipc_types";
+import { recordAICost } from "../utils/cost_tracking";
 
 const logger = log.scope("help-bot");
 
@@ -98,6 +99,21 @@ export function registerHelpBotHandlers() {
               { role: "assistant", content: assistantContent },
             ];
             helpSessions.set(sessionId, finalHistory);
+
+            // Record cost with the smart cost engine
+            try {
+              const usage = await stream.usage;
+              if (usage) {
+                recordAICost({
+                  model: "gpt-5-nano",
+                  provider: "openai",
+                  inputTokens: usage.inputTokens ?? 0,
+                  outputTokens: usage.outputTokens ?? 0,
+                  taskType: "help",
+                  source: "chat-stream",
+                });
+              }
+            } catch { /* best-effort */ }
 
             safeSend(event.sender, "help:chat:response:end", { sessionId });
           } catch (err) {

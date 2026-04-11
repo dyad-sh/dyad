@@ -203,7 +203,7 @@ const HubPage: React.FC = () => {
     templates?.filter((t) => !t.isOfficial) || [];
 
   return (
-    <div className="min-h-screen px-8 py-6 space-y-10">
+    <div className="h-full overflow-y-auto px-8 py-6 space-y-10">
       {/* ── Hero Header ─────────────────────────────────────────────── */}
       <header className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-indigo-500/10 p-8">
         <div className="flex items-center gap-5">

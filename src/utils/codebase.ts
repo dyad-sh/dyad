@@ -86,7 +86,6 @@ const ALWAYS_OMITTED_FILES = [".env", ".env.local"];
 // free rate limits.
 const OMITTED_FILES = [
   ...ALWAYS_OMITTED_FILES,
-  "src/components/ui",
   "eslint.config",
   "tsconfig.json",
   "tsconfig.app.json",

@@ -17,6 +17,7 @@ import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature, estimateRequestTokens, trimMessagesToFitBudget } from "@/ipc/utils/token_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
 import { tokenRateLimiter } from "@/ipc/utils/token_rate_limiter";
+import { recordAICost } from "@/ipc/utils/cost_tracking";
 
 import {
   AgentToolName,
@@ -285,6 +286,17 @@ export async function handleLocalAgentStream(
             .where(eq(messages.id, placeholderMessageId))
             .catch((err) => logger.error("Failed to save token count", err));
         }
+
+        // Record cost with the smart cost engine
+        const outputTokens = (totalTokens ?? 0) - (inputTokens ?? 0);
+        recordAICost({
+          model: settings.selectedModel?.name ?? "unknown",
+          provider: modelClient.builtinProviderId ?? settings.selectedModel?.provider ?? "unknown",
+          inputTokens: inputTokens ?? 0,
+          outputTokens: Math.max(0, outputTokens),
+          taskType: "agent",
+          source: "agent",
+        });
       },
       onError: (error: any) => {
         const errorMessage = error?.error?.message || error?.message || JSON.stringify(error);

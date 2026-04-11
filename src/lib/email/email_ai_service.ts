@@ -11,6 +11,7 @@ import { generateText } from "ai";
 import { readSettings } from "@/main/settings";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { getLanguageModelProviders } from "@/ipc/shared/language_model_helpers";
+import { recordAICost } from "@/ipc/utils/cost_tracking";
 import log from "electron-log";
 import type {
   EmailMessage,
@@ -86,7 +87,7 @@ async function getModelForTask(complexity: TaskComplexity) {
         logger.info(
           `[smart-route] ${complexity} task → ${pref.provider}/${pref.name}`,
         );
-        return modelClient.model;
+        return { model: modelClient.model, modelName: pref.name, provider: pref.provider };
       } catch {
         // This provider/model isn't available, try next
         continue;
@@ -102,7 +103,7 @@ async function getModelForTask(complexity: TaskComplexity) {
     settings.selectedModel,
     settings,
   );
-  return modelClient.model;
+  return { model: modelClient.model, modelName: settings.selectedModel.name, provider: settings.selectedModel.provider };
 }
 
 // Keep backward-compatible helper
@@ -143,8 +144,8 @@ function parseJSON<T>(text: string, fallback: T): T {
 export async function triageMessage(
   msg: EmailMessage,
 ): Promise<EmailTriageResult> {
-  const model = await getModelForTask("light");
-  const { text } = await generateText({
+  const { model, modelName, provider } = await getModelForTask("light");
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 500,
     temperature: 0.2,
@@ -159,6 +160,7 @@ export async function triageMessage(
 Return ONLY valid JSON, no extra text.`,
     messages: [{ role: "user", content: msgContext(msg) }],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-triage", source: "agent" });
 
   return parseJSON<EmailTriageResult>(text, {
     priority: "normal",
@@ -174,10 +176,10 @@ Return ONLY valid JSON, no extra text.`,
 export async function summarizeMessage(
   messages: EmailMessage[],
 ): Promise<EmailSummary> {
-  const model = await getModelForTask("medium");
+  const { model, modelName, provider } = await getModelForTask("medium");
   const conversation = messages.map(msgContext).join("\n\n===\n\n");
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 800,
     temperature: 0.3,
@@ -190,6 +192,7 @@ export async function summarizeMessage(
 Return ONLY valid JSON.`,
     messages: [{ role: "user", content: conversation }],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-summarize", source: "agent" });
 
   return parseJSON<EmailSummary>(text, {
     summary: "Could not summarize.",
@@ -205,7 +208,7 @@ export async function composeEmail(
   request: EmailComposeRequest,
   fromAddress: EmailAddress,
 ): Promise<EmailDraft> {
-  const model = await getModelForTask("heavy");
+  const { model, modelName, provider } = await getModelForTask("heavy");
 
   let contextBlock = "";
   if (request.context?.threadMessages?.length) {
@@ -219,7 +222,7 @@ export async function composeEmail(
     ? `Use a ${request.context.tone} tone.`
     : "";
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 1500,
     temperature: 0.7,
@@ -242,6 +245,7 @@ Return ONLY valid JSON.`,
       },
     ],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-compose", source: "agent" });
 
   const parsed = parseJSON<{
     to: EmailAddress[];
@@ -278,9 +282,9 @@ export async function adjustTone(
   draft: EmailDraft,
   tone: "formal" | "casual" | "friendly" | "urgent",
 ): Promise<EmailDraft> {
-  const model = await getModelForTask("medium");
+  const { model, modelName, provider } = await getModelForTask("medium");
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 1500,
     temperature: 0.5,
@@ -298,6 +302,7 @@ Return ONLY valid JSON.`,
       },
     ],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-tone", source: "agent" });
 
   const parsed = parseJSON<{ body: string; bodyHtml?: string }>(text, {
     body: draft.body,
@@ -312,9 +317,9 @@ Return ONLY valid JSON.`,
 export async function detectFollowUps(
   msg: EmailMessage,
 ): Promise<FollowUp[]> {
-  const model = await getModelForTask("medium");
+  const { model, modelName, provider } = await getModelForTask("medium");
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 600,
     temperature: 0.2,
@@ -328,6 +333,7 @@ Return a JSON array:
 Return ONLY valid JSON array. Return [] if no follow-ups detected.`,
     messages: [{ role: "user", content: msgContext(msg) }],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-followup", source: "agent" });
 
   const parsed = parseJSON<
     Array<{
@@ -353,7 +359,7 @@ Return ONLY valid JSON array. Return [] if no follow-ups detected.`,
 export async function generateDailyDigest(
   messages: EmailMessage[],
 ): Promise<DailyDigest> {
-  const model = await getModelForTask("heavy");
+  const { model, modelName, provider } = await getModelForTask("heavy");
 
   const urgent = messages.filter((m) => m.priority === "urgent");
   const actionRequired = messages.filter(
@@ -370,7 +376,7 @@ export async function generateDailyDigest(
     )
     .join("\n");
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 800,
     temperature: 0.4,
@@ -387,6 +393,7 @@ Return ONLY valid JSON.`,
       },
     ],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-digest", source: "agent" });
 
   const parsed = parseJSON<{ summary: string; topActionItems: string[] }>(
     text,
@@ -414,9 +421,9 @@ Return ONLY valid JSON.`,
 export async function generateSmartReplies(
   msg: EmailMessage,
 ): Promise<string[]> {
-  const model = await getModelForTask("light");
+  const { model, modelName, provider } = await getModelForTask("light");
 
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     maxOutputTokens: 600,
     temperature: 0.7,
@@ -425,6 +432,7 @@ Return JSON array of strings: ["reply1","reply2","reply3"]
 Return ONLY valid JSON array.`,
     messages: [{ role: "user", content: msgContext(msg) }],
   });
+  recordAICost({ model: modelName, provider, inputTokens: usage?.promptTokens ?? 0, outputTokens: usage?.completionTokens ?? 0, taskType: "email-reply", source: "agent" });
 
   return parseJSON<string[]>(text, []);
 }

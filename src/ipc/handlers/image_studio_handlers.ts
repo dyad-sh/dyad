@@ -8,6 +8,7 @@ import path from "node:path";
 import OpenAI from "openai";
 import { generateText } from "ai";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { recordAICost } from "@/ipc/utils/cost_tracking";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -420,7 +421,8 @@ async function generateWithComfyUI(params: GenerateImageParams): Promise<string>
 
 // ── Dispatch ───────────────────────────────────────────────────────────────────
 
-async function generateImage(params: GenerateImageParams): Promise<string> {
+/** Generate an image with the given provider/model. Returns the local file path. */
+export async function generateImage(params: GenerateImageParams): Promise<string> {
   switch (params.provider) {
     case "openai":
       return generateWithOpenAI(params);
@@ -779,6 +781,7 @@ Rules:
       maxTokens: 500,
       temperature: 0.7,
     });
+    recordAICost({ model: settings.selectedModel?.name ?? "unknown", provider: modelClient.builtinProviderId ?? settings.selectedModel?.provider ?? "unknown", inputTokens: result.usage?.promptTokens ?? 0, outputTokens: result.usage?.completionTokens ?? 0, taskType: "image-enhance", source: "agent" });
 
     return result.text.trim();
   });

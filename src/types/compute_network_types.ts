@@ -653,6 +653,18 @@ export interface SystemMetrics {
   temperature?: number;
   /** Power consumption in watts (if available) */
   powerWatts?: number;
+  /** Detailed hardware inventory for AI compute planning */
+  hardware?: {
+    cpu: { model: string; cores: number; threads: number; speedMhz: number };
+    totalMemoryGB: number;
+    freeMemoryGB: number;
+    diskTotalGB?: number;
+    diskFreeGB?: number;
+    gpus?: Array<{ name: string; memoryMB?: number; utilizationPct?: number }>;
+    npus?: Array<{ name: string; available: boolean }>;
+    platform: string;
+    arch: string;
+  };
 }
 
 export interface NetworkMetrics {

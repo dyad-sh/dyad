@@ -165,6 +165,11 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+## JSX Rendering
+NEVER render objects or arrays directly as JSX children — React throws "Objects are not valid as a React child".
+Always access a primitive property: \`{item.name}\` not \`{item}\`.
+Example: \`<Badge>{category.name}</Badge>\` NOT \`<Badge>{category}</Badge>\` when category is an object.
 `;
 
 const ASK_MODE_SYSTEM_PROMPT = `

@@ -1261,7 +1261,7 @@ export default function LocalModelsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-emerald-500/5">
+    <div className="h-full overflow-y-auto bg-gradient-to-br from-background via-background to-emerald-500/5">
       <div className="p-6">
         {/* Hero Header */}
         <div className="mb-8 relative">

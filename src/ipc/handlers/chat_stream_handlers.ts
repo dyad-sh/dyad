@@ -58,6 +58,7 @@ import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
 import { tokenRateLimiter } from "../utils/token_rate_limiter";
+import { recordAICost } from "../utils/cost_tracking";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
@@ -96,6 +97,7 @@ import {
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { checkSiteCompleteness } from "../utils/site_completeness";
+import { getSecretsVault } from "../../lib/secrets_vault";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -862,6 +864,34 @@ This conversation includes one or more image attachments. When the user uploads 
           });
         }
 
+        // --- DataVault Secrets Context Injection ---
+        // Tell the AI which API keys are stored in the vault (names only, NEVER values)
+        // so it can write working integrations that reference process.env.SECRET_NAME.
+        try {
+          const vault = getSecretsVault();
+          const vaultSecrets = vault.listSecretsForContext();
+          if (vaultSecrets.length > 0) {
+            const grouped: Record<string, typeof vaultSecrets> = {};
+            for (const s of vaultSecrets) {
+              const cat = s.category ?? "other";
+              (grouped[cat] = grouped[cat] ?? []).push(s);
+            }
+            const lines: string[] = [];
+            for (const [cat, items] of Object.entries(grouped)) {
+              lines.push(`\n### ${cat.charAt(0).toUpperCase() + cat.slice(1)} (${items.length})`);
+              for (const item of items) {
+                const svc = item.service ? ` [${item.service}]` : "";
+                const desc = item.description ? ` — ${item.description}` : "";
+                lines.push(`- **${item.envKey}**: ${item.name}${svc}${desc}`);
+              }
+            }
+            systemPrompt += `\n\n# Available DataVault Secrets (API Keys & Credentials)\nThe user has stored the following secrets in their local encrypted DataVault. These are available to you at runtime via \`process.env.KEY_NAME\` inside app/agent code. You MUST use them when building integrations — do NOT ask the user for keys that are already here. NEVER output the actual values; only reference the env var name.\n${lines.join("\n")}`;
+            logger.log(`Injected vault context: ${vaultSecrets.length} secrets across ${Object.keys(grouped).length} categories`);
+          }
+        } catch (vaultErr) {
+          logger.warn("Vault context injection failed (non-fatal)", { error: vaultErr });
+        }
+
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
             []
@@ -1198,6 +1228,17 @@ This conversation includes one or more image attachments. When the user uploads 
               } else {
                 logger.log("Total tokens used: unknown");
               }
+
+              // Record cost with the smart cost engine
+              const outputTokens = (totalTokens ?? 0) - (inputTokens ?? 0);
+              recordAICost({
+                model: settings.selectedModel?.name ?? "unknown",
+                provider: modelClient.builtinProviderId ?? settings.selectedModel?.provider ?? "unknown",
+                inputTokens: inputTokens ?? 0,
+                outputTokens: Math.max(0, outputTokens),
+                taskType: "chat",
+                source: "chat-stream",
+              });
             },
             onError: (error: any) => {
               let errorMessage = (error as any)?.error?.message;
@@ -1598,14 +1639,37 @@ ${formattedSearchReplaceIssues}`,
                 appPath: getJoyAppPath(updatedChat.app.path),
               });
 
+              // Filter out problems from scaffold/library files (e.g. shadcn/ui)
+              // These files are omitted from AI context and will always have
+              // errors when regenerated, causing an infinite fix loop.
+              const SKIP_FIX_PATTERNS = [/[\/\\]components[\/\\]ui[\/\\]/];
+              const filterSkippedProblems = (report: typeof problemReport) => ({
+                ...report,
+                problems: report.problems.filter(
+                  (p) => !SKIP_FIX_PATTERNS.some((re) => re.test(p.file)),
+                ),
+              });
+              problemReport = filterSkippedProblems(problemReport);
+
               let autoFixAttempts = 0;
               const originalFullResponse = fullResponse;
               const previousAttempts: ModelMessage[] = [];
+              let lastProblemFiles = "";
               while (
                 problemReport.problems.length > 0 &&
                 autoFixAttempts < 4 &&
                 !abortController.signal.aborted
               ) {
+                // Break if exact same files keep failing (no progress)
+                const currentProblemFiles = problemReport.problems
+                  .map((p) => p.file)
+                  .sort()
+                  .join(",");
+                if (autoFixAttempts > 0 && currentProblemFiles === lastProblemFiles) {
+                  logger.info("Auto-fix loop: same files still failing, stopping early");
+                  break;
+                }
+                lastProblemFiles = currentProblemFiles;
                 fullResponse += `<joy-problem-report summary="${problemReport.problems.length} problems">
 ${problemReport.problems
   .map(
@@ -1688,10 +1752,12 @@ ${problemReport.problems
                   content: removeNonEssentialTags(result.incrementalResponse),
                 });
 
-                problemReport = await generateProblemReport({
-                  fullResponse,
-                  appPath: getJoyAppPath(updatedChat.app.path),
-                });
+                problemReport = filterSkippedProblems(
+                  await generateProblemReport({
+                    fullResponse,
+                    appPath: getJoyAppPath(updatedChat.app.path),
+                  }),
+                );
               }
             } catch (error) {
               logger.error(

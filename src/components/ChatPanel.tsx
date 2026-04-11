@@ -149,22 +149,10 @@ export function ChatPanel({
     updateBlueprint,
   } = useAgentCreationPipeline(chatId);
 
-  // Auto-scroll effect when messages change during streaming
-  useEffect(() => {
-    if (
-      !isUserScrolling &&
-      isStreaming &&
-      messagesContainerRef.current &&
-      messages.length > 0
-    ) {
-      // Only auto-scroll if user is close to bottom
-      if (isNearBottom(280)) {
-        requestAnimationFrame(() => {
-          scrollToBottom("instant");
-        });
-      }
-    }
-  }, [messages, isUserScrolling, isStreaming]);
+  // Scrolling during streaming is intentionally delegated to Virtuoso's
+  // followOutput prop inside MessagesList. Adding a second scroll mechanism
+  // here causes the visible "jumping" — smooth animation and instant-snap
+  // fighting each other on every token update.
 
   return (
     <div className="flex flex-col h-full">

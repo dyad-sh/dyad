@@ -49,6 +49,9 @@ import { integrationsRoute } from "./routes/integrations";
 import { marketplaceExplorerRoute } from "./routes/marketplace-explorer";
 import { myMarketplaceAssetsRoute } from "./routes/my-marketplace-assets";
 import { creatorDashboardRoute } from "./routes/creator-dashboard";
+import { neuralBuilderRoute } from "./routes/neural-builder";
+import { cicdBuilderRoute } from "./routes/cicd-builder";
+import { calendarRoute } from "./routes/calendar";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -105,6 +108,9 @@ const routeTree = rootRoute.addChildren([
   marketplaceExplorerRoute,
   myMarketplaceAssetsRoute,
   creatorDashboardRoute,
+  neuralBuilderRoute,
+  cicdBuilderRoute,
+  calendarRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -241,19 +241,34 @@ async function startN8nService(): Promise<ServiceStatus> {
   }
   
   try {
-    // Probe PostgreSQL — if it's reachable we use it, otherwise fall back to SQLite
+    // Probe PostgreSQL — if it's reachable we use it, otherwise fall back to SQLite.
+    // Use 127.0.0.1 explicitly (not "localhost") to force IPv4 and avoid ::1 ECONNREFUSED.
     const pgPassword = process.env.POSTGRES_PASSWORD || "postgres";
     const pgPort = process.env.POSTGRES_PORT || "5433";
+    const pgHost = "127.0.0.1";
     const pgAvailable = await checkPortInUse(Number(pgPort));
+    
+    // Double-check: verify the port is actually PostgreSQL by attempting a TCP connect
+    // checkPortInUse only checks if something is bound, not if postgres is ready.
+    let pgReady = false;
+    if (pgAvailable) {
+      pgReady = await new Promise<boolean>((resolve) => {
+        const net = require("net") as typeof import("net");
+        const sock = net.createConnection({ host: pgHost, port: Number(pgPort), timeout: 3000 });
+        sock.on("connect", () => { sock.destroy(); resolve(true); });
+        sock.on("timeout", () => { sock.destroy(); resolve(false); });
+        sock.on("error", () => { sock.destroy(); resolve(false); });
+      });
+    }
     
     let n8nCommand: string;
     
-    if (pgAvailable) {
-      logger.info("PostgreSQL detected on port " + pgPort + " — using postgresdb backend");
+    if (pgReady) {
+      logger.info(`PostgreSQL detected on ${pgHost}:${pgPort} — using postgresdb backend`);
       n8nCommand = [
         `echo Starting n8n with PostgreSQL on port ${config.port}...`,
         `set "DB_TYPE=postgresdb"`,
-        `set "DB_POSTGRESDB_HOST=localhost"`,
+        `set "DB_POSTGRESDB_HOST=${pgHost}"`,
         `set "DB_POSTGRESDB_PORT=${pgPort}"`,
         `set "DB_POSTGRESDB_DATABASE=joycreate"`,
         `set "DB_POSTGRESDB_USER=postgres"`,

@@ -5,6 +5,7 @@
 
 import { IpcMainInvokeEvent, ipcMain } from "electron";
 import { spawn, ChildProcess } from "child_process";
+import net from "node:net";
 import path from "node:path";
 import fs from "fs-extra";
 import log from "electron-log";
@@ -167,8 +168,11 @@ function getN8nDatabaseEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   
   if (n8nDbConfig.type === "postgresdb") {
+    const configuredHost = n8nDbConfig.postgresHost || "127.0.0.1";
+    const normalizedHost = configuredHost === "localhost" ? "127.0.0.1" : configuredHost;
+
     env.DB_TYPE = "postgresdb";
-    env.DB_POSTGRESDB_HOST = n8nDbConfig.postgresHost || "localhost";
+    env.DB_POSTGRESDB_HOST = normalizedHost;
     env.DB_POSTGRESDB_PORT = String(n8nDbConfig.postgresPort || 5432);
     env.DB_POSTGRESDB_DATABASE = n8nDbConfig.postgresDatabase || "n8n";
     env.DB_POSTGRESDB_USER = n8nDbConfig.postgresUser || "postgres";
@@ -186,6 +190,31 @@ function getN8nDatabaseEnv(): Record<string, string> {
   return env;
 }
 
+/**
+ * Quick TCP check to verify PostgreSQL is reachable before starting n8n.
+ * Returns true if a TCP connection can be established within 3 seconds.
+ */
+async function checkPostgresConnectivity(dbEnv: Record<string, string>): Promise<boolean> {
+  const host = dbEnv.DB_POSTGRESDB_HOST || "127.0.0.1";
+  const port = parseInt(dbEnv.DB_POSTGRESDB_PORT || "5432", 10);
+
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port, timeout: 3000 });
+    socket.on("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
 export async function startN8n(): Promise<{ success: boolean; error?: string }> {
   if (n8nProcess) {
     return { success: true };
@@ -194,7 +223,22 @@ export async function startN8n(): Promise<{ success: boolean; error?: string }> 
   try {
     logger.info("Starting n8n with database type:", n8nDbConfig.type);
     
-    const dbEnv = getN8nDatabaseEnv();
+    let dbEnv = getN8nDatabaseEnv();
+
+    // If configured for PostgreSQL, verify connectivity before spawning n8n.
+    // Fall back to SQLite so n8n can still start when Docker/PG is down.
+    if (n8nDbConfig.type === "postgresdb") {
+      const pgOk = await checkPostgresConnectivity(dbEnv);
+      if (!pgOk) {
+        logger.warn(
+          `PostgreSQL unreachable at ${dbEnv.DB_POSTGRESDB_HOST}:${dbEnv.DB_POSTGRESDB_PORT} — falling back to SQLite`,
+        );
+        dbEnv = {
+          DB_TYPE: "sqlite",
+          DB_SQLITE_DATABASE: path.join(getUserDataPath(), "n8n.sqlite"),
+        };
+      }
+    }
     
     // Use npx to run n8n
     n8nProcess = spawn("npx", ["n8n", "start"], {

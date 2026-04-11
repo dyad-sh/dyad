@@ -199,7 +199,7 @@ export default function AppDetailsPage() {
 
   if (!selectedApp) {
     return (
-      <div className="relative min-h-screen p-8">
+      <div className="relative h-full overflow-y-auto p-8">
         <Button
           onClick={() => router.history.back()}
           variant="outline"
@@ -220,7 +220,7 @@ export default function AppDetailsPage() {
 
   return (
     <div
-      className="relative min-h-screen p-4 w-full"
+      className="relative h-full overflow-y-auto p-4 w-full"
       data-testid="app-details-page"
     >
       <Button

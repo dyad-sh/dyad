@@ -148,6 +148,10 @@ test("create and sync to existing repo", async ({ po }) => {
   await po.githubConnector.selectBranch("main");
   await po.githubConnector.clickConnectToRepoButton();
 
+  // Wait for sync button to be in stable state (not "Syncing...")
+  await expect(
+    po.page.getByRole("button", { name: "Sync to GitHub" }),
+  ).toBeVisible();
   await po.githubConnector.snapshotConnectedRepo();
 });
 

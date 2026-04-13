@@ -201,12 +201,11 @@ export async function processFullResponseActions(
         try {
           if (chatWithApp.app.neonProjectId) {
             // Route to Neon executor
-            const branchId =
-              chatWithApp.app.neonActiveBranchId ??
-              chatWithApp.app.neonDevelopmentBranchId;
+            const branchId = chatWithApp.app.neonActiveBranchId;
             if (!branchId) {
-              throw new Error(
+              throw new DyadError(
                 "No active Neon branch found for SQL execution. Please select a branch in the Neon integration settings.",
+                DyadErrorKind.Precondition,
               );
             }
             try {
@@ -220,16 +219,23 @@ export async function processFullResponseActions(
                 neonError instanceof Error
                   ? neonError.message
                   : String(neonError);
+              // These substrings come from @neondatabase/serverless wrapping
+              // Postgres auth errors. If the client library ever exposes
+              // structured error codes, prefer those over message matching.
               if (
                 errorMsg.includes("password authentication failed") ||
                 errorMsg.includes("authentication failed") ||
                 errorMsg.includes("access token")
               ) {
-                throw new Error(
+                throw new DyadError(
                   `Neon authentication failed. Please reconnect your Neon account in the integration settings. Details: ${errorMsg}`,
+                  DyadErrorKind.Auth,
                 );
               }
-              throw new Error(`Neon SQL query failed: ${errorMsg}`);
+              throw new DyadError(
+                `Neon SQL query failed: ${errorMsg}`,
+                DyadErrorKind.External,
+              );
             }
           } else if (chatWithApp.app.supabaseProjectId) {
             // Route to Supabase executor

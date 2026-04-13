@@ -15,7 +15,7 @@ const logger = log.scope("app_env_var_utils");
 
 export const ENV_FILE_NAME = ".env.local";
 
-function getEnvFilePath({ appPath }: { appPath: string }): string {
+export function getEnvFilePath({ appPath }: { appPath: string }): string {
   return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
 }
 

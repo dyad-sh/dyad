@@ -594,7 +594,11 @@
       "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app.",
       "openInConsole": "Open in Neon Console",
       "completingSignIn": "Complete sign-in in your browser…",
-      "projectDisconnected": "Project disconnected successfully"
+      "projectDisconnected": "Project disconnected successfully",
+      "signInTimedOut": "Sign-in timed out — try again or check your browser",
+      "connecting": "Connecting...",
+      "disconnectAccountTitle": "Disconnect Neon Account",
+      "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect."
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",
@@ -613,6 +617,7 @@
       "chooseProvider": "Choose a database provider",
       "setUpProvider": "Set up {{provider}}",
       "setUpDatabase": "Set up database",
+      "experimental": "Experimental",
       "providers": {
         "supabase": {
           "name": "Supabase",

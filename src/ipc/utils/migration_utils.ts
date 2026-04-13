@@ -67,7 +67,7 @@ export async function createTempDrizzleConfig({
   // The actual value is passed via spawnDrizzleKit's `connectionUri` param.
   const configContent = `module.exports = {
   dialect: "postgresql",
-  out: "${outDir}",
+  out: ${JSON.stringify(outDir)},
   dbCredentials: {
     url: process.env.DRIZZLE_DATABASE_URL,
   },${schemaPath ? `\n  schema: ${JSON.stringify(schemaPath.replace(/\\/g, "/"))},` : ""}

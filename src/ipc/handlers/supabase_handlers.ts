@@ -17,6 +17,7 @@ import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { assertNoNeonProject } from "../utils/neon_utils";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -196,6 +197,7 @@ export function registerSupabaseHandlers() {
   // Set app project - links a Dyad app to a Supabase project
   createTypedHandler(supabaseContracts.setAppProject, async (_, params) => {
     const { projectId, appId, parentProjectId, organizationSlug } = params;
+    await assertNoNeonProject(appId);
     await db
       .update(apps)
       .set({

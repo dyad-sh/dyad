@@ -591,7 +591,11 @@
       "selectProjectDescription": "Selecione um projeto Neon existente ou crie um novo",
       "openInConsole": "Abrir no Console Neon",
       "completingSignIn": "Complete o login no seu navegador…",
-      "projectDisconnected": "Projeto desconectado com sucesso"
+      "projectDisconnected": "Projeto desconectado com sucesso",
+      "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
+      "connecting": "Conectando...",
+      "disconnectAccountTitle": "Desconectar conta Neon",
+      "disconnectAccountConfirmation": "Tem certeza de que deseja desconectar sua conta Neon? Você precisará autenticar novamente via OAuth para reconectar."
     },
     "db": {
       "projectInfo": "{{provider}} Informações do Projeto",
@@ -610,6 +614,7 @@
       "chooseProvider": "Escolha um provedor de banco de dados",
       "setUpProvider": "Configurar {{provider}}",
       "setUpDatabase": "Configurar banco de dados",
+      "experimental": "Experimental",
       "providers": {
         "supabase": {
           "name": "Supabase",

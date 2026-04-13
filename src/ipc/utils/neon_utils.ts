@@ -145,11 +145,14 @@ export async function autoInjectNeonEnvVars({
     warning = `Failed to activate Neon Auth: ${message}`;
   }
 
-  // Always write env vars (DATABASE_URL, POSTGRES_URL, and auth URL if available)
+  // Always write env vars (DATABASE_URL, POSTGRES_URL, and auth URL if available).
+  // When auth activation failed transiently, preserve existing auth vars so a
+  // previously working setup isn't wiped by a temporary Neon API failure.
   await updateNeonEnvVars({
     appPath,
     connectionUri,
     neonAuthBaseUrl,
+    preserveExistingAuth: !neonAuthBaseUrl,
   });
 
   return warning;
@@ -168,6 +171,24 @@ export async function assertNoSupabaseProject(appId: number): Promise<void> {
   if (existingApp[0]?.supabaseProjectId) {
     throw new DyadError(
       "Cannot connect Neon: this app already has a Supabase project. Disconnect Supabase first.",
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
+/**
+ * Guard: prevent connecting both Neon and Supabase on the same app.
+ * Throws if the app already has a Neon project linked.
+ */
+export async function assertNoNeonProject(appId: number): Promise<void> {
+  const existingApp = await db
+    .select({ neonProjectId: apps.neonProjectId })
+    .from(apps)
+    .where(eq(apps.id, appId))
+    .limit(1);
+  if (existingApp[0]?.neonProjectId) {
+    throw new DyadError(
+      "Cannot connect Supabase: this app already has a Neon project. Disconnect Neon first.",
       DyadErrorKind.Precondition,
     );
   }

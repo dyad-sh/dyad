@@ -238,7 +238,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                   {option.name}
                 </span>
                 {option.experimental && (
-                  <DyadBadge color="amber">Experimental</DyadBadge>
+                  <DyadBadge color="amber">
+                    {t("integrations.databaseSetup.experimental")}
+                  </DyadBadge>
                 )}
                 <a
                   href={option.url}

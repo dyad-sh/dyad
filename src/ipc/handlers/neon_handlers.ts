@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
@@ -15,11 +14,10 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
-import { getDyadAppPath } from "../../paths/paths";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
-  ENV_FILE_NAME,
+  getEnvFilePath,
   readEnvFileIfExists,
   removeNeonEnvVars,
 } from "../utils/app_env_var_utils";
@@ -35,10 +33,6 @@ import {
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
-function getEnvFilePath(appPath: string): string {
-  return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
-}
-
 async function restoreEnvFileSnapshot({
   appPath,
   snapshot,
@@ -46,7 +40,7 @@ async function restoreEnvFileSnapshot({
   appPath: string;
   snapshot: string | null;
 }): Promise<void> {
-  const envFilePath = getEnvFilePath(appPath);
+  const envFilePath = getEnvFilePath({ appPath });
   if (snapshot === null) {
     await fs.rm(envFilePath, { force: true });
     return;
@@ -98,6 +92,13 @@ export function registerNeonHandlers() {
       if (!response.data.project) {
         throw new DyadError(
           "Failed to create project: No project data returned.",
+          DyadErrorKind.External,
+        );
+      }
+
+      if (!response.data.branch) {
+        throw new DyadError(
+          "Failed to create project: No branch data returned.",
           DyadErrorKind.External,
         );
       }
@@ -493,45 +494,43 @@ export function registerNeonHandlers() {
 
       // Auto-inject env vars into the app's .env.local
       let warning: string | undefined;
-      if (activeBranchId) {
+      try {
+        warning = await autoInjectNeonEnvVars({
+          appPath,
+          projectId,
+          branchId: activeBranchId,
+        });
+      } catch (envError) {
+        // Revert the DB update so the app doesn't end up half-linked
+        logger.warn(
+          `autoInjectNeonEnvVars failed for app ${appId}, reverting DB update: ${envError}`,
+        );
         try {
-          warning = await autoInjectNeonEnvVars({
-            appPath,
-            projectId,
-            branchId: activeBranchId,
-          });
-        } catch (envError) {
-          // Revert the DB update so the app doesn't end up half-linked
-          logger.warn(
-            `autoInjectNeonEnvVars failed for app ${appId}, reverting DB update: ${envError}`,
+          await db
+            .update(apps)
+            .set({
+              neonProjectId: null,
+              neonDevelopmentBranchId: null,
+              neonPreviewBranchId: null,
+              neonActiveBranchId: null,
+            })
+            .where(eq(apps.id, appId));
+        } catch (revertError) {
+          logger.error(
+            `Failed to revert Neon fields from app ${appId}: ${revertError}`,
           );
-          try {
-            await db
-              .update(apps)
-              .set({
-                neonProjectId: null,
-                neonDevelopmentBranchId: null,
-                neonPreviewBranchId: null,
-                neonActiveBranchId: null,
-              })
-              .where(eq(apps.id, appId));
-          } catch (revertError) {
-            logger.error(
-              `Failed to revert Neon fields from app ${appId}: ${revertError}`,
-            );
-          }
-          try {
-            await restoreEnvFileSnapshot({
-              appPath,
-              snapshot: envFileSnapshot,
-            });
-          } catch (restoreError) {
-            logger.error(
-              `Failed to restore .env.local for app ${appId}: ${restoreError}`,
-            );
-          }
-          throw envError;
         }
+        try {
+          await restoreEnvFileSnapshot({
+            appPath,
+            snapshot: envFileSnapshot,
+          });
+        } catch (restoreError) {
+          logger.error(
+            `Failed to restore .env.local for app ${appId}: ${restoreError}`,
+          );
+        }
+        throw envError;
       }
 
       logger.info(

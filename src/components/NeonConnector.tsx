@@ -66,6 +66,8 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDisconnectingAccount, setIsDisconnectingAccount] = useState(false);
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
+  const [isDisconnectAccountDialogOpen, setIsDisconnectAccountDialogOpen] =
+    useState(false);
   const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formatToastError = (error: unknown) => getErrorMessage(error);
   const projectDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -128,6 +130,7 @@ export function NeonConnector({ appId }: { appId: number }) {
       oauthTimeoutRef.current = setTimeout(() => {
         setIsOpeningOauth(false);
         oauthTimeoutRef.current = null;
+        toast.warning(t("integrations.neon.signInTimedOut"));
       }, 20_000);
     } catch (error) {
       setIsOpeningOauth(false);
@@ -222,11 +225,18 @@ export function NeonConnector({ appId }: { appId: number }) {
   const handleDisconnectAccount = async () => {
     setIsDisconnectingAccount(true);
     try {
+      // Clear app's Neon DB rows first so the app doesn't end up in a
+      // broken state (linked to Neon but no OAuth token).
+      if (app?.neonProjectId) {
+        await ipc.neon.unsetAppProject({ appId });
+        await refreshApp();
+      }
       await updateSettings({ neon: undefined });
       setShowCreateForm(false);
       setNewProjectName("");
       setCreateProjectError(null);
       queryClient.removeQueries({ queryKey: queryKeys.neon.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
       toast.success(t("integrations.neon.disconnected"));
     } catch (error) {
       console.error("Failed to disconnect from Neon:", error);
@@ -409,7 +419,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                 </div>
               ) : isLoadingBranches ? (
                 <Skeleton className="h-10 w-full" />
-              ) : branches.length === 0 ? (
+              ) : branches.filter((b) => b.type !== "preview").length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                   <p>{t("integrations.neon.noBranchesFound")}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -553,17 +563,54 @@ export function NeonConnector({ appId }: { appId: number }) {
           <div className="flex items-center justify-between">
             <CardTitle>{t("integrations.neon.projects")}</CardTitle>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDisconnectAccount}
-                disabled={isDisconnectingAccount}
+              <AlertDialog
+                open={isDisconnectAccountDialogOpen}
+                onOpenChange={(open) => {
+                  if (!isDisconnectingAccount)
+                    setIsDisconnectAccountDialogOpen(open);
+                }}
               >
-                {isDisconnectingAccount && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                {t("integrations.neon.disconnect")}
-              </Button>
+                <AlertDialogTrigger
+                  className={buttonVariants({
+                    variant: "outline",
+                    size: "sm",
+                  })}
+                  disabled={isDisconnectingAccount}
+                >
+                  {isDisconnectingAccount && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  {t("integrations.neon.disconnect")}
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t("integrations.neon.disconnectAccountTitle")}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t("integrations.neon.disconnectAccountConfirmation")}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDisconnectingAccount}>
+                      {t("integrations.neon.cancel")}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDisconnectAccount();
+                      }}
+                      disabled={isDisconnectingAccount}
+                      className="bg-destructive text-white hover:bg-destructive/90"
+                    >
+                      {isDisconnectingAccount && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}
+                      {t("integrations.neon.disconnect")}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               <Button
                 variant="outline"
                 size="icon"
@@ -672,9 +719,16 @@ export function NeonConnector({ appId }: { appId: number }) {
                       id="neon-project-select"
                       data-testid="neon-project-select"
                     >
-                      <SelectValue
-                        placeholder={t("integrations.neon.selectAProject")}
-                      />
+                      {isConnecting ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {t("integrations.neon.connecting")}
+                        </span>
+                      ) : (
+                        <SelectValue
+                          placeholder={t("integrations.neon.selectAProject")}
+                        />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
                       {projects.map((project) => (

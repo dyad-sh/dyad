@@ -134,7 +134,7 @@ const handleResend = async () => {
 try {
 const { error } = await authClient.sendVerificationEmail({
 email,
-callbackURL: pathname,
+callbackURL: `${pathname}?email=${encodeURIComponent(email)}`,
 });
 if (error) throw error;
 setMessage('Verification email resent! Check your inbox.');

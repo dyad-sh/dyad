@@ -51,6 +51,13 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
       }
 
+      if (ctx.neonProjectId && !ctx.neonActiveBranchId) {
+        throw new DyadError(
+          "Neon active branch not configured. Please select a branch in the Neon integration settings.",
+          DyadErrorKind.Precondition,
+        );
+      }
+
       if (ctx.supabaseProjectId) {
         const sqlResult = await executeSupabaseSql({
           supabaseProjectId: ctx.supabaseProjectId,

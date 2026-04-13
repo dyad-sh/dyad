@@ -228,6 +228,7 @@
     "requestsConsent": "solicita seu consentimento.",
     "inputRequired": "Entrada Necessária"
   },
+  "guide": "Guia",
   "agentModeActivated": "Modo Agente Ativado",
   "agentModeTip": "Dica: Crie um novo chat para dar ao agente um contexto limpo para melhores resultados.",
   "neverShowAgain": "Não mostrar novamente"

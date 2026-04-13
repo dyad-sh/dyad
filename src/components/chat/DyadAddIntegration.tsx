@@ -242,16 +242,17 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                     {t("integrations.databaseSetup.experimental")}
                   </DyadBadge>
                 )}
-                <a
-                  href={option.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(option.url, "_blank", "noopener,noreferrer");
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  role="link"
                   aria-label={`Visit ${option.name} website`}
                 >
                   <ExternalLink size={12} />
-                </a>
+                </span>
               </div>
               <p className="text-xs text-muted-foreground leading-snug">
                 {option.description}

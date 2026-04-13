@@ -201,7 +201,9 @@ export async function processFullResponseActions(
         try {
           if (chatWithApp.app.neonProjectId) {
             // Route to Neon executor
-            const branchId = chatWithApp.app.neonActiveBranchId;
+            const branchId =
+              chatWithApp.app.neonActiveBranchId ??
+              chatWithApp.app.neonDevelopmentBranchId;
             if (!branchId) {
               throw new DyadError(
                 "No active Neon branch found for SQL execution. Please select a branch in the Neon integration settings.",

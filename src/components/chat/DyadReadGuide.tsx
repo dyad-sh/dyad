@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CustomTagState } from "./stateTypes";
 import { BookOpen } from "lucide-react";
 import {
@@ -22,6 +23,7 @@ interface DyadReadGuideProps {
 
 export function DyadReadGuide({ node, children }: DyadReadGuideProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { t } = useTranslation("chat");
   const { name, state } = node.properties;
   const isLoading = state === "pending";
   const isAborted = state === "aborted";
@@ -34,7 +36,7 @@ export function DyadReadGuide({ node, children }: DyadReadGuideProps) {
       onClick={() => setIsExpanded(!isExpanded)}
     >
       <DyadCardHeader icon={<BookOpen size={15} />} accentColor="indigo">
-        <DyadBadge color="indigo">Guide</DyadBadge>
+        <DyadBadge color="indigo">{t("guide")}</DyadBadge>
         {name && (
           <span className="text-sm text-foreground truncate">{name}</span>
         )}

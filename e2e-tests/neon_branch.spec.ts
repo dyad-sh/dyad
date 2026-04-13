@@ -39,19 +39,19 @@ testSkipIfWindows("neon branch selection updates env vars", async ({ po }) => {
   const cookieSecretBeforeSwitch = readCookieSecret(envBeforeSwitch);
   expect(cookieSecretBeforeSwitch).toBeTruthy();
 
-  await po.appManagement.selectNeonBranch("preview");
+  await po.appManagement.selectNeonBranch("main");
 
   let envAfterSwitch = "";
   await expect(async () => {
     envAfterSwitch = fs.readFileSync(envFilePath, "utf8");
     expect(envAfterSwitch).toContain(
-      "DATABASE_URL=postgresql://test:test@test-preview.neon.tech/test",
+      "DATABASE_URL=postgresql://test:test@test-main.neon.tech/test",
     );
     expect(envAfterSwitch).toContain(
-      "POSTGRES_URL=postgresql://test:test@test-preview.neon.tech/test",
+      "POSTGRES_URL=postgresql://test:test@test-main.neon.tech/test",
     );
     expect(envAfterSwitch).toContain(
-      "NEON_AUTH_BASE_URL=https://test-preview.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+      "NEON_AUTH_BASE_URL=https://test-main.neonauth.us-east-2.aws.neon.tech/neondb/auth",
     );
     expect(envAfterSwitch).toMatch(/NEON_AUTH_COOKIE_SECRET=[a-f0-9]{64}/);
   }).toPass({ timeout: Timeout.MEDIUM });

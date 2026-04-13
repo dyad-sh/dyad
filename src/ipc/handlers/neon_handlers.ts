@@ -107,6 +107,9 @@ export function registerNeonHandlers() {
       const mainBranch = response.data.branch;
       const authWarnings: string[] = [];
 
+      // Snapshot env file before modification so we can restore on failure
+      const envFileSnapshot = await readEnvFileIfExists({ appPath });
+
       // Post-creation steps: if any fail, best-effort delete the orphan project
       try {
         // Enable Neon Auth on the main branch
@@ -257,12 +260,15 @@ export function registerNeonHandlers() {
             `Failed to clear Neon fields from app ${appId} after project cleanup: ${dbCleanupError}`,
           );
         }
-        // Remove env vars that may have been injected before the failure
+        // Restore env file to pre-modification state
         try {
-          await removeNeonEnvVars({ appPath });
+          await restoreEnvFileSnapshot({
+            appPath,
+            snapshot: envFileSnapshot,
+          });
         } catch (envCleanupError) {
           logger.error(
-            `Failed to remove Neon env vars from app ${appId} after project cleanup: ${envCleanupError}`,
+            `Failed to restore .env.local for app ${appId} after project cleanup: ${envCleanupError}`,
           );
         }
         throw postCreateError;

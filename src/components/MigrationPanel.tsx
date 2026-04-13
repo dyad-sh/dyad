@@ -48,9 +48,10 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   )?.branchName;
   const targetBranchName = productionBranch?.branchName;
   const projectName = projectInfo?.projectName ?? app?.neonProjectId ?? null;
+  const effectiveBranchId =
+    app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId;
   const isProductionBranchActive =
-    !!app?.neonActiveBranchId &&
-    app.neonActiveBranchId === productionBranch?.branchId;
+    !!effectiveBranchId && effectiveBranchId === productionBranch?.branchId;
   const hasBranchContext = Boolean(
     projectName && sourceBranchName && targetBranchName,
   );

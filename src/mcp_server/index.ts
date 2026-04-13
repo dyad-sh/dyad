@@ -20,6 +20,7 @@ import { registerWorkflowTools } from "./tools/workflow_tools";
 import { registerChatTools } from "./tools/chat_tools";
 import { registerMarketplaceTools } from "./tools/marketplace_tools";
 import { registerKnowledgeBaseTools } from "./tools/knowledge_base_tools";
+import { processInboundEvent, type MarketplaceInboundEvent } from "../ipc/handlers/marketplace_inbound_handlers";
 
 const logger = log.scope("mcp-server");
 
@@ -62,13 +63,55 @@ class JoyCreateMcpServer {
     await this.mcpServer.connect(this.httpTransport);
 
     this.httpServer = http.createServer(async (req, res) => {
-      // Only accept requests to /mcp endpoint
-      if (req.url !== "/mcp") {
-        res.writeHead(404);
-        res.end("Not found");
+      // ── CORS preflight ───────────────────────────────────────────────────
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-bot-id");
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
         return;
       }
-      await this.httpTransport!.handleRequest(req, res);
+
+      // ── POST /sync/inbound — Joy Marketplace → JoyCreate webhook ────────
+      if (req.method === "POST" && req.url === "/sync/inbound") {
+        try {
+          const chunks: Buffer[] = [];
+          req.on("data", (chunk) => chunks.push(chunk));
+          req.on("end", async () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as MarketplaceInboundEvent;
+              const result = await processInboundEvent(body);
+              res.writeHead(result.success ? 200 : 400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(result));
+            } catch (parseErr) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Invalid JSON body" }));
+            }
+          });
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err?.message ?? "Internal error" }));
+        }
+        return;
+      }
+
+      // ── GET /sync/health — liveness check ────────────────────────────────
+      if (req.method === "GET" && req.url === "/sync/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok", service: "joycreate-sync", port: this.port }));
+        return;
+      }
+
+      // ── /mcp — MCP protocol endpoint ─────────────────────────────────────
+      if (req.url === "/mcp") {
+        await this.httpTransport!.handleRequest(req, res);
+        return;
+      }
+
+      res.writeHead(404);
+      res.end("Not found");
     });
 
     await new Promise<void>((resolve, reject) => {

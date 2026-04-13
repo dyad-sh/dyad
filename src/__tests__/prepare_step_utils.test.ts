@@ -1455,7 +1455,10 @@ describe("prepare_step_utils", () => {
       ];
 
       // Re-inject with adjusted index (3)
-      const result = injectMessagesAtPositions(sdkMessages, allInjectedMessages);
+      const result = injectMessagesAtPositions(
+        sdkMessages,
+        allInjectedMessages,
+      );
 
       // Screenshot at index 3 = after step0_tool, before step1_assistant — correct!
       expect(result.map((m) => m.role)).toEqual([
@@ -1530,7 +1533,10 @@ describe("prepare_step_utils", () => {
         },
       ];
 
-      const broken = injectMessagesAtPositions(sdkMessages, allInjectedMessages);
+      const broken = injectMessagesAtPositions(
+        sdkMessages,
+        allInjectedMessages,
+      );
 
       // BUG: screenshot lands between step1 assistant and step1 tool
       expect(broken.map((m) => m.role)).toEqual([

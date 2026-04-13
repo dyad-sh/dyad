@@ -50,6 +50,25 @@ export const useCopyToClipboard = () => {
     }
   };
 
+  const copyRawText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+
+      setCopied(true);
+      // Clear existing timeout if any
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      // Set new timeout and store reference
+      timeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      return true;
+    } catch (error) {
+      console.error("Failed to copy text:", error);
+      return false;
+    }
+  };
+
   // Convert Dyad content to clean markdown using the same parsing logic as DyadMarkdownParser
   const convertDyadContentToMarkdown = (content: string): string => {
     if (!content) return "";
@@ -273,5 +292,5 @@ export const useCopyToClipboard = () => {
     return { processedContent };
   };
 
-  return { copyMessageContent, copied };
+  return { copyMessageContent, copyRawText, copied };
 };

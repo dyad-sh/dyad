@@ -11,6 +11,8 @@ interface CopyButtonProps {
   ariaLabel: string;
   displayText: string;
   tooltipText: string;
+  mono?: boolean;
+  raw?: boolean;
 }
 
 export function CopyButton({
@@ -18,18 +20,26 @@ export function CopyButton({
   ariaLabel,
   displayText,
   tooltipText,
+  mono = false,
+  raw = false,
 }: CopyButtonProps) {
-  const { copyMessageContent, copied } = useCopyToClipboard();
+  const { copyMessageContent, copyRawText, copied } = useCopyToClipboard();
+
+  const handleCopy = () => {
+    if (!value) return;
+    if (raw) {
+      copyRawText(value);
+    } else {
+      copyMessageContent(value);
+    }
+  };
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
-            onClick={() => {
-              if (!value) return;
-              copyMessageContent(value);
-            }}
+            onClick={handleCopy}
             aria-label={ariaLabel}
             className="flex items-center space-x-1 px-1 py-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
           />
@@ -40,7 +50,7 @@ export function CopyButton({
         ) : (
           <Copy className="h-3 w-3" />
         )}
-        <span className="font-mono text-xs">
+        <span className={`${mono ? "font-mono" : ""} text-xs`}>
           {copied ? "Copied" : displayText}
         </span>
       </TooltipTrigger>

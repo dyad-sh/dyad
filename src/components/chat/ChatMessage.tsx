@@ -296,6 +296,8 @@ const ChatMessage = ({
                     ariaLabel="Copy Commit Hash"
                     displayText={message.commitHash.slice(0, 7)}
                     tooltipText={message.commitHash}
+                    mono={true}
+                    raw={true}
                   />
                 )}
               </div>
@@ -306,6 +308,7 @@ const ChatMessage = ({
                 ariaLabel="Copy Request ID"
                 displayText="Request ID"
                 tooltipText={`Copy Request ID: ${message.requestId.slice(0, 8)}...`}
+                raw={true}
               />
             )}
             {isLastMessage && message.totalTokens && (

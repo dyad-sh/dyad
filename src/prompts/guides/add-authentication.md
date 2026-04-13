@@ -151,6 +151,7 @@ children: React.ReactNode;
 return (
 {/_ Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching _/}
 <NeonAuthUIProvider authClient={authClient} defaultTheme="light">
+
 <header>
 <UserButton />
 </header>

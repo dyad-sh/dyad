@@ -64,6 +64,7 @@ setError('');
 };
 
 return (
+
 <div>
 <h1>Create an account</h1>
 <form onSubmit={handleSignUp}>
@@ -143,6 +144,7 @@ setMessage(err?.message || 'Failed to resend verification email.');
 };
 
 return (
+
 <div>
 <h1>Verify your email</h1>
 <p>Enter the verification code sent to {email}</p>

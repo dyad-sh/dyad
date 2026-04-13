@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
 import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";

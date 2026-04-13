@@ -6,8 +6,11 @@
  */
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
+import log from "electron-log";
 import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
+
+const logger = log.scope("prepare_step_utils");
 import { validateImageDimensions } from "./tools/image_utils";
 
 /**
@@ -192,4 +195,96 @@ export function prepareStepMessages<
     : filteredMessages;
 
   return { messages: newMessages, ...rest };
+}
+
+/**
+ * Ensure user messages don't appear between a tool_use and its tool_result.
+ *
+ * After mid-turn compaction, injected user messages (e.g., web_crawl screenshots)
+ * can end up at stale array positions that break the AI SDK's tool result
+ * validation. This function detects any such misplaced user messages and moves
+ * them forward past the pending tool results.
+ *
+ * Returns a new array if changes were made, or null if no fix was needed.
+ */
+export function ensureToolResultOrdering<T extends ModelMessage>(
+  messages: T[],
+): T[] | null {
+  const result = [...messages] as T[];
+  let changed = false;
+  const pendingToolCallIds = new Set<string>();
+
+  for (let i = 0; i < result.length; i++) {
+    const msg = result[i];
+    const content = Array.isArray(msg.content) ? msg.content : [];
+
+    if (msg.role === "assistant") {
+      for (const part of content) {
+        if (isToolCallPart(part)) {
+          pendingToolCallIds.add(part.toolCallId);
+        }
+      }
+    } else if (msg.role === "tool") {
+      for (const part of content) {
+        if (isToolResultPart(part)) {
+          pendingToolCallIds.delete(part.toolCallId);
+        }
+      }
+    } else if (msg.role === "user" && pendingToolCallIds.size > 0) {
+      // This user message is between a tool_use and its tool_result.
+      // Find the next position where all pending tool results are resolved.
+      let insertAfter = i;
+      for (let j = i + 1; j < result.length; j++) {
+        const next = result[j];
+        if (next.role === "tool" && Array.isArray(next.content)) {
+          for (const part of next.content) {
+            if (isToolResultPart(part)) {
+              pendingToolCallIds.delete(part.toolCallId);
+            }
+          }
+          insertAfter = j;
+          if (pendingToolCallIds.size === 0) break;
+        } else if (next.role === "assistant") {
+          // New assistant turn — stop scanning to avoid crossing turn boundaries
+          break;
+        }
+      }
+
+      if (insertAfter > i) {
+        logger.warn(
+          `Moving user message from index ${i} to after index ${insertAfter} to preserve tool_use/tool_result ordering`,
+        );
+        const [moved] = result.splice(i, 1);
+        result.splice(insertAfter, 0, moved);
+        changed = true;
+        i--; // Reprocess current position
+      }
+    }
+  }
+
+  return changed ? result : null;
+}
+
+function isToolCallPart(
+  part: unknown,
+): part is { type: "tool-call"; toolCallId: string } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as Record<string, unknown>).type === "tool-call" &&
+    "toolCallId" in part
+  );
+}
+
+function isToolResultPart(
+  part: unknown,
+): part is { type: "tool-result"; toolCallId: string } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as Record<string, unknown>).type === "tool-result" &&
+    "toolCallId" in part
+  );
 }

@@ -61,6 +61,7 @@ import {
   buildTodoReminderMessage,
   hasIncompleteTodos,
   formatTodoSummary,
+  ensureToolResultOrdering,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
@@ -588,6 +589,11 @@ export async function handleLocalAgentStream(
     let compactBeforeNextStep = false;
     let compactedMidTurn = false;
     let compactionFailedMidTurn = false;
+    // Tracks the difference between the compacted base message count and the
+    // SDK's initialMessages count. Used to adjust injection indices after
+    // compaction so that subsequent steps (which use the SDK's shorter base)
+    // inject user messages at the correct position.
+    let compactionIndexDelta = 0;
 
     const maxOutputTokens = await getMaxTokens(settings.selectedModel);
     const temperature = await getTemperature(settings.selectedModel);
@@ -643,6 +649,7 @@ export async function handleLocalAgentStream(
       compactedMidTurn = false;
       compactionFailedMidTurn = false;
       compactBeforeNextStep = false;
+      compactionIndexDelta = 0;
       postMidTurnCompactionStartStep = null;
       baseMessageHistoryCount = currentMessageHistory.length;
 
@@ -741,6 +748,7 @@ export async function handleLocalAgentStream(
                   // with a different (typically smaller) count. Keeping them would
                   // cause injectMessagesAtPositions to splice at wrong positions.
                   allInjectedMessages.length = 0;
+                  const preCompactionBaseCount = baseMessageHistoryCount;
                   const compactedMessageHistory = buildChatMessageHistory(
                     chat.messages,
                     {
@@ -750,6 +758,11 @@ export async function handleLocalAgentStream(
                     },
                   );
                   baseMessageHistoryCount = compactedMessageHistory.length;
+                  // The compacted history includes the compaction summary, but the
+                  // AI SDK's initialMessages does not. Track the delta so we can
+                  // adjust injection indices after prepareStepMessages runs.
+                  compactionIndexDelta =
+                    baseMessageHistoryCount - preCompactionBaseCount;
                   stepOptions = {
                     ...options,
                     // Preserve in-flight turn messages so same-turn tool loops can
@@ -771,6 +784,21 @@ export async function handleLocalAgentStream(
                 allInjectedMessages,
               );
 
+              // After mid-turn compaction, injection indices are based on the
+              // compacted message array (which includes the compaction summary).
+              // The AI SDK's internal messages don't include this summary, so
+              // subsequent steps have a shorter base. Adjust indices now so
+              // future re-injections land at the correct position.
+              if (compactionIndexDelta !== 0 && allInjectedMessages.length > 0) {
+                for (const injection of allInjectedMessages) {
+                  injection.insertAtIndex = Math.max(
+                    0,
+                    injection.insertAtIndex - compactionIndexDelta,
+                  );
+                }
+                compactionIndexDelta = 0;
+              }
+
               // prepareStepMessages returns undefined when it has no additional
               // injections/cleanups to apply. If we already replaced the base
               // message history (e.g., after mid-turn compaction), we still need
@@ -778,6 +806,16 @@ export async function handleLocalAgentStream(
               let result =
                 preparedStep ??
                 (stepOptions === options ? undefined : stepOptions);
+
+              // Defensive: ensure injected user messages don't break
+              // tool_use/tool_result pairing. Catches edge cases where
+              // injection indices become stale after compaction.
+              if (result?.messages) {
+                const fixed = ensureToolResultOrdering(result.messages);
+                if (fixed) {
+                  result = { ...result, messages: fixed };
+                }
+              }
 
               return result;
             },

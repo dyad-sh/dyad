@@ -6,11 +6,8 @@
  */
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
-import log from "electron-log";
 import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
-
-const logger = log.scope("prepare_step_utils");
 import { validateImageDimensions } from "./tools/image_utils";
 
 /**
@@ -251,9 +248,6 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
       }
 
       if (insertAfter > i) {
-        logger.warn(
-          `Moving user message from index ${i} to after index ${insertAfter} to preserve tool_use/tool_result ordering`,
-        );
         const [moved] = result.splice(i, 1);
         result.splice(insertAfter, 0, moved);
         changed = true;

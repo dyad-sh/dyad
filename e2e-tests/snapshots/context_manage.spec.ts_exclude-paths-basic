@@ -17,6 +17,10 @@ message: This is my codebase. <dyad-file path="manual/baz.json">
 
 </dyad-file>
 
+<dyad-file path="src/components/ui/helper.ts">
+// File contents excluded from context
+</dyad-file>
+
 <dyad-file path="src/foo.ts">
 // foo.ts
 

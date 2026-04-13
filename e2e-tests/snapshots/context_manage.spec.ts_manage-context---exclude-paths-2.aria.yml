@@ -21,13 +21,10 @@
       - img
   - textbox "node_modules/**/*"
   - button "Add"
-  - button "src/components/**"
-  - text: /2 files, ~\d+ tokens/
-  - button:
-    - img
   - button "manual/exclude/**"
   - text: 0 files, ~0 tokens
   - button:
     - img
   - button "Close":
     - img
+    - text: ""

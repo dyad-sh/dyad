@@ -789,13 +789,16 @@ export async function handleLocalAgentStream(
               // The AI SDK's internal messages don't include this summary, so
               // subsequent steps have a shorter base. Adjust indices now so
               // future re-injections land at the correct position.
-              if (compactionIndexDelta !== 0 && allInjectedMessages.length > 0) {
+              if (compactionIndexDelta !== 0) {
                 for (const injection of allInjectedMessages) {
                   injection.insertAtIndex = Math.max(
                     0,
                     injection.insertAtIndex - compactionIndexDelta,
                   );
                 }
+                // Always reset, even when no injections exist yet — a tool may
+                // add pending messages in a later step and their indices should
+                // not be shifted by a stale delta.
                 compactionIndexDelta = 0;
               }
 
@@ -813,6 +816,9 @@ export async function handleLocalAgentStream(
               if (result?.messages) {
                 const fixed = ensureToolResultOrdering(result.messages);
                 if (fixed) {
+                  logger.warn(
+                    `ensureToolResultOrdering fixed misplaced user messages in chat ${req.chatId}`,
+                  );
                   result = { ...result, messages: fixed };
                 }
               }

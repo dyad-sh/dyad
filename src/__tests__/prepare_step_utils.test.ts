@@ -1144,6 +1144,55 @@ describe("prepare_step_utils", () => {
       ]);
     });
 
+    it("handles multiple consecutive misplaced user messages without corrupting the pending set", () => {
+      // Regression test: the lookahead must use a snapshot of pendingToolCallIds
+      // so that the first scan doesn't delete IDs needed by subsequent iterations.
+      const messages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "web_crawl",
+              input: { url: "https://example.com" },
+            },
+          ],
+        },
+        // Two consecutive misplaced user messages before the tool result
+        {
+          role: "user",
+          content: [{ type: "text", text: "Screenshot 1" }],
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "Screenshot 2" }],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "web_crawl",
+              output: "Done",
+            },
+          ],
+        },
+      ];
+
+      const result = ensureToolResultOrdering(messages);
+
+      expect(result).not.toBeNull();
+      // Both user messages should be moved after the tool result
+      expect(result!.map((m) => m.role)).toEqual([
+        "assistant",
+        "tool",
+        "user",
+        "user",
+      ]);
+    });
+
     it("does not move user messages across assistant turn boundaries", () => {
       const messages: ModelMessage[] = [
         {

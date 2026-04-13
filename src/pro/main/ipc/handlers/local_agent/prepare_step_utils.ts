@@ -230,17 +230,20 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
     } else if (msg.role === "user" && pendingToolCallIds.size > 0) {
       // This user message is between a tool_use and its tool_result.
       // Find the next position where all pending tool results are resolved.
+      // Use a snapshot so the lookahead doesn't corrupt the outer tracking set
+      // (multiple consecutive misplaced user messages need the original set).
+      const lookaheadPending = new Set(pendingToolCallIds);
       let insertAfter = i;
       for (let j = i + 1; j < result.length; j++) {
         const next = result[j];
         if (next.role === "tool" && Array.isArray(next.content)) {
           for (const part of next.content) {
             if (isToolResultPart(part)) {
-              pendingToolCallIds.delete(part.toolCallId);
+              lookaheadPending.delete(part.toolCallId);
             }
           }
           insertAfter = j;
-          if (pendingToolCallIds.size === 0) break;
+          if (lookaheadPending.size === 0) break;
         } else if (next.role === "assistant") {
           // New assistant turn — stop scanning to avoid crossing turn boundaries
           break;

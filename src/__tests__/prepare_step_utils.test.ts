@@ -1200,6 +1200,78 @@ describe("prepare_step_utils", () => {
       );
     });
 
+    it("handles interleaved user messages across multiple tool results", () => {
+      // Regression: assistant(call-1, call-2) -> user1 -> tool(result-1) -> user2 -> tool(result-2)
+      // Both user messages must be moved past their respective tool results.
+      const messages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "list_files",
+              input: {},
+            },
+            {
+              type: "tool-call",
+              toolCallId: "call-2",
+              toolName: "web_crawl",
+              input: {},
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "Injected A" }],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "list_files",
+              output: "files",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "Injected B" }],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-2",
+              toolName: "web_crawl",
+              output: "done",
+            },
+          ],
+        },
+      ];
+
+      const result = ensureToolResultOrdering(messages);
+
+      expect(result).not.toBeNull();
+      // Both user messages must end up after all tool results
+      expect(result!.map((m) => m.role)).toEqual([
+        "assistant",
+        "tool",
+        "tool",
+        "user",
+        "user",
+      ]);
+      // Both injected messages are present after tool results
+      const userTexts = result!
+        .filter((m) => m.role === "user")
+        .map((m) => (m.content as { text: string }[])[0].text);
+      expect(userTexts).toContain("Injected A");
+      expect(userTexts).toContain("Injected B");
+    });
+
     it("does not move user messages across assistant turn boundaries", () => {
       const messages: ModelMessage[] = [
         {

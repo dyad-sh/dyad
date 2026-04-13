@@ -268,8 +268,11 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
         const adjustedTarget = insertAfter - misplacedCount + 1;
         result.splice(adjustedTarget, 0, ...moved);
         changed = true;
-        // Skip past the moved messages on the next iteration
-        i = adjustedTarget + misplacedCount - 1;
+        // Restart the scan from the beginning with a fresh pending set.
+        // The array has been mutated, so skipping ahead would miss tool-result
+        // messages that need to update pendingToolCallIds.
+        pendingToolCallIds.clear();
+        i = -1; // will become 0 after the for-loop increment
       } else {
         // Couldn't find a safe position; skip past the batch
         i = misplacedEnd;

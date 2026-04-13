@@ -1,12 +1,13 @@
+
 import { z } from "zod";
 import { ToolDefinition, escapeXmlAttr } from "./types";
 
 const addIntegrationSchema = z.object({
   provider: z
-    .enum(["supabase", "neon"])
+    .enum(["none", "supabase", "neon"])
     .optional()
     .describe(
-      "Optional preferred database provider. Only set this if the user specifically mentions the provider name in their prompt.",
+      "Optional preferred database provider. Use 'none' (or omit) if the user did not explicitly name a provider. Only use 'supabase' or 'neon' if the user specifically mentions that provider name in their prompt.",
     ),
 });
 
@@ -24,7 +25,7 @@ export const addIntegrationTool: ToolDefinition<
   getConsentPreview: () => "Add database integration",
 
   buildXml: (args, _isComplete) => {
-    if (args.provider) {
+    if (args.provider && args.provider !== "none") {
       return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
     }
     return `<dyad-add-integration></dyad-add-integration>`;

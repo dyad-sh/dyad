@@ -447,7 +447,13 @@ export function NeonConnector({ appId }: { appId: number }) {
                   >
                     <SelectValue
                       placeholder={t("integrations.neon.selectBranch")}
-                    />
+                    >
+                      {app.neonActiveBranchId
+                        ? (branches.find(
+                            (b) => b.branchId === app.neonActiveBranchId,
+                          )?.branchName ?? app.neonActiveBranchId)
+                        : undefined}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {branches

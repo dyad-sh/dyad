@@ -10,7 +10,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useNeon } from "@/hooks/useNeon";
 import { useTranslation } from "react-i18next";
 import { isNextJsProject } from "@/lib/framework_constants";
-import { CheckCircle2, Database, Loader2 } from "lucide-react";
+import { CheckCircle2, Database, ExternalLink, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
@@ -29,7 +29,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { streamMessage, isStreaming } = useStreamChat();
   const [selectedProvider, setSelectedProvider] = useState<
     "neon" | "supabase" | null
-  >(null);
+  >("supabase");
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
@@ -43,26 +43,18 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     {
       id: "supabase" as const,
       name: t("integrations.databaseSetup.providers.supabase.name"),
-      features: [
-        t("integrations.databaseSetup.providers.supabase.features.auth"),
-        t("integrations.databaseSetup.providers.supabase.features.realtime"),
-        t("integrations.databaseSetup.providers.supabase.features.storage"),
-      ],
+      description: t(
+        "integrations.databaseSetup.providers.supabase.description",
+      ),
+      url: "https://supabase.com",
+      experimental: false,
     },
     {
       id: "neon" as const,
       name: t("integrations.databaseSetup.providers.neon.name"),
-      features: [
-        t(
-          "integrations.databaseSetup.providers.neon.features.serverlessPostgres",
-        ),
-        t(
-          "integrations.databaseSetup.providers.neon.features.authAndEmailVerification",
-        ),
-        t(
-          "integrations.databaseSetup.providers.neon.features.serverlessScaleToZero",
-        ),
-      ],
+      description: t("integrations.databaseSetup.providers.neon.description"),
+      url: "https://neon.tech",
+      experimental: true,
     },
   ];
 
@@ -241,24 +233,27 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                   : "border-border hover:border-blue-400"
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold text-foreground">
                   {option.name}
                 </span>
+                {option.experimental && (
+                  <DyadBadge color="amber">Experimental</DyadBadge>
+                )}
+                <a
+                  href={option.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={`Visit ${option.name} website`}
+                >
+                  <ExternalLink size={12} />
+                </a>
               </div>
-              <ul className="space-y-0.5">
-                {option.features.map((feature) => (
-                  <li
-                    key={feature}
-                    className="text-xs text-muted-foreground flex items-start gap-1.5"
-                  >
-                    <span className="text-blue-500 mt-0.5 leading-none">
-                      &#x2022;
-                    </span>
-                    {feature}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-xs text-muted-foreground leading-snug">
+                {option.description}
+              </p>
             </button>
           ))}
         </div>

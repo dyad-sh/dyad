@@ -613,19 +613,11 @@
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "features": {
-            "auth": "身份验证与行级安全",
-            "realtime": "实时订阅",
-            "storage": "存储与边缘函数"
-          }
+          "description": "完整的后端即服务：Postgres 数据库、存储与边缘函数。"
         },
         "neon": {
           "name": "Neon",
-          "features": {
-            "serverlessPostgres": "托管 Postgres 与分支",
-            "authAndEmailVerification": "身份验证与邮箱验证",
-            "serverlessScaleToZero": "无服务器按需缩容到零"
-          }
+          "description": "无服务器 Postgres 数据库，支持时间旅行和慷慨的免费项目限额。"
         }
       }
     },

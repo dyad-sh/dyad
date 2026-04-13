@@ -34,10 +34,9 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
-import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
+import { DyadDbTableSchema } from "./DyadDbTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
 import { DyadNeonProjectInfo } from "./DyadNeonProjectInfo";
-import { DyadNeonTableSchema } from "./DyadNeonTableSchema";
 import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
@@ -77,6 +76,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-mcp-tool-result",
   "dyad-list-files",
   "dyad-database-schema",
+  "dyad-db-table-schema",
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
   "dyad-neon-project-info",
@@ -726,9 +726,19 @@ function renderCustomTag(
         </DyadDatabaseSchema>
       );
 
+    case "dyad-db-table-schema":
+    // Backward compat: old messages used provider-specific tags
     case "dyad-supabase-table-schema":
+    case "dyad-neon-table-schema":
       return (
-        <DyadSupabaseTableSchema
+        <DyadDbTableSchema
+          provider={
+            tag === "dyad-supabase-table-schema"
+              ? "Supabase"
+              : tag === "dyad-neon-table-schema"
+                ? "Neon"
+                : (attributes.provider as string) || ""
+          }
           node={{
             properties: {
               table: attributes.table || "",
@@ -737,7 +747,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadSupabaseTableSchema>
+        </DyadDbTableSchema>
       );
 
     case "dyad-supabase-project-info":
@@ -764,20 +774,6 @@ function renderCustomTag(
         >
           {content}
         </DyadNeonProjectInfo>
-      );
-
-    case "dyad-neon-table-schema":
-      return (
-        <DyadNeonTableSchema
-          node={{
-            properties: {
-              table: attributes.table || "",
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadNeonTableSchema>
       );
 
     case "dyad-image-generation":

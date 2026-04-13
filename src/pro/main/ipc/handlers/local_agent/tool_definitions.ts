@@ -12,14 +12,12 @@ import { renameFileTool } from "./tools/rename_file";
 import { copyFileTool } from "./tools/copy_file";
 import { addDependencyTool } from "./tools/add_dependency";
 import { executeSqlTool } from "./tools/execute_sql";
-import { executeNeonSqlTool } from "./tools/execute_neon_sql";
 import { getNeonProjectInfoTool } from "./tools/get_neon_project_info";
-import { getNeonTableSchemaTool } from "./tools/get_neon_table_schema";
+import { getDatabaseTableSchemaTool } from "./tools/get_database_table_schema";
 
 import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
 import { getSupabaseProjectInfoTool } from "./tools/get_supabase_project_info";
-import { getSupabaseTableSchemaTool } from "./tools/get_supabase_table_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
@@ -83,10 +81,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   grepTool,
   codeSearchTool,
   getSupabaseProjectInfoTool,
-  getSupabaseTableSchemaTool,
   getNeonProjectInfoTool,
-  getNeonTableSchemaTool,
-  executeNeonSqlTool,
+  getDatabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
   readLogsTool,

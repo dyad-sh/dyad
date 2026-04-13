@@ -616,19 +616,11 @@
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "features": {
-            "auth": "Auth & row-level security",
-            "realtime": "Realtime subscriptions",
-            "storage": "Storage & edge functions"
-          }
+          "description": "Complete backend as a service: Postgres database, storage and edge functions."
         },
         "neon": {
           "name": "Neon",
-          "features": {
-            "serverlessPostgres": "Managed Postgres with branching",
-            "authAndEmailVerification": "Auth & email verification",
-            "serverlessScaleToZero": "Serverless scale-to-zero"
-          }
+          "description": "Serverless Postgres database with time-travel and generous free project limits."
         }
       }
     },

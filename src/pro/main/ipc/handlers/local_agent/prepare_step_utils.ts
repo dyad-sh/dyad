@@ -229,12 +229,23 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
       }
     } else if (msg.role === "user" && pendingToolCallIds.size > 0) {
       // This user message is between a tool_use and its tool_result.
+      // Collect all consecutive misplaced user messages so we can move
+      // them as a batch, preserving their FIFO order.
+      const misplacedStart = i;
+      let misplacedEnd = i;
+      while (
+        misplacedEnd + 1 < result.length &&
+        result[misplacedEnd + 1].role === "user"
+      ) {
+        misplacedEnd++;
+      }
+      const misplacedCount = misplacedEnd - misplacedStart + 1;
+
       // Find the next position where all pending tool results are resolved.
-      // Use a snapshot so the lookahead doesn't corrupt the outer tracking set
-      // (multiple consecutive misplaced user messages need the original set).
+      // Use a snapshot so the lookahead doesn't corrupt the outer tracking set.
       const lookaheadPending = new Set(pendingToolCallIds);
-      let insertAfter = i;
-      for (let j = i + 1; j < result.length; j++) {
+      let insertAfter = misplacedEnd;
+      for (let j = misplacedEnd + 1; j < result.length; j++) {
         const next = result[j];
         if (next.role === "tool" && Array.isArray(next.content)) {
           for (const part of next.content) {
@@ -250,11 +261,18 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
         }
       }
 
-      if (insertAfter > i) {
-        const [moved] = result.splice(i, 1);
-        result.splice(insertAfter, 0, moved);
+      if (insertAfter > misplacedEnd) {
+        // Remove the batch and re-insert after the tool result, preserving order.
+        const moved = result.splice(misplacedStart, misplacedCount);
+        // After splice, insertAfter shifted by -misplacedCount
+        const adjustedTarget = insertAfter - misplacedCount + 1;
+        result.splice(adjustedTarget, 0, ...moved);
         changed = true;
-        i--; // Reprocess current position
+        // Skip past the moved messages on the next iteration
+        i = adjustedTarget + misplacedCount - 1;
+      } else {
+        // Couldn't find a safe position; skip past the batch
+        i = misplacedEnd;
       }
     }
   }

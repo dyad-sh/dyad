@@ -1191,6 +1191,13 @@ describe("prepare_step_utils", () => {
         "user",
         "user",
       ]);
+      // FIFO order must be preserved — Screenshot 1 before Screenshot 2
+      expect((result![2].content as { text: string }[])[0].text).toBe(
+        "Screenshot 1",
+      );
+      expect((result![3].content as { text: string }[])[0].text).toBe(
+        "Screenshot 2",
+      );
     });
 
     it("does not move user messages across assistant turn boundaries", () => {

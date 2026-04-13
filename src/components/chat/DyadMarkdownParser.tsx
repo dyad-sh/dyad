@@ -43,6 +43,7 @@ import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
+import { DyadReadGuide } from "./DyadReadGuide";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -81,6 +82,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-supabase-project-info",
   "dyad-neon-project-info",
   "dyad-neon-table-schema",
+  "dyad-read-guide",
   "dyad-status",
   "dyad-compaction",
   "dyad-copy",
@@ -281,8 +283,12 @@ function preprocessUnclosedTags(content: string): {
 function parseCustomTags(content: string): ContentPiece[] {
   const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
 
+  // Sort tags longest-first so e.g. "dyad-read-guide" is tried before "dyad-read".
+  // The (?=[\s>]) lookahead ensures a tag name like "dyad-read" won't prefix-match
+  // "dyad-read-guide" (the char after must be whitespace or '>').
+  const sortedTags = [...DYAD_CUSTOM_TAGS].sort((a, b) => b.length - a.length);
   const tagPattern = new RegExp(
-    `<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
+    `<(${sortedTags.join("|")})(?=[\\s>])\\s*([^>]*)>(.*?)<\\/\\1>`,
     "gs",
   );
 
@@ -774,6 +780,20 @@ function renderCustomTag(
         >
           {content}
         </DyadNeonProjectInfo>
+      );
+
+    case "dyad-read-guide":
+      return (
+        <DyadReadGuide
+          node={{
+            properties: {
+              name: attributes.name || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadReadGuide>
       );
 
     case "dyad-image-generation":

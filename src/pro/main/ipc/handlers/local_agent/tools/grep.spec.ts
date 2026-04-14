@@ -586,16 +586,16 @@ function deepHello() {
       expect(preview).toBe('Search for "hello" including ignored files');
     });
 
-    it("includes app_id in preview", () => {
+    it("includes app_name in preview", () => {
       const preview = grepTool.getConsentPreview?.({
         query: "hello",
-        app_id: "other-app",
+        app_name: "other-app",
       });
       expect(preview).toBe('Search for "hello" (app: other-app)');
     });
   });
 
-  describe("app_id (referenced apps)", () => {
+  describe("app_name (referenced apps)", () => {
     let otherAppDir: string;
 
     beforeEach(async () => {
@@ -612,51 +612,51 @@ function deepHello() {
       await fs.promises.rm(otherAppDir, { recursive: true, force: true });
     });
 
-    it("searches the referenced app when app_id is provided", async () => {
+    it("searches the referenced app when app_name is provided", async () => {
       mockContext.referencedApps.set("other-app", {
         appId: 2,
         appPath: otherAppDir,
       });
       const result = await grepTool.execute(
-        { query: "unique-other-app-token", app_id: "other-app" },
+        { query: "unique-other-app-token", app_name: "other-app" },
         mockContext,
       );
       expect(result).toContain("only-in-other.ts");
       expect(result).toContain("unique-other-app-token");
     });
 
-    it("does not see current-app matches when app_id targets another app", async () => {
+    it("does not see current-app matches when app_name targets another app", async () => {
       mockContext.referencedApps.set("other-app", {
         appId: 2,
         appPath: otherAppDir,
       });
       const result = await grepTool.execute(
-        { query: "goodbye", app_id: "other-app" },
+        { query: "goodbye", app_name: "other-app" },
         mockContext,
       );
       expect(result).toBe("No matches found.");
     });
 
-    it("throws on unknown app_id", async () => {
+    it("throws on unknown app_name", async () => {
       await expect(
         grepTool.execute(
-          { query: "hello", app_id: "does-not-exist" },
+          { query: "hello", app_name: "does-not-exist" },
           mockContext,
         ),
-      ).rejects.toThrow(/Unknown app_id 'does-not-exist'/);
+      ).rejects.toThrow(/Unknown app_name 'does-not-exist'/);
     });
 
-    it("includes app_id in the final XML output", async () => {
+    it("includes app_name in the final XML output", async () => {
       mockContext.referencedApps.set("other-app", {
         appId: 2,
         appPath: otherAppDir,
       });
       await grepTool.execute(
-        { query: "unique-other-app-token", app_id: "other-app" },
+        { query: "unique-other-app-token", app_name: "other-app" },
         mockContext,
       );
       const xmlCall = (mockContext.onXmlComplete as any).mock.calls[0]?.[0];
-      expect(xmlCall).toContain('app_id="other-app"');
+      expect(xmlCall).toContain('app_name="other-app"');
     });
   });
 });

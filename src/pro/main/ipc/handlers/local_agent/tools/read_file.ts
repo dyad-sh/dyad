@@ -10,7 +10,7 @@ const readFile = fs.promises.readFile;
 const readFileSchema = z
   .object({
     path: z.string().describe("The file path to read"),
-    app_id: z
+    app_name: z
       .string()
       .optional()
       .describe(
@@ -58,7 +58,9 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   defaultConsent: "always",
 
   getConsentPreview: (args) => {
-    const location = args.app_id ? `${args.app_id}:${args.path}` : args.path;
+    const location = args.app_name
+      ? `${args.app_name}:${args.path}`
+      : args.path;
     const start = args.start_line_one_indexed;
     const end = args.end_line_one_indexed_inclusive;
     if (start != null && end != null) {
@@ -74,8 +76,8 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   buildXml: (args, _isComplete) => {
     if (!args.path) return undefined;
     const attrs = [`path="${escapeXmlAttr(args.path)}"`];
-    if (args.app_id) {
-      attrs.push(`app_id="${escapeXmlAttr(args.app_id)}"`);
+    if (args.app_name) {
+      attrs.push(`app_name="${escapeXmlAttr(args.app_name)}"`);
     }
     if (args.start_line_one_indexed != null) {
       attrs.push(
@@ -91,7 +93,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
     const fullFilePath = safeJoin(targetAppPath, args.path);
 
     if (!fs.existsSync(fullFilePath)) {

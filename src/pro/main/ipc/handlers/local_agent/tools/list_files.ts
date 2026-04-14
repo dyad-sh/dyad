@@ -16,7 +16,7 @@ const MAX_PATHS_TO_RETURN = 1_000;
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),
-  app_id: z
+  app_name: z
     .string()
     .optional()
     .describe(
@@ -58,8 +58,8 @@ function getXmlAttributes(args: ListFilesArgs, count?: number, total?: number) {
   const dirAttr = args.directory
     ? ` directory="${escapeXmlAttr(args.directory)}"`
     : "";
-  const appIdAttr = args.app_id
-    ? ` app_id="${escapeXmlAttr(args.app_id)}"`
+  const appNameAttr = args.app_name
+    ? ` app_name="${escapeXmlAttr(args.app_name)}"`
     : "";
   const recursiveAttr =
     args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
@@ -71,7 +71,7 @@ function getXmlAttributes(args: ListFilesArgs, count?: number, total?: number) {
   const totalAttr =
     total !== undefined && total > (count ?? 0) ? ` total="${total}"` : "";
   const truncatedAttr = totalAttr ? ` truncated="true"` : "";
-  return `${dirAttr}${appIdAttr}${recursiveAttr}${includeIgnoredAttr}${countAttr}${totalAttr}${truncatedAttr}`;
+  return `${dirAttr}${appNameAttr}${recursiveAttr}${includeIgnoredAttr}${countAttr}${totalAttr}${truncatedAttr}`;
 }
 
 export const listFilesTool: ToolDefinition<ListFilesArgs> = {
@@ -84,10 +84,10 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   getConsentPreview: (args) => {
     const recursiveText = args.recursive ? " (recursive)" : "";
     const ignoredText = args.include_ignored ? " (include ignored)" : "";
-    const appPrefix = args.app_id ? `${args.app_id}:` : "";
+    const appPrefix = args.app_name ? `${args.app_name}:` : "";
     return args.directory
       ? `List ${appPrefix}${args.directory}${recursiveText}${ignoredText}`
-      : `List all files${args.app_id ? ` in ${args.app_id}` : ""}${recursiveText}${ignoredText}`;
+      : `List all files${args.app_name ? ` in ${args.app_name}` : ""}${recursiveText}${ignoredText}`;
   },
 
   buildXml: (args, isComplete) => {
@@ -98,7 +98,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
 
     // Validate directory path to prevent path traversal attacks
     let sanitizedDirectory: string | undefined;

@@ -4,8 +4,8 @@ import type { AgentContext } from "./types";
 /**
  * Resolve the app path a read-only tool should target.
  *
- * - Omitted `appId` → current app (`ctx.appPath`).
- * - Provided `appId` → must match a referenced app from the current turn's
+ * - Omitted `appName` → current app (`ctx.appPath`).
+ * - Provided `appName` → must match a referenced app from the current turn's
  *   `@app:Name` mentions. Any other value is rejected.
  *
  * Write tools do not call this — they operate only on `ctx.appPath` so that
@@ -13,12 +13,12 @@ import type { AgentContext } from "./types";
  */
 export function resolveTargetAppPath(
   ctx: AgentContext,
-  appId: string | undefined,
+  appName: string | undefined,
 ): string {
-  if (!appId) {
+  if (!appName) {
     return ctx.appPath;
   }
-  const entry = ctx.referencedApps.get(appId);
+  const entry = ctx.referencedApps.get(appName);
   if (entry) {
     return entry.appPath;
   }
@@ -26,7 +26,7 @@ export function resolveTargetAppPath(
   const availableStr =
     available.length > 0 ? available.join(", ") : "(none available)";
   throw new DyadError(
-    `Unknown app_id '${appId}'. Available referenced apps: ${availableStr}`,
+    `Unknown app_name '${appName}'. Available referenced apps: ${availableStr}`,
     DyadErrorKind.NotFound,
   );
 }

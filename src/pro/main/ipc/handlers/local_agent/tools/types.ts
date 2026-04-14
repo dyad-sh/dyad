@@ -56,7 +56,7 @@ export interface AgentContext {
   appPath: string;
   /**
    * Apps referenced via `@app:Name` in the current turn. Read-only tools
-   * can target these via an `app_id` parameter; write tools cannot reach them.
+   * can target these via an `app_name` parameter; write tools cannot reach them.
    * Keyed by the app name the user typed in the mention.
    */
   referencedApps: Map<string, ReferencedAppEntry>;

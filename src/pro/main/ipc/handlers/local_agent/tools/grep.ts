@@ -22,7 +22,7 @@ const MAX_LINE_LENGTH = 500;
 
 const grepSchema = z.object({
   query: z.string().describe("The regex pattern to search for"),
-  app_id: z
+  app_name: z
     .string()
     .optional()
     .describe(
@@ -73,8 +73,8 @@ function buildGrepAttributes(
   if (args.query) {
     attrs.push(`query="${escapeXmlAttr(args.query)}"`);
   }
-  if (args.app_id) {
-    attrs.push(`app_id="${escapeXmlAttr(args.app_id)}"`);
+  if (args.app_name) {
+    attrs.push(`app_name="${escapeXmlAttr(args.app_name)}"`);
   }
   if (args.include_pattern) {
     attrs.push(`include="${escapeXmlAttr(args.include_pattern)}"`);
@@ -262,8 +262,8 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     if (args.include_ignored) {
       preview += " including ignored files";
     }
-    if (args.app_id) {
-      preview += ` (app: ${args.app_id})`;
+    if (args.app_name) {
+      preview += ` (app: ${args.app_name})`;
     }
     return preview;
   },
@@ -280,7 +280,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
     const includePatWasWildcard = args.include_pattern === "*";
     const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 

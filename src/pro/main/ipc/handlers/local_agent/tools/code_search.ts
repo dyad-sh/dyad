@@ -15,7 +15,7 @@ const logger = log.scope("code_search");
 
 const codeSearchSchema = z.object({
   query: z.string().describe("Search query to find relevant files"),
-  app_id: z
+  app_name: z
     .string()
     .optional()
     .describe(
@@ -89,22 +89,22 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
     isEnabled: (ctx) => ctx.isDyadPro,
 
     getConsentPreview: (args) =>
-      args.app_id
-        ? `Search for "${args.query}" (app: ${args.app_id})`
+      args.app_name
+        ? `Search for "${args.query}" (app: ${args.app_name})`
         : `Search for "${args.query}"`,
 
     buildXml: (args, isComplete) => {
       if (!args.query) return undefined;
       if (isComplete) return undefined;
-      const appIdAttr = args.app_id
-        ? ` app_id="${escapeXmlAttr(args.app_id)}"`
+      const appNameAttr = args.app_name
+        ? ` app_name="${escapeXmlAttr(args.app_name)}"`
         : "";
-      return `<dyad-code-search query="${escapeXmlAttr(args.query)}"${appIdAttr}>Searching...`;
+      return `<dyad-code-search query="${escapeXmlAttr(args.query)}"${appNameAttr}>Searching...`;
     },
 
     execute: async (args, ctx: AgentContext) => {
       logger.log(`Executing code search: ${args.query}`);
-      const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
+      const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
 
       // Gather all files from the project
       const { files } = await extractCodebase({
@@ -142,11 +142,11 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
           : relevantFiles.map((f) => ` - ${f}`).join("\n");
 
       // Write final result to UI and DB with dyad-code-search wrapper
-      const appIdAttr = args.app_id
-        ? ` app_id="${escapeXmlAttr(args.app_id)}"`
+      const appNameAttr = args.app_name
+        ? ` app_name="${escapeXmlAttr(args.app_name)}"`
         : "";
       ctx.onXmlComplete(
-        `<dyad-code-search query="${escapeXmlAttr(args.query)}"${appIdAttr}>${escapeXmlContent(resultText)}</dyad-code-search>`,
+        `<dyad-code-search query="${escapeXmlAttr(args.query)}"${appNameAttr}>${escapeXmlContent(resultText)}</dyad-code-search>`,
       );
 
       logger.log(`Code search completed for query: ${args.query}`);

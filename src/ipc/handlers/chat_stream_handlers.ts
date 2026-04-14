@@ -127,7 +127,7 @@ const activeStreams = new Map<number, AbortController>();
 
 /**
  * Append a referenced-apps manifest to a system prompt so the local agent
- * knows which `app_id` values it can pass to read-only tools. Used by agent,
+ * knows which `app_name` values it can pass to read-only tools. Used by agent,
  * ask, and plan modes — all of which route through handleLocalAgentStream
  * and reach referenced apps via tool calls rather than prompt injection.
  */
@@ -141,7 +141,7 @@ function appendReferencedAppManifest(
   const list = referencedApps.map(({ appName }) => appName).join(", ");
   return (
     systemPrompt +
-    `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_id\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_id\` to operate on the current app.`
+    `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.`
   );
 }
 
@@ -691,7 +691,7 @@ ${componentSnippet}
         );
         const willUseLocalAgentStream =
           selectedChatMode === "local-agent" || selectedChatMode === "ask";
-        // Agent modes use tool-based access to referenced apps (via `app_id`
+        // Agent modes use tool-based access to referenced apps (via `app_name`
         // on read tools) instead of injecting full codebases into the prompt.
         const useReferencedAppManifest =
           (selectedChatMode === "local-agent" ||
@@ -709,7 +709,7 @@ ${componentSnippet}
 
         // Combine current app codebase with mentioned apps' codebases.
         // In agent/ask/plan modes we skip the full codebase injection — the
-        // model can read referenced apps on-demand via tool calls with `app_id`
+        // model can read referenced apps on-demand via tool calls with `app_name`
         // instead of carrying their full contents in the system prompt.
         let otherAppsCodebaseInfo = "";
         if (mentionedAppsCodebases.length > 0 && !useReferencedAppManifest) {
@@ -828,7 +828,7 @@ ${componentSnippet}
         //   1. Full codebase injection (build mode): full file contents already
         //      concatenated into `otherAppsCodebaseInfo`.
         //   2. Manifest only (agent/ask/plan modes): list referenced apps by
-        //      name so the model knows which values it can pass as `app_id`
+        //      name so the model knows which values it can pass as `app_name`
         //      to read-only tools (read_file, list_files, grep, code_search).
         if (otherAppsCodebaseInfo) {
           const mentionedAppsList = mentionedAppsCodebases
@@ -841,7 +841,7 @@ ${componentSnippet}
             .map(({ appName }) => appName)
             .join(", ");
 
-          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_id\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_id\` to operate on the current app.`;
+          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.`;
         }
 
         const isSecurityReviewIntent =
@@ -1232,7 +1232,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
 
           // When referenced apps are mentioned, append the manifest so the
-          // agent knows which `app_id` values are valid on read-only tools.
+          // agent knows which `app_name` values are valid on read-only tools.
           const systemPromptWithManifest = appendReferencedAppManifest(
             readOnlySystemPrompt,
             mentionedAppsCodebases,
@@ -1311,7 +1311,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle local-agent mode (Agent v2).
         // Referenced apps (from `@app:Name` mentions) are accessed by the
-        // agent via tool calls with an `app_id` parameter — see
+        // agent via tool calls with an `app_name` parameter — see
         // appendReferencedAppManifest above and resolveTargetAppPath in the
         // local agent tools. `systemPrompt` already includes the manifest
         // when mentionedAppsCodebases is non-empty.

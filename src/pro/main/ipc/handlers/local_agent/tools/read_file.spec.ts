@@ -437,18 +437,18 @@ line 5`;
       expect(result).toContain("&gt;");
     });
 
-    it("includes app_id attribute when provided", () => {
+    it("includes app_name attribute when provided", () => {
       const result = readFileTool.buildXml?.(
-        { path: "src/App.tsx", app_id: "other-app" },
+        { path: "src/App.tsx", app_name: "other-app" },
         false,
       );
       expect(result).toBe(
-        '<dyad-read path="src/App.tsx" app_id="other-app"></dyad-read>',
+        '<dyad-read path="src/App.tsx" app_name="other-app"></dyad-read>',
       );
     });
   });
 
-  describe("execute - app_id (referenced apps)", () => {
+  describe("execute - app_name (referenced apps)", () => {
     let otherAppDir: string;
 
     beforeEach(async () => {
@@ -465,19 +465,19 @@ line 5`;
       await fs.promises.rm(otherAppDir, { recursive: true, force: true });
     });
 
-    it("reads from referenced app when app_id matches", async () => {
+    it("reads from referenced app when app_name matches", async () => {
       mockContext.referencedApps.set("other-app", {
         appId: 2,
         appPath: otherAppDir,
       });
       const result = await readFileTool.execute(
-        { path: "other.txt", app_id: "other-app" },
+        { path: "other.txt", app_name: "other-app" },
         mockContext,
       );
       expect(result).toBe("hello from the other app");
     });
 
-    it("reads from current app when app_id is omitted even if referencedApps is populated", async () => {
+    it("reads from current app when app_name is omitted even if referencedApps is populated", async () => {
       mockContext.referencedApps.set("other-app", {
         appId: 2,
         appPath: otherAppDir,
@@ -489,17 +489,17 @@ line 5`;
       expect(result).toBe(testFileContent);
     });
 
-    it("throws a clear error when app_id is not in the allow-list", async () => {
+    it("throws a clear error when app_name is not in the allow-list", async () => {
       mockContext.referencedApps.set("other-app", {
         appId: 2,
         appPath: otherAppDir,
       });
       await expect(
         readFileTool.execute(
-          { path: "other.txt", app_id: "does-not-exist" },
+          { path: "other.txt", app_name: "does-not-exist" },
           mockContext,
         ),
-      ).rejects.toThrow(/Unknown app_id 'does-not-exist'/);
+      ).rejects.toThrow(/Unknown app_name 'does-not-exist'/);
     });
 
     it("error lists available referenced apps", async () => {
@@ -513,7 +513,7 @@ line 5`;
       });
       await expect(
         readFileTool.execute(
-          { path: "other.txt", app_id: "nope" },
+          { path: "other.txt", app_name: "nope" },
           mockContext,
         ),
       ).rejects.toThrow(/app-a, app-b/);
@@ -522,18 +522,18 @@ line 5`;
     it("error indicates none available when referencedApps is empty", async () => {
       await expect(
         readFileTool.execute(
-          { path: "other.txt", app_id: "whatever" },
+          { path: "other.txt", app_name: "whatever" },
           mockContext,
         ),
       ).rejects.toThrow(/\(none available\)/);
     });
   });
 
-  describe("getConsentPreview with app_id", () => {
-    it("prefixes the location with the app_id", () => {
+  describe("getConsentPreview with app_name", () => {
+    it("prefixes the location with the app_name", () => {
       const preview = readFileTool.getConsentPreview?.({
         path: "src/App.tsx",
-        app_id: "other-app",
+        app_name: "other-app",
       });
       expect(preview).toBe("Read other-app:src/App.tsx");
     });
@@ -541,7 +541,7 @@ line 5`;
     it("prefixes the location when line range is provided", () => {
       const preview = readFileTool.getConsentPreview?.({
         path: "src/App.tsx",
-        app_id: "other-app",
+        app_name: "other-app",
         start_line_one_indexed: 10,
         end_line_one_indexed_inclusive: 50,
       });

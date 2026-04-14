@@ -295,7 +295,7 @@ export async function handleLocalAgentStream(
     settingsOverride?: UserSettings;
     /**
      * Apps referenced via `@app:Name` mentions in the user's prompt.
-     * Read-only tools can target these via an `app_id` parameter.
+     * Read-only tools can target these via an `app_name` parameter.
      */
     referencedApps?: {
       appId: number;

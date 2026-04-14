@@ -689,8 +689,15 @@ ${componentSnippet}
           mentionedAppNames,
           updatedChat.app.id, // Exclude current app
         );
+        // Strip off `codebaseInfo`/`files` before handing to handleLocalAgentStream.
+        // Computed once so agent/ask/plan call sites don't each repeat the projection.
+        const referencedAppsForAgent = mentionedAppsCodebases.map(
+          ({ appId, appName, appPath }) => ({ appId, appName, appPath }),
+        );
         const willUseLocalAgentStream =
-          selectedChatMode === "local-agent" || selectedChatMode === "ask";
+          selectedChatMode === "local-agent" ||
+          selectedChatMode === "ask" ||
+          selectedChatMode === "plan";
         // Agent modes use tool-based access to referenced apps (via `app_name`
         // on read tools) instead of injecting full codebases into the prompt.
         const useReferencedAppManifest =
@@ -837,11 +844,10 @@ ${componentSnippet}
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         } else if (useReferencedAppManifest) {
-          const mentionedAppsList = mentionedAppsCodebases
-            .map(({ appName }) => appName)
-            .join(", ");
-
-          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.`;
+          systemPrompt = appendReferencedAppManifest(
+            systemPrompt,
+            mentionedAppsCodebases,
+          );
         }
 
         const isSecurityReviewIntent =
@@ -931,8 +937,9 @@ ${componentSnippet}
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
         const isAskMode = selectedChatMode === "ask";
+        const isPlanMode = selectedChatMode === "plan";
         if (hasUploadedAttachments) {
-          if (willUseLocalAgentStream && !isAskMode) {
+          if (willUseLocalAgentStream && !isAskMode && !isPlanMode) {
             systemPrompt += `
 
 When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
@@ -944,7 +951,7 @@ copy_file(from=".dyad/media/abc123.png", to="src/assets/logo.png", description="
 
 The file paths are provided in the attachment information above.
 `;
-          } else if (!isAskMode) {
+          } else if (!isAskMode && !isPlanMode) {
             systemPrompt += `
 
 When files are attached for upload to the codebase, copy them into the project using this format:
@@ -1258,13 +1265,7 @@ This conversation includes one or more image attachments. When the user uploads 
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
-              referencedApps: mentionedAppsCodebases.map(
-                ({ appId, appName, appPath }) => ({
-                  appId,
-                  appName,
-                  appPath,
-                }),
-              ),
+              referencedApps: referencedAppsForAgent,
             },
           );
           if (!streamSuccess) {
@@ -1298,13 +1299,7 @@ This conversation includes one or more image attachments. When the user uploads 
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
-            referencedApps: mentionedAppsCodebases.map(
-              ({ appId, appName, appPath }) => ({
-                appId,
-                appName,
-                appPath,
-              }),
-            ),
+            referencedApps: referencedAppsForAgent,
           });
           return;
         }
@@ -1351,13 +1346,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
-                referencedApps: mentionedAppsCodebases.map(
-                  ({ appId, appName, appPath }) => ({
-                    appId,
-                    appName,
-                    appPath,
-                  }),
-                ),
+                referencedApps: referencedAppsForAgent,
               },
             );
           } finally {

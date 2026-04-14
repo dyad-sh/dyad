@@ -84,10 +84,9 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   getConsentPreview: (args) => {
     const recursiveText = args.recursive ? " (recursive)" : "";
     const ignoredText = args.include_ignored ? " (include ignored)" : "";
-    const appPrefix = args.app_name ? `${args.app_name}:` : "";
-    return args.directory
-      ? `List ${appPrefix}${args.directory}${recursiveText}${ignoredText}`
-      : `List all files${args.app_name ? ` in ${args.app_name}` : ""}${recursiveText}${ignoredText}`;
+    const appSuffix = args.app_name ? ` (app: ${args.app_name})` : "";
+    const target = args.directory ?? "all files";
+    return `List ${target}${recursiveText}${ignoredText}${appSuffix}`;
   },
 
   buildXml: (args, isComplete) => {

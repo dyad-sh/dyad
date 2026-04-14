@@ -33,9 +33,26 @@ export async function extractMentionedAppsCodebases(
       ) && app.id !== excludeCurrentAppId,
   );
 
+  // Deduplicate by case-insensitive name: referenced apps are keyed by name
+  // downstream (e.g., AgentContext.referencedApps Map), so two apps sharing a
+  // name would silently collide. Keep the first (lowest-id) match and warn.
+  const dedupedApps: typeof mentionedApps = [];
+  const seenNames = new Set<string>();
+  for (const app of mentionedApps) {
+    const key = app.name.toLowerCase();
+    if (seenNames.has(key)) {
+      logger.warn(
+        `Multiple apps share the name "${app.name}"; skipping duplicate (app id: ${app.id}). Rename apps to disambiguate references.`,
+      );
+      continue;
+    }
+    seenNames.add(key);
+    dedupedApps.push(app);
+  }
+
   const results: MentionedAppCodebaseEntry[] = [];
 
-  for (const app of mentionedApps) {
+  for (const app of dedupedApps) {
     try {
       const appPath = getDyadAppPath(app.path);
       const chatContext = validateChatContext(app.chatContext);

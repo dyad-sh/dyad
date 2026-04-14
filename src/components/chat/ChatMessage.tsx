@@ -23,6 +23,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useMemo } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { calculateVersionNumber } from "./versionUtils";
 import {
   Tooltip,
   TooltipTrigger,
@@ -123,6 +124,14 @@ const ChatMessage = ({
     }
     return null;
   }, [message.commitHash, message.role, liveVersions]);
+
+  // Calculate version number (reverse index: newest = 1, older = 2, 3, etc.)
+  const versionNumber = useMemo(() => {
+    if (messageVersion && liveVersions.length) {
+      return calculateVersionNumber(messageVersion, liveVersions);
+    }
+    return null;
+  }, [messageVersion, liveVersions]);
 
   // handle copy request id and commit hash using CopyButton
 
@@ -290,12 +299,12 @@ const ChatMessage = ({
                     }
                   </span>
                 </div>
-                {message.commitHash && (
+                {versionNumber && (
                   <CopyButton
-                    value={message.commitHash}
-                    ariaLabel="Copy Commit Hash"
-                    displayText={message.commitHash.slice(0, 7)}
-                    tooltipText={message.commitHash}
+                    value={String(versionNumber)}
+                    ariaLabel="Copy Version Number"
+                    displayText={`Version ${versionNumber}`}
+                    tooltipText={`Version ${versionNumber}`}
                     mono={true}
                     raw={true}
                   />

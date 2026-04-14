@@ -2,6 +2,7 @@ import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
+import { calculateVersionNumber } from "./versionUtils";
 import { RotateCcw, X, Database, Loader2, Search } from "lucide-react";
 import type { Version } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -209,9 +210,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                     <span className="font-medium text-xs">
                       Version{" "}
                       <HighlightMatch
-                        text={String(
-                          versions.length - versions.indexOf(version),
-                        )}
+                        text={String(calculateVersionNumber(version, versions))}
                         query={searchQuery.trim()}
                       />{" "}
                       (

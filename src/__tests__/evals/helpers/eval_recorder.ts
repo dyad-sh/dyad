@@ -75,6 +75,15 @@ export interface EvalRunRecord {
     modelName: string;
     responseModelId: string | null;
   };
+  prompt: {
+    system: string;
+    user: string;
+  };
+  file: {
+    name: string;
+    before: string;
+    after: string;
+  };
   llm: {
     totalDurationMs: number;
     totalUsage: NormalizedUsage;
@@ -173,6 +182,15 @@ export function renderEvalRunAsText(record: EvalRunRecord): string {
   lines.push(hr("="));
   lines.push("");
 
+  lines.push("System prompt");
+  lines.push(hr("-"));
+  lines.push(record.prompt.system);
+  lines.push("");
+  lines.push("User prompt");
+  lines.push(hr("-"));
+  lines.push(record.prompt.user);
+  lines.push("");
+
   lines.push("LLM");
   lines.push(`  Total duration: ${record.llm.totalDurationMs}ms`);
   lines.push(`  Requests:       ${record.llm.requestCount}`);
@@ -239,6 +257,8 @@ export function recordEvalRun(record: EvalRunRecord): void {
     renderEvalRunAsText(record),
   );
 
+  writeDetailsFolder(recordDir, record);
+
   if (record.toolCalls.length > 0) {
     const toolCallsDir = resolve(recordDir, "tool_calls");
     mkdirSync(toolCallsDir, { recursive: true });
@@ -280,6 +300,49 @@ export function recordEvalRun(record: EvalRunRecord): void {
       );
     }
   }
+}
+
+function writeDetailsFolder(recordDir: string, record: EvalRunRecord): void {
+  const detailsDir = resolve(recordDir, "details");
+  mkdirSync(detailsDir, { recursive: true });
+  const ext = extensionFor(record.file.name);
+
+  writeFileSync(resolve(detailsDir, `file_before${ext}`), record.file.before);
+  writeFileSync(resolve(detailsDir, `file_after${ext}`), record.file.after);
+  writeFileSync(resolve(detailsDir, "diff.patch"), record.diff || "");
+  writeFileSync(resolve(detailsDir, "system_prompt.txt"), record.prompt.system);
+  writeFileSync(resolve(detailsDir, "user_prompt.txt"), record.prompt.user);
+
+  // metadata.json mirrors the main record but drops the large content
+  // blobs that already have their own files (file_before, file_after,
+  // overall diff, and per-tool-call before/after/diff).
+  const metadata = {
+    timestamp: record.timestamp,
+    suite: record.suite,
+    caseName: record.caseName,
+    model: record.model,
+    prompt: record.prompt,
+    file: { name: record.file.name },
+    llm: record.llm,
+    toolCallCount: record.toolCalls.length,
+    toolCalls: record.toolCalls.map((tc) => ({
+      index: tc.index,
+      timestamp: tc.timestamp,
+      toolName: tc.toolName,
+      filePath: tc.filePath,
+      oldStringLength: tc.oldString.length,
+      newStringLength: tc.newString.length,
+      fileBeforeLength: tc.fileBefore.length,
+      fileAfterLength: tc.fileAfter.length,
+    })),
+    judge: record.judge,
+    passed: record.passed,
+    errorMessage: record.errorMessage,
+  };
+  writeFileSync(
+    resolve(detailsDir, "metadata.json"),
+    JSON.stringify(metadata, null, 2) + "\n",
+  );
 }
 
 function extensionFor(filePath: string): string {

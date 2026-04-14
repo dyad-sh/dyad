@@ -393,6 +393,12 @@ async function runCase(
   let passed = false;
   let errorMessage: string | null = null;
 
+  const systemPrompt =
+    "You are a precise code editor. When asked to change a file, " +
+    "use the search_replace tool. You may call it multiple times " +
+    "to make sequential edits. Do not explain.";
+  const userPrompt = `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`;
+
   let currentContent = c.fileContent;
   const toolCallLog: Array<{
     file_path: string;
@@ -405,14 +411,11 @@ async function runCase(
       model: getEvalModel(provider, modelName),
       temperature,
       stopWhen: stepCountIs(100),
-      system:
-        "You are a precise code editor. When asked to change a file, " +
-        "use the search_replace tool. You may call it multiple times " +
-        "to make sequential edits. Do not explain.",
+      system: systemPrompt,
       messages: [
         {
           role: "user",
-          content: `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`,
+          content: userPrompt,
         },
       ],
       tools: {
@@ -519,6 +522,12 @@ async function runCase(
       suite: SUITE_NAME,
       caseName: c.name,
       model: { label, provider, modelName, responseModelId },
+      prompt: { system: systemPrompt, user: userPrompt },
+      file: {
+        name: c.fileName,
+        before: c.fileContent,
+        after: currentContent,
+      },
       llm: {
         totalDurationMs,
         totalUsage,

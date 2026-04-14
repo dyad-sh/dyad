@@ -42,6 +42,7 @@ import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inferen
 import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
 import { registerMarketplaceHandlers } from "./handlers/marketplace_handlers";
 import { registerMarketplaceSyncHandlers } from "./handlers/marketplace_sync_handlers";
+import { registerMarketplaceInboundHandlers } from "./handlers/marketplace_inbound_handlers";
 import { registerScraperHandlers } from "./handlers/scraper_handlers";
 import { registerAssetStudioHandlers } from "./handlers/asset_studio_handlers";
 import { registerNFTHandlers } from "./handlers/nft_handlers";
@@ -188,6 +189,7 @@ export function registerIpcHandlers() {
   registerLibreOfficeHandlers();
   registerMarketplaceHandlers();
   registerMarketplaceSyncHandlers();
+  registerMarketplaceInboundHandlers(); // Inbound: Joy Marketplace → JoyCreate webhook handler
   registerScraperHandlers();
   registerAssetStudioHandlers();
   registerNFTHandlers();

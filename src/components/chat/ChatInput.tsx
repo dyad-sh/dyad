@@ -127,6 +127,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     removeQueuedMessage,
     reorderQueuedMessages,
     clearAllQueuedMessages,
+    isPaused,
+    pauseQueue,
+    clearPauseOnly,
+    resumeQueue,
+    clearCompletionFlag,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -358,6 +363,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-clear pause state when queue becomes empty (Users expect that deleting all queued messages returns them to normal send mode)
+
+  useEffect(() => {
+    if (chatId && isPaused && queuedMessages.length === 0) {
+      clearPauseOnly();
+    }
+  }, [chatId, isPaused, queuedMessages.length, clearPauseOnly]);
+
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
@@ -510,7 +523,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // If streaming, queue the message instead of sending immediately
+    // Queue while actively streaming. If we're paused but currently idle,
+    // send the new message immediately and keep existing queued items paused.
     if (isStreaming) {
       const queued = queueMessage({
         prompt: currentInput,
@@ -561,17 +575,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
-    // Clear all queued messages first, BEFORE the IPC call, to ensure
-    // the queue is empty even if the backend response arrives quickly.
-    // This prevents race conditions where the queue-processing effect
-    // could potentially run if the backend responds before queue clearing.
-    clearAllQueuedMessages();
-    // Reset editing state so the "Editing queued message" banner is dismissed
-    // and restored attachments/components are cleared
+    // Only clear the queue if NOT paused
+    if (!isPaused) {
+      clearAllQueuedMessages();
+    }
+    // Always reset editing state when cancelling, regardless of pause state
     if (editingQueuedMessageId) {
       resetEditingState();
     }
+    // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {
+      clearCompletionFlag();
       ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);
@@ -760,6 +774,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onMoveDown={handleMoveDown}
               isStreaming={isStreaming}
               hasError={!!error}
+              isPaused={isPaused}
+              onPauseQueue={pauseQueue}
+              onResumeQueue={resumeQueue}
             />
           )}
           {/* Show editing indicator when editing a queued message */}

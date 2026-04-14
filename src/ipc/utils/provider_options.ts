@@ -1,9 +1,14 @@
-import type { SmartContextMode, UserSettings } from "../../lib/schemas";
+import type {
+  LargeLanguageModel,
+  SmartContextMode,
+  UserSettings,
+} from "../../lib/schemas";
 import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { getExtraProviderOptions } from "./thinking_utils";
+import { findLanguageModel } from "./findLanguageModel";
 
 export interface MentionedAppCodebase {
   appName: string;
@@ -92,15 +97,17 @@ export const DYAD_INTERNAL_REQUEST_ID_HEADER =
   "x-dyad-internal-request-id" as const;
 
 export interface GetAiHeadersParams {
+  model: LargeLanguageModel;
   builtinProviderId: string | undefined;
 }
 
 /**
  * Returns extra AI request headers for the provider (e.g. beta flags).
- * Currently none; reserved for future provider-specific headers.
  */
-export function getAiHeaders(
-  _params: GetAiHeadersParams,
-): Record<string, string> | undefined {
-  return undefined;
+export async function getAiHeaders({
+  model,
+  builtinProviderId: _builtinProviderId,
+}: GetAiHeadersParams): Promise<Record<string, string> | undefined> {
+  const modelConfig = await findLanguageModel(model);
+  return modelConfig?.requestHeaders;
 }

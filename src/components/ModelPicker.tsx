@@ -16,7 +16,7 @@ import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 
-import { ipc, LocalModel } from "@/ipc/types";
+import { ipc, type LanguageModel, LocalModel } from "@/ipc/types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
@@ -25,6 +25,68 @@ import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useTrialModelRestriction } from "@/hooks/useTrialModelRestriction";
+
+type ModelMenuEntry =
+  | { type: "model"; model: LanguageModel }
+  | {
+      type: "variant-group";
+      key: string;
+      displayName: string;
+      models: LanguageModel[];
+    };
+
+export function buildModelMenuEntries(
+  models: LanguageModel[],
+): ModelMenuEntry[] {
+  const groupedModels = new Map<string, LanguageModel[]>();
+  const entries: ModelMenuEntry[] = [];
+  const seenGroups = new Set<string>();
+
+  for (const model of models) {
+    if (model.variantGroup && model.variantLabel) {
+      const existing = groupedModels.get(model.variantGroup) ?? [];
+      existing.push(model);
+      groupedModels.set(model.variantGroup, existing);
+
+      if (!seenGroups.has(model.variantGroup)) {
+        seenGroups.add(model.variantGroup);
+        entries.push({
+          type: "variant-group",
+          key: model.variantGroup,
+          displayName: model.variantGroupDisplayName ?? model.displayName,
+          models: existing,
+        });
+      }
+      continue;
+    }
+
+    entries.push({ type: "model", model });
+  }
+
+  return entries;
+}
+
+function isSelectedCloudModel(
+  selectedModel: LargeLanguageModel,
+  providerId: string,
+  model: LanguageModel,
+) {
+  if (model.type === "custom") {
+    return (
+      selectedModel.provider === providerId &&
+      selectedModel.customModelId === model.id
+    );
+  }
+
+  const selectedVariantId = selectedModel.variantId ?? "default";
+  const modelVariantId = model.variantId ?? "default";
+
+  return (
+    selectedModel.provider === providerId &&
+    selectedModel.name === model.apiName &&
+    selectedVariantId === modelVariantId
+  );
+}
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
@@ -98,7 +160,10 @@ export function ModelPicker() {
         return customFoundModel.displayName;
       }
       const foundModel = modelsByProviders[selectedModel.provider].find(
-        (model) => model.apiName === selectedModel.name,
+        (model) =>
+          model.apiName === selectedModel.name &&
+          (model.variantId ?? "default") ===
+            (selectedModel.variantId ?? "default"),
       );
       if (foundModel) {
         return foundModel.displayName;
@@ -162,6 +227,118 @@ export function ModelPicker() {
     const provider = providers?.find((p) => p.id === providerId);
     return !!(provider && provider.secondary);
   });
+
+  const renderModelMenuEntry = (
+    providerId: string,
+    entry: ModelMenuEntry,
+    showPriceBadge: boolean,
+  ) => {
+    if (entry.type === "model") {
+      const { model } = entry;
+      return (
+        <DropdownMenuItem
+          key={`${providerId}-${model.apiName}-${model.variantId ?? "default"}`}
+          title={model.description}
+          className={
+            isSelectedCloudModel(selectedModel, providerId, model)
+              ? "bg-secondary"
+              : ""
+          }
+          onClick={() => {
+            const customModelId =
+              model.type === "custom" ? model.id : undefined;
+            onModelSelect({
+              name: model.apiName,
+              provider: providerId,
+              variantId: model.variantId,
+              customModelId,
+            });
+            setOpen(false);
+          }}
+        >
+          <div className="flex justify-between items-start w-full gap-2">
+            <span>{model.displayName}</span>
+            <div className="flex items-center gap-1.5">
+              {showPriceBadge && <PriceBadge dollarSigns={model.dollarSigns} />}
+              {model.tag && (
+                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                  {model.tag}
+                </span>
+              )}
+            </div>
+          </div>
+        </DropdownMenuItem>
+      );
+    }
+
+    const isSelectedVariant =
+      selectedModel.provider === providerId &&
+      entry.models.some((model) =>
+        isSelectedCloudModel(selectedModel, providerId, model),
+      );
+
+    return (
+      <DropdownMenuSub key={`${providerId}-${entry.key}`}>
+        <DropdownMenuSubTrigger
+          className={cn(
+            "w-full font-normal",
+            isSelectedVariant && "bg-secondary",
+          )}
+        >
+          <div className="flex flex-col items-start w-full">
+            <span>{entry.displayName}</span>
+            <span className="text-xs text-muted-foreground">
+              {entry.models.length} variants
+            </span>
+          </div>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-64">
+          <DropdownMenuLabel>{entry.displayName}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {entry.models.map((model) => (
+            <DropdownMenuItem
+              key={`${providerId}-${model.apiName}-${model.variantId ?? "default"}`}
+              title={model.description}
+              className={
+                isSelectedCloudModel(selectedModel, providerId, model)
+                  ? "bg-secondary"
+                  : ""
+              }
+              onClick={() => {
+                onModelSelect({
+                  name: model.apiName,
+                  provider: providerId,
+                  variantId: model.variantId,
+                });
+                setOpen(false);
+              }}
+            >
+              <div className="flex justify-between items-start w-full gap-2">
+                <div className="flex flex-col items-start">
+                  <span>{model.variantLabel ?? model.displayName}</span>
+                  {model.contextWindow && (
+                    <span className="text-xs text-muted-foreground">
+                      {model.contextWindow.toLocaleString()} tokens
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {showPriceBadge && (
+                    <PriceBadge dollarSigns={model.dollarSigns} />
+                  )}
+                  {model.tag && (
+                    <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                      {model.tag}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    );
+  };
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -299,6 +476,7 @@ export function ModelPicker() {
                   }
                   return true;
                 });
+                const modelMenuEntries = buildModelMenuEntries(models);
                 const provider = providers?.find((p) => p.id === providerId);
                 const providerDisplayName =
                   provider?.id === "auto"
@@ -333,38 +511,9 @@ export function ModelPicker() {
                         {providerDisplayName + " Models"}
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      {models.map((model) => (
-                        <DropdownMenuItem
-                          key={`${providerId}-${model.apiName}`}
-                          title={model.description}
-                          className={
-                            selectedModel.provider === providerId &&
-                            selectedModel.name === model.apiName
-                              ? "bg-secondary"
-                              : ""
-                          }
-                          onClick={() => {
-                            const customModelId =
-                              model.type === "custom" ? model.id : undefined;
-                            onModelSelect({
-                              name: model.apiName,
-                              provider: providerId,
-                              customModelId,
-                            });
-                            setOpen(false);
-                          }}
-                        >
-                          <div className="flex justify-between items-start w-full">
-                            <span>{model.displayName}</span>
-                            <PriceBadge dollarSigns={model.dollarSigns} />
-                            {model.tag && (
-                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                                {model.tag}
-                              </span>
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
+                      {modelMenuEntries.map((entry) =>
+                        renderModelMenuEntry(providerId, entry, true),
+                      )}
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 );
@@ -385,6 +534,7 @@ export function ModelPicker() {
                     <DropdownMenuLabel>Other AI providers</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {secondaryProviders.map(([providerId, models]) => {
+                      const modelMenuEntries = buildModelMenuEntries(models);
                       const provider = providers?.find(
                         (p) => p.id === providerId,
                       );
@@ -410,39 +560,9 @@ export function ModelPicker() {
                               {(provider?.name ?? providerId) + " Models"}
                             </DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            {models.map((model) => (
-                              <DropdownMenuItem
-                                key={`${providerId}-${model.apiName}`}
-                                title={model.description}
-                                className={
-                                  selectedModel.provider === providerId &&
-                                  selectedModel.name === model.apiName
-                                    ? "bg-secondary"
-                                    : ""
-                                }
-                                onClick={() => {
-                                  const customModelId =
-                                    model.type === "custom"
-                                      ? model.id
-                                      : undefined;
-                                  onModelSelect({
-                                    name: model.apiName,
-                                    provider: providerId,
-                                    customModelId,
-                                  });
-                                  setOpen(false);
-                                }}
-                              >
-                                <div className="flex justify-between items-start w-full">
-                                  <span>{model.displayName}</span>
-                                  {model.tag && (
-                                    <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                                      {model.tag}
-                                    </span>
-                                  )}
-                                </div>
-                              </DropdownMenuItem>
-                            ))}
+                            {modelMenuEntries.map((entry) =>
+                              renderModelMenuEntry(providerId, entry, false),
+                            )}
                           </DropdownMenuSubContent>
                         </DropdownMenuSub>
                       );

@@ -1,6 +1,6 @@
 import { LargeLanguageModel } from "@/lib/schemas";
 import { readSettings } from "../../main/settings";
-import { Message } from "@/ipc/types";
+import { Message, type LanguageModel } from "@/ipc/types";
 
 import { findLanguageModel } from "./findLanguageModel";
 
@@ -38,20 +38,48 @@ export async function getTemperature(
   return modelOption?.temperature ?? 0;
 }
 
+function getCompactionThresholdForModelOption(
+  contextWindow: number,
+  modelOption?: LanguageModel,
+): number {
+  const config = modelOption?.compactionThreshold;
+
+  if (!config) {
+    return Math.min(Math.floor(contextWindow * 0.8), 180_000);
+  }
+
+  return Math.min(
+    Math.floor(contextWindow * config.maxUsageFraction),
+    Math.max(contextWindow - config.minTokensRemaining, 0),
+  );
+}
+
 /**
  * Calculate the token threshold for triggering context compaction.
- * Returns the minimum of 80% of context window or 180k tokens.
  */
-export function getCompactionThreshold(contextWindow: number): number {
-  return Math.min(Math.floor(contextWindow * 0.8), 180_000);
+export function getCompactionThreshold(
+  contextWindow: number,
+  modelOption?: LanguageModel,
+): number {
+  return getCompactionThresholdForModelOption(contextWindow, modelOption);
 }
 
 /**
  * Check if compaction should be triggered based on total tokens used.
  */
-export function shouldTriggerCompaction(
+export async function shouldTriggerCompaction(
   totalTokens: number,
-  contextWindow: number,
-): boolean {
-  return totalTokens >= getCompactionThreshold(contextWindow);
+  model: LargeLanguageModel,
+): Promise<boolean> {
+  const modelOption = await findLanguageModel(model);
+  const contextWindow = modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+  return totalTokens >= getCompactionThreshold(contextWindow, modelOption);
+}
+
+export async function getCompactionThresholdForModel(
+  model: LargeLanguageModel,
+): Promise<number> {
+  const modelOption = await findLanguageModel(model);
+  const contextWindow = modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+  return getCompactionThreshold(contextWindow, modelOption);
 }

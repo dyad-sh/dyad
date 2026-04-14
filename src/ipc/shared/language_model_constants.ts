@@ -7,22 +7,44 @@ export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
 
 export interface ModelOption {
   name: string;
+  variantId?: string;
   displayName: string;
   description: string;
+  variantGroup?: string;
+  variantGroupDisplayName?: string;
+  variantLabel?: string;
   dollarSigns?: number;
   temperature?: number;
   tag?: string;
   tagColor?: string;
   maxOutputTokens?: number;
   contextWindow?: number;
+  resolvedApiName?: string;
+  requestHeaders?: Record<string, string>;
+  compactionThreshold?: {
+    maxUsageFraction: number;
+    minTokensRemaining: number;
+  };
 }
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
 export const SONNET_4_6 = "claude-sonnet-4-6";
 export const OPUS_4_6 = "claude-opus-4-6";
+export const SONNET_4_6_LONG_CONTEXT = "claude-sonnet-4-6-long-context";
+export const OPUS_4_6_LONG_CONTEXT = "claude-opus-4-6-long-context";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
 export const GPT_5_NANO = "gpt-5-nano";
+export const ANTHROPIC_LONG_CONTEXT_BETA_HEADER = "context-1m-2025-08-07";
+
+const ANTHROPIC_LONG_CONTEXT_HEADERS = {
+  "anthropic-beta": ANTHROPIC_LONG_CONTEXT_BETA_HEADER,
+};
+
+const LONG_CONTEXT_COMPACTION_THRESHOLD = {
+  maxUsageFraction: 0.8,
+  minTokensRemaining: 100_000,
+} as const;
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
@@ -116,25 +138,62 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
-      name: "claude-opus-4-6",
+      name: OPUS_4_6,
+      variantId: "default",
       displayName: "Claude Opus 4.6",
+      variantGroup: OPUS_4_6,
+      variantGroupDisplayName: "Claude Opus 4.6",
+      variantLabel: "Default (200k)",
       description:
         "Anthropic's best model for coding (note: this model is very expensive!)",
-      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 6,
+    },
+    {
+      name: OPUS_4_6,
+      variantId: "long-context",
+      displayName: "Claude Opus 4.6 Long Context",
+      variantGroup: OPUS_4_6,
+      variantGroupDisplayName: "Claude Opus 4.6",
+      variantLabel: "Long Context (1M)",
+      description:
+        "Anthropic's best model for coding with 1M token context enabled",
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
+      requestHeaders: ANTHROPIC_LONG_CONTEXT_HEADERS,
+      compactionThreshold: LONG_CONTEXT_COMPACTION_THRESHOLD,
       temperature: 0,
       dollarSigns: 6,
     },
     // https://docs.anthropic.com/en/docs/about-claude/models/overview
     {
       name: SONNET_4_6,
+      variantId: "default",
       displayName: "Claude Sonnet 4.6",
+      variantGroup: SONNET_4_6,
+      variantGroupDisplayName: "Claude Sonnet 4.6",
+      variantLabel: "Default (200k)",
+      description: "Anthropic's fast and intelligent model",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 5,
+    },
+    {
+      name: SONNET_4_6,
+      variantId: "long-context",
+      displayName: "Claude Sonnet 4.6 Long Context",
+      variantGroup: SONNET_4_6,
+      variantGroupDisplayName: "Claude Sonnet 4.6",
+      variantLabel: "Long Context (1M)",
       description:
-        "Anthropic's fast and intelligent model (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
+        "Anthropic's fast and intelligent model with 1M token context enabled",
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
+      requestHeaders: ANTHROPIC_LONG_CONTEXT_HEADERS,
+      compactionThreshold: LONG_CONTEXT_COMPACTION_THRESHOLD,
       temperature: 0,
       dollarSigns: 5,
     },

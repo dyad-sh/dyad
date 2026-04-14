@@ -678,9 +678,10 @@ export async function handleLocalAgentStream(
           const streamResult = streamText({
             model: modelClient.model,
             headers: {
-              ...getAiHeaders({
+              ...(await getAiHeaders({
+                model: settings.selectedModel,
                 builtinProviderId: modelClient.builtinProviderId,
-              }),
+              })),
               [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
             },
             providerOptions: getProviderOptions({

@@ -3,12 +3,19 @@ import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolveTargetAppPath } from "./resolve_app_context";
 
 const readFile = fs.promises.readFile;
 
 const readFileSchema = z
   .object({
     path: z.string().describe("The file path to read"),
+    app_id: z
+      .string()
+      .optional()
+      .describe(
+        "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to read from instead of the current app. Omit to read from the current app.",
+      ),
     start_line_one_indexed: z
       .number()
       .int()
@@ -51,21 +58,25 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   defaultConsent: "always",
 
   getConsentPreview: (args) => {
+    const location = args.app_id ? `${args.app_id}:${args.path}` : args.path;
     const start = args.start_line_one_indexed;
     const end = args.end_line_one_indexed_inclusive;
     if (start != null && end != null) {
-      return `Read ${args.path} (lines ${start}-${end})`;
+      return `Read ${location} (lines ${start}-${end})`;
     } else if (start != null) {
-      return `Read ${args.path} (from line ${start})`;
+      return `Read ${location} (from line ${start})`;
     } else if (end != null) {
-      return `Read ${args.path} (to line ${end})`;
+      return `Read ${location} (to line ${end})`;
     }
-    return `Read ${args.path}`;
+    return `Read ${location}`;
   },
 
   buildXml: (args, _isComplete) => {
     if (!args.path) return undefined;
     const attrs = [`path="${escapeXmlAttr(args.path)}"`];
+    if (args.app_id) {
+      attrs.push(`app_id="${escapeXmlAttr(args.app_id)}"`);
+    }
     if (args.start_line_one_indexed != null) {
       attrs.push(
         `start_line="${escapeXmlAttr(String(args.start_line_one_indexed))}"`,
@@ -80,7 +91,8 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const fullFilePath = safeJoin(ctx.appPath, args.path);
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
+    const fullFilePath = safeJoin(targetAppPath, args.path);
 
     if (!fs.existsSync(fullFilePath)) {
       throw new DyadError(

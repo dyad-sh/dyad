@@ -9,11 +9,18 @@ import {
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolveTargetAppPath } from "./resolve_app_context";
 
 const logger = log.scope("code_search");
 
 const codeSearchSchema = z.object({
   query: z.string().describe("Search query to find relevant files"),
+  app_id: z
+    .string()
+    .optional()
+    .describe(
+      "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+    ),
 });
 
 const FileContextSchema = z.object({
@@ -81,20 +88,27 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
     // Requires Dyad Pro engine API
     isEnabled: (ctx) => ctx.isDyadPro,
 
-    getConsentPreview: (args) => `Search for "${args.query}"`,
+    getConsentPreview: (args) =>
+      args.app_id
+        ? `Search for "${args.query}" (app: ${args.app_id})`
+        : `Search for "${args.query}"`,
 
     buildXml: (args, isComplete) => {
       if (!args.query) return undefined;
       if (isComplete) return undefined;
-      return `<dyad-code-search query="${escapeXmlAttr(args.query)}">Searching...`;
+      const appIdAttr = args.app_id
+        ? ` app_id="${escapeXmlAttr(args.app_id)}"`
+        : "";
+      return `<dyad-code-search query="${escapeXmlAttr(args.query)}"${appIdAttr}>Searching...`;
     },
 
     execute: async (args, ctx: AgentContext) => {
       logger.log(`Executing code search: ${args.query}`);
+      const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
 
       // Gather all files from the project
       const { files } = await extractCodebase({
-        appPath: ctx.appPath,
+        appPath: targetAppPath,
         chatContext: {
           contextPaths: [],
           smartContextAutoIncludes: [],
@@ -128,8 +142,11 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
           : relevantFiles.map((f) => ` - ${f}`).join("\n");
 
       // Write final result to UI and DB with dyad-code-search wrapper
+      const appIdAttr = args.app_id
+        ? ` app_id="${escapeXmlAttr(args.app_id)}"`
+        : "";
       ctx.onXmlComplete(
-        `<dyad-code-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(resultText)}</dyad-code-search>`,
+        `<dyad-code-search query="${escapeXmlAttr(args.query)}"${appIdAttr}>${escapeXmlContent(resultText)}</dyad-code-search>`,
       );
 
       logger.log(`Code search completed for query: ${args.query}`);

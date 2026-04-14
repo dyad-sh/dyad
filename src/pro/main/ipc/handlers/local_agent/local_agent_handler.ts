@@ -272,6 +272,7 @@ export async function handleLocalAgentStream(
     planModeOnly = false,
     messageOverride,
     settingsOverride,
+    referencedApps = [],
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -292,6 +293,15 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
+    /**
+     * Apps referenced via `@app:Name` mentions in the user's prompt.
+     * Read-only tools can target these via an `app_id` parameter.
+     */
+    referencedApps?: {
+      appId: number;
+      appName: string;
+      appPath: string;
+    }[];
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
@@ -506,10 +516,21 @@ export async function handleLocalAgentStream(
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
+    const referencedAppsMap = new Map<
+      string,
+      { appId: number; appPath: string }
+    >();
+    for (const ref of referencedApps) {
+      referencedAppsMap.set(ref.appName, {
+        appId: ref.appId,
+        appPath: ref.appPath,
+      });
+    }
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
       appPath,
+      referencedApps: referencedAppsMap,
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,

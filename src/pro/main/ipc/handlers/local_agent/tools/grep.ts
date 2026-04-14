@@ -11,6 +11,7 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "@/ipc/utils/ripgrep_utils";
+import { resolveTargetAppPath } from "./resolve_app_context";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -21,6 +22,12 @@ const MAX_LINE_LENGTH = 500;
 
 const grepSchema = z.object({
   query: z.string().describe("The regex pattern to search for"),
+  app_id: z
+    .string()
+    .optional()
+    .describe(
+      "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+    ),
   include_pattern: z
     .string()
     .optional()
@@ -65,6 +72,9 @@ function buildGrepAttributes(
   const attrs: string[] = [];
   if (args.query) {
     attrs.push(`query="${escapeXmlAttr(args.query)}"`);
+  }
+  if (args.app_id) {
+    attrs.push(`app_id="${escapeXmlAttr(args.app_id)}"`);
   }
   if (args.include_pattern) {
     attrs.push(`include="${escapeXmlAttr(args.include_pattern)}"`);
@@ -252,6 +262,9 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     if (args.include_ignored) {
       preview += " including ignored files";
     }
+    if (args.app_id) {
+      preview += ` (app: ${args.app_id})`;
+    }
     return preview;
   },
 
@@ -267,11 +280,12 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_id);
     const includePatWasWildcard = args.include_pattern === "*";
     const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
     const { matches: allMatches, stoppedEarly } = await runRipgrep({
-      appPath: ctx.appPath,
+      appPath: targetAppPath,
       query: args.query,
       includePat: args.include_pattern,
       excludePat: args.exclude_pattern,

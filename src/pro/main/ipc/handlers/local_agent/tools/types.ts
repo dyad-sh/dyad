@@ -41,10 +41,25 @@ export interface FileEditTracker {
   };
 }
 
+/**
+ * Read-only view of a referenced app (from `@app:Name` mentions in the prompt).
+ * Keyed by app name in AgentContext.referencedApps.
+ */
+export interface ReferencedAppEntry {
+  appId: number;
+  appPath: string;
+}
+
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
   appPath: string;
+  /**
+   * Apps referenced via `@app:Name` in the current turn. Read-only tools
+   * can target these via an `app_id` parameter; write tools cannot reach them.
+   * Keyed by the app name the user typed in the mention.
+   */
+  referencedApps: Map<string, ReferencedAppEntry>;
   chatId: number;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;

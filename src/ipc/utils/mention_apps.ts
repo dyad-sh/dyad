@@ -6,11 +6,19 @@ import log from "electron-log";
 
 const logger = log.scope("mention_apps");
 
+export interface MentionedAppCodebaseEntry {
+  appId: number;
+  appName: string;
+  appPath: string;
+  codebaseInfo: string;
+  files: CodebaseFile[];
+}
+
 // Helper function to extract codebases from mentioned apps
 export async function extractMentionedAppsCodebases(
   mentionedAppNames: string[],
   excludeCurrentAppId?: number,
-): Promise<{ appName: string; codebaseInfo: string; files: CodebaseFile[] }[]> {
+): Promise<MentionedAppCodebaseEntry[]> {
   if (mentionedAppNames.length === 0) {
     return [];
   }
@@ -25,11 +33,7 @@ export async function extractMentionedAppsCodebases(
       ) && app.id !== excludeCurrentAppId,
   );
 
-  const results: {
-    appName: string;
-    codebaseInfo: string;
-    files: CodebaseFile[];
-  }[] = [];
+  const results: MentionedAppCodebaseEntry[] = [];
 
   for (const app of mentionedApps) {
     try {
@@ -42,7 +46,9 @@ export async function extractMentionedAppsCodebases(
       });
 
       results.push({
+        appId: app.id,
         appName: app.name,
+        appPath,
         codebaseInfo: formattedOutput,
         files,
       });

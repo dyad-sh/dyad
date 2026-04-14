@@ -269,6 +269,7 @@ export async function onReady() {
     logger.info("Auto-update release channel=", postfix);
     updateElectronApp({
       logger,
+      updateInterval: "60 minutes",
       updateSource: {
         type: UpdateSourceType.ElectronPublicUpdateService,
         repo: "dyad-sh/dyad",

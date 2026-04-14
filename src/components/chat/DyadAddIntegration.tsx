@@ -29,7 +29,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { streamMessage, isStreaming } = useStreamChat();
   const [selectedProvider, setSelectedProvider] = useState<
     "neon" | "supabase" | null
-  >("supabase");
+  >(requestedProvider ?? "supabase");
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);

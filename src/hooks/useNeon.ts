@@ -48,10 +48,14 @@ export function useNeon(appId: number | null) {
     useQuery({
       queryKey: queryKeys.neon.emailPasswordConfig({
         appId,
-        branchId: app?.neonActiveBranchId ?? null,
+        branchId:
+          app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId ?? null,
       }),
       queryFn: () => ipc.neon.getEmailPasswordConfig({ appId: appId! }),
-      enabled: !!appId && !!app?.neonProjectId && !!app?.neonActiveBranchId,
+      enabled:
+        !!appId &&
+        !!app?.neonProjectId &&
+        !!(app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId),
     });
 
   return {

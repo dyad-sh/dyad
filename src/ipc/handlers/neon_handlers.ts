@@ -108,10 +108,11 @@ export function registerNeonHandlers() {
       const authWarnings: string[] = [];
 
       // Snapshot env file before modification so we can restore on failure
-      const envFileSnapshot = await readEnvFileIfExists({ appPath });
+      let envFileSnapshot: string | null = null;
 
       // Post-creation steps: if any fail, best-effort delete the orphan project
       try {
+        envFileSnapshot = await readEnvFileIfExists({ appPath });
         // Enable Neon Auth on the main branch
         if (
           !(await ensureNeonAuth({
@@ -468,9 +469,7 @@ export function registerNeonHandlers() {
 
       // Find development branch by name first, then fall back to non-default/non-preview
       const defaultBranch = branches.find((b) => b.default);
-      const dedicatedDevBranch =
-        branches.find((b) => b.name === "development") ??
-        branches.find((b) => !b.default && b.name !== "preview");
+      const dedicatedDevBranch = branches.find((b) => b.name === "development");
 
       const previewBranch = branches.find((b) => b.name === "preview");
 

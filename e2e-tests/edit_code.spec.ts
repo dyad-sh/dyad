@@ -107,22 +107,13 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
 
   await expect
     .poll(
-      () =>
-        fs
-          .readFileSync(path.join(appPath, firstOpenedFilePath), "utf8")
-          .replace(/\r\n/g, "\n"),
+      () => fs.readFileSync(path.join(appPath, firstOpenedFilePath), "utf8"),
       { timeout: Timeout.MEDIUM },
     )
-    .toEqual(firstFileEdit.replace(/\r\n/g, "\n"));
+    .toEqual(firstFileEdit);
   await expect
-    .poll(
-      () =>
-        fs
-          .readFileSync(path.join(appPath, robotsFilePath), "utf8")
-          .replace(/\r\n/g, "\n"),
-      {
-        timeout: Timeout.MEDIUM,
-      },
-    )
-    .toEqual(updatedRobotsFile.replace(/\r\n/g, "\n"));
+    .poll(() => fs.readFileSync(path.join(appPath, robotsFilePath), "utf8"), {
+      timeout: Timeout.MEDIUM,
+    })
+    .toEqual(updatedRobotsFile);
 });

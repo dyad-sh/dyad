@@ -275,7 +275,7 @@ describe("listFilesTool", () => {
   describe("execute - app_name (referenced apps)", () => {
     it("lists files from the referenced app's path (non-recursive)", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       const result = await listFilesTool.execute(
@@ -288,7 +288,7 @@ describe("listFilesTool", () => {
 
     it("lists files recursively from the referenced app", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       const result = await listFilesTool.execute(
@@ -301,7 +301,7 @@ describe("listFilesTool", () => {
 
     it("throws a clear error when app_name is unknown", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       await expect(
@@ -311,7 +311,7 @@ describe("listFilesTool", () => {
 
     it("includes .dyad files from the referenced app when include_ignored is true", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       const result = await listFilesTool.execute(
@@ -328,7 +328,7 @@ describe("listFilesTool", () => {
 
     it("emits app_name attribute in the final XML output", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       await listFilesTool.execute({ app_name: "other-app" }, mockContext);
@@ -338,7 +338,7 @@ describe("listFilesTool", () => {
 
     it("operates on current app when app_name is omitted even if referencedApps is populated", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       const result = await listFilesTool.execute({}, mockContext);

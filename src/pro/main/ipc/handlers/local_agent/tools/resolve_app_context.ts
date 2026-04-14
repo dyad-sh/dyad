@@ -18,11 +18,11 @@ export function resolveTargetAppPath(
   if (!appName) {
     return ctx.appPath;
   }
-  const entry = ctx.referencedApps.get(appName);
+  const entry = ctx.referencedApps.get(appName.toLowerCase());
   if (entry) {
     return entry.appPath;
   }
-  const available = [...ctx.referencedApps.keys()];
+  const available = [...ctx.referencedApps.values()].map((e) => e.appName);
   const availableStr =
     available.length > 0 ? available.join(", ") : "(none available)";
   throw new DyadError(

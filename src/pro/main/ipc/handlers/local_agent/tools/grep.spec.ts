@@ -614,7 +614,7 @@ function deepHello() {
 
     it("searches the referenced app when app_name is provided", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       const result = await grepTool.execute(
@@ -627,7 +627,7 @@ function deepHello() {
 
     it("does not see current-app matches when app_name targets another app", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       const result = await grepTool.execute(
@@ -648,7 +648,7 @@ function deepHello() {
 
     it("includes app_name in the final XML output", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       await grepTool.execute(

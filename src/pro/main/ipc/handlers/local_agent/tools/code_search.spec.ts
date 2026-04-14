@@ -139,7 +139,7 @@ describe("codeSearchTool", () => {
   describe("execute - app_name (referenced apps)", () => {
     it("routes to the referenced app's path when app_name matches", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       mockEngineResponse(["other.ts"]);
@@ -162,7 +162,7 @@ describe("codeSearchTool", () => {
 
     it("throws a clear error when app_name is not in the allow-list", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       await expect(
@@ -176,7 +176,7 @@ describe("codeSearchTool", () => {
 
     it("emits app_name in the final XML output", async () => {
       mockContext.referencedApps.set("other-app", {
-        appId: 2,
+        appName: "other-app",
         appPath: otherAppDir,
       });
       mockEngineResponse(["other.ts"]);

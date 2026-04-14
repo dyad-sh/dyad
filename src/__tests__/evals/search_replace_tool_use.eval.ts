@@ -522,7 +522,11 @@ async function runCase(
       suite: SUITE_NAME,
       caseName: c.name,
       model: { label, provider, modelName, responseModelId },
-      prompt: { system: systemPrompt, user: userPrompt },
+      prompt: {
+        system: systemPrompt,
+        instructions: c.prompt,
+        user: userPrompt,
+      },
       file: {
         name: c.fileName,
         before: c.fileContent,

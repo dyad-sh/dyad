@@ -77,6 +77,11 @@ export interface EvalRunRecord {
   };
   prompt: {
     system: string;
+    // Plain edit instructions for the case, without the file content
+    // spliced in. Handy for skimming what the model was asked to do.
+    instructions: string;
+    // Full user-message content actually sent to the model (typically
+    // the file contents followed by the instructions).
     user: string;
   };
   file: {
@@ -186,7 +191,11 @@ export function renderEvalRunAsText(record: EvalRunRecord): string {
   lines.push(hr("-"));
   lines.push(record.prompt.system);
   lines.push("");
-  lines.push("User prompt");
+  lines.push("Instructions");
+  lines.push(hr("-"));
+  lines.push(record.prompt.instructions);
+  lines.push("");
+  lines.push("User prompt (full)");
   lines.push(hr("-"));
   lines.push(record.prompt.user);
   lines.push("");
@@ -311,11 +320,12 @@ function writeDetailsFolder(recordDir: string, record: EvalRunRecord): void {
   writeFileSync(resolve(detailsDir, `file_after${ext}`), record.file.after);
   writeFileSync(resolve(detailsDir, "diff.patch"), record.diff || "");
   writeFileSync(resolve(detailsDir, "system_prompt.txt"), record.prompt.system);
+  writeFileSync(resolve(detailsDir, "instructions.txt"), record.prompt.instructions);
   writeFileSync(resolve(detailsDir, "user_prompt.txt"), record.prompt.user);
 
-  // metadata.json mirrors the main record but drops the large content
-  // blobs that already have their own files (file_before, file_after,
-  // overall diff, and per-tool-call before/after/diff).
+  // Metadata mirrors the main record but drops the large content blobs
+  // that already have their own files (file_before, file_after, overall
+  // diff) and the per-tool-call details (tool_calls/ folder has them).
   const metadata = {
     timestamp: record.timestamp,
     suite: record.suite,
@@ -325,16 +335,6 @@ function writeDetailsFolder(recordDir: string, record: EvalRunRecord): void {
     file: { name: record.file.name },
     llm: record.llm,
     toolCallCount: record.toolCalls.length,
-    toolCalls: record.toolCalls.map((tc) => ({
-      index: tc.index,
-      timestamp: tc.timestamp,
-      toolName: tc.toolName,
-      filePath: tc.filePath,
-      oldStringLength: tc.oldString.length,
-      newStringLength: tc.newString.length,
-      fileBeforeLength: tc.fileBefore.length,
-      fileAfterLength: tc.fileAfter.length,
-    })),
     judge: record.judge,
     passed: record.passed,
     errorMessage: record.errorMessage,
@@ -343,6 +343,80 @@ function writeDetailsFolder(recordDir: string, record: EvalRunRecord): void {
     resolve(detailsDir, "metadata.json"),
     JSON.stringify(metadata, null, 2) + "\n",
   );
+  writeFileSync(
+    resolve(detailsDir, "metadata.txt"),
+    renderMetadataAsText(metadata),
+  );
+}
+
+function renderMetadataAsText(m: {
+  timestamp: string;
+  suite: string;
+  caseName: string;
+  model: EvalRunRecord["model"];
+  prompt: EvalRunRecord["prompt"];
+  file: { name: string };
+  llm: EvalRunRecord["llm"];
+  toolCallCount: number;
+  judge: JudgeRecord | null;
+  passed: boolean;
+  errorMessage: string | null;
+}): string {
+  const lines: string[] = [];
+  lines.push(hr("="));
+  lines.push(`Suite:     ${m.suite}`);
+  lines.push(`Case:      ${m.caseName}`);
+  lines.push(`File:      ${m.file.name}`);
+  lines.push(
+    `Model:     ${m.model.label} ` +
+      `[${m.model.provider}/${m.model.modelName}]` +
+      (m.model.responseModelId ? ` → ${m.model.responseModelId}` : ""),
+  );
+  lines.push(`Timestamp: ${m.timestamp}`);
+  lines.push(`Passed:    ${m.passed}`);
+  if (m.errorMessage) lines.push(`Error:     ${m.errorMessage}`);
+  lines.push(hr("="));
+  lines.push("");
+
+  lines.push("LLM");
+  lines.push(`  Total duration: ${m.llm.totalDurationMs}ms`);
+  lines.push(`  Requests:       ${m.llm.requestCount}`);
+  lines.push(`  Total tokens:   ${formatUsage(m.llm.totalUsage)}`);
+  for (const req of m.llm.requests) {
+    lines.push(
+      `    step ${req.stepIndex}: ${req.durationMs}ms, ` +
+        `${formatUsage(req.usage)}, finish=${req.finishReason ?? "?"}`,
+    );
+  }
+  lines.push("");
+  lines.push(`Tool call count: ${m.toolCallCount}`);
+  lines.push("");
+
+  lines.push("System prompt");
+  lines.push(hr("-"));
+  lines.push(m.prompt.system);
+  lines.push("");
+  lines.push("Instructions");
+  lines.push(hr("-"));
+  lines.push(m.prompt.instructions);
+  lines.push("");
+
+  if (m.judge) {
+    lines.push(hr("="));
+    lines.push("Judge");
+    lines.push(`  Identity: ${m.judge.label} [${m.judge.modelName}]`);
+    lines.push(`  Provider: ${m.judge.provider}`);
+    lines.push(`  Duration: ${m.judge.durationMs}ms`);
+    lines.push(`  Tokens:   ${formatUsage(m.judge.usage)}`);
+    lines.push(`  Verdict:  ${m.judge.pass ? "PASS" : "FAIL"}`);
+    lines.push(`  Explanation:`);
+    for (const line of m.judge.explanation.split("\n")) {
+      lines.push(`    ${line}`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }
 
 function extensionFor(filePath: string): string {

@@ -20,6 +20,15 @@ import { registerWorkflowTools } from "./tools/workflow_tools";
 import { registerChatTools } from "./tools/chat_tools";
 import { registerMarketplaceTools } from "./tools/marketplace_tools";
 import { registerKnowledgeBaseTools } from "./tools/knowledge_base_tools";
+import { registerImageTools } from "./tools/image_tools";
+import { registerVideoTools } from "./tools/video_tools";
+import { registerDatasetTools } from "./tools/dataset_tools";
+import { registerAppBuilderTools } from "./tools/app_builder_tools";
+import { registerNeuralModelTools } from "./tools/neural_model_tools";
+import { registerComputeTools } from "./tools/compute_tools";
+import { registerAgentBuilderTools } from "./tools/agent_builder_tools";
+import { registerSkillsTools } from "./tools/skills_tools";
+import { registerCreatorDashboardTools } from "./tools/creator_dashboard_tools";
 import { processInboundEvent, type MarketplaceInboundEvent } from "../ipc/handlers/marketplace_inbound_handlers";
 
 const logger = log.scope("mcp-server");
@@ -187,6 +196,16 @@ class JoyCreateMcpServer {
     registerChatTools(server);
     registerMarketplaceTools(server);
     registerKnowledgeBaseTools(server);
+    // Fusion expansion — full JoyCreate capability surface
+    registerImageTools(server);
+    registerVideoTools(server);
+    registerDatasetTools(server);
+    registerAppBuilderTools(server);
+    registerNeuralModelTools(server);
+    registerComputeTools(server);
+    registerAgentBuilderTools(server);
+    registerSkillsTools(server);
+    registerCreatorDashboardTools(server);
 
     return server;
   }

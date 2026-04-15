@@ -298,7 +298,6 @@ export async function handleLocalAgentStream(
      * Read-only tools can target these via an `app_name` parameter.
      */
     referencedApps?: {
-      appId: number;
       appName: string;
       appPath: string;
     }[];

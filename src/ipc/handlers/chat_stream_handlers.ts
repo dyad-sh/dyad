@@ -82,7 +82,12 @@ import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
-import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import {
+  extractMentionedAppsCodebases,
+  extractMentionedAppsReferences,
+  type MentionedAppCodebaseEntry,
+  type MentionedAppReference,
+} from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
   parseMediaMentions,
@@ -133,7 +138,7 @@ const activeStreams = new Map<number, AbortController>();
  */
 function appendReferencedAppManifest(
   systemPrompt: string,
-  referencedApps: { appName: string }[],
+  referencedApps: readonly { appName: string }[],
 ): string {
   if (referencedApps.length === 0) {
     return systemPrompt;
@@ -684,34 +689,40 @@ ${componentSnippet}
         // Parse app mentions from the prompt
         const mentionedAppNames = parseAppMentions(req.prompt);
 
-        // Extract codebases for mentioned apps
-        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-          mentionedAppNames,
-          updatedChat.app.id, // Exclude current app
-        );
-        // Strip off `codebaseInfo`/`files` before handing to handleLocalAgentStream.
-        // Computed once so agent/ask/plan call sites don't each repeat the projection.
-        const referencedAppsForAgent = mentionedAppsCodebases.map(
-          ({ appId, appName, appPath }) => ({ appId, appName, appPath }),
-        );
+        const isLocalAgentMode = selectedChatMode === "local-agent";
+        const isAskMode = selectedChatMode === "ask";
+        const isPlanMode = selectedChatMode === "plan";
         const willUseLocalAgentStream =
-          selectedChatMode === "local-agent" ||
-          selectedChatMode === "ask" ||
-          selectedChatMode === "plan";
-        // Agent modes use tool-based access to referenced apps (via `app_name`
-        // on read tools) instead of injecting full codebases into the prompt.
+          isLocalAgentMode || isAskMode || isPlanMode;
+
+        // Agent/ask/plan modes reach referenced apps via tool calls (`app_name`
+        // on read-only tools), so we only need name/path pairs — skip the heavy
+        // codebase extraction entirely. Build mode still injects full codebases.
+        let mentionedAppsCodebases: MentionedAppCodebaseEntry[] = [];
+        let referencedAppsForAgent: MentionedAppReference[] = [];
+        if (willUseLocalAgentStream) {
+          referencedAppsForAgent = await extractMentionedAppsReferences(
+            mentionedAppNames,
+            updatedChat.app.id, // Exclude current app
+          );
+        } else {
+          mentionedAppsCodebases = await extractMentionedAppsCodebases(
+            mentionedAppNames,
+            updatedChat.app.id, // Exclude current app
+          );
+          referencedAppsForAgent = mentionedAppsCodebases.map(
+            ({ appName, appPath }) => ({ appName, appPath }),
+          );
+        }
         const useReferencedAppManifest =
-          (selectedChatMode === "local-agent" ||
-            selectedChatMode === "ask" ||
-            selectedChatMode === "plan") &&
-          mentionedAppsCodebases.length > 0;
+          willUseLocalAgentStream && referencedAppsForAgent.length > 0;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&
           // Anything besides balanced will use deep context.
           settings.proSmartContextOption !== "balanced" &&
-          mentionedAppsCodebases.length === 0;
+          referencedAppsForAgent.length === 0;
         logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
 
         // Combine current app codebase with mentioned apps' codebases.
@@ -846,7 +857,7 @@ ${componentSnippet}
         } else if (useReferencedAppManifest) {
           systemPrompt = appendReferencedAppManifest(
             systemPrompt,
-            mentionedAppsCodebases,
+            referencedAppsForAgent,
           );
         }
 
@@ -936,10 +947,8 @@ ${componentSnippet}
         // print out the dyad-write tags.
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
-        const isAskMode = selectedChatMode === "ask";
-        const isPlanMode = selectedChatMode === "plan";
         if (hasUploadedAttachments) {
-          if (willUseLocalAgentStream && !isAskMode && !isPlanMode) {
+          if (isLocalAgentMode) {
             systemPrompt += `
 
 When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
@@ -1228,7 +1237,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle ask mode: use local-agent in read-only mode
         // This gives users access to code reading tools while in ask mode
         // Ask mode does not consume free agent quota
-        if (selectedChatMode === "ask") {
+        if (isAskMode) {
           // Reconstruct system prompt for local-agent read-only mode
           const readOnlySystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1242,7 +1251,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // agent knows which `app_name` values are valid on read-only tools.
           const systemPromptWithManifest = appendReferencedAppManifest(
             readOnlySystemPrompt,
-            mentionedAppsCodebases,
+            referencedAppsForAgent,
           );
 
           // Return value indicates success/failure for quota tracking.
@@ -1278,7 +1287,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle plan mode: use local-agent with plan tools only
         // Plan mode is for requirements gathering and creating implementation plans
-        if (selectedChatMode === "plan") {
+        if (isPlanMode) {
           // Reconstruct system prompt for plan mode
           const planModeSystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1289,7 +1298,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
           const systemPromptWithManifest = appendReferencedAppManifest(
             planModeSystemPrompt,
-            mentionedAppsCodebases,
+            referencedAppsForAgent,
           );
 
           await handleLocalAgentStream(event, req, abortController, {
@@ -1309,8 +1318,8 @@ This conversation includes one or more image attachments. When the user uploads 
         // agent via tool calls with an `app_name` parameter — see
         // appendReferencedAppManifest above and resolveTargetAppPath in the
         // local agent tools. `systemPrompt` already includes the manifest
-        // when mentionedAppsCodebases is non-empty.
-        if (selectedChatMode === "local-agent") {
+        // when referencedAppsForAgent is non-empty.
+        if (isLocalAgentMode) {
           // Check quota for Basic Agent mode (non-Pro users)
           const isBasicAgentModeRequest = isBasicAgentMode(settings);
           if (isBasicAgentModeRequest) {

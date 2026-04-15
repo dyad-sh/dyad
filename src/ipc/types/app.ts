@@ -467,10 +467,14 @@ export const appContracts = {
     output: z.void(),
   }),
 
-  getAppScreenshot: defineContract({
-    channel: "app:get-screenshot",
+  listAppScreenshots: defineContract({
+    channel: "app:list-screenshots",
     input: z.object({ appId: z.number() }),
-    output: z.object({ url: z.string().nullable() }),
+    output: z.object({
+      screenshots: z.array(
+        z.object({ commitHash: z.string(), url: z.string() }),
+      ),
+    }),
   }),
 } as const;
 

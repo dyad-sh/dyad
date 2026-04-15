@@ -11,9 +11,20 @@ export const DYAD_MEDIA_DIR_NAME = ".dyad/media";
 export const DYAD_SCREENSHOT_DIR_NAME = ".dyad/screenshot";
 
 /**
- * The filename used for app screenshots.
+ * Maximum number of per-commit screenshots retained per app.
  */
-export const SCREENSHOT_FILE_NAME = "screenshot.png";
+export const MAX_SCREENSHOTS_PER_APP = 100;
+
+/**
+ * Matches a screenshot filename keyed by a 40-char hex SHA-1 commit hash.
+ */
+export const SCREENSHOT_FILENAME_REGEX = /^[0-9a-f]{40}\.png$/;
+
+/**
+ * Legacy filename used before screenshots were keyed by commit hash.
+ * Opportunistically removed when we prune the screenshot directory.
+ */
+export const LEGACY_SCREENSHOT_FILE_NAME = "screenshot.png";
 
 /**
  * Check if an absolute path falls within the app's .dyad/media directory.

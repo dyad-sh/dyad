@@ -727,9 +727,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           // one now.
           const appId = selectedAppId;
           ipc.app
-            .getAppScreenshot({ appId })
+            .listAppScreenshots({ appId })
             .then((result) => {
-              if (!result.url) {
+              if (result.screenshots.length === 0) {
                 captureScreenshot(appId);
               }
             })
@@ -877,7 +877,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               })
               .then(() =>
                 queryClient.invalidateQueries({
-                  queryKey: queryKeys.apps.screenshot({ appId }),
+                  queryKey: queryKeys.apps.screenshots({ appId }),
                 }),
               )
               .catch((err: unknown) => {

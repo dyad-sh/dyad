@@ -120,11 +120,12 @@ export default function AppDetailsPage() {
   const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
 
-  const { data: screenshotData } = useQuery({
-    queryKey: queryKeys.apps.screenshot({ appId }),
-    queryFn: () => ipc.app.getAppScreenshot({ appId: appId! }),
+  const { data: screenshotsData } = useQuery({
+    queryKey: queryKeys.apps.screenshots({ appId }),
+    queryFn: () => ipc.app.listAppScreenshots({ appId: appId! }),
     enabled: !!appId,
   });
+  const latestScreenshotUrl = screenshotsData?.screenshots[0]?.url ?? null;
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
   const handleDeleteApp = async () => {
@@ -417,10 +418,10 @@ export default function AppDetailsPage() {
           </Popover>
         </div>
 
-        {screenshotData?.url && (
+        {latestScreenshotUrl && (
           <div className="mb-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
             <img
-              src={screenshotData.url}
+              src={latestScreenshotUrl}
               alt={`Preview of ${selectedApp?.name ?? "app"}`}
               className="w-full max-h-80 object-cover object-top"
             />

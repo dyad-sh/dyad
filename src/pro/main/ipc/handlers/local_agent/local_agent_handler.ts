@@ -516,7 +516,7 @@ export async function handleLocalAgentStream(
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
     const referencedAppsMap = new Map(
-      referencedApps.map((ref) => [ref.appName.toLowerCase(), ref]),
+      referencedApps.map((ref) => [ref.appName.toLowerCase(), ref.appPath]),
     );
     const ctx: AgentContext = {
       event,

@@ -41,16 +41,6 @@ export interface FileEditTracker {
   };
 }
 
-/**
- * Read-only view of a referenced app (from `@app:Name` mentions in the prompt).
- * Stored in AgentContext.referencedApps, keyed by lowercased app name.
- */
-export interface ReferencedAppEntry {
-  /** Original-cased app name (from DB) for display in error messages. */
-  appName: string;
-  appPath: string;
-}
-
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
@@ -59,9 +49,10 @@ export interface AgentContext {
    * Apps referenced via `@app:Name` in the current turn. Read-only tools
    * can target these via an `app_name` parameter; write tools cannot reach them.
    * Keyed by lowercased app name so lookups are case-insensitive (matching
-   * the mention-extraction pipeline in `mention_apps.ts`).
+   * the mention-extraction pipeline in `mention_apps.ts`). Value is the
+   * absolute app path.
    */
-  referencedApps: Map<string, ReferencedAppEntry>;
+  referencedApps: Map<string, string>;
   chatId: number;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;

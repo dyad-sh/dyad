@@ -138,10 +138,7 @@ describe("codeSearchTool", () => {
 
   describe("execute - app_name (referenced apps)", () => {
     it("routes to the referenced app's path when app_name matches", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       mockEngineResponse(["other.ts"]);
 
       await codeSearchTool.execute(
@@ -161,10 +158,7 @@ describe("codeSearchTool", () => {
     });
 
     it("throws a clear error when app_name is not in the allow-list", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       await expect(
         codeSearchTool.execute(
           { query: "bar", app_name: "does-not-exist" },
@@ -175,10 +169,7 @@ describe("codeSearchTool", () => {
     });
 
     it("emits app_name in the final XML output", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       mockEngineResponse(["other.ts"]);
 
       await codeSearchTool.execute(

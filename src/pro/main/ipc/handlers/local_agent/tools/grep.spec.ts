@@ -613,10 +613,7 @@ function deepHello() {
     });
 
     it("searches the referenced app when app_name is provided", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await grepTool.execute(
         { query: "unique-other-app-token", app_name: "other-app" },
         mockContext,
@@ -626,10 +623,7 @@ function deepHello() {
     });
 
     it("does not see current-app matches when app_name targets another app", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await grepTool.execute(
         { query: "goodbye", app_name: "other-app" },
         mockContext,
@@ -647,10 +641,7 @@ function deepHello() {
     });
 
     it("includes app_name in the final XML output", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       await grepTool.execute(
         { query: "unique-other-app-token", app_name: "other-app" },
         mockContext,

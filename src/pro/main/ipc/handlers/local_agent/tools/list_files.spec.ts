@@ -274,10 +274,7 @@ describe("listFilesTool", () => {
 
   describe("execute - app_name (referenced apps)", () => {
     it("lists files from the referenced app's path (non-recursive)", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await listFilesTool.execute(
         { app_name: "other-app" },
         mockContext,
@@ -287,10 +284,7 @@ describe("listFilesTool", () => {
     });
 
     it("lists files recursively from the referenced app", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await listFilesTool.execute(
         { app_name: "other-app", recursive: true },
         mockContext,
@@ -300,20 +294,14 @@ describe("listFilesTool", () => {
     });
 
     it("throws a clear error when app_name is unknown", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       await expect(
         listFilesTool.execute({ app_name: "does-not-exist" }, mockContext),
       ).rejects.toThrow(/Unknown app_name 'does-not-exist'/);
     });
 
     it("includes .dyad files from the referenced app when include_ignored is true", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await listFilesTool.execute(
         {
           app_name: "other-app",
@@ -327,20 +315,14 @@ describe("listFilesTool", () => {
     });
 
     it("emits app_name attribute in the final XML output", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       await listFilesTool.execute({ app_name: "other-app" }, mockContext);
       const xmlCall = (mockContext.onXmlComplete as any).mock.calls[0]?.[0];
       expect(xmlCall).toContain('app_name="other-app"');
     });
 
     it("operates on current app when app_name is omitted even if referencedApps is populated", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await listFilesTool.execute({}, mockContext);
       expect(result).toContain("current-a.ts");
       expect(result).not.toContain("other-a.ts");

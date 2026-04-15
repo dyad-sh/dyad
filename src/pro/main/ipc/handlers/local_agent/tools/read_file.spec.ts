@@ -466,10 +466,7 @@ line 5`;
     });
 
     it("reads from referenced app when app_name matches", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await readFileTool.execute(
         { path: "other.txt", app_name: "other-app" },
         mockContext,
@@ -478,10 +475,7 @@ line 5`;
     });
 
     it("reads from current app when app_name is omitted even if referencedApps is populated", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await readFileTool.execute(
         { path: "test.txt" },
         mockContext,
@@ -490,10 +484,7 @@ line 5`;
     });
 
     it("throws a clear error when app_name is not in the allow-list", async () => {
-      mockContext.referencedApps.set("other-app", {
-        appName: "other-app",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("other-app", otherAppDir);
       await expect(
         readFileTool.execute(
           { path: "other.txt", app_name: "does-not-exist" },
@@ -503,14 +494,8 @@ line 5`;
     });
 
     it("error lists available referenced apps", async () => {
-      mockContext.referencedApps.set("app-a", {
-        appName: "app-a",
-        appPath: otherAppDir,
-      });
-      mockContext.referencedApps.set("app-b", {
-        appName: "app-b",
-        appPath: otherAppDir,
-      });
+      mockContext.referencedApps.set("app-a", otherAppDir);
+      mockContext.referencedApps.set("app-b", otherAppDir);
       await expect(
         readFileTool.execute(
           { path: "other.txt", app_name: "nope" },

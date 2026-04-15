@@ -1,15 +1,19 @@
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,
   frameworkType: "nextjs" | "vite" | "other" | null,
-  options?: { emailVerificationEnabled?: boolean },
+  options?: {
+    emailVerificationEnabled?: boolean;
+    nextjsMajorVersion?: number | null;
+  },
 ): string {
   const emailVerification = options?.emailVerificationEnabled ?? false;
+  const nextjsMajorVersion = options?.nextjsMajorVersion ?? null;
   const sharedPrompt = getSharedNeonPrompt(neonClientCode, emailVerification);
 
   if (frameworkType === "nextjs") {
     return (
       sharedPrompt +
-      getNextJsNeonPrompt(emailVerification) +
+      getNextJsNeonPrompt(emailVerification, nextjsMajorVersion) +
       (emailVerification ? getEmailVerificationNote() : "")
     );
   }
@@ -94,7 +98,12 @@ If the request needs Neon Auth and \`@neondatabase/auth\` is not already in \`pa
 `;
 }
 
-function getNextJsNeonPrompt(emailVerificationEnabled: boolean): string {
+function getNextJsNeonPrompt(
+  emailVerificationEnabled: boolean,
+  nextjsMajorVersion: number | null,
+): string {
+  const supportsProxy =
+    nextjsMajorVersion === null || nextjsMajorVersion >= 16;
   return `
 <nextjs-instructions>
 
@@ -148,7 +157,11 @@ export async function GET() {
 
 ### Request-Boundary File
 
-Protect routes with \`auth.middleware(...)\`. Reuse the project's existing request-boundary file — current Neon quickstarts use \`proxy.ts\`, older Next.js apps may use \`middleware.ts\`. Reuse whichever exists. Do NOT create both.
+${
+  supportsProxy
+    ? `Protect routes with \`auth.middleware(...)\`. Reuse the project's existing request-boundary file — current Neon quickstarts use \`proxy.ts\`, older Next.js apps may use \`middleware.ts\`. Reuse whichever exists. Do NOT create both.`
+    : `Protect routes with \`auth.middleware(...)\` in \`middleware.ts\`. This project is on Next.js ${nextjsMajorVersion}; \`proxy.ts\` was introduced in Next.js 16 and is NOT available here. Do NOT create a \`proxy.ts\` file.`
+}
 
 <code-template label="middleware" language="typescript">
 import { auth } from '@/lib/auth/server';

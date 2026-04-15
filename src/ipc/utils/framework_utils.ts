@@ -40,3 +40,30 @@ export function detectFrameworkType(appPath: string): AppFrameworkType | null {
     return null;
   }
 }
+
+/**
+ * Read the Next.js major version from the app's package.json.
+ * Returns null when next is not installed or the version string is non-numeric
+ * (e.g. "latest", "canary", a git URL).
+ */
+export function detectNextJsMajorVersion(appPath: string): number | null {
+  try {
+    const packageJsonPath = path.join(appPath, "package.json");
+    if (!fs.existsSync(packageJsonPath)) {
+      return null;
+    }
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    const nextVersion =
+      packageJson.dependencies?.next ?? packageJson.devDependencies?.next;
+    if (typeof nextVersion !== "string") {
+      return null;
+    }
+    const match = nextVersion.match(/\d+/);
+    if (!match) {
+      return null;
+    }
+    return parseInt(match[0], 10);
+  } catch {
+    return null;
+  }
+}

@@ -640,7 +640,8 @@
       "switchBranchHint": "Mude para uma branch que não seja de produção no painel do Neon antes de migrar.",
       "confirmDescription": "Isso modificará o schema do seu banco de dados de produção. Tem certeza de que deseja continuar?",
       "confirmDescriptionWithBranches": "Isso modificará o schema de {{targetBranchName}} em {{projectName}} usando o schema de {{sourceBranchName}}. Tem certeza de que deseja continuar?",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "backupWarning": "Certifique-se de ter os backups do banco de dados habilitados, caso contrário, você não poderá desfazer esta ação."
     },
     "mutualExclusion": {
       "supabaseUnavailable": "O Supabase não está disponível porque um banco de dados Neon já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",

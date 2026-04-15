@@ -81,17 +81,15 @@ export const PublishPanel = () => {
           </h1>
         </div>
 
-        {/* Portal Section - Show only for portal template apps */}
+        {/* Database Migration - Show MigrationPanel if app has neon project and active branch,
+            otherwise fall back to PortalMigrate for portal template apps. Only one is shown. */}
         {app.neonProjectId &&
-          app.files.some((f) => f === "payload.config.ts") && (
-            <PortalMigrate appId={selectedAppId} />
-          )}
-
-        {/* Database Migration - Show only if app has neon project and active branch */}
-        {app.neonProjectId &&
-          (app.neonActiveBranchId || app.neonDevelopmentBranchId) && (
-            <MigrationPanel appId={selectedAppId} />
-          )}
+        (app.neonActiveBranchId || app.neonDevelopmentBranchId) ? (
+          <MigrationPanel appId={selectedAppId} />
+        ) : app.neonProjectId &&
+          app.files.some((f) => f === "payload.config.ts") ? (
+          <PortalMigrate appId={selectedAppId} />
+        ) : null}
 
         {/* GitHub Section */}
         <Card>

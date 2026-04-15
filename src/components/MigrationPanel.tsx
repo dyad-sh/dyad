@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   XCircle,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -101,6 +102,14 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           {description}
         </p>
 
+        <div
+          role="note"
+          className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3"
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{t("integrations.migration.backupWarning")}</span>
+        </div>
+
         <AlertDialog>
           <AlertDialogTrigger
             disabled={pushMutation.isPending || isProductionBranchActive}
@@ -140,7 +149,6 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
                   setShowErrorDetails(false);
                   pushMutation.mutate();
                 }}
-                className="bg-destructive text-white hover:bg-destructive/90"
               >
                 {t("integrations.migration.migrateToProduction")}
               </AlertDialogAction>

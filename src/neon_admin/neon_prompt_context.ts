@@ -2,12 +2,16 @@ import { getNeonAvailableSystemPrompt } from "../prompts/neon_prompt";
 import { getCachedEmailPasswordConfig } from "./neon_management_client";
 import { getNeonClientCode, getNeonContext } from "./neon_context";
 import { getDyadAppPath } from "../paths/paths";
-import { detectFrameworkType } from "../ipc/utils/framework_utils";
+import {
+  detectFrameworkType,
+  detectNextJsMajorVersion,
+} from "../ipc/utils/framework_utils";
 
 interface BuildNeonPromptAdditionsParams {
   projectId: string;
   branchId?: string | null;
   frameworkType: "nextjs" | "vite" | "other" | null;
+  nextjsMajorVersion?: number | null;
   includeContext: boolean;
 }
 
@@ -15,6 +19,7 @@ export async function buildNeonPromptAdditions({
   projectId,
   branchId,
   frameworkType,
+  nextjsMajorVersion = null,
   includeContext,
 }: BuildNeonPromptAdditionsParams): Promise<string> {
   const neonClientCode = getNeonClientCode(frameworkType);
@@ -37,6 +42,7 @@ export async function buildNeonPromptAdditions({
     frameworkType,
     {
       emailVerificationEnabled,
+      nextjsMajorVersion,
     },
   );
 
@@ -76,11 +82,14 @@ export async function buildNeonPromptForApp({
 }): Promise<string> {
   const resolvedPath = getDyadAppPath(appPath);
   const frameworkType = detectFrameworkType(resolvedPath);
+  const nextjsMajorVersion =
+    frameworkType === "nextjs" ? detectNextJsMajorVersion(resolvedPath) : null;
   const branchId = neonActiveBranchId ?? neonDevelopmentBranchId;
   return buildNeonPromptAdditions({
     projectId: neonProjectId,
     branchId,
     frameworkType,
+    nextjsMajorVersion,
     includeContext: selectedChatMode !== "local-agent",
   });
 }

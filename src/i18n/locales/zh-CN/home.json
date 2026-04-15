@@ -640,7 +640,8 @@
       "switchBranchHint": "迁移前，请先在 Neon 面板中切换到非生产分支。",
       "confirmDescription": "此操作将修改您的生产数据库 schema。确定要继续吗？",
       "confirmDescriptionWithBranches": "此操作将使用 {{sourceBranchName}} 的 schema 修改 {{projectName}} 中 {{targetBranchName}} 的 schema。确定要继续吗？",
-      "cancel": "取消"
+      "cancel": "取消",
+      "backupWarning": "请确保已启用数据库备份，否则此操作将无法撤销。"
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase 不可用，因为已连接 Neon 数据库。一次只能激活一个数据库集成。",

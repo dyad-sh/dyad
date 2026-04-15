@@ -145,27 +145,36 @@ export function registerTokenCountHandlers() {
         );
       }
 
-      // Extract codebases for mentioned apps
-      const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-        mentionedAppNames,
-        chat.app?.id, // Exclude current app
-      );
+      // Agent/ask/plan modes reach referenced apps via tool calls rather than
+      // injecting full codebases into the prompt, so mentioned apps contribute
+      // ~0 tokens upfront. Match the extraction behavior in chat_stream_handlers
+      // so the UI estimate tracks what's actually sent.
+      const willUseLocalAgentStream =
+        settings.selectedChatMode === "local-agent" ||
+        settings.selectedChatMode === "ask" ||
+        settings.selectedChatMode === "plan";
 
-      // Calculate tokens for mentioned apps
       let mentionedAppsTokens = 0;
-      if (mentionedAppsCodebases.length > 0) {
-        const mentionedAppsContent = mentionedAppsCodebases
-          .map(
-            ({ appName, codebaseInfo }) =>
-              `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
-          )
-          .join("");
-
-        mentionedAppsTokens = estimateTokens(mentionedAppsContent);
-
-        logger.log(
-          `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+      if (!willUseLocalAgentStream) {
+        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+          mentionedAppNames,
+          chat.app?.id, // Exclude current app
         );
+
+        if (mentionedAppsCodebases.length > 0) {
+          const mentionedAppsContent = mentionedAppsCodebases
+            .map(
+              ({ appName, codebaseInfo }) =>
+                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+            )
+            .join("");
+
+          mentionedAppsTokens = estimateTokens(mentionedAppsContent);
+
+          logger.log(
+            `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+          );
+        }
       }
 
       // Calculate total tokens

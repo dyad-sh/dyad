@@ -65,6 +65,16 @@ const EXCLUDED_DIRS = [
   "venv",
 ];
 
+// Capacitor sync copies the built web app into native project folders.
+// These are generated artifacts and can massively inflate token usage.
+//
+// ex: https://github.com/dyad-sh/dyad/issues/1149
+const EXCLUDED_PATH_PREFIXES = [
+  "android/app/src/main/assets/public",
+  "ios/App/App/public",
+  "ios/App/public",
+];
+
 // Files to always exclude
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
 
@@ -118,6 +128,19 @@ const fileContentCache = new Map<string, FileCache>();
 const gitIgnoreCache = new Map<string, boolean>();
 // Map to store .gitignore file paths and their modification times
 const gitIgnoreMtimes = new Map<string, number>();
+
+function normalizeRelativePath(relativePath: string): string {
+  return relativePath.split(path.sep).join("/");
+}
+
+function isExcludedPath(relativePath: string): boolean {
+  const normalizedPath = normalizeRelativePath(relativePath);
+  return EXCLUDED_PATH_PREFIXES.some(
+    (excludedPath) =>
+      normalizedPath === excludedPath ||
+      normalizedPath.startsWith(`${excludedPath}/`),
+  );
+}
 
 /**
  * Check if a path should be ignored based on git ignore rules. Uses isomorphic-git
@@ -276,7 +299,12 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
       files.map(async (file) => {
         try {
           const stats = await fsAsync.lstat(file);
-          if (!stats.isFile() || stats.size > MAX_FILE_SIZE) {
+          const relativePath = path.relative(dir, file);
+          if (
+            !stats.isFile() ||
+            stats.size > MAX_FILE_SIZE ||
+            isExcludedPath(relativePath)
+          ) {
             return "";
           }
           return file;
@@ -314,9 +342,14 @@ async function collectFilesIsoGit(
     // Process entries concurrently
     const promises = entries.map(async (entry) => {
       const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(baseDir, fullPath);
 
       // Skip excluded directories
       if (entry.isDirectory() && EXCLUDED_DIRS.includes(entry.name)) {
+        return;
+      }
+
+      if (isExcludedPath(relativePath)) {
         return;
       }
 
@@ -529,6 +562,8 @@ export async function extractCodebase({
       }
     }
   }
+
+  files = files.filter((file) => !isExcludedPath(path.relative(appPath, file)));
 
   // Collect files from contextPaths and smartContextAutoIncludes
   const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;

@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { generateText, stepCountIs } from "ai";
+import { generateText, stepCountIs, type Tool } from "ai";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { searchReplaceTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_replace";
+import { writeFileTool } from "@/pro/main/ipc/handlers/local_agent/tools/write_file";
+import { editFileTool } from "@/pro/main/ipc/handlers/local_agent/tools/edit_file";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
+import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 import {
   SONNET_4_6,
   GEMINI_3_FLASH,
@@ -23,8 +27,6 @@ import {
   type JudgeRecord,
 } from "./helpers/eval_recorder";
 import { createUnifiedDiff } from "./helpers/unified_diff";
-
-const SUITE_NAME = "search_replace_eval";
 
 // ── Fixture loader ─────────────────────────────────────────────
 
@@ -291,9 +293,9 @@ async function judgeResult(
   };
 }
 
-// ── Shared apply helper ────────────────────────────────────────
+// ── Tool apply helpers ─────────────────────────────────────────
 
-function applyEdit(
+function applySearchReplaceEdit(
   fileContent: string,
   args: { old_string: string; new_string: string },
 ): string {
@@ -307,7 +309,52 @@ function applyEdit(
   return applied.content!;
 }
 
-// ── MAX_OLD_STRING_RATIO guard ─────────────────────────────────
+// Stand-in for the production `edit_file` tool's engine call. Mirrors
+// `callTurboFileEdit` in src/pro/main/ipc/handlers/local_agent/tools/edit_file.ts
+// but reaches the engine directly (no AgentContext required).
+const DYAD_ENGINE_URL =
+  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+
+async function turboFileEdit(params: {
+  path: string;
+  content: string;
+  originalContent: string;
+  instructions?: string;
+}): Promise<string> {
+  const apiKey = process.env.DYAD_PRO_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "DYAD_PRO_API_KEY is required to run eval suites that use edit_file",
+    );
+  }
+  const response = await fetch(`${DYAD_ENGINE_URL}/tools/turbo-file-edit`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "X-Dyad-Request-Id": randomUUID(),
+    },
+    body: JSON.stringify({
+      path: params.path,
+      content: params.content,
+      originalContent: params.originalContent,
+      instructions: params.instructions ?? "",
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `turbo-file-edit failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+  const data = (await response.json()) as { result?: unknown };
+  if (typeof data.result !== "string") {
+    throw new Error("turbo-file-edit returned unexpected payload (no result)");
+  }
+  return data.result;
+}
+
+// ── MAX_OLD_STRING_RATIO guard (search_replace only) ───────────
 
 const MAX_OLD_STRING_RATIO = 0.8;
 
@@ -323,6 +370,222 @@ function assertNotFullFileRewrite(
         `(max allowed: ${MAX_OLD_STRING_RATIO * 100}%). This looks like a full-file rewrite.`,
     );
   }
+}
+
+// ── Tool factories ─────────────────────────────────────────────
+//
+// Each factory returns an AI-SDK tool whose `execute` mutates the
+// shared `state.content` box and appends a `ToolCallRecord`. The
+// factories take closures over `state` and the case so the tool
+// stays bound to this single run.
+
+interface ToolRunState {
+  content: string;
+  toolCalls: ToolCallRecord[];
+}
+
+function makeRecord(
+  toolName: string,
+  filePath: string,
+  args: Record<string, unknown>,
+  fileBefore: string,
+  fileAfter: string,
+  index: number,
+): ToolCallRecord {
+  return {
+    timestamp: new Date().toISOString(),
+    index,
+    toolName,
+    filePath,
+    args,
+    fileBefore,
+    fileAfter,
+    diff: createUnifiedDiff(fileBefore, fileAfter, {
+      oldLabel: `${filePath} (before call ${index + 1})`,
+      newLabel: `${filePath} (after call ${index + 1})`,
+    }),
+  };
+}
+
+function searchReplaceHarnessTool(
+  state: ToolRunState,
+  c: EvalCase,
+  label: string,
+): Tool {
+  return {
+    description: searchReplaceTool.description,
+    inputSchema: searchReplaceTool.inputSchema,
+    execute: async (args) => {
+      const fileBefore = state.content;
+      expect(
+        args.file_path,
+        `${label} / ${c.name} search_replace targeted wrong file`,
+      ).toBe(c.fileName);
+      assertNotFullFileRewrite(
+        state.content,
+        args.old_string,
+        `${label} / ${c.name}`,
+      );
+      state.content = applySearchReplaceEdit(state.content, args);
+      state.toolCalls.push(
+        makeRecord(
+          "search_replace",
+          args.file_path,
+          {
+            file_path: args.file_path,
+            old_string: args.old_string,
+            new_string: args.new_string,
+          },
+          fileBefore,
+          state.content,
+          state.toolCalls.length,
+        ),
+      );
+      return `Successfully applied edits to ${args.file_path}`;
+    },
+  };
+}
+
+function writeFileHarnessTool(
+  state: ToolRunState,
+  c: EvalCase,
+  label: string,
+): Tool {
+  return {
+    description: writeFileTool.description,
+    inputSchema: writeFileTool.inputSchema,
+    execute: async (args) => {
+      const fileBefore = state.content;
+      expect(
+        args.path,
+        `${label} / ${c.name} write_file targeted wrong file`,
+      ).toBe(c.fileName);
+      state.content = args.content;
+      state.toolCalls.push(
+        makeRecord(
+          "write_file",
+          args.path,
+          {
+            path: args.path,
+            content: args.content,
+            description: args.description ?? "",
+          },
+          fileBefore,
+          state.content,
+          state.toolCalls.length,
+        ),
+      );
+      return `Successfully wrote ${args.path}`;
+    },
+  };
+}
+
+function editFileHarnessTool(
+  state: ToolRunState,
+  c: EvalCase,
+  label: string,
+): Tool {
+  return {
+    description: editFileTool.description,
+    inputSchema: editFileTool.inputSchema,
+    execute: async (args) => {
+      const fileBefore = state.content;
+      expect(
+        args.path,
+        `${label} / ${c.name} edit_file targeted wrong file`,
+      ).toBe(c.fileName);
+      const newContent = await turboFileEdit({
+        path: args.path,
+        content: args.content,
+        originalContent: state.content,
+        instructions: args.instructions,
+      });
+      state.content = newContent;
+      state.toolCalls.push(
+        makeRecord(
+          "edit_file",
+          args.path,
+          {
+            path: args.path,
+            content: args.content,
+            instructions: args.instructions ?? "",
+          },
+          fileBefore,
+          state.content,
+          state.toolCalls.length,
+        ),
+      );
+      return `Successfully edited ${args.path}`;
+    },
+  };
+}
+
+// ── Suite configs ──────────────────────────────────────────────
+
+// System prompt used by the original focused search_replace suite.
+// Kept as a baseline so we can compare tool-selection behavior against
+// the production Basic/Pro prompts below.
+const SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT =
+  "You are a precise code editor. When asked to change a file, " +
+  "use the search_replace tool. You may call it multiple times " +
+  "to make sequential edits. Do not explain.";
+
+interface SuiteConfig {
+  name: string;
+  displayName: string;
+  systemPrompt: string;
+  buildTools: (
+    state: ToolRunState,
+    c: EvalCase,
+    label: string,
+  ) => Record<string, Tool>;
+}
+
+const SUITES: SuiteConfig[] = [
+  {
+    name: "search_replace_eval",
+    displayName: "search_replace eval",
+    systemPrompt: SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT,
+    buildTools: (state, c, label) => ({
+      search_replace: searchReplaceHarnessTool(state, c, label),
+    }),
+  },
+  {
+    name: "search_replace_write_file_eval",
+    displayName: "search_replace + write_file (Basic agent prompt)",
+    systemPrompt: constructLocalAgentPrompt(undefined, undefined, {
+      basicAgentMode: true,
+    }),
+    buildTools: (state, c, label) => ({
+      search_replace: searchReplaceHarnessTool(state, c, label),
+      write_file: writeFileHarnessTool(state, c, label),
+    }),
+  },
+  {
+    name: "search_replace_edit_file_write_file_eval",
+    displayName: "search_replace + edit_file + write_file (Pro agent prompt)",
+    systemPrompt: constructLocalAgentPrompt(undefined),
+    buildTools: (state, c, label) => ({
+      search_replace: searchReplaceHarnessTool(state, c, label),
+      edit_file: editFileHarnessTool(state, c, label),
+      write_file: writeFileHarnessTool(state, c, label),
+    }),
+  },
+];
+
+// ── Suite filter ───────────────────────────────────────────────
+
+// Narrow the suite matrix with `EVAL_SUITE=<substring>`.
+const SUITE_FILTER = process.env.EVAL_SUITE?.trim().toLowerCase();
+const ACTIVE_SUITES = SUITE_FILTER
+  ? SUITES.filter((s) => s.name.toLowerCase().includes(SUITE_FILTER))
+  : SUITES;
+
+if (SUITE_FILTER && ACTIVE_SUITES.length === 0) {
+  throw new Error(
+    `EVAL_SUITE="${process.env.EVAL_SUITE}" matched no suites. ` +
+      `Available: ${SUITES.map((s) => s.name).join(", ")}`,
+  );
 }
 
 // ── Model matrix ───────────────────────────────────────────────
@@ -375,6 +638,7 @@ if (MODEL_FILTER && MODELS.length === 0) {
 // ── Case runner ────────────────────────────────────────────────
 
 async function runCase(
+  suite: SuiteConfig,
   c: EvalCase,
   provider: EvalProvider,
   modelName: string,
@@ -385,7 +649,6 @@ async function runCase(
   const llmStartMs = Date.now();
   let lastStepEndMs = llmStartMs;
   const requests: LLMRequestRecord[] = [];
-  const toolCalls: ToolCallRecord[] = [];
   let totalUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   let totalDurationMs = 0;
   let responseModelId: string | null = null;
@@ -393,18 +656,13 @@ async function runCase(
   let passed = false;
   let errorMessage: string | null = null;
 
-  const systemPrompt =
-    "You are a precise code editor. When asked to change a file, " +
-    "use the search_replace tool. You may call it multiple times " +
-    "to make sequential edits. Do not explain.";
+  const systemPrompt = suite.systemPrompt;
   const userPrompt = `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`;
 
-  let currentContent = c.fileContent;
-  const toolCallLog: Array<{
-    file_path: string;
-    old_string: string;
-    new_string: string;
-  }> = [];
+  const state: ToolRunState = {
+    content: c.fileContent,
+    toolCalls: [],
+  };
 
   try {
     const result = await generateText({
@@ -418,43 +676,7 @@ async function runCase(
           content: userPrompt,
         },
       ],
-      tools: {
-        search_replace: {
-          description: searchReplaceTool.description,
-          inputSchema: searchReplaceTool.inputSchema,
-          execute: async (args) => {
-            const callTimestamp = new Date().toISOString();
-            const fileBefore = currentContent;
-            toolCallLog.push(args);
-            expect(
-              args.file_path,
-              `${label} / ${c.name} targeted wrong file`,
-            ).toBe(c.fileName);
-            assertNotFullFileRewrite(
-              currentContent,
-              args.old_string,
-              `${label} / ${c.name}`,
-            );
-            currentContent = applyEdit(currentContent, args);
-            const callIndex = toolCalls.length;
-            toolCalls.push({
-              timestamp: callTimestamp,
-              index: callIndex,
-              toolName: "search_replace",
-              filePath: args.file_path,
-              oldString: args.old_string,
-              newString: args.new_string,
-              fileBefore,
-              fileAfter: currentContent,
-              diff: createUnifiedDiff(fileBefore, currentContent, {
-                oldLabel: `${args.file_path} (before call ${callIndex + 1})`,
-                newLabel: `${args.file_path} (after call ${callIndex + 1})`,
-              }),
-            });
-            return "Edit applied successfully.";
-          },
-        },
-      },
+      tools: suite.buildTools(state, c, label),
       onStepFinish: (step) => {
         const now = Date.now();
         requests.push({
@@ -473,38 +695,40 @@ async function runCase(
     responseModelId = result.response.modelId ?? null;
 
     const totalCalls = result.steps.reduce((n, s) => n + s.toolCalls.length, 0);
-    console.log(`\n[${label}] ${c.name} — ${totalCalls} tool call(s):`);
-    for (const [i, tc] of toolCallLog.entries()) {
+    console.log(
+      `\n[${suite.name} / ${label}] ${c.name} — ${totalCalls} tool call(s):`,
+    );
+    for (const [i, tc] of state.toolCalls.entries()) {
+      const argSummary = Object.entries(tc.args)
+        .map(([k, v]) =>
+          typeof v === "string" ? `${k} (${v.length} chars)` : `${k}=${v}`,
+        )
+        .join(", ");
       console.log(
-        `  Call ${i + 1}: file_path=${tc.file_path}, ` +
-          `old_string (${tc.old_string.length} chars), ` +
-          `new_string (${tc.new_string.length} chars)`,
-        `${Date.now().toLocaleString()}`,
+        `  Call ${i + 1}: ${tc.toolName} file=${tc.filePath}, ${argSummary}`,
       );
     }
 
-    expect(totalCalls, `${label} made no search_replace calls`).toBeGreaterThan(
-      0,
-    );
+    expect(totalCalls, `${label} made no tool calls`).toBeGreaterThan(0);
 
     for (const check of c.structuralChecks ?? []) {
       console.log(
-        `  Structural check "${check}": ${currentContent.includes(check) ? "PASS" : "FAIL"}`,
+        `  Structural check "${check}": ${state.content.includes(check) ? "PASS" : "FAIL"}`,
       );
       expect(
-        currentContent,
+        state.content,
         `Structural check failed: expected output to contain "${check}"`,
       ).toContain(check);
     }
 
     console.log(
-      `\n[${label}] ${c.name} — final content (${currentContent.length} chars, first 500):\n${currentContent.slice(0, 500)}...`,
+      `\n[${suite.name} / ${label}] ${c.name} — final content (${state.content.length} chars, first 500):\n${state.content.slice(0, 500)}...`,
     );
 
-    console.log(`\n[${label}] ${c.name} — calling judge...`);
-    judgeRecord = await judgeResult(c.fileContent, c.prompt, currentContent);
+    console.log(`\n[${suite.name} / ${label}] ${c.name} — calling judge...`);
+    judgeRecord = await judgeResult(c.fileContent, c.prompt, state.content);
     console.log(
-      `\n[${label}] ${c.name} — judge verdict: ${judgeRecord.pass ? "PASS" : "FAIL"}\n${judgeRecord.explanation}`,
+      `\n[${suite.name} / ${label}] ${c.name} — judge verdict: ${judgeRecord.pass ? "PASS" : "FAIL"}\n${judgeRecord.explanation}`,
     );
 
     expect(
@@ -519,7 +743,7 @@ async function runCase(
   } finally {
     recordEvalRun({
       timestamp: runTimestamp,
-      suite: SUITE_NAME,
+      suite: suite.name,
       caseName: c.name,
       model: { label, provider, modelName, responseModelId },
       prompt: {
@@ -530,7 +754,7 @@ async function runCase(
       file: {
         name: c.fileName,
         before: c.fileContent,
-        after: currentContent,
+        after: state.content,
       },
       llm: {
         totalDurationMs,
@@ -538,8 +762,8 @@ async function runCase(
         requestCount: requests.length,
         requests,
       },
-      toolCalls,
-      diff: createUnifiedDiff(c.fileContent, currentContent, {
+      toolCalls: state.toolCalls,
+      diff: createUnifiedDiff(c.fileContent, state.content, {
         oldLabel: `${c.fileName} (original)`,
         newLabel: `${c.fileName} (modified)`,
       }),
@@ -552,19 +776,25 @@ async function runCase(
 
 // ── Test runner ────────────────────────────────────────────────
 
-for (const { provider, modelName, label, temperature } of MODELS) {
-  describe.skipIf(!hasDyadProKey())(`search_replace eval — ${label}`, () => {
-    for (const c of CASES) {
-      it.concurrent(c.name, async () => {
-        try {
-          await runCase(c, provider, modelName, label, temperature);
-        } catch (err) {
-          console.error(
-            `\n[${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          throw err;
+for (const suite of ACTIVE_SUITES) {
+  for (const { provider, modelName, label, temperature } of MODELS) {
+    describe.skipIf(!hasDyadProKey())(
+      `${suite.displayName} — ${label}`,
+      () => {
+        for (const c of CASES) {
+          it.concurrent(c.name, async () => {
+            try {
+              await runCase(suite, c, provider, modelName, label, temperature);
+            } catch (err) {
+              console.error(
+                `\n[${suite.name} / ${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
+              );
+              throw err;
+            }
+          });
         }
-      });
-    }
-  });
+      },
+    );
+  }
 }
+

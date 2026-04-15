@@ -1,15 +1,26 @@
 # Evals
 
-LLM eval suite for tool-use quality. Currently covers the `search_replace` tool
-across Claude Sonnet 4.6, GPT 5.4, and Gemini 3 Flash. Each case gives the
-model a real source file plus an editing instruction, runs the model with the
-`search_replace` tool wired up, applies the produced edits, and then asks an
-LLM judge (GPT 5.4) whether the result satisfies the instruction.
+LLM eval suite for tool-use quality. Three suites run the same 12 cases and
+the same three models (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) but with
+different tool sets and system prompts:
+
+| Suite name                                    | Tools available                             | System prompt                                 |
+| --------------------------------------------- | ------------------------------------------- | --------------------------------------------- |
+| `search_replace_eval`                         | `search_replace` only                       | Minimal custom "precise code editor" prompt   |
+| `search_replace_write_file_eval`              | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT`  |
+| `search_replace_edit_file_write_file_eval`    | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro)  |
+
+Each case gives the model a real source file plus an editing instruction,
+runs the model with the suite's tools wired up, applies the produced edits,
+and then asks an LLM judge (GPT 5.4) whether the result satisfies the
+instruction.
 
 ## Prerequisites
 
 All models are routed through the Dyad Engine gateway, so you only need one
-credential: a Dyad Pro API key, exposed as `DYAD_PRO_API_KEY`.
+credential: a Dyad Pro API key, exposed as `DYAD_PRO_API_KEY`. The
+`edit_file` tool additionally calls the engine's `/tools/turbo-file-edit`
+endpoint to apply sketched edits — that uses the same key.
 
 The suite is skipped entirely when `DYAD_PRO_API_KEY` is unset — no tests will
 fail, they just won't run. This keeps regular `vitest run` safe for contributors
@@ -33,16 +44,38 @@ Optional: override the gateway URL with `DYAD_ENGINE_URL` (defaults to
 
 ## Running the suite
 
-Run every case against every model:
+Run every case across every suite and every model:
 
 ```bash
 npm run eval
 ```
 
-**Heads up — this is expensive.** Each full run issues one generation per
-(model × case) pair plus one judge call per case, across 12 cases and 3
-models. Expect dozens of LLM requests, some of which run reasoning models on
-300+ line fixtures. Use sparingly; prefer single-case runs during development.
+**Heads up — this is expensive.** A full run now issues one generation per
+(suite × model × case) triple plus one judge call per case, across 3 suites,
+3 models, and 12 cases. The `edit_file` suite makes additional engine calls
+for each sketched edit it applies. Expect dozens of LLM requests, some of
+which run reasoning models on 300+ line fixtures. Use sparingly; prefer
+single-suite / single-case runs during development.
+
+### Running a single suite
+
+Set `EVAL_SUITE` to a case-insensitive substring of the suite's `name` field
+(the folder name that shows up under `eval-results/`). Short fragments work:
+
+```bash
+# Just the original search_replace-only suite
+EVAL_SUITE=search_replace_eval DYAD_PRO_API_KEY="..." npm run eval
+
+# The write_file suite (Basic agent prompt)
+EVAL_SUITE=write_file DYAD_PRO_API_KEY="..." npm run eval
+
+# The full edit_file + write_file + search_replace suite (Pro agent prompt)
+EVAL_SUITE=edit_file DYAD_PRO_API_KEY="..." npm run eval
+```
+
+Note: `search_replace` is a substring of every suite name, so using it alone
+matches all three suites. Use more specific fragments (`write_file`,
+`edit_file`) or the exact name (`search_replace_eval`) to narrow.
 
 ### Running a single case
 
@@ -70,16 +103,19 @@ or `gemini` work:
 EVAL_MODEL=sonnet DYAD_PRO_API_KEY="..." npm run eval
 ```
 
-Combine it with `-t` to run one case against one model:
+### Combining filters
+
+`EVAL_SUITE`, `EVAL_MODEL`, and `-t` compose. A tight development loop:
 
 ```bash
-EVAL_MODEL=sonnet DYAD_PRO_API_KEY="..." npm run eval -- -t "Extract a helper function"
+EVAL_SUITE=search_replace_eval EVAL_MODEL=sonnet \
+  DYAD_PRO_API_KEY="..." npm run eval -- -t "Extract a helper function"
 ```
 
 Note: vitest's `-t` pattern is applied across the full describe/test hierarchy
 as a regex, which makes "model label > case name" style patterns brittle
-across vitest versions. Prefer `EVAL_MODEL` for model filtering and reserve
-`-t` for case-name filtering.
+across vitest versions. Prefer `EVAL_SUITE` / `EVAL_MODEL` for suite and
+model filtering and reserve `-t` for case-name filtering.
 
 ## Where results are stored
 
@@ -91,28 +127,43 @@ Layout:
 
 ```
 eval-results/
-  search_replace_eval/
-    <run-start-ts>__<model-label>/     ← one folder per (run, model)
-      <case-name>/                     ← one folder per case
-        record.json                    ← full structured record
-        record.txt                     ← human-readable render of the same
+  <suite-name>/                          ← one top-level folder per suite
+    <run-start-ts>__<model-label>/       ← one folder per (run, model)
+      <case-name>/                       ← one folder per case
+        record.json                      ← full structured record
+        record.txt                       ← human-readable render of the same
+        details/                         ← per-record split views
+          file_before.<ext>              ← file at the start of the run
+          file_after.<ext>               ← file at the end of the run
+          diff.patch                     ← cumulative unified diff
+          system_prompt.txt              ← system prompt sent to the model
+          instructions.txt               ← case instructions (no file content)
+          user_prompt.txt                ← full user message (file + instructions)
+          metadata.json                  ← run metadata without big blobs
+          metadata.txt                   ← same info, human-readable
         tool_calls/
-          01.txt                       ← combined view of tool call #1
-          01/                          ← split view, one piece per file
-            old_string.ts
-            new_string.ts
-            file_before.ts
-            file_after.ts
+          01.txt                         ← combined view of tool call #1
+          01/                            ← split view, one piece per file
+            file_before.<ext>
+            file_after.<ext>
             diff.patch
             meta.txt
+            <arg_name>.<ext>             ← one file per tool arg (see below)
           02.txt
           02/
           ...
 ```
 
+The top-level folder is the suite `name`, so each of the three suites lands
+in its own directory:
+
+- `eval-results/search_replace_eval/`
+- `eval-results/search_replace_write_file_eval/`
+- `eval-results/search_replace_edit_file_write_file_eval/`
+
 `<run-start-ts>` is captured once at process start, so every case from the
-same `npm run eval` invocation for a given model clusters into one folder.
-Folder names sort chronologically under `ls`.
+same `npm run eval` invocation for a given (suite, model) pair clusters into
+one folder. Folder names sort chronologically under `ls`.
 
 ### Record format
 
@@ -122,13 +173,24 @@ Folder names sort chronologically under `ls`.
 - `model` — `{label, provider, modelName, responseModelId}`. `responseModelId`
   is the exact model string the gateway echoed back, which can differ from
   `modelName` (e.g. dated snapshots).
+- `prompt` — `{system, instructions, user}`. `system` is the full system
+  prompt sent to the model (including the production agent prompts when the
+  suite uses one). `instructions` is the bare case instruction — useful for
+  scanning what was asked without the fixture file inlined. `user` is the
+  full user message actually sent (file content + instructions).
+- `file` — `{name, before, after}`. The fixture file name plus its content
+  at the start and end of the run. `before` / `after` are also written to
+  `details/file_before.<ext>` / `details/file_after.<ext>` for easy editor
+  opening with matching syntax highlighting.
 - `llm.totalDurationMs`, `llm.totalUsage` — wall-clock time and token totals
   for the model under test (not the judge).
 - `llm.requests` — per-step breakdown: each entry is one HTTP round-trip with
   its own duration, usage, and `finishReason`.
-- `toolCalls` — every `search_replace` call the model made. Each entry
-  records the arguments (`filePath`, `oldString`, `newString`), the file
-  before and after the call, and a unified diff of just that call.
+- `toolCalls` — every tool call the model made. Each entry records
+  `toolName`, `filePath`, an `args` map (keyed by the tool's parameter names,
+  so `old_string`/`new_string` for `search_replace`, `content` for
+  `write_file`, `content`/`instructions` for `edit_file`), the file before
+  and after the call, and a unified diff of just that call.
 - `diff` — unified diff from the original fixture to the final file
   (i.e. the cumulative effect of all tool calls).
 - `judge` — the judge's verdict: `label`, `modelName`, `durationMs`,
@@ -139,12 +201,38 @@ Folder names sort chronologically under `ls`.
 - `errorMessage` — set when the test threw (tool-call failure, structural
   check failure, judge FAIL, etc.); `null` otherwise.
 
-`record.txt` is a readable render of the same information — headers, inline
-tool-call bodies, usage totals, the final diff, and the judge's explanation.
-Open it when you want a quick human-readable summary instead of parsing JSON.
+`record.txt` is a readable render of the same information — headers, the
+system prompt and instructions, inline tool-call bodies, usage totals, the
+final diff, and the judge's explanation. Open it when you want a quick
+human-readable summary instead of parsing JSON.
 
-The `tool_calls/` subdirectory exists for per-call inspection. Each call
-gets a combined `NN.txt` (everything about the call in one file) and a
-`NN/` folder containing the raw pieces as standalone files with the source
-extension preserved — useful for opening in an editor with syntax
-highlighting or for diffing two calls against each other.
+### The `details/` folder
+
+`details/` is a split view of the record, intended for quick inspection and
+diffing without having to parse JSON or scroll through `record.txt`:
+
+- `file_before.<ext>` / `file_after.<ext>` — raw file content before and
+  after the run, with the fixture's extension preserved so editors apply
+  the right syntax highlighting.
+- `diff.patch` — the same unified diff as `record.diff`.
+- `system_prompt.txt`, `instructions.txt`, `user_prompt.txt` — the three
+  views of the prompt input.
+- `metadata.json` / `metadata.txt` — everything from `record.json` minus the
+  large content blobs that already have their own files (no inline file
+  contents and no per-tool-call entries). Useful for skimming token counts,
+  judge verdict, and model identity across many runs.
+
+### The `tool_calls/` folder
+
+One `NN.txt` (combined view) and one `NN/` folder (split view) per tool
+call. The split view contains the raw pieces as standalone files:
+
+- `file_before.<ext>`, `file_after.<ext>`, `diff.patch` — file state around
+  the single call.
+- `meta.txt` — timestamp, tool name, target path, and per-arg length summary.
+- One file per tool argument, named after the arg's key. String args use the
+  target file's extension (for syntax highlighting); non-string args become
+  JSON blobs. So a `search_replace` call produces `old_string.ts` and
+  `new_string.ts`; a `write_file` call produces `content.ts` and
+  `description.ts`; an `edit_file` call produces `content.ts` and
+  `instructions.ts`.

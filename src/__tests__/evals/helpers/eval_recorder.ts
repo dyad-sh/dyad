@@ -46,8 +46,10 @@ export interface ToolCallRecord {
   index: number;
   toolName: string;
   filePath: string;
-  oldString: string;
-  newString: string;
+  // Raw tool input arguments, keyed by the tool's parameter names
+  // (e.g. `old_string`/`new_string` for search_replace, `content` for
+  // write_file, `content`/`instructions` for edit_file).
+  args: Record<string, unknown>;
   fileBefore: string;
   fileAfter: string;
   // Unified diff from fileBefore → fileAfter for this single call.
@@ -132,24 +134,33 @@ function hr(char = "=", n = 72): string {
   return char.repeat(n);
 }
 
+function stringifyArg(value: unknown): { text: string; length: number } {
+  if (typeof value === "string") {
+    return { text: value, length: value.length };
+  }
+  const text = JSON.stringify(value, null, 2) ?? String(value);
+  return { text, length: text.length };
+}
+
 function formatToolCall(tc: ToolCallRecord): string {
-  return (
-    `${hr("-")}\n` +
-    `Tool call #${tc.index + 1} (${tc.toolName})\n` +
-    `Timestamp: ${tc.timestamp}\n` +
-    `File:      ${tc.filePath}\n` +
-    `\n` +
-    `----- OLD_STRING (${tc.oldString.length} chars) -----\n` +
-    `${tc.oldString}\n` +
-    `----- NEW_STRING (${tc.newString.length} chars) -----\n` +
-    `${tc.newString}\n` +
-    `----- FILE BEFORE (${tc.fileBefore.length} chars) -----\n` +
-    `${tc.fileBefore}\n` +
-    `----- FILE AFTER (${tc.fileAfter.length} chars) -----\n` +
-    `${tc.fileAfter}\n` +
-    `----- DIFF (before → after) -----\n` +
-    `${tc.diff || "(no change)\n"}`
-  );
+  const parts: string[] = [];
+  parts.push(hr("-"));
+  parts.push(`Tool call #${tc.index + 1} (${tc.toolName})`);
+  parts.push(`Timestamp: ${tc.timestamp}`);
+  parts.push(`File:      ${tc.filePath}`);
+  parts.push("");
+  for (const [key, value] of Object.entries(tc.args)) {
+    const { text, length } = stringifyArg(value);
+    parts.push(`----- ${key.toUpperCase()} (${length} chars) -----`);
+    parts.push(text);
+  }
+  parts.push(`----- FILE BEFORE (${tc.fileBefore.length} chars) -----`);
+  parts.push(tc.fileBefore);
+  parts.push(`----- FILE AFTER (${tc.fileAfter.length} chars) -----`);
+  parts.push(tc.fileAfter);
+  parts.push(`----- DIFF (before → after) -----`);
+  parts.push(tc.diff || "(no change)");
+  return parts.join("\n") + "\n";
 }
 
 export function renderToolCallAsText(
@@ -291,19 +302,26 @@ export function recordEvalRun(record: EvalRunRecord): void {
       const splitDir = resolve(toolCallsDir, base);
       mkdirSync(splitDir, { recursive: true });
       const ext = extensionFor(tc.filePath);
-      writeFileSync(resolve(splitDir, `old_string${ext}`), tc.oldString);
-      writeFileSync(resolve(splitDir, `new_string${ext}`), tc.newString);
       writeFileSync(resolve(splitDir, `file_before${ext}`), tc.fileBefore);
       writeFileSync(resolve(splitDir, `file_after${ext}`), tc.fileAfter);
       writeFileSync(resolve(splitDir, "diff.patch"), tc.diff || "");
+      // One file per argument. Strings use the target file's extension so
+      // they open with matching syntax highlighting; non-strings become
+      // JSON blobs.
+      const argLengths: string[] = [];
+      for (const [key, value] of Object.entries(tc.args)) {
+        const { text, length } = stringifyArg(value);
+        const argExt = typeof value === "string" ? ext : ".json";
+        writeFileSync(resolve(splitDir, `${key}${argExt}`), text);
+        argLengths.push(`${key}: ${length} chars`);
+      }
       writeFileSync(
         resolve(splitDir, "meta.txt"),
         `index:     ${tc.index + 1}\n` +
           `tool:      ${tc.toolName}\n` +
           `timestamp: ${tc.timestamp}\n` +
           `file_path: ${tc.filePath}\n` +
-          `old_string: ${tc.oldString.length} chars\n` +
-          `new_string: ${tc.newString.length} chars\n` +
+          argLengths.map((l) => `${l}\n`).join("") +
           `file_before: ${tc.fileBefore.length} chars\n` +
           `file_after: ${tc.fileAfter.length} chars\n`,
       );

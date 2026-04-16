@@ -4,11 +4,11 @@ LLM eval suite for tool-use quality. Three suites run the same 12 cases and
 the same three models (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) but with
 different tool sets and system prompts:
 
-| Suite name                                    | Tools available                             | System prompt                                 |
-| --------------------------------------------- | ------------------------------------------- | --------------------------------------------- |
-| `search_replace_eval`                         | `search_replace` only                       | Minimal custom "precise code editor" prompt   |
-| `search_replace_write_file_eval`              | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT`  |
-| `search_replace_edit_file_write_file_eval`    | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro)  |
+| Suite name       | Tools available                             | System prompt                                 |
+| ---------------- | ------------------------------------------- | --------------------------------------------- |
+| `search_replace` | `search_replace` only                       | Minimal custom "precise code editor" prompt   |
+| `basic_agent`    | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT`  |
+| `pro_agent`      | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro)  |
 
 Each case gives the model a real source file plus an editing instruction,
 runs the model with the suite's tools wired up, applies the produced edits,
@@ -64,18 +64,20 @@ Set `EVAL_SUITE` to a case-insensitive substring of the suite's `name` field
 
 ```bash
 # Just the original search_replace-only suite
-EVAL_SUITE=search_replace_eval DYAD_PRO_API_KEY="..." npm run eval
+EVAL_SUITE=search_replace DYAD_PRO_API_KEY="..." npm run eval
 
-# The write_file suite (Basic agent prompt)
-EVAL_SUITE=write_file DYAD_PRO_API_KEY="..." npm run eval
+# The basic_agent suite (Basic agent prompt, search_replace + write_file)
+EVAL_SUITE=basic_agent DYAD_PRO_API_KEY="..." npm run eval
 
-# The full edit_file + write_file + search_replace suite (Pro agent prompt)
-EVAL_SUITE=edit_file DYAD_PRO_API_KEY="..." npm run eval
+# The pro_agent suite (Pro agent prompt, search_replace + edit_file + write_file)
+EVAL_SUITE=pro_agent DYAD_PRO_API_KEY="..." npm run eval
 ```
 
-Note: `search_replace` is a substring of every suite name, so using it alone
-matches all three suites. Use more specific fragments (`write_file`,
-`edit_file`) or the exact name (`search_replace_eval`) to narrow.
+Note: `EVAL_SUITE` matches as a case-insensitive substring of the suite
+`name`. `search_replace` is an exact suite name *and* also appears inside no
+other suite name, so it only selects that one suite. `agent` would match
+both `basic_agent` and `pro_agent` — use `basic_agent` or `pro_agent` to
+narrow to one.
 
 ### Running a single case
 
@@ -108,7 +110,7 @@ EVAL_MODEL=sonnet DYAD_PRO_API_KEY="..." npm run eval
 `EVAL_SUITE`, `EVAL_MODEL`, and `-t` compose. A tight development loop:
 
 ```bash
-EVAL_SUITE=search_replace_eval EVAL_MODEL=sonnet \
+EVAL_SUITE=search_replace EVAL_MODEL=sonnet \
   DYAD_PRO_API_KEY="..." npm run eval -- -t "Extract a helper function"
 ```
 
@@ -157,9 +159,9 @@ eval-results/
 The top-level folder is the suite `name`, so each of the three suites lands
 in its own directory:
 
-- `eval-results/search_replace_eval/`
-- `eval-results/search_replace_write_file_eval/`
-- `eval-results/search_replace_edit_file_write_file_eval/`
+- `eval-results/search_replace/`
+- `eval-results/basic_agent/`
+- `eval-results/pro_agent/`
 
 `<run-start-ts>` is captured once at process start, so every case from the
 same `npm run eval` invocation for a given (suite, model) pair clusters into

@@ -543,16 +543,16 @@ interface SuiteConfig {
 
 const SUITES: SuiteConfig[] = [
   {
-    name: "search_replace_eval",
-    displayName: "search_replace eval",
+    name: "search_replace",
+    displayName: "search_replace",
     systemPrompt: SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT,
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),
     }),
   },
   {
-    name: "search_replace_write_file_eval",
-    displayName: "search_replace + write_file (Basic agent prompt)",
+    name: "basic_agent",
+    displayName: "basic_agent (search_replace + write_file)",
     systemPrompt: constructLocalAgentPrompt(undefined, undefined, {
       basicAgentMode: true,
     }),
@@ -562,8 +562,8 @@ const SUITES: SuiteConfig[] = [
     }),
   },
   {
-    name: "search_replace_edit_file_write_file_eval",
-    displayName: "search_replace + edit_file + write_file (Pro agent prompt)",
+    name: "pro_agent",
+    displayName: "pro_agent (search_replace + edit_file + write_file)",
     systemPrompt: constructLocalAgentPrompt(undefined),
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),

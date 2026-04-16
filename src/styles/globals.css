@@ -295,6 +295,13 @@ body[data-scroll-locked] .app-region-drag {
   }
 }
 
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(-100%);

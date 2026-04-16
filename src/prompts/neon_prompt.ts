@@ -102,8 +102,7 @@ function getNextJsNeonPrompt(
   emailVerificationEnabled: boolean,
   nextjsMajorVersion: number | null,
 ): string {
-  const supportsProxy =
-    nextjsMajorVersion === null || nextjsMajorVersion >= 16;
+  const supportsProxy = nextjsMajorVersion === null || nextjsMajorVersion >= 16;
   return `
 <nextjs-instructions>
 

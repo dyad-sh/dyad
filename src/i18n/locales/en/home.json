@@ -648,7 +648,8 @@
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",
-      "neonUnavailable": "Neon is unavailable because a Supabase project is already connected. Only one database integration can be active at a time."
+      "neonUnavailable": "Neon is unavailable because a Supabase project is already connected. Only one database integration can be active at a time.",
+      "chooseOne": "Choose one database integration. Connecting either Supabase or Neon will lock out the other for this app."
     }
   }
 }

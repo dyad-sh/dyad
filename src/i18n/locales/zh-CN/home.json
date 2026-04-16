@@ -645,7 +645,8 @@
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase 不可用，因为已连接 Neon 数据库。一次只能激活一个数据库集成。",
-      "neonUnavailable": "Neon 不可用，因为已连接 Supabase 项目。一次只能激活一个数据库集成。"
+      "neonUnavailable": "Neon 不可用，因为已连接 Supabase 项目。一次只能激活一个数据库集成。",
+      "chooseOne": "请选择一个数据库集成。连接 Supabase 或 Neon 中任一个，将锁定本应用的另一个集成。"
     }
   }
 }

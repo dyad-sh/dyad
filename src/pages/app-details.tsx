@@ -85,6 +85,7 @@ export default function AppDetailsPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
+  const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -491,6 +492,14 @@ export default function AppDetailsPage() {
           {/* When no providerFilter, show both with existing mutual exclusion */}
           {!providerFilter && (
             <>
+              {appId &&
+                !selectedApp?.neonProjectId &&
+                !selectedApp?.supabaseProjectId && (
+                  <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{t("integrations.mutualExclusion.chooseOne")}</span>
+                  </div>
+                )}
               {appId && !selectedApp?.neonProjectId && (
                 <SupabaseConnector appId={appId} />
               )}

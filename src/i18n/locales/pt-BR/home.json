@@ -645,7 +645,8 @@
     },
     "mutualExclusion": {
       "supabaseUnavailable": "O Supabase não está disponível porque um banco de dados Neon já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",
-      "neonUnavailable": "O Neon não está disponível porque um projeto Supabase já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez."
+      "neonUnavailable": "O Neon não está disponível porque um projeto Supabase já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",
+      "chooseOne": "Escolha uma integração de banco de dados. Conectar Supabase ou Neon bloqueará o outro para este aplicativo."
     }
   }
 }

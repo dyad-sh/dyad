@@ -135,10 +135,15 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     if (args.include_ignored) {
       const normalizedAppPath = targetAppPath.replace(/\\/g, "/");
       const globPattern = `${normalizedAppPath}/${globPath}`;
+      // Never expose .dyad/ from a referenced app — its rules and chat history
+      // are not part of the @app reference contract.
+      const ignoredGlobs = args.app_name
+        ? ["**/.git", "**/.git/**", "**/.dyad/**"]
+        : ["**/.git", "**/.git/**"];
       const ignoredPaths = await glob(globPattern, {
         withFileTypes: true,
         dot: true,
-        ignore: ["**/.git", "**/.git/**"],
+        ignore: ignoredGlobs,
       });
 
       allPaths = sortListedPaths(

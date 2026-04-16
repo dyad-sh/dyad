@@ -300,7 +300,7 @@ describe("listFilesTool", () => {
       ).rejects.toThrow(/Unknown app_name 'does-not-exist'/);
     });
 
-    it("includes .dyad files from the referenced app when include_ignored is true", async () => {
+    it("excludes .dyad files from referenced apps even when include_ignored is true", async () => {
       mockContext.referencedApps.set("other-app", otherAppDir);
       const result = await listFilesTool.execute(
         {
@@ -311,7 +311,7 @@ describe("listFilesTool", () => {
         },
         mockContext,
       );
-      expect(result).toContain(".dyad/rules.md");
+      expect(result).not.toContain(".dyad/rules.md");
     });
 
     it("emits app_name attribute in the final XML output", async () => {

@@ -113,6 +113,7 @@ async function runRipgrep({
   includeIgnored,
   caseSensitive,
   maxMatches,
+  excludeDyadFolder,
 }: {
   appPath: string;
   query: string;
@@ -121,6 +122,7 @@ async function runRipgrep({
   includeIgnored?: boolean;
   caseSensitive?: boolean;
   maxMatches?: number;
+  excludeDyadFolder?: boolean;
 }): Promise<{ matches: RipgrepMatch[]; stoppedEarly: boolean }> {
   return new Promise((resolve, reject) => {
     const results: RipgrepMatch[] = [];
@@ -158,6 +160,12 @@ async function runRipgrep({
       ? RIPGREP_EXCLUDED_GLOBS.filter((glob) => glob === "!.git/**")
       : RIPGREP_EXCLUDED_GLOBS;
     args.push(...exclusionGlobs.flatMap((glob) => ["--glob", glob]));
+
+    // Never expose .dyad/ from a referenced app — rules/chat history
+    // are not part of the @app reference contract.
+    if (excludeDyadFolder) {
+      args.push("--glob", "!.dyad/**");
+    }
 
     args.push("--", query, ".");
 
@@ -292,6 +300,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
       includeIgnored: args.include_ignored,
       caseSensitive: args.case_sensitive,
       maxMatches: args.include_ignored ? limit + 1 : undefined,
+      excludeDyadFolder: Boolean(args.app_name),
     });
 
     const totalCount = allMatches.length;

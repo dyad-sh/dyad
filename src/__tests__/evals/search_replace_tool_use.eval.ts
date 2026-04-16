@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "vitest";
 import { generateText, stepCountIs, type Tool } from "ai";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -417,10 +417,12 @@ function searchReplaceHarnessTool(
     inputSchema: searchReplaceTool.inputSchema,
     execute: async (args) => {
       const fileBefore = state.content;
-      expect(
-        args.file_path,
-        `${label} / ${c.name} search_replace targeted wrong file`,
-      ).toBe(c.fileName);
+      if (args.file_path !== c.fileName) {
+        throw new Error(
+          `${label} / ${c.name} search_replace targeted wrong file: ` +
+            `got "${args.file_path}", expected "${c.fileName}"`,
+        );
+      }
       assertNotFullFileRewrite(
         state.content,
         args.old_string,
@@ -456,10 +458,12 @@ function writeFileHarnessTool(
     inputSchema: writeFileTool.inputSchema,
     execute: async (args) => {
       const fileBefore = state.content;
-      expect(
-        args.path,
-        `${label} / ${c.name} write_file targeted wrong file`,
-      ).toBe(c.fileName);
+      if (args.path !== c.fileName) {
+        throw new Error(
+          `${label} / ${c.name} write_file targeted wrong file: ` +
+            `got "${args.path}", expected "${c.fileName}"`,
+        );
+      }
       state.content = args.content;
       state.toolCalls.push(
         makeRecord(
@@ -490,10 +494,12 @@ function editFileHarnessTool(
     inputSchema: editFileTool.inputSchema,
     execute: async (args) => {
       const fileBefore = state.content;
-      expect(
-        args.path,
-        `${label} / ${c.name} edit_file targeted wrong file`,
-      ).toBe(c.fileName);
+      if (args.path !== c.fileName) {
+        throw new Error(
+          `${label} / ${c.name} edit_file targeted wrong file: ` +
+            `got "${args.path}", expected "${c.fileName}"`,
+        );
+      }
       const newContent = await turboFileEdit({
         path: args.path,
         content: args.content,
@@ -709,16 +715,18 @@ async function runCase(
       );
     }
 
-    expect(totalCalls, `${label} made no tool calls`).toBeGreaterThan(0);
+    if (totalCalls === 0) {
+      throw new Error(`${label} made no tool calls`);
+    }
 
     for (const check of c.structuralChecks ?? []) {
-      console.log(
-        `  Structural check "${check}": ${state.content.includes(check) ? "PASS" : "FAIL"}`,
-      );
-      expect(
-        state.content,
-        `Structural check failed: expected output to contain "${check}"`,
-      ).toContain(check);
+      const ok = state.content.includes(check);
+      console.log(`  Structural check "${check}": ${ok ? "PASS" : "FAIL"}`);
+      if (!ok) {
+        throw new Error(
+          `Structural check failed: expected output to contain "${check}"`,
+        );
+      }
     }
 
     console.log(
@@ -731,10 +739,11 @@ async function runCase(
       `\n[${suite.name} / ${label}] ${c.name} — judge verdict: ${judgeRecord.pass ? "PASS" : "FAIL"}\n${judgeRecord.explanation}`,
     );
 
-    expect(
-      judgeRecord.pass,
-      `Judge (${JUDGE_LABEL}) said FAIL for ${label}:\n${judgeRecord.explanation}`,
-    ).toBe(true);
+    if (!judgeRecord.pass) {
+      throw new Error(
+        `Judge (${JUDGE_LABEL}) said FAIL for ${label}:\n${judgeRecord.explanation}`,
+      );
+    }
     passed = true;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);

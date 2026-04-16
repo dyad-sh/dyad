@@ -193,3 +193,116 @@ export function prepareStepMessages<
 
   return { messages: newMessages, ...rest };
 }
+
+/**
+ * Ensure user messages don't appear between a tool_use and its tool_result.
+ *
+ * After mid-turn compaction, injected user messages (e.g., web_crawl screenshots)
+ * can end up at stale array positions that break the AI SDK's tool result
+ * validation. This function detects any such misplaced user messages and moves
+ * them forward past the pending tool results.
+ *
+ * Returns a new array if changes were made, or null if no fix was needed.
+ */
+export function ensureToolResultOrdering<T extends ModelMessage>(
+  messages: T[],
+): T[] | null {
+  const result = [...messages] as T[];
+  let changed = false;
+  const pendingToolCallIds = new Set<string>();
+
+  for (let i = 0; i < result.length; i++) {
+    const msg = result[i];
+    const content = Array.isArray(msg.content) ? msg.content : [];
+
+    if (msg.role === "assistant") {
+      for (const part of content) {
+        if (isToolCallPart(part)) {
+          pendingToolCallIds.add(part.toolCallId);
+        }
+      }
+    } else if (msg.role === "tool") {
+      for (const part of content) {
+        if (isToolResultPart(part)) {
+          pendingToolCallIds.delete(part.toolCallId);
+        }
+      }
+    } else if (msg.role === "user" && pendingToolCallIds.size > 0) {
+      // This user message is between a tool_use and its tool_result.
+      // Collect all consecutive misplaced user messages so we can move
+      // them as a batch, preserving their FIFO order.
+      const misplacedStart = i;
+      let misplacedEnd = i;
+      while (
+        misplacedEnd + 1 < result.length &&
+        result[misplacedEnd + 1].role === "user"
+      ) {
+        misplacedEnd++;
+      }
+      const misplacedCount = misplacedEnd - misplacedStart + 1;
+
+      // Find the next position where all pending tool results are resolved.
+      // Use a snapshot so the lookahead doesn't corrupt the outer tracking set.
+      const lookaheadPending = new Set(pendingToolCallIds);
+      let insertAfter = misplacedEnd;
+      for (let j = misplacedEnd + 1; j < result.length; j++) {
+        const next = result[j];
+        if (next.role === "tool" && Array.isArray(next.content)) {
+          for (const part of next.content) {
+            if (isToolResultPart(part)) {
+              lookaheadPending.delete(part.toolCallId);
+            }
+          }
+          insertAfter = j;
+          if (lookaheadPending.size === 0) break;
+        } else if (next.role === "assistant") {
+          // New assistant turn — stop scanning to avoid crossing turn boundaries
+          break;
+        }
+      }
+
+      if (insertAfter > misplacedEnd) {
+        // Remove the batch and re-insert after the tool result, preserving order.
+        const moved = result.splice(misplacedStart, misplacedCount);
+        // After splice, insertAfter shifted by -misplacedCount
+        const adjustedTarget = insertAfter - misplacedCount + 1;
+        result.splice(adjustedTarget, 0, ...moved);
+        changed = true;
+        // Restart the scan from the beginning with a fresh pending set.
+        // The array has been mutated, so skipping ahead would miss tool-result
+        // messages that need to update pendingToolCallIds.
+        pendingToolCallIds.clear();
+        i = -1; // will become 0 after the for-loop increment
+      } else {
+        // Couldn't find a safe position; skip past the batch
+        i = misplacedEnd;
+      }
+    }
+  }
+
+  return changed ? result : null;
+}
+
+function isToolCallPart(
+  part: unknown,
+): part is { type: "tool-call"; toolCallId: string } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as Record<string, unknown>).type === "tool-call" &&
+    "toolCallId" in part
+  );
+}
+
+function isToolResultPart(
+  part: unknown,
+): part is { type: "tool-result"; toolCallId: string } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as Record<string, unknown>).type === "tool-result" &&
+    "toolCallId" in part
+  );
+}

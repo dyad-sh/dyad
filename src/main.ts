@@ -1,4 +1,12 @@
-import { app, BrowserWindow, dialog, Menu, protocol, net } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  Menu,
+  protocol,
+  net,
+  session,
+} from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -8,8 +16,8 @@ import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
 import {
   getSettingsFilePath,
-  readSettings,
   writeSettings,
+  readEffectiveSettings,
 } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
@@ -87,6 +95,73 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  // Load React DevTools extension in development
+  if (process.env.NODE_ENV === "development") {
+    let chromeUserData: string;
+    // Determine Chrome extensions path based on platform
+    if (process.platform === "win32") {
+      chromeUserData = path.join(
+        process.env.LOCALAPPDATA || "",
+        "Google",
+        "Chrome",
+        "User Data",
+        "Default",
+        "Extensions",
+      );
+    } else if (process.platform === "darwin") {
+      // macOS
+      chromeUserData = path.join(
+        process.env.HOME || "",
+        "Library",
+        "Application Support",
+        "Google",
+        "Chrome",
+        "Default",
+        "Extensions",
+      );
+    } else {
+      // Linux
+      chromeUserData = path.join(
+        process.env.HOME || "",
+        ".config",
+        "google-chrome",
+        "Default",
+        "Extensions",
+      );
+    }
+
+    // React DevTools extension ID
+    const reactDevToolsId = "fmkadmapgofadopljbjfkapdkoienihi";
+    const extensionsDir = path.join(chromeUserData, reactDevToolsId);
+
+    if (fs.existsSync(extensionsDir)) {
+      try {
+        const versions = fs.readdirSync(extensionsDir);
+        if (versions.length > 0) {
+          // Get the latest version using numeric sort to handle version boundaries (e.g., 9.0.0 vs 10.0.0)
+          const latestVersion = versions
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            .reverse()[0];
+          const extensionPath = path.join(extensionsDir, latestVersion);
+          await session.defaultSession.loadExtension(extensionPath, {
+            allowFileAccess: true,
+          });
+          logger.info("React DevTools loaded successfully");
+        } else {
+          logger.warn(
+            "React DevTools extension directory is empty. Install it in Chrome first.",
+          );
+        }
+      } catch (err) {
+        logger.error("Failed to load React DevTools:", err);
+      }
+    } else {
+      logger.warn(
+        "React DevTools extension not found. Install it in Chrome first.",
+      );
+    }
+  }
+
   try {
     const backupManager = new BackupManager({
       settingsFile: getSettingsFilePath(),
@@ -104,7 +179,7 @@ export async function onReady() {
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
 
-  const settings = readSettings();
+  const settings = await readEffectiveSettings();
 
   // Add dyad-apps directory to git safe.directory (required for Windows).
   // The trailing /* allows access to all repositories under the named directory.
@@ -194,6 +269,7 @@ export async function onReady() {
     logger.info("Auto-update release channel=", postfix);
     updateElectronApp({
       logger,
+      updateInterval: "60 minutes",
       updateSource: {
         type: UpdateSourceType.ElectronPublicUpdateService,
         repo: "dyad-sh/dyad",
@@ -275,6 +351,19 @@ const createWindow = () => {
     // backgroundColor: "#00000001",
     // frame: false,
   });
+  // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
+  if (process.env.NODE_ENV === "development") {
+    mainWindow.webContents.once("devtools-opened", () => {
+      setTimeout(() => {
+        const windowRef = mainWindow;
+        if (!windowRef?.isDestroyed()) {
+          windowRef?.webContents.reloadIgnoringCache();
+        }
+      }, 300);
+    });
+    mainWindow.webContents.openDevTools();
+  }
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -283,20 +372,32 @@ const createWindow = () => {
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
-  if (process.env.NODE_ENV === "development") {
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
-  }
 
-  // Send force-close event if it was detected
-  if (pendingForceCloseData) {
-    mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow?.webContents.send("force-close-detected", {
-        performanceData: pendingForceCloseData,
-      });
+  // Handle force-close message and development reload coordination
+  let forceCloseMessageSent = false;
+  let devToolsReloadedCount = 0;
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (process.env.NODE_ENV === "development") {
+      // In dev, wait until AFTER the DevTools-triggered reload before sending the message
+      if (devToolsReloadedCount === 0) {
+        devToolsReloadedCount++;
+        return; // Ignore first load, we will reload momentarily
+      }
+    }
+
+    // Send force-close once after the correct load
+    if (pendingForceCloseData && !forceCloseMessageSent) {
+      forceCloseMessageSent = true;
+      const windowRef = mainWindow;
+      if (!windowRef?.isDestroyed()) {
+        windowRef?.webContents.send("force-close-detected", {
+          performanceData: pendingForceCloseData,
+        });
+      }
       pendingForceCloseData = null;
-    });
-  }
+    }
+  });
 
   // Enable native context menu on right-click
   mainWindow.webContents.on("context-menu", (event, params) => {

@@ -303,6 +303,7 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 
 // ============================================================================
 // Tests
@@ -418,6 +419,54 @@ describe("handleLocalAgentStream", () => {
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
+    });
+  });
+
+  describe("Warning propagation", () => {
+    it("includes warning messages in the error payload when a tool fails after warning", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      const warningMessage = "Firewall checks were skipped for this install.";
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        return {
+          warn_then_fail: {
+            execute: async () => {
+              ctx.onWarningMessage?.(warningMessage);
+              throw new Error("Simulated tool failure");
+            },
+          },
+        } as any;
+      });
+
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          yield* [];
+          await options.tools.warn_then_fail.execute();
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(1);
+      expect(errorMessages[0].args[0]).toMatchObject({
+        chatId: 1,
+        error: expect.stringContaining("Simulated tool failure"),
+        warningMessages: [warningMessage],
+      });
     });
   });
 
@@ -1043,6 +1092,7 @@ describe("handleLocalAgentStream", () => {
         if (attemptCount === 1) {
           return {
             fullStream: (async function* () {
+              yield* [];
               throw {
                 type: "error",
                 sequence_number: 0,
@@ -1362,7 +1412,7 @@ describe("handleLocalAgentStream", () => {
       expect(contentUpdates.length).toBeGreaterThan(0);
       const finalContent = contentUpdates[contentUpdates.length - 1].data
         .content as string;
-      expect(finalContent).toContain("First ");
+      expect(finalContent).toContain("First");
       expect(finalContent).not.toContain("Second");
     });
 

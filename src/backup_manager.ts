@@ -296,12 +296,14 @@ export class BackupManager {
   ): Promise<void> {
     logger.debug(`Backing up SQLite database: ${sourcePath} → ${destPath}`);
     const sourceDb = new Database(sourcePath, {
-      readonly: true,
       timeout: 10000,
     });
 
     try {
-      // This is safe even if other connections are active
+      // Flush any pending WAL data into the main database file before backing up.
+      // This ensures the backup captures all committed data, even if a previous
+      // session crashed and left un-checkpointed writes in the WAL.
+      sourceDb.pragma("wal_checkpoint(TRUNCATE)");
       await sourceDb.backup(destPath);
       logger.info("Database backup completed successfully");
     } catch (error) {

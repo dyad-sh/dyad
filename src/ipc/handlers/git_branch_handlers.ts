@@ -20,6 +20,7 @@ import {
   getGitUncommittedFilesWithStatus,
   gitAddAll,
   gitCommit,
+  gitDiscardAllChanges,
 } from "../utils/git_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
@@ -370,37 +371,50 @@ async function handleGetUncommittedFiles(
   return getGitUncommittedFilesWithStatus({ path: appPath });
 }
 
-async function handleCommitChanges(
-  event: IpcMainInvokeEvent,
-  { appId, message }: { appId: number; message: string },
-): Promise<string> {
+async function withAppGitOp<T>(
+  appId: number,
+  operation: string,
+  fn: (appPath: string) => Promise<T>,
+): Promise<T> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getDyadAppPath(app.path);
 
   return withLock(appId, async () => {
-    // Check for merge or rebase in progress
     if (isGitMergeInProgress({ path: appPath })) {
       throw GitStateError(
-        "Cannot commit: merge in progress. Please complete or abort the merge first.",
+        `Cannot ${operation}: merge in progress. Please complete or abort the merge first.`,
         GIT_ERROR_CODES.MERGE_IN_PROGRESS,
       );
     }
 
     if (isGitRebaseInProgress({ path: appPath })) {
       throw GitStateError(
-        "Cannot commit: rebase in progress. Please complete or abort the rebase first.",
+        `Cannot ${operation}: rebase in progress. Please complete or abort the rebase first.`,
         GIT_ERROR_CODES.REBASE_IN_PROGRESS,
       );
     }
 
-    // Stage all changes
+    return fn(appPath);
+  });
+}
+
+async function handleCommitChanges(
+  _event: IpcMainInvokeEvent,
+  { appId, message }: { appId: number; message: string },
+): Promise<string> {
+  return withAppGitOp(appId, "commit", async (appPath) => {
     await gitAddAll({ path: appPath });
+    return gitCommit({ path: appPath, message });
+  });
+}
 
-    // Commit with the provided message
-    const commitHash = await gitCommit({ path: appPath, message });
-
-    return commitHash;
+async function handleDiscardChanges(
+  _event: IpcMainInvokeEvent,
+  { appId }: GitBranchAppIdParams,
+): Promise<void> {
+  return withAppGitOp(appId, "discard changes", async (appPath) => {
+    await gitDiscardAllChanges({ path: appPath });
   });
 }
 
@@ -478,4 +492,5 @@ export function registerGithubBranchHandlers() {
     handleGetUncommittedFiles,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
+  createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);
 }

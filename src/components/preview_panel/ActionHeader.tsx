@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 
 import { useRunApp } from "@/hooks/useRunApp";
+import { useSettings } from "@/hooks/useSettings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +59,8 @@ export const ActionHeader = () => {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
+  const { settings } = useSettings();
+  const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
 
   const isCompact = windowWidth < 888;
 
@@ -104,6 +107,10 @@ export const ActionHeader = () => {
   const onClearSessionData = useCallback(() => {
     clearSessionData();
   }, [clearSessionData]);
+
+  const onRecreateSandbox = useCallback(() => {
+    restartApp({ recreateSandbox: true });
+  }, [restartApp]);
 
   // Get the problem count for the selected app
   const problemCount = problemReport ? problemReport.problems.length : 0;
@@ -297,6 +304,17 @@ export const ActionHeader = () => {
                 </span>
               </div>
             </DropdownMenuItem>
+            {isCloudSandboxMode && (
+              <DropdownMenuItem onClick={onRecreateSandbox}>
+                <Cog size={16} />
+                <div className="flex flex-col">
+                  <span>{t("preview.recreateSandbox")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("preview.recreateSandboxDescription")}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

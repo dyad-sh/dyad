@@ -86,17 +86,20 @@ jobs:
             AUTHOR="${{ github.event.pull_request.user.login }}"
           fi
           echo "Author: $AUTHOR"
-          if [ "$AUTHOR" = "wwwillchen" ] || [ "$AUTHOR" = "wwwillchen-bot" ] || [ "$AUTHOR" = "dyadbot" ] || [ "$AUTHOR" = "dyad-assistant" ] || [ "$AUTHOR" = "azizmejri1" ]; then
-            echo "is_privileged=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_privileged=false" >> $GITHUB_OUTPUT
-          fi
+          case "$AUTHOR" in
+            wwwillchen|keppo-bot|keppo-bot[bot]|dyad-assistant|azizmejri1)
+              echo "is_privileged=true" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "is_privileged=false" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
       # Sets the dynamic matrix for the build and e2e-tests jobs based on the PR author.
       # The "image" field is a JSON-encoded array string so that fromJSON() in runs-on
       # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
       #
-      # Privileged authors (wwwillchen, wwwillchen-bot, dyadbot, dyad-assistant, azizmejri1):
+      # Privileged authors (wwwillchen, keppo-bot/keppo-bot[bot], dyad-assistant, azizmejri1):
       #   - Self-hosted macOS ARM64 runners, no Windows, no sharding.
       #
       #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shard 1/1)
@@ -268,8 +271,6 @@ jobs:
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
           FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
-          # Self-hosted macOS runners can handle more parallelism
-          PLAYWRIGHT_PARALLELISM: ${{ contains(matrix.os.image, 'self-hosted') && '3' || '1' }}
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
           PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
         # You can add debug logging to make it easier to see what's failing

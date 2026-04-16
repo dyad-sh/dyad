@@ -88,6 +88,10 @@ export interface AgentContext {
    * Call this when todos are updated to show them in the chat input area.
    */
   onUpdateTodos: (todos: Todo[]) => void;
+  /**
+   * Queues a warning toast to be shown to the user when the turn completes.
+   */
+  onWarningMessage?: (message: string) => void;
 }
 
 // ============================================================================

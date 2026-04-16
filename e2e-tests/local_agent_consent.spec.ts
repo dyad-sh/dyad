@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 /**
  * Tests for agent tool consent flow with add_dependency
@@ -24,7 +24,8 @@ testSkipIfWindows(
     await po.agentConsent.clickAgentConsentAlwaysAllow();
 
     // Wait for chat to complete
-    await po.chatActions.waitForChatCompletion();
+    // This can take a while as `sfw` may be installing.
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
     await po.snapshotMessages();
 
@@ -53,7 +54,8 @@ testSkipIfWindows(
     await po.agentConsent.clickAgentConsentAllowOnce();
 
     // Wait for chat to complete
-    await po.chatActions.waitForChatCompletion();
+    // This can take a while as `sfw` may be installing.
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
     await po.snapshotMessages();
   },

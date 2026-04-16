@@ -114,6 +114,7 @@ export const ChatResponseEndSchema = z.object({
   updatedFiles: z.boolean(),
   extraFiles: z.array(z.string()).optional(),
   extraFilesError: z.string().optional(),
+  warningMessages: z.array(z.string()).optional(),
   totalTokens: z.number().optional(),
   contextWindow: z.number().optional(),
   chatSummary: z.string().optional(),
@@ -129,6 +130,7 @@ export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;
 export const ChatResponseErrorSchema = z.object({
   chatId: z.number(),
   error: z.string(),
+  warningMessages: z.array(z.string()).optional(),
 });
 
 /**

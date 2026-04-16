@@ -61,6 +61,7 @@ import {
   buildTodoReminderMessage,
   hasIncompleteTodos,
   formatTodoSummary,
+  ensureToolResultOrdering,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
@@ -75,6 +76,10 @@ import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
+import {
   isChatPendingCompaction,
   performCompaction,
   checkAndMarkForCompaction,
@@ -82,6 +87,12 @@ import {
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  type RetryReplayEvent,
+  maybeCaptureRetryReplayEvent,
+  maybeCaptureRetryReplayText,
+  maybeAppendRetryReplayForRetry,
+} from "./retry_replay_utils";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -121,24 +132,6 @@ interface ToolStreamingEntry {
   argsAccumulated: string;
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
-
-type RetryReplayEvent =
-  | {
-      type: "assistant-text";
-      text: string;
-    }
-  | {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-    }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
 
 function getOrCreateStreamingEntry(
   id: string,
@@ -217,10 +210,15 @@ function buildChatMessageHistory(
     reorderedMessages.splice(targetIndex, 0, summary);
   }
 
-  return reorderedMessages
+  const filtered = reorderedMessages
     .filter((msg) => !excludedIds?.has(msg.id))
-    .filter((msg) => msg.content || msg.aiMessagesJson)
-    .flatMap((msg) => parseAiMessagesJson(msg));
+    .filter((msg) => msg.content || msg.aiMessagesJson);
+
+  // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+  // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+  return filterCancelledMessagePairs(filtered).flatMap((msg) =>
+    parseAiMessagesJson(msg),
+  );
 }
 
 function getMidTurnCompactionSummaryIds(
@@ -471,6 +469,7 @@ export async function handleLocalAgentStream(
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Get model client
@@ -559,6 +558,9 @@ export async function handleLocalAgentStream(
           todos,
         });
       },
+      onWarningMessage: (message) => {
+        warningMessages.push(message);
+      },
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -587,6 +589,11 @@ export async function handleLocalAgentStream(
     let compactBeforeNextStep = false;
     let compactedMidTurn = false;
     let compactionFailedMidTurn = false;
+    // Tracks the difference between the compacted base message count and the
+    // SDK's initialMessages count. Used to adjust injection indices after
+    // compaction so that subsequent steps (which use the SDK's shorter base)
+    // inject user messages at the correct position.
+    let compactionIndexDelta = 0;
 
     const maxOutputTokens = await getMaxTokens(settings.selectedModel);
     const temperature = await getTemperature(settings.selectedModel);
@@ -642,6 +649,7 @@ export async function handleLocalAgentStream(
       compactedMidTurn = false;
       compactionFailedMidTurn = false;
       compactBeforeNextStep = false;
+      compactionIndexDelta = 0;
       postMidTurnCompactionStartStep = null;
       baseMessageHistoryCount = currentMessageHistory.length;
 
@@ -740,6 +748,7 @@ export async function handleLocalAgentStream(
                   // with a different (typically smaller) count. Keeping them would
                   // cause injectMessagesAtPositions to splice at wrong positions.
                   allInjectedMessages.length = 0;
+                  const preCompactionBaseCount = baseMessageHistoryCount;
                   const compactedMessageHistory = buildChatMessageHistory(
                     chat.messages,
                     {
@@ -749,6 +758,11 @@ export async function handleLocalAgentStream(
                     },
                   );
                   baseMessageHistoryCount = compactedMessageHistory.length;
+                  // The compacted history includes the compaction summary, but the
+                  // AI SDK's initialMessages does not. Track the delta so we can
+                  // adjust injection indices after prepareStepMessages runs.
+                  compactionIndexDelta =
+                    baseMessageHistoryCount - preCompactionBaseCount;
                   stepOptions = {
                     ...options,
                     // Preserve in-flight turn messages so same-turn tool loops can
@@ -770,6 +784,24 @@ export async function handleLocalAgentStream(
                 allInjectedMessages,
               );
 
+              // After mid-turn compaction, injection indices are based on the
+              // compacted message array (which includes the compaction summary).
+              // The AI SDK's internal messages don't include this summary, so
+              // subsequent steps have a shorter base. Adjust indices now so
+              // future re-injections land at the correct position.
+              if (compactionIndexDelta !== 0) {
+                for (const injection of allInjectedMessages) {
+                  injection.insertAtIndex = Math.max(
+                    0,
+                    injection.insertAtIndex - compactionIndexDelta,
+                  );
+                }
+                // Always reset, even when no injections exist yet — a tool may
+                // add pending messages in a later step and their indices should
+                // not be shifted by a stale delta.
+                compactionIndexDelta = 0;
+              }
+
               // prepareStepMessages returns undefined when it has no additional
               // injections/cleanups to apply. If we already replaced the base
               // message history (e.g., after mid-turn compaction), we still need
@@ -777,6 +809,19 @@ export async function handleLocalAgentStream(
               let result =
                 preparedStep ??
                 (stepOptions === options ? undefined : stepOptions);
+
+              // Defensive: ensure injected user messages don't break
+              // tool_use/tool_result pairing. Catches edge cases where
+              // injection indices become stale after compaction.
+              if (result?.messages) {
+                const fixed = ensureToolResultOrdering(result.messages);
+                if (fixed) {
+                  logger.warn(
+                    `ensureToolResultOrdering fixed misplaced user messages in chat ${req.chatId}`,
+                  );
+                  result = { ...result, messages: fixed };
+                }
+              }
 
               return result;
             },
@@ -1188,12 +1233,12 @@ export async function handleLocalAgentStream(
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
@@ -1268,6 +1313,8 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       updatedFiles: !readOnly,
       chatSummary: ctx.chatSummary,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     } satisfies ChatResponseEnd);
 
     return true; // Success
@@ -1279,12 +1326,12 @@ export async function handleLocalAgentStream(
 
     if (abortController.signal.aborted) {
       // Handle cancellation
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
@@ -1292,6 +1339,8 @@ export async function handleLocalAgentStream(
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error: `Error: ${getErrorMessage(error)}`,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
     return false; // Error - don't consume quota
   }
@@ -1401,199 +1450,8 @@ function shouldRetryTransientStreamError(params: {
   );
 }
 
-function maybeCaptureRetryReplayEvent(
-  retryReplayEvents: RetryReplayEvent[],
-  part: unknown,
-): void {
-  if (!isRecord(part) || typeof part.type !== "string") {
-    return;
-  }
-
-  if (
-    part.type === "tool-call" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
-  ) {
-    // Keep one emitted tool-call event per toolCallId.
-    if (
-      retryReplayEvents.some(
-        (event) =>
-          event.type === "tool-call" && event.toolCallId === part.toolCallId,
-      )
-    ) {
-      return;
-    }
-
-    retryReplayEvents.push({
-      type: "tool-call",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      input:
-        typeof part.input === "object" && part.input !== null ? part.input : {},
-    });
-    return;
-  }
-
-  if (
-    part.type === "tool-result" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
-  ) {
-    // Keep one emitted tool-result event per toolCallId.
-    if (
-      retryReplayEvents.some(
-        (event) =>
-          event.type === "tool-result" && event.toolCallId === part.toolCallId,
-      )
-    ) {
-      return;
-    }
-
-    retryReplayEvents.push({
-      type: "tool-result",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      output: part.output,
-    });
-  }
-}
-
-function maybeAppendRetryReplayForRetry(params: {
-  retryReplayEvents: RetryReplayEvent[];
-  currentMessageHistoryRef: ModelMessage[];
-  accumulatedAiMessagesRef: ModelMessage[];
-  onCurrentMessageHistoryUpdate: (next: ModelMessage[]) => void;
-}) {
-  const {
-    retryReplayEvents,
-    currentMessageHistoryRef,
-    accumulatedAiMessagesRef,
-    onCurrentMessageHistoryUpdate,
-  } = params;
-  const replayMessages: ModelMessage[] = [];
-  const pendingAssistantParts: Array<
-    | { type: "text"; text: string }
-    | {
-        type: "tool-call";
-        toolCallId: string;
-        toolName: string;
-        input: unknown;
-      }
-  > = [];
-  const toolCallsWithResult = new Set<string>();
-  const toolResultsWithCall = new Set<string>();
-
-  for (const event of retryReplayEvents) {
-    if (event.type === "tool-call") {
-      toolResultsWithCall.add(event.toolCallId);
-      continue;
-    }
-    if (event.type === "tool-result") {
-      toolCallsWithResult.add(event.toolCallId);
-    }
-  }
-
-  const completedToolExchangeIds = new Set(
-    [...toolCallsWithResult].filter((toolCallId) =>
-      toolResultsWithCall.has(toolCallId),
-    ),
-  );
-
-  const flushPendingAssistantMessage = () => {
-    if (pendingAssistantParts.length === 0) {
-      return;
-    }
-    replayMessages.push({
-      role: "assistant",
-      content: [...pendingAssistantParts],
-    });
-    pendingAssistantParts.length = 0;
-  };
-
-  for (const event of retryReplayEvents) {
-    if (event.type === "assistant-text") {
-      if (!event.text.trim()) {
-        continue;
-      }
-      pendingAssistantParts.push({ type: "text", text: event.text });
-      continue;
-    }
-
-    if (event.type === "tool-call") {
-      if (!completedToolExchangeIds.has(event.toolCallId)) {
-        continue;
-      }
-      pendingAssistantParts.push({
-        type: "tool-call",
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        input: event.input,
-      });
-      continue;
-    }
-
-    if (!completedToolExchangeIds.has(event.toolCallId)) {
-      continue;
-    }
-    flushPendingAssistantMessage();
-    replayMessages.push({
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          output: toToolResultOutput(event.output),
-        },
-      ],
-    });
-  }
-  flushPendingAssistantMessage();
-
-  if (replayMessages.length === 0) {
-    return;
-  }
-
-  onCurrentMessageHistoryUpdate([
-    ...currentMessageHistoryRef,
-    ...replayMessages,
-  ]);
-  accumulatedAiMessagesRef.push(...replayMessages);
-}
-
-function maybeCaptureRetryReplayText(
-  retryReplayEvents: RetryReplayEvent[] | null,
-  text: string,
-): void {
-  if (!retryReplayEvents || text.length === 0) {
-    return;
-  }
-
-  const lastEvent = retryReplayEvents[retryReplayEvents.length - 1];
-  if (lastEvent?.type === "assistant-text") {
-    lastEvent.text += text;
-    return;
-  }
-
-  retryReplayEvents.push({
-    type: "assistant-text",
-    text,
-  });
-}
-
 async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-function toToolResultOutput(value: unknown): { type: "text"; value: string } {
-  if (typeof value === "string") {
-    return { type: "text", value };
-  }
-  try {
-    return { type: "text", value: JSON.stringify(value) };
-  } catch {
-    return { type: "text", value: String(value) };
-  }
 }
 
 async function updateResponseInDb(messageId: number, content: string) {

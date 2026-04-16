@@ -78,6 +78,10 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
+import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
@@ -686,12 +690,16 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistory = updatedChat.messages.map((message) => ({
+        const messageHistoryRaw = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
+
+        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
@@ -1611,34 +1619,49 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId);
-            // If we have a partial response, save it to the database
-            if (partialResponse) {
-              try {
-                // Update the placeholder assistant message with the partial content and cancellation note
-                await db
-                  .update(messages)
-                  .set({
-                    content: `${partialResponse}
+            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            try {
+              // Update the placeholder assistant message with the partial content and cancellation note
+              await db
+                .update(messages)
+                .set({
+                  content: appendCancelledResponseNotice(partialResponse),
+                })
+                .where(eq(messages.id, placeholderAssistantMessage.id));
 
-[Response cancelled by user]`,
-                  })
-                  .where(eq(messages.id, placeholderAssistantMessage.id));
-
-                logger.log(
-                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
-                );
-                partialResponses.delete(req.chatId);
-              } catch (error) {
-                logger.error(
-                  `Error saving partial response for chat ${chatId}:`,
-                  error,
-                );
-              }
+              logger.log(
+                `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
+              );
+              partialResponses.delete(req.chatId);
+            } catch (error) {
+              logger.error(
+                `Error saving partial response for chat ${chatId}:`,
+                error,
+              );
             }
             return req.chatId;
           }
           throw streamError;
+        }
+      }
+
+      // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
+      // save the cancellation notice to the placeholder message.
+      if (abortController.signal.aborted) {
+        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        try {
+          await db
+            .update(messages)
+            .set({
+              content: appendCancelledResponseNotice(partialResponse),
+            })
+            .where(eq(messages.id, placeholderAssistantMessage.id));
+          partialResponses.delete(req.chatId);
+        } catch (error) {
+          logger.error(
+            `Error saving cancelled response for chat ${req.chatId}:`,
+            error,
+          );
         }
       }
 
@@ -1693,6 +1716,7 @@ ${problemReport.problems
             safeSend(event.sender, "chat:response:error", {
               chatId: req.chatId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+              warningMessages: status.warningMessages,
             });
           }
 
@@ -1702,6 +1726,7 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            warningMessages: status.warningMessages,
             chatSummary,
           } satisfies ChatResponseEnd);
         } else {

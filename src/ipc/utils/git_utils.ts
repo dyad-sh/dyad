@@ -110,6 +110,7 @@ async function execGit(
 import type {
   GitBaseParams,
   GitFileParams,
+  GitListFilesParams,
   GitCheckoutParams,
   GitBranchRenameParams,
   GitCloneParams,
@@ -533,6 +534,85 @@ export async function gitReset({ path }: GitBaseParams): Promise<void> {
         "Please enable native git or manually unstage files using 'git reset HEAD'.",
       DyadErrorKind.Precondition,
     );
+  }
+}
+
+export async function gitDiscardAllChanges({
+  path,
+}: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Reset all tracked files (index + working tree) to HEAD state
+    await execOrThrow(
+      ["reset", "--hard", "HEAD"],
+      path,
+      "Failed to reset to HEAD",
+    );
+    // Remove untracked files and directories
+    await execOrThrow(
+      ["clean", "-fd"],
+      path,
+      "Failed to remove untracked files",
+    );
+  } else {
+    const matrix = await git.statusMatrix({ fs, dir: path });
+    const removedFileDirs = new Set<string>();
+
+    for (const row of matrix) {
+      const [filepath, headStatus, workdirStatus, stageStatus] = row;
+      const fullPath = pathModule.join(path, filepath);
+
+      if (headStatus === 1) {
+        // Tracked file: restore if changed in workdir or stage
+        if (workdirStatus !== 1 || stageStatus !== 1) {
+          await git.checkout({
+            fs,
+            dir: path,
+            ref: "HEAD",
+            filepaths: [filepath],
+            force: true,
+          });
+        }
+      } else if (stageStatus !== 0) {
+        // Staged new file: remove from index
+        await git.remove({ fs, dir: path, filepath });
+        // Delete from disk if still present
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
+        }
+      } else if (workdirStatus !== 0) {
+        // Purely untracked file/directory: just delete from disk
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
+        }
+      }
+    }
+
+    // Prune empty directories only where files were actually removed.
+    // Collect each dir and its parent chain up to the repo root, then
+    // sort deepest-first so children are removed before parents.
+    const dirsToCheck = new Set<string>();
+    for (const dir of removedFileDirs) {
+      let current = dir;
+      while (current !== path && current.startsWith(path)) {
+        dirsToCheck.add(current);
+        current = pathModule.dirname(current);
+      }
+    }
+    const sorted = [...dirsToCheck].sort((a, b) => b.length - a.length);
+    for (const dir of sorted) {
+      try {
+        const remaining = await fsPromises.readdir(dir);
+        if (remaining.length === 0) {
+          await fsPromises.rmdir(dir);
+        }
+      } catch {
+        // Ignore errors (broken symlinks, permission issues) so the
+        // discard operation isn't aborted by a single failing directory.
+      }
+    }
   }
 }
 
@@ -1155,12 +1235,56 @@ export async function gitIsIgnored({
     throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
   } else {
     // isomorphic-git version
-    return await git.isIgnored({
-      fs,
-      dir: path,
-      filepath,
-    });
+    return await gitIsIgnoredIso({ path, filepath });
   }
+}
+
+/**
+ * Check whether a specific file/directory is gitignored using isomorphic-git
+ */
+export async function gitIsIgnoredIso({
+  path,
+  filepath,
+}: GitFileParams): Promise<boolean> {
+  return await git.isIgnored({
+    fs,
+    dir: path,
+    filepath,
+  });
+}
+
+/**
+ * Lists all of the files in a git repository, such that:
+ * - Both tracked and untracked files are included.
+ * - Gitignored files/directories are excluded.
+ * - We can exclude additional files/directories as needed.
+ */
+export async function gitListFilesNative({
+  path,
+  excludedFiles,
+  excludedDirs,
+}: GitListFilesParams): Promise<string[]> {
+  const result = await execGit(
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      ".",
+      ...excludedFiles.map((file) => `:(exclude,glob)**/${file}`),
+      ...excludedDirs.map((dir) => `:(exclude,glob)**/${dir}/**`),
+    ],
+    path,
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Failed to list files: ${result.stderr.trim() || result.stdout.trim()}`,
+      DyadErrorKind.Conflict,
+    );
+  }
+  return result.stdout.split("\0").filter(Boolean).map(normalizePath);
 }
 
 export async function gitLogNative(

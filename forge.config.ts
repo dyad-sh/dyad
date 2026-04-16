@@ -1,4 +1,5 @@
 import { windowsSign } from "./windowsSign";
+import { removeUnsupportedWindowsSigningFiles } from "./src/lib/windows_signing";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -42,6 +43,12 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }
+  if (file.startsWith("/node_modules/node-pty")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/node-addon-api")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/bindings")) {
     return false;
   }
@@ -68,6 +75,21 @@ if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
 const config: ForgeConfig = {
   packagerConfig: {
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
+    afterCopy: isWindowsSigningEnabled
+      ? [
+          (buildPath, _electronVersion, platform, _arch, callback) => {
+            if (platform !== "win32") {
+              callback();
+              return;
+            }
+
+            removeUnsupportedWindowsSigningFiles(buildPath).then(
+              () => callback(),
+              (error) => callback(error as Error),
+            );
+          },
+        ]
+      : undefined,
     protocols: [
       {
         name: "Dyad",
@@ -94,13 +116,16 @@ const config: ForgeConfig = {
           appleIdPassword: process.env.APPLE_PASSWORD!,
           teamId: process.env.APPLE_TEAM_ID!,
         },
-    asar: true,
+    asar: {
+      // node-pty loads helper binaries like spawn-helper and winpty-agent from disk.
+      unpackDir: "node_modules/node-pty",
+    },
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {
-    extraModules: ["better-sqlite3"],
+    extraModules: ["better-sqlite3", "node-pty"],
     force: true,
   },
   makers: [

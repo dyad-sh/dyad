@@ -36,6 +36,12 @@ export class Settings {
       .click();
   }
 
+  async toggleCloudSandboxExperiment() {
+    await this.page
+      .getByRole("switch", { name: "Enable Cloud Sandbox" })
+      .click();
+  }
+
   async toggleEnableSelectAppFromHomeChatInput() {
     await this.page
       .getByRole("switch", {
@@ -52,6 +58,20 @@ export class Settings {
     await this.page.getByRole("combobox", { name: "Release Channel" }).click();
     await this.page
       .getByRole("option", { name: channel === "stable" ? "Stable" : "Beta" })
+      .click();
+  }
+
+  async changeRuntimeMode(mode: "host" | "docker" | "cloud") {
+    await this.page.getByRole("combobox", { name: "Runtime Mode" }).click();
+    await this.page
+      .getByRole("option", {
+        name:
+          mode === "host"
+            ? "Local (default)"
+            : mode === "docker"
+              ? "Docker (experimental)"
+              : "Cloud Sandbox (Pro)",
+      })
       .click();
   }
 

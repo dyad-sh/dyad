@@ -1,6 +1,6 @@
 import { atom } from "jotai";
 import type { App, Version, ConsoleEntry } from "@/ipc/types";
-import type { UserSettings } from "@/lib/schemas";
+import type { RuntimeMode2, UserSettings } from "@/lib/schemas";
 
 export const currentAppAtom = atom<App | null>(null);
 export const selectedAppIdAtom = atom<number | null>(null);
@@ -18,9 +18,19 @@ export const selectedVersionIdAtom = atom<string | null>(null);
 
 export const appConsoleEntriesAtom = atom<ConsoleEntry[]>([]);
 export const appUrlAtom = atom<
-  | { appUrl: string; appId: number; originalUrl: string }
-  | { appUrl: null; appId: null; originalUrl: null }
->({ appUrl: null, appId: null, originalUrl: null });
+  | {
+      appUrl: string;
+      appId: number;
+      originalUrl: string;
+      mode: RuntimeMode2;
+    }
+  | {
+      appUrl: null;
+      appId: null;
+      originalUrl: null;
+      mode: null;
+    }
+>({ appUrl: null, appId: null, originalUrl: null, mode: null });
 export const userSettingsAtom = atom<UserSettings | null>(null);
 
 // Atom for storing allow-listed environment variables
@@ -33,5 +43,6 @@ export const previewPanelKeyAtom = atom<number>(0);
 export const previewCurrentUrlAtom = atom<Record<number, string>>({});
 
 export const previewErrorMessageAtom = atom<
-  { message: string; source: "preview-app" | "dyad-app" } | undefined
+  | { message: string; source: "preview-app" | "dyad-app" | "dyad-sync" }
+  | undefined
 >(undefined);

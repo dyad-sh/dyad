@@ -115,10 +115,10 @@ export function NlpAiStudioPanel() {
   ];
 
   const apiModels = [
+    { provider: "anthropic" as const, modelName: "claude-opus-4-6", displayName: "Claude Opus 4.6 (Anthropic)" },
     { provider: "anthropic" as const, modelName: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4 (Anthropic)" },
-    { provider: "anthropic" as const, modelName: "claude-3-5-sonnet-20241022", displayName: "Claude 3.5 Sonnet (Anthropic)" },
-    { provider: "openai" as const, modelName: "gpt-4o", displayName: "GPT-4o (OpenAI)" },
-    { provider: "openai" as const, modelName: "gpt-4o-mini", displayName: "GPT-4o Mini (OpenAI)" },
+    { provider: "openai" as const, modelName: "gpt-5.1", displayName: "GPT 5.1 (OpenAI)" },
+    { provider: "openai" as const, modelName: "gpt-5-mini", displayName: "GPT 5 Mini (OpenAI)" },
   ];
 
   // Determine which model to use based on routing mode

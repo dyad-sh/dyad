@@ -15,7 +15,7 @@ export function registerAgentBuilderTools(server: McpServer) {
         name: z.string().describe("Agent name"),
         description: z.string().describe("What this agent does"),
         system_prompt: z.string().describe("System prompt defining the agent's behavior and persona"),
-        model: z.string().optional().describe("Model to use (e.g. gpt-4o, claude-3-5-sonnet, mistral:7b)"),
+        model: z.string().optional().describe("Model to use (e.g. gpt-5.1, claude-sonnet-4-20250514, mistral:7b)"),
         tools: z.array(z.string()).optional().describe("Tool names to enable (e.g. ['web_search', 'code_execution', 'file_read'])"),
         memory_enabled: z.boolean().optional().describe("Enable persistent memory across sessions"),
         voice_enabled: z.boolean().optional().describe("Enable voice interface"),

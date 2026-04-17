@@ -39,6 +39,8 @@ import {
   BarChart3,
   MessageSquare,
   Loader2,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -88,6 +90,8 @@ import {
   usePauseMission,
   useResumeMission,
   useCancelMission,
+  useDeleteMission,
+  useUpdateMission,
 } from "@/hooks/use_missions";
 
 // =============================================================================
@@ -1314,7 +1318,12 @@ function BackgroundMissionsTab() {
   const pauseMission = usePauseMission();
   const resumeMission = useResumeMission();
   const cancelMission = useCancelMission();
+  const deleteMission = useDeleteMission();
+  const updateMission = useUpdateMission();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingMission, setEditingMission] = useState<{ id: string; title: string; description: string } | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
 
   const selected = bgMissions.find((m: any) => m.id === selectedId);
 
@@ -1354,6 +1363,14 @@ function BackgroundMissionsTab() {
                       {(m.phases as any[]).length} phases · attempt {m.verifyAttempts ?? 0}
                     </p>
                   )}
+                  <div className="flex gap-1 mt-2">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setEditTitle(m.title); setEditDesc(m.description ?? ""); setEditingMission({ id: m.id, title: m.title, description: m.description ?? "" }); }}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); deleteMission.mutate(m.id); if (selectedId === m.id) setSelectedId(null); }}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -1457,6 +1474,36 @@ function BackgroundMissionsTab() {
           </div>
         )}
       </div>
+
+      {/* Edit Mission Dialog */}
+      <Dialog open={!!editingMission} onOpenChange={(open) => { if (!open) setEditingMission(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Mission</DialogTitle>
+            <DialogDescription>Update the title and description.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Title</Label>
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Description</Label>
+              <Textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingMission(null)}>Cancel</Button>
+            <Button
+              disabled={!editTitle.trim() || updateMission.isPending}
+              onClick={() => editingMission && updateMission.mutate({ id: editingMission.id, title: editTitle.trim(), description: editDesc.trim() }, { onSuccess: () => { toast.success("Mission updated"); setEditingMission(null); }, onError: (err) => toast.error(`Update failed: ${err}`) })}
+            >
+              {updateMission.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

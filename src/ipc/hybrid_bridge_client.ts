@@ -41,8 +41,9 @@ class HybridBridgeClient {
 
   private setupEventListener(): void {
     // Listen for bridge events from main process
-    this.ipcRenderer.on("hybrid-bridge:event", (_event: unknown, bridgeEvent: HybridBridgeEvent) => {
-      // Guard against undefined events from IPC
+    this.ipcRenderer.on("hybrid-bridge:event", (rawEvent: unknown) => {
+      // Preload strips the Electron IpcRendererEvent, so callback receives (data) not (_event, data)
+      const bridgeEvent = rawEvent as HybridBridgeEvent;
       if (!bridgeEvent || typeof bridgeEvent !== "object") {
         console.warn("[HybridBridgeClient] Received invalid event:", bridgeEvent);
         return;

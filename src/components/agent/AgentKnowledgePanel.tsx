@@ -198,10 +198,10 @@ function AIQueryConfigForm({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="default">Default (Local)</SelectItem>
-            <SelectItem value="gpt-4">GPT-4</SelectItem>
-            <SelectItem value="claude-3">Claude 3</SelectItem>
-            <SelectItem value="gemini-pro">Gemini Pro</SelectItem>
-            <SelectItem value="llama-3">Llama 3</SelectItem>
+            <SelectItem value="gpt-5.1">GPT 5.1</SelectItem>
+            <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+            <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash</SelectItem>
+            <SelectItem value="llama3.2:8b">Llama 3.2 (Local)</SelectItem>
           </SelectContent>
         </Select>
       </div>

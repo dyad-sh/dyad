@@ -106,6 +106,201 @@ export interface SubgraphStoreStats {
   updatedAt: string;
 }
 
+// ── joy-marketplace-amoy subgraph entities ─────────────────────────────────
+
+export interface SubgraphAsset {
+  id: string;
+  tokenId: string;
+  contractAddress: string;
+  owner: string;
+  creator: string;
+  name: string | null;
+  assetType: string | null;
+  merkleRoot: string | null;
+  totalChunks: string | null;
+  encrypted: boolean;
+  verificationScore: string | null;
+  totalSales: string;
+  totalVolume: string;
+  createdAt: string;
+  createdTxHash: string;
+  listings?: SubgraphListing[];
+  reviews?: SubgraphReview[];
+  publisher?: SubgraphPublisher | null;
+  store?: SubgraphMarketplaceStore | null;
+  verification?: SubgraphVerification | null;
+}
+
+export interface SubgraphListing {
+  id: string;
+  listingId: string;
+  seller: string;
+  nftContract: string;
+  tokenId: string;
+  quantity: string;
+  pricePerItem: string;
+  effectivePrice: string;
+  hasDiscount: boolean;
+  discountEndTime: string | null;
+  discountedPrice: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  soldAt: string | null;
+  buyer: string | null;
+  totalPaid: string | null;
+  platformFee: string | null;
+  royaltyPaid: string | null;
+  createdTxHash: string;
+  asset?: SubgraphAsset | null;
+}
+
+export interface SubgraphAIModel {
+  id: string;
+  tokenId: string;
+  creator: string;
+  owner: string;
+  name: string | null;
+  category: number;
+  licenseType: number;
+  verified: boolean;
+  qualityScore: string;
+  usageCount: string;
+  totalLicenseRevenue: string;
+  createdAt: string;
+  createdTxHash: string;
+  licenses?: SubgraphAIModelLicense[];
+}
+
+export interface SubgraphAIModelLicense {
+  id: string;
+  model?: SubgraphAIModel;
+  licensee: string;
+  licenseType: number;
+  amount: string;
+  expiresAt: string;
+  timestamp: string;
+  txHash: string;
+}
+
+export interface SubgraphPublisher {
+  id: string;
+  address: string;
+  name: string | null;
+  reputationScore: string;
+  totalAssets: string;
+  totalSales: string;
+  totalVolume: string;
+  successRate: string;
+  firstPublishAt: string;
+  lastActiveAt: string;
+}
+
+export interface SubgraphReview {
+  id: string;
+  reviewId: string;
+  reviewer: string;
+  seller: string;
+  nftContract: string;
+  tokenId: string;
+  rating: number;
+  verified: boolean;
+  helpfulCount: string;
+  reportCount: string;
+  removed: boolean;
+  createdAt: string;
+  createdTxHash: string;
+}
+
+export interface SubgraphVerification {
+  id: string;
+  assetContract: string;
+  tokenId: string;
+  level: number;
+  verifier: string;
+  verificationCid: string | null;
+  active: boolean;
+  verifiedAt: string;
+  txHash: string;
+}
+
+export interface SubgraphMarketplaceStore {
+  id: string;
+  contractAddress: string;
+  owner: string;
+  name: string | null;
+  description: string | null;
+  isActive: boolean;
+  isVerified: boolean;
+  assetCount: string;
+  totalSales: string;
+  totalVolume: string;
+  createdAt: string;
+}
+
+export interface SubgraphMarketplaceStats {
+  id: string;
+  totalListings: string;
+  activeListings: string;
+  totalSales: string;
+  totalVolume: string;
+  totalAssets: string;
+  totalPublishers: string;
+  totalEscrows: string;
+  totalReviews: string;
+  totalCollections: string;
+  totalBundles: string;
+  updatedAt: string;
+}
+
+export interface SubgraphReceipt {
+  id: string;
+  receiptId: string;
+  buyer: string;
+  seller: string;
+  listingId: string;
+  price: string;
+  fulfilled: boolean;
+  fulfilledMethod: number | null;
+  fulfilledAt: string | null;
+  disputed: boolean;
+  disputeReason: string | null;
+  refunded: boolean;
+  refundAmount: string | null;
+  downloadCount: string;
+  issuedAt: string;
+  issuedTxHash: string;
+}
+
+// ── Marketplace query parameters ───────────────────────────────────────────
+
+export interface SubgraphAssetsParams {
+  first?: number;
+  skip?: number;
+  orderBy?: string;
+  orderDirection?: "asc" | "desc";
+  assetType?: string;
+  creator?: string;
+}
+
+export interface SubgraphListingsParams {
+  first?: number;
+  skip?: number;
+  orderBy?: string;
+  orderDirection?: "asc" | "desc";
+  activeOnly?: boolean;
+  seller?: string;
+}
+
+export interface SubgraphAIModelsParams {
+  first?: number;
+  skip?: number;
+  orderBy?: string;
+  orderDirection?: "asc" | "desc";
+  creator?: string;
+  verified?: boolean;
+}
+
 // ── Aggregated "My Assets" view ────────────────────────────────────────────
 
 export interface MyMarketplaceAssets {
@@ -121,6 +316,14 @@ export interface MyMarketplaceAssets {
   dropStats: SubgraphDropStats | null;
   /** Global store stats */
   storeStats: SubgraphStoreStats | null;
+  /** On-chain marketplace assets created by the user */
+  marketplaceAssets: SubgraphAsset[];
+  /** Active listings by the user */
+  activeListings: SubgraphListing[];
+  /** AI model licenses held by the user */
+  licenses: SubgraphAIModelLicense[];
+  /** Global marketplace stats */
+  marketplaceStats: SubgraphMarketplaceStats | null;
 }
 
 // ── Query parameters ───────────────────────────────────────────────────────

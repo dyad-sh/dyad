@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2, Trash2 } from "lucide-react";
+import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
 import { useAgentChat, useChatHistory } from "@/hooks/useAgentSwarm";
 import type { AgentNodeId, AgentChatMessage } from "@/ipc/agent_swarm_client";
 
@@ -119,6 +120,12 @@ export function AgentChatPanel({ agentId, agentName }: AgentChatPanelProps) {
           placeholder="Type a message…"
           disabled={chatMutation.isPending}
           className="flex-1"
+        />
+        <VoiceInputButton
+          size="sm"
+          showSettings={false}
+          disabled={chatMutation.isPending}
+          onTranscription={(text) => setInput((prev) => prev ? `${prev} ${text}` : text)}
         />
         <Button
           size="icon"

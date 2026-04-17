@@ -71,6 +71,10 @@ class LibreOfficeClient {
     return this.ipcRenderer.invoke("libreoffice:delete", id);
   }
 
+  async updateDocumentMetadata(params: { id: number; name?: string; description?: string; tags?: string[] }): Promise<BaseDocument> {
+    return this.ipcRenderer.invoke("libreoffice:update-metadata", params);
+  }
+
   // ============================================================================
   // Export Operations
   // ============================================================================

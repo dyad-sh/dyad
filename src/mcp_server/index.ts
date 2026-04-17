@@ -30,6 +30,7 @@ import { registerAgentBuilderTools } from "./tools/agent_builder_tools";
 import { registerSkillsTools } from "./tools/skills_tools";
 import { registerCreatorDashboardTools } from "./tools/creator_dashboard_tools";
 import { processInboundEvent, type MarketplaceInboundEvent } from "../ipc/handlers/marketplace_inbound_handlers";
+import { getTailscaleConfig } from "../lib/tailscale_service";
 
 const logger = log.scope("mcp-server");
 
@@ -83,6 +84,19 @@ class JoyCreateMcpServer {
         return;
       }
 
+      // ── GET /health or /healthz — liveness check for external monitors ───
+      if (req.method === "GET" && (req.url === "/health" || req.url === "/healthz")) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          status: "ok",
+          service: "joycreate-mcp",
+          port: this.port,
+          running: this.running,
+          uptime: process.uptime(),
+        }));
+        return;
+      }
+
       // ── POST /sync/inbound — Joy Marketplace → JoyCreate webhook ────────
       if (req.method === "POST" && req.url === "/sync/inbound") {
         try {
@@ -123,15 +137,18 @@ class JoyCreateMcpServer {
       res.end("Not found");
     });
 
+    const tsConfig = getTailscaleConfig();
+    const bindHost = tsConfig.enabled && tsConfig.exposeServices ? "0.0.0.0" : "127.0.0.1";
+
     await new Promise<void>((resolve, reject) => {
-      this.httpServer!.listen(this.port, "127.0.0.1", () => {
+      this.httpServer!.listen(this.port, bindHost, () => {
         resolve();
       });
       this.httpServer!.on("error", reject);
     });
 
     this.running = true;
-    logger.info(`MCP server started on http://127.0.0.1:${this.port}/mcp`);
+    logger.info(`MCP server started on http://${bindHost}:${this.port}/mcp`);
     return { port: this.port };
   }
 

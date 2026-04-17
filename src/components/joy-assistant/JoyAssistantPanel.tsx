@@ -28,12 +28,16 @@ import {
   Wand2,
   Eye,
   Zap,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { useAutoTTS } from "@/hooks/useAutoTTS";
 import {
   Tooltip,
   TooltipContent,
@@ -86,6 +90,8 @@ export function JoyAssistantPanel() {
     executeAction,
     dismissActions,
   } = useJoyAssistant(SESSION_ID);
+
+  const { autoTTSEnabled, toggleAutoTTS } = useAutoTTS({ messages, streaming });
 
   const { data: suggestions } = useAssistantSuggestions(pageContext);
 
@@ -226,15 +232,30 @@ export function JoyAssistantPanel() {
         )}
         <div className="flex items-center gap-0.5 ml-auto">
           {!minimized && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={clearHistory}
-              title="Clear conversation"
-            >
-              <Eraser className="h-3.5 w-3.5" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-7 w-7", autoTTSEnabled && "text-primary")}
+                onClick={toggleAutoTTS}
+                title={autoTTSEnabled ? "Disable auto-speak" : "Enable auto-speak"}
+              >
+                {autoTTSEnabled ? (
+                  <Volume2 className="h-3.5 w-3.5" />
+                ) : (
+                  <VolumeX className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={clearHistory}
+                title="Clear conversation"
+              >
+                <Eraser className="h-3.5 w-3.5" />
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -401,6 +422,12 @@ export function JoyAssistantPanel() {
                 className="flex-1 min-h-[36px] max-h-[120px] text-sm resize-none"
                 rows={1}
                 disabled={streaming}
+              />
+              <VoiceInputButton
+                size="sm"
+                showSettings={false}
+                disabled={streaming}
+                onTranscription={(text) => setInput((prev) => prev ? `${prev} ${text}` : text)}
               />
               {streaming ? (
                 <Button

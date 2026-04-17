@@ -4,7 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { SubgraphClient } from "@/ipc/subgraph_client";
-import type { SubgraphTokensParams } from "@/types/subgraph_types";
+import type { SubgraphTokensParams, SubgraphAssetsParams, SubgraphListingsParams, SubgraphAIModelsParams } from "@/types/subgraph_types";
 
 // ── Query Keys ─────────────────────────────────────────────────────────────
 
@@ -20,6 +20,13 @@ export const subgraphKeys = {
   userDomains: (wallet: string) => [...subgraphKeys.all, "domains", wallet] as const,
   allDomains: () => [...subgraphKeys.all, "all-domains"] as const,
   storeStats: () => [...subgraphKeys.all, "store-stats"] as const,
+  // Marketplace subgraph
+  marketplaceAssets: (params?: SubgraphAssetsParams) => [...subgraphKeys.all, "marketplace-assets", params] as const,
+  marketplaceListings: (params?: SubgraphListingsParams) => [...subgraphKeys.all, "marketplace-listings", params] as const,
+  aiModels: (params?: SubgraphAIModelsParams) => [...subgraphKeys.all, "ai-models", params] as const,
+  userLicenses: (wallet: string) => [...subgraphKeys.all, "licenses", wallet] as const,
+  userReceipts: (wallet: string) => [...subgraphKeys.all, "receipts", wallet] as const,
+  marketplaceStats: () => [...subgraphKeys.all, "marketplace-stats"] as const,
 };
 
 // ── Hooks ──────────────────────────────────────────────────────────────────
@@ -115,6 +122,64 @@ export function useStoreStats() {
   return useQuery({
     queryKey: subgraphKeys.storeStats(),
     queryFn: () => SubgraphClient.getStoreStats(),
+    staleTime: 120_000,
+  });
+}
+
+// ── Marketplace subgraph hooks ─────────────────────────────────────────────
+
+/** Browse on-chain marketplace assets (paginated, filterable). */
+export function useMarketplaceAssets(params?: SubgraphAssetsParams) {
+  return useQuery({
+    queryKey: subgraphKeys.marketplaceAssets(params),
+    queryFn: () => SubgraphClient.getMarketplaceAssets(params),
+    staleTime: 60_000,
+  });
+}
+
+/** Browse active marketplace listings (paginated, filterable). */
+export function useMarketplaceListings(params?: SubgraphListingsParams) {
+  return useQuery({
+    queryKey: subgraphKeys.marketplaceListings(params),
+    queryFn: () => SubgraphClient.getMarketplaceListings(params),
+    staleTime: 60_000,
+  });
+}
+
+/** Browse AI models (paginated, filterable). */
+export function useAIModels(params?: SubgraphAIModelsParams) {
+  return useQuery({
+    queryKey: subgraphKeys.aiModels(params),
+    queryFn: () => SubgraphClient.getAIModels(params),
+    staleTime: 60_000,
+  });
+}
+
+/** Licenses held by a wallet. */
+export function useUserLicenses(walletAddress: string | undefined) {
+  return useQuery({
+    queryKey: subgraphKeys.userLicenses(walletAddress ?? ""),
+    queryFn: () => SubgraphClient.getUserLicenses(walletAddress!),
+    enabled: !!walletAddress,
+    staleTime: 30_000,
+  });
+}
+
+/** Purchase receipts for a wallet. */
+export function useUserReceipts(walletAddress: string | undefined) {
+  return useQuery({
+    queryKey: subgraphKeys.userReceipts(walletAddress ?? ""),
+    queryFn: () => SubgraphClient.getUserReceipts(walletAddress!),
+    enabled: !!walletAddress,
+    staleTime: 30_000,
+  });
+}
+
+/** Global marketplace statistics. */
+export function useMarketplaceStats() {
+  return useQuery({
+    queryKey: subgraphKeys.marketplaceStats(),
+    queryFn: () => SubgraphClient.getMarketplaceStats(),
     staleTime: 120_000,
   });
 }

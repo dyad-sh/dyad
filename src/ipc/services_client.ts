@@ -153,6 +153,8 @@ export interface TailscaleConfig {
     n8n: boolean;
     celestia: boolean;
     openclaw: boolean;
+    ipfs: boolean;
+    ipfsGateway: boolean;
   };
 }
 

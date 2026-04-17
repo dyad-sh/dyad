@@ -18,6 +18,15 @@ import type {
   MyMarketplaceAssets,
   SubgraphQueryParams,
   SubgraphTokensParams,
+  SubgraphAsset,
+  SubgraphListing,
+  SubgraphAIModel,
+  SubgraphAIModelLicense,
+  SubgraphMarketplaceStats,
+  SubgraphReceipt,
+  SubgraphAssetsParams,
+  SubgraphListingsParams,
+  SubgraphAIModelsParams,
 } from "@/types/subgraph_types";
 
 const logger = log.scope("subgraph");
@@ -29,6 +38,8 @@ const SUBGRAPH_URLS = {
     "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-drop-amoy/0.0.1/gn",
   stores:
     "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-stores-amoy/0.0.2/gn",
+  marketplace:
+    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-marketplace-amoy/0.0.3/gn",
 } as const;
 
 // ── Generic GraphQL fetcher ────────────────────────────────────────────────
@@ -285,6 +296,240 @@ export async function getStoreStats(): Promise<SubgraphStoreStats | null> {
   }
 }
 
+// ── Marketplace subgraph queries ───────────────────────────────────────────
+
+export async function getMarketplaceAssets(params?: SubgraphAssetsParams): Promise<SubgraphAsset[]> {
+  const first = params?.first ?? 100;
+  const skip = params?.skip ?? 0;
+  const orderBy = params?.orderBy ?? "createdAt";
+  const orderDirection = params?.orderDirection ?? "desc";
+
+  const where: Record<string, unknown> = {};
+  if (params?.assetType) where.assetType = params.assetType;
+  if (params?.creator) where.creator = params.creator.toLowerCase();
+
+  const data = await querySubgraph<{ assets: SubgraphAsset[] }>(
+    SUBGRAPH_URLS.marketplace,
+    `query GetAssets($first: Int!, $skip: Int!, $orderBy: Asset_orderBy!, $orderDirection: OrderDirection!, $where: Asset_filter) {
+      assets(first: $first, skip: $skip, orderBy: $orderBy, orderDirection: $orderDirection, where: $where) {
+        id
+        tokenId
+        contractAddress
+        owner
+        creator
+        name
+        assetType
+        merkleRoot
+        totalChunks
+        encrypted
+        verificationScore
+        totalSales
+        totalVolume
+        createdAt
+        createdTxHash
+        publisher {
+          id
+          address
+          name
+          reputationScore
+          totalAssets
+          totalSales
+        }
+        store {
+          id
+          name
+          isVerified
+        }
+        verification {
+          level
+          active
+          verifiedAt
+        }
+      }
+    }`,
+    { first, skip, orderBy, orderDirection, where: Object.keys(where).length ? where : undefined },
+  );
+
+  return data.assets;
+}
+
+export async function getMarketplaceListings(params?: SubgraphListingsParams): Promise<SubgraphListing[]> {
+  const first = params?.first ?? 100;
+  const skip = params?.skip ?? 0;
+  const orderBy = params?.orderBy ?? "createdAt";
+  const orderDirection = params?.orderDirection ?? "desc";
+
+  const where: Record<string, unknown> = {};
+  if (params?.activeOnly !== false) where.active = true;
+  if (params?.seller) where.seller = params.seller.toLowerCase();
+
+  const data = await querySubgraph<{ listings: SubgraphListing[] }>(
+    SUBGRAPH_URLS.marketplace,
+    `query GetListings($first: Int!, $skip: Int!, $orderBy: Listing_orderBy!, $orderDirection: OrderDirection!, $where: Listing_filter) {
+      listings(first: $first, skip: $skip, orderBy: $orderBy, orderDirection: $orderDirection, where: $where) {
+        id
+        listingId
+        seller
+        nftContract
+        tokenId
+        quantity
+        pricePerItem
+        effectivePrice
+        hasDiscount
+        discountEndTime
+        discountedPrice
+        active
+        createdAt
+        updatedAt
+        soldAt
+        buyer
+        totalPaid
+        platformFee
+        royaltyPaid
+        createdTxHash
+        asset {
+          id
+          tokenId
+          name
+          assetType
+          creator
+          verificationScore
+          totalSales
+          publisher {
+            name
+            reputationScore
+          }
+        }
+      }
+    }`,
+    { first, skip, orderBy, orderDirection, where },
+  );
+
+  return data.listings;
+}
+
+export async function getAIModels(params?: SubgraphAIModelsParams): Promise<SubgraphAIModel[]> {
+  const first = params?.first ?? 100;
+  const skip = params?.skip ?? 0;
+  const orderBy = params?.orderBy ?? "createdAt";
+  const orderDirection = params?.orderDirection ?? "desc";
+
+  const where: Record<string, unknown> = {};
+  if (params?.creator) where.creator = params.creator.toLowerCase();
+  if (params?.verified !== undefined) where.verified = params.verified;
+
+  const data = await querySubgraph<{ aimodels: SubgraphAIModel[] }>(
+    SUBGRAPH_URLS.marketplace,
+    `query GetAIModels($first: Int!, $skip: Int!, $orderBy: AIModel_orderBy!, $orderDirection: OrderDirection!, $where: AIModel_filter) {
+      aimodels(first: $first, skip: $skip, orderBy: $orderBy, orderDirection: $orderDirection, where: $where) {
+        id
+        tokenId
+        creator
+        owner
+        name
+        category
+        licenseType
+        verified
+        qualityScore
+        usageCount
+        totalLicenseRevenue
+        createdAt
+        createdTxHash
+        licenses(first: 10, orderBy: timestamp, orderDirection: desc) {
+          id
+          licensee
+          licenseType
+          amount
+          expiresAt
+          timestamp
+          txHash
+        }
+      }
+    }`,
+    { first, skip, orderBy, orderDirection, where: Object.keys(where).length ? where : undefined },
+  );
+
+  return data.aimodels;
+}
+
+export async function getUserLicenses(walletAddress: string, first = 100): Promise<SubgraphAIModelLicense[]> {
+  const addr = walletAddress.toLowerCase();
+
+  const data = await querySubgraph<{ aimodelLicenses: SubgraphAIModelLicense[] }>(
+    SUBGRAPH_URLS.marketplace,
+    `query GetUserLicenses($licensee: String!, $first: Int!) {
+      aimodelLicenses(where: { licensee: $licensee }, first: $first, orderBy: timestamp, orderDirection: desc) {
+        id
+        licensee
+        licenseType
+        amount
+        expiresAt
+        timestamp
+        txHash
+        model {
+          id
+          tokenId
+          name
+          creator
+          category
+          verified
+          qualityScore
+        }
+      }
+    }`,
+    { licensee: addr, first },
+  );
+
+  return data.aimodelLicenses;
+}
+
+export async function getUserReceipts(walletAddress: string, first = 100): Promise<SubgraphReceipt[]> {
+  const addr = walletAddress.toLowerCase();
+
+  const data = await querySubgraph<{ receipts: SubgraphReceipt[] }>(
+    SUBGRAPH_URLS.marketplace,
+    `query GetUserReceipts($buyer: String!, $first: Int!) {
+      receipts(where: { buyer: $buyer }, first: $first, orderBy: issuedAt, orderDirection: desc) {
+        id
+        receiptId
+        buyer
+        seller
+        listingId
+        price
+        fulfilled
+        fulfilledMethod
+        fulfilledAt
+        disputed
+        disputeReason
+        refunded
+        refundAmount
+        downloadCount
+        issuedAt
+        issuedTxHash
+      }
+    }`,
+    { buyer: addr, first },
+  );
+
+  return data.receipts;
+}
+
+export async function getMarketplaceStats(): Promise<SubgraphMarketplaceStats | null> {
+  try {
+    const data = await querySubgraph<{ marketplaceStats_collection: SubgraphMarketplaceStats[] }>(
+      SUBGRAPH_URLS.marketplace,
+      `{ marketplaceStats_collection(first: 1) {
+        id totalListings activeListings totalSales totalVolume
+        totalAssets totalPublishers totalEscrows totalReviews
+        totalCollections totalBundles updatedAt
+      } }`,
+    );
+    return data.marketplaceStats_collection?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Aggregated "My Assets" query ───────────────────────────────────────────
 
 export async function getMyMarketplaceAssets(params: SubgraphQueryParams): Promise<MyMarketplaceAssets> {
@@ -296,7 +541,7 @@ export async function getMyMarketplaceAssets(params: SubgraphQueryParams): Promi
 
   logger.info(`Fetching marketplace assets for ${walletAddress}`);
 
-  const [ownedTokens, purchases, stores, domains, dropStats, storeStats] = await Promise.all([
+  const [ownedTokens, purchases, stores, domains, dropStats, storeStats, marketplaceAssets, activeListings, licenses, marketplaceStats] = await Promise.all([
     getUserBalances(walletAddress).catch((e) => {
       logger.warn("Failed to fetch user balances:", e);
       return [] as SubgraphUserBalance[];
@@ -315,11 +560,24 @@ export async function getMyMarketplaceAssets(params: SubgraphQueryParams): Promi
     }),
     getDropStats(),
     getStoreStats(),
+    getMarketplaceAssets({ creator: walletAddress }).catch((e) => {
+      logger.warn("Failed to fetch marketplace assets:", e);
+      return [] as SubgraphAsset[];
+    }),
+    getMarketplaceListings({ seller: walletAddress, activeOnly: true }).catch((e) => {
+      logger.warn("Failed to fetch active listings:", e);
+      return [] as SubgraphListing[];
+    }),
+    getUserLicenses(walletAddress).catch((e) => {
+      logger.warn("Failed to fetch user licenses:", e);
+      return [] as SubgraphAIModelLicense[];
+    }),
+    getMarketplaceStats(),
   ]);
 
   logger.info(
-    `Assets for ${walletAddress}: ${ownedTokens.length} tokens, ${purchases.length} purchases, ${stores.length} stores, ${domains.length} domains`,
+    `Assets for ${walletAddress}: ${ownedTokens.length} tokens, ${purchases.length} purchases, ${stores.length} stores, ${domains.length} domains, ${marketplaceAssets.length} marketplace assets, ${activeListings.length} listings, ${licenses.length} licenses`,
   );
 
-  return { ownedTokens, purchases, stores, domains, dropStats, storeStats };
+  return { ownedTokens, purchases, stores, domains, dropStats, storeStats, marketplaceAssets, activeListings, licenses, marketplaceStats };
 }

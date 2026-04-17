@@ -14,6 +14,15 @@ import type {
   SubgraphStoreStats,
   MyMarketplaceAssets,
   SubgraphTokensParams,
+  SubgraphAsset,
+  SubgraphListing,
+  SubgraphAIModel,
+  SubgraphAIModelLicense,
+  SubgraphMarketplaceStats,
+  SubgraphReceipt,
+  SubgraphAssetsParams,
+  SubgraphListingsParams,
+  SubgraphAIModelsParams,
 } from "@/types/subgraph_types";
 
 let ipcRenderer: IpcRenderer | null = null;
@@ -78,5 +87,37 @@ export const SubgraphClient = {
   /** Get global store statistics. */
   async getStoreStats(): Promise<SubgraphStoreStats | null> {
     return getIpcRenderer().invoke("subgraph:store-stats");
+  },
+
+  // ── Marketplace subgraph ───────────────────────────────────────────────
+
+  /** Browse marketplace assets (paginated, filterable). */
+  async getMarketplaceAssets(params?: SubgraphAssetsParams): Promise<SubgraphAsset[]> {
+    return getIpcRenderer().invoke("subgraph:marketplace-assets", params);
+  },
+
+  /** Browse marketplace listings (paginated, filterable). */
+  async getMarketplaceListings(params?: SubgraphListingsParams): Promise<SubgraphListing[]> {
+    return getIpcRenderer().invoke("subgraph:marketplace-listings", params);
+  },
+
+  /** Browse AI models (paginated, filterable). */
+  async getAIModels(params?: SubgraphAIModelsParams): Promise<SubgraphAIModel[]> {
+    return getIpcRenderer().invoke("subgraph:ai-models", params);
+  },
+
+  /** Get licenses held by a wallet. */
+  async getUserLicenses(walletAddress: string): Promise<SubgraphAIModelLicense[]> {
+    return getIpcRenderer().invoke("subgraph:user-licenses", { walletAddress });
+  },
+
+  /** Get purchase receipts for a wallet. */
+  async getUserReceipts(walletAddress: string): Promise<SubgraphReceipt[]> {
+    return getIpcRenderer().invoke("subgraph:user-receipts", { walletAddress });
+  },
+
+  /** Get global marketplace statistics. */
+  async getMarketplaceStats(): Promise<SubgraphMarketplaceStats | null> {
+    return getIpcRenderer().invoke("subgraph:marketplace-stats");
   },
 };

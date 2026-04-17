@@ -108,8 +108,8 @@ const FEATURES: PlatformFeature[] = [
   {
     id: "marketplace",
     name: "Marketplace",
-    route: "/marketplace",
-    summary: "Browse, search, and install assets from JoyMarketplace.",
+    route: "/nft-marketplace",
+    summary: "Browse, search, and install assets from Joy Creator Studio.",
     description:
       "The Marketplace Explorer lets you discover apps, agents, workflows, datasets, models, templates, and plugins published by the community. You can filter by category, pricing, and type, then install assets directly into your workspace.",
     capabilities: [
@@ -551,7 +551,7 @@ export function getSuggestions(
   }
 
   // Route-specific suggestions
-  if (route.startsWith("/marketplace")) {
+  if (route.startsWith("/nft-marketplace")) {
     suggestions.push(
       { id: "search-agents", text: "Find me an AI agent", intent: "search", priority: 80 },
       { id: "search-workflows", text: "Show popular workflows", intent: "search", priority: 70 },

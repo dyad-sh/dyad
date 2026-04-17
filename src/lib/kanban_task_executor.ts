@@ -769,7 +769,7 @@ export async function getSystemServicesHealth(): Promise<
 
   // 4. OpenClaw Gateway — accept any HTTP response as evidence it's running
   try {
-    const res = await fetch("http://127.0.0.1:18790/", {
+    const res = await fetch("http://127.0.0.1:18792/", {
       signal: AbortSignal.timeout(3000),
       redirect: "manual",
     });
@@ -777,7 +777,7 @@ export async function getSystemServicesHealth(): Promise<
     services.push({
       name: "OpenClaw Gateway",
       status: res.ok || res.status < 500 ? "healthy" : "degraded",
-      port: 18790,
+      port: 18792,
       details: res.ok
         ? "Gateway running"
         : `Gateway responding (HTTP ${res.status})`,
@@ -793,7 +793,7 @@ export async function getSystemServicesHealth(): Promise<
         services.push({
           name: "OpenClaw Gateway",
           status: "healthy",
-          port: 18790,
+          port: 18792,
           details: "Gateway connected",
           lastCheck: now,
         });
@@ -801,7 +801,7 @@ export async function getSystemServicesHealth(): Promise<
         services.push({
           name: "OpenClaw Gateway",
           status: state.status === "connecting" ? "degraded" : "offline",
-          port: 18790,
+          port: 18792,
           details: `Gateway ${state.status}`,
           lastCheck: now,
         });
@@ -810,7 +810,7 @@ export async function getSystemServicesHealth(): Promise<
       services.push({
         name: "OpenClaw Gateway",
         status: "offline",
-        port: 18790,
+        port: 18792,
         details: "Gateway not running",
         lastCheck: now,
       });

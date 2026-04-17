@@ -67,6 +67,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-sonnet-4-20250514":   { inputPer1M: 3.00, outputPer1M: 15.00, tier: 3, minComplexity: 3, maxComplexity: 9, provider: "anthropic" },
   "claude-sonnet-4-5-20250929": { inputPer1M: 3.00, outputPer1M: 15.00, tier: 4, minComplexity: 4, maxComplexity: 10, provider: "anthropic" },
   "claude-opus-4-5":            { inputPer1M: 15.00, outputPer1M: 75.00, tier: 5, minComplexity: 7, maxComplexity: 10, provider: "anthropic" },
+  "claude-opus-4-6":            { inputPer1M: 15.00, outputPer1M: 75.00, tier: 5, minComplexity: 7, maxComplexity: 10, provider: "anthropic" },
 
   // ── Google ─────────────────────────────────
   "gemini-flash-latest":       { inputPer1M: 0.15, outputPer1M: 0.60, tier: 1, minComplexity: 1, maxComplexity: 6, provider: "google" },

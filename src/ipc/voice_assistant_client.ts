@@ -17,13 +17,33 @@ export interface VoiceConfig {
   wakeWord: string;
   language: string;
   whisperModel: "tiny" | "base" | "small" | "medium" | "large";
-  ttsModel: "bark" | "coqui" | "piper";
+  ttsModel: "bark" | "coqui" | "piper" | "elevenlabs";
   ttsVoice: string;
+  elevenlabsApiKey?: string;
+  elevenlabsVoiceId?: string;
   silenceThreshold: number;
   silenceDuration: number;
   autoSubmit: boolean;
   soundEffects: boolean;
   continuousMode: boolean;
+}
+
+export interface SystemCapabilities {
+  hasPiper: boolean;
+  piperPath: string | null;
+  hasWhisper: boolean;
+  whisperPythonPath: string | null;
+  hasFFmpeg: boolean;
+  installedWhisperModels: string[];
+  installedPiperModels: string[];
+}
+
+export interface ElevenLabsVoice {
+  voice_id: string;
+  name: string;
+  category: string;
+  labels: Record<string, string>;
+  preview_url: string;
 }
 
 export interface TranscriptionResult {
@@ -197,6 +217,26 @@ export const VoiceAssistantClient = {
    */
   async getInstalledModels(): Promise<{ whisper: string[]; tts: string[] }> {
     return getIpcRenderer().invoke("voice:get-installed-models");
+  },
+
+  // ---------------------------------------------------------------------------
+  // SYSTEM CAPABILITIES
+  // ---------------------------------------------------------------------------
+
+  async getCapabilities(): Promise<SystemCapabilities> {
+    return getIpcRenderer().invoke("voice:get-capabilities");
+  },
+
+  // ---------------------------------------------------------------------------
+  // ELEVENLABS
+  // ---------------------------------------------------------------------------
+
+  async getElevenLabsVoices(): Promise<ElevenLabsVoice[]> {
+    return getIpcRenderer().invoke("voice:get-elevenlabs-voices");
+  },
+
+  async setElevenLabsApiKey(apiKey: string): Promise<void> {
+    return getIpcRenderer().invoke("voice:set-elevenlabs-key", apiKey);
   },
 
   // ---------------------------------------------------------------------------

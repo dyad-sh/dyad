@@ -35,7 +35,7 @@ function pageTitleFromRoute(pathname: string): string {
     "/": "Hub",
     "/chat": "Chat",
     "/library": "Library",
-    "/marketplace": "JoyMarketplace",
+    "/nft-marketplace": "Joy Creator Studio",
     "/agents": "Agents",
     "/agent-swarm": "Agent Swarm",
     "/workflows": "Workflows",

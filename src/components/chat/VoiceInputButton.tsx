@@ -330,6 +330,7 @@ function VoiceSettings({ config, onUpdate, onDownloadModel, installedModels }: V
       <div className="font-medium flex items-center gap-2">
         <Mic className="h-4 w-4" />
         Voice Settings
+        <Badge variant="outline" className="text-[10px] font-normal">Local Models</Badge>
       </div>
       
       {/* Mode Selection */}
@@ -372,7 +373,7 @@ function VoiceSettings({ config, onUpdate, onDownloadModel, installedModels }: V
       
       {/* Whisper Model */}
       <div className="space-y-2">
-        <Label>Transcription Model</Label>
+        <Label>Transcription Model (Local Whisper)</Label>
         <div className="grid grid-cols-1 gap-2">
           {whisperModels.map((model) => {
             const isInstalled = installedModels?.whisper.some(m => m.includes(model.id));
@@ -434,9 +435,10 @@ function VoiceSettings({ config, onUpdate, onDownloadModel, installedModels }: V
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="piper">Piper (Fast)</SelectItem>
-            <SelectItem value="bark">Bark (Natural)</SelectItem>
-            <SelectItem value="coqui">Coqui (Quality)</SelectItem>
+            <SelectItem value="piper">Piper (Local · Fast)</SelectItem>
+            <SelectItem value="bark">Bark (Local · Natural)</SelectItem>
+            <SelectItem value="coqui">Coqui (Local · Quality)</SelectItem>
+            <SelectItem value="elevenlabs">ElevenLabs (Cloud · Premium)</SelectItem>
           </SelectContent>
         </Select>
       </div>

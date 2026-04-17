@@ -127,7 +127,7 @@ export function registerAgentTools(server: McpServer) {
           .optional()
           .describe("Agent type (default: chatbot)"),
         systemPrompt: z.string().optional().describe("System prompt for the agent"),
-        modelId: z.string().optional().describe("AI model identifier (e.g. gpt-4o, claude-sonnet-4-20250514)"),
+        modelId: z.string().optional().describe("AI model identifier (e.g. gpt-5.1, claude-sonnet-4-20250514)"),
       },
     },
     async ({ name, description, type, systemPrompt, modelId }) => {

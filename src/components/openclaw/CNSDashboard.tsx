@@ -19,6 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { VoiceAssistantClient, type SystemCapabilities, type ElevenLabsVoice } from "@/ipc/voice_assistant_client";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +71,11 @@ import {
   Gauge,
   BarChart3,
   Timer,
+  Mic,
+  Volume2,
+  AudioWaveform,
+  Download,
+  Key,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -728,6 +735,12 @@ function ChatPanel() {
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             disabled={isLoading}
           />
+          <VoiceInputButton
+            size="sm"
+            showSettings={false}
+            disabled={isLoading}
+            onTranscription={(text) => setInput((prev) => prev ? `${prev} ${text}` : text)}
+          />
           <Button onClick={handleSend} disabled={isLoading || !input.trim()}>
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -737,6 +750,225 @@ function ChatPanel() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// VOICE PANEL
+// =============================================================================
+
+function VoicePanel() {
+  const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [elevenlabsKey, setElevenlabsKey] = useState("");
+  const [elevenlabsVoices, setElevenlabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [loadingVoices, setLoadingVoices] = useState(false);
+  const [testText, setTestText] = useState("Hello! I am your voice assistant.");
+  const [speaking, setSpeaking] = useState(false);
+
+  useEffect(() => {
+    VoiceAssistantClient.initialize()
+      .then(() => VoiceAssistantClient.getCapabilities())
+      .then((caps) => setCapabilities(caps))
+      .catch((err) => console.error("Voice detection failed:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const loadVoices = async () => {
+    if (!elevenlabsKey.trim()) return;
+    setLoadingVoices(true);
+    try {
+      await VoiceAssistantClient.setElevenLabsApiKey(elevenlabsKey.trim());
+      const voices = await VoiceAssistantClient.getElevenLabsVoices();
+      setElevenlabsVoices(voices);
+      toast.success(`Loaded ${voices.length} ElevenLabs voices`);
+    } catch (err) {
+      toast.error(`Failed to load voices: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoadingVoices(false);
+    }
+  };
+
+  const handleTestTTS = async (engine: string) => {
+    setSpeaking(true);
+    try {
+      await VoiceAssistantClient.speak({ text: testText });
+      toast.success("TTS playback complete");
+    } catch (err) {
+      toast.error(`TTS failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSpeaking(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          Detecting voice capabilities...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* System Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <AudioWaveform className="h-4 w-4" />
+            Local Voice Capabilities
+          </CardTitle>
+          <CardDescription>Piper TTS and Whisper STT running on your machine — no internet required</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex items-center gap-2">
+              {capabilities?.hasWhisper ? (
+                <Badge variant="default" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Whisper (Local STT)</Badge>
+              ) : (
+                <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Whisper</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {capabilities?.hasPiper ? (
+                <Badge variant="default" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Piper (Local TTS)</Badge>
+              ) : (
+                <Badge variant="secondary" className="gap-1"><AlertCircle className="h-3 w-3" /> Piper</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {capabilities?.hasFFmpeg ? (
+                <Badge variant="default" className="gap-1"><CheckCircle2 className="h-3 w-3" /> FFmpeg</Badge>
+              ) : (
+                <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> FFmpeg</Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Installed Whisper Models */}
+          {capabilities && capabilities.installedWhisperModels.length > 0 && (
+            <div>
+              <Label className="text-xs text-muted-foreground">Local Whisper Models (offline speech-to-text)</Label>
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {capabilities.installedWhisperModels.map((m) => (
+                  <Badge key={m} variant="outline" className="text-xs">{m}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Installed Piper Models */}
+          {capabilities && capabilities.installedPiperModels.length > 0 && (
+            <div>
+              <Label className="text-xs text-muted-foreground">Local Piper Voices (offline text-to-speech)</Label>
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {capabilities.installedPiperModels.map((m) => (
+                  <Badge key={m} variant="outline" className="text-xs">{m}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ElevenLabs Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Key className="h-4 w-4" />
+            ElevenLabs (Cloud TTS)
+          </CardTitle>
+          <CardDescription>High-quality cloud voices via ElevenLabs API</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="Enter ElevenLabs API key..."
+              value={elevenlabsKey}
+              onChange={(e) => setElevenlabsKey(e.target.value)}
+            />
+            <Button onClick={loadVoices} disabled={!elevenlabsKey.trim() || loadingVoices}>
+              {loadingVoices ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load Voices"}
+            </Button>
+          </div>
+
+          {elevenlabsVoices.length > 0 && (
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">
+                Available Voices ({elevenlabsVoices.length})
+              </Label>
+              <ScrollArea className="h-[200px] border rounded-md p-2">
+                <div className="space-y-1">
+                  {elevenlabsVoices.map((voice) => (
+                    <div
+                      key={voice.voice_id}
+                      className="flex items-center justify-between p-2 rounded hover:bg-muted/50 text-sm"
+                    >
+                      <div>
+                        <span className="font-medium">{voice.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{voice.category}</span>
+                      </div>
+                      {voice.preview_url && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            const audio = new Audio(voice.preview_url);
+                            audio.play().catch(() => {});
+                          }}
+                        >
+                          <Volume2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Test TTS */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Volume2 className="h-4 w-4" />
+            Test Local Voice
+          </CardTitle>
+          <CardDescription>Try your local Piper TTS and Whisper microphone input</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Textarea
+            value={testText}
+            onChange={(e) => setTestText(e.target.value)}
+            placeholder="Type text to speak locally..."
+            rows={2}
+          />
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleTestTTS("current")}
+              disabled={speaking || !testText.trim()}
+            >
+              {speaking ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Speaking...</>
+              ) : (
+                <><Volume2 className="h-4 w-4 mr-2" /> Speak (Local TTS)</>
+              )}
+            </Button>
+            <VoiceInputButton
+              size="default"
+              showSettings={true}
+              onTranscription={(text) => toast.info(`🎤 Local Whisper: ${text}`)}
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -934,7 +1166,7 @@ export function CNSDashboard({ className, compact = false }: CNSDashboardProps) 
       {/* Tabs */}
       {isInitialized && (
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">
               <Gauge className="h-4 w-4 mr-2" />
               Overview
@@ -942,6 +1174,10 @@ export function CNSDashboard({ className, compact = false }: CNSDashboardProps) 
             <TabsTrigger value="chat">
               <MessageSquare className="h-4 w-4 mr-2" />
               Chat
+            </TabsTrigger>
+            <TabsTrigger value="voice">
+              <Mic className="h-4 w-4 mr-2" />
+              Voice
             </TabsTrigger>
             <TabsTrigger value="ollama">
               <Cpu className="h-4 w-4 mr-2" />
@@ -996,6 +1232,10 @@ export function CNSDashboard({ className, compact = false }: CNSDashboardProps) 
                 <ChatPanel />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="voice" className="mt-4">
+            <VoicePanel />
           </TabsContent>
 
           <TabsContent value="ollama" className="mt-4">

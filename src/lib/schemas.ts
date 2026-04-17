@@ -340,6 +340,12 @@ export const UserSettingsSchema = z.object({
     .optional(),
 
   ////////////////////////////////
+  // VOICE / TTS
+  ////////////////////////////////
+  elevenlabsApiKey: z.string().optional(),
+  elevenlabsVoiceId: z.string().optional(),
+
+  ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////
   isTestMode: z.boolean().optional(),

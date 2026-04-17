@@ -2043,6 +2043,50 @@ export class IpcClient {
   }
 
   // ==========================================================================
+  // Dataset Training Center Methods
+  // ==========================================================================
+
+  public async trainOnDataset(
+    params: import("./ipc_types").DatasetTrainingParams
+  ): Promise<import("./ipc_types").DatasetTrainingStatus> {
+    return this.ipcRenderer.invoke("training:train-on-dataset", params);
+  }
+
+  public async getDatasetTrainingStatus(
+    jobId: string
+  ): Promise<import("./ipc_types").DatasetTrainingStatus | null> {
+    return this.ipcRenderer.invoke("training:get-status", jobId);
+  }
+
+  public async listDatasetTrainingJobs(): Promise<
+    import("./ipc_types").DatasetTrainingStatus[]
+  > {
+    return this.ipcRenderer.invoke("training:list-jobs");
+  }
+
+  public async cancelDatasetTraining(jobId: string): Promise<void> {
+    return this.ipcRenderer.invoke("training:cancel", jobId);
+  }
+
+  public async listTrainedModels(): Promise<
+    import("./ipc_types").TrainedModelInfo[]
+  > {
+    return this.ipcRenderer.invoke("training:list-trained-models");
+  }
+
+  public async listBaseModelsForTraining(): Promise<
+    import("./ipc_types").ListBaseModelsResult
+  > {
+    return this.ipcRenderer.invoke("training:list-base-models");
+  }
+
+  public async getTrainingSystemInfo(): Promise<
+    import("./ipc_types").TrainingSystemInfo
+  > {
+    return this.ipcRenderer.invoke("training:get-system-info");
+  }
+
+  // ==========================================================================
   // HuggingFace Hub Methods
   // ==========================================================================
 
@@ -3545,6 +3589,119 @@ export class IpcClient {
     return this.ipcRenderer.invoke("task-executor:status");
   }
 
+  // ── Skill System ──
+
+  public async createSkill(
+    params: import("@/types/skill_types").CreateSkillParams
+  ): Promise<import("@/types/skill_types").Skill> {
+    return this.ipcRenderer.invoke("skill:create", params);
+  }
+
+  public async getSkill(id: number): Promise<import("@/types/skill_types").Skill> {
+    return this.ipcRenderer.invoke("skill:get", id);
+  }
+
+  public async listSkills(
+    params?: import("@/types/skill_types").SkillSearchParams
+  ): Promise<import("@/types/skill_types").Skill[]> {
+    return this.ipcRenderer.invoke("skill:list", params);
+  }
+
+  public async updateSkill(
+    params: import("@/types/skill_types").UpdateSkillParams
+  ): Promise<import("@/types/skill_types").Skill> {
+    return this.ipcRenderer.invoke("skill:update", params);
+  }
+
+  public async deleteSkill(id: number): Promise<void> {
+    return this.ipcRenderer.invoke("skill:delete", id);
+  }
+
+  public async searchSkills(
+    params: import("@/types/skill_types").SkillSearchParams
+  ): Promise<import("@/types/skill_types").Skill[]> {
+    return this.ipcRenderer.invoke("skill:search", params);
+  }
+
+  public async matchSkill(
+    text: string,
+    agentId?: number
+  ): Promise<import("@/types/skill_types").SkillTriggerMatch | null> {
+    return this.ipcRenderer.invoke("skill:match", text, agentId);
+  }
+
+  public async executeSkill(
+    params: import("@/types/skill_types").ExecuteSkillParams
+  ): Promise<import("@/types/skill_types").SkillExecutionResult> {
+    return this.ipcRenderer.invoke("skill:execute", params);
+  }
+
+  public async generateSkill(
+    request: import("@/types/skill_types").SkillGenerationRequest
+  ): Promise<import("@/types/skill_types").SkillGenerationResult> {
+    return this.ipcRenderer.invoke("skill:generate", request);
+  }
+
+  public async autoGenerateSkills(params: {
+    agentId: number;
+    conversationHistory: Array<{ role: string; content: string }>;
+  }): Promise<import("@/types/skill_types").Skill[]> {
+    return this.ipcRenderer.invoke("skill:auto-generate", params);
+  }
+
+  public async attachSkillToAgent(
+    params: import("@/types/skill_types").AttachSkillParams
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("skill:attach-to-agent", params);
+  }
+
+  public async detachSkillFromAgent(
+    params: import("@/types/skill_types").DetachSkillParams
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("skill:detach-from-agent", params);
+  }
+
+  public async listSkillsForAgent(
+    agentId: number
+  ): Promise<import("@/types/skill_types").Skill[]> {
+    return this.ipcRenderer.invoke("skill:list-for-agent", agentId);
+  }
+
+  public async publishSkill(
+    params: import("@/types/skill_types").SkillPublishRequest
+  ): Promise<import("@/types/skill_types").Skill> {
+    return this.ipcRenderer.invoke("skill:publish", params);
+  }
+
+  public async unpublishSkill(skillId: number): Promise<import("@/types/skill_types").Skill> {
+    return this.ipcRenderer.invoke("skill:unpublish", skillId);
+  }
+
+  public async exportSkill(skillId: number): Promise<string> {
+    return this.ipcRenderer.invoke("skill:export", skillId);
+  }
+
+  public async importSkill(
+    json: string
+  ): Promise<import("@/types/skill_types").Skill> {
+    return this.ipcRenderer.invoke("skill:import", json);
+  }
+
+  public async exportSkillsMd(): Promise<string> {
+    return this.ipcRenderer.invoke("skill:export-md");
+  }
+
+  public async bootstrapSkills(): Promise<number> {
+    return this.ipcRenderer.invoke("skill:bootstrap");
+  }
+
+  public async learnSkill(
+    message: string,
+    agentId?: number,
+  ): Promise<import("@/types/skill_types").Skill | null> {
+    return this.ipcRenderer.invoke("skill:learn", { message, agentId });
+  }
+
   public async startTaskExecutor(): Promise<any> {
     return this.ipcRenderer.invoke("task-executor:start");
   }
@@ -3629,6 +3786,14 @@ export class IpcClient {
 
   public async cancelMission(id: string): Promise<void> {
     return this.ipcRenderer.invoke("mission:cancel", id);
+  }
+
+  public async deleteMission(id: string): Promise<void> {
+    return this.ipcRenderer.invoke("mission:delete", id);
+  }
+
+  public async updateMission(params: { id: string; title?: string; description?: string }): Promise<unknown> {
+    return this.ipcRenderer.invoke("mission:update", params);
   }
 
   // ── LibreOffice ──────────────────────────────────────────────
@@ -3988,5 +4153,100 @@ export class IpcClient {
 
   public async calendarExportIcs(params: { eventId: string }): Promise<string> {
     return this.ipcRenderer.invoke("calendar:export-ics", params);
+  }
+
+  // ── Telegram Bot ──
+
+  public async telegramConfigure(config: {
+    token?: string;
+    enabled?: boolean;
+    allowedChatIds?: string[];
+  }): Promise<{ success: boolean; status: unknown }> {
+    return this.ipcRenderer.invoke("telegram:configure", config);
+  }
+
+  public async telegramValidateToken(token: string): Promise<{ valid: boolean; bot: unknown }> {
+    return this.ipcRenderer.invoke("telegram:validate-token", token);
+  }
+
+  public async telegramStart(): Promise<unknown> {
+    return this.ipcRenderer.invoke("telegram:start");
+  }
+
+  public async telegramStop(): Promise<{ running: boolean }> {
+    return this.ipcRenderer.invoke("telegram:stop");
+  }
+
+  public async telegramStatus(): Promise<{
+    running: boolean;
+    botUsername?: string;
+    botId?: number;
+    lastPollAt?: number;
+    totalMessagesReceived: number;
+    totalMessagesSent: number;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("telegram:status");
+  }
+
+  public async telegramConfig(): Promise<unknown> {
+    return this.ipcRenderer.invoke("telegram:config");
+  }
+
+  public async telegramSendMessage(params: {
+    chatId: string;
+    text: string;
+    parseMode?: "HTML" | "Markdown" | "MarkdownV2";
+    replyToMessageId?: number;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("telegram:send-message", params);
+  }
+
+  // ── Discord Bot ──
+
+  public async discordConfigure(config: {
+    token?: string;
+    enabled?: boolean;
+    allowedGuildIds?: string[];
+    allowedChannelIds?: string[];
+  }): Promise<{ success: boolean; status: unknown }> {
+    return this.ipcRenderer.invoke("discord:configure", config);
+  }
+
+  public async discordValidateToken(token: string): Promise<{ valid: boolean; bot: unknown }> {
+    return this.ipcRenderer.invoke("discord:validate-token", token);
+  }
+
+  public async discordStart(): Promise<unknown> {
+    return this.ipcRenderer.invoke("discord:start");
+  }
+
+  public async discordStop(): Promise<{ running: boolean }> {
+    return this.ipcRenderer.invoke("discord:stop");
+  }
+
+  public async discordStatus(): Promise<{
+    running: boolean;
+    botUsername?: string;
+    botId?: string;
+    guildCount: number;
+    lastMessageAt?: number;
+    totalMessagesReceived: number;
+    totalMessagesSent: number;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("discord:status");
+  }
+
+  public async discordConfig(): Promise<unknown> {
+    return this.ipcRenderer.invoke("discord:config");
+  }
+
+  public async discordSendMessage(params: {
+    channelId: string;
+    text: string;
+    replyToMessageId?: string;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("discord:send-message", params);
   }
 }

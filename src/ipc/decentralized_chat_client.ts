@@ -41,8 +41,9 @@ class DecentralizedChatClient {
   }
 
   private setupEventListener(): void {
-    this.ipcRenderer.on("decentralized-chat:event", (_event: unknown, chatEvent: ChatEvent) => {
-      // Guard against undefined events from IPC
+    this.ipcRenderer.on("decentralized-chat:event", (rawEvent: unknown) => {
+      // Preload strips the Electron IpcRendererEvent, so callback receives (data) not (_event, data)
+      const chatEvent = rawEvent as ChatEvent;
       if (!chatEvent || typeof chatEvent !== "object") {
         console.warn("[DecentralizedChatClient] Received invalid event:", chatEvent);
         return;

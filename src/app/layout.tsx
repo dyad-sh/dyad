@@ -7,6 +7,7 @@ import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
 import { AssistantContextProvider } from "@/components/joy-assistant/AssistantContextProvider";
 import { JoyAssistantPanel } from "@/components/joy-assistant/JoyAssistantPanel";
+import { VoiceCommandOverlay } from "@/components/voice-command/VoiceCommandOverlay";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
@@ -98,6 +99,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 {children}
               </div>
               <JoyAssistantPanel />
+              <VoiceCommandOverlay />
             </AssistantContextProvider>
             <Toaster richColors />
           </SidebarProvider>

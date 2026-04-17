@@ -1773,7 +1773,7 @@ function LiveFeedPanel({
             Live Event Stream
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground/60">
-            Real-time events from OpenClaw gateway (ws://127.0.0.1:18790)
+            Real-time events from OpenClaw gateway (ws://127.0.0.1:18792)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1914,7 +1914,7 @@ export function OpenClawKanbanPage() {
 
     const connect = () => {
       try {
-        const ws = new WebSocket("ws://127.0.0.1:18790");
+        const ws = new WebSocket("ws://127.0.0.1:18792");
         wsRef.current = ws;
 
         ws.onopen = () => {

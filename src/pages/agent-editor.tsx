@@ -963,22 +963,23 @@ export default function AgentEditorPage() {
                           <SelectValue placeholder="Select a model" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                          <SelectItem value="gpt-4o-mini">
-                            GPT-4o Mini
+                          <SelectItem value="gpt-5.1">GPT 5.1</SelectItem>
+                          <SelectItem value="gpt-5-mini">
+                            GPT 5 Mini
                           </SelectItem>
-                          <SelectItem value="claude-3.5-sonnet">
-                            Claude 3.5 Sonnet
+                          <SelectItem value="claude-opus-4-6">
+                            Claude Opus 4.6
                           </SelectItem>
-                          <SelectItem value="claude-3-opus">
-                            Claude 3 Opus
+                          <SelectItem value="claude-sonnet-4-20250514">
+                            Claude Sonnet 4
                           </SelectItem>
-                          <SelectItem value="gemini-pro">Gemini Pro</SelectItem>
-                          <SelectItem value="llama3.1:8b">
-                            Llama 3.1 8B (Local)
+                          <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro</SelectItem>
+                          <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash</SelectItem>
+                          <SelectItem value="llama3.2:8b">
+                            Llama 3.2 8B (Local)
                           </SelectItem>
-                          <SelectItem value="mistral:7b">
-                            Mistral 7B (Local)
+                          <SelectItem value="qwen2.5-coder:7b">
+                            Qwen 2.5 Coder 7B (Local)
                           </SelectItem>
                         </SelectContent>
                       </Select>

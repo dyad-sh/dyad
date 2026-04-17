@@ -83,7 +83,7 @@ export default function CreatorDashboardPage() {
             </p>
           </div>
           <div className="ml-auto">
-            <Button onClick={() => navigate({ to: "/marketplace" })} variant="outline">
+            <Button onClick={() => navigate({ to: "/nft-marketplace" })} variant="outline">
               <ExternalLink className="w-4 h-4 mr-2" />
               Open Marketplace
             </Button>
@@ -311,7 +311,7 @@ function OverviewTab() {
             <Workflow className="w-4 h-4 mr-2" />
             New Workflow
           </Button>
-          <Button variant="outline" onClick={() => navigate({ to: "/marketplace" })}>
+          <Button variant="outline" onClick={() => navigate({ to: "/nft-marketplace" })}>
             <Eye className="w-4 h-4 mr-2" />
             Browse Marketplace
           </Button>

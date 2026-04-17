@@ -5,7 +5,7 @@
  */
 
 import { ipcMain } from "electron";
-import type { SubgraphQueryParams, SubgraphTokensParams } from "@/types/subgraph_types";
+import type { SubgraphQueryParams, SubgraphTokensParams, SubgraphAssetsParams, SubgraphListingsParams, SubgraphAIModelsParams } from "@/types/subgraph_types";
 import {
   getTokens,
   getUserBalances,
@@ -17,6 +17,12 @@ import {
   getAllDomains,
   getStoreStats,
   getMyMarketplaceAssets,
+  getMarketplaceAssets,
+  getMarketplaceListings,
+  getAIModels,
+  getUserLicenses,
+  getUserReceipts,
+  getMarketplaceStats,
 } from "@/lib/subgraph_client";
 
 export function registerSubgraphHandlers() {
@@ -73,5 +79,37 @@ export function registerSubgraphHandlers() {
 
   ipcMain.handle("subgraph:store-stats", async () => {
     return getStoreStats();
+  });
+
+  // ── Marketplace subgraph handlers ──────────────────────────────────────
+
+  ipcMain.handle("subgraph:marketplace-assets", async (_, params?: SubgraphAssetsParams) => {
+    return getMarketplaceAssets(params);
+  });
+
+  ipcMain.handle("subgraph:marketplace-listings", async (_, params?: SubgraphListingsParams) => {
+    return getMarketplaceListings(params);
+  });
+
+  ipcMain.handle("subgraph:ai-models", async (_, params?: SubgraphAIModelsParams) => {
+    return getAIModels(params);
+  });
+
+  ipcMain.handle("subgraph:user-licenses", async (_, params: { walletAddress: string }) => {
+    if (!params?.walletAddress) {
+      throw new Error("walletAddress is required");
+    }
+    return getUserLicenses(params.walletAddress);
+  });
+
+  ipcMain.handle("subgraph:user-receipts", async (_, params: { walletAddress: string }) => {
+    if (!params?.walletAddress) {
+      throw new Error("walletAddress is required");
+    }
+    return getUserReceipts(params.walletAddress);
+  });
+
+  ipcMain.handle("subgraph:marketplace-stats", async () => {
+    return getMarketplaceStats();
   });
 }

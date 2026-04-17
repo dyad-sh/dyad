@@ -35,11 +35,15 @@ import { ensureOllamaCredentialInN8n } from "./ipc/handlers/n8n_handlers";
 import { getOpenClawGateway } from "./lib/openclaw_gateway_service";
 import { startAllServices } from "./ipc/handlers/services_handlers";
 import { consolidateAgentMemories } from "./lib/agent_memory_engine";
+import { tryAutoStartTelegramBot } from "./ipc/handlers/telegram_handlers";
+import { tryAutoStartDiscordBot } from "./ipc/handlers/discord_handlers";
 import {
   startFlywheelScheduler,
   stopFlywheelScheduler,
 } from "./lib/data_flywheel";
 import { getTailscaleConfig, getTailscaleStatus } from "./lib/tailscale_service";
+import { getOpenClawCNS } from "./lib/openclaw_cns";
+import { ensureBootstrapSkills } from "./lib/skill_engine";
 import fs from "fs";
 
 log.errorHandler.startCatching();
@@ -133,12 +137,28 @@ export async function onReady() {
     const gw = getOpenClawGateway();
     const state = gw.getGatewayState();
     // Skip if already connected (server mode or bridge mode)
-    if (state.status === "connected") return;
+    if (state.status === "connected") {
+      // Even if connected, try to bridge if not already bridged
+      if (!gw.isBridged()) {
+        try {
+          const bridged = await gw.attemptBridge();
+          if (!bridged) {
+            // Daemon may have died — try to respawn it
+            await gw.respawnDaemon();
+          }
+        } catch { /* watchdog will retry */ }
+      }
+      return;
+    }
     // Skip if actively reconnecting in bridge mode
     if (state.status === "reconnecting") return;
     try {
       await gw.initialize();
       openClawLogger.info(`OpenClaw gateway initialized${gw.isBridged() ? " (bridge mode)" : ""}`);
+      // If gateway initialized but daemon is not bridged, try respawning
+      if (!gw.isBridged()) {
+        gw.respawnDaemon().catch(() => {});
+      }
     } catch (err) {
       openClawLogger.warn("OpenClaw gateway init failed, watchdog will retry:", err);
     }
@@ -150,6 +170,15 @@ export async function onReady() {
     .then(({ startJoyCreateApiServer }) => startJoyCreateApiServer())
     .catch((err) => openClawLogger.warn("JoyCreate API server failed to start:", err));
 
+  // ── Auto-start MCP server so port 3777 is available immediately ──
+  import("@/mcp_server")
+    .then(({ JoyCreateMcpServer }) => {
+      const mcp = JoyCreateMcpServer.getInstance();
+      return mcp.startHttp();
+    })
+    .then(({ port }) => openClawLogger.info(`MCP server auto-started on port ${port}`))
+    .catch((err) => openClawLogger.warn("MCP server auto-start failed:", err));
+
   // Watchdog: check every 30s and re-init if not connected
   const openClawWatchdog = setInterval(() => {
     ensureOpenClaw().catch(() => {});
@@ -158,6 +187,9 @@ export async function onReady() {
   app.on("will-quit", () => {
     import("@/lib/joycreate_api_server")
       .then(({ stopJoyCreateApiServer }) => stopJoyCreateApiServer())
+      .catch(() => {});
+    import("@/mcp_server")
+      .then(({ JoyCreateMcpServer }) => JoyCreateMcpServer.getInstance().stop())
       .catch(() => {});
   });
 
@@ -176,7 +208,28 @@ export async function onReady() {
       svcLogger.warn("Backend services auto-start failed:", err);
     }
 
-    // 2. Start the autonomous task executor
+    // 2. Initialize OpenClaw CNS (best-effort — features fall back to AI SDK if this fails)
+    try {
+      const cns = getOpenClawCNS();
+      if (!cns.getStatus().initialized) {
+        await cns.initialize();
+        svcLogger.info("OpenClaw CNS initialized");
+      }
+    } catch (err) {
+      svcLogger.warn("OpenClaw CNS init failed (features will use AI SDK fallback):", err);
+    }
+
+    // 3. Bootstrap core skills so they are always available
+    try {
+      const count = await ensureBootstrapSkills();
+      if (count > 0) {
+        svcLogger.info(`Bootstrapped ${count} core skills`);
+      }
+    } catch (err) {
+      svcLogger.warn("Skill bootstrap failed:", err);
+    }
+
+    // 4. Start the autonomous task executor
     try {
       startTaskExecutor();
       svcLogger.info("Task executor auto-started");
@@ -184,7 +237,7 @@ export async function onReady() {
       svcLogger.warn("Task executor auto-start failed:", err);
     }
 
-    // 3. Auto-provision Ollama credential in n8n (best-effort)
+    // 5. Auto-provision Ollama credential in n8n (best-effort)
     try {
       const result = await ensureOllamaCredentialInN8n();
       if (result.success) {
@@ -200,7 +253,7 @@ export async function onReady() {
       svcLogger.warn("n8n Ollama credential provision failed:", err);
     }
 
-    // 4. Start periodic memory consolidation (every 30 minutes)
+    // 6. Start periodic memory consolidation (every 30 minutes)
     const memoryConsolidationInterval = setInterval(() => {
       consolidateAgentMemories().catch((err) =>
         svcLogger.warn("Memory consolidation failed:", err),
@@ -213,10 +266,10 @@ export async function onReady() {
     });
     svcLogger.info("Memory consolidation scheduler started (30 min interval)");
 
-    // 5. Start flywheel training scheduler (checks every 6 hours)
+    // 7. Start flywheel training scheduler (checks every 6 hours)
     startFlywheelScheduler();
 
-    // 6. Resume interrupted background missions
+    // 8. Resume interrupted background missions
     try {
       const { backgroundExecutor } = await import("@/lib/background_executor");
       await backgroundExecutor.startup();
@@ -224,6 +277,138 @@ export async function onReady() {
     } catch (err) {
       svcLogger.warn("Background mission executor startup failed:", err);
     }
+
+    // 9. Auto-start Telegram bot if token is configured
+    try {
+      await tryAutoStartTelegramBot();
+      svcLogger.info("Telegram bot auto-start complete");
+    } catch (err) {
+      svcLogger.warn("Telegram bot auto-start failed:", err);
+    }
+
+    // 10. Auto-start Discord bot if token is configured
+    try {
+      await tryAutoStartDiscordBot();
+      svcLogger.info("Discord bot auto-start complete");
+    } catch (err) {
+      svcLogger.warn("Discord bot auto-start failed:", err);
+    }
+
+    // 11. Bot watchdog — periodically check if bots died and restart them
+    const BOT_WATCHDOG_INTERVAL = 60_000; // check every 60 seconds
+    const botWatchdog = setInterval(async () => {
+      try {
+        // Telegram watchdog
+        const { getTelegramBot } = await import("@/lib/telegram_bot_service");
+        const tgBot = getTelegramBot();
+
+        const gw = getOpenClawGateway();
+        const bridged = gw.isBridged();
+        let daemonHandlesTelegram = false;
+
+        if (bridged) {
+          // Check if daemon is actually alive AND handling Telegram
+          try {
+            const daemonPort = (gw.getConfig() as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 2000);
+            const resp = await fetch(`http://127.0.0.1:${daemonPort}/health`, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (resp.ok) {
+              const health = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+              if (health?.channels || health?.telegram) {
+                daemonHandlesTelegram = true;
+              }
+            }
+          } catch {
+            // Daemon unreachable — it may have crashed
+          }
+
+          if (!daemonHandlesTelegram) {
+            // Fallback: check config file
+            try {
+              const { readFileSync } = await import("node:fs");
+              const { join } = await import("node:path");
+              const { homedir } = await import("node:os");
+              const daemonCfg = JSON.parse(readFileSync(join(homedir(), ".openclaw", "openclaw.json"), "utf8"));
+              if (daemonCfg?.channels?.telegram?.enabled && daemonCfg?.channels?.telegram?.botToken) {
+                // Config says daemon handles it — but verify daemon is actually reachable
+                try {
+                  const daemonPort = (gw.getConfig() as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
+                  const ctrl = new AbortController();
+                  const timer = setTimeout(() => ctrl.abort(), 2000);
+                  const resp = await fetch(`http://127.0.0.1:${daemonPort}/health`, { signal: ctrl.signal });
+                  clearTimeout(timer);
+                  daemonHandlesTelegram = resp.ok;
+                } catch {
+                  // Daemon is dead — don't trust config alone
+                  daemonHandlesTelegram = false;
+                }
+              }
+            } catch {
+              // Config not readable
+            }
+          }
+
+          if (daemonHandlesTelegram) {
+            // Daemon is alive and handling Telegram — stop local bot if running
+            if (tgBot.getStatus().running) {
+              svcLogger.info("Bot watchdog: daemon handles Telegram — stopping local bot");
+              await tgBot.stop();
+            }
+            // Skip Telegram restart — daemon owns it
+          }
+        }
+
+        // If daemon is NOT handling Telegram (either not bridged or daemon is dead),
+        // make sure local bot is running
+        if (!daemonHandlesTelegram && tgBot.isConfigured() && !tgBot.getStatus().running) {
+          const lastErr = tgBot.getStatus().error || "";
+          // Don't restart on fatal auth/conflict errors
+          if (lastErr.includes("(401)") || lastErr.includes("(403)")) {
+            // Skip — token is invalid, user must reconfigure
+          } else if (lastErr.includes("409")) {
+            // 409 means another poller is active — but if daemon is dead, the
+            // conflict may be stale.  Clear the error and try once.
+            svcLogger.info("Bot watchdog: 409 Conflict but daemon appears dead — attempting restart");
+            try {
+              await tryAutoStartTelegramBot();
+              svcLogger.info("Bot watchdog: Telegram bot restarted after stale 409");
+            } catch (err) {
+              svcLogger.warn("Bot watchdog: Telegram bot restart after 409 failed:", err);
+            }
+          } else {
+            svcLogger.warn("Bot watchdog: Telegram bot is configured but not running — restarting");
+            try {
+              await tryAutoStartTelegramBot();
+              svcLogger.info("Bot watchdog: Telegram bot restarted successfully");
+            } catch (err) {
+              svcLogger.warn("Bot watchdog: Telegram bot restart failed:", err);
+            }
+          }
+        }
+
+        // Discord watchdog
+        const { getDiscordBot } = await import("@/lib/discord_bot_service");
+        const dcBot = getDiscordBot();
+        if (dcBot.isConfigured() && !dcBot.getStatus().running) {
+          svcLogger.warn("Bot watchdog: Discord bot is configured but not running — restarting");
+          try {
+            await dcBot.attemptReconnect();
+            svcLogger.info("Bot watchdog: Discord bot restart triggered");
+          } catch (err) {
+            svcLogger.warn("Bot watchdog: Discord bot restart failed:", err);
+          }
+        }
+      } catch (err) {
+        svcLogger.warn("Bot watchdog tick error:", err);
+      }
+    }, BOT_WATCHDOG_INTERVAL);
+
+    app.on("will-quit", () => {
+      clearInterval(botWatchdog);
+    });
+    svcLogger.info("Bot watchdog started (60s interval)");
   }, 8000);
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
@@ -327,8 +512,10 @@ const createWindow = () => {
     );
   }
 
-  // Dynamically extend CSP to allow Tailscale IP if configured
-  setupTailscaleCsp();
+  // Dynamically extend CSP to allow Tailscale IP if configured, and strip
+  // X-Frame-Options / frame-ancestors from daemon responses so the portal
+  // iframe can embed the daemon UI.
+  setupResponseHeaderOverrides();
 
   // Send force-close event if it was detected
   if (pendingForceCloseData) {
@@ -402,52 +589,73 @@ const createWindow = () => {
 };
 
 /**
- * Dynamically extend Content-Security-Policy to include the Tailscale IP.
- * This intercepts HTTP responses and patches the CSP header so the renderer
- * can reach services on the tailnet without editing the static meta tag.
+ * Patch response headers for two purposes:
+ * 1. Strip X-Frame-Options / frame-ancestors from daemon responses so the
+ *    OpenClaw portal iframe can embed its UI.
+ * 2. Extend CSP connect-src with the Tailscale IP when Tailscale is enabled.
  */
-function setupTailscaleCsp(): void {
+function setupResponseHeaderOverrides(): void {
+  let tailscaleIp: string | null = null;
+
+  // Resolve Tailscale IP asynchronously (best-effort)
   const tsConfig = getTailscaleConfig();
-  if (!tsConfig.enabled || !tsConfig.exposeServices) return;
+  if (tsConfig.enabled && tsConfig.exposeServices) {
+    getTailscaleStatus()
+      .then((status) => {
+        tailscaleIp = tsConfig.manualIp || status.tailnetIp || null;
+        if (tailscaleIp) {
+          log.scope("tailscale").info(`CSP extended for Tailscale IP ${tailscaleIp}`);
+        }
+      })
+      .catch(() => { /* Tailscale not available */ });
+  }
 
-  getTailscaleStatus()
-    .then((status) => {
-      const ip = tsConfig.manualIp || status.tailnetIp;
-      if (!ip) return;
+  session.defaultSession.webRequest.onHeadersReceived(
+    (details, callback) => {
+      const url = details.url || "";
+      const headers = { ...details.responseHeaders };
 
-      session.defaultSession.webRequest.onHeadersReceived(
-        (details, callback) => {
-          const csp =
-            details.responseHeaders?.["Content-Security-Policy"]?.[0] ||
-            details.responseHeaders?.["content-security-policy"]?.[0];
+      // ── 1. Daemon / internal gateway portal: allow iframe embedding ──
+      // Match any request to 127.0.0.1 or localhost on ports 18790-18799
+      const isGatewayResponse = /^https?:\/\/(127\.0\.0\.1|localhost):1879[0-9]/.test(url);
 
-          if (csp && !csp.includes(ip)) {
-            const tailscaleDirective = `http://${ip}:* ws://${ip}:*`;
-            const patched = csp.replace(
-              /connect-src\s+/,
-              `connect-src ${tailscaleDirective} `,
-            );
-            const headerKey = details.responseHeaders?.[
-              "Content-Security-Policy"
-            ]
-              ? "Content-Security-Policy"
-              : "content-security-policy";
-            callback({
-              responseHeaders: {
-                ...details.responseHeaders,
-                [headerKey]: [patched],
-              },
-            });
-          } else {
-            callback({ cancel: false });
+      if (isGatewayResponse) {
+        // Remove X-Frame-Options regardless of casing
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === "x-frame-options") {
+            delete headers[key];
           }
-        },
-      );
-      log.scope("tailscale").info(`CSP extended for Tailscale IP ${ip}`);
-    })
-    .catch(() => {
-      // Tailscale not available — no-op
-    });
+        }
+
+        // Rewrite frame-ancestors in CSP from 'none' to allow embedding
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === "content-security-policy" && headers[key]?.[0]) {
+            headers[key] = [
+              headers[key]![0].replace(/frame-ancestors\s+'none'/g, "frame-ancestors *"),
+            ];
+          }
+        }
+      }
+
+      // ── 2. Tailscale CSP extension ──
+      if (tailscaleIp) {
+        for (const key of Object.keys(headers)) {
+          if (
+            key.toLowerCase() === "content-security-policy" &&
+            headers[key]?.[0] &&
+            !headers[key]![0].includes(tailscaleIp)
+          ) {
+            const directive = `http://${tailscaleIp}:* ws://${tailscaleIp}:*`;
+            headers[key] = [
+              headers[key]![0].replace(/connect-src\s+/, `connect-src ${directive} `),
+            ];
+          }
+        }
+      }
+
+      callback({ responseHeaders: headers });
+    },
+  );
 }
 
 const gotTheLock = app.requestSingleInstanceLock();

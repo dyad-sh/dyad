@@ -42,6 +42,8 @@ export interface TailscaleConfig {
     n8n: boolean;
     celestia: boolean;
     openclaw: boolean;
+    ipfs: boolean;
+    ipfsGateway: boolean;
   };
 }
 
@@ -53,6 +55,8 @@ const DEFAULT_CONFIG: TailscaleConfig = {
     n8n: true,
     celestia: true,
     openclaw: true,
+    ipfs: true,
+    ipfsGateway: true,
   },
 };
 
@@ -61,8 +65,10 @@ const SERVICE_PORTS: Record<string, number> = {
   ollama: 11434,
   n8n: 5678,
   celestia: 26658,
-  openclaw: 18790,
+  openclaw: 18792,
   lmstudio: 1234,
+  ipfs: 5001,
+  ipfsGateway: 8080,
 };
 
 let cachedStatus: TailscaleStatus | null = null;

@@ -98,7 +98,7 @@ const quickActions: {
     icon: ShoppingBag,
     label: "Marketplace",
     description: "Discover agents, workflows & more",
-    to: "/marketplace",
+    to: "/nft-marketplace",
     gradient: "from-purple-500/20 to-indigo-500/20",
   },
   {
@@ -129,7 +129,7 @@ const systemNavCategories: {
       { title: "Library", to: "/library", icon: BookOpen, gradient: "from-amber-500 to-yellow-500" },
       { title: "MCP Hub", to: "/mcp-hub", icon: Plug, gradient: "from-indigo-500 to-violet-500" },
       { title: "Email Hub", to: "/email-hub", icon: Mail, gradient: "from-emerald-500 to-teal-500" },
-      { title: "Marketplace", to: "/marketplace", icon: ShoppingBag, gradient: "from-purple-500 to-indigo-500" },
+      { title: "Marketplace", to: "/nft-marketplace", icon: ShoppingBag, gradient: "from-purple-500 to-indigo-500" },
     ],
   },
   {

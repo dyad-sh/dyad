@@ -419,18 +419,29 @@ class LibreOfficeManager {
     }
     
     const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
-    const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
+    const userPrompt = this.buildUserPrompt(type, name, options);
     const maxTokens = this.getMaxTokensForLength(options.length);
 
     try {
+      console.log("[DocGen] Selected model:", JSON.stringify(selectedModel));
+      console.log("[DocGen] maxOutputTokens:", maxTokens);
+      console.log("[DocGen] userPrompt length:", userPrompt.length);
+      console.log("[DocGen] systemPrompt length:", systemPrompt.length);
+      
       const { modelClient } = await getModelClient(selectedModel, settings);
+      console.log("[DocGen] Model client obtained successfully");
 
       const result = await generateText({
         model: modelClient.model,
         system: systemPrompt,
         prompt: userPrompt,
-        maxTokens,
+        maxOutputTokens: maxTokens,
       });
+
+      console.log("[DocGen] generateText result.text length:", result.text?.length);
+      console.log("[DocGen] generateText result.text preview:", result.text?.substring(0, 200));
+      console.log("[DocGen] generateText finishReason:", (result as Record<string, unknown>).finishReason);
+      console.log("[DocGen] generateText usage:", JSON.stringify((result as Record<string, unknown>).usage));
 
       // Parse AI response into document content structure
       const content = this.parseAIResponseToContent(type, result.text, options);
@@ -491,112 +502,244 @@ class LibreOfficeManager {
   private getMaxTokensForLength(length?: string): number {
     switch (length) {
       case "short":
-        return 2048;
+        return 4096;
       case "medium":
-        return 4096;
-      case "long":
         return 8192;
+      case "long":
+        return 16384;
       case "detailed":
-        return 12288;
+        return 32768;
       default:
-        return 4096;
+        return 8192;
     }
+  }
+
+  /**
+   * Build a rich user prompt that provides the AI with context for
+   * higher-quality generation.
+   */
+  private buildUserPrompt(type: DocumentType, name: string, options: AIGenerationOptions): string {
+    const length = options.length || "medium";
+    const tone = options.tone || "professional";
+    const typeLabel = type === "spreadsheet" ? "spreadsheet" : type === "presentation" ? "presentation" : "document";
+
+    let prompt = `Create a ${typeLabel} titled "${name}".`;
+
+    if (options.prompt) {
+      prompt += `\n\nDescription and requirements:\n${options.prompt}`;
+    }
+
+    prompt += `\n\nAdditional context:`;
+    prompt += `\n- Target audience: professionals and stakeholders who expect thorough, high-quality output`;
+    prompt += `\n- Quality standard: publication-ready, comparable to what a senior expert would produce`;
+    prompt += `\n- Tone: ${tone}`;
+    prompt += `\n- Length: ${length} — produce the full amount of content specified in the system instructions`;
+
+    if (type === "document") {
+      prompt += `\n- Write in complete, well-developed paragraphs with analysis, evidence, and examples`;
+      prompt += `\n- Do NOT produce a brief outline or skeleton — write the full document`;
+    } else if (type === "spreadsheet") {
+      prompt += `\n- Generate realistic, varied data with proper data types and meaningful headers`;
+      prompt += `\n- Include summary/total rows where appropriate`;
+    } else if (type === "presentation") {
+      prompt += `\n- Write detailed bullet points that are complete thoughts, not just keywords`;
+      prompt += `\n- Include speaker notes for every slide`;
+    }
+
+    return prompt;
   }
 
   private getDocumentGenerationSystemPrompt(type: DocumentType, options: AIGenerationOptions): string {
     const tone = options.tone || "professional";
     const length = options.length || "medium";
 
-    const lengthGuidance: Record<string, { rows: string; slides: string; words: string }> = {
-      short: { rows: "5-10", slides: "3-5", words: "300-500" },
-      medium: { rows: "10-25", slides: "6-10", words: "800-1500" },
-      long: { rows: "25-50", slides: "10-15", words: "2000-4000" },
-      detailed: { rows: "50-100", slides: "15-25", words: "4000-8000" },
+    const lengthGuidance: Record<string, { rows: string; slides: string; words: string; paragraphDepth: string; sectionsMin: string }> = {
+      short: { rows: "10-20", slides: "5-8", words: "800-1200", paragraphDepth: "4-6 sentences", sectionsMin: "3-4" },
+      medium: { rows: "20-40", slides: "8-14", words: "2000-3500", paragraphDepth: "5-8 sentences", sectionsMin: "5-7" },
+      long: { rows: "40-80", slides: "14-22", words: "4000-7000", paragraphDepth: "6-10 sentences", sectionsMin: "8-12" },
+      detailed: { rows: "80-150", slides: "22-35", words: "7000-12000", paragraphDepth: "8-12 sentences", sectionsMin: "12-18" },
     };
     const guide = lengthGuidance[length] || lengthGuidance.medium;
 
     if (type === "spreadsheet") {
-      return `You are an expert spreadsheet creator. Generate tabular data.
-Tone: ${tone}
-Length: ${length} (generate ${guide.rows} data rows)
+      return `You are a senior data analyst and spreadsheet architect. Your task is to create a professional, publication-ready spreadsheet with rich, realistic data.
 
-IMPORTANT: Output your response as a markdown table. The first row is the header row.
-Use standard markdown table syntax with | separators.
-You MUST generate at least ${guide.rows} data rows with realistic, varied data.
-Include multiple columns with meaningful headers.
+Tone: ${tone}
+Length: ${length} (generate ${guide.rows} data rows across multiple logical sheets)
+
+REQUIREMENTS — follow every point:
+
+1. **Multiple Sheets**: Output 2-4 separate sheets. Separate each sheet with a line that reads exactly:
+   SHEET: <Sheet Name>
+   The first sheet is the primary data sheet. Additional sheets can be summaries, breakdowns, or analysis.
+
+2. **Column Design**: Include 5-10 meaningful columns per sheet. Use diverse data types:
+   - Text (names, categories, descriptions, statuses)
+   - Numbers (quantities, percentages, currencies, scores)
+   - Dates (in YYYY-MM-DD format)
+   - Calculated/derived columns (totals, margins, growth rates)
+
+3. **Data Quality**: Generate realistic, varied data that tells a story:
+   - Use realistic proper nouns (company names, people, cities, products)
+   - Include variance and distribution in numeric data — not all values identical
+   - Add edge cases (nulls shown as empty cells, outliers, negative values where appropriate)
+   - Ensure referential integrity between sheets
+
+4. **Summary Rows**: End data sheets with summary rows using common aggregations:
+   - TOTAL, AVERAGE, MIN, MAX rows where appropriate
+   - Mark summary rows clearly with labels like "TOTAL" or "AVERAGE" in the first column
+
+5. **Headers**: Make headers descriptive and properly capitalized (e.g., "Annual Revenue ($)" not "rev")
+
+OUTPUT FORMAT: Standard markdown tables with | separators. First row of each table is the header.
+Separate sheets with "SHEET: <name>" on its own line before each table.
+If only one logical sheet makes sense for the topic, that is acceptable — but always aim for at least ${guide.rows} data rows.
 
 Example:
-| Name | Department | Salary | Start Date |
-|------|-----------|--------|------------|
-| Alice Johnson | Engineering | 95000 | 2023-01-15 |
-| Bob Smith | Marketing | 72000 | 2022-06-01 |
-| Carol Davis | Sales | 68000 | 2024-03-10 |
+SHEET: Sales Data
+| Salesperson | Region | Q1 Revenue ($) | Q2 Revenue ($) | Units Sold | Win Rate (%) | Start Date |
+|-------------|--------|----------------|----------------|------------|--------------|------------|
+| Sarah Chen | West | 245000 | 312000 | 156 | 68.5 | 2022-03-15 |
+| Marcus Johnson | East | 198000 | 223000 | 132 | 71.2 | 2021-08-01 |
+| TOTAL | | 443000 | 535000 | 288 | 69.9 | |
 
-Output ONLY the markdown table. No other text, explanations, or formatting.`;
+SHEET: Regional Summary
+| Region | Total Revenue ($) | Avg Deal Size ($) | Top Product | Growth Rate (%) |
+|--------|-------------------|-------------------|-------------|-----------------|
+| West | 557000 | 3571 | Enterprise Suite | 27.3 |
+| East | 421000 | 3189 | Starter Pack | 12.6 |
+
+Output ONLY the sheet markers and markdown tables. No other text, explanations, or commentary.`;
     }
 
     if (type === "presentation") {
-      return `You are an expert presentation creator. Generate slide content.
+      return `You are a world-class presentation designer and storytelling expert. Your task is to create a compelling, detailed presentation that rivals the best professional decks.
+
 Tone: ${tone}
 Length: ${length} (generate ${guide.slides} slides)
 
-IMPORTANT: Output your response in this exact format. Each slide starts with "## SLIDE:" followed by the slide title.
-Under each slide, add bullet points with "- " prefix for content. Each slide should have 3-6 bullet points.
-Optionally add "NOTES:" at the end of a slide for speaker notes.
+REQUIREMENTS — follow every point:
 
-You MUST generate ${guide.slides} slides for a thorough, complete presentation.
-Cover the topic comprehensively with real detail in each bullet point.
+1. **Narrative Arc**: Structure the presentation with a clear story:
+   - Opening: Hook the audience with a compelling insight, question, or statistic
+   - Context: Set the stage with background and current state
+   - Core Content: Deep-dive into 3-5 key themes with evidence and examples
+   - Synthesis: Connect the dots, show implications
+   - Closing: Strong conclusion with clear call to action or key takeaways
+
+2. **Slide Content Depth**: Each slide should have substantive, detailed content:
+   - 4-8 bullet points per slide
+   - Bullet points should be complete thoughts, not just keywords (15-30 words each)
+   - Include specific data, metrics, examples, and evidence where relevant
+   - Use sub-points (indented with "  - ") for supporting detail beneath main bullets
+
+3. **Slide Variety**: Mix different slide types:
+   - Title slide (first slide)
+   - Agenda/Overview slide (second slide)
+   - Data-driven slides with specific numbers and percentages
+   - Comparison/analysis slides
+   - Case study or example slides
+   - Key takeaways slide (near the end)
+   - Q&A or Next Steps slide (final slide)
+
+4. **Speaker Notes**: Add detailed speaker notes to EVERY slide with:
+   - Talking points and transitions
+   - Additional context not on the slide
+   - Timing suggestions (e.g., "spend 2 minutes here")
+   - Suggested audience interaction points
+
+5. **Professional Language**: Write with authority and precision. Avoid vague language like "things," "stuff," "various." Use specific domain terminology.
+
+OUTPUT FORMAT:
+Each slide starts with "## SLIDE:" followed by the slide title.
+Bullet points use "- " prefix. Sub-points use "  - " (two spaces then dash).
+Speaker notes start with "NOTES:" after the slide content.
+
+You MUST generate exactly ${guide.slides} slides. Do not output fewer.
 
 Example:
-## SLIDE: Introduction
-- Welcome to this presentation
-- Overview of key topics
-- Goals and objectives
-NOTES: Greet the audience and set expectations.
+## SLIDE: The $4.2 Trillion Opportunity
+- Global digital transformation spending is projected to reach $4.2T by 2027, nearly doubling from 2023 levels
+- 73% of enterprise leaders rank digital transformation as their top strategic priority for the next 3 years
+- Despite massive investment, only 35% of digital initiatives deliver their projected ROI
+  - Common failure points: lack of change management, unclear KPIs, and siloed implementation
+  - Companies with integrated strategies see 2.5x higher success rates
+- The gap between leaders and laggards is widening: top quartile performers generate 3x more revenue from digital channels
+- Key question for today: How do we ensure our organization lands in the top quartile?
+NOTES: This opening slide is designed to grab attention with the scale of the opportunity and the stakes involved. Pause after the ROI statistic to let it sink in. Ask the audience: "Where do you think your organization falls?" Spend about 2 minutes on this slide.
 
-## SLIDE: Key Findings
-- Revenue increased by 25%
-- Customer satisfaction at 92%
-- Market share grew 5 points
-NOTES: Emphasize the revenue growth.
-
-## SLIDE: Conclusion
-- Summary of achievements
-- Next steps and action items
-- Questions and discussion
+## SLIDE: Agenda
+- Market landscape and competitive dynamics (10 min)
+- Our strategic framework and methodology (15 min)
+- Three case studies demonstrating 40-120% improvement (10 min)
+- Implementation roadmap and resource requirements (10 min)
+- Q&A and next steps (15 min)
+NOTES: Walk through the agenda quickly. Mention that you'll leave ample time for questions. Total presentation is approximately 60 minutes.
 
 Output ONLY the slides in this format. No other text.`;
     }
 
     // Default: document
-    return `You are an expert document creator and writer. Generate comprehensive, detailed content.
+    return `You are a senior professional writer, researcher, and subject matter expert. Your task is to produce a comprehensive, publication-quality document that matches or exceeds the quality of content from leading AI assistants like Claude or Gemini.
+
 Tone: ${tone}
-Length: ${length} (write approximately ${guide.words} words of content)
+Length: ${length} — write approximately ${guide.words} words across ${guide.sectionsMin} sections minimum. Each paragraph must be ${guide.paragraphDepth}.
 
-IMPORTANT: Output your response in a specific format that can be parsed:
-- Start each heading with "## HEADING:" followed by the heading text
-- Start each paragraph with "PARAGRAPH:" followed by the paragraph text (write full, detailed paragraphs of 3-5 sentences each)
-- Start each bullet list item with "- LIST:" followed by the item text
-- For numbered lists use "1. LIST:" format
+QUALITY REQUIREMENTS — follow every point:
 
-You MUST write approximately ${guide.words} words total. Each paragraph should be substantive and detailed.
-Include multiple sections with headings, thorough paragraphs, and lists where appropriate.
-Do NOT write a brief outline — write full prose content as if authoring a real document.
+1. **Depth & Substance**: Write with genuine expertise. Every paragraph must contain:
+   - Specific facts, data points, or evidence (use realistic figures when the topic warrants it)
+   - Analysis and reasoning, not just surface-level description
+   - Examples, analogies, or case references to illustrate points
+   - Connections between ideas showing how concepts relate
 
-Example format:
-## HEADING: Introduction
-PARAGRAPH: This is the introduction paragraph with detailed content about the topic. It provides context and background information that helps the reader understand what follows. The introduction sets the stage for the comprehensive analysis ahead.
+2. **Structure**: Build a well-organized document with clear information hierarchy:
+   - Start with an executive summary or introduction that frames the document's purpose
+   - Use main headings (## HEADING:) for major sections
+   - Use subheadings (### SUBHEADING:) to break down complex sections
+   - End with a conclusion, recommendations, or next steps section
+   - Include transitional sentences between sections for flow
 
-## HEADING: Key Points
-PARAGRAPH: The first major area to consider is the current state of the market. Recent trends show significant growth across multiple sectors, driven by technological innovation and changing consumer preferences.
-- LIST: First important point with explanation
-- LIST: Second important point with explanation
-1. LIST: Numbered item one
-2. LIST: Numbered item two
+3. **Paragraph Quality**: Each paragraph must be a fully developed unit of thought (${guide.paragraphDepth}):
+   - Open with a clear topic sentence
+   - Develop the idea with supporting evidence, examples, or analysis
+   - Include nuance — acknowledge complexity, limitations, or alternative perspectives
+   - Close with a sentence that connects to the next point or reinforces the key insight
 
-PARAGRAPH: In conclusion, the evidence presented demonstrates clear patterns that warrant attention.
+4. **Lists & Data**: When using lists, make them substantive:
+   - Each list item should be a complete thought (not just 2-3 words)
+   - Include context, rationale, or impact for each item
+   - Use numbered lists for sequential or ranked items, bullets for unordered sets
 
-You are creating a text document. Write thorough, publication-quality content.`;
+5. **Professional Standards**:
+   - Use precise, domain-appropriate terminology
+   - Avoid filler words, clichés, and vague language ("various," "things," "really")
+   - Maintain consistent voice and tense throughout
+   - Include quantitative data where the topic allows
+   - Write as if this document will be read by executives, stakeholders, or subject matter experts
+
+OUTPUT FORMAT — use these markers strictly:
+- Main headings: ## HEADING: <heading text>
+- Subheadings: ### SUBHEADING: <subheading text>
+- Paragraphs: PARAGRAPH: <full paragraph text — write the entire paragraph on one line>
+- Bullet list items: - LIST: <complete list item with context>
+- Numbered list items: 1. LIST: <complete numbered item>
+
+CRITICAL: Write approximately ${guide.words} words total. Do NOT produce a skeleton or outline. Write complete, detailed, publication-ready prose. Every section should have multiple fully-developed paragraphs. The document should be ready to present to stakeholders with no further editing.
+
+Example (showing depth expectations):
+## HEADING: Executive Summary
+PARAGRAPH: This document presents a comprehensive analysis of the current market dynamics and strategic opportunities facing the organization in fiscal year 2025. Drawing on industry benchmarks, competitive intelligence, and internal performance data, we identify three critical growth vectors that together represent an addressable market expansion of approximately $2.4 billion. The analysis reveals that while the organization maintains strong positioning in its core segments, emerging competitive threats from both traditional rivals and digital-native disruptors require a proactive strategic response within the next 12-18 months.
+
+## HEADING: Market Analysis
+### SUBHEADING: Industry Overview
+PARAGRAPH: The global market has undergone significant structural transformation over the past three years, driven primarily by accelerated digital adoption, shifting consumer expectations, and evolving regulatory frameworks. According to industry data, the total addressable market grew by 18.3% in 2024, reaching $847 billion globally — marking the fastest expansion in over a decade. However, this growth has been unevenly distributed, with cloud-native and AI-enabled segments capturing nearly 62% of new market value while traditional segments experienced flat or declining growth. This bifurcation has profound implications for strategic planning and resource allocation.
+- LIST: Cloud-native solutions captured $312B in new revenue, growing at 34% CAGR over three years, driven by enterprise migration from legacy infrastructure and the rise of multi-cloud architectures
+- LIST: Traditional on-premise offerings declined 8.2% year-over-year as organizations accelerate sunset timelines, with mid-market companies leading the transition
+1. LIST: Prioritize investment in cloud-native capabilities to capture the dominant growth segment before competitive window narrows
+2. LIST: Develop managed migration pathways for existing on-premise customers to prevent churn during the transition period
+
+Write the entire document at this level of quality and detail.`;
   }
 
   /**
@@ -616,34 +759,92 @@ You are creating a text document. Write thorough, publication-quality content.`;
    * Parse AI response into SpreadsheetContent with actual cell data.
    */
   private parseSpreadsheetResponse(text: string, options: AIGenerationOptions): SpreadsheetContent {
-    const cells: SpreadsheetCell[] = [];
     const lines = text.split("\n");
-    
-    // Find markdown table rows (lines containing |)
-    const tableLines = lines.filter(l => l.trim().startsWith("|") && l.trim().endsWith("|"));
-    
-    // Filter out separator rows (|---|---|)
-    const dataLines = tableLines.filter(l => !l.match(/^\|[\s-:|]+\|$/));
-    
-    if (dataLines.length === 0) {
-      // Fallback: try to extract any structured data from the text
-      // Split by lines and treat as CSV-like data
-      const fallbackLines = lines.filter(l => l.trim() && !l.trim().startsWith("#") && !l.trim().startsWith("```"));
-      let row = 1;
-      for (const line of fallbackLines) {
-        // Try comma or tab separated
-        const parts = line.includes("\t") ? line.split("\t") : line.split(",");
-        if (parts.length >= 2) {
-          const colLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-          parts.forEach((val, i) => {
+    const colLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    // Split text into sheet blocks using "SHEET:" markers
+    const sheetBlocks: { name: string; lines: string[] }[] = [];
+    let currentBlock: { name: string; lines: string[] } = { name: "Sheet1", lines: [] };
+
+    for (const line of lines) {
+      const sheetMatch = line.trim().match(/^SHEET:\s*(.+)$/i);
+      if (sheetMatch) {
+        // Save previous block if it has content
+        if (currentBlock.lines.length > 0) {
+          sheetBlocks.push(currentBlock);
+        }
+        currentBlock = { name: sheetMatch[1].trim(), lines: [] };
+      } else {
+        currentBlock.lines.push(line);
+      }
+    }
+    if (currentBlock.lines.length > 0) {
+      sheetBlocks.push(currentBlock);
+    }
+
+    // If no sheet markers found, treat entire text as one sheet
+    if (sheetBlocks.length === 0) {
+      sheetBlocks.push({ name: "Sheet1", lines });
+    }
+
+    const sheets: SpreadsheetContent["sheets"] = [];
+
+    for (const block of sheetBlocks) {
+      const cells: SpreadsheetCell[] = [];
+
+      // Find markdown table rows (lines containing |)
+      const tableLines = block.lines.filter(l => l.trim().startsWith("|") && l.trim().endsWith("|"));
+      // Filter out separator rows (|---|---|)
+      const dataLines = tableLines.filter(l => !l.match(/^\|[\s-:|]+\|$/));
+
+      if (dataLines.length === 0) {
+        // Fallback: try CSV/tab-separated
+        const fallbackLines = block.lines.filter(
+          l => l.trim() && !l.trim().startsWith("#") && !l.trim().startsWith("```") && !l.trim().match(/^SHEET:/i)
+        );
+        let row = 1;
+        for (const line of fallbackLines) {
+          const parts = line.includes("\t") ? line.split("\t") : line.split(",");
+          if (parts.length >= 2) {
+            parts.forEach((val, i) => {
+              if (i < 26) {
+                const trimVal = val.trim();
+                if (trimVal) {
+                  const cleaned = trimVal.replace(/[$,%]/g, "").trim();
+                  const numVal = Number(cleaned);
+                  cells.push({
+                    row,
+                    col: colLetters[i],
+                    value: !isNaN(numVal) && cleaned !== "" && !/^\d{4}-\d{2}/.test(trimVal) ? numVal : trimVal,
+                  });
+                }
+              }
+            });
+            row++;
+          }
+        }
+
+        if (cells.length === 0) {
+          cells.push({ row: 1, col: "A", value: "Data" });
+          cells.push({ row: 1, col: "B", value: "Value" });
+          cells.push({ row: 2, col: "A", value: options.prompt?.slice(0, 50) || "Item 1" });
+          cells.push({ row: 2, col: "B", value: "" });
+        }
+      } else {
+        // Parse markdown table rows
+        let row = 1;
+        for (const line of dataLines) {
+          const rawCells = line.split("|").slice(1, -1);
+          rawCells.forEach((val, i) => {
             if (i < 26) {
               const trimVal = val.trim();
               if (trimVal) {
-                const numVal = Number(trimVal);
+                const cleaned = trimVal.replace(/[$,%]/g, "").trim();
+                const numVal = Number(cleaned);
                 cells.push({
                   row,
                   col: colLetters[i],
-                  value: !isNaN(numVal) && trimVal !== "" ? numVal : trimVal,
+                  value: !isNaN(numVal) && cleaned !== "" && !/^\d{4}-\d{2}/.test(trimVal) ? numVal : trimVal,
                 });
               }
             }
@@ -651,43 +852,11 @@ You are creating a text document. Write thorough, publication-quality content.`;
           row++;
         }
       }
-      
-      // If still nothing, create a basic spreadsheet from the prompt
-      if (cells.length === 0) {
-        cells.push({ row: 1, col: "A", value: "Data" });
-        cells.push({ row: 1, col: "B", value: "Value" });
-        cells.push({ row: 2, col: "A", value: options.prompt?.slice(0, 30) || "Item 1" });
-        cells.push({ row: 2, col: "B", value: "" });
-      }
-      
-      return { sheets: [{ name: "Sheet1", cells }] };
-    }
-    
-    // Parse markdown table rows
-    const colLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let row = 1;
-    for (const line of dataLines) {
-      // Split by | and extract cell values
-      const rawCells = line.split("|").slice(1, -1); // Remove first/last empty from leading/trailing |
-      rawCells.forEach((val, i) => {
-        if (i < 26) {
-          const trimVal = val.trim();
-          if (trimVal) {
-            // Try to parse as number
-            const cleaned = trimVal.replace(/[$,]/g, "").trim();
-            const numVal = Number(cleaned);
-            cells.push({
-              row,
-              col: colLetters[i],
-              value: !isNaN(numVal) && cleaned !== "" && !/^\d{4}-\d{2}/.test(trimVal) ? numVal : trimVal,
-            });
-          }
-        }
-      });
-      row++;
+
+      sheets.push({ name: block.name, cells });
     }
 
-    return { sheets: [{ name: "Sheet1", cells }] };
+    return { sheets };
   }
 
   /**
@@ -705,8 +874,11 @@ You are creating a text document. Write thorough, publication-quality content.`;
     for (const line of lines) {
       const trimmed = line.trim();
       
-      // New slide marker
-      if (trimmed.match(/^##\s*(SLIDE:?|Slide:?)\s*/)) {
+      // New slide marker — accept ## SLIDE:, ## Slide:, or plain ## heading
+      const slideMatch = trimmed.match(/^##\s*(SLIDE:?|Slide:?)\s*(.*)/);
+      const plainHeadingMatch = !slideMatch && trimmed.match(/^##\s+(.+)/);
+
+      if (slideMatch || plainHeadingMatch) {
         // Save previous slide
         if (currentSlide) {
           currentSlide.content = currentContent;
@@ -714,7 +886,7 @@ You are creating a text document. Write thorough, publication-quality content.`;
           slides.push(currentSlide);
         }
         
-        const title = trimmed.replace(/^##\s*(SLIDE:?|Slide:?)\s*/, "").trim();
+        const title = slideMatch ? slideMatch[2].trim() : (plainHeadingMatch as RegExpMatchArray)[1].trim();
         currentSlide = {
           layout: slides.length === 0 ? "title" : "content",
           title: title,
@@ -728,6 +900,16 @@ You are creating a text document. Write thorough, publication-quality content.`;
         if (noteText) currentNotes = noteText;
       } else if (collectingNotes && trimmed && !trimmed.startsWith("##")) {
         currentNotes += (currentNotes ? " " : "") + trimmed;
+      } else if (line.match(/^\s{2,}[-*]\s+/)) {
+        // Indented sub-bullet — append to previous bullet with indent marker
+        collectingNotes = false;
+        const subText = trimmed.replace(/^[-*]\s*/, "");
+        if (subText) {
+          currentContent.push({
+            type: "paragraph",
+            content: "  → " + subText,
+          });
+        }
       } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
         collectingNotes = false;
         const bulletText = trimmed.replace(/^[-*]\s*/, "");
@@ -773,13 +955,13 @@ You are creating a text document. Write thorough, publication-quality content.`;
         subtitle: options.prompt,
       });
       
-      // Group remaining content into slides of ~4 bullets each
+      // Group remaining content into slides of ~6 bullets each
       const contentLines = fallbackLines.slice(1).filter(l => !l.startsWith("#") && l.trim().length > 5);
-      for (let i = 0; i < contentLines.length; i += 4) {
-        const chunk = contentLines.slice(i, i + 4);
+      for (let i = 0; i < contentLines.length; i += 6) {
+        const chunk = contentLines.slice(i, i + 6);
         slides.push({
           layout: "content",
-          title: `Section ${Math.floor(i / 4) + 1}`,
+          title: `Section ${Math.floor(i / 6) + 1}`,
           content: chunk.map(c => ({
             type: "paragraph" as const,
             content: c.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, ""),
@@ -796,22 +978,24 @@ You are creating a text document. Write thorough, publication-quality content.`;
    */
   private parseDocumentResponse(text: string, options: AIGenerationOptions): DocumentContent {
     const sections: DocumentContent["sections"] = [];
-    const lines = text.split("\n").filter(l => l.trim());
+    const lines = text.split("\n");
 
     for (const line of lines) {
       const trimmed = line.trim();
-      
+      if (!trimmed) continue;
+
+      // Our explicit format markers (highest priority)
       if (trimmed.startsWith("## HEADING:")) {
         sections.push({
           type: "heading",
           level: 1,
           content: trimmed.replace(/^## HEADING:\s*/, ""),
         });
-      } else if (trimmed.startsWith("### ")) {
+      } else if (trimmed.match(/^###?\s*SUBHEADING:/)) {
         sections.push({
           type: "heading",
           level: 2,
-          content: trimmed.replace(/^### /, ""),
+          content: trimmed.replace(/^###?\s*SUBHEADING:\s*/, ""),
         });
       } else if (trimmed.startsWith("PARAGRAPH:")) {
         sections.push({
@@ -828,15 +1012,34 @@ You are creating a text document. Write thorough, publication-quality content.`;
           type: "paragraph",
           content: trimmed.replace(/LIST:\s*/, ""),
         });
-      } else if (trimmed.match(/^#{1,3}\s+/) && !trimmed.includes("HEADING:")) {
-        // Handle plain markdown headings that don't follow our format
-        const level = (trimmed.match(/^(#+)/)?.[1].length ?? 1) as 1 | 2;
+      // Flexible markdown fallbacks — handle when AI uses plain markdown
+      } else if (trimmed.match(/^#{1,3}\s+/) && !trimmed.includes("HEADING:") && !trimmed.includes("SUBHEADING:")) {
+        const hashes = trimmed.match(/^(#+)/)?.[1].length ?? 1;
         sections.push({
           type: "heading",
-          level: Math.min(level, 2) as 1 | 2,
+          level: Math.min(hashes, 2) as 1 | 2,
           content: trimmed.replace(/^#+\s*/, ""),
         });
-      } else if (trimmed && trimmed.length > 0) {
+      } else if (trimmed.match(/^[-*]\s+/) && !trimmed.startsWith("---")) {
+        // Plain bullet list item (no LIST: marker)
+        sections.push({
+          type: "paragraph",
+          content: "• " + trimmed.replace(/^[-*]\s+/, ""),
+        });
+      } else if (trimmed.match(/^\d+\.\s+/)) {
+        // Plain numbered list item (no LIST: marker)
+        sections.push({
+          type: "paragraph",
+          content: trimmed,
+        });
+      } else if (trimmed.startsWith("**") && trimmed.endsWith("**") && trimmed.length < 120) {
+        // Bold-only line treated as a subheading
+        sections.push({
+          type: "heading",
+          level: 2,
+          content: trimmed.replace(/^\*\*|\*\*$/g, ""),
+        });
+      } else if (trimmed.length > 0) {
         sections.push({
           type: "paragraph",
           content: trimmed,
@@ -845,14 +1048,15 @@ You are creating a text document. Write thorough, publication-quality content.`;
     }
 
     if (sections.length === 0) {
+      // Use full text as fallback instead of truncating to 500 chars
       sections.push({
         type: "paragraph",
-        content: text.slice(0, 500) || "Document content generated by AI.",
+        content: text || "Document content generated by AI.",
       });
     }
 
     return {
-      title: sections[0]?.type === "heading" ? (sections[0].content as string) : options.prompt?.slice(0, 50),
+      title: sections[0]?.type === "heading" ? (sections[0].content as string) : options.prompt?.slice(0, 100),
       sections,
       metadata: {
         description: options.prompt,
@@ -1953,16 +2157,16 @@ ${bulletParagraphs}    </draw:text-box>
     }
 
     const commandPrompts: Record<string, string> = {
-      improve: "Improve the writing quality, clarity, and flow of the following text. Keep the same meaning and length. Return only the improved text, no explanations:",
-      grammar: "Fix all grammar, spelling, and punctuation errors in the following text. Return only the corrected text, no explanations:",
-      summarize: "Write a concise summary of the following text in 2-3 sentences. Return only the summary:",
-      continue: "Continue writing the following text naturally, matching the existing style and tone. Add 1-3 paragraphs:",
-      explain: "Explain the following text in simple, clear language. Break down key concepts:",
-      tone: `Rewrite the following text in a ${params.toneValue || "professional"} tone. Keep the same meaning. Return only the rewritten text:`,
+      improve: "Rewrite the following text to significantly improve its quality. Enhance clarity, flow, precision, and impact. Strengthen weak verbs, eliminate redundancy, improve sentence variety, and add specificity where the original is vague. Maintain the original meaning and approximate length. Return only the improved text:",
+      grammar: "Fix all grammar, spelling, punctuation, and syntax errors in the following text. Also fix awkward phrasing, subject-verb agreement issues, and inconsistent tense usage. Return only the corrected text, no explanations:",
+      summarize: "Write a comprehensive yet concise summary of the following text. Capture all key points, main arguments, and critical details in 3-5 well-crafted sentences. The summary should stand alone as a complete understanding of the source material. Return only the summary:",
+      continue: "Continue writing the following text naturally and substantively. Match the existing style, tone, vocabulary level, and subject matter precisely. Add 2-4 fully developed paragraphs that advance the topic with new insights, evidence, or analysis — not just repetition of what came before. Each paragraph should be 4-6 sentences:",
+      explain: "Explain the following text in clear, accessible language suitable for a general professional audience. Break down key concepts, define technical terms, explain the significance and implications, and provide relevant context. Organize the explanation logically:",
+      tone: `Rewrite the following text in a ${params.toneValue || "professional"} tone while preserving all factual content and key points. Adjust vocabulary, sentence structure, and rhetorical approach to match the target tone consistently throughout. Return only the rewritten text:`,
       custom: params.customPrompt || "Improve the following text:",
     };
 
-    const systemPrompt = "You are an expert writing assistant embedded in a document editor. Respond only with the requested text transformation — no preamble, no explanation, no markdown code fences unless the content itself is code.";
+    const systemPrompt = "You are a senior professional editor and writing expert embedded in a document editor. You produce publication-quality text transformations. Respond only with the requested text — no preamble, no explanation, no markdown code fences, no meta-commentary. Write with precision, authority, and craft.";
     const userPrompt = `${commandPrompts[params.command]}\n\n${params.selection}`;
 
     try {
@@ -2039,28 +2243,40 @@ ${bulletParagraphs}    </draw:text-box>
     }
 
     const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
-    const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
+    const userPrompt = this.buildUserPrompt(type, name, options);
     const maxTokens = this.getMaxTokensForLength(options.length);
 
     try {
+      console.log("[StreamDocGen] Selected model:", JSON.stringify(selectedModel));
+      console.log("[StreamDocGen] maxOutputTokens:", maxTokens);
+      console.log("[StreamDocGen] options:", JSON.stringify(options));
+      
       const { modelClient } = await getModelClient(selectedModel, settings);
+      console.log("[StreamDocGen] Model client obtained, model type:", typeof modelClient.model, modelClient.builtinProviderId);
 
       let fullText = "";
       const stream = streamText({
         model: modelClient.model,
         system: systemPrompt,
         prompt: userPrompt,
-        maxTokens,
+        maxOutputTokens: maxTokens,
       });
 
+      let chunkCount = 0;
       for await (const chunk of stream.textStream) {
         fullText += chunk;
+        chunkCount++;
+        if (chunkCount <= 3) {
+          console.log(`[StreamDocGen] chunk #${chunkCount} (${chunk.length} chars):`, chunk.substring(0, 100));
+        }
         safeSend(event.sender, "libreoffice:generate-chunk", {
           requestId,
           text: chunk,
           done: false,
         });
       }
+      console.log("[StreamDocGen] Stream complete. Total chunks:", chunkCount, "Total text length:", fullText.length);
+      console.log("[StreamDocGen] fullText preview:", fullText.substring(0, 300));
 
       // Record cost with the smart cost engine
       try {
@@ -2176,6 +2392,21 @@ export function registerLibreOfficeHandlers() {
   // Delete document
   ipcMain.handle("libreoffice:delete", async (_, id: number) => {
     return manager.deleteDocument(id);
+  });
+
+  // Update document metadata (name, description, tags)
+  ipcMain.handle("libreoffice:update-metadata", async (_, params: { id: number; name?: string; description?: string; tags?: string[] }) => {
+    const db = getDb();
+    const existing = db.select().from(documents).where(eq(documents.id, params.id)).get();
+    if (!existing) throw new Error(`Document not found: ${params.id}`);
+
+    const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (params.name !== undefined) updates.name = params.name;
+    if (params.description !== undefined) updates.description = params.description;
+    if (params.tags !== undefined) updates.tags = params.tags;
+
+    db.update(documents).set(updates).where(eq(documents.id, params.id)).run();
+    return db.select().from(documents).where(eq(documents.id, params.id)).get();
   });
 
   // Export document

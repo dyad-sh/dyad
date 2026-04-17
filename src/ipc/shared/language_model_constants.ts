@@ -110,11 +110,20 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: "claude-opus-4-6",
+      displayName: "Claude Opus 4.6",
+      description:
+        "Anthropic's most capable model — best for complex coding & reasoning (very expensive!)",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 5,
+    },
+    {
       name: "claude-opus-4-5",
       displayName: "Claude Opus 4.5",
       description:
-        "Anthropic's best model for coding (note: this model is very expensive!)",
-      // Set to 32k since context window is 1M tokens
+        "Anthropic's previous flagship model for coding (note: this model is very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
@@ -125,7 +134,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Claude Sonnet 4.5",
       description:
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
@@ -135,7 +143,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude Sonnet 4",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
@@ -421,6 +428,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   ],
   bedrock: [
     {
+      name: "us.anthropic.claude-opus-4-6-v1:0",
+      displayName: "Claude Opus 4.6",
+      description:
+        "Anthropic's most capable model — best for complex coding & reasoning (very expensive!)",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
       name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       displayName: "Claude 4.5 Sonnet",
       description:
@@ -575,5 +591,5 @@ export const CLAUDE_CODE_PROVIDER = {
   description: "Agentic coding assistant with file operations",
   capabilities: ["code", "agentic", "function-calling", "reasoning"],
   requiresAnthropicKey: true,
-  gatewayUrl: "ws://127.0.0.1:18790",
+  gatewayUrl: "ws://127.0.0.1:18792",
 };

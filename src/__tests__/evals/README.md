@@ -26,17 +26,18 @@ The suite is skipped entirely when `DYAD_PRO_API_KEY` is unset — no tests will
 fail, they just won't run. This keeps regular `vitest run` safe for contributors
 without a key.
 
-Export the key for the session:
+Export the key for the session (plus the two required filter vars — see
+[Running the suite](#running-the-suite)):
 
 ```bash
 export DYAD_PRO_API_KEY="..."
-npm run eval
+EVAL_SUITE=all EVAL_MODEL=all npm run eval
 ```
 
-Or set it inline for a single command:
+Or set everything inline for a single command:
 
 ```bash
-DYAD_PRO_API_KEY="..." npm run eval
+DYAD_PRO_API_KEY="..." EVAL_SUITE=all EVAL_MODEL=all npm run eval
 ```
 
 Optional: override the gateway URL with `DYAD_ENGINE_URL` (defaults to
@@ -44,40 +45,48 @@ Optional: override the gateway URL with `DYAD_ENGINE_URL` (defaults to
 
 ## Running the suite
 
-Run every case across every suite and every model:
+**Both `EVAL_SUITE` and `EVAL_MODEL` are required.** A full run of every
+suite against every model is expensive, so the suite will not run unless
+the caller opts in explicitly. If either variable is unset, the eval prints
+a warning describing how to configure it and registers a single skipped
+placeholder — it does not fail CI, but it also does not run any cases.
+
+Use the special value `all` to mean "run everything":
 
 ```bash
-npm run eval
+# Run every suite against every model against every case.
+EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 ```
 
-**Heads up — this is expensive.** A full run now issues one generation per
-(suite × model × case) triple plus one judge call per case, across 3 suites,
-3 models, and 12 cases. The `edit_file` suite makes additional engine calls
-for each sketched edit it applies. Expect dozens of LLM requests, some of
-which run reasoning models on 300+ line fixtures. Use sparingly; prefer
-single-suite / single-case runs during development.
+**Heads up — this is expensive.** A full `all`/`all` run issues one
+generation per (suite × model × case) triple plus one judge call per case,
+across 3 suites, 3 models, and 12 cases. The `pro_agent` suite also makes
+additional engine calls for each sketched edit the model produces through
+`edit_file`. Expect dozens of LLM requests, some of which run reasoning
+models on 300+ line fixtures. Use sparingly; prefer narrow filters during
+development.
 
 ### Running a single suite
 
-Set `EVAL_SUITE` to a case-insensitive substring of the suite's `name` field
-(the folder name that shows up under `eval-results/`). Short fragments work:
+Set `EVAL_SUITE` to a case-insensitive substring of the suite's `name`
+field (the folder name that shows up under `eval-results/`):
 
 ```bash
 # Just the original search_replace-only suite
-EVAL_SUITE=search_replace DYAD_PRO_API_KEY="..." npm run eval
+EVAL_SUITE=search_replace EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 
 # The basic_agent suite (Basic agent prompt, search_replace + write_file)
-EVAL_SUITE=basic_agent DYAD_PRO_API_KEY="..." npm run eval
+EVAL_SUITE=basic_agent EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 
 # The pro_agent suite (Pro agent prompt, search_replace + edit_file + write_file)
-EVAL_SUITE=pro_agent DYAD_PRO_API_KEY="..." npm run eval
+EVAL_SUITE=pro_agent EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 ```
 
 Note: `EVAL_SUITE` matches as a case-insensitive substring of the suite
-`name`. `search_replace` is an exact suite name *and* also appears inside no
-other suite name, so it only selects that one suite. `agent` would match
-both `basic_agent` and `pro_agent` — use `basic_agent` or `pro_agent` to
-narrow to one.
+`name`. `search_replace` is an exact suite name *and* also appears inside
+no other suite name, so it only selects that one suite. `agent` would
+match both `basic_agent` and `pro_agent` — use `basic_agent` or `pro_agent`
+to narrow to one.
 
 ### Running a single case
 
@@ -86,13 +95,14 @@ the `CASES` array of
 [search_replace_tool_use.eval.ts](search_replace_tool_use.eval.ts).
 
 ```bash
-DYAD_PRO_API_KEY="..." npm run eval -- -t "Extract a helper function"
+EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." \
+  npm run eval -- -t "Extract a helper function"
 ```
 
 `-t` matches as a substring, so a short unique fragment works too:
 
 ```bash
-DYAD_PRO_API_KEY="..." npm run eval -- -t "zod"
+EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval -- -t "zod"
 ```
 
 ### Running against one model
@@ -102,7 +112,7 @@ model name. It matches against both, so short fragments like `sonnet`, `gpt`,
 or `gemini` work:
 
 ```bash
-EVAL_MODEL=sonnet DYAD_PRO_API_KEY="..." npm run eval
+EVAL_SUITE=all EVAL_MODEL=sonnet DYAD_PRO_API_KEY="..." npm run eval
 ```
 
 ### Combining filters
@@ -114,10 +124,10 @@ EVAL_SUITE=search_replace EVAL_MODEL=sonnet \
   DYAD_PRO_API_KEY="..." npm run eval -- -t "Extract a helper function"
 ```
 
-Note: vitest's `-t` pattern is applied across the full describe/test hierarchy
-as a regex, which makes "model label > case name" style patterns brittle
-across vitest versions. Prefer `EVAL_SUITE` / `EVAL_MODEL` for suite and
-model filtering and reserve `-t` for case-name filtering.
+Note: vitest's `-t` pattern is applied across the full describe/test
+hierarchy as a regex, which makes "model label > case name" style patterns
+brittle across vitest versions. Prefer `EVAL_SUITE` / `EVAL_MODEL` for
+suite and model filtering and reserve `-t` for case-name filtering.
 
 ## Where results are stored
 

@@ -579,21 +579,6 @@ const SUITES: SuiteConfig[] = [
   },
 ];
 
-// ── Suite filter ───────────────────────────────────────────────
-
-// Narrow the suite matrix with `EVAL_SUITE=<substring>`.
-const SUITE_FILTER = process.env.EVAL_SUITE?.trim().toLowerCase();
-const ACTIVE_SUITES = SUITE_FILTER
-  ? SUITES.filter((s) => s.name.toLowerCase().includes(SUITE_FILTER))
-  : SUITES;
-
-if (SUITE_FILTER && ACTIVE_SUITES.length === 0) {
-  throw new Error(
-    `EVAL_SUITE="${process.env.EVAL_SUITE}" matched no suites. ` +
-      `Available: ${SUITES.map((s) => s.name).join(", ")}`,
-  );
-}
-
 // ── Model matrix ───────────────────────────────────────────────
 
 const ALL_MODELS: Array<{
@@ -621,25 +606,6 @@ const ALL_MODELS: Array<{
     temperature: 1,
   },
 ];
-
-// Narrow the model matrix with `EVAL_MODEL=<substring>` (case-insensitive).
-// Matches against either the label or the underlying model name so that
-// `EVAL_MODEL=sonnet`, `EVAL_MODEL=gpt`, or `EVAL_MODEL=gemini` all work.
-const MODEL_FILTER = process.env.EVAL_MODEL?.trim().toLowerCase();
-const MODELS = MODEL_FILTER
-  ? ALL_MODELS.filter(
-      (m) =>
-        m.label.toLowerCase().includes(MODEL_FILTER) ||
-        m.modelName.toLowerCase().includes(MODEL_FILTER),
-    )
-  : ALL_MODELS;
-
-if (MODEL_FILTER && MODELS.length === 0) {
-  throw new Error(
-    `EVAL_MODEL="${process.env.EVAL_MODEL}" matched no models. ` +
-      `Available labels: ${ALL_MODELS.map((m) => m.label).join(", ")}`,
-  );
-}
 
 // ── Case runner ────────────────────────────────────────────────
 
@@ -783,27 +749,86 @@ async function runCase(
   }
 }
 
-// ── Test runner ────────────────────────────────────────────────
+// ── Filters + test runner ──────────────────────────────────────
+//
+// `EVAL_SUITE` and `EVAL_MODEL` are both required — running every suite
+// against every model by accident is expensive, so the caller must opt
+// in explicitly. Use `all` to mean "run everything"; any other value is
+// treated as a case-insensitive substring match (so e.g. `sonnet`,
+// `gpt`, `basic_agent` all work).
 
-for (const suite of ACTIVE_SUITES) {
-  for (const { provider, modelName, label, temperature } of MODELS) {
-    describe.skipIf(!hasDyadProKey())(
-      `${suite.displayName} — ${label}`,
-      () => {
-        for (const c of CASES) {
-          it.concurrent(c.name, async () => {
-            try {
-              await runCase(suite, c, provider, modelName, label, temperature);
-            } catch (err) {
-              console.error(
-                `\n[${suite.name} / ${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
-              );
-              throw err;
-            }
-          });
-        }
-      },
+const SUITE_FILTER_RAW = process.env.EVAL_SUITE?.trim();
+const MODEL_FILTER_RAW = process.env.EVAL_MODEL?.trim();
+
+if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
+  const missingEnv: string[] = [];
+  if (!SUITE_FILTER_RAW) missingEnv.push("EVAL_SUITE");
+  if (!MODEL_FILTER_RAW) missingEnv.push("EVAL_MODEL");
+  const suiteOptions = SUITES.map((s) => s.name).join(", ");
+  const modelOptions = ALL_MODELS.map((m) => m.label).join(", ");
+  console.warn(
+    `\n⚠️  Eval suite not running: ${missingEnv.join(" and ")} not set.\n` +
+      `  Set EVAL_SUITE to "all" or a substring of: ${suiteOptions}\n` +
+      `  Set EVAL_MODEL to "all" or a substring of a label: ${modelOptions}\n` +
+      `  Example:\n` +
+      `    EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval\n`,
+  );
+  // Register a single skipped describe so vitest still reports something
+  // coherent (rather than "no tests found").
+  describe.skip("eval suite — configuration required", () => {
+    it("set EVAL_SUITE and EVAL_MODEL (use 'all' to run every suite/model)", () => {});
+  });
+} else {
+  const suiteFilter = SUITE_FILTER_RAW.toLowerCase();
+  const ACTIVE_SUITES =
+    suiteFilter === "all"
+      ? SUITES
+      : SUITES.filter((s) => s.name.toLowerCase().includes(suiteFilter));
+
+  if (ACTIVE_SUITES.length === 0) {
+    throw new Error(
+      `EVAL_SUITE="${SUITE_FILTER_RAW}" matched no suites. ` +
+        `Available: ${SUITES.map((s) => s.name).join(", ")} (or "all")`,
     );
+  }
+
+  const modelFilter = MODEL_FILTER_RAW.toLowerCase();
+  const MODELS =
+    modelFilter === "all"
+      ? ALL_MODELS
+      : ALL_MODELS.filter(
+          (m) =>
+            m.label.toLowerCase().includes(modelFilter) ||
+            m.modelName.toLowerCase().includes(modelFilter),
+        );
+
+  if (MODELS.length === 0) {
+    throw new Error(
+      `EVAL_MODEL="${MODEL_FILTER_RAW}" matched no models. ` +
+        `Available labels: ${ALL_MODELS.map((m) => m.label).join(", ")} (or "all")`,
+    );
+  }
+
+  for (const suite of ACTIVE_SUITES) {
+    for (const { provider, modelName, label, temperature } of MODELS) {
+      describe.skipIf(!hasDyadProKey())(
+        `${suite.displayName} — ${label}`,
+        () => {
+          for (const c of CASES) {
+            it.concurrent(c.name, async () => {
+              try {
+                await runCase(suite, c, provider, modelName, label, temperature);
+              } catch (err) {
+                console.error(
+                  `\n[${suite.name} / ${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                throw err;
+              }
+            });
+          }
+        },
+      );
+    }
   }
 }
 

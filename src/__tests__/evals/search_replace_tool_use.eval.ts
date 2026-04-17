@@ -30,7 +30,7 @@ import { createUnifiedDiff } from "./helpers/unified_diff";
 
 // ── Fixture loader ─────────────────────────────────────────────
 
-const FIXTURES_DIR = resolve(__dirname, "fixtures/search_replace");
+const FIXTURES_DIR = resolve(__dirname, "fixtures");
 
 function loadFixture(filename: string): string {
   return readFileSync(resolve(FIXTURES_DIR, filename), "utf-8");

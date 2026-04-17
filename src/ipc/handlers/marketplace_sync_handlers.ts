@@ -342,6 +342,112 @@ export function registerMarketplaceSyncHandlers() {
     return marketplaceSyncService.getOwnedNFTs(walletAddress);
   });
 
+  // ===========================================================================
+  // GOLDSKY SUBGRAPH QUERIES
+  // ===========================================================================
+
+  /**
+   * Query the Joy Marketplace subgraph for listings and activity
+   */
+  ipcMain.handle(
+    "marketplace-sync:query-marketplace-subgraph",
+    async (_, query: string, variables?: Record<string, unknown>) => {
+      const { querySubgraph } = await import("@/config/thirdweb");
+      return querySubgraph("marketplace", query, variables);
+    },
+  );
+
+  /**
+   * Query the Joy Stores subgraph for store metadata
+   */
+  ipcMain.handle(
+    "marketplace-sync:query-stores-subgraph",
+    async (_, query: string, variables?: Record<string, unknown>) => {
+      const { querySubgraph } = await import("@/config/thirdweb");
+      return querySubgraph("stores", query, variables);
+    },
+  );
+
+  /**
+   * Query the Joy Drop subgraph for edition drops and claims
+   */
+  ipcMain.handle(
+    "marketplace-sync:query-drop-subgraph",
+    async (_, query: string, variables?: Record<string, unknown>) => {
+      const { querySubgraph } = await import("@/config/thirdweb");
+      return querySubgraph("drop", query, variables);
+    },
+  );
+
+  /**
+   * Get all active marketplace listings from subgraph
+   */
+  ipcMain.handle("marketplace-sync:get-active-listings", async () => {
+    const { querySubgraph } = await import("@/config/thirdweb");
+    return querySubgraph("marketplace", `{
+      listings(where: { status: "active" }, orderBy: createdAt, orderDirection: desc, first: 100) {
+        id
+        tokenId
+        seller
+        price
+        currency
+        status
+        createdAt
+        metadata {
+          name
+          description
+          image
+          category
+        }
+      }
+    }`);
+  });
+
+  /**
+   * Get store details from subgraph by owner address
+   */
+  ipcMain.handle("marketplace-sync:get-store-by-owner", async (_, ownerAddress: string) => {
+    if (!ownerAddress) throw new Error("ownerAddress is required");
+    const { querySubgraph } = await import("@/config/thirdweb");
+    return querySubgraph("stores", `{
+      stores(where: { owner: "${ownerAddress.toLowerCase()}" }) {
+        id
+        name
+        owner
+        description
+        logo
+        banner
+        totalAssets
+        totalSales
+        createdAt
+      }
+    }`);
+  });
+
+  /**
+   * Get drop claims and mints from subgraph
+   */
+  ipcMain.handle("marketplace-sync:get-drops", async () => {
+    const { querySubgraph } = await import("@/config/thirdweb");
+    return querySubgraph("drop", `{
+      drops(orderBy: createdAt, orderDirection: desc, first: 50) {
+        id
+        tokenId
+        creator
+        maxSupply
+        claimed
+        price
+        active
+        metadata {
+          name
+          description
+          image
+        }
+        createdAt
+      }
+    }`);
+  });
+
   logger.info("JoyMarketplace sync handlers registered");
 }
 

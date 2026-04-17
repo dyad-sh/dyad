@@ -1725,6 +1725,86 @@ export class IpcClient {
     return this.ipcRenderer.invoke("celestia:blob:verify", { contentHash });
   }
 
+  // --- On-Chain Asset Bridge ---
+
+  public async getOwnedTokens(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:get-owned-tokens", walletAddress);
+  }
+
+  public async importToken(params: {
+    walletAddress: string;
+    tokenId: string;
+    metadata?: any;
+    baseURI?: string;
+    overrideAssetType?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:import-token", params);
+  }
+
+  public async importAllTokens(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:import-all", walletAddress);
+  }
+
+  public async getOnchainBridgeStatus(): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:status");
+  }
+
+  // --- Agent Marketplace Autonomy ---
+
+  public async agentBrowseMarketplace(params: {
+    agentId: string;
+    query?: string;
+    assetType?: string;
+    maxPrice?: number;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:browse", params);
+  }
+
+  public async agentRequestPurchase(params: {
+    agentId: string;
+    listingId: string;
+    tokenId: string;
+    reason: string;
+    maxBudget: number;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:request-purchase", params);
+  }
+
+  public async agentRequestListing(params: {
+    agentId: string;
+    localAssetId: string;
+    assetType: string;
+    price: number;
+    currency?: string;
+    reason: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:request-listing", params);
+  }
+
+  public async agentPendingIntents(): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:pending-intents");
+  }
+
+  public async agentResolveIntent(params: {
+    intentId: string;
+    action: "approve" | "reject";
+    reason?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:resolve-intent", params);
+  }
+
+  public async agentBrowseModels(params?: { verified?: boolean; first?: number }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:browse-models", params);
+  }
+
+  public async agentMyLicenses(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:my-licenses", walletAddress);
+  }
+
+  public async agentPurchaseHistory(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:purchase-history", walletAddress);
+  }
+
   // --- Goldsky Subgraph Queries ---
 
   public async queryMarketplaceSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {

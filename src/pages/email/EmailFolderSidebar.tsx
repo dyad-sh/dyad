@@ -206,10 +206,12 @@ function AccountSection({
 
   return (
     <div>
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-foreground/60 hover:text-foreground/80 transition-colors"
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-foreground/60 hover:text-foreground/80 transition-colors cursor-pointer"
         onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
       >
         {expanded ? (
           <ChevronDown className="h-3 w-3" />
@@ -234,7 +236,7 @@ function AccountSection({
             className={cn("h-3 w-3", isSyncing && "animate-spin")}
           />
         </Button>
-      </button>
+      </div>
 
       {expanded && (
         <div className="ml-2 space-y-0.5">

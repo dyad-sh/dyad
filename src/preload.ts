@@ -306,6 +306,7 @@ const validInvokeChannels = [
   "library:pin-to-remote",
   "library:store-to-arweave",
   "library:store-to-filecoin",
+  "library:store-to-celestia",
   // adding app to favorite
   "add-to-favorite",
   "github:clone-repo-from-url",
@@ -453,6 +454,7 @@ const validInvokeChannels = [
   "celestia:config:get",
   "celestia:config:update",
   "celestia:config:reset",
+  "celestia:namespaces",
   "celestia:namespace:generate",
   "celestia:wallet:validate",
   // Creator Lifecycle Engine

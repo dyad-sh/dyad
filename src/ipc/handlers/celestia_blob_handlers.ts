@@ -25,9 +25,11 @@ import log from "electron-log";
 import * as crypto from "crypto";
 import {
   celestiaBlobService,
+  CELESTIA_NAMESPACES,
   type BlobSubmission,
   type BlobRetrievalResult,
   type CelestiaConfig,
+  type CelestiaNamespaceKey,
 } from "../../lib/celestia_blob_service";
 
 const logger = log.scope("celestia_blob_handlers");
@@ -62,6 +64,8 @@ export function registerCelestiaBlobHandlers(): void {
         encrypt?: boolean;
         /** custom gas price */
         gasPrice?: number;
+        /** target a specific named namespace */
+        namespaceKey?: CelestiaNamespaceKey;
       },
     ): Promise<BlobSubmission> => {
       const buf = Buffer.from(params.data, "base64");
@@ -77,6 +81,7 @@ export function registerCelestiaBlobHandlers(): void {
         label: params.label,
         dataType: params.dataType,
         gasPrice: params.gasPrice,
+        namespaceKey: params.namespaceKey,
       });
 
       // If encrypted, attach the hex-encoded key to the response
@@ -101,6 +106,7 @@ export function registerCelestiaBlobHandlers(): void {
         label?: string;
         dataType?: string;
         encrypt?: boolean;
+        namespaceKey?: CelestiaNamespaceKey;
       },
     ): Promise<BlobSubmission> => {
       let encryptionKey: Buffer | undefined;
@@ -112,6 +118,7 @@ export function registerCelestiaBlobHandlers(): void {
         encryptionKey,
         label: params.label,
         dataType: params.dataType,
+        namespaceKey: params.namespaceKey,
       });
 
       if (encryptionKey) {
@@ -134,6 +141,7 @@ export function registerCelestiaBlobHandlers(): void {
         label?: string;
         dataType?: string;
         encrypt?: boolean;
+        namespaceKey?: CelestiaNamespaceKey;
       },
     ): Promise<BlobSubmission> => {
       let encryptionKey: Buffer | undefined;
@@ -145,6 +153,7 @@ export function registerCelestiaBlobHandlers(): void {
         encryptionKey,
         label: params.label,
         dataType: params.dataType,
+        namespaceKey: params.namespaceKey,
       });
 
       if (encryptionKey) {
@@ -447,6 +456,18 @@ export function registerCelestiaBlobHandlers(): void {
     "celestia:config:reset",
     async (): Promise<CelestiaConfig> => {
       return celestiaBlobService.resetConfig();
+    },
+  );
+
+  /**
+   * Get the full namespace registry (all named namespaces).
+   */
+  ipcMain.handle(
+    "celestia:namespaces",
+    async (): Promise<
+      Record<string, { id: string; base64: string }>
+    > => {
+      return { ...CELESTIA_NAMESPACES };
     },
   );
 

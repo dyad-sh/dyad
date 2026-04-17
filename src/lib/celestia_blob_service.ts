@@ -32,10 +32,36 @@ const CELESTIA_RPC_URL = "http://localhost:26658";
 const JOYCREATE_NAMESPACE = "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=";
 
 /** Celestia mainnet wallet address */
-const CELESTIA_WALLET_ADDRESS = process.env.CELESTIA_WALLET_ADDRESS || "";
+const CELESTIA_WALLET_ADDRESS =
+  process.env.CELESTIA_WALLET_ADDRESS || "celestia1vxssxrs2t27wtgur7lmqcep5zntz3nhjp48z7k";
 
 /** Network identifier */
 const CELESTIA_NETWORK = "celestia" as const; // mainnet
+
+/**
+ * JoyCreate namespace registry — each namespace is scoped to a specific
+ * data category so blobs can be partitioned and queried efficiently.
+ */
+export const CELESTIA_NAMESPACES = {
+  /** Main marketplace blobs */
+  marketplace: { id: "joy80mvp12", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=" },
+  /** Purchase receipts */
+  purchases:   { id: "joy80purch", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwcHVyY2g=" },
+  /** Timestamps / anchors */
+  timestamps:  { id: "joy80tstmp", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwdHN0bXA=" },
+  /** Asset provenance */
+  assets:      { id: "joy80asset", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwYXNzZXQ=" },
+  /** License terms */
+  licenses:    { id: "joy80licns", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbGljbnM=" },
+  /** Generic receipts */
+  receipts:    { id: "joy80rcpts", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwcmNwdHM=" },
+  /** Metadata blobs */
+  metadata:    { id: "joy80mdata", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbWRhdGE=" },
+  /** Proofs (ZK, integrity, etc.) */
+  proofs:      { id: "joy8proofs", base64: "AAAAAAAAAAAAAAAAAAAAAAAAAGpveThwcm9vZnM=" },
+} as const;
+
+export type CelestiaNamespaceKey = keyof typeof CELESTIA_NAMESPACES;
 
 /** Max blob size Celestia accepts per submission (≈ 2 MB after encoding) */
 const MAX_BLOB_SIZE = 1_500_000; // 1.5 MB raw → ~2 MB base64
@@ -272,6 +298,28 @@ class CelestiaBlobService {
   // ---------------------------------------------------------------------------
 
   /**
+   * Resolve a named namespace key (e.g. "assets", "licenses") to its base64 value.
+   * Throws if the key is unknown.
+   */
+  static resolveNamespace(key: CelestiaNamespaceKey): string {
+    const entry = CELESTIA_NAMESPACES[key];
+    if (!entry) {
+      throw new Error(`Unknown Celestia namespace key: ${key}`);
+    }
+    return entry.base64;
+  }
+
+  /**
+   * Return all registered namespaces (useful for UI dropdowns).
+   */
+  static getNamespaceRegistry(): Record<
+    CelestiaNamespaceKey,
+    { id: string; base64: string }
+  > {
+    return { ...CELESTIA_NAMESPACES };
+  }
+
+  /**
    * Check whether the Celestia node is reachable and synced.
    */
   async isAvailable(): Promise<boolean> {
@@ -340,6 +388,8 @@ class CelestiaBlobService {
       label?: string;
       dataType?: string;
       gasPrice?: number;
+      /** Submit to a specific named namespace from the registry */
+      namespaceKey?: CelestiaNamespaceKey;
     },
   ): Promise<BlobSubmission> {
     const contentHash = this.hashContent(data);
@@ -372,11 +422,16 @@ class CelestiaBlobService {
 
     const encodedData = payload.toString("base64");
 
+    // Resolve namespace: use named key from registry, or fall back to config default
+    const resolvedNamespace = options?.namespaceKey
+      ? CelestiaBlobService.resolveNamespace(options.namespaceKey)
+      : this.config.namespace;
+
     // Submit via Celestia RPC
     const height = await this.rpcCall<number>("blob.Submit", [
       [
         {
-          namespace: this.config.namespace,
+          namespace: resolvedNamespace,
           data: encodedData,
           share_version: 0,
         },
@@ -388,7 +443,7 @@ class CelestiaBlobService {
       contentHash,
       height,
       commitment: contentHash, // use content hash as our commitment reference
-      namespace: this.config.namespace,
+      namespace: resolvedNamespace,
       originalSize: data.length,
       encrypted,
       submittedAt: new Date().toISOString(),
@@ -580,6 +635,7 @@ class CelestiaBlobService {
       encryptionKey?: Buffer;
       label?: string;
       dataType?: string;
+      namespaceKey?: CelestiaNamespaceKey;
     },
   ): Promise<BlobSubmission> {
     const json = JSON.stringify(obj);
@@ -595,6 +651,7 @@ class CelestiaBlobService {
       encryptionKey?: Buffer;
       label?: string;
       dataType?: string;
+      namespaceKey?: CelestiaNamespaceKey;
     },
   ): Promise<BlobSubmission> {
     const data = await fs.readFile(filePath);

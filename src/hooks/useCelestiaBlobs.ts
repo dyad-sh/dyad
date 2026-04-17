@@ -78,6 +78,7 @@ export function useCelestiaBlobs() {
       label?: string;
       dataType?: string;
       encrypt?: boolean;
+      namespaceKey?: string;
     }) => celestiaBlobClient.submitBlob(params),
     onMutate: () => {
       toast.loading("Submitting blob to Celestia...", { id: "celestia-submit" });
@@ -105,6 +106,7 @@ export function useCelestiaBlobs() {
       label?: string;
       dataType?: string;
       encrypt?: boolean;
+      namespaceKey?: string;
     }) => celestiaBlobClient.submitJSON(params),
     onSuccess: (result) => {
       toast.success(
@@ -127,6 +129,7 @@ export function useCelestiaBlobs() {
       label?: string;
       dataType?: string;
       encrypt?: boolean;
+      namespaceKey?: string;
     }) => celestiaBlobClient.submitFile(params),
     onSuccess: (result) => {
       toast.success(

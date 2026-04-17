@@ -26,10 +26,11 @@ services:
         celestia light init --p2p.network celestia 2>/dev/null || true
         echo "Starting Celestia Light Node..."
         exec celestia light start \
-          --core.ip consensus-full.celestia-bootstrap.net \
+          --core.ip rpc.celestia.pops.one \
           --p2p.network celestia \
           --rpc.addr 0.0.0.0 \
-          --rpc.port 26658
+          --rpc.port 26658 \
+          --rpc.skip-auth
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:26658/health || exit 1"]
       interval: 30s

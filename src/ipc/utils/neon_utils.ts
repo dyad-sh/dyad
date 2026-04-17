@@ -188,7 +188,7 @@ export async function assertNoNeonProject(appId: number): Promise<void> {
     .limit(1);
   if (existingApp[0]?.neonProjectId) {
     throw new DyadError(
-      "Cannot connect Supabase: this app already has a Neon project. Disconnect Neon first.",
+      "This app already has a Neon project linked. Disconnect it first.",
       DyadErrorKind.Precondition,
     );
   }

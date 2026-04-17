@@ -1983,6 +1983,145 @@ async function handleGithubPush(body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Library handlers (personal file bookshelf with decentralized storage)
+// ---------------------------------------------------------------------------
+
+async function handleLibraryImportBuffer(body: Record<string, unknown>) {
+  const name = body.name as string;
+  const base64 = body.base64 as string;
+  if (!name || !base64) throw new Error("name and base64 are required");
+  const mimeType = body.mimeType as string | undefined;
+  return invokeIpcHandler("library:import-buffer", { name, base64, mimeType });
+}
+
+async function handleLibraryList(body: Record<string, unknown>) {
+  const filters: Record<string, unknown> = {};
+  if (body.storageTier) filters.storageTier = body.storageTier;
+  if (body.mimeType) filters.mimeType = body.mimeType;
+  if (body.search) filters.search = body.search;
+  if (body.category) filters.category = body.category;
+  return invokeIpcHandler("library:list", Object.keys(filters).length > 0 ? filters : undefined);
+}
+
+async function handleLibraryGet(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("library:get", id);
+}
+
+async function handleLibraryGetContent(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("library:get-content", id);
+}
+
+async function handleLibraryUpdate(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("library:update", body);
+}
+
+async function handleLibraryDelete(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("library:delete", id);
+}
+
+async function handleLibraryStoreToIpfs(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("library:store-to-ipfs", id);
+}
+
+async function handleLibraryPinToRemote(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("library:pin-to-remote", id);
+}
+
+// ---------------------------------------------------------------------------
+// Celestia Blob handlers (decentralized data availability layer)
+// ---------------------------------------------------------------------------
+
+async function handleCelestiaStatus(_body: Record<string, unknown>) {
+  return invokeIpcHandler("celestia:status");
+}
+
+async function handleCelestiaConfigGet(_body: Record<string, unknown>) {
+  return invokeIpcHandler("celestia:config:get");
+}
+
+async function handleCelestiaConfigUpdate(body: Record<string, unknown>) {
+  return invokeIpcHandler("celestia:config:update", body);
+}
+
+async function handleCelestiaConfigReset(_body: Record<string, unknown>) {
+  return invokeIpcHandler("celestia:config:reset");
+}
+
+async function handleCelestiaBlobSubmit(body: Record<string, unknown>) {
+  const data = body.data as string;
+  if (!data) throw new Error("data (base64) is required");
+  return invokeIpcHandler("celestia:blob:submit", body);
+}
+
+async function handleCelestiaBlobSubmitJson(body: Record<string, unknown>) {
+  const json = body.json;
+  if (json === undefined) throw new Error("json is required");
+  return invokeIpcHandler("celestia:blob:submit-json", body);
+}
+
+async function handleCelestiaBlobSubmitFile(body: Record<string, unknown>) {
+  const filePath = body.filePath as string;
+  if (!filePath) throw new Error("filePath is required");
+  return invokeIpcHandler("celestia:blob:submit-file", body);
+}
+
+async function handleCelestiaBlobGet(body: Record<string, unknown>) {
+  const contentHash = body.contentHash as string;
+  if (!contentHash) throw new Error("contentHash is required");
+  return invokeIpcHandler("celestia:blob:get", body);
+}
+
+async function handleCelestiaBlobGetAtHeight(body: Record<string, unknown>) {
+  const height = Number(body.height);
+  if (!height) throw new Error("height is required");
+  return invokeIpcHandler("celestia:blob:get-at-height", body);
+}
+
+async function handleCelestiaBlobList(body: Record<string, unknown>) {
+  return invokeIpcHandler("celestia:blob:list", Object.keys(body).length > 0 ? body : undefined);
+}
+
+async function handleCelestiaBlobStats(_body: Record<string, unknown>) {
+  return invokeIpcHandler("celestia:blob:stats");
+}
+
+async function handleCelestiaBlobHash(body: Record<string, unknown>) {
+  const data = body.data as string;
+  if (!data) throw new Error("data (base64) is required");
+  return invokeIpcHandler("celestia:blob:hash", { data });
+}
+
+async function handleCelestiaBlobVerify(body: Record<string, unknown>) {
+  const contentHash = body.contentHash as string;
+  if (!contentHash) throw new Error("contentHash is required");
+  return invokeIpcHandler("celestia:blob:verify", { contentHash });
+}
+
+async function handleCelestiaNamespaceGenerate(body: Record<string, unknown>) {
+  const namespaceId = body.namespaceId as string;
+  if (!namespaceId) throw new Error("namespaceId is required");
+  return invokeIpcHandler("celestia:namespace:generate", { namespaceId });
+}
+
+async function handleCelestiaWalletValidate(body: Record<string, unknown>) {
+  const address = body.address as string;
+  if (!address) throw new Error("address is required");
+  return invokeIpcHandler("celestia:wallet:validate", { address });
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -2198,6 +2337,31 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/github/list-repos": handleGithubListRepos,
   "POST /api/github/create-repo": handleGithubCreateRepo,
   "POST /api/github/push": handleGithubPush,
+  // Library (personal file bookshelf)
+  "POST /api/library/import-buffer": handleLibraryImportBuffer,
+  "POST /api/library/list": handleLibraryList,
+  "POST /api/library/get": handleLibraryGet,
+  "POST /api/library/get-content": handleLibraryGetContent,
+  "POST /api/library/update": handleLibraryUpdate,
+  "POST /api/library/delete": handleLibraryDelete,
+  "POST /api/library/store-to-ipfs": handleLibraryStoreToIpfs,
+  "POST /api/library/pin-to-remote": handleLibraryPinToRemote,
+  // Celestia Blob (decentralized data layer)
+  "POST /api/celestia/status": handleCelestiaStatus,
+  "POST /api/celestia/config/get": handleCelestiaConfigGet,
+  "POST /api/celestia/config/update": handleCelestiaConfigUpdate,
+  "POST /api/celestia/config/reset": handleCelestiaConfigReset,
+  "POST /api/celestia/blob/submit": handleCelestiaBlobSubmit,
+  "POST /api/celestia/blob/submit-json": handleCelestiaBlobSubmitJson,
+  "POST /api/celestia/blob/submit-file": handleCelestiaBlobSubmitFile,
+  "POST /api/celestia/blob/get": handleCelestiaBlobGet,
+  "POST /api/celestia/blob/get-at-height": handleCelestiaBlobGetAtHeight,
+  "POST /api/celestia/blob/list": handleCelestiaBlobList,
+  "POST /api/celestia/blob/stats": handleCelestiaBlobStats,
+  "POST /api/celestia/blob/hash": handleCelestiaBlobHash,
+  "POST /api/celestia/blob/verify": handleCelestiaBlobVerify,
+  "POST /api/celestia/namespace/generate": handleCelestiaNamespaceGenerate,
+  "POST /api/celestia/wallet/validate": handleCelestiaWalletValidate,
 };
 
 // ---------------------------------------------------------------------------

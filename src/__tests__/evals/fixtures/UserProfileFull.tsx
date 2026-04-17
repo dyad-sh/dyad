@@ -1,5 +1,4 @@
 // UserProfileFull.tsx — full-featured user profile page component
-// This is a large component that should be refactored into smaller sub-components.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -115,7 +114,7 @@ export function UserProfile({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // ── Avatar state and logic (lines ~100-200) ──────────────────
+  // ── Avatar state and logic ──────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatar, setAvatar] = useState<AvatarState>({
     url: null,
@@ -239,12 +238,13 @@ export function UserProfile({
     }
   }, [resolvedUserId, draft]);
 
-  // ── Stats state and logic (lines ~280-420) ──────────────────
+  // ── Stats state and logic ───────────────────────────────────
+  const INITIAL_STATS_PERIOD: "week" | "month" | "year" = "month";
   const [stats, setStats] = useState<StatsState>({
     cards: [],
     loading: true,
     error: null,
-    period: "month",
+    period: INITIAL_STATS_PERIOD,
   });
 
   const loadStats = useCallback(
@@ -275,9 +275,9 @@ export function UserProfile({
 
   useEffect(() => {
     if (showStats && resolvedUserId) {
-      loadStats(stats.period);
+      loadStats(INITIAL_STATS_PERIOD);
     }
-  }, [showStats, resolvedUserId]);
+  }, [showStats, resolvedUserId, loadStats]);
 
   const handlePeriodChange = useCallback(
     (period: "week" | "month" | "year") => {
@@ -287,7 +287,7 @@ export function UserProfile({
   );
 
   const statsGridColumns = useMemo(() => {
-    return stats.cards.length <= 3 ? "stats-grid--3col" : "stats-grid--3col";
+    return stats.cards.length <= 3 ? "stats-grid--2col" : "stats-grid--3col";
   }, [stats.cards.length]);
 
   const totalCommits = useMemo(() => {
@@ -341,7 +341,7 @@ export function UserProfile({
     );
   }, [totalCommits, stats.period]);
 
-  // ── Activity feed state and logic (lines ~480-620) ──────────
+  // ── Activity feed state and logic ───────────────────────────
   const [activityState, setActivityState] = useState<ActivityState>({
     items: [],
     loading: true,
@@ -377,7 +377,7 @@ export function UserProfile({
     if (showActivity && resolvedUserId) {
       loadActivity(1);
     }
-  }, [showActivity, resolvedUserId]);
+  }, [showActivity, resolvedUserId, loadActivity]);
 
   const handleLoadMore = useCallback(() => {
     loadActivity(activityState.page + 1, true);

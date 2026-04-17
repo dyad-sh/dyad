@@ -2122,6 +2122,40 @@ async function handleCelestiaWalletValidate(body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Marketplace Sync & Subgraph handlers
+// ---------------------------------------------------------------------------
+
+async function handleMarketplaceSyncGetConfig(_body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:get-config");
+}
+
+async function handleMarketplaceSyncListing(body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:sync-listing", body);
+}
+
+async function handleMarketplaceGetActiveListings(_body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:get-active-listings");
+}
+
+async function handleMarketplaceGetStoreByOwner(body: Record<string, unknown>) {
+  const ownerAddress = body.ownerAddress as string;
+  if (!ownerAddress) throw new Error("ownerAddress is required");
+  return invokeIpcHandler("marketplace-sync:get-store-by-owner", ownerAddress);
+}
+
+async function handleMarketplaceGetDrops(_body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:get-drops");
+}
+
+async function handleMarketplaceQuerySubgraph(body: Record<string, unknown>) {
+  const subgraph = body.subgraph as string;
+  const query = body.query as string;
+  if (!subgraph || !query) throw new Error("subgraph and query are required");
+  const channel = `marketplace-sync:query-${subgraph}-subgraph`;
+  return invokeIpcHandler(channel, query, body.variables);
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -2337,6 +2371,13 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/github/list-repos": handleGithubListRepos,
   "POST /api/github/create-repo": handleGithubCreateRepo,
   "POST /api/github/push": handleGithubPush,
+  // Marketplace Sync & Subgraph
+  "POST /api/marketplace-sync/get-config": handleMarketplaceSyncGetConfig,
+  "POST /api/marketplace-sync/sync-listing": handleMarketplaceSyncListing,
+  "POST /api/marketplace-sync/get-active-listings": handleMarketplaceGetActiveListings,
+  "POST /api/marketplace-sync/get-store-by-owner": handleMarketplaceGetStoreByOwner,
+  "POST /api/marketplace-sync/get-drops": handleMarketplaceGetDrops,
+  "POST /api/marketplace-sync/query-subgraph": handleMarketplaceQuerySubgraph,
   // Library (personal file bookshelf)
   "POST /api/library/import-buffer": handleLibraryImportBuffer,
   "POST /api/library/list": handleLibraryList,

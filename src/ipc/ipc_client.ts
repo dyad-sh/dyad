@@ -1725,6 +1725,32 @@ export class IpcClient {
     return this.ipcRenderer.invoke("celestia:blob:verify", { contentHash });
   }
 
+  // --- Goldsky Subgraph Queries ---
+
+  public async queryMarketplaceSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:query-marketplace-subgraph", query, variables);
+  }
+
+  public async queryStoresSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:query-stores-subgraph", query, variables);
+  }
+
+  public async queryDropSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:query-drop-subgraph", query, variables);
+  }
+
+  public async getActiveListings(): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:get-active-listings");
+  }
+
+  public async getStoreByOwner(ownerAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:get-store-by-owner", ownerAddress);
+  }
+
+  public async getDrops(): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:get-drops");
+  }
+
   // --- Neural Builder ---
 
   public async neuralListNetworks(): Promise<any[]> {

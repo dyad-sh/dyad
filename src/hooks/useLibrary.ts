@@ -197,3 +197,51 @@ export function useStoreToFilecoin() {
     },
   });
 }
+
+export function useStoreToCelestia() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, encrypt }: { id: number; encrypt?: boolean }) => {
+      const ipc = IpcClient.getInstance();
+      return ipc.libraryStoreToCelestia(id, encrypt);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["library-items"] });
+      const msg = result.encryptionKeyHex
+        ? `Stored on Celestia (encrypted) — block ${result.height}`
+        : `Stored on Celestia — block ${result.height}`;
+      toast.success(msg);
+      if (result.encryptionKeyHex) {
+        navigator.clipboard.writeText(result.encryptionKeyHex);
+        toast.info("Encryption key copied to clipboard — store it safely!", { duration: 8000 });
+      }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+}
+
+export function useCelestiaStatus() {
+  return useQuery({
+    queryKey: ["celestia-status"],
+    queryFn: async () => {
+      const ipc = IpcClient.getInstance();
+      return ipc.celestiaStatus();
+    },
+    refetchInterval: 30_000,
+    meta: { showErrorToast: false },
+  });
+}
+
+export function useCelestiaBlobStats() {
+  return useQuery({
+    queryKey: ["celestia-blob-stats"],
+    queryFn: async () => {
+      const ipc = IpcClient.getInstance();
+      return ipc.celestiaBlobStats();
+    },
+    refetchInterval: 60_000,
+    meta: { showErrorToast: false },
+  });
+}

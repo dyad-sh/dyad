@@ -18,6 +18,9 @@ import {
   usePinToRemote,
   useStoreToArweave,
   useStoreToFilecoin,
+  useStoreToCelestia,
+  useCelestiaStatus,
+  useCelestiaBlobStats,
   type LibraryItem,
   type LibraryFilters,
 } from "@/hooks/useLibrary";
@@ -67,6 +70,14 @@ import {
   Bot,
   MessageSquare,
   FolderOpen,
+  Layers,
+  Wifi,
+  WifiOff,
+  ShieldCheck,
+  Lock,
+  Activity,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -191,6 +202,11 @@ function tierBadge(tier: string) {
       className: "bg-green-500/10 text-green-600 border-green-500/30",
       icon: <Database className="h-3 w-3" />,
     },
+    celestia: {
+      label: "Celestia DA",
+      className: "bg-violet-500/10 text-violet-600 border-violet-500/30",
+      icon: <Layers className="h-3 w-3" />,
+    },
   };
   const cfg = configs[tier] || configs.local;
   return (
@@ -283,6 +299,9 @@ function MyFilesTab() {
   const pinMutation = usePinToRemote();
   const arweaveMutation = useStoreToArweave();
   const filecoinMutation = useStoreToFilecoin();
+  const celestiaMutation = useStoreToCelestia();
+  const { data: celestiaStatus } = useCelestiaStatus();
+  const { data: celestiaStats } = useCelestiaBlobStats();
 
   const totalSize = useMemo(
     () => (items || []).reduce((acc, i) => acc + i.byteSize, 0),
@@ -317,6 +336,51 @@ function MyFilesTab() {
 
   return (
     <div className="space-y-4">
+      {/* Celestia Node Status Panel */}
+      {celestiaStatus && (
+        <div className={`flex items-center justify-between p-4 rounded-xl border ${
+          celestiaStatus.available
+            ? "bg-violet-500/5 border-violet-500/20"
+            : "bg-zinc-500/5 border-zinc-500/20"
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${
+              celestiaStatus.available ? "bg-violet-500/10" : "bg-zinc-500/10"
+            }`}>
+              {celestiaStatus.available
+                ? <Wifi className="h-4 w-4 text-violet-500" />
+                : <WifiOff className="h-4 w-4 text-zinc-400" />}
+            </div>
+            <div>
+              <p className="text-sm font-medium">
+                Celestia DA Node
+                {celestiaStatus.available && celestiaStatus.network && (
+                  <span className="ml-2 text-xs text-muted-foreground font-normal">{celestiaStatus.network}</span>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {celestiaStatus.available
+                  ? `Block ${celestiaStatus.height?.toLocaleString() || "syncing…"}${
+                      celestiaStatus.balance ? ` · ${parseFloat(celestiaStatus.balance.amount).toFixed(4)} ${celestiaStatus.balance.denom}` : ""
+                    }`
+                  : celestiaStatus.error || "Node offline — start with celestia-start.bat"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-right">
+            {celestiaStats && (
+              <div className="text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">{celestiaStats.totalBlobs} blobs</p>
+                <p>{(celestiaStats.totalBytes / 1024).toFixed(1)} KB on-chain</p>
+              </div>
+            )}
+            {celestiaStatus.available
+              ? <CheckCircle2 className="h-4 w-4 text-violet-500" />
+              : <AlertCircle className="h-4 w-4 text-zinc-400" />}
+          </div>
+        </div>
+      )}
+
       {/* Upload Zone */}
       <div
         onDragOver={(e) => {
@@ -379,6 +443,7 @@ function MyFilesTab() {
             <SelectItem value="ipfs_pinned">Pinned</SelectItem>
             <SelectItem value="arweave">Arweave</SelectItem>
             <SelectItem value="filecoin">Filecoin</SelectItem>
+            <SelectItem value="celestia">Celestia DA</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -423,6 +488,8 @@ function MyFilesTab() {
               onPinRemote={(id) => pinMutation.mutate(id)}
               onStoreArweave={(id) => arweaveMutation.mutate(id)}
               onStoreFilecoin={(id) => filecoinMutation.mutate(id)}
+              onStoreCelestia={(id, encrypt) => celestiaMutation.mutate({ id, encrypt })}
+              celestiaAvailable={celestiaStatus?.available ?? false}
             />
           ))}
         </div>
@@ -443,6 +510,8 @@ function FileCard({
   onPinRemote,
   onStoreArweave,
   onStoreFilecoin,
+  onStoreCelestia,
+  celestiaAvailable,
 }: {
   item: LibraryItem;
   onCopyHash: (hash: string) => void;
@@ -451,6 +520,8 @@ function FileCard({
   onPinRemote: (id: number) => void;
   onStoreArweave: (id: number) => void;
   onStoreFilecoin: (id: number) => void;
+  onStoreCelestia: (id: number, encrypt?: boolean) => void;
+  celestiaAvailable: boolean;
 }) {
   return (
     <div className="group relative overflow-hidden border border-border/50 rounded-xl p-4 bg-gradient-to-br from-amber-500/5 via-orange-500/5 to-rose-500/5 hover:from-amber-500/10 hover:via-orange-500/10 hover:to-rose-500/10 hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-500/5 transition-all duration-300">
@@ -512,6 +583,25 @@ function FileCard({
                       <Database className="h-4 w-4 mr-2" />
                       Filecoin (Long-term)
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => onStoreCelestia(item.id, false)}
+                      disabled={!celestiaAvailable}
+                      className="gap-2"
+                    >
+                      <Layers className="h-4 w-4 text-violet-500" />
+                      Celestia DA
+                      {!celestiaAvailable && <span className="text-xs text-muted-foreground ml-auto">(offline)</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => onStoreCelestia(item.id, true)}
+                      disabled={!celestiaAvailable}
+                      className="gap-2"
+                    >
+                      <Lock className="h-4 w-4 text-violet-400" />
+                      Celestia DA (Encrypted)
+                      {!celestiaAvailable && <span className="text-xs text-muted-foreground ml-auto">(offline)</span>}
+                    </DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
                 <DropdownMenuSeparator />
@@ -552,6 +642,15 @@ function FileCard({
                 title={`CID: ${item.cid}`}
               >
                 {item.cid.slice(0, 10)}…
+              </Badge>
+            )}
+            {item.storageTier === "celestia" && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-xs bg-violet-500/5 border-violet-500/20 text-violet-600"
+              >
+                <ShieldCheck className="h-3 w-3" />
+                DA Verified
               </Badge>
             )}
           </div>

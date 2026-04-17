@@ -1725,6 +1725,93 @@ export class IpcClient {
     return this.ipcRenderer.invoke("celestia:blob:verify", { contentHash });
   }
 
+  // --- NLP Pipeline ---
+
+  public async nlpListEngines(): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:list-engines");
+  }
+
+  public async nlpListPipelines(): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:list-pipelines");
+  }
+
+  public async nlpGetPipeline(pipelineId: string): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:get-pipeline", pipelineId);
+  }
+
+  public async nlpSavePipeline(params: {
+    name: string;
+    description: string;
+    engines: string[];
+    config?: Record<string, Record<string, any>>;
+    id?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:save-pipeline", params);
+  }
+
+  public async nlpDeletePipeline(pipelineId: string): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:delete-pipeline", pipelineId);
+  }
+
+  public async nlpProcessText(params: {
+    text: string;
+    pipeline: string | string[];
+    config?: Record<string, Record<string, any>>;
+    language?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:process-text", params);
+  }
+
+  public async nlpRunEngine(params: {
+    text: string;
+    engine: string;
+    config?: Record<string, any>;
+    language?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:run-engine", params);
+  }
+
+  public async nlpProcessDataset(params: {
+    datasetId: string;
+    pipeline: string | string[];
+    config?: Record<string, Record<string, any>>;
+    batchSize?: number;
+    maxItems?: number;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:process-dataset", params);
+  }
+
+  public async nlpAutoTagDataset(params: {
+    datasetId: string;
+    includeEntities?: boolean;
+    includeTopics?: boolean;
+    includeSentiment?: boolean;
+    includeKeywords?: boolean;
+    customTags?: Array<{ key: string; value: string }>;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:auto-tag-dataset", params);
+  }
+
+  public async nlpPrepareMarketplaceListing(params: {
+    datasetId: string;
+    name?: string;
+    description?: string;
+    category?: string;
+    license?: string;
+    price?: number;
+    currency?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:prepare-marketplace-listing", params);
+  }
+
+  public async nlpPublishDataset(params: { datasetId: string }): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:publish-dataset", params);
+  }
+
+  public async nlpRecommendModel(datasetId: string): Promise<any> {
+    return this.ipcRenderer.invoke("nlp:recommend-model", datasetId);
+  }
+
   // --- On-Chain Asset Bridge ---
 
   public async getOwnedTokens(walletAddress: string): Promise<any> {

@@ -22,6 +22,7 @@ import {
   Loader2,
   Sparkles,
   Upload,
+  Plug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -210,6 +211,12 @@ export default function NeuralBuilderPage() {
   const [trainingProgress, setTrainingProgress] = useState<Record<string, TrainingProgress>>({});
   const [automlProgress, setAutomlProgress] = useState<{ step: string; percentage: number } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  
+  // Integration state
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [selectedAppId, setSelectedAppId] = useState<string>("");
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
+  const [exportFormat, setExportFormat] = useState<string>("onnx");
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -240,6 +247,22 @@ export default function NeuralBuilderPage() {
     queryKey: ["neural:analytics", selectedNetworkId],
     queryFn: () => ipc("neural:get-analytics", selectedNetworkId),
     enabled: !!selectedNetworkId && selectedNetwork?.status === "trained",
+  });
+
+  // Integration data queries
+  const { data: agents = [] } = useQuery({
+    queryKey: ["agent:list"],
+    queryFn: () => ipc("agent:list"),
+  });
+
+  const { data: apps = [] } = useQuery({
+    queryKey: ["app:list"],
+    queryFn: () => ipc("app:list"),
+  });
+
+  const { data: datasets = [] } = useQuery({
+    queryKey: ["dataset-studio:list-datasets"],
+    queryFn: () => ipc("dataset-studio:list-datasets"),
   });
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -377,6 +400,57 @@ export default function NeuralBuilderPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Integration mutations
+  const attachToAgent = useMutation({
+    mutationFn: ({ networkId, agentId }: { networkId: string; agentId: string }) =>
+      ipc("neural:attach-to-agent", networkId, agentId),
+    onSuccess: () => { invalidateNetworks(); toast.success("Model attached to agent"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const integrateWithApp = useMutation({
+    mutationFn: ({ networkId, appId }: { networkId: string; appId: string }) =>
+      ipc("neural:integrate-with-app", networkId, appId),
+    onSuccess: () => { invalidateNetworks(); toast.success("Model integrated with app"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const linkDataset = useMutation({
+    mutationFn: ({ networkId, datasetId }: { networkId: string; datasetId: string }) =>
+      ipc("neural:link-dataset", networkId, datasetId),
+    onSuccess: () => { invalidateNetworks(); toast.success("Dataset linked to network"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deployToCelestia = useMutation({
+    mutationFn: async (networkId: string) => {
+      // Export model as JSON, then import to library, then store on Celestia
+      const exported = await ipc("neural:export-model", networkId, exportFormat) as { path: string; format: string; sizeMB: number };
+      // Read exported file and import to library
+      const fs = window.electron?.ipcRenderer;
+      const name = `${selectedNetwork?.name || "model"}_${exportFormat}.${exportFormat}`;
+      // Use the export path to submit to Celestia via file path
+      const blobResult = await ipc("celestia:blob:submit-file", {
+        filePath: exported.path,
+        label: name,
+        dataType: `neural-model/${exportFormat}`,
+      });
+      return blobResult;
+    },
+    onSuccess: (result: any) => {
+      invalidateNetworks();
+      toast.success(`Model deployed to Celestia DA — block ${result?.height || "pending"}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const publishToMarketplace = useMutation({
+    mutationFn: (networkId: string) =>
+      ipc("neural:publish-to-marketplace", networkId),
+    onSuccess: () => { invalidateNetworks(); toast.success("Model published to marketplace"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // ── IPC event listeners ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -452,6 +526,7 @@ export default function NeuralBuilderPage() {
           <TabsTrigger value="abtests"><GitCompare className="w-3.5 h-3.5 mr-1.5" />A/B Tests</TabsTrigger>
           <TabsTrigger value="analytics"><BarChart3 className="w-3.5 h-3.5 mr-1.5" />Analytics</TabsTrigger>
           <TabsTrigger value="edge"><Cpu className="w-3.5 h-3.5 mr-1.5" />Edge Deploy</TabsTrigger>
+          <TabsTrigger value="integrations"><Plug className="w-3.5 h-3.5 mr-1.5" />Integrations</TabsTrigger>
         </TabsList>
 
         <ScrollArea className="flex-1 px-6 py-4">
@@ -587,6 +662,176 @@ export default function NeuralBuilderPage() {
               />
             ) : (
               <EmptyState icon={Cpu} title="Select a network" description="Choose a trained network to deploy to edge" />
+            )}
+          </TabsContent>
+
+          {/* ── Integrations ─────────────────────────────────────────────────────────────────────────────────── */}
+          <TabsContent value="integrations" className="mt-0 space-y-4">
+            <NetworkSelector networks={networks} selectedId={selectedNetworkId} onSelect={setSelectedNetworkId} />
+            {selectedNetwork ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Connect to Agent Card */}
+                <Card className="border-blue-500/30 bg-blue-500/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Connect to Agent</CardTitle>
+                    <CardDescription className="text-xs">Deploy this model as the AI backbone for a JoyCreate agent</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Select Agent</Label>
+                      <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Choose agent..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {agents.length === 0 ? (
+                            <SelectItem value="none" className="text-xs" disabled>No agents found</SelectItem>
+                          ) : (
+                            agents.map((agent: any) => (
+                              <SelectItem key={agent.id} value={agent.id} className="text-xs">
+                                {agent.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="h-7 text-xs w-full" 
+                      disabled={!selectedAgentId || !selectedNetwork || attachToAgent.isPending}
+                      onClick={() => selectedNetwork && selectedAgentId && attachToAgent.mutate({ networkId: selectedNetwork.id, agentId: selectedAgentId })}
+                    >
+                      {attachToAgent.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Plug className="w-3.5 h-3.5 mr-1.5" />}
+                      Attach Model
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Connect to App Card */}
+                <Card className="border-green-500/30 bg-green-500/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Connect to App</CardTitle>
+                    <CardDescription className="text-xs">Add this model's inference endpoint to a JoyCreate application</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Select App</Label>
+                      <Select value={selectedAppId} onValueChange={setSelectedAppId}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Choose app..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {apps.length === 0 ? (
+                            <SelectItem value="none" className="text-xs" disabled>No apps found</SelectItem>
+                          ) : (
+                            apps.map((app: any) => (
+                              <SelectItem key={app.id} value={app.id} className="text-xs">
+                                {app.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="h-7 text-xs w-full" 
+                      disabled={!selectedAppId || !selectedNetwork || integrateWithApp.isPending}
+                      onClick={() => selectedNetwork && selectedAppId && integrateWithApp.mutate({ networkId: selectedNetwork.id, appId: selectedAppId })}
+                    >
+                      {integrateWithApp.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 mr-1.5" />}
+                      Integrate with App
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Link Dataset Card */}
+                <Card className="border-purple-500/30 bg-purple-500/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Link Dataset</CardTitle>
+                    <CardDescription className="text-xs">Use a dataset from Dataset Studio for training data</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Select Dataset</Label>
+                      <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Choose dataset..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {datasets.length === 0 ? (
+                            <SelectItem value="none" className="text-xs" disabled>No datasets found</SelectItem>
+                          ) : (
+                            datasets.map((dataset: any) => (
+                              <SelectItem key={dataset.id} value={dataset.id} className="text-xs">
+                                {dataset.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="h-7 text-xs w-full" 
+                      disabled={!selectedDatasetId || !selectedNetwork || linkDataset.isPending}
+                      onClick={() => selectedNetwork && selectedDatasetId && linkDataset.mutate({ networkId: selectedNetwork.id, datasetId: selectedDatasetId })}
+                    >
+                      {linkDataset.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                      Link Dataset
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Export & Deploy Card */}
+                <Card className="border-orange-500/30 bg-orange-500/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Export & Deploy</CardTitle>
+                    <CardDescription className="text-xs">Export your model or publish it to the marketplace</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Export Format</Label>
+                      <Select value={exportFormat} onValueChange={setExportFormat}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="onnx" className="text-xs">ONNX</SelectItem>
+                          <SelectItem value="tflite" className="text-xs">TensorFlow Lite</SelectItem>
+                          <SelectItem value="torchscript" className="text-xs">TorchScript</SelectItem>
+                          <SelectItem value="savedmodel" className="text-xs">SavedModel</SelectItem>
+                          <SelectItem value="json" className="text-xs">JSON</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        className="h-7 text-xs flex-1" 
+                        disabled={!selectedNetwork || deployToCelestia.isPending}
+                        onClick={() => selectedNetwork && deployToCelestia.mutate(selectedNetwork.id)}
+                      >
+                        {deployToCelestia.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                        Deploy to Celestia
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-7 text-xs flex-1" 
+                        disabled={!selectedNetwork || publishToMarketplace.isPending}
+                        onClick={() => selectedNetwork && publishToMarketplace.mutate(selectedNetwork.id)}
+                      >
+                        {publishToMarketplace.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+                        Publish to Marketplace
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <EmptyState icon={Plug} title="Select a network" description="Choose a network to configure integrations" />
             )}
           </TabsContent>
 

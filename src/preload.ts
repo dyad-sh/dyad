@@ -1992,6 +1992,10 @@ const validInvokeChannels = [
   "neural:deploy-to-edge",
   "neural:get-analytics",
   "neural:export-model",
+    "neural:attach-to-agent",
+    "neural:integrate-with-app",
+    "neural:link-dataset",
+    "neural:publish-to-marketplace",
   // CI/CD Pipeline Builder
   "cicd:get-templates",
   "cicd:list-pipelines",

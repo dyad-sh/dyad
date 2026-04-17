@@ -2122,6 +2122,104 @@ async function handleCelestiaWalletValidate(body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// On-Chain Asset Bridge handlers
+// ---------------------------------------------------------------------------
+
+async function handleOnchainGetOwnedTokens(body: Record<string, unknown>) {
+  const walletAddress = body.walletAddress as string;
+  if (!walletAddress) throw new Error("walletAddress is required");
+  return invokeIpcHandler("onchain-bridge:get-owned-tokens", walletAddress);
+}
+
+async function handleOnchainImportToken(body: Record<string, unknown>) {
+  return invokeIpcHandler("onchain-bridge:import-token", body);
+}
+
+async function handleOnchainImportAll(body: Record<string, unknown>) {
+  const walletAddress = body.walletAddress as string;
+  if (!walletAddress) throw new Error("walletAddress is required");
+  return invokeIpcHandler("onchain-bridge:import-all", walletAddress);
+}
+
+async function handleOnchainBridgeStatus(_body: Record<string, unknown>) {
+  return invokeIpcHandler("onchain-bridge:status");
+}
+
+// ---------------------------------------------------------------------------
+// Agent Marketplace Autonomy handlers
+// ---------------------------------------------------------------------------
+
+async function handleAgentMarketBrowse(body: Record<string, unknown>) {
+  return invokeIpcHandler("agent-market:browse", body);
+}
+
+async function handleAgentMarketRequestPurchase(body: Record<string, unknown>) {
+  return invokeIpcHandler("agent-market:request-purchase", body);
+}
+
+async function handleAgentMarketRequestListing(body: Record<string, unknown>) {
+  return invokeIpcHandler("agent-market:request-listing", body);
+}
+
+async function handleAgentMarketPendingIntents(_body: Record<string, unknown>) {
+  return invokeIpcHandler("agent-market:pending-intents");
+}
+
+async function handleAgentMarketResolveIntent(body: Record<string, unknown>) {
+  return invokeIpcHandler("agent-market:resolve-intent", body);
+}
+
+async function handleAgentMarketBrowseModels(body: Record<string, unknown>) {
+  return invokeIpcHandler("agent-market:browse-models", body);
+}
+
+async function handleAgentMarketMyLicenses(body: Record<string, unknown>) {
+  const walletAddress = body.walletAddress as string;
+  if (!walletAddress) throw new Error("walletAddress is required");
+  return invokeIpcHandler("agent-market:my-licenses", walletAddress);
+}
+
+async function handleAgentMarketPurchaseHistory(body: Record<string, unknown>) {
+  const walletAddress = body.walletAddress as string;
+  if (!walletAddress) throw new Error("walletAddress is required");
+  return invokeIpcHandler("agent-market:purchase-history", walletAddress);
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace Sync & Subgraph handlers
+// ---------------------------------------------------------------------------
+
+async function handleMarketplaceSyncGetConfig(_body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:get-config");
+}
+
+async function handleMarketplaceSyncListing(body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:sync-listing", body);
+}
+
+async function handleMarketplaceGetActiveListings(_body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:get-active-listings");
+}
+
+async function handleMarketplaceGetStoreByOwner(body: Record<string, unknown>) {
+  const ownerAddress = body.ownerAddress as string;
+  if (!ownerAddress) throw new Error("ownerAddress is required");
+  return invokeIpcHandler("marketplace-sync:get-store-by-owner", ownerAddress);
+}
+
+async function handleMarketplaceGetDrops(_body: Record<string, unknown>) {
+  return invokeIpcHandler("marketplace-sync:get-drops");
+}
+
+async function handleMarketplaceQuerySubgraph(body: Record<string, unknown>) {
+  const subgraph = body.subgraph as string;
+  const query = body.query as string;
+  if (!subgraph || !query) throw new Error("subgraph and query are required");
+  const channel = `marketplace-sync:query-${subgraph}-subgraph`;
+  return invokeIpcHandler(channel, query, body.variables);
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -2337,6 +2435,28 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/github/list-repos": handleGithubListRepos,
   "POST /api/github/create-repo": handleGithubCreateRepo,
   "POST /api/github/push": handleGithubPush,
+  // Marketplace Sync & Subgraph
+  // On-Chain Asset Bridge
+  "POST /api/onchain-bridge/get-owned-tokens": handleOnchainGetOwnedTokens,
+  "POST /api/onchain-bridge/import-token": handleOnchainImportToken,
+  "POST /api/onchain-bridge/import-all": handleOnchainImportAll,
+  "GET /api/onchain-bridge/status": handleOnchainBridgeStatus,
+  // Agent Marketplace Autonomy
+  "POST /api/agent-market/browse": handleAgentMarketBrowse,
+  "POST /api/agent-market/request-purchase": handleAgentMarketRequestPurchase,
+  "POST /api/agent-market/request-listing": handleAgentMarketRequestListing,
+  "GET /api/agent-market/pending-intents": handleAgentMarketPendingIntents,
+  "POST /api/agent-market/resolve-intent": handleAgentMarketResolveIntent,
+  "POST /api/agent-market/browse-models": handleAgentMarketBrowseModels,
+  "POST /api/agent-market/my-licenses": handleAgentMarketMyLicenses,
+  "POST /api/agent-market/purchase-history": handleAgentMarketPurchaseHistory,
+  // Marketplace Sync & Subgraph
+  "POST /api/marketplace-sync/get-config": handleMarketplaceSyncGetConfig,
+  "POST /api/marketplace-sync/sync-listing": handleMarketplaceSyncListing,
+  "POST /api/marketplace-sync/get-active-listings": handleMarketplaceGetActiveListings,
+  "POST /api/marketplace-sync/get-store-by-owner": handleMarketplaceGetStoreByOwner,
+  "POST /api/marketplace-sync/get-drops": handleMarketplaceGetDrops,
+  "POST /api/marketplace-sync/query-subgraph": handleMarketplaceQuerySubgraph,
   // Library (personal file bookshelf)
   "POST /api/library/import-buffer": handleLibraryImportBuffer,
   "POST /api/library/list": handleLibraryList,

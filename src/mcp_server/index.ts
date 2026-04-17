@@ -19,6 +19,7 @@ import { registerAgentTools } from "./tools/agent_tools";
 import { registerWorkflowTools } from "./tools/workflow_tools";
 import { registerChatTools } from "./tools/chat_tools";
 import { registerMarketplaceTools } from "./tools/marketplace_tools";
+import { registerAgentMarketplaceTools } from "./tools/agent_marketplace_tools";
 import { registerKnowledgeBaseTools } from "./tools/knowledge_base_tools";
 import { registerImageTools } from "./tools/image_tools";
 import { registerVideoTools } from "./tools/video_tools";
@@ -212,6 +213,7 @@ class JoyCreateMcpServer {
     registerWorkflowTools(server);
     registerChatTools(server);
     registerMarketplaceTools(server);
+    registerAgentMarketplaceTools(server);
     registerKnowledgeBaseTools(server);
     // Fusion expansion — full JoyCreate capability surface
     registerImageTools(server);

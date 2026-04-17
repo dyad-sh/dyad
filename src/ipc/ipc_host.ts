@@ -145,6 +145,7 @@ import { registerCalendarHandlers } from "./handlers/calendar_handlers";
 import { registerTelegramHandlers } from "./handlers/telegram_handlers";
 import { registerDiscordHandlers } from "./handlers/discord_handlers";
 import { registerDatasetTrainingHandlers } from "./handlers/dataset_training_handlers";
+import { registerOnchainAssetBridgeHandlers } from "./handlers/onchain_asset_bridge_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -462,4 +463,7 @@ export function registerIpcHandlers() {
 
   // Dataset Training Center — Train models on Dataset Studio datasets (local + OpenAI)
   registerDatasetTrainingHandlers();
+
+  // On-Chain Asset Bridge — Import ERC-1155 tokens into Asset Studio + Agent marketplace autonomy
+  registerOnchainAssetBridgeHandlers();
 }

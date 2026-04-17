@@ -1733,6 +1733,190 @@ export class IpcClient {
     return this.ipcRenderer.invoke("celestia:blob:verify", { contentHash });
   }
 
+  // --- On-Chain Asset Bridge ---
+
+  public async getOwnedTokens(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:get-owned-tokens", walletAddress);
+  }
+
+  public async importToken(params: {
+    walletAddress: string;
+    tokenId: string;
+    metadata?: any;
+    baseURI?: string;
+    overrideAssetType?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:import-token", params);
+  }
+
+  public async importAllTokens(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:import-all", walletAddress);
+  }
+
+  public async getOnchainBridgeStatus(): Promise<any> {
+    return this.ipcRenderer.invoke("onchain-bridge:status");
+  }
+
+  // --- Agent Marketplace Autonomy ---
+
+  public async agentBrowseMarketplace(params: {
+    agentId: string;
+    query?: string;
+    assetType?: string;
+    maxPrice?: number;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:browse", params);
+  }
+
+  public async agentRequestPurchase(params: {
+    agentId: string;
+    listingId: string;
+    tokenId: string;
+    reason: string;
+    maxBudget: number;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:request-purchase", params);
+  }
+
+  public async agentRequestListing(params: {
+    agentId: string;
+    localAssetId: string;
+    assetType: string;
+    price: number;
+    currency?: string;
+    reason: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:request-listing", params);
+  }
+
+  public async agentPendingIntents(): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:pending-intents");
+  }
+
+  public async agentResolveIntent(params: {
+    intentId: string;
+    action: "approve" | "reject";
+    reason?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:resolve-intent", params);
+  }
+
+  public async agentBrowseModels(params?: { verified?: boolean; first?: number }): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:browse-models", params);
+  }
+
+  public async agentMyLicenses(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:my-licenses", walletAddress);
+  }
+
+  public async agentPurchaseHistory(walletAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("agent-market:purchase-history", walletAddress);
+  }
+
+  // --- Goldsky Subgraph Queries ---
+
+  public async queryMarketplaceSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:query-marketplace-subgraph", query, variables);
+  }
+
+  public async queryStoresSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:query-stores-subgraph", query, variables);
+  }
+
+  public async queryDropSubgraph(query: string, variables?: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:query-drop-subgraph", query, variables);
+  }
+
+  public async getActiveListings(): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:get-active-listings");
+  }
+
+  public async getStoreByOwner(ownerAddress: string): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:get-store-by-owner", ownerAddress);
+  }
+
+  public async getDrops(): Promise<any> {
+    return this.ipcRenderer.invoke("marketplace-sync:get-drops");
+  }
+
+  // --- Neural Builder ---
+
+  public async neuralListNetworks(): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-networks");
+  }
+
+  public async neuralCreateNetwork(params: { name: string; description?: string; taskType?: string }): Promise<any> {
+    return this.ipcRenderer.invoke("neural:create-network", params);
+  }
+
+  public async neuralGetNetwork(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:get-network", id);
+  }
+
+  public async neuralUpdateNetwork(id: string, updates: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("neural:update-network", id, updates);
+  }
+
+  public async neuralDeleteNetwork(id: string): Promise<void> {
+    await this.ipcRenderer.invoke("neural:delete-network", id);
+  }
+
+  public async neuralStartTraining(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:start-training", id);
+  }
+
+  public async neuralStopTraining(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:stop-training", id);
+  }
+
+  public async neuralAddLayer(networkId: string, layerType: string, afterPosition?: number): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:add-layer", networkId, layerType, afterPosition);
+  }
+
+  public async neuralRemoveLayer(networkId: string, layerId: string): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:remove-layer", networkId, layerId);
+  }
+
+  public async neuralListVersions(networkId: string): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-versions", networkId);
+  }
+
+  public async neuralCreateVersion(networkId: string, notes: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:create-version", networkId, notes);
+  }
+
+  public async neuralListPretrainedModels(): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-pretrained-models");
+  }
+
+  public async neuralApplyTransferLearning(networkId: string, baseModelId: string, frozenLayers: number): Promise<any> {
+    return this.ipcRenderer.invoke("neural:apply-transfer-learning", networkId, baseModelId, frozenLayers);
+  }
+
+  public async neuralAutomlOptimize(networkId: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:automl-optimize", networkId);
+  }
+
+  public async neuralExportModel(networkId: string, format: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:export-model", networkId, format);
+  }
+
+  public async neuralGetAnalytics(networkId: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:get-analytics", networkId);
+  }
+
+  public async neuralDeployToEdge(networkId: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:deploy-to-edge", networkId);
+  }
+
+  public async neuralListAbTests(): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-ab-tests");
+  }
+
+  public async neuralCreateAbTest(params: { name: string; modelAId: string; modelBId: string; metric: string; notes: string }): Promise<any> {
+    return this.ipcRenderer.invoke("neural:create-ab-test", params);
+  }
+
   public async cloneRepoFromUrl(
     params: CloneRepoParams,
   ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {

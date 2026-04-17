@@ -34,6 +34,45 @@ export const THIRDWEB_CONTRACTS = {
   },
 } as const;
 
+// =============================================================================
+// Goldsky Subgraph Endpoints (Polygon Amoy Testnet)
+// =============================================================================
+
+export const GOLDSKY_SUBGRAPHS = {
+  /** Joy Marketplace subgraph — listings, purchases, activity */
+  marketplace:
+    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-marketplace-amoy/0.0.3/gn",
+  /** Joy Stores subgraph — store metadata, creator profiles */
+  stores:
+    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-stores-amoy/0.0.2/gn",
+  /** Joy Drop subgraph — edition drops, claims, mints */
+  drop:
+    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-drop-amoy/0.0.1/gn",
+} as const;
+
+/**
+ * Query a Goldsky subgraph with a GraphQL query.
+ * @param subgraph Key from GOLDSKY_SUBGRAPHS (marketplace | stores | drop)
+ * @param query GraphQL query string
+ * @param variables Optional query variables
+ */
+export async function querySubgraph(
+  subgraph: keyof typeof GOLDSKY_SUBGRAPHS,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<any> {
+  const url = GOLDSKY_SUBGRAPHS[subgraph];
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new Error(`Subgraph query failed: ${res.status} ${res.statusText}`);
+  const json = await res.json();
+  if (json.errors?.length) throw new Error(`Subgraph error: ${json.errors[0].message}`);
+  return json.data;
+}
+
 // Get a typed Thirdweb contract handle for the JoyLicenseToken
 export function getJoyLicenseContract() {
   return getContract({

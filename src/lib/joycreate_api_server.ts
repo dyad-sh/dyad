@@ -1500,6 +1500,160 @@ async function handleWorkflowListPublished(_body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Skill handlers
+// ---------------------------------------------------------------------------
+
+async function handleSkillList(body: Record<string, unknown>) {
+  const params: Record<string, unknown> = {};
+  if (body.category) params.category = body.category;
+  if (body.type) params.type = body.type;
+  if (body.query) params.query = body.query;
+  if (body.enabled !== undefined) params.enabled = body.enabled;
+  if (body.limit) params.limit = body.limit;
+  if (body.offset) params.offset = body.offset;
+  return invokeIpcHandler("skill:list", Object.keys(params).length > 0 ? params : undefined);
+}
+
+async function handleSkillGet(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("skill:get", id);
+}
+
+async function handleSkillCreate(body: Record<string, unknown>) {
+  const name = body.name as string;
+  if (!name) throw new Error("name is required");
+  const params: Record<string, unknown> = { name };
+  if (body.description) params.description = body.description;
+  if (body.category) params.category = body.category;
+  if (body.type) params.type = body.type;
+  if (body.implementationType) params.implementationType = body.implementationType;
+  if (body.implementationCode) params.implementationCode = body.implementationCode;
+  if (body.triggerPatterns) params.triggerPatterns = body.triggerPatterns;
+  if (body.inputSchema) params.inputSchema = body.inputSchema;
+  if (body.outputSchema) params.outputSchema = body.outputSchema;
+  if (body.examples) params.examples = body.examples;
+  if (body.tags) params.tags = body.tags;
+  return invokeIpcHandler("skill:create", params);
+}
+
+async function handleSkillUpdate(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  const params: Record<string, unknown> = { id };
+  if (body.name !== undefined) params.name = body.name;
+  if (body.description !== undefined) params.description = body.description;
+  if (body.category !== undefined) params.category = body.category;
+  if (body.type !== undefined) params.type = body.type;
+  if (body.implementationType !== undefined) params.implementationType = body.implementationType;
+  if (body.implementationCode !== undefined) params.implementationCode = body.implementationCode;
+  if (body.triggerPatterns !== undefined) params.triggerPatterns = body.triggerPatterns;
+  if (body.inputSchema !== undefined) params.inputSchema = body.inputSchema;
+  if (body.outputSchema !== undefined) params.outputSchema = body.outputSchema;
+  if (body.examples !== undefined) params.examples = body.examples;
+  if (body.tags !== undefined) params.tags = body.tags;
+  if (body.enabled !== undefined) params.enabled = body.enabled;
+  return invokeIpcHandler("skill:update", params);
+}
+
+async function handleSkillDelete(body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) throw new Error("id is required");
+  return invokeIpcHandler("skill:delete", id);
+}
+
+async function handleSkillSearch(body: Record<string, unknown>) {
+  const params: Record<string, unknown> = {};
+  if (body.query) params.query = body.query;
+  if (body.category) params.category = body.category;
+  if (body.type) params.type = body.type;
+  return invokeIpcHandler("skill:search", params);
+}
+
+async function handleSkillMatch(body: Record<string, unknown>) {
+  const text = body.text as string;
+  if (!text) throw new Error("text is required");
+  const agentId = body.agentId ? Number(body.agentId) : undefined;
+  return invokeIpcHandler("skill:match", text, agentId);
+}
+
+async function handleSkillExecute(body: Record<string, unknown>) {
+  const skillId = Number(body.skillId);
+  if (!skillId) throw new Error("skillId is required");
+  const params: Record<string, unknown> = { skillId };
+  if (body.input) params.input = body.input;
+  if (body.context) params.context = body.context;
+  if (body.agentId) params.agentId = Number(body.agentId);
+  return invokeIpcHandler("skill:execute", params);
+}
+
+async function handleSkillGenerate(body: Record<string, unknown>) {
+  const description = body.description as string;
+  if (!description) throw new Error("description is required");
+  const request: Record<string, unknown> = { description };
+  if (body.category) request.category = body.category;
+  if (body.implementationType) request.implementationType = body.implementationType;
+  return invokeIpcHandler("skill:generate", request);
+}
+
+async function handleSkillAutoGenerate(body: Record<string, unknown>) {
+  const agentId = Number(body.agentId);
+  const conversationHistory = body.conversationHistory as Array<{ role: string; content: string }>;
+  if (!agentId) throw new Error("agentId is required");
+  if (!conversationHistory?.length) throw new Error("conversationHistory is required");
+  return invokeIpcHandler("skill:auto-generate", { agentId, conversationHistory });
+}
+
+async function handleSkillAttachToAgent(body: Record<string, unknown>) {
+  const skillId = Number(body.skillId);
+  const agentId = Number(body.agentId);
+  if (!skillId) throw new Error("skillId is required");
+  if (!agentId) throw new Error("agentId is required");
+  return invokeIpcHandler("skill:attach-to-agent", { skillId, agentId });
+}
+
+async function handleSkillDetachFromAgent(body: Record<string, unknown>) {
+  const skillId = Number(body.skillId);
+  const agentId = Number(body.agentId);
+  if (!skillId) throw new Error("skillId is required");
+  if (!agentId) throw new Error("agentId is required");
+  return invokeIpcHandler("skill:detach-from-agent", { skillId, agentId });
+}
+
+async function handleSkillListForAgent(body: Record<string, unknown>) {
+  const agentId = Number(body.agentId);
+  if (!agentId) throw new Error("agentId is required");
+  return invokeIpcHandler("skill:list-for-agent", agentId);
+}
+
+async function handleSkillExport(body: Record<string, unknown>) {
+  const skillId = Number(body.skillId);
+  if (!skillId) throw new Error("skillId is required");
+  return invokeIpcHandler("skill:export", skillId);
+}
+
+async function handleSkillImport(body: Record<string, unknown>) {
+  const json = body.json as string;
+  if (!json) throw new Error("json is required (stringified skill JSON)");
+  return invokeIpcHandler("skill:import", json);
+}
+
+async function handleSkillExportMd(_body: Record<string, unknown>) {
+  return invokeIpcHandler("skill:export-md");
+}
+
+async function handleSkillBootstrap(_body: Record<string, unknown>) {
+  return invokeIpcHandler("skill:bootstrap");
+}
+
+async function handleSkillLearn(body: Record<string, unknown>) {
+  const message = body.message as string;
+  if (!message) throw new Error("message is required");
+  const agentId = body.agentId ? Number(body.agentId) : undefined;
+  return invokeIpcHandler("skill:learn", { message, agentId });
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1629,6 +1783,25 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/workflows/install": handleWorkflowInstall,
   "POST /api/workflows/unpublish": handleWorkflowUnpublish,
   "POST /api/workflows/published": handleWorkflowListPublished,
+  // Skills
+  "POST /api/skills/list": handleSkillList,
+  "POST /api/skills/get": handleSkillGet,
+  "POST /api/skills/create": handleSkillCreate,
+  "POST /api/skills/update": handleSkillUpdate,
+  "POST /api/skills/delete": handleSkillDelete,
+  "POST /api/skills/search": handleSkillSearch,
+  "POST /api/skills/match": handleSkillMatch,
+  "POST /api/skills/execute": handleSkillExecute,
+  "POST /api/skills/generate": handleSkillGenerate,
+  "POST /api/skills/auto-generate": handleSkillAutoGenerate,
+  "POST /api/skills/attach-to-agent": handleSkillAttachToAgent,
+  "POST /api/skills/detach-from-agent": handleSkillDetachFromAgent,
+  "POST /api/skills/list-for-agent": handleSkillListForAgent,
+  "POST /api/skills/export": handleSkillExport,
+  "POST /api/skills/import": handleSkillImport,
+  "POST /api/skills/export-md": handleSkillExportMd,
+  "POST /api/skills/bootstrap": handleSkillBootstrap,
+  "POST /api/skills/learn": handleSkillLearn,
 };
 
 // ---------------------------------------------------------------------------

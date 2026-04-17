@@ -256,7 +256,8 @@ export function NeonConnector({ appId }: { appId: number }) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.neon.emailPasswordConfig({
           appId,
-          branchId: app?.neonActiveBranchId ?? null,
+          branchId:
+            app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId ?? null,
         }),
       });
       toast.success(

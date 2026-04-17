@@ -168,7 +168,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           },
         },
       }),
-      listProjectBranches: async (projectId: string) => ({
+      listProjectBranches: async ({ projectId }: { projectId: string }) => ({
         data: {
           branches: [
             {

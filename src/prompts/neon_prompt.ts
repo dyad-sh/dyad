@@ -27,9 +27,7 @@ export function getNeonAvailableSystemPrompt(
         nextjsMajorVersion,
         isLocalAgentMode,
       ) +
-      (emailVerification
-        ? getEmailVerificationNote(isLocalAgentMode)
-        : "")
+      (emailVerification ? getEmailVerificationNote(isLocalAgentMode) : "")
     );
   }
 

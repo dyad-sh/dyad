@@ -14,6 +14,7 @@ import { CheckCircle2, Database, ExternalLink, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
+import { ipc } from "@/ipc/types";
 
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
@@ -245,9 +246,17 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                 <span
                   onClick={(e) => {
                     e.stopPropagation();
-                    window.open(option.url, "_blank", "noopener,noreferrer");
+                    ipc.system.openExternalUrl(option.url);
                   }}
-                  className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      ipc.system.openExternalUrl(option.url);
+                    }
+                  }}
+                  tabIndex={0}
+                  className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                   role="link"
                   aria-label={`Visit ${option.name} website`}
                 >

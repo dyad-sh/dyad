@@ -1237,5 +1237,128 @@ export function registerNeuralBuilderHandlers(): void {
     },
   );
 
+  // ── Agent / App / Dataset Integration ────────────────────────────────────
+
+  ipcMain.handle(
+    "neural:attach-to-agent",
+    async (
+      _event,
+      networkId: string,
+      agentId: string,
+    ): Promise<NeuralNetwork> => {
+      const networks = await loadNetworks();
+      const idx = networks.findIndex((n) => n.id === networkId);
+      if (idx === -1) throw new Error(`Network not found: ${networkId}`);
+      // Store agent link in tags (prefixed for easy lookup)
+      const tag = `agent:${agentId}`;
+      if (!networks[idx].tags.includes(tag)) {
+        networks[idx].tags = [...networks[idx].tags.filter(t => !t.startsWith("agent:")), tag];
+      }
+      networks[idx].updatedAt = Date.now();
+      await saveNetworks(networks);
+      logger.info("Network attached to agent", { networkId, agentId });
+      return networks[idx];
+    },
+  );
+
+  ipcMain.handle(
+    "neural:integrate-with-app",
+    async (
+      _event,
+      networkId: string,
+      appId: string,
+    ): Promise<NeuralNetwork> => {
+      const networks = await loadNetworks();
+      const idx = networks.findIndex((n) => n.id === networkId);
+      if (idx === -1) throw new Error(`Network not found: ${networkId}`);
+      const tag = `app:${appId}`;
+      if (!networks[idx].tags.includes(tag)) {
+        networks[idx].tags = [...networks[idx].tags.filter(t => !t.startsWith("app:")), tag];
+      }
+      networks[idx].updatedAt = Date.now();
+      await saveNetworks(networks);
+      logger.info("Network integrated with app", { networkId, appId });
+      return networks[idx];
+    },
+  );
+
+  ipcMain.handle(
+    "neural:link-dataset",
+    async (
+      _event,
+      networkId: string,
+      datasetId: string,
+    ): Promise<NeuralNetwork> => {
+      const networks = await loadNetworks();
+      const idx = networks.findIndex((n) => n.id === networkId);
+      if (idx === -1) throw new Error(`Network not found: ${networkId}`);
+      const tag = `dataset:${datasetId}`;
+      if (!networks[idx].tags.includes(tag)) {
+        networks[idx].tags = [...networks[idx].tags.filter(t => !t.startsWith("dataset:")), tag];
+      }
+      networks[idx].updatedAt = Date.now();
+      await saveNetworks(networks);
+      logger.info("Dataset linked to network", { networkId, datasetId });
+      return networks[idx];
+    },
+  );
+
+  ipcMain.handle(
+    "neural:publish-to-marketplace",
+    async (_event, networkId: string): Promise<{ ok: true }> => {
+      const networks = await loadNetworks();
+      const network = networks.find((n) => n.id === networkId);
+      if (!network) throw new Error(`Network not found: ${networkId}`);
+      if (network.status !== "trained" && network.status !== "deployed")
+        throw new Error("Network must be trained before publishing");
+      // Export as JSON first for marketplace
+      const exportDir = path.join(NEURAL_DIR(), "exports", networkId);
+      await fs.mkdir(exportDir, { recursive: true });
+      const safeName = network.name.replace(/[^a-z0-9_-]/gi, "_");
+      const exportPath = path.join(exportDir, `${safeName}_marketplace.json`);
+      await fs.writeFile(
+        exportPath,
+        JSON.stringify({
+          name: network.name,
+          description: network.description,
+          taskType: network.taskType,
+          architecture: network.layers,
+          trainingConfig: network.trainingConfig,
+          accuracy: network.accuracy,
+          loss: network.loss,
+          totalParams: network.totalParams ?? estimateParams(network.layers),
+          transferLearning: network.transferLearning,
+          exportedAt: Date.now(),
+          joycreate_version: "2026.4",
+        }, null, 2),
+      );
+      logger.info("Network published to marketplace", { networkId, path: exportPath });
+      return { ok: true };
+    },
+  );
+
+  // ── Agent / App list helpers (for UI dropdowns) ─────────────────────────
+
+  // If not registered elsewhere, register simple list handlers
+  // These may already be registered by app_handlers / agent creation handlers.
+  // Wrap in try/catch to avoid duplicate registration errors.
+  try {
+    ipcMain.handle("agent:list", async () => {
+      const { getDb } = await import("@/db/index");
+      const { agents: agentsTable } = await import("@/db/schema");
+      const db = getDb();
+      return db.select({ id: agentsTable.id, name: agentsTable.name, type: agentsTable.type, status: agentsTable.status }).from(agentsTable).all();
+    });
+  } catch { /* already registered */ }
+
+  try {
+    ipcMain.handle("app:list", async () => {
+      const { getDb } = await import("@/db/index");
+      const { apps: appsTable } = await import("@/db/schema");
+      const db = getDb();
+      return db.select({ id: appsTable.id, name: appsTable.name }).from(appsTable).all();
+    });
+  } catch { /* already registered */ }
+
   logger.info("Neural builder IPC handlers registered");
 }

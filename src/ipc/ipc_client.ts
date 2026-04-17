@@ -1725,6 +1725,84 @@ export class IpcClient {
     return this.ipcRenderer.invoke("celestia:blob:verify", { contentHash });
   }
 
+  // --- Neural Builder ---
+
+  public async neuralListNetworks(): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-networks");
+  }
+
+  public async neuralCreateNetwork(params: { name: string; description?: string; taskType?: string }): Promise<any> {
+    return this.ipcRenderer.invoke("neural:create-network", params);
+  }
+
+  public async neuralGetNetwork(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:get-network", id);
+  }
+
+  public async neuralUpdateNetwork(id: string, updates: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("neural:update-network", id, updates);
+  }
+
+  public async neuralDeleteNetwork(id: string): Promise<void> {
+    await this.ipcRenderer.invoke("neural:delete-network", id);
+  }
+
+  public async neuralStartTraining(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:start-training", id);
+  }
+
+  public async neuralStopTraining(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:stop-training", id);
+  }
+
+  public async neuralAddLayer(networkId: string, layerType: string, afterPosition?: number): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:add-layer", networkId, layerType, afterPosition);
+  }
+
+  public async neuralRemoveLayer(networkId: string, layerId: string): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:remove-layer", networkId, layerId);
+  }
+
+  public async neuralListVersions(networkId: string): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-versions", networkId);
+  }
+
+  public async neuralCreateVersion(networkId: string, notes: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:create-version", networkId, notes);
+  }
+
+  public async neuralListPretrainedModels(): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-pretrained-models");
+  }
+
+  public async neuralApplyTransferLearning(networkId: string, baseModelId: string, frozenLayers: number): Promise<any> {
+    return this.ipcRenderer.invoke("neural:apply-transfer-learning", networkId, baseModelId, frozenLayers);
+  }
+
+  public async neuralAutomlOptimize(networkId: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:automl-optimize", networkId);
+  }
+
+  public async neuralExportModel(networkId: string, format: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:export-model", networkId, format);
+  }
+
+  public async neuralGetAnalytics(networkId: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:get-analytics", networkId);
+  }
+
+  public async neuralDeployToEdge(networkId: string): Promise<any> {
+    return this.ipcRenderer.invoke("neural:deploy-to-edge", networkId);
+  }
+
+  public async neuralListAbTests(): Promise<any[]> {
+    return this.ipcRenderer.invoke("neural:list-ab-tests");
+  }
+
+  public async neuralCreateAbTest(params: { name: string; modelAId: string; modelBId: string; metric: string; notes: string }): Promise<any> {
+    return this.ipcRenderer.invoke("neural:create-ab-test", params);
+  }
+
   public async cloneRepoFromUrl(
     params: CloneRepoParams,
   ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {

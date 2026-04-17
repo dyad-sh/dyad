@@ -1654,6 +1654,335 @@ async function handleSkillLearn(body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Orchestrator handlers
+// ---------------------------------------------------------------------------
+
+async function handleOrchestratorStatus(_body: Record<string, unknown>) {
+  return invokeIpcHandler("orchestrator:status");
+}
+
+async function handleOrchestratorSubmitTask(body: Record<string, unknown>) {
+  const prompt = body.prompt as string;
+  if (!prompt) throw new Error("prompt is required");
+  return invokeIpcHandler("orchestrator:submit-task", body);
+}
+
+async function handleOrchestratorGet(body: Record<string, unknown>) {
+  const taskId = body.taskId as string;
+  if (!taskId) throw new Error("taskId is required");
+  return invokeIpcHandler("orchestrator:get", taskId);
+}
+
+async function handleOrchestratorList(_body: Record<string, unknown>) {
+  return invokeIpcHandler("orchestrator:list");
+}
+
+async function handleOrchestratorCancel(body: Record<string, unknown>) {
+  const taskId = body.taskId as string;
+  if (!taskId) throw new Error("taskId is required");
+  return invokeIpcHandler("orchestrator:cancel", taskId);
+}
+
+async function handleOrchestratorPause(body: Record<string, unknown>) {
+  const taskId = body.taskId as string;
+  if (!taskId) throw new Error("taskId is required");
+  return invokeIpcHandler("orchestrator:pause", taskId);
+}
+
+async function handleOrchestratorResume(body: Record<string, unknown>) {
+  const taskId = body.taskId as string;
+  if (!taskId) throw new Error("taskId is required");
+  return invokeIpcHandler("orchestrator:resume", taskId);
+}
+
+async function handleOrchestratorDashboard(_body: Record<string, unknown>) {
+  return invokeIpcHandler("orchestrator:dashboard");
+}
+
+async function handleOrchestratorTemplates(_body: Record<string, unknown>) {
+  return invokeIpcHandler("orchestrator:templates");
+}
+
+// ---------------------------------------------------------------------------
+// Voice Assistant handlers
+// ---------------------------------------------------------------------------
+
+async function handleVoiceGetConfig(_body: Record<string, unknown>) {
+  return invokeIpcHandler("voice:get-config");
+}
+
+async function handleVoiceUpdateConfig(body: Record<string, unknown>) {
+  return invokeIpcHandler("voice:update-config", body);
+}
+
+async function handleVoiceGetState(_body: Record<string, unknown>) {
+  return invokeIpcHandler("voice:get-state");
+}
+
+async function handleVoiceGetCapabilities(_body: Record<string, unknown>) {
+  return invokeIpcHandler("voice:get-capabilities");
+}
+
+async function handleVoiceSpeak(body: Record<string, unknown>) {
+  const text = body.text as string;
+  if (!text) throw new Error("text is required");
+  return invokeIpcHandler("voice:speak", body);
+}
+
+async function handleVoiceTranscribeFile(body: Record<string, unknown>) {
+  const filePath = body.filePath as string;
+  if (!filePath) throw new Error("filePath is required");
+  return invokeIpcHandler("voice:transcribe-file", body);
+}
+
+async function handleVoiceGetInstalledModels(_body: Record<string, unknown>) {
+  return invokeIpcHandler("voice:get-installed-models");
+}
+
+// ---------------------------------------------------------------------------
+// Analytics & Reporting handlers
+// ---------------------------------------------------------------------------
+
+async function handleAnalyticsGlobal(_body: Record<string, unknown>) {
+  return invokeIpcHandler("analytics:global");
+}
+
+async function handleAnalyticsGenerateReport(body: Record<string, unknown>) {
+  return invokeIpcHandler("analytics:generate-report", body);
+}
+
+async function handleAnalyticsListReports(_body: Record<string, unknown>) {
+  return invokeIpcHandler("analytics:list-reports");
+}
+
+async function handleAnalyticsGetReport(body: Record<string, unknown>) {
+  const reportId = body.reportId as string;
+  if (!reportId) throw new Error("reportId is required");
+  return invokeIpcHandler("analytics:get-report", reportId);
+}
+
+async function handleAnalyticsDeleteReport(body: Record<string, unknown>) {
+  const reportId = body.reportId as string;
+  if (!reportId) throw new Error("reportId is required");
+  return invokeIpcHandler("analytics:delete-report", reportId);
+}
+
+async function handleAnalyticsGetDashboard(body: Record<string, unknown>) {
+  const dashboardId = body.dashboardId as string;
+  return invokeIpcHandler("analytics:get-dashboard", dashboardId);
+}
+
+async function handleAnalyticsCreateDashboard(body: Record<string, unknown>) {
+  return invokeIpcHandler("analytics:create-dashboard", body);
+}
+
+// ---------------------------------------------------------------------------
+// Version Control handlers
+// ---------------------------------------------------------------------------
+
+async function handleVersionCommit(body: Record<string, unknown>) {
+  const appId = Number(body.appId);
+  if (!appId) throw new Error("appId is required");
+  return invokeIpcHandler("version:commit", body);
+}
+
+async function handleVersionList(body: Record<string, unknown>) {
+  const appId = Number(body.appId);
+  if (!appId) throw new Error("appId is required");
+  return invokeIpcHandler("version:list", body);
+}
+
+async function handleVersionGet(body: Record<string, unknown>) {
+  const versionId = body.versionId as string;
+  if (!versionId) throw new Error("versionId is required");
+  return invokeIpcHandler("version:get", body);
+}
+
+async function handleVersionDiff(body: Record<string, unknown>) {
+  return invokeIpcHandler("version:diff", body);
+}
+
+async function handleVersionRollback(body: Record<string, unknown>) {
+  const appId = Number(body.appId);
+  const versionId = body.versionId as string;
+  if (!appId || !versionId) throw new Error("appId and versionId are required");
+  return invokeIpcHandler("version:rollback", body);
+}
+
+async function handleVersionCreateBranch(body: Record<string, unknown>) {
+  const appId = Number(body.appId);
+  const name = body.name as string;
+  if (!appId || !name) throw new Error("appId and name are required");
+  return invokeIpcHandler("version:create-branch", body);
+}
+
+async function handleVersionListBranches(body: Record<string, unknown>) {
+  const appId = Number(body.appId);
+  if (!appId) throw new Error("appId is required");
+  return invokeIpcHandler("version:list-branches", body);
+}
+
+async function handleVersionMerge(body: Record<string, unknown>) {
+  return invokeIpcHandler("version:merge", body);
+}
+
+async function handleVersionTimeline(body: Record<string, unknown>) {
+  const appId = Number(body.appId);
+  if (!appId) throw new Error("appId is required");
+  return invokeIpcHandler("version:timeline", body);
+}
+
+// ---------------------------------------------------------------------------
+// Calendar handlers
+// ---------------------------------------------------------------------------
+
+async function handleCalendarListSources(_body: Record<string, unknown>) {
+  return invokeIpcHandler("calendar:list-sources");
+}
+
+async function handleCalendarSyncAll(_body: Record<string, unknown>) {
+  return invokeIpcHandler("calendar:sync-all");
+}
+
+async function handleCalendarGetEvent(body: Record<string, unknown>) {
+  const eventId = body.eventId as string;
+  if (!eventId) throw new Error("eventId is required");
+  return invokeIpcHandler("calendar:get-event", eventId);
+}
+
+async function handleCalendarExportIcs(body: Record<string, unknown>) {
+  return invokeIpcHandler("calendar:export-ics", body);
+}
+
+// ---------------------------------------------------------------------------
+// Vector Store handlers
+// ---------------------------------------------------------------------------
+
+async function handleVectorListCollections(_body: Record<string, unknown>) {
+  return invokeIpcHandler("vector:list-collections");
+}
+
+async function handleVectorGetCollection(body: Record<string, unknown>) {
+  const name = body.name as string;
+  if (!name) throw new Error("name is required");
+  return invokeIpcHandler("vector:get-collection", name);
+}
+
+async function handleVectorDeleteCollection(body: Record<string, unknown>) {
+  const name = body.name as string;
+  if (!name) throw new Error("name is required");
+  return invokeIpcHandler("vector:delete-collection", name);
+}
+
+async function handleVectorGetStats(_body: Record<string, unknown>) {
+  return invokeIpcHandler("vector:get-stats");
+}
+
+// ---------------------------------------------------------------------------
+// Image Studio handlers
+// ---------------------------------------------------------------------------
+
+async function handleImageStudioGenerate(body: Record<string, unknown>) {
+  const prompt = body.prompt as string;
+  if (!prompt) throw new Error("prompt is required");
+  return invokeIpcHandler("image-studio:generate", body);
+}
+
+async function handleImageStudioEdit(body: Record<string, unknown>) {
+  return invokeIpcHandler("image-studio:edit", body);
+}
+
+async function handleImageStudioList(_body: Record<string, unknown>) {
+  return invokeIpcHandler("image-studio:list");
+}
+
+async function handleImageStudioGet(body: Record<string, unknown>) {
+  const imageId = body.imageId as string;
+  if (!imageId) throw new Error("imageId is required");
+  return invokeIpcHandler("image-studio:get", imageId);
+}
+
+async function handleImageStudioDelete(body: Record<string, unknown>) {
+  const imageId = body.imageId as string;
+  if (!imageId) throw new Error("imageId is required");
+  return invokeIpcHandler("image-studio:delete", imageId);
+}
+
+async function handleImageStudioAvailableProviders(_body: Record<string, unknown>) {
+  return invokeIpcHandler("image-studio:available-providers");
+}
+
+async function handleImageStudioEnhancePrompt(body: Record<string, unknown>) {
+  const prompt = body.prompt as string;
+  if (!prompt) throw new Error("prompt is required");
+  return invokeIpcHandler("image-studio:enhance-prompt", prompt);
+}
+
+// ---------------------------------------------------------------------------
+// Dataset Studio handlers
+// ---------------------------------------------------------------------------
+
+async function handleDatasetCreate(body: Record<string, unknown>) {
+  return invokeIpcHandler("dataset-studio:create-dataset", body);
+}
+
+async function handleDatasetList(_body: Record<string, unknown>) {
+  return invokeIpcHandler("dataset-studio:list-datasets");
+}
+
+async function handleDatasetGet(body: Record<string, unknown>) {
+  const datasetId = body.datasetId as string;
+  if (!datasetId) throw new Error("datasetId is required");
+  return invokeIpcHandler("dataset-studio:get-dataset", datasetId);
+}
+
+async function handleDatasetUpdate(body: Record<string, unknown>) {
+  return invokeIpcHandler("dataset-studio:update-dataset", body);
+}
+
+async function handleDatasetDelete(body: Record<string, unknown>) {
+  const datasetId = body.datasetId as string;
+  if (!datasetId) throw new Error("datasetId is required");
+  return invokeIpcHandler("dataset-studio:delete-dataset", datasetId);
+}
+
+async function handleDatasetListItems(body: Record<string, unknown>) {
+  const datasetId = body.datasetId as string;
+  if (!datasetId) throw new Error("datasetId is required");
+  return invokeIpcHandler("dataset-studio:list-items", body);
+}
+
+async function handleDatasetGetItem(body: Record<string, unknown>) {
+  const itemId = body.itemId as string;
+  if (!itemId) throw new Error("itemId is required");
+  return invokeIpcHandler("dataset-studio:get-item", itemId);
+}
+
+async function handleDatasetExport(body: Record<string, unknown>) {
+  const datasetId = body.datasetId as string;
+  if (!datasetId) throw new Error("datasetId is required");
+  return invokeIpcHandler("dataset-studio:export-dataset", body);
+}
+
+// ---------------------------------------------------------------------------
+// GitHub handlers
+// ---------------------------------------------------------------------------
+
+async function handleGithubListRepos(_body: Record<string, unknown>) {
+  return invokeIpcHandler("github:list-repos");
+}
+
+async function handleGithubCreateRepo(body: Record<string, unknown>) {
+  const name = body.name as string;
+  if (!name) throw new Error("name is required");
+  return invokeIpcHandler("github:create-repo", body);
+}
+
+async function handleGithubPush(body: Record<string, unknown>) {
+  return invokeIpcHandler("github:push", body);
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1802,6 +2131,73 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/skills/export-md": handleSkillExportMd,
   "POST /api/skills/bootstrap": handleSkillBootstrap,
   "POST /api/skills/learn": handleSkillLearn,
+  // Orchestrator
+  "POST /api/orchestrator/status": handleOrchestratorStatus,
+  "POST /api/orchestrator/submit-task": handleOrchestratorSubmitTask,
+  "POST /api/orchestrator/get": handleOrchestratorGet,
+  "POST /api/orchestrator/list": handleOrchestratorList,
+  "POST /api/orchestrator/cancel": handleOrchestratorCancel,
+  "POST /api/orchestrator/pause": handleOrchestratorPause,
+  "POST /api/orchestrator/resume": handleOrchestratorResume,
+  "POST /api/orchestrator/dashboard": handleOrchestratorDashboard,
+  "POST /api/orchestrator/templates": handleOrchestratorTemplates,
+  // Voice Assistant
+  "POST /api/voice/get-config": handleVoiceGetConfig,
+  "POST /api/voice/update-config": handleVoiceUpdateConfig,
+  "POST /api/voice/get-state": handleVoiceGetState,
+  "POST /api/voice/get-capabilities": handleVoiceGetCapabilities,
+  "POST /api/voice/speak": handleVoiceSpeak,
+  "POST /api/voice/transcribe-file": handleVoiceTranscribeFile,
+  "POST /api/voice/get-installed-models": handleVoiceGetInstalledModels,
+  // Analytics & Reporting
+  "POST /api/analytics/global": handleAnalyticsGlobal,
+  "POST /api/analytics/generate-report": handleAnalyticsGenerateReport,
+  "POST /api/analytics/list-reports": handleAnalyticsListReports,
+  "POST /api/analytics/get-report": handleAnalyticsGetReport,
+  "POST /api/analytics/delete-report": handleAnalyticsDeleteReport,
+  "POST /api/analytics/get-dashboard": handleAnalyticsGetDashboard,
+  "POST /api/analytics/create-dashboard": handleAnalyticsCreateDashboard,
+  // Version Control
+  "POST /api/version/commit": handleVersionCommit,
+  "POST /api/version/list": handleVersionList,
+  "POST /api/version/get": handleVersionGet,
+  "POST /api/version/diff": handleVersionDiff,
+  "POST /api/version/rollback": handleVersionRollback,
+  "POST /api/version/create-branch": handleVersionCreateBranch,
+  "POST /api/version/list-branches": handleVersionListBranches,
+  "POST /api/version/merge": handleVersionMerge,
+  "POST /api/version/timeline": handleVersionTimeline,
+  // Calendar
+  "POST /api/calendar/list-sources": handleCalendarListSources,
+  "POST /api/calendar/sync-all": handleCalendarSyncAll,
+  "POST /api/calendar/get-event": handleCalendarGetEvent,
+  "POST /api/calendar/export-ics": handleCalendarExportIcs,
+  // Vector Store
+  "POST /api/vector/list-collections": handleVectorListCollections,
+  "POST /api/vector/get-collection": handleVectorGetCollection,
+  "POST /api/vector/delete-collection": handleVectorDeleteCollection,
+  "POST /api/vector/get-stats": handleVectorGetStats,
+  // Image Studio
+  "POST /api/image-studio/generate": handleImageStudioGenerate,
+  "POST /api/image-studio/edit": handleImageStudioEdit,
+  "POST /api/image-studio/list": handleImageStudioList,
+  "POST /api/image-studio/get": handleImageStudioGet,
+  "POST /api/image-studio/delete": handleImageStudioDelete,
+  "POST /api/image-studio/available-providers": handleImageStudioAvailableProviders,
+  "POST /api/image-studio/enhance-prompt": handleImageStudioEnhancePrompt,
+  // Dataset Studio
+  "POST /api/dataset/create": handleDatasetCreate,
+  "POST /api/dataset/list": handleDatasetList,
+  "POST /api/dataset/get": handleDatasetGet,
+  "POST /api/dataset/update": handleDatasetUpdate,
+  "POST /api/dataset/delete": handleDatasetDelete,
+  "POST /api/dataset/list-items": handleDatasetListItems,
+  "POST /api/dataset/get-item": handleDatasetGetItem,
+  "POST /api/dataset/export": handleDatasetExport,
+  // GitHub
+  "POST /api/github/list-repos": handleGithubListRepos,
+  "POST /api/github/create-repo": handleGithubCreateRepo,
+  "POST /api/github/push": handleGithubPush,
 };
 
 // ---------------------------------------------------------------------------

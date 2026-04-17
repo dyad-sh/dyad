@@ -4854,10 +4854,10 @@ async function reassembleAsset(metadata) {
                   </div>
                 </div>
                 
-                {renderLogDisplay(logs[11], '2-3 minutes')}
+                {renderLogDisplay(logs[10], '2-3 minutes')}
                 
                 {/* Web3 Pipeline Status */}
-                <Web3PipelineStatus progress={web3Pipeline.progress} isRunning={web3Pipeline.isRunning} />
+                <Web3PipelineStatus isRunning={web3Pipeline.isRunning} results={web3Pipeline.results} />
                 
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={prevStep}>← Back</Button>
@@ -4877,22 +4877,24 @@ async function reassembleAsset(metadata) {
             {currentStep === 11 && (
               <div className="space-y-4">
                 <AgentConfigStep
-                  assetName={nftData.name || 'Untitled Asset'}
-                  assetDescription={nftData.description || ''}
-                  assetType={nftData.modelType || 'language'}
-                  onConfigComplete={(config) => {
+                  config={agentConfig}
+                  onChange={(config) => {
                     setAgentConfig(config);
                     markStepComplete(11);
-                    toast({ title: 'Agent Configured', description: `Agent "${config.name}" configured on ${config.computeConfig.platform}` });
-                    nextStep();
+                    toast({ title: 'Agent Configured', description: `Compute config updated: ${config.computeType} / ${config.cpuCores} cores` });
                   }}
-                  onSkip={() => {
+                />
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" onClick={() => {
                     markStepComplete(11);
                     toast({ title: 'Skipped', description: 'Agent compute skipped' });
                     nextStep();
-                  }}
-                  initialConfig={agentConfig ? agentConfig : undefined}
-                />
+                  }}>Skip</Button>
+                  <Button onClick={() => {
+                    markStepComplete(11);
+                    nextStep();
+                  }} disabled={!agentConfig}>Next →</Button>
+                </div>
               </div>
             )}
 
@@ -5533,7 +5535,7 @@ async function reassembleAsset(metadata) {
                               <p className="text-xs font-semibold mb-1">🔧 Technical Details:</p>
                               <div className="space-y-0.5 text-xs text-muted-foreground">
                                 <p>Model Type: {nftData.modelType}</p>
-                                <p>Size: {(modelData.file?.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                <p>Size: {modelData.file ? (modelData.file.size / (1024 * 1024)).toFixed(2) : '0'} MB</p>
                                 <p>Network: Polygon</p>
                                 <p>Quality: {nftData.qualityScore}/100</p>
                               </div>
@@ -5607,23 +5609,18 @@ async function reassembleAsset(metadata) {
                     <div><strong>Contract:</strong> {contractData.address || 'Pending'}</div>
                     <div><strong>Quality Score:</strong> {nftData.qualityScore}/100</div>
                   </div>
-                  {/* Celestia DA Receipt Badges */}
-                  {celestiaDA.receipts.length > 0 && (
+                  {/* Celestia DA Status */}
+                  {celestiaDA.isAvailable && (
                     <div className="mt-3 pt-3 border-t border-green-500/20">
                       <p className="text-xs font-medium text-muted-foreground mb-2">Data Availability Anchors:</p>
-                      <CelestiaAnchorSummary receipts={celestiaDA.receipts} />
+                      <CelestiaStatusBadge isAvailable={celestiaDA.isAvailable} />
                     </div>
                   )}
                 </div>
 
                 {/* Celestia DA Anchoring Status Card */}
                 <CelestiaAnchoringCard
-                  isAvailable={celestiaDA.isNodeAvailable}
-                  isSubmitting={celestiaDA.isSubmitting}
-                  receipts={celestiaDA.receipts}
-                  lastReceipt={celestiaDA.lastReceipt}
-                  error={celestiaDA.error}
-                  nodeInfo={celestiaDA.nodeInfo}
+                  isAnchoring={celestiaDA.isSubmitting}
                 />
                 
                 {renderLogDisplay(logs[14], '3-5 minutes')}
@@ -5654,12 +5651,11 @@ async function reassembleAsset(metadata) {
           <div className="space-y-6">
             {/* NFT Details Card */}
             <NFTDetailsCard
-              nftData={nftData}
-              contractData={contractData}
-              pricingData={{ ...pricingData, currency: pricingData?.currency || 'MATIC' }}
-              licenseData={licenseData}
-              chunkData={chunkData}
-              encryptionConfig={encryptionConfig}
+              tokenId={nftData.tokenId}
+              contractAddress={contractData.address}
+              chainId={TARGET_CHAIN_ID}
+              metadataCid={nftData.metadataCID}
+              imageCid={nftData.imageIPFS}
             />
 
             {/* Additional Details from Step 13 */}
@@ -5683,7 +5679,7 @@ async function reassembleAsset(metadata) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">File Size:</span>
-                  <span className="font-semibold">{(modelData.file?.size / (1024 * 1024)).toFixed(2)} MB</span>
+                  <span className="font-semibold">{modelData.file ? (modelData.file.size / (1024 * 1024)).toFixed(2) : '0'} MB</span>
                 </div>
                 {storeSettings.showDocumentation && assetDetails.githubUrl && (
                   <div className="pt-2 border-t">

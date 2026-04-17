@@ -378,6 +378,7 @@ function renderCustomTag(
               path: attributes.path || "",
               startLine: attributes.start_line || "",
               endLine: attributes.end_line || "",
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -426,6 +427,7 @@ function renderCustomTag(
             properties: {
               query: attributes.query || "",
               state: getState({ isStreaming, inProgress }),
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -581,6 +583,7 @@ function renderCustomTag(
               count: attributes.count || "",
               total: attributes.total || "",
               truncated: attributes.truncated || "",
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -713,6 +716,7 @@ function renderCustomTag(
               include_ignored:
                 attributes.include_ignored || attributes.include_hidden || "",
               state: getState({ isStreaming, inProgress }),
+              appName: attributes.app_name || "",
             },
           }}
         >

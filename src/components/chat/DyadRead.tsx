@@ -20,6 +20,7 @@ export const DyadRead: React.FC<DyadReadProps> = ({
   const path = pathProp || node?.properties?.path || "";
   const startLine = startLineProp || node?.properties?.startLine || "";
   const endLine = endLineProp || node?.properties?.endLine || "";
+  const appName = node?.properties?.appName || "";
   const fileName = path ? path.split("/").pop() : "";
   const dirPath = path
     ? path.slice(0, path.length - (fileName?.length || 0))
@@ -43,6 +44,11 @@ export const DyadRead: React.FC<DyadReadProps> = ({
       <div className="flex items-center gap-1 py-1">
         <FileText size={14} className="shrink-0 text-muted-foreground/50" />
         <span className="text-[13px] font-medium text-foreground/70">Read</span>
+        {appName && (
+          <span className="text-[11px] font-medium text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-1.5 py-0.5 rounded-md ring-1 ring-inset ring-sky-200 dark:ring-sky-800">
+            {appName}
+          </span>
+        )}
         {path && (
           <span
             className="text-[13px] truncate min-w-0"

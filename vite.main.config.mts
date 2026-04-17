@@ -43,6 +43,8 @@ export default defineConfig({
         // dugite — must be external so __dirname resolves to its real location
         // for embedded git binary discovery
         "dugite",
+        // discord.js — heavy native deps, externalize
+        "discord.js",
       ],
     },
   },

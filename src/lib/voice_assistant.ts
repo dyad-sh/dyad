@@ -18,6 +18,7 @@ import { app } from "electron";
 import log from "electron-log";
 import { spawn, ChildProcess } from "child_process";
 import * as crypto from "crypto";
+import { readSettings, writeSettings } from "../main/settings";
 
 const logger = log.scope("voice_assistant");
 
@@ -35,13 +36,33 @@ export interface VoiceConfig {
   wakeWord: string;
   language: string;
   whisperModel: "tiny" | "base" | "small" | "medium" | "large";
-  ttsModel: "bark" | "coqui" | "piper";
+  ttsModel: "bark" | "coqui" | "piper" | "elevenlabs";
   ttsVoice: string;
+  elevenlabsApiKey?: string;
+  elevenlabsVoiceId?: string;
   silenceThreshold: number;  // dB
   silenceDuration: number;   // ms before stopping
   autoSubmit: boolean;       // Auto-submit after transcription
   soundEffects: boolean;     // Play beeps
   continuousMode: boolean;   // Keep listening after response
+}
+
+export interface SystemCapabilities {
+  hasPiper: boolean;
+  piperPath: string | null;
+  hasWhisper: boolean;
+  whisperPythonPath: string | null;
+  hasFFmpeg: boolean;
+  installedWhisperModels: string[];
+  installedPiperModels: string[];
+}
+
+export interface ElevenLabsVoice {
+  voice_id: string;
+  name: string;
+  category: string;
+  labels: Record<string, string>;
+  preview_url: string;
 }
 
 export interface TranscriptionResult {
@@ -117,6 +138,8 @@ const VOICE_DATA_DIR = path.join(app.getPath("userData"), "voice");
 const MODELS_DIR = path.join(VOICE_DATA_DIR, "models");
 const RECORDINGS_DIR = path.join(VOICE_DATA_DIR, "recordings");
 const TTS_CACHE_DIR = path.join(VOICE_DATA_DIR, "tts_cache");
+const WHISPER_CACHE_DIR = path.join(app.getPath("home"), ".cache", "whisper");
+const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 
 // Voice command patterns
 const COMMAND_PATTERNS: Array<{ pattern: RegExp; type: VoiceCommand["type"]; intent: string }> = [
@@ -143,6 +166,8 @@ export class VoiceAssistant extends EventEmitter {
   private audioBuffer: Buffer[] = [];
   private isInitialized = false;
   private wakeWordDetector: WakeWordDetector | null = null;
+  private capabilities: SystemCapabilities | null = null;
+  private elevenlabsVoicesCache: ElevenLabsVoice[] | null = null;
   
   private constructor() {
     super();
@@ -173,10 +198,22 @@ export class VoiceAssistant extends EventEmitter {
     await fs.mkdir(RECORDINGS_DIR, { recursive: true });
     await fs.mkdir(TTS_CACHE_DIR, { recursive: true });
     
-    // Check for required tools
-    const hasFFmpeg = await this.checkFFmpeg();
-    if (!hasFFmpeg) {
-      logger.warn("FFmpeg not found - some voice features may be limited");
+    // Detect system capabilities
+    this.capabilities = await this.detectSystemCapabilities();
+    logger.info("System capabilities detected", this.capabilities);
+    
+    // Load ElevenLabs API key from user settings if available
+    try {
+      const settings = readSettings();
+      if (settings?.elevenlabsApiKey) {
+        this.config.elevenlabsApiKey = settings.elevenlabsApiKey;
+        logger.info("ElevenLabs API key loaded from settings");
+      }
+      if (settings?.elevenlabsVoiceId) {
+        this.config.elevenlabsVoiceId = settings.elevenlabsVoiceId;
+      }
+    } catch {
+      logger.warn("Could not read settings for ElevenLabs key");
     }
     
     // Initialize wake word detector if needed
@@ -537,6 +574,9 @@ print(json.dumps(output))
       case "coqui":
         await this.generateWithCoqui(request, outputPath);
         break;
+      case "elevenlabs":
+        await this.generateWithElevenLabs(request, outputPath);
+        break;
     }
     
     // Cache the result
@@ -549,8 +589,11 @@ print(json.dumps(output))
     const voice = request.voice || this.config.ttsVoice;
     const modelPath = path.join(MODELS_DIR, "piper", `${voice}.onnx`);
     
+    // Use detected binary path, fall back to bare "piper" command
+    const piperBin = this.capabilities?.piperPath || "piper";
+
     return new Promise((resolve, reject) => {
-      const proc = spawn("piper", [
+      const proc = spawn(piperBin, [
         "--model", modelPath,
         "--output_file", outputPath,
       ]);
@@ -611,6 +654,106 @@ tts.tts_to_file(text="${request.text.replace(/"/g, '\\"')}", file_path="${output
         else reject(new Error(`Coqui TTS failed: ${stderr}`));
       });
     });
+  }
+  
+  // ===========================================================================
+  // ELEVENLABS TTS
+  // ===========================================================================
+
+  private async generateWithElevenLabs(request: TTSRequest, outputPath: string): Promise<void> {
+    const apiKey = this.config.elevenlabsApiKey;
+    if (!apiKey) {
+      throw new Error("ElevenLabs API key not configured. Set it in Voice settings.");
+    }
+
+    const voiceId = request.voice || this.config.elevenlabsVoiceId || "21m00Tcm4TlvDq8ikWAM"; // default: Rachel
+    const url = `${ELEVENLABS_API_BASE}/text-to-speech/${encodeURIComponent(voiceId)}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text: request.text,
+        model_id: "eleven_monolingual_v1",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      throw new Error(`ElevenLabs API error ${response.status}: ${errorBody}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const mp3Path = outputPath.replace(/\.wav$/, ".mp3");
+    await fs.writeFile(mp3Path, Buffer.from(arrayBuffer));
+
+    // Convert MP3 to WAV for consistent playback
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("ffmpeg", ["-y", "-i", mp3Path, "-ar", "22050", "-ac", "1", outputPath]);
+      proc.on("exit", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`FFmpeg MP3→WAV conversion failed (code ${code})`));
+      });
+      proc.on("error", reject);
+    });
+
+    // Clean up intermediate MP3
+    await fs.unlink(mp3Path).catch(() => {});
+  }
+
+  async getElevenLabsVoices(): Promise<ElevenLabsVoice[]> {
+    if (this.elevenlabsVoicesCache) return this.elevenlabsVoicesCache;
+
+    const apiKey = this.config.elevenlabsApiKey;
+    if (!apiKey) {
+      throw new Error("ElevenLabs API key not configured");
+    }
+
+    const response = await fetch(`${ELEVENLABS_API_BASE}/voices`, {
+      headers: { "xi-api-key": apiKey },
+    });
+
+    if (!response.ok) {
+      throw new Error(`ElevenLabs API error ${response.status}`);
+    }
+
+    const data = await response.json() as { voices: Array<{
+      voice_id: string;
+      name: string;
+      category: string;
+      labels: Record<string, string>;
+      preview_url: string;
+    }> };
+
+    this.elevenlabsVoicesCache = data.voices.map((v) => ({
+      voice_id: v.voice_id,
+      name: v.name,
+      category: v.category || "unknown",
+      labels: v.labels || {},
+      preview_url: v.preview_url || "",
+    }));
+
+    return this.elevenlabsVoicesCache;
+  }
+
+  setElevenLabsApiKey(apiKey: string): void {
+    this.config.elevenlabsApiKey = apiKey;
+    this.elevenlabsVoicesCache = null; // invalidate cache
+    this.emit("config:updated", this.config);
+    // Persist to settings
+    try {
+      writeSettings({ elevenlabsApiKey: apiKey });
+    } catch {
+      logger.warn("Could not persist ElevenLabs API key to settings");
+    }
   }
   
   private async playAudio(audioPath: string): Promise<void> {
@@ -708,6 +851,149 @@ tts.tts_to_file(text="${request.text.replace(/"/g, '\\"')}", file_path="${output
       proc.on("error", () => resolve(false));
     });
   }
+
+  // ===========================================================================
+  // SYSTEM DETECTION
+  // ===========================================================================
+
+  async detectSystemCapabilities(): Promise<SystemCapabilities> {
+    const [hasPiper, piperPath] = await this.findPiperBinary();
+    const [hasWhisper, whisperPython] = await this.checkWhisperAvailable();
+    const hasFFmpeg = await this.checkFFmpeg();
+    const installedWhisperModels = await this.scanWhisperModels();
+    const installedPiperModels = await this.scanPiperModels(piperPath);
+
+    const caps: SystemCapabilities = {
+      hasPiper,
+      piperPath,
+      hasWhisper,
+      whisperPythonPath: whisperPython,
+      hasFFmpeg,
+      installedWhisperModels,
+      installedPiperModels,
+    };
+
+    this.capabilities = caps;
+    return caps;
+  }
+
+  getCapabilities(): SystemCapabilities | null {
+    return this.capabilities;
+  }
+
+  private async findPiperBinary(): Promise<[boolean, string | null]> {
+    // 1. Check PATH
+    const pathResult = await this.whichCommand("piper");
+    if (pathResult) return [true, pathResult];
+
+    // 2. Check common Windows locations
+    if (process.platform === "win32") {
+      const candidates = [
+        "C:\\piper\\piper.exe",
+        path.join(process.env.LOCALAPPDATA || "", "piper", "piper.exe"),
+        path.join(process.env.PROGRAMFILES || "", "piper", "piper.exe"),
+        path.join(app.getPath("userData"), "piper", "piper.exe"),
+      ];
+      for (const candidate of candidates) {
+        if (candidate && existsSync(candidate)) return [true, candidate];
+      }
+    }
+
+    // 3. Check userData models directory for manual piper install
+    const userDataPiper = path.join(MODELS_DIR, "piper", "piper.exe");
+    if (existsSync(userDataPiper)) return [true, userDataPiper];
+
+    return [false, null];
+  }
+
+  private async checkWhisperAvailable(): Promise<[boolean, string | null]> {
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    return new Promise((resolve) => {
+      const proc = spawn(pythonCmd, ["-c", "import whisper; print('ok')"]);
+      let stdout = "";
+      proc.stdout?.on("data", (d) => { stdout += d.toString(); });
+      proc.on("exit", (code) => {
+        if (code === 0 && stdout.trim() === "ok") {
+          resolve([true, pythonCmd]);
+        } else {
+          resolve([false, null]);
+        }
+      });
+      proc.on("error", () => resolve([false, null]));
+    });
+  }
+
+  private async scanWhisperModels(): Promise<string[]> {
+    const models: string[] = [];
+
+    // Check ~/.cache/whisper/ (default cache location)
+    if (existsSync(WHISPER_CACHE_DIR)) {
+      try {
+        const files = await fs.readdir(WHISPER_CACHE_DIR);
+        models.push(...files.filter(f => f.endsWith(".pt")).map(f => f.replace(".pt", "")));
+      } catch { /* ignore */ }
+    }
+
+    // Also check local models dir
+    const localWhisperDir = path.join(MODELS_DIR, "whisper");
+    if (existsSync(localWhisperDir)) {
+      try {
+        const files = await fs.readdir(localWhisperDir);
+        const localModels = files.filter(f => f.endsWith(".pt")).map(f => f.replace(".pt", ""));
+        for (const m of localModels) {
+          if (!models.includes(m)) models.push(m);
+        }
+      } catch { /* ignore */ }
+    }
+
+    return models;
+  }
+
+  private async scanPiperModels(piperPath: string | null): Promise<string[]> {
+    const models: string[] = [];
+
+    // Check userData piper models
+    const piperDir = path.join(MODELS_DIR, "piper");
+    if (existsSync(piperDir)) {
+      try {
+        const files = await fs.readdir(piperDir);
+        models.push(...files.filter(f => f.endsWith(".onnx")));
+      } catch { /* ignore */ }
+    }
+
+    // If piper is installed system-wide, check its model directory
+    if (piperPath) {
+      const piperModelsDir = path.join(path.dirname(piperPath), "models");
+      if (existsSync(piperModelsDir)) {
+        try {
+          const files = await fs.readdir(piperModelsDir);
+          const sysModels = files.filter(f => f.endsWith(".onnx"));
+          for (const m of sysModels) {
+            if (!models.includes(m)) models.push(m);
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    return models;
+  }
+
+  private async whichCommand(cmd: string): Promise<string | null> {
+    const whichCmd = process.platform === "win32" ? "where.exe" : "which";
+    return new Promise((resolve) => {
+      const proc = spawn(whichCmd, [cmd]);
+      let stdout = "";
+      proc.stdout?.on("data", (d) => { stdout += d.toString(); });
+      proc.on("exit", (code) => {
+        if (code === 0 && stdout.trim()) {
+          resolve(stdout.trim().split(/\r?\n/)[0]);
+        } else {
+          resolve(null);
+        }
+      });
+      proc.on("error", () => resolve(null));
+    });
+  }
   
   private async getAudioDuration(audioPath: string): Promise<number> {
     return new Promise((resolve) => {
@@ -765,23 +1051,18 @@ print("Model downloaded successfully")
     whisper: string[];
     tts: string[];
   }> {
-    const whisperModels: string[] = [];
-    const ttsModels: string[] = [];
-    
-    // Check Whisper models
-    const whisperDir = path.join(MODELS_DIR, "whisper");
-    if (existsSync(whisperDir)) {
-      const files = await fs.readdir(whisperDir);
-      whisperModels.push(...files.filter(f => f.endsWith(".pt")));
+    // Use capabilities if available (populated during initialize)
+    if (this.capabilities) {
+      return {
+        whisper: this.capabilities.installedWhisperModels,
+        tts: this.capabilities.installedPiperModels,
+      };
     }
-    
-    // Check TTS models (Piper)
-    const piperDir = path.join(MODELS_DIR, "piper");
-    if (existsSync(piperDir)) {
-      const files = await fs.readdir(piperDir);
-      ttsModels.push(...files.filter(f => f.endsWith(".onnx")));
-    }
-    
+
+    // Fallback: scan directly
+    const whisperModels = await this.scanWhisperModels();
+    const ttsModels = await this.scanPiperModels(null);
+
     return { whisper: whisperModels, tts: ttsModels };
   }
 }

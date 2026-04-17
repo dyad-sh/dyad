@@ -832,8 +832,8 @@ export class AutonomousAgentSystem extends EventEmitter {
     }
     
     const defaultConfig: AgentConfiguration = {
-      primaryModel: "gpt-4",
-      fallbackModels: ["gpt-3.5-turbo", "claude-3-sonnet"],
+      primaryModel: "gpt-5-mini",
+      fallbackModels: ["gemini-3-flash-preview", "claude-sonnet-4-20250514"],
       temperature: 0.7,
       maxTokens: 4096,
       autonomyLevel: "semi-autonomous",
@@ -944,7 +944,7 @@ export class AutonomousAgentSystem extends EventEmitter {
         proficiency: 0.7,
         enabled: true,
         requires: [],
-        resources: { modelRequired: "gpt-4", toolsRequired: [], memoryMb: 128, timeoutMs: 120000 },
+        resources: { modelRequired: "gpt-5-mini", toolsRequired: [], memoryMb: 128, timeoutMs: 120000 },
         usageCount: 0,
         successRate: 0,
       },
@@ -956,7 +956,7 @@ export class AutonomousAgentSystem extends EventEmitter {
         proficiency: 0.6,
         enabled: true,
         requires: [],
-        resources: { modelRequired: "gpt-4", toolsRequired: ["react", "tailwindcss"], memoryMb: 256, timeoutMs: 180000 },
+        resources: { modelRequired: "gpt-5-mini", toolsRequired: ["react", "tailwindcss"], memoryMb: 256, timeoutMs: 180000 },
         usageCount: 0,
         successRate: 0,
       },

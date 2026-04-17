@@ -38,6 +38,7 @@ import {
   Monitor,
   Loader2,
   X,
+  Pencil,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -208,6 +209,11 @@ export default function DocumentsPage() {
   const [aiDocName, setAiDocName] = useState("");
   const [aiTone, setAiTone] = useState<"formal" | "casual" | "professional" | "creative">("professional");
   const [aiLength, setAiLength] = useState<"short" | "medium" | "long" | "detailed">("medium");
+
+  // Edit document state
+  const [editingDoc, setEditingDoc] = useState<BaseDocument | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   // Model selection for AI generation: undefined = use global settings default, "__smart__" = smart auto routing
   const [aiSelectedModel, setAiSelectedModel] = useState<{ provider: string; name: string } | "__smart__" | undefined>(undefined);
 
@@ -307,6 +313,18 @@ export default function DocumentsPage() {
     onError: (error) => {
       showError(`Error: ${error}`);
     },
+  });
+
+  // Update document metadata mutation
+  const updateDocMutation = useMutation({
+    mutationFn: (params: { id: number; name?: string; description?: string }) =>
+      libreOfficeClient.updateDocumentMetadata(params),
+    onSuccess: () => {
+      showSuccess("Document updated");
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      setEditingDoc(null);
+    },
+    onError: (error) => showError(`Failed to update: ${error}`),
   });
 
   // Delete document mutation
@@ -494,6 +512,17 @@ export default function DocumentsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="border-border/50 bg-background/95 backdrop-blur-sm">
+              <DropdownMenuItem
+                onClick={() => {
+                  setEditName(doc.name);
+                  setEditDescription(doc.description || "");
+                  setEditingDoc(doc);
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Rename / Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem 
                 onClick={() => openDocMutation.mutate(doc.id)}
               >
@@ -1127,6 +1156,36 @@ export default function DocumentsPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Document Dialog */}
+      <Dialog open={!!editingDoc} onOpenChange={(open) => { if (!open) setEditingDoc(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Document</DialogTitle>
+            <DialogDescription>Update the document name and description.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Name</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Description</Label>
+              <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingDoc(null)}>Cancel</Button>
+            <Button
+              disabled={!editName.trim() || updateDocMutation.isPending}
+              onClick={() => editingDoc && updateDocMutation.mutate({ id: editingDoc.id, name: editName.trim(), description: editDescription.trim() })}
+            >
+              {updateDocMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Streaming Generation Preview */}
       {streamingState && (

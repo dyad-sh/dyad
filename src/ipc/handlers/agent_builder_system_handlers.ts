@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent Builder Handlers
  * Comprehensive system for building, configuring, and managing AI agents
  * 
@@ -291,7 +291,7 @@ function initializeDefaultTemplates() {
         status: "active",
         type: "specialist",
         config: {
-          model: "gpt-4",
+          model: "gpt-5-mini",
           temperature: 0.3,
           maxTokens: 4096,
           responseFormat: "markdown",
@@ -339,7 +339,7 @@ Always explain your methodology and be precise with numbers.`,
         status: "active",
         type: "code_assistant",
         config: {
-          model: "gpt-4",
+          model: "gpt-5-mini",
           temperature: 0.2,
           maxTokens: 8192,
           responseFormat: "markdown",
@@ -388,7 +388,7 @@ Always explain your approach and consider edge cases.`,
         status: "active",
         type: "research_agent",
         config: {
-          model: "gpt-4",
+          model: "gpt-5-mini",
           temperature: 0.5,
           maxTokens: 4096,
           responseFormat: "markdown",
@@ -438,7 +438,7 @@ Always be objective and distinguish between facts and interpretations.`,
         status: "active",
         type: "automation_agent",
         config: {
-          model: "gpt-4",
+          model: "gpt-5-mini",
           temperature: 0.1,
           maxTokens: 2048,
           responseFormat: "json",
@@ -488,7 +488,7 @@ Be precise and reliable. Always validate inputs before executing actions.`,
         status: "active",
         type: "coordinator",
         config: {
-          model: "gpt-4",
+          model: "gpt-5-mini",
           temperature: 0.4,
           maxTokens: 4096,
           responseFormat: "json",
@@ -985,7 +985,7 @@ export function registerAgentBuilderSystemHandlers() {
         status: "draft",
         type: args.type || "assistant",
         config: {
-          model: "gpt-4",
+          model: "gpt-5-mini",
           temperature: 0.7,
           maxTokens: 4096,
           ...args.config,

@@ -487,6 +487,18 @@ Respond ONLY with valid JSON, no markdown formatting.`;
     const input = orchestration.input;
     const planId = uuidv4() as PlanId;
 
+    // Fetch available skills to include in the LLM prompt
+    let skillsSection = "";
+    try {
+      const { listSkills } = await import("@/lib/skill_engine");
+      const enabledSkills = await listSkills({ enabled: true, limit: 50 });
+      if (enabledSkills.length > 0) {
+        skillsSection = `\nAvailable skills (can fulfill tasks directly without spawning an agent):\n${enabledSkills.map((s) => `- skill_${s.id}: ${s.name} — ${s.description} (${s.category})`).join("\n")}\n`;
+      }
+    } catch {
+      // skill engine not available, continue without skills
+    }
+
     const decomposePrompt = `You are a task decomposition engine. Given a user request, break it down into a directed acyclic graph of sub-tasks.
 
 User request: "${input.text}"
@@ -494,7 +506,7 @@ ${input.intent ? `Parsed intent: ${JSON.stringify(input.intent)}` : ""}
 
 Available agent templates:
 ${AGENT_TEMPLATES.map((t) => `- ${t.id}: ${t.name} (${t.capabilities.join(", ")})`).join("\n")}
-
+${skillsSection}
 Return a JSON object with:
 {
   "objective": "high-level objective summary",
@@ -511,7 +523,8 @@ Return a JSON object with:
       "requiredCapabilities": ["capability_type"],
       "dependencies": [],
       "executionMode": "local|cloud|hybrid",
-      "templateId": "tpl_xxx"
+      "templateId": "tpl_xxx",
+      "skillId": null
     }
   ]
 }
@@ -523,6 +536,7 @@ Rules:
 4. Match each task to the most appropriate template
 5. Simple requests may need only 1-2 tasks
 6. Complex requests may need 5-10 tasks
+7. If a task can be fulfilled by an available skill, set skillId (e.g. "skill_3") and templateId to null — skills are faster than spawning agents
 
 Respond ONLY with valid JSON, no markdown formatting.`;
 
@@ -535,20 +549,32 @@ Respond ONLY with valid JSON, no markdown formatting.`;
       const parsed = JSON.parse(typeof response === "string" ? response : (response as any).content || "{}");
 
       // Build task nodes
-      const tasks: TaskNode[] = (parsed.tasks || []).map((t: any) => ({
-        id: (t.id || uuidv4()) as TaskNodeId,
-        name: t.name || "Unnamed task",
-        description: t.description || "",
-        status: "pending" as TaskNodeStatus,
-        priority: (t.priority || "medium") as TaskPriority,
-        complexity: (t.complexity || "moderate") as TaskComplexity,
-        requiredCapabilities: t.requiredCapabilities || [],
-        dependencies: (t.dependencies || []) as TaskNodeId[],
-        executionMode: t.executionMode || "hybrid",
-        retryCount: 0,
-        maxRetries: 3,
-        createdAt: new Date().toISOString(),
-      }));
+      const tasks: TaskNode[] = (parsed.tasks || []).map((t: any) => {
+        // Extract numeric skill ID from "skill_3" format
+        let skillId: number | undefined;
+        if (typeof t.skillId === "string" && t.skillId.startsWith("skill_")) {
+          skillId = parseInt(t.skillId.replace("skill_", ""), 10);
+          if (isNaN(skillId)) skillId = undefined;
+        } else if (typeof t.skillId === "number") {
+          skillId = t.skillId;
+        }
+
+        return {
+          id: (t.id || uuidv4()) as TaskNodeId,
+          name: t.name || "Unnamed task",
+          description: t.description || "",
+          status: "pending" as TaskNodeStatus,
+          priority: (t.priority || "medium") as TaskPriority,
+          complexity: (t.complexity || "moderate") as TaskComplexity,
+          requiredCapabilities: t.requiredCapabilities || [],
+          dependencies: (t.dependencies || []) as TaskNodeId[],
+          executionMode: t.executionMode || "hybrid",
+          skillId,
+          retryCount: 0,
+          maxRetries: 3,
+          createdAt: new Date().toISOString(),
+        };
+      });
 
       // Build agent assignments
       const agentAssignments: AgentAssignment[] = tasks.map((task: TaskNode, idx: number) => {
@@ -865,6 +891,39 @@ Respond ONLY with valid JSON, no markdown formatting.`;
       }
     }
     task.input = depOutputs;
+
+    // Short-circuit: if the task has a skillId, execute the skill directly
+    if (task.skillId) {
+      try {
+        const { executeSkill } = await import("@/lib/skill_engine");
+        const depContext = Object.values(depOutputs)
+          .map((d) => (d as Record<string, unknown>)?.content || "")
+          .filter(Boolean)
+          .join("\n");
+        const skillInput = depContext
+          ? `${task.description}\n\nContext from previous tasks:\n${depContext}`
+          : task.description;
+
+        const result = await executeSkill({
+          skillId: task.skillId,
+          input: skillInput,
+        });
+
+        const content = result.output || "";
+        task.output = { content, viaSkill: true, completedAt: new Date().toISOString() };
+
+        this.addTrace(orchestration, "info", "executor",
+          `Task completed via skill #${task.skillId}: ${task.name}`, {
+            taskId: task.id,
+            outputLength: content.length,
+          });
+
+        return task.output;
+      } catch (err: any) {
+        logger.warn(`Skill execution failed for task ${task.name}, falling through to CNS:`, err);
+        // Fall through to standard CNS execution
+      }
+    }
 
     // Build execution prompt
     const taskPrompt = this.buildTaskPrompt(task, depOutputs, plan.objective);

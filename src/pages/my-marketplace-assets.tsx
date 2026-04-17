@@ -29,6 +29,9 @@ import {
   Clock,
   Hash,
   LinkIcon,
+  Package,
+  Shield,
+  FileCheck,
 } from "lucide-react";
 import {
   useMyMarketplaceAssets,
@@ -37,6 +40,9 @@ import {
   useStoreStats,
   useAllStores,
   useAllDomains,
+  useMarketplaceListings,
+  useUserLicenses,
+  useMarketplaceStats,
 } from "@/hooks/use_subgraph";
 import { useQueryClient } from "@tanstack/react-query";
 import { subgraphKeys } from "@/hooks/use_subgraph";
@@ -46,6 +52,8 @@ import type {
   SubgraphUserBalance,
   SubgraphStore,
   SubgraphDomainRegistration,
+  SubgraphListing,
+  SubgraphAIModelLicense,
 } from "@/types/subgraph_types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -373,6 +381,9 @@ export default function MyMarketplaceAssetsPage() {
   const { data: storeStats } = useStoreStats();
   const { data: allStores } = useAllStores();
   const { data: allDomains } = useAllDomains();
+  const { data: activeListings } = useMarketplaceListings({ activeOnly: true, first: 50 });
+  const { data: userLicenses } = useUserLicenses(walletAddress || undefined);
+  const { data: marketplaceStats } = useMarketplaceStats();
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: subgraphKeys.all });
@@ -469,7 +480,7 @@ export default function MyMarketplaceAssetsPage() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pt-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 px-6 pt-4">
         <StatCard
           title="Your Tokens"
           value={myAssets?.ownedTokens?.length ?? 0}
@@ -494,10 +505,22 @@ export default function MyMarketplaceAssetsPage() {
           icon={Globe}
           description=".joy domain names"
         />
+        <StatCard
+          title="Your Assets"
+          value={myAssets?.marketplaceAssets?.length ?? 0}
+          icon={Package}
+          description="On-chain marketplace assets"
+        />
+        <StatCard
+          title="Your Licenses"
+          value={myAssets?.licenses?.length ?? 0}
+          icon={Shield}
+          description="AI model licenses"
+        />
       </div>
 
       {/* Network Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pt-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 px-6 pt-2">
         <StatCard
           title="Total Tokens"
           value={dropStats?.totalTokens ?? "—"}
@@ -521,6 +544,18 @@ export default function MyMarketplaceAssetsPage() {
           value={storeStats?.totalDomains ?? "—"}
           icon={Globe}
           description="Network-wide"
+        />
+        <StatCard
+          title="Total Listings"
+          value={marketplaceStats?.totalListings ?? "—"}
+          icon={Package}
+          description="Marketplace listings"
+        />
+        <StatCard
+          title="Total Sales"
+          value={marketplaceStats?.totalSales ?? "—"}
+          icon={FileCheck}
+          description="Marketplace sales"
         />
       </div>
 
@@ -566,6 +601,12 @@ export default function MyMarketplaceAssetsPage() {
             </TabsTrigger>
             <TabsTrigger value="domains" className="gap-1">
               <Globe className="h-4 w-4" /> Domains
+            </TabsTrigger>
+            <TabsTrigger value="listings" className="gap-1">
+              <Package className="h-4 w-4" /> Listings
+            </TabsTrigger>
+            <TabsTrigger value="licenses" className="gap-1">
+              <Shield className="h-4 w-4" /> Licenses
             </TabsTrigger>
           </TabsList>
 
@@ -756,6 +797,156 @@ export default function MyMarketplaceAssetsPage() {
                     walletAddress &&
                     domain.owner.toLowerCase() === walletAddress.toLowerCase();
                   return <DomainCard key={domain.id} domain={domain} isOwned={!!isOwned} />;
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Active Listings */}
+          <TabsContent value="listings" className="mt-0">
+            {!activeListings ? (
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <Skeleton className="h-5 w-40 mb-2" />
+                      <Skeleton className="h-4 w-24" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : activeListings.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="No active listings"
+                description="No active marketplace listings found on-chain."
+              />
+            ) : (
+              <div className="space-y-3">
+                {activeListings.map((listing) => (
+                  <Card key={listing.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                            <Package className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {listing.asset?.name || `Listing #${listing.listingId}`}
+                            </div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                              {listing.asset?.assetType && (
+                                <Badge variant="outline" className="text-xs">{listing.asset.assetType}</Badge>
+                              )}
+                              <span>Token #{listing.tokenId}</span>
+                              <span>Qty: {listing.quantity}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">
+                            {listing.effectivePrice} wei
+                          </div>
+                          {listing.hasDiscount && listing.discountedPrice && (
+                            <div className="text-xs text-green-500">
+                              Discounted from {listing.pricePerItem}
+                            </div>
+                          )}
+                          <div className="text-xs text-muted-foreground mt-1">
+                            Seller: {truncateAddress(listing.seller)}
+                          </div>
+                        </div>
+                      </div>
+                      {listing.asset?.publisher?.name && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Publisher: {listing.asset.publisher.name} (Rep: {listing.asset.publisher.reputationScore})
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Licenses */}
+          <TabsContent value="licenses" className="mt-0">
+            {!walletAddress ? (
+              <EmptyState
+                icon={Wallet}
+                title="Connect your wallet"
+                description="Enter your wallet address above to see your AI model licenses."
+              />
+            ) : !userLicenses ? (
+              <ListSkeleton rows={3} />
+            ) : userLicenses.length === 0 ? (
+              <EmptyState
+                icon={Shield}
+                title="No licenses"
+                description="You don't hold any AI model licenses yet."
+              />
+            ) : (
+              <div className="space-y-3">
+                {userLicenses.map((license) => {
+                  const isExpired = license.expiresAt
+                    ? Number(license.expiresAt) * 1000 < Date.now()
+                    : false;
+                  return (
+                    <Card key={license.id} className="hover:shadow-md transition-shadow">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                              <Shield className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <div className="font-medium">
+                                {license.model?.name || `Model #${license.model?.tokenId ?? "?"}`}
+                              </div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">
+                                  Type {license.licenseType}
+                                </Badge>
+                                {license.model?.verified && (
+                                  <Badge className="bg-green-500/90 text-xs">Verified</Badge>
+                                )}
+                                {license.model?.category !== undefined && (
+                                  <span>Cat: {license.model.category}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant={isExpired ? "destructive" : "default"}>
+                              {isExpired ? "Expired" : "Active"}
+                            </Badge>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              Amount: {license.amount}
+                            </div>
+                            {license.expiresAt && (
+                              <div className="text-xs text-muted-foreground">
+                                Expires: {formatTimestamp(license.expiresAt)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground flex items-center gap-3">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Licensed: {formatTimestamp(license.timestamp)}
+                          </span>
+                          <button
+                            onClick={() => copyToClipboard(license.txHash)}
+                            className="text-blue-500 hover:underline flex items-center gap-1"
+                          >
+                            <Hash className="h-3 w-3" />
+                            {truncateAddress(license.txHash)}
+                          </button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
                 })}
               </div>
             )}

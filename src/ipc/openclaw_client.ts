@@ -46,12 +46,12 @@ class OpenClawClientImpl {
 
     if (this.ipcRenderer) {
       // Set up event listener
-      this.ipcRenderer.on("openclaw:event", (_event: unknown, data: OpenClawEvent) => {
+      this.ipcRenderer.on("openclaw:event", (data: OpenClawEvent) => {
         this.notifyListeners(data);
       });
 
       // Set up stream listener
-      this.ipcRenderer.on("openclaw:chat:stream-chunk", (_event: unknown, data: { requestId: string; chunk: unknown }) => {
+      this.ipcRenderer.on("openclaw:chat:stream-chunk", (data: { requestId: string; chunk: unknown }) => {
         this.notifyListeners({
           type: "message:received",
           timestamp: Date.now(),
@@ -95,6 +95,18 @@ class OpenClawClientImpl {
 
   async getGatewayStatus(): Promise<OpenClawGatewayStatus> {
     return this.ipcRenderer.invoke("openclaw:gateway:status");
+  }
+
+  // ===========================================================================
+  // DAEMON AUTO-START
+  // ===========================================================================
+
+  async getDaemonAutostartStatus(): Promise<{ registered: boolean; enabled: boolean }> {
+    return this.ipcRenderer.invoke("openclaw:daemon:autostart-status");
+  }
+
+  async setDaemonAutostart(enable: boolean): Promise<{ registered: boolean; enabled: boolean }> {
+    return this.ipcRenderer.invoke("openclaw:daemon:autostart-set", enable);
   }
 
   // ===========================================================================
@@ -386,7 +398,7 @@ class OpenClawClientImpl {
       name: "anthropic",
       config: {
         apiKey,
-        model: config?.model || "claude-3-5-sonnet-20250219",
+        model: config?.model || "claude-sonnet-4-20250514",
         enabled: true,
         priority: 2,
       },
@@ -614,7 +626,7 @@ class OpenClawClientImpl {
     if (this.dataSubscribed) return { success: true };
     
     // Set up event listener
-    this.ipcRenderer.on("openclaw:data:event", (_event: unknown, data: unknown) => {
+    this.ipcRenderer.on("openclaw:data:event", (data: unknown) => {
       this.notifyDataListeners(data);
     });
     
@@ -865,7 +877,7 @@ class OpenClawClientImpl {
     if (this.systemSubscribed) return { success: true };
     
     // Set up event listener
-    this.ipcRenderer.on("openclaw:system:event", (_event: unknown, data: unknown) => {
+    this.ipcRenderer.on("openclaw:system:event", (data: unknown) => {
       this.notifySystemListeners(data);
     });
     

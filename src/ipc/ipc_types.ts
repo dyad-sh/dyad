@@ -868,6 +868,97 @@ export interface StartAgentTrainingParams {
   };
 }
 
+// ============================================================================
+// Dataset Training Types (Training Center)
+// ============================================================================
+
+export interface DatasetTrainingParams {
+  name: string;
+  description?: string;
+  datasetId: string;
+  baseModelSource: "huggingface" | "local" | "ollama";
+  baseModelId: string;
+  method: "lora" | "qlora" | "dora" | "full";
+  datasetFormat: "alpaca" | "sharegpt" | "oasst" | "raw";
+  autoSplitRatio?: number;
+  filterByModality?: "text" | "image" | "audio" | "video";
+  minQualityScore?: number;
+  hyperparameters: {
+    epochs: number;
+    batchSize: number;
+    learningRate: number;
+    loraRank?: number;
+    loraAlpha?: number;
+    loraDropout?: number;
+    use4bit?: boolean;
+    use8bit?: boolean;
+    gradientCheckpointing?: boolean;
+  };
+  outputName?: string;
+  openAiConfig?: {
+    apiKey: string;
+    model: string;
+    suffix?: string;
+    nEpochs?: number;
+    batchSize?: number;
+    learningRateMultiplier?: number;
+  };
+}
+
+export interface DatasetTrainingStatus {
+  jobId: string;
+  name: string;
+  datasetId: string;
+  datasetName: string;
+  baseModelId: string;
+  method: string;
+  provider: "local" | "openai";
+  status: "preparing" | "uploading" | "queued" | "training" | "completed" | "failed" | "cancelled";
+  progress: number;
+  currentEpoch?: number;
+  totalEpochs?: number;
+  currentStep?: number;
+  totalSteps?: number;
+  currentLoss?: number;
+  gpuMemoryUsed?: number;
+  elapsedTime?: number;
+  estimatedTimeRemaining?: number;
+  itemsProcessed: number;
+  totalDatasetItems: number;
+  error?: string;
+  outputPath?: string;
+  openAiJobId?: string;
+  openAiModelId?: string;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+export interface TrainedModelInfo {
+  id: string;
+  name: string;
+  baseModelId: string;
+  method: string;
+  datasetId?: string;
+  datasetName?: string;
+  provider: "local" | "openai";
+  status: "training" | "completed" | "failed";
+  adapterPath?: string;
+  openAiModelId?: string;
+  createdAt: number;
+  completedAt?: number;
+}
+
+export interface ListBaseModelsResult {
+  local: Array<{ id: string; name: string; size?: string; quantization?: string }>;
+  openai: Array<{ id: string; name: string; description: string }>;
+}
+
+export interface TrainingSystemInfo extends ModelFactorySystemInfo {
+  hasOpenAiKey: boolean;
+  openAiModels: string[];
+}
+
 export interface AddAgentSkillParams {
   agentId: string;
   name: string;

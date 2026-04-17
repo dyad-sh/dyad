@@ -51,6 +51,8 @@ export interface OpenClawConfig {
 export interface OpenClawGatewayConfig {
   host: string;
   port: number;
+  /** Port the external OpenClaw daemon binds to (default 18790) */
+  daemonPort: number;
   protocol: "ws" | "wss";
   reconnectInterval: number;
   maxReconnectAttempts: number;
@@ -380,7 +382,8 @@ export interface OpenClawEvent {
 export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
   gateway: {
     host: "127.0.0.1",
-    port: 18790,
+    port: 18792,
+    daemonPort: 18790,
     protocol: "ws",
     reconnectInterval: 5000,
     maxReconnectAttempts: 10,
@@ -410,7 +413,7 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
     "claude-code": {
       name: "Claude Code (Agentic)",
       type: "claude-code",
-      model: "claude-3-5-sonnet-20250219",
+      model: "claude-sonnet-4-20250514",
       enabled: false,
       priority: 3,
       capabilities: ["code", "agentic", "function-calling", "reasoning"],
@@ -420,7 +423,7 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
       name: "OpenAI",
       type: "openai",
       baseURL: "https://api.openai.com/v1",
-      model: "gpt-4o",
+      model: "gpt-5.1",
       enabled: false,
       priority: 2,
       capabilities: ["chat", "code", "vision", "function-calling", "reasoning", "creative", "analysis"],

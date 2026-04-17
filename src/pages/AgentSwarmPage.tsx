@@ -36,6 +36,7 @@ import {
   Terminal,
   MessagesSquare,
   Info,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,6 +93,7 @@ import {
   useSendMessage,
   useShareKnowledge,
   useExecuteTask,
+  useUpdateSwarm,
 } from "@/hooks/useAgentSwarm";
 import { SwarmNetworkGraph } from "@/components/agent/SwarmNetworkGraph";
 import { AgentTaskExecutionView } from "@/components/agent/AgentTaskExecutionView";
@@ -194,6 +196,12 @@ export default function AgentSwarmPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<AgentNodeId | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Edit swarm state
+  const [editingSwarm, setEditingSwarm] = useState<Swarm | null>(null);
+  const [editSwarmName, setEditSwarmName] = useState("");
+  const [editSwarmDesc, setEditSwarmDesc] = useState("");
+  const updateSwarmMutation = useUpdateSwarm();
+
   // Initialize swarm system
   const initSwarm = useInitializeSwarm();
 
@@ -258,6 +266,11 @@ export default function AgentSwarmPage() {
                     onSelect={() => {
                       setSelectedSwarmId(swarm.id);
                       setSelectedAgentId(null);
+                    }}
+                    onEdit={() => {
+                      setEditSwarmName(swarm.name);
+                      setEditSwarmDesc(swarm.description || "");
+                      setEditingSwarm(swarm);
                     }}
                   />
                 ))
@@ -354,6 +367,38 @@ export default function AgentSwarmPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Swarm Dialog */}
+      <Dialog open={!!editingSwarm} onOpenChange={(open) => { if (!open) setEditingSwarm(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Swarm</DialogTitle>
+            <DialogDescription>Update swarm name and description.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Name</Label>
+              <Input value={editSwarmName} onChange={(e) => setEditSwarmName(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Description</Label>
+              <Textarea value={editSwarmDesc} onChange={(e) => setEditSwarmDesc(e.target.value)} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingSwarm(null)}>Cancel</Button>
+            <Button
+              disabled={!editSwarmName.trim() || updateSwarmMutation.isPending}
+              onClick={() => editingSwarm && updateSwarmMutation.mutate(
+                { swarmId: editingSwarm.id, updates: { name: editSwarmName.trim(), description: editSwarmDesc.trim() } },
+                { onSuccess: () => { toast.success("Swarm updated"); setEditingSwarm(null); }, onError: (err) => toast.error(`Failed: ${err}`) },
+              )}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -366,10 +411,12 @@ function SwarmListItem({
   swarm,
   isSelected,
   onSelect,
+  onEdit,
 }: {
   swarm: Swarm;
   isSelected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
 }) {
   const manager = useAgentSwarmManager(swarm.id);
 
@@ -398,6 +445,16 @@ function SwarmListItem({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {swarm.status !== "active" && swarm.status !== "running" && (
                 <DropdownMenuItem
                   onClick={(e) => {
@@ -1405,7 +1462,7 @@ function SpawnAgentDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [role, setRole] = useState<AgentRole>("worker");
-  const [modelId, setModelId] = useState("gpt-4");
+  const [modelId, setModelId] = useState("gpt-5-mini");
   const [temperature, setTemperature] = useState(0.7);
   const [systemPrompt, setSystemPrompt] = useState("");
 
@@ -1442,7 +1499,7 @@ function SpawnAgentDialog({
   const resetForm = () => {
     setName("");
     setRole("worker");
-    setModelId("gpt-4");
+    setModelId("gpt-5-mini");
     setTemperature(0.7);
     setSystemPrompt("");
   };
@@ -1500,11 +1557,11 @@ function SpawnAgentDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gpt-4">GPT-4</SelectItem>
-                <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
+                <SelectItem value="gpt-5.1">GPT 5.1</SelectItem>
+                <SelectItem value="gpt-5-mini">GPT 5 Mini</SelectItem>
+                <SelectItem value="gpt-5.1-codex">GPT 5.1 Codex</SelectItem>
+                <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
+                <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
               </SelectContent>
             </Select>
           </div>

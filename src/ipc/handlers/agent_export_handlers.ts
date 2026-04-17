@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent Export and Deployment Handlers
  * Export agents to various formats and deploy to different targets
  */
@@ -189,7 +189,7 @@ export async function handleExportAgentStandalone(
 OPENAI_API_KEY=your-api-key-here
 
 # Model configuration
-MODEL_ID=${agent.modelId || "gpt-4o"}
+MODEL_ID=${agent.modelId || "gpt-5-mini"}
 TEMPERATURE=${agent.temperature || 0.7}
 MAX_TOKENS=${agent.maxTokens || 4096}
 `;
@@ -289,7 +289,7 @@ import { streamText, generateText } from "ai";
 import "dotenv/config";
 ${hasTools ? 'import { tools } from "./tools.js";' : ""}
 
-const MODEL_ID = process.env.MODEL_ID || "${agent.modelId || "gpt-4o"}";
+const MODEL_ID = process.env.MODEL_ID || "${agent.modelId || "gpt-5-mini"}";
 const TEMPERATURE = parseFloat(process.env.TEMPERATURE || "${agent.temperature || 0.7}");
 const MAX_TOKENS = parseInt(process.env.MAX_TOKENS || "${agent.maxTokens || 4096}");
 
@@ -374,13 +374,13 @@ async function main() {
     output: process.stdout,
   });
 
-  console.log("\\n🤖 ${agent.name} is ready!");
+  console.log("\\nðŸ¤– ${agent.name} is ready!");
   console.log("Type your message and press Enter. Type 'exit' to quit.\\n");
 
   const prompt = () => {
     rl.question("You: ", async (input) => {
       if (input.toLowerCase() === "exit") {
-        console.log("\\nGoodbye! 👋");
+        console.log("\\nGoodbye! ðŸ‘‹");
         rl.close();
         return;
       }
@@ -473,7 +473,7 @@ docker-compose up -d
 | Variable | Description | Default |
 |----------|-------------|---------|
 | OPENAI_API_KEY | OpenAI API key | required |
-| MODEL_ID | Model to use | ${agent.modelId || "gpt-4o"} |
+| MODEL_ID | Model to use | ${agent.modelId || "gpt-5-mini"} |
 | TEMPERATURE | Sampling temperature | ${agent.temperature || 0.7} |
 | MAX_TOKENS | Maximum tokens | ${agent.maxTokens || 4096} |
 
@@ -515,7 +515,7 @@ export async function handleExportAgentWebChat(
     const packageJson = {
       name: `${slugName}-chat`,
       version: agent.version || "1.0.0",
-      description: `${agent.name} — Embeddable AI Chat Widget`,
+      description: `${agent.name} â€” Embeddable AI Chat Widget`,
       type: "module",
       scripts: {
         dev: "vite",
@@ -559,7 +559,7 @@ API_KEY=your-api-key-here
 # Ollama:    http://localhost:11434/v1
 # LM Studio: http://localhost:1234/v1
 BASE_URL=https://api.openai.com/v1
-MODEL_ID=${agent.modelId || "gpt-4o"}
+MODEL_ID=${agent.modelId || "gpt-5-mini"}
 PORT=3001
 `;
     await fs.writeFile(path.join(exportDir, ".env.example"), envExample);
@@ -585,7 +585,7 @@ CMD ["node", "server.js"]
     environment:
       - API_KEY=\${API_KEY}
       - BASE_URL=\${BASE_URL:-https://api.openai.com/v1}
-      - MODEL_ID=\${MODEL_ID:-${agent.modelId || "gpt-4o"}}
+      - MODEL_ID=\${MODEL_ID:-${agent.modelId || "gpt-5-mini"}}
     restart: unless-stopped
 `;
     await fs.writeFile(path.join(exportDir, "docker-compose.yml"), dockerCompose);
@@ -689,7 +689,7 @@ function generateChatWidgetHtml(agent: any): string {
 </head>
 <body>
   <header class="chat-header">
-    <div class="avatar">🤖</div>
+    <div class="avatar">ðŸ¤–</div>
     <div>
       <h1>${agentName}</h1>
       <div class="status">Online</div>
@@ -805,7 +805,7 @@ function generateChatWidgetHtml(agent: any): string {
 
 function generateChatApiServer(agent: any): string {
   return `/**
- * ${agent.name} — Chat API Server
+ * ${agent.name} â€” Chat API Server
  * Serves the chat widget and proxies AI requests.
  *
  * Supports any OpenAI-compatible provider:
@@ -820,7 +820,7 @@ import { join, extname } from "node:path";
 
 const API_KEY    = process.env.API_KEY    || "";
 const BASE_URL   = process.env.BASE_URL   || "https://api.openai.com/v1";
-const MODEL_ID   = process.env.MODEL_ID   || ${JSON.stringify(agent.modelId || "gpt-4o")};
+const MODEL_ID   = process.env.MODEL_ID   || ${JSON.stringify(agent.modelId || "gpt-5-mini")};
 const PORT       = parseInt(process.env.PORT || "3001", 10);
 const SYSTEM_PROMPT = ${JSON.stringify(agent.systemPrompt || "You are a helpful AI assistant.")};
 
@@ -919,7 +919,7 @@ function generateWidgetLoader() {
   container.appendChild(iframe);
 
   var toggle = document.createElement("button");
-  toggle.innerHTML = "💬";
+  toggle.innerHTML = "ðŸ’¬";
   toggle.style.cssText = "position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:#6366f1;color:white;border:none;font-size:24px;cursor:pointer;z-index:10000;box-shadow:0 4px 16px rgba(99,102,241,0.4);display:none;";
   toggle.onclick = function() { iframe.style.display = iframe.style.display === "none" ? "block" : "none"; };
   container.appendChild(toggle);
@@ -929,8 +929,8 @@ function generateWidgetLoader() {
 
 server.listen(PORT, () => {
   console.log("");
-  console.log("  🤖 ${agent.name} Chat Widget");
-  console.log("  ───────────────────────────────");
+  console.log("  ðŸ¤– ${agent.name} Chat Widget");
+  console.log("  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€");
   console.log("  Chat UI:   http://localhost:" + PORT);
   console.log("  API:       http://localhost:" + PORT + "/api/chat");
   console.log("  Health:    http://localhost:" + PORT + "/api/health");
@@ -950,7 +950,7 @@ server.listen(PORT, () => {
 // ============================================================================
 
 function generateWebChatReadme(agent: any): string {
-  return `# ${agent.name} — Chat Widget
+  return `# ${agent.name} â€” Chat Widget
 
 ${agent.description || "AI Chat Widget generated by JoyCreate Agent Builder"}
 

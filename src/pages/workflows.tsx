@@ -33,6 +33,8 @@ import {
   Settings,
   Database,
   Rocket,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { PublishWizard } from "@/components/marketplace/PublishWizard";
 import { usePublishWorkflow } from "@/hooks/use_publish_workflow";
@@ -44,6 +46,10 @@ export function WorkflowsPage() {
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
   const [workflowPrompt, setWorkflowPrompt] = useState("");
   const [activeTab, setActiveTab] = useState("workflows");
+
+  // Edit workflow state
+  const [editingWorkflow, setEditingWorkflow] = useState<N8nWorkflow | null>(null);
+  const [editWorkflowName, setEditWorkflowName] = useState("");
 
   // Query n8n status
   const { data: n8nStatus, isLoading: isStatusLoading } = useQuery({
@@ -154,6 +160,18 @@ export function WorkflowsPage() {
       toast.success("Workflow deleted");
       queryClient.invalidateQueries({ queryKey: ["n8n-workflows"] });
     },
+  });
+
+  // Rename workflow mutation
+  const renameWorkflowMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      n8nClient.updateWorkflow(id, { name } as N8nWorkflow),
+    onSuccess: () => {
+      toast.success("Workflow renamed");
+      queryClient.invalidateQueries({ queryKey: ["n8n-workflows"] });
+      setEditingWorkflow(null);
+    },
+    onError: (err) => toast.error(`Rename failed: ${err}`),
   });
 
   const workflows = workflowsData?.data || [];
@@ -393,6 +411,10 @@ export function WorkflowsPage() {
                         onDeactivate={() => deactivateWorkflowMutation.mutate(workflow.id!)}
                         onExecute={() => executeWorkflowMutation.mutate(workflow.id!)}
                         onDelete={() => deleteWorkflowMutation.mutate(workflow.id!)}
+                        onEdit={() => {
+                          setEditWorkflowName(workflow.name);
+                          setEditingWorkflow(workflow);
+                        }}
                       />
                     ))}
                   </div>
@@ -417,6 +439,30 @@ export function WorkflowsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Workflow Dialog */}
+      <Dialog open={!!editingWorkflow} onOpenChange={(open) => { if (!open) setEditingWorkflow(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Workflow</DialogTitle>
+            <DialogDescription>Enter a new name for this workflow.</DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label className="text-xs">Name</Label>
+            <Input value={editWorkflowName} onChange={(e) => setEditWorkflowName(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingWorkflow(null)}>Cancel</Button>
+            <Button
+              disabled={!editWorkflowName.trim() || renameWorkflowMutation.isPending}
+              onClick={() => editingWorkflow?.id && renameWorkflowMutation.mutate({ id: editingWorkflow.id, name: editWorkflowName.trim() })}
+            >
+              {renameWorkflowMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -427,12 +473,14 @@ function WorkflowCard({
   onDeactivate,
   onExecute,
   onDelete,
+  onEdit,
 }: {
   workflow: N8nWorkflow;
   onActivate: () => void;
   onDeactivate: () => void;
   onExecute: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   return (
     <Card>
@@ -465,6 +513,9 @@ function WorkflowCard({
           <Button variant="outline" size="sm" onClick={onExecute}>
             <Play className="h-3 w-3 mr-1" />
             Execute
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onEdit}>
+            <Pencil className="h-3 w-3" />
           </Button>
           <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:text-destructive">
             <Trash2 className="h-3 w-3" />

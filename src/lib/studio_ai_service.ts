@@ -129,7 +129,7 @@ export const DEFAULT_STUDIO_AI_CONFIG: StudioAIConfig = {
   preferredProvider: "auto",
   useClaudeCode: true,
   ollamaModel: "llama3.1:8b",
-  anthropicModel: "claude-3-5-sonnet-20241022",
+  anthropicModel: "claude-sonnet-4-20250514",
   maxTokens: 4096,
   temperature: 0.7,
   stream: false,

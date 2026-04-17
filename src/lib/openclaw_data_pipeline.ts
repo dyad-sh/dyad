@@ -149,7 +149,7 @@ export class OpenClawDataPipelineService extends EventEmitter {
       type: "anthropic",
       baseURL: "https://api.anthropic.com",
       apiKey: anthropicConfig.apiKey,
-      model: anthropicConfig.model || "claude-3-5-sonnet-20250219",
+      model: anthropicConfig.model || "claude-sonnet-4-20250514",
       available: true,
     };
     logger.info("Anthropic connection configured", { model: this.anthropicConnection.model });

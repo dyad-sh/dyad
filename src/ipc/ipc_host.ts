@@ -92,6 +92,7 @@ import { registerAutonomousAgentProductionHandlers } from "./handlers/autonomous
 import { registerModelFactoryHandlers } from "./handlers/model_factory_handlers";
 import { registerHuggingFaceHandlers } from "./handlers/huggingface_handlers";
 import { registerAgentFactoryHandlers } from "./handlers/agent_factory_handlers";
+import { registerSkillHandlers } from "./handlers/skill_handlers";
 import { registerPrivacyInferenceHandlers } from "./handlers/privacy_inference_handlers";
 import { registerDeployedContractHandlers } from "./handlers/deployed_contract_handlers";
 import { registerHyperLiquidHandlers } from "./handlers/hyper_liquid_handlers";
@@ -138,6 +139,12 @@ import { registerAutoDeployHandlers } from "./handlers/auto_deploy_handlers";
 import { registerSubgraphHandlers } from "./handlers/subgraph_handlers";
 import { registerOpenClawAutonomousHandlers } from "./handlers/openclaw_autonomous_handlers";
 import { registerOpenClawCostHandlers } from "./handlers/openclaw_cost_handlers";
+import { registerNeuralBuilderHandlers } from "./handlers/neural_builder_handlers";
+import { registerCICDBuilderHandlers } from "./handlers/cicd_builder_handlers";
+import { registerCalendarHandlers } from "./handlers/calendar_handlers";
+import { registerTelegramHandlers } from "./handlers/telegram_handlers";
+import { registerDiscordHandlers } from "./handlers/discord_handlers";
+import { registerDatasetTrainingHandlers } from "./handlers/dataset_training_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -279,6 +286,9 @@ export function registerIpcHandlers() {
   
   // Agent Factory - Custom AI agent creation and training
   registerAgentFactoryHandlers();
+  
+  // Skill System - Reusable, marketplace-sellable skills
+  registerSkillHandlers();
   
   // Privacy-Preserving Inference Bridge - Local-first AI with federated fallback
   registerPrivacyInferenceHandlers();
@@ -434,4 +444,22 @@ export function registerIpcHandlers() {
 
   // OpenClaw Cost Engine — Smart cost tracking & budget management
   registerOpenClawCostHandlers();
+
+  // Neural Network Builder — Visual NN designer, training, transfer learning
+  registerNeuralBuilderHandlers();
+
+  // CI/CD Pipeline Builder — Automated testing and deployment pipelines
+  registerCICDBuilderHandlers();
+
+  // Calendar — Unified calendar with Google, Outlook, iCal, CalDAV, and agent activity
+  registerCalendarHandlers();
+
+  // Telegram Bot — Native Telegram integration with AI routing
+  registerTelegramHandlers();
+
+  // Discord Bot — Native Discord integration with AI routing
+  registerDiscordHandlers();
+
+  // Dataset Training Center — Train models on Dataset Studio datasets (local + OpenAI)
+  registerDatasetTrainingHandlers();
 }

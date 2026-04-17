@@ -36,6 +36,7 @@ import {
   Brain,
   GitMerge,
   Calendar,
+  GraduationCap,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -133,15 +134,7 @@ const menuCategories = [
         activeBg: "bg-orange-500/15",
         activeText: "text-orange-600 dark:text-orange-400",
       },
-      {
-        title: "Marketplace",
-        to: "/marketplace",
-        icon: ShoppingBag,
-        gradient: "from-violet-500 to-fuchsia-500",
-        hoverBg: "hover:bg-violet-500/10",
-        activeBg: "bg-violet-500/15",
-        activeText: "text-violet-600 dark:text-violet-400",
-      },
+
     ],
   },
   {
@@ -164,6 +157,24 @@ const menuCategories = [
         hoverBg: "hover:bg-violet-500/10",
         activeBg: "bg-violet-500/15",
         activeText: "text-violet-600 dark:text-violet-400",
+      },
+      {
+        title: "Skills",
+        to: "/skills",
+        icon: Sparkles,
+        gradient: "from-orange-500 to-amber-500",
+        hoverBg: "hover:bg-orange-500/10",
+        activeBg: "bg-orange-500/15",
+        activeText: "text-orange-600 dark:text-orange-400",
+      },
+      {
+        title: "Training Center",
+        to: "/training",
+        icon: GraduationCap,
+        gradient: "from-emerald-500 to-teal-500",
+        hoverBg: "hover:bg-emerald-500/10",
+        activeBg: "bg-emerald-500/15",
+        activeText: "text-emerald-600 dark:text-emerald-400",
       },
       {
         title: "Agent Swarm",
@@ -318,6 +329,15 @@ const menuCategories = [
         hoverBg: "hover:bg-purple-500/10",
         activeBg: "bg-purple-500/15",
         activeText: "text-purple-600 dark:text-purple-400",
+      },
+      {
+        title: "Create Asset",
+        to: "/create-asset",
+        icon: Zap,
+        gradient: "from-amber-500 to-orange-500",
+        hoverBg: "hover:bg-amber-500/10",
+        activeBg: "bg-amber-500/15",
+        activeText: "text-amber-600 dark:text-amber-400",
       },
       {
         title: "Creator Network",

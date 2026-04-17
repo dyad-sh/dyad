@@ -231,6 +231,8 @@ export interface TaskNode {
   swarmAgentId?: string;
   /** Autonomous agent ID if self-directed */
   autonomousAgentId?: string;
+  /** Skill ID if fulfilled by a skill instead of an agent */
+  skillId?: number;
   /** Input data from parent or dependencies */
   input?: Record<string, unknown>;
   /** Output data produced */

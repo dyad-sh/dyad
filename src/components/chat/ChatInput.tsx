@@ -23,6 +23,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
+import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { useAutoTTS } from "@/hooks/useAutoTTS";
+import { Volume2, VolumeX } from "lucide-react";
 import {
   chatInputValueAtom,
   chatMessagesByIdAtom,
@@ -95,6 +98,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
   const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const { autoTTSEnabled, toggleAutoTTS } = useAutoTTS({ messages, streaming: isStreaming });
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
@@ -476,8 +481,31 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 onFileSelect={handleFileSelect}
                 disabled={isStreaming}
               />
+              <VoiceInputButton
+                size="sm"
+                showSettings={false}
+                disabled={isStreaming}
+                onTranscription={(text) => setInputValue((prev) => prev ? `${prev} ${text}` : text)}
+              />
             </div>
 
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={toggleAutoTTS}
+                    variant="ghost"
+                    className={`has-[>svg]:px-2 ${autoTTSEnabled ? "text-blue-500 bg-blue-100" : ""}`}
+                    size="sm"
+                  >
+                    {autoTTSEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {autoTTSEnabled ? "Disable auto-speak" : "Enable auto-speak"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

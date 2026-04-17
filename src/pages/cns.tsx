@@ -16,7 +16,7 @@ export default function CNSPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen px-8 py-6">
+    <div className="h-full overflow-y-auto px-8 py-6">
       <div className="mx-auto">
         <Button
           onClick={() => router.history.back()}

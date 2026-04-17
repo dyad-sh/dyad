@@ -34,6 +34,7 @@ import {
   useAddItemFromFile,
   useDeleteDatasetItem,
   useUpdateItemLabels,
+  useUpdateDataset,
 } from "@/hooks/useDatasetStudio";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -125,6 +126,7 @@ import {
   FolderOpen,
   FileUp,
   Signature,
+  Pencil,
 } from "lucide-react";
 
 export default function DatasetPage() {
@@ -145,6 +147,11 @@ export default function DatasetPage() {
   const [itemFilter, setItemFilter] = useState({ modality: "", split: "" });
   const [selectedItem, setSelectedItem] = useState<DatasetItem | null>(null);
   
+  // Edit dataset state
+  const [editingDataset, setEditingDataset] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [editDatasetName, setEditDatasetName] = useState("");
+  const [editDatasetDesc, setEditDatasetDesc] = useState("");
+
   // Split creation state
   const [splitRatios, setSplitRatios] = useState({ train: 0.8, val: 0.1, test: 0.1 });
   
@@ -196,6 +203,7 @@ export default function DatasetPage() {
   const { data: generationJobs } = useGenerationJobs(selectedStudioDataset || "", !!selectedStudioDataset);
   const { data: p2pStatus } = useP2pSyncStatus(selectedStudioDataset || "", !!selectedStudioDataset);
   
+  const updateDatasetMutation = useUpdateDataset();
   const addItemMutation = useAddItemFromFile();
   const deleteItemMutation = useDeleteDatasetItem();
   const buildManifestMutation = useBuildManifest();
@@ -765,23 +773,33 @@ export default function DatasetPage() {
                           ) : (
                             <div className="divide-y">
                               {studioDatasets.map((ds) => (
-                                <button
+                                <div
                                   key={ds.id}
-                                  className={`w-full p-3 text-left hover:bg-muted/50 transition-colors ${
+                                  className={`w-full p-3 text-left hover:bg-muted/50 transition-colors cursor-pointer flex items-center justify-between group ${
                                     selectedStudioDataset === ds.id ? "bg-emerald-500/10 border-l-2 border-l-emerald-500" : ""
                                   }`}
                                   onClick={() => setSelectedStudioDataset(ds.id)}
                                 >
-                                  <div className="flex items-center gap-2">
-                                    <Database className="w-4 h-4 text-emerald-500" />
-                                    <span className="font-medium text-sm truncate">{ds.name}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <Database className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                      <span className="font-medium text-sm truncate">{ds.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                      <span>{ds.itemCount || 0} items</span>
+                                      <span>•</span>
+                                      <span>{formatSize(ds.totalBytes || 0)}</span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                    <span>{ds.itemCount || 0} items</span>
-                                    <span>•</span>
-                                    <span>{formatSize(ds.totalBytes || 0)}</span>
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setEditDatasetName(ds.name); setEditDatasetDesc(ds.description || ""); setEditingDataset({ id: ds.id, name: ds.name, description: ds.description || "" }); }}>
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); deleteDatasetMutation.mutate(ds.id); if (selectedStudioDataset === ds.id) setSelectedStudioDataset(null); }}>
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
                                   </div>
-                                </button>
+                                </div>
                               ))}
                             </div>
                           )}
@@ -1665,6 +1683,36 @@ export default function DatasetPage() {
               </Table>
             )}
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dataset Dialog */}
+      <Dialog open={!!editingDataset} onOpenChange={(open) => { if (!open) setEditingDataset(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Dataset</DialogTitle>
+            <DialogDescription>Update the name and description of this dataset.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Name</Label>
+              <Input value={editDatasetName} onChange={(e) => setEditDatasetName(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Description</Label>
+              <Textarea value={editDatasetDesc} onChange={(e) => setEditDatasetDesc(e.target.value)} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingDataset(null)}>Cancel</Button>
+            <Button
+              disabled={!editDatasetName.trim() || updateDatasetMutation.isPending}
+              onClick={() => editingDataset && updateDatasetMutation.mutate({ datasetId: editingDataset.id, name: editDatasetName.trim(), description: editDatasetDesc.trim() }, { onSuccess: () => { toast.success("Dataset updated"); setEditingDataset(null); }, onError: (err) => toast.error(`Update failed: ${err}`) })}
+            >
+              {updateDatasetMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -182,3 +182,23 @@ export function getInterruptedMissions(): MissionRow[] {
 export function cancelMission(id: string): void {
   updateMissionStatus(id, "cancelled");
 }
+
+export function deleteMission(id: string): void {
+  db.delete(autonomousMissions)
+    .where(eq(autonomousMissions.id, id))
+    .run();
+}
+
+export function updateMissionMeta(
+  id: string,
+  updates: { title?: string; description?: string },
+): void {
+  db.update(autonomousMissions)
+    .set({
+      ...(updates.title != null ? { title: updates.title } : {}),
+      ...(updates.description != null ? { description: updates.description } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(autonomousMissions.id, id))
+    .run();
+}

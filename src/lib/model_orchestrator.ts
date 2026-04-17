@@ -106,7 +106,7 @@ export const ORCHESTRATION_PRESETS: Record<string, OrchestrationConfig> = {
     models: [
       { id: "local-code", provider: "ollama", modelId: "deepseek-coder:6.7b", specialization: ["code"] },
       { id: "local-qwen", provider: "ollama", modelId: "qwen2.5-coder:7b", specialization: ["code"] },
-      { id: "cloud-claude", provider: "anthropic", modelId: "claude-3-5-sonnet-20241022", specialization: ["code", "reasoning"] },
+      { id: "cloud-claude", provider: "anthropic", modelId: "claude-sonnet-4-20250514", specialization: ["code", "reasoning"] },
     ],
     options: { qualityThreshold: 0.8 },
   },
@@ -117,7 +117,7 @@ export const ORCHESTRATION_PRESETS: Record<string, OrchestrationConfig> = {
     models: [
       { id: "local-1", provider: "ollama", modelId: "llama3.2:3b", role: "primary" },
       { id: "local-2", provider: "lmstudio", modelId: "default", role: "secondary" },
-      { id: "cloud-backup", provider: "openai", modelId: "gpt-4o-mini", role: "secondary" },
+      { id: "cloud-backup", provider: "openai", modelId: "gpt-5-mini", role: "secondary" },
     ],
     options: { maxRetries: 2 },
   },

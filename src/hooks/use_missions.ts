@@ -95,3 +95,24 @@ export function useCancelMission() {
     },
   });
 }
+
+export function useDeleteMission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => IpcClient.getInstance().deleteMission(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: missionKeys.all });
+    },
+  });
+}
+
+export function useUpdateMission() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { id: string; title?: string; description?: string }) =>
+      IpcClient.getInstance().updateMission(params),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: missionKeys.all });
+    },
+  });
+}

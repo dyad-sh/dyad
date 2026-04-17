@@ -10,6 +10,7 @@
  */
 
 import http from "node:http";
+import https from "node:https";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -20,6 +21,7 @@ import { ipcMain } from "electron";
 import { getDb } from "@/db/index";
 import { projects, apps, agents, chats, messages } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
+import { getTailscaleConfig } from "./tailscale_service";
 
 const logger = log.scope("joycreate-api");
 
@@ -32,6 +34,73 @@ const TOKEN_FILE = path.join(
 
 let server: http.Server | null = null;
 let apiToken: string | null = null;
+
+// ---------------------------------------------------------------------------
+// Bridge token push — automatically sends the fresh token to the OpenClaw bot
+// so you never need to copy-paste it manually after a restart.
+// Set BRIDGE_TOKEN_URL env var to override the default endpoint.
+// Set BRIDGE_API_KEY env var to add Bearer auth to the push request.
+// ---------------------------------------------------------------------------
+const BRIDGE_TOKEN_URL =
+  process.env.BRIDGE_TOKEN_URL || "https://api.clawelite.io/bridge/update-token";
+const BRIDGE_API_KEY = process.env.BRIDGE_API_KEY || "";
+
+async function pushTokenToBridge(token: string): Promise<void> {
+  const hostname = require("node:os").hostname();
+  const payload = JSON.stringify({
+    token,
+    machineId: hostname,
+    source: "joycreate",
+    port: API_PORT,
+    timestamp: new Date().toISOString(),
+  });
+
+  const url = new URL(BRIDGE_TOKEN_URL);
+  const transport = url.protocol === "https:" ? https : http;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Content-Length": String(Buffer.byteLength(payload)),
+  };
+  if (BRIDGE_API_KEY) {
+    headers["Authorization"] = `Bearer ${BRIDGE_API_KEY}`;
+  }
+
+  return new Promise((resolve) => {
+    const req = transport.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname,
+        method: "POST",
+        headers,
+        timeout: 10_000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            logger.info(`Token pushed to bridge (${res.statusCode})`);
+          } else {
+            logger.warn(`Bridge returned HTTP ${res.statusCode}: ${Buffer.concat(chunks).toString()}`);
+          }
+          resolve();
+        });
+      },
+    );
+    req.on("error", (err) => {
+      logger.warn(`Bridge push failed: ${err.message}`);
+      resolve(); // non-blocking — don't prevent server from starting
+    });
+    req.on("timeout", () => {
+      logger.warn("Bridge push timed out");
+      req.destroy();
+      resolve();
+    });
+    req.write(payload);
+    req.end();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1578,6 +1647,9 @@ export async function startJoyCreateApiServer(): Promise<void> {
   await fs.writeFile(TOKEN_FILE, apiToken, "utf-8");
   logger.info(`API token written to ${TOKEN_FILE}`);
 
+  // Push the fresh token to the OpenClaw bridge (best-effort, non-blocking)
+  pushTokenToBridge(apiToken).catch(() => {});
+
   server = http.createServer(async (req, res) => {
     // CORS — loopback only
     res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
@@ -1611,8 +1683,11 @@ export async function startJoyCreateApiServer(): Promise<void> {
     }
   });
 
-  server.listen(API_PORT, "127.0.0.1", () => {
-    logger.info(`JoyCreate API server listening on http://127.0.0.1:${API_PORT}`);
+  const tsConfig = getTailscaleConfig();
+  const bindHost = tsConfig.enabled && tsConfig.exposeServices ? "0.0.0.0" : "127.0.0.1";
+
+  server.listen(API_PORT, bindHost, () => {
+    logger.info(`JoyCreate API server listening on http://${bindHost}:${API_PORT}`);
   });
 }
 

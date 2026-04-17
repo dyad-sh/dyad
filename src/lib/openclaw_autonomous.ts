@@ -36,6 +36,44 @@ import type {
 
 const logger = log.scope("openclaw_autonomous");
 
+// ── AI Chat helper — tries CNS first, falls back to AI SDK ─────────────
+
+/**
+ * Send a prompt to AI for planning/correction.  If the CNS is initialized
+ * we route through it (local Ollama / cloud routing).  Otherwise we fall
+ * back to the standard AI SDK model client so that document creation, bot
+ * commands, etc. still work even when the CNS hasn't been initialised.
+ */
+async function chatForPlanning(
+  prompt: string,
+  opts: { systemPrompt?: string; preferLocal?: boolean } = {},
+): Promise<string> {
+  // 1. Try CNS if it's ready
+  const cns = getOpenClawCNS();
+  if (cns.getStatus().initialized) {
+    return cns.chat(prompt, opts);
+  }
+
+  // 2. Fallback — use AI SDK directly
+  logger.info("CNS not initialized — using AI SDK fallback for planning");
+  const { generateText } = await import("ai");
+  const { getModelClient } = await import("@/ipc/utils/get_model_client");
+  const { readSettings } = await import("@/main/settings");
+
+  const settings = readSettings();
+  const selectedModel = settings.selectedModel;
+  const { modelClient } = await getModelClient(selectedModel, settings);
+
+  const result = await generateText({
+    model: modelClient.model,
+    system: opts.systemPrompt,
+    prompt,
+    maxOutputTokens: 4096,
+  });
+
+  return result.text;
+}
+
 // ── Singleton ──────────────────────────────────────────────────────────────
 
 let instance: OpenClawAutonomous | null = null;
@@ -208,7 +246,6 @@ export class OpenClawAutonomous extends EventEmitter {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private async createPlan(request: AutonomousRequest): Promise<ExecutionPlan> {
-    const cns = getOpenClawCNS();
     const actionCatalog = getActionCatalogForPlanner();
 
     // Decide whether to use local model for planning based on budget pressure
@@ -224,6 +261,21 @@ export class OpenClawAutonomous extends EventEmitter {
       // best-effort
     }
 
+    // Fetch available skills so the planner knows what shortcuts exist
+    let skillCatalog = "";
+    try {
+      const { listSkills } = await import("@/lib/skill_engine");
+      const skills = await listSkills({ enabled: true });
+      if (skills.length > 0) {
+        const lines = skills.map(
+          (s) => `- skill.execute(skillId=${s.id}, input="...") → **${s.name}**: ${s.description} [triggers: ${(s.triggerPatterns || []).map((t: any) => t.pattern).join(", ") || "none"}]`,
+        );
+        skillCatalog = `\n\n## AVAILABLE SKILLS\nThese are pre-built skills you can invoke via the skill.execute action:\n${lines.join("\n")}`;
+      }
+    } catch {
+      // best-effort
+    }
+
     const contextStr = request.context
       ? `\nContext: ${JSON.stringify(request.context)}`
       : "";
@@ -233,7 +285,7 @@ export class OpenClawAutonomous extends EventEmitter {
 Given the user's instruction, create an execution plan using ONLY the actions available below.
 
 ## AVAILABLE ACTIONS
-${actionCatalog}
+${actionCatalog}${skillCatalog}
 
 ## USER INSTRUCTION
 "${request.input}"${contextStr}
@@ -246,6 +298,9 @@ ${actionCatalog}
 5. For multi-step processes (build → deploy → publish), chain dependencies correctly
 6. If the user wants something not covered by available actions, explain in the reasoning
 7. Keep plans minimal — don't add unnecessary steps
+8. CRITICAL: When creating an app, you MUST ALWAYS follow app.create with app.generate_code to actually build the app content. app.create only creates an empty scaffold — app.generate_code is what sends the prompt to the AI to write the actual code. Without it the app will be empty.
+9. OUTPUT CHAINING: When a step depends on a previous step, the outputs from that step are automatically merged into the dependent step's params. For example, app.create returns { app: { id }, chatId } — so a dependent app.generate_code step will automatically receive chatId and appId. You do NOT need to specify chatId or appId in params if the step depends on app.create.
+10. Do NOT use app.run after app.create — the app has no code yet. Always generate code first.
 
 ## OUTPUT FORMAT (JSON only, no markdown)
 {
@@ -264,7 +319,7 @@ ${actionCatalog}
 
 Respond with ONLY the JSON object. No markdown, no explanations outside the JSON.`;
 
-    const response = await cns.chat(planPrompt, {
+    const response = await chatForPlanning(planPrompt, {
       preferLocal, // Use local model when budget is tight
       systemPrompt: "You are a task planning AI. Respond only with valid JSON.",
     });
@@ -435,7 +490,47 @@ Respond with ONLY the JSON object. No markdown, no explanations outside the JSON
     step.startedAt = new Date().toISOString();
     execution.currentStepIndex = execution.plan!.steps.indexOf(step);
 
-    logger.info(`Executing step: ${step.id} (${step.actionId})`, step.params);
+    // ── Output chaining ──
+    // Merge outputs from completed dependency steps into this step's params.
+    // This allows e.g. chatId from app.create to flow into app.generate_code.
+    const mergedParams = { ...step.params };
+    if (step.dependencies.length > 0 && execution.plan) {
+      for (const depId of step.dependencies) {
+        const depStep = execution.plan.steps.find((s) => s.id === depId);
+        if (depStep?.status === "completed" && depStep.result != null) {
+          const depResult = depStep.result as Record<string, unknown>;
+          if (typeof depResult === "object" && !Array.isArray(depResult)) {
+            for (const [key, value] of Object.entries(depResult)) {
+              // Extract nested IDs: if value is an object with `id`,
+              // also inject `{key}Id` (e.g. app.id → appId)
+              if (
+                value != null &&
+                typeof value === "object" &&
+                !Array.isArray(value) &&
+                "id" in (value as Record<string, unknown>)
+              ) {
+                const idKey = `${key}Id`;
+                if (!(idKey in mergedParams)) {
+                  mergedParams[idKey] = (value as Record<string, unknown>).id;
+                  logger.info(
+                    `Output chain: ${depId}.${key}.id → ${step.id}.${idKey}`,
+                  );
+                }
+              }
+              // Only inject values the step doesn't already have
+              if (!(key in mergedParams)) {
+                mergedParams[key] = value;
+                logger.info(
+                  `Output chain: ${depId}.${key} → ${step.id}.${key}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
+    logger.info(`Executing step: ${step.id} (${step.actionId})`, mergedParams);
     this.emit("step:started", {
       executionId: execution.id,
       stepId: step.id,
@@ -445,7 +540,7 @@ Respond with ONLY the JSON object. No markdown, no explanations outside the JSON
     const startTime = Date.now();
 
     try {
-      const output = await dispatchAction(step.actionId, step.params);
+      const output = await dispatchAction(step.actionId, mergedParams);
       const durationMs = Date.now() - startTime;
 
       step.status = "completed";
@@ -508,8 +603,6 @@ Respond with ONLY the JSON object. No markdown, no explanations outside the JSON
     logger.info(`Attempting self-correction for step ${step.id}: ${error.message}`);
 
     try {
-      const cns = getOpenClawCNS();
-
       const correctionPrompt = `A step in an autonomous execution plan failed. Analyze the error and suggest a corrected version of the step.
 
 Failed step:
@@ -528,7 +621,7 @@ If the error is NOT fixable (missing data, authentication required, etc.), respo
 
 Respond with ONLY JSON, no markdown.`;
 
-      const response = await cns.chat(correctionPrompt, {
+      const response = await chatForPlanning(correctionPrompt, {
         systemPrompt: "You are an error recovery AI. Respond only with valid JSON.",
       });
 

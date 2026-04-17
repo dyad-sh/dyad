@@ -72,6 +72,10 @@ export class OpenClawGatewayService extends EventEmitter {
   private externalGatewayAlive = false;
   /** Count of consecutive bridge WS connect failures (to throttle retries) */
   private bridgeConnectFailures = 0;
+  /** Timestamp of last daemon respawn attempt (to throttle) */
+  private lastDaemonRespawnAt = 0;
+  /** Whether a daemon respawn is currently in progress */
+  private daemonRespawning = false;
   
   private constructor() {
     super();
@@ -159,6 +163,10 @@ export class OpenClawGatewayService extends EventEmitter {
           }
         }
       }
+
+      // Internal gateway always uses the default port — never conflict with external daemon
+      this.config.gateway.port = DEFAULT_OPENCLAW_CONFIG.gateway.port;
+      this.config.gateway.daemonPort = this.config.gateway.daemonPort ?? DEFAULT_OPENCLAW_CONFIG.gateway.daemonPort;
       
       const claudeCodePath = this.getClaudeCodeConfigPath();
       if (await fs.pathExists(claudeCodePath)) {
@@ -210,7 +218,7 @@ export class OpenClawGatewayService extends EventEmitter {
   // ===========================================================================
   
   async startGateway(): Promise<void> {
-    if (this.server || this.bridgeMode) {
+    if (this.server) {
       logger.warn("Gateway already running");
       return;
     }
@@ -220,15 +228,7 @@ export class OpenClawGatewayService extends EventEmitter {
       
       const { host, port } = this.config.gateway;
       
-      // ── Check if an external OpenClaw gateway is already listening ──
-      const externalAlive = await this.probeExternalGateway(host, port);
-      if (externalAlive) {
-        logger.info(`External OpenClaw gateway detected on ${host}:${port} — entering bridge mode`);
-        await this.startBridgeMode(host, port);
-        return;
-      }
-      
-      // ── No external gateway — start our own server ──
+      // ── Always start our own server on the internal port ──
       // Create HTTP server for control UI + API
       this.httpServer = http.createServer((req, res) => {
         const parsedUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -259,6 +259,9 @@ export class OpenClawGatewayService extends EventEmitter {
             status: this.state.status,
             providers: this.getProviderStatus(),
           }));
+        } else if ((pathname.startsWith("/api/") || pathname.startsWith("/__openclaw/")) && this.externalGatewayAlive) {
+          // Proxy API + config requests to the external daemon so the control-ui SPA works
+          this.proxyToDaemon(req, res);
         } else if (!this.serveControlUiFile(req, res)) {
           // Control UI assets not found — show fallback
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -278,26 +281,85 @@ export class OpenClawGatewayService extends EventEmitter {
         this.updateStatus("error", error.message);
       });
       
-      await new Promise<void>((resolve, reject) => {
-        this.httpServer!.listen(port, host, () => {
-          logger.info(`Gateway running on ws://${host}:${port}`);
-          resolve();
+      // Try to bind the local server. If port is already taken (e.g. daemon's
+      // acpx browser plugin occupies 18792), skip the local server and go
+      // straight to bridge-only mode.
+      let localServerUp = false;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          this.httpServer!.listen(port, host, () => {
+            logger.info(`Gateway running on ws://${host}:${port}`);
+            resolve();
+          });
+          this.httpServer!.on("error", reject);
         });
-        this.httpServer!.on("error", reject);
-      });
+        localServerUp = true;
+      } catch (listenErr: any) {
+        if (listenErr?.code === "EADDRINUSE") {
+          logger.warn(`Port ${port} already in use (daemon plugin?) — skipping local server, will bridge directly`);
+          // Clean up the objects we just created
+          this.server?.close();
+          this.server = null;
+          this.httpServer = null;
+        } else {
+          throw listenErr; // unexpected error, re-throw
+        }
+      }
       
-      this.updateStatus("connected");
-      this.state.connectedAt = Date.now();
-      this.state.version = "1.0.0";
+      if (localServerUp) {
+        this.updateStatus("connected");
+        this.state.connectedAt = Date.now();
+        this.state.version = "1.0.0";
+        
+        // Start heartbeat
+        this.startHeartbeat();
+        
+        this.emitEvent("gateway:connected", {
+          host,
+          port,
+          url: `ws://${host}:${port}`,
+        });
+      }
       
-      // Start heartbeat
-      this.startHeartbeat();
-      
-      this.emitEvent("gateway:connected", {
-        host,
-        port,
-        url: `ws://${host}:${port}`,
-      });
+      // ── Check if external daemon is running — bridge to it if so ──
+      // Daemon can take up to 30s to fully start, so retry the probe
+      const daemonPort = this.config.gateway.daemonPort ?? 18790;
+      const daemonHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+      const maxAttempts = 45; // 45 × 2s timeout = ~90s — daemon loads many plugins
+      let bridged = false;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const externalAlive = await this.probeExternalGateway(daemonHost, daemonPort);
+        if (externalAlive) {
+          logger.info(`External OpenClaw daemon detected on ${daemonHost}:${daemonPort} (attempt ${attempt}) — bridging`);
+          await this.startBridgeMode(daemonHost, daemonPort);
+          bridged = true;
+          if (!localServerUp) {
+            // We skipped the local server but bridge is up — mark connected
+            this.updateStatus("connected");
+            this.state.connectedAt = Date.now();
+            this.state.version = "1.0.0";
+            this.startHeartbeat();
+            this.emitEvent("gateway:connected", { host, port: daemonPort, url: `ws://${daemonHost}:${daemonPort}` });
+          }
+          break;
+        }
+        if (attempt < maxAttempts) {
+          logger.debug(`Daemon probe attempt ${attempt}/${maxAttempts} — not ready yet`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+      if (!bridged && !localServerUp) {
+        // Port occupied but daemon not reachable — error state
+        logger.error("Port occupied and daemon unreachable — gateway cannot start");
+        this.updateStatus("error", `Port ${port} in use and daemon not reachable`);
+      } else if (!bridged) {
+        logger.info("External daemon not detected after probing — attempting to spawn it");
+        // Try to spawn the daemon in the background; don't block gateway startup
+        this.respawnDaemon().then((ok) => {
+          if (ok) logger.info("Daemon spawned and bridged during startup");
+          else logger.info("Daemon spawn attempt did not succeed — running standalone");
+        }).catch(() => {});
+      }
       
     } catch (error: any) {
       logger.error("Failed to start gateway:", error);
@@ -386,37 +448,50 @@ export class OpenClawGatewayService extends EventEmitter {
     
     // Mark external gateway as alive — even if WS bridge fails, the gateway IS running
     this.externalGatewayAlive = true;
-    this.updateStatus("connected");
     this.state.connectedAt = this.state.connectedAt || Date.now();
-    this.state.version = "bridge";
+
+    // If the daemon's config has Telegram enabled, stop the local bot to avoid
+    // 409 Conflict loops from two pollers on the same token.
+    try {
+      const daemonConfigPath = path.join(app.getPath("home"), ".openclaw", "openclaw.json");
+      if (nodeFs.existsSync(daemonConfigPath)) {
+        const raw = nodeFs.readFileSync(daemonConfigPath, "utf8");
+        const daemonCfg = JSON.parse(raw);
+        if (daemonCfg?.channels?.telegram?.enabled && daemonCfg?.channels?.telegram?.botToken) {
+          const { getTelegramBot } = await import("@/lib/telegram_bot_service");
+          const localBot = getTelegramBot();
+          if (localBot.getStatus().running) {
+            logger.info("Stopping local Telegram bot — daemon handles Telegram");
+            await localBot.stop();
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn("Failed to check/stop local Telegram bot during bridge:", err);
+    }
     
     // Start a periodic health check that maintains the alive flag
     if (!this.bridgeReconnectTimer) {
       this.bridgeReconnectTimer = setInterval(async () => {
-        const alive = await this.probeExternalGateway(
-          host === "0.0.0.0" ? "127.0.0.1" : host, port);
+        const alive = await this.probeExternalGateway(wsHost, port);
         this.externalGatewayAlive = alive;
         if (alive) {
-          // As long as external gateway is reachable, show connected
-          if (this.state.status !== "connected") {
-            this.updateStatus("connected");
-          }
           // Try WS bridge reconnect if not connected (throttled)
           if (!this.bridgeClient || this.bridgeClient.readyState !== WebSocket.OPEN) {
             if (this.bridgeConnectFailures < 3) {
               this.attemptBridgeWs(wsHost, port);
             }
-            // After 3 failures, stop retrying — the connect frame is being
-            // rejected by the gateway (1008), so retrying won't help until
-            // the gateway restarts or the client ID format changes.
           }
         } else {
-          // External gateway went down
+          // External gateway went down — internal server is still running
           this.externalGatewayAlive = false;
           this.bridgeClient = null;
           this.bridgeMode = false;
-          this.updateStatus("disconnected");
-          logger.warn("External gateway no longer reachable");
+          logger.warn("External daemon no longer reachable — attempting auto-respawn");
+          // Auto-respawn the daemon (throttled internally)
+          this.respawnDaemon().catch((err) =>
+            logger.warn("Auto-respawn from bridge health timer failed:", err),
+          );
         }
       }, 15_000);
     }
@@ -470,7 +545,8 @@ export class OpenClawGatewayService extends EventEmitter {
       
       ws.on("message", (data: Buffer | string) => {
         try {
-          const message = JSON.parse(data.toString());
+          const raw = data.toString();
+          const message = JSON.parse(raw);
           // Successfully receiving messages means bridge is fully working
           this.bridgeConnectFailures = 0;
           this.emitEvent("message:received", { clientId: "external-gateway", message });
@@ -480,6 +556,13 @@ export class OpenClawGatewayService extends EventEmitter {
             this.state.lastHeartbeat = Date.now();
           } else if (message.type) {
             this.emit(`bridge:${message.type}`, message);
+          }
+
+          // Forward daemon responses to connected control-ui clients
+          for (const [, clientWs] of this.clients) {
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(raw);
+            }
           }
         } catch {
           logger.debug("Non-JSON message from external gateway, ignoring");
@@ -517,34 +600,103 @@ export class OpenClawGatewayService extends EventEmitter {
     this.bridgeClient = null;
     // If external gateway is still alive via HTTP, keep status as connected
     if (this.externalGatewayAlive) {
-      // Status stays "connected" — the gateway is reachable
       return;
     }
     this.bridgeMode = false;
-    this.updateStatus("reconnecting");
-    
-    // Try to reconnect after a short delay
-    setTimeout(async () => {
-      try {
-        const { host, port } = this.config.gateway;
-        const alive = await this.probeExternalGateway(host, port);
-        if (alive) {
-          await this.startBridgeMode(host, port);
-        } else {
-          // External gateway went away — try starting our own
-          logger.info("External gateway no longer available, starting internal server");
-          await this.startGateway();
-        }
-      } catch (error) {
-        logger.error("Bridge reconnect failed:", error);
-        this.updateStatus("error", "Bridge reconnect failed");
-      }
-    }, 3000);
+    // Internal server is always running — no need to restart anything
+    logger.info("Bridge disconnected — internal gateway still serving");
   }
   
   /** Whether the service is operating in bridge mode (client to external gateway) */
   isBridged(): boolean {
     return this.bridgeMode;
+  }
+
+  /** Initiate a bridge to the external daemon (non-blocking, no restart needed) */
+  async bridgeToDaemon(): Promise<boolean> {
+    const daemonPort = this.config.gateway.daemonPort ?? 18790;
+    const daemonHost = this.config.gateway.host === "0.0.0.0" ? "127.0.0.1" : this.config.gateway.host;
+    const alive = await this.probeExternalGateway(daemonHost, daemonPort);
+    if (!alive) return false;
+    await this.startBridgeMode(daemonHost, daemonPort);
+    return true;
+  }
+
+  /** Called by watchdog — single probe + bridge if daemon is reachable */
+  async attemptBridge(): Promise<boolean> {
+    if (this.bridgeMode) return true;
+    return this.bridgeToDaemon();
+  }
+
+  /**
+   * Respawn the external OpenClaw daemon process from ~/.openclaw/gateway.cmd.
+   * Throttled: at most once per 60 seconds to avoid restart storms.
+   * Returns true if daemon was respawned and is healthy.
+   */
+  async respawnDaemon(): Promise<boolean> {
+    const RESPAWN_COOLDOWN_MS = 60_000;
+
+    // Throttle respawns
+    if (this.daemonRespawning) {
+      logger.debug("Daemon respawn already in progress");
+      return false;
+    }
+    if (Date.now() - this.lastDaemonRespawnAt < RESPAWN_COOLDOWN_MS) {
+      logger.debug("Daemon respawn throttled — last attempt was recent");
+      return false;
+    }
+
+    const homedir = require("node:os").homedir();
+    const gatewayCmdPath = path.join(homedir, ".openclaw", "gateway.cmd");
+    if (!nodeFs.existsSync(gatewayCmdPath)) {
+      logger.warn("Cannot respawn daemon — gateway.cmd not found at " + gatewayCmdPath);
+      return false;
+    }
+
+    this.daemonRespawning = true;
+    this.lastDaemonRespawnAt = Date.now();
+
+    try {
+      logger.info("Respawning external OpenClaw daemon...");
+      const { execFile } = require("node:child_process");
+      const child = execFile(gatewayCmdPath, [], {
+        cwd: homedir,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        shell: true,
+      });
+      child.unref();
+      logger.info("Daemon process spawned (PID: " + child.pid + ")");
+
+      // Wait for daemon to bind (up to 120 seconds — daemon loads many plugins)
+      const daemonPort = this.config.gateway.daemonPort ?? 18790;
+      const deadline = Date.now() + 120_000;
+      let attempt = 0;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        attempt++;
+        const alive = await this.probeExternalGateway("127.0.0.1", daemonPort);
+        if (alive) {
+          logger.info(`Daemon respawned and healthy after ${attempt} probes — bridging`);
+          this.bridgeConnectFailures = 0;
+          await this.startBridgeMode("127.0.0.1", daemonPort);
+          this.daemonRespawning = false;
+          return true;
+        }
+        if (attempt % 10 === 0) {
+          logger.info(`Waiting for daemon... (${attempt} probes, ${Math.round((Date.now() - this.lastDaemonRespawnAt) / 1000)}s elapsed)`);
+        }
+      }
+
+      logger.warn("Daemon respawn timed out — daemon did not bind within 120s");
+      this.daemonRespawning = false;
+      return false;
+    } catch (err) {
+      logger.error("Daemon respawn failed:", err);
+      this.daemonRespawning = false;
+      return false;
+    }
   }
   
   private handleNewConnection(ws: WebSocket, req: http.IncomingMessage): void {
@@ -712,13 +864,34 @@ export class OpenClawGatewayService extends EventEmitter {
           // Just acknowledge
           break;
         default:
-          logger.warn(`Unknown message type: ${message.type}`);
+          // Forward unknown protocol messages (e.g. "req") to daemon when bridged
+          if (this.bridgeClient && this.bridgeClient.readyState === WebSocket.OPEN) {
+            this.bridgeClient.send(JSON.stringify(message));
+          } else {
+            logger.warn(`Unknown message type: ${message.type}`);
+          }
       }
       
       this.emitEvent("message:received", { clientId, message });
     } catch (error: any) {
       logger.error("Message handling error:", error);
-      this.sendError(this.clients.get(clientId)!, error.message, message.id);
+      const ws = this.clients.get(clientId);
+      if (ws) {
+        this.sendError(ws, error.message, message.id);
+      } else {
+        // External client (Telegram, etc.) — emit error as response:external
+        this.emit("response:external", {
+          clientId,
+          message: {
+            id: uuidv4(),
+            type: "error",
+            from: { type: "system", id: "gateway" },
+            payload: { error: error.message },
+            timestamp: Date.now(),
+            replyTo: message.id,
+          },
+        });
+      }
     }
   }
   
@@ -1415,6 +1588,67 @@ Think through this step by step and provide a structured response with your reas
     }));
   }
 
+  /**
+   * Proxy an HTTP request to the external daemon.
+   * Used so the control-ui SPA (served from the internal gateway on 18792)
+   * can reach the daemon's API endpoints transparently.
+   */
+  private proxyToDaemon(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const daemonPort = this.config.gateway.daemonPort ?? 18790;
+    const daemonHost = "127.0.0.1";
+
+    // Handle CORS preflight without hitting the daemon
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Auth-Token",
+        "Access-Control-Max-Age": "86400",
+      });
+      res.end();
+      return;
+    }
+
+    const proxyReq = http.request(
+      {
+        hostname: daemonHost,
+        port: daemonPort,
+        path: req.url,
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: `${daemonHost}:${daemonPort}`,
+        },
+        timeout: 15_000,
+      },
+      (proxyRes) => {
+        // Copy status and headers from daemon response
+        const headers = { ...proxyRes.headers };
+        // Allow CORS for the iframe
+        headers["access-control-allow-origin"] = "*";
+        headers["access-control-allow-methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+        headers["access-control-allow-headers"] = "Content-Type, Authorization, X-Auth-Token";
+        res.writeHead(proxyRes.statusCode || 502, headers);
+        proxyRes.pipe(res, { end: true });
+      },
+    );
+
+    proxyReq.on("error", (err) => {
+      logger.debug("Proxy to daemon failed:", err.message);
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Daemon unreachable", message: err.message }));
+    });
+
+    proxyReq.on("timeout", () => {
+      proxyReq.destroy();
+      res.writeHead(504, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Daemon timeout" }));
+    });
+
+    // Pipe request body to daemon
+    req.pipe(proxyReq, { end: true });
+  }
+
   private getDashboardHtml(): string {
     // Fallback HTML shown only when the real control UI assets are not found
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpenClaw</title></head>
@@ -1638,11 +1872,22 @@ ${this.claudeCodeConfig.sandboxMode ? "SANDBOX MODE: Changes will be previewed b
     this.emit("status:changed", { status, error });
   }
   
+  /**
+   * Inject a message into the gateway pipeline from an external source
+   * (e.g. Telegram, Discord) without a WebSocket connection.
+   */
+  async injectMessage(clientId: string, message: OpenClawMessage): Promise<void> {
+    await this.handleMessage(clientId, message);
+  }
+
   private sendToClient(clientId: string, message: OpenClawMessage): void {
     const ws = this.clients.get(clientId);
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(message));
       this.emitEvent("message:sent", { clientId, message });
+    } else {
+      // External client (Telegram, Discord, etc.) — emit event for handlers to pick up
+      this.emit("response:external", { clientId, message });
     }
   }
   

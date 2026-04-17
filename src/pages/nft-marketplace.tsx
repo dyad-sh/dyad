@@ -9,6 +9,19 @@ import { NFTClient } from "@/ipc/nft_client";
 import { AssetStudioClient } from "@/ipc/asset_studio_client";
 import { FederationClient } from "@/ipc/federation_client";
 import { IpcClient } from "@/ipc/ipc_client";
+import {
+  useMarketplaceBrowse,
+  useMarketplaceFeatured,
+  useMarketplaceCategories,
+  useInstallAsset,
+} from "@/hooks/use_marketplace_browse";
+import type {
+  MarketplaceBrowseParams,
+  MarketplaceBrowseItem,
+  PublishableAssetType,
+  UnifiedCategory,
+} from "@/types/publish_types";
+import type { PricingModel } from "@/types/marketplace_types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -439,6 +452,29 @@ export default function JoyCreatorStudioPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<AssetType | "all">("all");
   const [sortBy, setSortBy] = useState<"newest" | "name" | "price">("newest");
+
+  // ── Marketplace Browse state ──
+  const [browseQuery, setBrowseQuery] = useState("");
+  const [browseCategory, setBrowseCategory] = useState<UnifiedCategory | "all">("all");
+  const [browseAssetType, setBrowseAssetType] = useState<PublishableAssetType | "all">("all");
+  const [browseSortBy, setBrowseSortBy] = useState<MarketplaceBrowseParams["sortBy"]>("popular");
+  const [browsePricing, setBrowsePricing] = useState<PricingModel | "all">("all");
+  const [browsePage, setBrowsePage] = useState(1);
+
+  const browseParams: MarketplaceBrowseParams = {
+    query: browseQuery || undefined,
+    category: browseCategory === "all" ? undefined : browseCategory,
+    assetType: browseAssetType === "all" ? undefined : browseAssetType,
+    sortBy: browseSortBy,
+    pricingModel: browsePricing === "all" ? undefined : browsePricing,
+    page: browsePage,
+    pageSize: 24,
+  };
+
+  const { data: browseResult, isLoading: browseLoading } = useMarketplaceBrowse(browseParams);
+  const { data: browseFeatured } = useMarketplaceFeatured();
+  const { data: browseCategories } = useMarketplaceCategories();
+  const installAsset = useInstallAsset();
 
   // Queries
   const { data: stats } = useQuery({
@@ -2106,81 +2142,190 @@ export default function JoyCreatorStudioPage() {
           </TabsContent>
 
           <TabsContent value="marketplace">
-            <div className="grid grid-cols-3 gap-4">
-              {/* Featured Section */}
-              <Card className="col-span-2 bg-gradient-to-br from-violet-500/10 via-fuchsia-500/10 to-pink-500/10 border-violet-500/20">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Star className="w-5 h-5 text-amber-500" />
-                    Featured on JoyMarketplace
-                  </CardTitle>
-                  <CardDescription>
-                    Discover top-rated assets from the community
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center h-48">
-                  <Globe className="w-16 h-16 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground text-sm mb-4">
-                    Browse thousands of assets from creators worldwide
-                  </p>
-                  <Button
-                    className="bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-600 hover:to-fuchsia-700 text-white"
-                    onClick={() => ipcClient.openExternalUrl("https://joymarketplace.io")}
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Explore Marketplace
-                  </Button>
-                </CardContent>
-              </Card>
+            <div className="space-y-6">
+              {/* Search + Filters */}
+              <div className="flex flex-wrap gap-3 items-center">
+                <form onSubmit={(e) => { e.preventDefault(); setBrowsePage(1); }} className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={browseQuery}
+                    onChange={(e) => setBrowseQuery(e.target.value)}
+                    placeholder="Search marketplace..."
+                    className="pl-9"
+                  />
+                </form>
 
-              {/* Portfolio Summary */}
-              <div className="space-y-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Your Portfolio</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Owned NFTs</span>
-                        <span className="font-medium">{portfolio?.owned?.length || 0}</span>
+                <Select value={browseAssetType} onValueChange={(v) => { setBrowseAssetType(v as any); setBrowsePage(1); }}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="app">Apps</SelectItem>
+                    <SelectItem value="agent">Agents</SelectItem>
+                    <SelectItem value="workflow">Workflows</SelectItem>
+                    <SelectItem value="dataset">Datasets</SelectItem>
+                    <SelectItem value="model">Models</SelectItem>
+                    <SelectItem value="template">Templates</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={browseCategory} onValueChange={(v) => { setBrowseCategory(v as any); setBrowsePage(1); }}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {(browseCategories ?? []).map((c: any) => (
+                      <SelectItem key={c.category} value={c.category}>
+                        {c.category} ({c.count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={browsePricing} onValueChange={(v) => { setBrowsePricing(v as any); setBrowsePage(1); }}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Pricing" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any Price</SelectItem>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="one-time">One-Time</SelectItem>
+                    <SelectItem value="subscription">Subscription</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={browseSortBy} onValueChange={(v) => { setBrowseSortBy(v as any); setBrowsePage(1); }}>
+                  <SelectTrigger className="w-[170px]">
+                    <SortAsc className="w-3 h-3 mr-1" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="popular">Most Popular</SelectItem>
+                    <SelectItem value="recent">Most Recent</SelectItem>
+                    <SelectItem value="rating">Highest Rated</SelectItem>
+                    <SelectItem value="price-low">Price: Low → High</SelectItem>
+                    <SelectItem value="price-high">Price: High → Low</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Portfolio Summary Row */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card className="col-span-2 bg-gradient-to-br from-violet-500/5 to-fuchsia-500/5 border-violet-500/10">
+                  <CardContent className="flex items-center gap-4 py-4">
+                    <div className="p-2 rounded-lg bg-violet-500/10">
+                      <Wallet className="w-5 h-5 text-violet-500" />
+                    </div>
+                    <div className="flex gap-6 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Owned NFTs</span>
+                        <p className="font-semibold">{portfolio?.owned?.length || 0}</p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Created NFTs</span>
-                        <span className="font-medium">{portfolio?.created?.length || 0}</span>
+                      <div>
+                        <span className="text-muted-foreground">Created</span>
+                        <p className="font-semibold">{portfolio?.created?.length || 0}</p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Total Earnings</span>
-                        <span className="font-medium text-green-500">
+                      <div>
+                        <span className="text-muted-foreground">Earnings</span>
+                        <p className="font-semibold text-green-500">
                           ${portfolio?.created?.reduce((sum: number, c: any) => sum + (c.total_earnings || 0), 0).toFixed(2) || "0.00"}
-                        </span>
+                        </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-
                 <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Rocket className="w-4 h-4" />
-                      Quick Actions
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <BarChart3 className="w-4 h-4 mr-2" />
-                      View Analytics
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Settings2 className="w-4 h-4 mr-2" />
-                      Manage Settings
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Users className="w-4 h-4 mr-2" />
-                      Publisher Profile
+                  <CardContent className="flex items-center justify-between py-4">
+                    <span className="text-sm text-muted-foreground">Browse on web</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => ipcClient.openExternalUrl("https://joymarketplace.io")}
+                    >
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      joymarketplace.io
                     </Button>
                   </CardContent>
                 </Card>
+              </div>
+
+              {/* Featured */}
+              {browsePage === 1 && !browseQuery && browseFeatured?.items?.length ? (
+                <div>
+                  <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                    <TrendingUp className="w-4 h-4 text-violet-500" />
+                    Featured
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {browseFeatured.items.slice(0, 6).map((item: MarketplaceBrowseItem) => (
+                      <MarketplaceAssetCard
+                        key={item.id}
+                        item={item}
+                        onInstall={() => installAsset.mutate({ assetId: item.id, assetType: item.assetType })}
+                        isInstalling={installAsset.isPending}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Browse Results */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-semibold">
+                    {browseQuery ? `Results for "${browseQuery}"` : "All Assets"}
+                    {browseResult?.total ? (
+                      <span className="text-sm text-muted-foreground font-normal ml-2">
+                        ({browseResult.total.toLocaleString()} found)
+                      </span>
+                    ) : null}
+                  </h3>
+                </div>
+
+                {browseLoading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : browseResult?.items?.length ? (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {browseResult.items.map((item: MarketplaceBrowseItem) => (
+                        <MarketplaceAssetCard
+                          key={item.id}
+                          item={item}
+                          onInstall={() => installAsset.mutate({ assetId: item.id, assetType: item.assetType })}
+                          isInstalling={installAsset.isPending}
+                        />
+                      ))}
+                    </div>
+
+                    {browseResult.hasMore && (
+                      <div className="flex justify-center mt-6 gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={browsePage <= 1}
+                          onClick={() => setBrowsePage((p) => Math.max(1, p - 1))}
+                        >
+                          Previous
+                        </Button>
+                        <span className="flex items-center px-4 text-sm text-muted-foreground">
+                          Page {browsePage}
+                        </span>
+                        <Button variant="outline" onClick={() => setBrowsePage((p) => p + 1)}>
+                          Next
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-16 text-muted-foreground">
+                    <Package2 className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                    <p className="font-medium">No assets found</p>
+                    <p className="text-sm mt-1">Try adjusting your filters or search query</p>
+                  </div>
+                )}
               </div>
             </div>
           </TabsContent>
@@ -2803,5 +2948,79 @@ export default function JoyCreatorStudioPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace Asset Card (browse/install from marketplace)
+// ---------------------------------------------------------------------------
+
+const BROWSE_TYPE_ICONS: Record<string, React.ElementType> = {
+  app: Layers,
+  agent: Bot,
+  workflow: Workflow,
+  dataset: Database,
+  model: Brain,
+  template: Package2,
+  component: Package2,
+  plugin: Puzzle,
+};
+
+function MarketplaceAssetCard({
+  item,
+  onInstall,
+  isInstalling,
+}: {
+  item: MarketplaceBrowseItem;
+  onInstall: () => void;
+  isInstalling: boolean;
+}) {
+  const Icon = BROWSE_TYPE_ICONS[item.assetType] ?? Package2;
+
+  return (
+    <Card className="group hover:shadow-md transition-shadow flex flex-col">
+      {/* Thumbnail */}
+      <div className="aspect-video rounded-t-lg bg-muted flex items-center justify-center overflow-hidden">
+        {item.thumbnailUrl ? (
+          <img src={item.thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
+        ) : (
+          <Icon className="w-10 h-10 text-muted-foreground/40" />
+        )}
+      </div>
+
+      <CardContent className="flex-1 pt-4 pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="font-semibold text-sm line-clamp-1">{item.name}</h4>
+          <Badge variant="secondary" className="text-[10px] px-1.5 shrink-0">
+            {item.assetType}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+          {item.shortDescription}
+        </p>
+      </CardContent>
+
+      <CardFooter className="pt-0 pb-3 flex items-center justify-between">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+            {item.rating.toFixed(1)}
+          </span>
+          <span className="flex items-center gap-1">
+            <Download className="w-3 h-3" />
+            {item.downloads.toLocaleString()}
+          </span>
+          <span className="font-medium text-foreground">
+            {item.pricingModel === "free"
+              ? "Free"
+              : `$${((item.price ?? 0) / 100).toFixed(2)}`}
+          </span>
+        </div>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onInstall} disabled={isInstalling}>
+          <Download className="w-3 h-3 mr-1" />
+          Install
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

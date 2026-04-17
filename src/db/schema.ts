@@ -593,6 +593,7 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
   knowledgeBases: many(agentKnowledgeBases),
   uiComponents: many(agentUIComponents),
   shareConfigs: many(agentShareConfigs),
+  skillLinks: many(agentSkillLinks),
 }));
 
 export const agentToolsRelations = relations(agentTools, ({ one }) => ({
@@ -833,6 +834,111 @@ export const agentWorkspaceKnowledgeSourcesRelations = relations(
     }),
   }),
 );
+
+// ============================================================================
+// Skill Registry (Reusable, Marketplace-Sellable Skills)
+// ============================================================================
+
+/** Skill publish status */
+export type SkillPublishStatus = "local" | "draft" | "pending-review" | "published" | "rejected" | "archived";
+
+/** Skill implementation type */
+export type SkillImplType = "prompt" | "function" | "tool" | "workflow";
+
+/** Skill type */
+export type SkillKind = "builtin" | "custom" | "trained" | "generated";
+
+/** Standalone skills table — reusable across agents, publishable to marketplace */
+export const skills = sqliteTable("skills", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  /** One of AgentCapability (text_generation, code_generation, etc.) */
+  category: text("category").notNull(),
+  /** builtin | custom | trained | generated */
+  type: text("type").$type<SkillKind>().notNull().default("custom"),
+  /** prompt | function | tool | workflow */
+  implementationType: text("implementation_type").$type<SkillImplType>().notNull().default("prompt"),
+  /** The actual implementation: prompt text, JS code, tool id, or workflow id */
+  implementationCode: text("implementation_code"),
+  /** JSON array of trigger patterns (regex / command / keyword) for matching incoming messages */
+  triggerPatterns: text("trigger_patterns", { mode: "json" }).$type<SkillTriggerPattern[]>().default(sql`'[]'`),
+  /** JSON Schema for expected input */
+  inputSchema: text("input_schema", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  /** JSON Schema for expected output */
+  outputSchema: text("output_schema", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  /** JSON array of example input/output pairs */
+  examples: text("examples", { mode: "json" }).$type<SkillExampleRecord[]>().default(sql`'[]'`),
+  /** Searchable tags */
+  tags: text("tags", { mode: "json" }).$type<string[]>().default(sql`'[]'`),
+  /** Semver version string */
+  version: text("version").notNull().default("1.0.0"),
+  /** Author identifier */
+  authorId: text("author_id"),
+  /** Marketplace publishing */
+  publishStatus: text("publish_status").$type<SkillPublishStatus>().default("local"),
+  marketplaceId: text("marketplace_id"),
+  price: integer("price").default(0),
+  currency: text("currency").default("USD"),
+  downloads: integer("downloads").default(0),
+  rating: real("rating").default(0),
+  /** Whether skill is enabled globally */
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(sql`1`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/** Junction table — many-to-many agents ↔ skills */
+export const agentSkillLinks = sqliteTable("agent_skill_links", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  skillId: integer("skill_id")
+    .notNull()
+    .references(() => skills.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(sql`1`),
+  installedAt: integer("installed_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+}, (t) => ({
+  uniqueLink: unique().on(t.agentId, t.skillId),
+}));
+
+/** Trigger pattern stored in skills.triggerPatterns JSON column */
+export interface SkillTriggerPattern {
+  /** command = /cmd, keyword = word match, regex = regex, event = system event */
+  type: "command" | "keyword" | "regex" | "event";
+  pattern: string;
+  priority?: number;
+}
+
+/** Example record stored in skills.examples JSON column */
+export interface SkillExampleRecord {
+  input: string;
+  expectedOutput: string;
+  context?: string;
+}
+
+// Relations for skill tables
+export const skillsRelations = relations(skills, ({ many }) => ({
+  agentLinks: many(agentSkillLinks),
+}));
+
+export const agentSkillLinksRelations = relations(agentSkillLinks, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentSkillLinks.agentId],
+    references: [agents.id],
+  }),
+  skill: one(skills, {
+    fields: [agentSkillLinks.skillId],
+    references: [skills.id],
+  }),
+}));
 
 // ============================================================================
 // Document Creation Tables (LibreOffice Integration)

@@ -131,10 +131,6 @@ export function OpenClawControlPage() {
     staleTime: Infinity,
   });
 
-  const portalUrl = gatewayToken
-    ? `http://127.0.0.1:18790/?token=${encodeURIComponent(gatewayToken)}`
-    : "http://127.0.0.1:18790";
-
   const { data: gatewayStatus, isLoading: isStatusLoading } = useQuery({
     queryKey: ["openclaw-gateway-status"],
     queryFn: () => openclawClient.getGatewayStatus(),
@@ -151,6 +147,12 @@ export function OpenClawControlPage() {
     queryKey: ["openclaw-config"],
     queryFn: () => openclawClient.getConfig(),
   });
+
+  // Determine which port serves the portal:
+  // • Daemon port (18790) when bridged — full control-ui with daemon WS protocol
+  // • Internal gateway port (18792) as fallback for static UI
+  const daemonPort = (config as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
+  const internalPort = (config as unknown as Record<string, unknown> & { gateway?: { port?: number } })?.gateway?.port ?? 18792;
 
   const { data: channels } = useQuery({
     queryKey: ["openclaw-channels"],
@@ -215,6 +217,15 @@ export function OpenClawControlPage() {
     stopMutation.isPending ||
     restartMutation.isPending ||
     yieldToDaemonMutation.isPending;
+
+  // Portal URL: use daemon port when bridged (full protocol), internal port as fallback.
+  // We rely on gatewayStatus.bridged (from IPC) rather than a renderer-side fetch
+  // because cross-origin requests from the renderer to 127.0.0.1:18790 are
+  // blocked by CORS in the daemon.
+  const portalPort = isBridged ? daemonPort : internalPort;
+  const portalUrl = gatewayToken
+    ? `http://127.0.0.1:${portalPort}/?token=${encodeURIComponent(gatewayToken)}`
+    : `http://127.0.0.1:${portalPort}`;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -378,7 +389,7 @@ export function OpenClawControlPage() {
           <div className="flex flex-col flex-1 min-h-0 h-full">
             <div className="flex items-center justify-between px-4 py-1 border-b shrink-0">
               <span className="text-xs text-muted-foreground">
-                http://127.0.0.1:18790
+                http://127.0.0.1:{portalPort}
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -445,23 +456,14 @@ export function OpenClawControlPage() {
                 <iframe
                   key={`portal-${portalKey}-${gatewayToken}`}
                   src={portalUrl}
-                  className="flex-1 w-full border-0 min-h-0"
-                  style={{ height: isPortalFullscreen ? "calc(100vh - 2rem)" : undefined }}
+                  className="flex-1 w-full border-0"
+                  style={{
+                    minHeight: isPortalFullscreen ? "calc(100vh - 2rem)" : "calc(100vh - 12rem)",
+                    height: "100%",
+                  }}
                   title="OpenClaw Portal"
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
                   allow="clipboard-read; clipboard-write"
-                  onLoad={(e) => {
-                    // Check if the iframe actually loaded content
-                    try {
-                      const frame = e.currentTarget;
-                      // If we can access contentDocument and it's empty/null, there was an error
-                      if (frame.contentDocument === null && frame.contentWindow === null) {
-                        setPortalLoadError(true);
-                      }
-                    } catch {
-                      // Cross-origin - means it loaded something, which is good
-                    }
-                  }}
                   onError={() => setPortalLoadError(true)}
                 />
               )
@@ -1158,6 +1160,21 @@ function ActivityPanel() {
 function SettingsPanel({ config }: { config?: any }) {
   const queryClient = useQueryClient();
 
+  const { data: autostartStatus } = useQuery({
+    queryKey: ["openclaw-daemon-autostart"],
+    queryFn: () => openclawClient.getDaemonAutostartStatus(),
+    staleTime: 30_000,
+  });
+
+  const autostartMutation = useMutation({
+    mutationFn: (enable: boolean) => openclawClient.setDaemonAutostart(enable),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["openclaw-daemon-autostart"] });
+      toast.success(result.enabled ? "OpenClaw will start on boot" : "Auto-start disabled");
+    },
+    onError: (err) => toast.error(`Failed to update auto-start: ${err}`),
+  });
+
   const updateMutation = useMutation({
     mutationFn: (updates: Record<string, any>) =>
       openclawClient.updateConfig(updates),
@@ -1195,7 +1212,7 @@ function SettingsPanel({ config }: { config?: any }) {
             <div>
               <Label className="text-xs">Port</Label>
               <Input
-                value={gateway?.port ?? 18790}
+                value={gateway?.port ?? 18792}
                 readOnly
                 className="h-8 text-xs"
               />
@@ -1204,6 +1221,19 @@ function SettingsPanel({ config }: { config?: any }) {
           <div className="flex items-center justify-between">
             <Label className="text-xs">Gateway Enabled</Label>
             <Switch checked={gateway?.enabled ?? true} disabled />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-xs">Start on Boot</Label>
+              <p className="text-[10px] text-muted-foreground">
+                Launch OpenClaw daemon automatically when Windows starts
+              </p>
+            </div>
+            <Switch
+              checked={autostartStatus?.enabled ?? false}
+              disabled={autostartMutation.isPending}
+              onCheckedChange={(checked) => autostartMutation.mutate(checked)}
+            />
           </div>
         </CardContent>
       </Card>
@@ -1356,7 +1386,7 @@ function CNSPanel() {
           </CardHeader>
           <CardContent>
             <Badge variant="default" className="text-xs">
-              Port 18790
+              Port 18792
             </Badge>
             <p className="text-xs text-muted-foreground mt-1">
               OpenClaw message routing

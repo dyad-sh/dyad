@@ -11,6 +11,8 @@ import {
   type TTSRequest,
   type TranscriptionResult,
   type TTSResult,
+  type SystemCapabilities,
+  type ElevenLabsVoice,
 } from "@/lib/voice_assistant";
 
 const logger = log.scope("voice_handlers");
@@ -87,6 +89,31 @@ export function registerVoiceAssistantHandlers(): void {
 
   ipcMain.handle("voice:get-installed-models", async () => {
     return voiceAssistant.getInstalledModels();
+  });
+
+  // ---------------------------------------------------------------------------
+  // SYSTEM CAPABILITIES
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle("voice:get-capabilities", async (): Promise<SystemCapabilities> => {
+    const caps = voiceAssistant.getCapabilities();
+    if (caps) return caps;
+    return voiceAssistant.detectSystemCapabilities();
+  });
+
+  // ---------------------------------------------------------------------------
+  // ELEVENLABS
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle("voice:get-elevenlabs-voices", async (): Promise<ElevenLabsVoice[]> => {
+    return voiceAssistant.getElevenLabsVoices();
+  });
+
+  ipcMain.handle("voice:set-elevenlabs-key", async (_, apiKey: string) => {
+    if (!apiKey || typeof apiKey !== "string") {
+      throw new Error("Invalid API key");
+    }
+    voiceAssistant.setElevenLabsApiKey(apiKey.trim());
   });
 
   // ---------------------------------------------------------------------------

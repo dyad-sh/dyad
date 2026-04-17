@@ -46,12 +46,15 @@ import { modelRegistryRoute } from "./routes/model-registry";
 import { emailHubRoute } from "./routes/email-hub";
 
 import { integrationsRoute } from "./routes/integrations";
-import { marketplaceExplorerRoute } from "./routes/marketplace-explorer";
 import { myMarketplaceAssetsRoute } from "./routes/my-marketplace-assets";
 import { creatorDashboardRoute } from "./routes/creator-dashboard";
 import { neuralBuilderRoute } from "./routes/neural-builder";
 import { cicdBuilderRoute } from "./routes/cicd-builder";
 import { calendarRoute } from "./routes/calendar";
+import { skillsRoute } from "./routes/skills";
+import { trainingCenterRoute } from "./routes/training-center";
+import { createAssetRoute } from "./routes/create-asset";
+import { onChainMarketplaceRoute } from "./routes/on-chain-marketplace";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -105,12 +108,15 @@ const routeTree = rootRoute.addChildren([
   emailHubRoute,
 
   integrationsRoute,
-  marketplaceExplorerRoute,
   myMarketplaceAssetsRoute,
   creatorDashboardRoute,
   neuralBuilderRoute,
   cicdBuilderRoute,
   calendarRoute,
+  skillsRoute,
+  trainingCenterRoute,
+  createAssetRoute,
+  onChainMarketplaceRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

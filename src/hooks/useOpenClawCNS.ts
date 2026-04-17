@@ -146,7 +146,7 @@ class CNSClient {
 
   // Events
   on(channel: string, callback: (data: any) => void) {
-    return this.ipcRenderer.on(channel, (_event: any, data: any) => callback(data));
+    return this.ipcRenderer.on(channel, (data: any) => callback(data));
   }
 }
 

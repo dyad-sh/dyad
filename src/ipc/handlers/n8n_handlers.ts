@@ -811,7 +811,7 @@ function parseWorkflowPrompt(prompt: string): WorkflowSpec {
   }
   
   if (promptLower.includes("openai") || promptLower.includes("gpt") || promptLower.includes("ai")) {
-    steps.push({ type: "n8n-nodes-base.openAi", name: "OpenAI", config: { operation: "message", model: "gpt-4" } });
+    steps.push({ type: "n8n-nodes-base.openAi", name: "OpenAI", config: { operation: "message", model: "gpt-5-mini" } });
   }
   
   if (promptLower.includes("slack")) {

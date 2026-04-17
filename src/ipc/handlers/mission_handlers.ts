@@ -11,6 +11,8 @@ import {
   getMission,
   listMissions,
   cancelMission,
+  deleteMission,
+  updateMissionMeta,
   type MissionStatus,
   type CreateMissionInput,
 } from "@/lib/mission_persistence";
@@ -77,4 +79,24 @@ export function registerMissionHandlers() {
   handle("mission:cancel", async (_, id: string) => {
     backgroundExecutor.cancelMission(id);
   });
+
+  handle("mission:delete", async (_, id: string) => {
+    // Cancel first if still running
+    const mission = getMission(id);
+    if (mission && (mission.status === "running" || mission.status === "paused")) {
+      backgroundExecutor.cancelMission(id);
+    }
+    deleteMission(id);
+  });
+
+  handle(
+    "mission:update",
+    async (_, params: { id: string; title?: string; description?: string }) => {
+      updateMissionMeta(params.id, {
+        title: params.title,
+        description: params.description,
+      });
+      return getMission(params.id);
+    },
+  );
 }

@@ -13,16 +13,42 @@ export type ActionCategory =
   | "app"
   | "marketplace"
   | "agent"
+  | "agent_builder"
+  | "agent_factory"
+  | "agent_workspace"
+  | "agent_export"
+  | "agent_sharing"
+  | "orchestrator"
+  | "swarm"
+  | "agent_trigger"
   | "workflow"
   | "email"
   | "image"
   | "video"
   | "scraper"
   | "deploy"
+  | "decentralized_deploy"
   | "github"
   | "data"
   | "system"
-  | "mission";
+  | "mission"
+  | "skill"
+  | "model"
+  | "document"
+  | "media"
+  | "neural"
+  | "cicd"
+  | "calendar"
+  | "services"
+  | "secrets"
+  | "analytics"
+  | "training"
+  | "annotation"
+  | "learning"
+  | "asset"
+  | "compute"
+  | "voice"
+  | "blockchain";
 
 export interface ActionDefinition {
   id: string;
@@ -32,6 +58,8 @@ export interface ActionDefinition {
   parameters: ActionParam[];
   /** IPC channel this action dispatches to (main process) */
   channel: string;
+  /** When true, parameters are spread as positional args instead of passed as a single object */
+  positional?: boolean;
 }
 
 export interface ActionParam {

@@ -5,7 +5,7 @@
 
 import { ipcMain, IpcMainInvokeEvent, BrowserWindow } from "electron";
 import { v4 as uuidv4 } from "uuid";
-import { execFile } from "node:child_process";
+import { execFile, exec } from "node:child_process";
 import log from "electron-log";
 
 import {
@@ -83,8 +83,8 @@ export function registerOpenClawHandlers(): void {
     return { success: true };
   });
 
-  // Yield port 18790 to the external OpenClaw daemon, then reconnect in bridge mode.
-  // Flow: stop internal server → launch daemon process → wait for it to bind → re-probe → bridge mode.
+  // Spawn the external OpenClaw daemon and bridge to it.
+  // The internal gateway keeps running on its own port — no downtime.
   ipcMain.handle("openclaw:gateway:yield-to-daemon", async () => {
     const homedir = require("node:os").homedir();
     const gatewayCmdPath = require("node:path").join(homedir, ".openclaw", "gateway.cmd");
@@ -93,45 +93,46 @@ export function registerOpenClawHandlers(): void {
       throw new Error("gateway.cmd not found at " + gatewayCmdPath);
     }
 
-    logger.info("Yielding gateway to external daemon...");
+    logger.info("Spawning external OpenClaw daemon...");
 
-    // 1. Stop internal gateway (release port 18790)
-    await gateway.stopGateway();
-    logger.info("Internal gateway stopped — port 18790 released");
-
-    // 2. Start the external daemon process (detached, survives JoyCreate restart)
+    // 1. Spawn the external daemon process (detached, survives JoyCreate restart)
     const child = execFile(gatewayCmdPath, [], {
       cwd: homedir,
       detached: true,
       stdio: "ignore",
       windowsHide: true,
+      shell: true,
     });
     child.unref();
     logger.info("External daemon process spawned (PID: " + child.pid + ")");
 
-    // 3. Wait for the daemon to bind (up to 8 seconds)
-    const deadline = Date.now() + 8000;
+    // 2. Wait for the daemon to bind (up to 120 seconds — daemon loads many plugins)
+    const daemonPort = gateway.getConfig().gateway?.daemonPort ?? 18790;
+    const deadline = Date.now() + 120_000;
     let daemonReady = false;
+    let probeCount = 0;
     while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 2000));
+      probeCount++;
       try {
-        const resp = await fetch("http://127.0.0.1:18790/health", { signal: AbortSignal.timeout(1500) });
+        const resp = await fetch(`http://127.0.0.1:${daemonPort}/health`, { signal: AbortSignal.timeout(2000) });
         if (resp.ok) { daemonReady = true; break; }
       } catch { /* not ready yet */ }
+      if (probeCount % 10 === 0) {
+        logger.info(`Waiting for daemon to bind... (${probeCount} probes, ${Math.round((Date.now() - (deadline - 120_000)) / 1000)}s elapsed)`);
+      }
     }
 
     if (!daemonReady) {
-      // Daemon didn't bind — fall back to internal server
-      logger.warn("External daemon did not bind in time — falling back to internal gateway");
-      await gateway.startGateway();
+      logger.warn("External daemon did not bind within 120s — internal gateway still serving");
       return { success: false, bridged: false, reason: "daemon_timeout" };
     }
 
-    // 4. Re-init internal gateway — it will probe, find daemon, enter bridge mode
-    await gateway.startGateway();
-    logger.info("Gateway restarted — bridge mode: " + (gateway.getGatewayState() as any).bridged);
+    // 3. Bridge to the daemon (internal gateway stays running)
+    const bridged = await gateway.bridgeToDaemon();
+    logger.info("Bridge to daemon: " + bridged);
 
-    return { success: true, bridged: (gateway.getGatewayState() as any).bridged };
+    return { success: true, bridged };
   });
 
   ipcMain.handle("openclaw:gateway:status", async () => {
@@ -1102,6 +1103,88 @@ Keep the enhanced prompt under 200 words. Respond with ONLY the enhanced prompt.
 
       return { success: true };
     }
+  );
+
+  // ===========================================================================
+  // DAEMON AUTO-START (Windows Startup Folder)
+  // ===========================================================================
+
+  const STARTUP_LINK_NAME = "OpenClaw Gateway.lnk";
+
+  /** Build the path to the Windows Startup folder shortcut. */
+  function getStartupLinkPath(): string {
+    const { app } = require("electron") as typeof import("electron");
+    const path = require("node:path") as typeof import("node:path");
+    return path.join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", STARTUP_LINK_NAME);
+  }
+
+  /**
+   * Query whether the OpenClaw Gateway startup shortcut exists.
+   */
+  ipcMain.handle("openclaw:daemon:autostart-status", async () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const linkPath = getStartupLinkPath();
+    const exists = fs.existsSync(linkPath);
+    return { registered: exists, enabled: exists };
+  });
+
+  /**
+   * Create or delete the startup shortcut that launches `gateway.cmd` at logon.
+   * enable=true  → create a .vbs wrapper + shortcut in Startup folder
+   * enable=false → delete the shortcut (and wrapper)
+   */
+  ipcMain.handle(
+    "openclaw:daemon:autostart-set",
+    async (_event: IpcMainInvokeEvent, enable: boolean) => {
+      const os = require("node:os") as typeof import("node:os");
+      const path = require("node:path") as typeof import("node:path");
+      const fs = require("node:fs") as typeof import("node:fs");
+      const linkPath = getStartupLinkPath();
+
+      if (enable) {
+        const gatewayCmdPath = path.join(os.homedir(), ".openclaw", "gateway.cmd");
+        if (!fs.existsSync(gatewayCmdPath)) {
+          throw new Error("gateway.cmd not found at " + gatewayCmdPath);
+        }
+
+        // Create a VBScript wrapper that launches gateway.cmd hidden (no console window)
+        const vbsPath = path.join(os.homedir(), ".openclaw", "start-gateway-hidden.vbs");
+        const escapedCmd = gatewayCmdPath.replace(/\\/g, "\\\\");
+        const vbsContent = [
+          `Set WshShell = CreateObject("WScript.Shell")`,
+          `WshShell.Run """${escapedCmd}""", 0, False`,
+        ].join("\r\n");
+        fs.writeFileSync(vbsPath, vbsContent, "utf8");
+
+        // Use PowerShell to create a .lnk shortcut pointing at the VBS wrapper
+        const psScript = [
+          `$ws = New-Object -ComObject WScript.Shell;`,
+          `$sc = $ws.CreateShortcut('${linkPath.replace(/'/g, "''")}');`,
+          `$sc.TargetPath = '${vbsPath.replace(/'/g, "''")}';`,
+          `$sc.WorkingDirectory = '${path.dirname(gatewayCmdPath).replace(/'/g, "''")}';`,
+          `$sc.Description = 'OpenClaw Gateway - auto-start';`,
+          `$sc.Save()`,
+        ].join(" ");
+
+        await new Promise<void>((resolve, reject) => {
+          exec(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
+            { windowsHide: true },
+            (err) => err ? reject(err) : resolve(),
+          );
+        });
+
+        logger.info("OpenClaw daemon auto-start shortcut created at " + linkPath);
+        return { registered: true, enabled: true };
+      } else {
+        // Remove shortcut
+        try { fs.unlinkSync(linkPath); } catch { /* already gone */ }
+        // Remove VBS wrapper too
+        const vbsPath = path.join(os.homedir(), ".openclaw", "start-gateway-hidden.vbs");
+        try { fs.unlinkSync(vbsPath); } catch { /* already gone */ }
+        logger.info("OpenClaw daemon auto-start shortcut removed");
+        return { registered: false, enabled: false };
+      }
+    },
   );
 
   logger.info("OpenClaw IPC handlers registered");

@@ -433,6 +433,43 @@ export function registerLibraryHandlers() {
     },
   );
 
+  // ---- Store to Celestia DA layer ----
+  handle(
+    "library:store-to-celestia",
+    async (_: IpcMainInvokeEvent, params: { id: number; encrypt?: boolean }) => {
+      if (!params.id) throw new Error("Item ID is required");
+      const row = db
+        .select()
+        .from(libraryItems)
+        .where(eq(libraryItems.id, params.id))
+        .get();
+      if (!row) throw new Error(`Library item not found: ${params.id}`);
+
+      const { celestiaBlobService } = await import("../../lib/celestia_blob_service");
+      const encryptionKey = params.encrypt ? (await import("crypto")).randomBytes(32) : undefined;
+
+      const result = await celestiaBlobService.submitFile(row.storagePath, {
+        encryptionKey,
+        label: row.name,
+        dataType: row.mimeType,
+      });
+
+      db.update(libraryItems)
+        .set({
+          storageTier: "celestia",
+          updatedAt: new Date(),
+        })
+        .where(eq(libraryItems.id, params.id))
+        .run();
+
+      return {
+        contentHash: result.contentHash,
+        height: result.height,
+        ...(encryptionKey ? { encryptionKeyHex: encryptionKey.toString("hex") } : {}),
+      };
+    },
+  );
+
   // ---- Store to Arweave (permanent — stubbed) ----
   handle(
     "library:store-to-arweave",

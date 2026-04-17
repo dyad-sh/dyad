@@ -2122,6 +2122,44 @@ async function handleCelestiaWalletValidate(body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// NLP Pipeline handlers
+// ---------------------------------------------------------------------------
+
+async function handleNlpListEngines(_body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:list-engines");
+}
+
+async function handleNlpListPipelines(_body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:list-pipelines");
+}
+
+async function handleNlpProcessText(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:process-text", body);
+}
+
+async function handleNlpProcessDataset(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:process-dataset", body);
+}
+
+async function handleNlpAutoTagDataset(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:auto-tag-dataset", body);
+}
+
+async function handleNlpPrepareListing(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:prepare-marketplace-listing", body);
+}
+
+async function handleNlpPublishDataset(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:publish-dataset", body);
+}
+
+async function handleNlpRecommendModel(body: Record<string, unknown>) {
+  const datasetId = body.datasetId as string;
+  if (!datasetId) throw new Error("datasetId is required");
+  return invokeIpcHandler("nlp:recommend-model", datasetId);
+}
+
+// ---------------------------------------------------------------------------
 // On-Chain Asset Bridge handlers
 // ---------------------------------------------------------------------------
 
@@ -2436,6 +2474,15 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/github/create-repo": handleGithubCreateRepo,
   "POST /api/github/push": handleGithubPush,
   // Marketplace Sync & Subgraph
+  // NLP Pipeline
+  "GET /api/nlp/engines": handleNlpListEngines,
+  "GET /api/nlp/pipelines": handleNlpListPipelines,
+  "POST /api/nlp/process-text": handleNlpProcessText,
+  "POST /api/nlp/process-dataset": handleNlpProcessDataset,
+  "POST /api/nlp/auto-tag-dataset": handleNlpAutoTagDataset,
+  "POST /api/nlp/prepare-listing": handleNlpPrepareListing,
+  "POST /api/nlp/publish-dataset": handleNlpPublishDataset,
+  "POST /api/nlp/recommend-model": handleNlpRecommendModel,
   // On-Chain Asset Bridge
   "POST /api/onchain-bridge/get-owned-tokens": handleOnchainGetOwnedTokens,
   "POST /api/onchain-bridge/import-token": handleOnchainImportToken,

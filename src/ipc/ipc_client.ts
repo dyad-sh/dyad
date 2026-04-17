@@ -1686,6 +1686,45 @@ export class IpcClient {
   public async libraryStoreToFilecoin(id: number): Promise<any> {
     return this.ipcRenderer.invoke("library:store-to-filecoin", id);
   }
+
+  public async libraryStoreToCelestia(id: number, encrypt?: boolean): Promise<{ contentHash: string; height: number; encryptionKeyHex?: string }> {
+    return this.ipcRenderer.invoke("library:store-to-celestia", { id, encrypt });
+  }
+
+  // --- Celestia Blob Service ---
+
+  public async celestiaStatus(): Promise<{ available: boolean; height?: number; syncing?: boolean; balance?: { amount: string; denom: string }; walletAddress?: string; network?: string; error?: string }> {
+    return this.ipcRenderer.invoke("celestia:status");
+  }
+
+  public async celestiaConfigGet(): Promise<any> {
+    return this.ipcRenderer.invoke("celestia:config:get");
+  }
+
+  public async celestiaConfigUpdate(updates: Record<string, unknown>): Promise<any> {
+    return this.ipcRenderer.invoke("celestia:config:update", updates);
+  }
+
+  public async celestiaBlobSubmitJson(params: { json: unknown; label?: string; dataType?: string; encrypt?: boolean }): Promise<any> {
+    return this.ipcRenderer.invoke("celestia:blob:submit-json", params);
+  }
+
+  public async celestiaBlobGet(params: { contentHash: string; decryptionKeyHex?: string }): Promise<{ data: string; contentHash: string; verified: boolean; height: number } | null> {
+    return this.ipcRenderer.invoke("celestia:blob:get", params);
+  }
+
+  public async celestiaBlobList(filter?: { dataType?: string; label?: string; since?: string; limit?: number }): Promise<any[]> {
+    return this.ipcRenderer.invoke("celestia:blob:list", filter);
+  }
+
+  public async celestiaBlobStats(): Promise<{ totalBlobs: number; totalBytes: number; encryptedCount: number; dataTypes: Record<string, number> }> {
+    return this.ipcRenderer.invoke("celestia:blob:stats");
+  }
+
+  public async celestiaBlobVerify(contentHash: string): Promise<{ verified: boolean; submission: any; error?: string }> {
+    return this.ipcRenderer.invoke("celestia:blob:verify", { contentHash });
+  }
+
   public async cloneRepoFromUrl(
     params: CloneRepoParams,
   ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {

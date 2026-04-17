@@ -153,11 +153,21 @@ export async function spawnDrizzleKit({
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
         serviceName: "drizzle-kit",
-        env: {
-          ...process.env,
-          NODE_PATH: nodeModulesPath,
-          DRIZZLE_DATABASE_URL: connectionUri,
-        },
+        env: Object.fromEntries(
+          Object.entries({
+            // Minimal env for Node.js / drizzle-kit to function.
+            // Deliberately NOT spreading process.env to avoid leaking
+            // secrets (OAuth tokens, API keys, etc.) to the subprocess.
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            USERPROFILE: process.env.USERPROFILE,
+            TEMP: process.env.TEMP,
+            TMP: process.env.TMP,
+            TMPDIR: process.env.TMPDIR,
+            NODE_PATH: nodeModulesPath,
+            DRIZZLE_DATABASE_URL: connectionUri,
+          }).filter(([, v]) => v !== undefined),
+        ),
       });
     } catch (error) {
       reject(

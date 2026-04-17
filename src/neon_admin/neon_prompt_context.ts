@@ -13,6 +13,7 @@ interface BuildNeonPromptAdditionsParams {
   frameworkType: "nextjs" | "vite" | "other" | null;
   nextjsMajorVersion?: number | null;
   includeContext: boolean;
+  isLocalAgentMode: boolean;
 }
 
 export async function buildNeonPromptAdditions({
@@ -21,6 +22,7 @@ export async function buildNeonPromptAdditions({
   frameworkType,
   nextjsMajorVersion = null,
   includeContext,
+  isLocalAgentMode,
 }: BuildNeonPromptAdditionsParams): Promise<string> {
   const neonClientCode = getNeonClientCode(frameworkType);
 
@@ -43,6 +45,7 @@ export async function buildNeonPromptAdditions({
     {
       emailVerificationEnabled,
       nextjsMajorVersion,
+      isLocalAgentMode,
     },
   );
 
@@ -85,11 +88,13 @@ export async function buildNeonPromptForApp({
   const nextjsMajorVersion =
     frameworkType === "nextjs" ? detectNextJsMajorVersion(resolvedPath) : null;
   const branchId = neonActiveBranchId ?? neonDevelopmentBranchId;
+  const isLocalAgent = selectedChatMode === "local-agent";
   return buildNeonPromptAdditions({
     projectId: neonProjectId,
     branchId,
     frameworkType,
     nextjsMajorVersion,
-    includeContext: selectedChatMode !== "local-agent",
+    includeContext: !isLocalAgent,
+    isLocalAgentMode: isLocalAgent,
   });
 }

@@ -29,6 +29,7 @@ import {
   ensureNeonAuth,
   autoInjectNeonEnvVars,
   assertNoSupabaseProject,
+  assertNoNeonProject,
 } from "../utils/neon_utils";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -38,8 +39,12 @@ async function restoreEnvFileSnapshot({
   snapshot,
 }: {
   appPath: string;
-  snapshot: string | null;
+  snapshot: string | null | undefined;
 }): Promise<void> {
+  if (snapshot === undefined) {
+    // Snapshot was never taken — don't touch the file.
+    return;
+  }
   const envFilePath = getEnvFilePath({ appPath });
   if (snapshot === null) {
     await fs.rm(envFilePath, { force: true });
@@ -58,6 +63,7 @@ export function registerNeonHandlers() {
     logger.info(`Creating Neon project: ${name} for app ${appId}`);
 
     await assertNoSupabaseProject(appId);
+    await assertNoNeonProject(appId);
 
     // Fetch app path upfront for env-var injection later
     const appRecord = await db
@@ -108,7 +114,7 @@ export function registerNeonHandlers() {
       const authWarnings: string[] = [];
 
       // Snapshot env file before modification so we can restore on failure
-      let envFileSnapshot: string | null = null;
+      let envFileSnapshot: string | null | undefined = undefined;
 
       // Post-creation steps: if any fail, best-effort delete the orphan project
       try {
@@ -434,6 +440,7 @@ export function registerNeonHandlers() {
     logger.info(`Setting Neon project ${projectId} for app ${appId}`);
 
     await assertNoSupabaseProject(appId);
+    await assertNoNeonProject(appId);
 
     // Fetch app path upfront for env-var injection later
     const appRecord = await db

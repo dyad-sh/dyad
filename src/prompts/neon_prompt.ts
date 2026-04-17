@@ -1,20 +1,35 @@
+import addAuthenticationGuide from "./guides/add-authentication.md?raw";
+import addEmailVerificationGuide from "./guides/add-email-verification.md?raw";
+
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,
   frameworkType: "nextjs" | "vite" | "other" | null,
   options?: {
     emailVerificationEnabled?: boolean;
     nextjsMajorVersion?: number | null;
+    isLocalAgentMode?: boolean;
   },
 ): string {
   const emailVerification = options?.emailVerificationEnabled ?? false;
   const nextjsMajorVersion = options?.nextjsMajorVersion ?? null;
-  const sharedPrompt = getSharedNeonPrompt(neonClientCode, emailVerification);
+  const isLocalAgentMode = options?.isLocalAgentMode ?? false;
+  const sharedPrompt = getSharedNeonPrompt(
+    neonClientCode,
+    emailVerification,
+    isLocalAgentMode,
+  );
 
   if (frameworkType === "nextjs") {
     return (
       sharedPrompt +
-      getNextJsNeonPrompt(emailVerification, nextjsMajorVersion) +
-      (emailVerification ? getEmailVerificationNote() : "")
+      getNextJsNeonPrompt(
+        emailVerification,
+        nextjsMajorVersion,
+        isLocalAgentMode,
+      ) +
+      (emailVerification
+        ? getEmailVerificationNote(isLocalAgentMode)
+        : "")
     );
   }
 
@@ -24,7 +39,18 @@ export function getNeonAvailableSystemPrompt(
 function getSharedNeonPrompt(
   neonClientCode: string,
   emailVerificationEnabled: boolean,
+  isLocalAgentMode: boolean,
 ): string {
+  const authSection = isLocalAgentMode
+    ? `## Auth (detailed guide available)
+
+When the task involves authentication, login, sign-up, user sessions, or auth UI, you MUST call the \`read_guide\` tool with guide="add-authentication" BEFORE writing any auth code. Do NOT implement auth without reading the guide first.
+${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. After reading the auth guide and BEFORE writing any sign-up code, you MUST also call \`read_guide\` with guide="add-email-verification".` : ""}`
+    : `## Auth
+
+${addAuthenticationGuide}
+${emailVerificationEnabled ? `\n${addEmailVerificationGuide}` : ""}`;
+
   return `
 <neon-system-prompt>
 
@@ -53,10 +79,7 @@ Check if a Neon database client already exists in the project. If it does not, c
 ${neonClientCode}
 </code-template>
 
-## Auth (detailed guide available)
-
-When the task involves authentication, login, sign-up, user sessions, or auth UI, you MUST call the \`read_guide\` tool with guide="add-authentication" BEFORE writing any auth code. Do NOT implement auth without reading the guide first.
-${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. After reading the auth guide and BEFORE writing any sign-up code, you MUST also call \`read_guide\` with guide="add-email-verification".` : ""}
+${authSection}
 
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
@@ -101,8 +124,16 @@ If the request needs Neon Auth and \`@neondatabase/auth\` is not already in \`pa
 function getNextJsNeonPrompt(
   emailVerificationEnabled: boolean,
   nextjsMajorVersion: number | null,
+  isLocalAgentMode: boolean,
 ): string {
   const supportsProxy = nextjsMajorVersion === null || nextjsMajorVersion >= 16;
+
+  const authDecisionSteps = isLocalAgentMode
+    ? `4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then follow the Neon Auth API path.
+5. **If** user wants prebuilt auth or account pages → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then extend with the UI path.`
+    : `4. **If** user needs auth APIs or sessions → follow the Auth guide above${emailVerificationEnabled ? " and the Email Verification guide" : ""}, then follow the Neon Auth API path.
+5. **If** user wants prebuilt auth or account pages → follow the Auth guide above${emailVerificationEnabled ? " and the Email Verification guide" : ""}, then extend with the UI path.`;
+
   return `
 <nextjs-instructions>
 
@@ -123,8 +154,7 @@ Follow this strictly, in order:
 1. Inspect the project for an existing database module, auth modules, App Router structure, Tailwind setup, provider wrappers, and an existing request-boundary file.
 2. Reuse those modules and conventions if they exist. Do NOT create duplicate database clients, auth clients, or request-boundary files.
 3. **If** user only needs server-side database access → use the DB-only path.
-4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then follow the Neon Auth API path.
-5. **If** user wants prebuilt auth or account pages → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then extend with the UI path.
+${authDecisionSteps}
 </decision-tree>
 
 ### Next.js DATABASE_URL Allowed Locations
@@ -201,10 +231,19 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmod
 `;
 }
 
-function getEmailVerificationNote(): string {
-  return `
+function getEmailVerificationNote(isLocalAgentMode: boolean): string {
+  if (isLocalAgentMode) {
+    return `
 ## Email Verification
 
 Email verification is **enabled** on this Neon Auth branch. When implementing sign-up flows, you MUST call the \`read_guide\` tool with guide="add-email-verification" BEFORE writing sign-up code.
+`;
+  }
+  return `
+## Email Verification
+
+Email verification is **enabled** on this Neon Auth branch.
+
+${addEmailVerificationGuide}
 `;
 }

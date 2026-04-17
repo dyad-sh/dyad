@@ -2,19 +2,13 @@
 - paragraph: Adding supabase...
 - img
 - text: Integration Choose a database provider
-- button "Supabase • Auth & row-level security • Realtime subscriptions • Storage & edge functions":
-  - text: ""
-  - list:
-    - listitem: • Auth & row-level security
-    - listitem: • Realtime subscriptions
-    - listitem: • Storage & edge functions
-- button "Neon • Managed Postgres with branching • Auth & email verification • Serverless scale-to-zero":
-  - text: ""
-  - list:
-    - listitem: • Managed Postgres with branching
-    - listitem: • Auth & email verification
-    - listitem: • Serverless scale-to-zero
-- button "Set up database" [disabled]
+- radiogroup "Choose a database provider":
+  - 'radio "Supabase Visit Supabase website Complete backend as a service: Postgres database, storage and edge functions." [checked]':
+    - text: ""
+    - link "Visit Supabase website":
+      - img
+    - paragraph: "Complete backend as a service: Postgres database, storage and edge functions."
+- button "Set up Supabase"
 - button "Copy":
   - img
 - img

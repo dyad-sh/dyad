@@ -232,6 +232,9 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           },
         },
       }),
+      deleteProject: async (projectId: string) => ({
+        data: { project: { id: projectId } },
+      }),
       getNeonAuth: async (projectId: string, branchId: string) => ({
         data: {
           auth_provider: "better_auth",

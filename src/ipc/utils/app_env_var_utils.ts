@@ -250,6 +250,10 @@ export async function updateNeonEnvVars({
 
   const envFileContents = serializeEnvFile(envVars);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+  queueCloudSandboxSnapshotSync({
+    appPath: getDyadAppPath(appPath),
+    changedPaths: [ENV_FILE_NAME],
+  });
 }
 
 /** Keys that are unambiguously Neon-owned and always safe to remove. */
@@ -286,6 +290,10 @@ export async function removeNeonEnvVars({
 
   const envFileContents = serializeEnvFile(filtered);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+  queueCloudSandboxSnapshotSync({
+    appPath: getDyadAppPath(appPath),
+    changedPaths: [ENV_FILE_NAME],
+  });
 }
 
 // Helper function to serialize environment variables to .env.local format

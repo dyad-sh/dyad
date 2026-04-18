@@ -148,6 +148,20 @@ export function ChatPanel({
     }
   }, [isStreaming, scrollToBottom]);
 
+  // ensure retry button is visible above error popup
+  useEffect(() => {
+    if (error && isAtBottomRef.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+          if (container) {
+            container.scrollBy({ top: -150, behavior: "smooth" });
+          }
+        });
+      });
+    }
+  }, [error]);
+
   // Test mode only: Track scroll position to update isAtBottom state.
   // In production, Virtuoso's atBottomStateChange handles this.
   useEffect(() => {

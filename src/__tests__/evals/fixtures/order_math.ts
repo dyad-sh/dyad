@@ -95,6 +95,9 @@ export function totalWeightGrams(items: LineItem[]): number {
 export function applyCoupon(order: Order, subtotal: number): number {
   if (!order.coupon) return 0;
   const { coupon } = order;
+  // Shipping-only coupons are applied via effectiveShippingCost; returning
+  // the coupon value here too would double-count the discount in buildSummary.
+  if (coupon.appliesToShipping) return 0;
   if (subtotal < coupon.minimumOrderValue) return 0;
   if (coupon.type === "fixed") return Math.min(coupon.value, subtotal);
   return subtotal * (coupon.value / 100);
@@ -266,7 +269,7 @@ export function isFullRefund(order: Order, returnedSkus: string[]): boolean {
 
 // ── Reporting helpers ──────────────────────────────────────────────────────
 
-export function groupByCategory(
+export function totalsByCurrency(
   orders: Order[],
 ): Record<string, number> {
   const totals: Record<string, number> = {};

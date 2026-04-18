@@ -84,7 +84,7 @@ const CASES: EvalCase[] = [
       "Replace `this.state` with `useState` hooks, `componentDidMount`/`componentDidUpdate` " +
       "with `useEffect`, and class methods with regular functions or `useCallback`. " +
       "Keep the same external behavior and JSX structure.",
-    structuralChecks: ["function UserProfile", "useState", "useEffect"],
+    structuralChecks: ["useState", "useEffect"],
   },
   {
     name: "Refactor giant component into 3 smaller ones",

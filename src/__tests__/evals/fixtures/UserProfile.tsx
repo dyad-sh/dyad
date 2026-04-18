@@ -1,4 +1,4 @@
-// UserProfile.tsx — class-based user profile component (to be converted to hooks)
+// UserProfile.tsx — class-based user profile component
 
 import React from "react";
 import { fetchUser, updateUser, fetchUserActivity } from "../services/userService";
@@ -237,7 +237,7 @@ export class UserProfile extends React.Component<Props, State> {
           )}
           {avatarError && <p className="avatar-error">{avatarError}</p>}
           <h1>{user.name}</h1>
-          <span className="role-badge role-badge--{user.role}">{user.role}</span>
+          <span className={`role-badge role-badge--${user.role}`}>{user.role}</span>
         </div>
 
         {editing ? (

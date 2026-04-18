@@ -184,8 +184,16 @@ const evalFetch: typeof fetch = async (input, init) => {
 
       const response = await fetch(input, init);
 
-      // Convert the SSE stream back to a single JSON response for the SDK
+      // Convert the SSE stream back to a single JSON response for the SDK.
+      // Only reassemble when the upstream response is actually an SSE stream —
+      // otherwise (non-OK status, or a non-SSE body like a JSON error payload)
+      // pass the response through unchanged so the SDK's error/retry path
+      // sees the real failure instead of a synthetic empty 200.
       if (wasNonStreaming) {
+        const contentType = response.headers.get("content-type") ?? "";
+        if (!response.ok || !contentType.includes("text/event-stream")) {
+          return response;
+        }
         return sseToNonStreamingResponse(response);
       }
       return response;

@@ -356,7 +356,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
-  const queryClient = useQueryClient();
   const {
     mutateAsync: createCloudSandboxShareLink,
     isPending: isCreatingCloudSandboxShareLink,

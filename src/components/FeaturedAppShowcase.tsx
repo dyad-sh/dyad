@@ -46,7 +46,7 @@ export function FeaturedAppShowcase() {
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
-      <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
+      <div className="flex gap-4 overflow-x-auto scrollbar-on-hover pb-3">
         {featured.map((app) => (
           <div key={app.id} className="w-56 flex-shrink-0">
             <AppShowcaseCard app={app} onClick={openApp} />

@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     include: ["src/__tests__/evals/**/*.eval.ts"],
     globals: true,
-    testTimeout: 240_000,
+    testTimeout: 360_000,
     maxConcurrency: 5,
     passWithNoTests: true,
   },

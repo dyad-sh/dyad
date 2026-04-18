@@ -55,6 +55,12 @@ export interface ToolCallRecord {
   // Unified diff from fileBefore → fileAfter for this single call.
   // Empty string when the call did not change the file.
   diff: string;
+  // Whether the tool call completed successfully. Failed calls still get
+  // recorded so the tool-call log reflects what the model actually tried,
+  // not just what succeeded.
+  succeeded: boolean;
+  // Error message when succeeded=false; null otherwise.
+  error: string | null;
 }
 
 export interface JudgeRecord {
@@ -145,9 +151,13 @@ function stringifyArg(value: unknown): { text: string; length: number } {
 function formatToolCall(tc: ToolCallRecord): string {
   const parts: string[] = [];
   parts.push(hr("-"));
-  parts.push(`Tool call #${tc.index + 1} (${tc.toolName})`);
+  const status = tc.succeeded ? "" : " [FAILED]";
+  parts.push(`Tool call #${tc.index + 1} (${tc.toolName})${status}`);
   parts.push(`Timestamp: ${tc.timestamp}`);
   parts.push(`File:      ${tc.filePath}`);
+  if (!tc.succeeded && tc.error) {
+    parts.push(`Error:     ${tc.error}`);
+  }
   parts.push("");
   for (const [key, value] of Object.entries(tc.args)) {
     const { text, length } = stringifyArg(value);
@@ -321,6 +331,8 @@ export function recordEvalRun(record: EvalRunRecord): void {
           `tool:      ${tc.toolName}\n` +
           `timestamp: ${tc.timestamp}\n` +
           `file_path: ${tc.filePath}\n` +
+          `succeeded: ${tc.succeeded}\n` +
+          (tc.succeeded ? "" : `error:     ${tc.error ?? ""}\n`) +
           argLengths.map((l) => `${l}\n`).join("") +
           `file_before: ${tc.fileBefore.length} chars\n` +
           `file_after: ${tc.fileAfter.length} chars\n`,

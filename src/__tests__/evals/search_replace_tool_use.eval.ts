@@ -391,7 +391,9 @@ function makeRecord(
   fileBefore: string,
   fileAfter: string,
   index: number,
+  opts: { succeeded?: boolean; error?: string | null } = {},
 ): ToolCallRecord {
+  const succeeded = opts.succeeded ?? true;
   return {
     timestamp: new Date().toISOString(),
     index,
@@ -404,6 +406,8 @@ function makeRecord(
       oldLabel: `${filePath} (before call ${index + 1})`,
       newLabel: `${filePath} (after call ${index + 1})`,
     }),
+    succeeded,
+    error: succeeded ? null : opts.error ?? null,
   };
 }
 
@@ -417,33 +421,50 @@ function searchReplaceHarnessTool(
     inputSchema: searchReplaceTool.inputSchema,
     execute: async (args) => {
       const fileBefore = state.content;
-      if (args.file_path !== c.fileName) {
-        throw new Error(
-          `${label} / ${c.name} search_replace targeted wrong file: ` +
-            `got "${args.file_path}", expected "${c.fileName}"`,
-        );
-      }
-      assertNotFullFileRewrite(
-        state.content,
-        args.old_string,
-        `${label} / ${c.name}`,
-      );
-      state.content = applySearchReplaceEdit(state.content, args);
-      state.toolCalls.push(
-        makeRecord(
-          "search_replace",
-          args.file_path,
-          {
-            file_path: args.file_path,
-            old_string: args.old_string,
-            new_string: args.new_string,
-          },
-          fileBefore,
+      const recordArgs = {
+        file_path: args.file_path,
+        old_string: args.old_string,
+        new_string: args.new_string,
+      };
+      try {
+        if (args.file_path !== c.fileName) {
+          throw new Error(
+            `${label} / ${c.name} search_replace targeted wrong file: ` +
+              `got "${args.file_path}", expected "${c.fileName}"`,
+          );
+        }
+        assertNotFullFileRewrite(
           state.content,
-          state.toolCalls.length,
-        ),
-      );
-      return `Successfully applied edits to ${args.file_path}`;
+          args.old_string,
+          `${label} / ${c.name}`,
+        );
+        state.content = applySearchReplaceEdit(state.content, args);
+        state.toolCalls.push(
+          makeRecord(
+            "search_replace",
+            args.file_path,
+            recordArgs,
+            fileBefore,
+            state.content,
+            state.toolCalls.length,
+          ),
+        );
+        return `Successfully applied edits to ${args.file_path}`;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        state.toolCalls.push(
+          makeRecord(
+            "search_replace",
+            args.file_path ?? c.fileName,
+            recordArgs,
+            fileBefore,
+            fileBefore,
+            state.toolCalls.length,
+            { succeeded: false, error: message },
+          ),
+        );
+        throw err;
+      }
     },
   };
 }
@@ -458,28 +479,45 @@ function writeFileHarnessTool(
     inputSchema: writeFileTool.inputSchema,
     execute: async (args) => {
       const fileBefore = state.content;
-      if (args.path !== c.fileName) {
-        throw new Error(
-          `${label} / ${c.name} write_file targeted wrong file: ` +
-            `got "${args.path}", expected "${c.fileName}"`,
+      const recordArgs = {
+        path: args.path,
+        content: args.content,
+        description: args.description ?? "",
+      };
+      try {
+        if (args.path !== c.fileName) {
+          throw new Error(
+            `${label} / ${c.name} write_file targeted wrong file: ` +
+              `got "${args.path}", expected "${c.fileName}"`,
+          );
+        }
+        state.content = args.content;
+        state.toolCalls.push(
+          makeRecord(
+            "write_file",
+            args.path,
+            recordArgs,
+            fileBefore,
+            state.content,
+            state.toolCalls.length,
+          ),
         );
+        return `Successfully wrote ${args.path}`;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        state.toolCalls.push(
+          makeRecord(
+            "write_file",
+            args.path ?? c.fileName,
+            recordArgs,
+            fileBefore,
+            fileBefore,
+            state.toolCalls.length,
+            { succeeded: false, error: message },
+          ),
+        );
+        throw err;
       }
-      state.content = args.content;
-      state.toolCalls.push(
-        makeRecord(
-          "write_file",
-          args.path,
-          {
-            path: args.path,
-            content: args.content,
-            description: args.description ?? "",
-          },
-          fileBefore,
-          state.content,
-          state.toolCalls.length,
-        ),
-      );
-      return `Successfully wrote ${args.path}`;
     },
   };
 }
@@ -494,34 +532,51 @@ function editFileHarnessTool(
     inputSchema: editFileTool.inputSchema,
     execute: async (args) => {
       const fileBefore = state.content;
-      if (args.path !== c.fileName) {
-        throw new Error(
-          `${label} / ${c.name} edit_file targeted wrong file: ` +
-            `got "${args.path}", expected "${c.fileName}"`,
-        );
-      }
-      const newContent = await turboFileEdit({
+      const recordArgs = {
         path: args.path,
         content: args.content,
-        originalContent: state.content,
-        instructions: args.instructions,
-      });
-      state.content = newContent;
-      state.toolCalls.push(
-        makeRecord(
-          "edit_file",
-          args.path,
-          {
-            path: args.path,
-            content: args.content,
-            instructions: args.instructions ?? "",
-          },
-          fileBefore,
-          state.content,
-          state.toolCalls.length,
-        ),
-      );
-      return `Successfully edited ${args.path}`;
+        instructions: args.instructions ?? "",
+      };
+      try {
+        if (args.path !== c.fileName) {
+          throw new Error(
+            `${label} / ${c.name} edit_file targeted wrong file: ` +
+              `got "${args.path}", expected "${c.fileName}"`,
+          );
+        }
+        const newContent = await turboFileEdit({
+          path: args.path,
+          content: args.content,
+          originalContent: state.content,
+          instructions: args.instructions,
+        });
+        state.content = newContent;
+        state.toolCalls.push(
+          makeRecord(
+            "edit_file",
+            args.path,
+            recordArgs,
+            fileBefore,
+            state.content,
+            state.toolCalls.length,
+          ),
+        );
+        return `Successfully edited ${args.path}`;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        state.toolCalls.push(
+          makeRecord(
+            "edit_file",
+            args.path ?? c.fileName,
+            recordArgs,
+            fileBefore,
+            fileBefore,
+            state.toolCalls.length,
+            { succeeded: false, error: message },
+          ),
+        );
+        throw err;
+      }
     },
   };
 }
@@ -636,11 +691,27 @@ async function runCase(
     toolCalls: [],
   };
 
+  // Internal timeout fires slightly before vitest's testTimeout so the
+  // finally block still runs and we capture a partial record (tool calls,
+  // LLM requests so far, current file state) instead of losing everything
+  // to a hard vitest timeout. Keep this strictly less than testTimeout in
+  // vitest.eval.config.ts.
+  const INTERNAL_TIMEOUT_MS = 330_000;
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort(
+      new Error(
+        `runCase internal timeout: exceeded ${INTERNAL_TIMEOUT_MS}ms budget`,
+      ),
+    );
+  }, INTERNAL_TIMEOUT_MS);
+
   try {
     const result = await generateText({
       model: getEvalModel(provider, modelName),
       temperature,
       stopWhen: stepCountIs(100),
+      abortSignal: abortController.signal,
       system: systemPrompt,
       messages: [
         {
@@ -681,8 +752,11 @@ async function runCase(
       );
     }
 
-    if (totalCalls === 0) {
-      throw new Error(`${label} made no tool calls`);
+    const successfulCalls = state.toolCalls.filter((tc) => tc.succeeded).length;
+    if (successfulCalls === 0) {
+      throw new Error(
+        `${label} made no successful tool calls (attempted ${totalCalls})`,
+      );
     }
 
     for (const check of c.structuralChecks ?? []) {
@@ -716,6 +790,7 @@ async function runCase(
     if (totalDurationMs === 0) totalDurationMs = Date.now() - llmStartMs;
     throw err;
   } finally {
+    clearTimeout(timeoutHandle);
     recordEvalRun({
       timestamp: runTimestamp,
       suite: suite.name,

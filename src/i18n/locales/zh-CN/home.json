@@ -202,6 +202,8 @@
     "rebuildDescription": "重新安装 node_modules 并重启",
     "clearCache": "清除缓存",
     "clearCacheDescription": "清除 Cookie、本地存储及其他应用缓存",
+    "recreateSandbox": "重新创建沙箱",
+    "recreateSandboxDescription": "销毁当前沙箱并创建一个新的沙箱",
     "loadingFiles": "正在加载文件...",
     "noAppSelected": "未选择应用",
     "refreshFiles": "刷新文件",

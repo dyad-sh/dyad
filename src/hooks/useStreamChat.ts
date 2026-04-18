@@ -13,6 +13,7 @@ import {
   recentStreamChatIdsAtom,
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
+  queuePausedByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
@@ -69,6 +70,8 @@ export function useStreamChat({
   const setStreamCompletedSuccessfullyById = useSetAtom(
     streamCompletedSuccessfullyByIdAtom,
   );
+  const queuePausedById = useAtomValue(queuePausedByIdAtom);
+  const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -215,109 +218,123 @@ export function useStreamChat({
               }
             },
             onEnd: (response: ChatResponseEnd) => {
-              // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
-              // Only mark as successful if NOT cancelled - wasCancelled flag is set
-              // by the backend when user cancels the stream
-              if (response.wasCancelled) {
-                setMessagesById((prev) => {
-                  const existingMessages = prev.get(chatId);
-                  if (!existingMessages) return prev;
+              void (async () => {
+                // Only mark as successful if NOT cancelled - wasCancelled flag is set
+                // by the backend when user cancels the stream
+                if (response.wasCancelled) {
+                  setMessagesById((prev) => {
+                    const existingMessages = prev.get(chatId);
+                    if (!existingMessages) return prev;
 
-                  const updatedMessages =
-                    applyCancellationNoticeToLastAssistantMessage(
-                      existingMessages,
-                    );
-                  if (updatedMessages === existingMessages) {
-                    return prev;
+                    const updatedMessages =
+                      applyCancellationNoticeToLastAssistantMessage(
+                        existingMessages,
+                      );
+                    if (updatedMessages === existingMessages) {
+                      return prev;
+                    }
+
+                    const next = new Map(prev);
+                    next.set(chatId, updatedMessages);
+                    return next;
+                  });
+                }
+
+                if (!response.wasCancelled) {
+                  setStreamCompletedSuccessfullyById((prev) => {
+                    const next = new Map(prev);
+                    next.set(chatId, true);
+                    return next;
+                  });
+                }
+
+                // Show native notification if enabled and window is not focused
+                // Fire-and-forget to avoid blocking UI updates
+                const notificationsEnabled =
+                  settings?.enableChatEventNotifications === true;
+                if (
+                  notificationsEnabled &&
+                  Notification.permission === "granted" &&
+                  !document.hasFocus()
+                ) {
+                  const app = queryClient.getQueryData<App | null>(
+                    queryKeys.apps.detail({ appId: selectedAppId }),
+                  );
+                  const chats = queryClient.getQueryData<ChatSummary[]>(
+                    queryKeys.chats.list({ appId: selectedAppId }),
+                  );
+                  const chat = chats?.find((c) => c.id === chatId);
+                  const appName = app?.name ?? "Dyad";
+                  const rawTitle = response.chatSummary ?? chat?.title;
+                  const body = rawTitle
+                    ? rawTitle.length > 80
+                      ? rawTitle.slice(0, 80) + "…"
+                      : rawTitle
+                    : "Chat response completed";
+                  new Notification(appName, {
+                    body,
+                  });
+                }
+
+                if (response.updatedFiles) {
+                  if (settings?.autoExpandPreviewPanel) {
+                    setIsPreviewOpen(true);
                   }
+                  refreshAppIframe();
+                  if (settings?.enableAutoFixProblems) {
+                    checkProblems();
+                  }
+                }
+                if (response.extraFiles) {
+                  showExtraFilesToast({
+                    files: response.extraFiles,
+                    error: response.extraFilesError,
+                    posthog,
+                  });
+                }
+                for (const warningMessage of response.warningMessages ?? []) {
+                  showWarning(warningMessage);
+                }
+                // Use queryClient directly with the chatId parameter to avoid stale closure issues
+                queryClient.invalidateQueries({
+                  queryKey: ["proposal", chatId],
+                });
 
+                refetchUserBudget();
+
+                // Invalidate free agent quota to update the UI after message
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.freeAgentQuota.status,
+                });
+
+                // Keep the same as below
+                setIsStreamingById((prev) => {
                   const next = new Map(prev);
-                  next.set(chatId, updatedMessages);
+                  next.set(chatId, false);
                   return next;
                 });
-              }
-
-              if (!response.wasCancelled) {
-                setStreamCompletedSuccessfullyById((prev) => {
+                // Use queryClient directly with the chatId parameter to avoid stale closure issues
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.proposals.detail({ chatId }),
+                });
+                invalidateChats();
+                refreshApp();
+                refreshVersions();
+                invalidateTokenCount();
+                onSettled?.({ success: true });
+              })().catch((error) => {
+                console.error(
+                  `[CHAT] Failed to finalize stream for ${chatId}:`,
+                  error,
+                );
+                setIsStreamingById((prev) => {
                   const next = new Map(prev);
-                  next.set(chatId, true);
+                  next.set(chatId, false);
                   return next;
                 });
-              }
-
-              // Show native notification if enabled and window is not focused
-              // Fire-and-forget to avoid blocking UI updates
-              const notificationsEnabled =
-                settings?.enableChatEventNotifications === true;
-              if (
-                notificationsEnabled &&
-                Notification.permission === "granted" &&
-                !document.hasFocus()
-              ) {
-                const app = queryClient.getQueryData<App | null>(
-                  queryKeys.apps.detail({ appId: selectedAppId }),
-                );
-                const chats = queryClient.getQueryData<ChatSummary[]>(
-                  queryKeys.chats.list({ appId: selectedAppId }),
-                );
-                const chat = chats?.find((c) => c.id === chatId);
-                const appName = app?.name ?? "Dyad";
-                const rawTitle = response.chatSummary ?? chat?.title;
-                const body = rawTitle
-                  ? rawTitle.length > 80
-                    ? rawTitle.slice(0, 80) + "…"
-                    : rawTitle
-                  : "Chat response completed";
-                new Notification(appName, {
-                  body,
-                });
-              }
-
-              if (response.updatedFiles) {
-                if (settings?.autoExpandPreviewPanel) {
-                  setIsPreviewOpen(true);
-                }
-                refreshAppIframe();
-                if (settings?.enableAutoFixProblems) {
-                  checkProblems();
-                }
-              }
-              if (response.extraFiles) {
-                showExtraFilesToast({
-                  files: response.extraFiles,
-                  error: response.extraFilesError,
-                  posthog,
-                });
-              }
-              for (const warningMessage of response.warningMessages ?? []) {
-                showWarning(warningMessage);
-              }
-              // Use queryClient directly with the chatId parameter to avoid stale closure issues
-              queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
-
-              refetchUserBudget();
-
-              // Invalidate free agent quota to update the UI after message
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.freeAgentQuota.status,
+                onSettled?.({ success: false });
               });
-
-              // Keep the same as below
-              setIsStreamingById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, false);
-                return next;
-              });
-              // Use queryClient directly with the chatId parameter to avoid stale closure issues
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.proposals.detail({ chatId }),
-              });
-              invalidateChats();
-              refreshApp();
-              refreshVersions();
-              invalidateTokenCount();
-              onSettled?.({ success: true });
             },
             onError: ({ error: errorMessage, warningMessages }) => {
               // Remove from pending set now that stream ended with error
@@ -388,6 +405,97 @@ export function useStreamChat({
     ],
   );
 
+  // Memoize queue management functions to prevent unnecessary re-renders
+  // in components that depend on these functions (e.g., restore effect)
+  const queueMessage = useCallback(
+    (message: Omit<QueuedMessageItem, "id">): boolean => {
+      if (chatId === undefined) return false;
+      const newItem: QueuedMessageItem = {
+        ...message,
+        id: crypto.randomUUID(),
+      };
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        next.set(chatId, [...existing, newItem]);
+        return next;
+      });
+      return true;
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const updateQueuedMessage = useCallback(
+    (
+      id: string,
+      updates: Partial<
+        Pick<QueuedMessageItem, "prompt" | "attachments" | "selectedComponents">
+      >,
+    ) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const updated = existing.map((msg) =>
+          msg.id === id ? { ...msg, ...updates } : msg,
+        );
+        next.set(chatId, updated);
+        return next;
+      });
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const removeQueuedMessage = useCallback(
+    (id: string) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const filtered = existing.filter((msg) => msg.id !== id);
+        if (filtered.length > 0) {
+          next.set(chatId, filtered);
+        } else {
+          next.delete(chatId);
+        }
+        return next;
+      });
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const reorderQueuedMessages = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = [...(prev.get(chatId) ?? [])];
+        if (
+          fromIndex < 0 ||
+          fromIndex >= existing.length ||
+          toIndex < 0 ||
+          toIndex >= existing.length
+        ) {
+          return prev;
+        }
+        const [removed] = existing.splice(fromIndex, 1);
+        existing.splice(toIndex, 0, removed);
+        next.set(chatId, existing);
+        return next;
+      });
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const clearAllQueuedMessages = useCallback(() => {
+    if (chatId === undefined) return;
+    setQueuedMessagesById((prev) => {
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
+  }, [chatId, setQueuedMessagesById]);
+
   return {
     streamMessage,
     isStreaming:
@@ -415,77 +523,54 @@ export function useStreamChat({
       hasChatId && chatId !== undefined
         ? (queuedMessagesById.get(chatId) ?? [])
         : [],
-    queueMessage: (message: Omit<QueuedMessageItem, "id">): boolean => {
-      if (chatId === undefined) return false;
-      const newItem: QueuedMessageItem = {
-        ...message,
-        id: crypto.randomUUID(),
-      };
-      setQueuedMessagesById((prev) => {
+    queueMessage,
+    updateQueuedMessage,
+    removeQueuedMessage,
+    reorderQueuedMessages,
+    clearAllQueuedMessages,
+    isPaused:
+      hasChatId && chatId !== undefined
+        ? (queuePausedById.get(chatId) ?? false)
+        : false,
+    pauseQueue: useCallback(() => {
+      if (chatId === undefined) return;
+      setQueuePausedById((prev) => {
         const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        next.set(chatId, [...existing, newItem]);
+        next.set(chatId, true);
         return next;
       });
-      return true;
-    },
-    updateQueuedMessage: (
-      id: string,
-      updates: Partial<
-        Pick<QueuedMessageItem, "prompt" | "attachments" | "selectedComponents">
-      >,
-    ) => {
+    }, [chatId, setQueuePausedById]),
+    clearPauseOnly: useCallback(() => {
       if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
+      setQueuePausedById((prev) => {
         const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        const updated = existing.map((msg) =>
-          msg.id === id ? { ...msg, ...updates } : msg,
-        );
-        next.set(chatId, updated);
+        next.set(chatId, false);
         return next;
       });
-    },
-    removeQueuedMessage: (id: string) => {
+    }, [chatId, setQueuePausedById]),
+    resumeQueue: useCallback(() => {
       if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
+      setQueuePausedById((prev) => {
         const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        const filtered = existing.filter((msg) => msg.id !== id);
-        if (filtered.length > 0) {
-          next.set(chatId, filtered);
-        } else {
-          next.delete(chatId);
-        }
+        next.set(chatId, false);
         return next;
       });
-    },
-    reorderQueuedMessages: (fromIndex: number, toIndex: number) => {
+      // Signal the queue processor if we're not currently streaming
+      if (!pendingStreamChatIds.has(chatId)) {
+        setStreamCompletedSuccessfullyById((prev) => {
+          const next = new Map(prev);
+          next.set(chatId, true);
+          return next;
+        });
+      }
+    }, [chatId, setQueuePausedById, setStreamCompletedSuccessfullyById]),
+    clearCompletionFlag: useCallback(() => {
       if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = [...(prev.get(chatId) ?? [])];
-        if (
-          fromIndex < 0 ||
-          fromIndex >= existing.length ||
-          toIndex < 0 ||
-          toIndex >= existing.length
-        ) {
-          return prev;
-        }
-        const [removed] = existing.splice(fromIndex, 1);
-        existing.splice(toIndex, 0, removed);
-        next.set(chatId, existing);
-        return next;
-      });
-    },
-    clearAllQueuedMessages: () => {
-      if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
+      setStreamCompletedSuccessfullyById((prev) => {
         const next = new Map(prev);
         next.delete(chatId);
         return next;
       });
-    },
+    }, [chatId, setStreamCompletedSuccessfullyById]),
   };
 }

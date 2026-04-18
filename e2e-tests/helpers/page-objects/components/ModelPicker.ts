@@ -3,7 +3,7 @@
  * Handles model and provider selection.
  */
 
-import { Page } from "@playwright/test";
+import { expect, Page } from "@playwright/test";
 
 export class ModelPicker {
   constructor(public page: Page) {}
@@ -16,8 +16,12 @@ export class ModelPicker {
 
   async selectTestModel() {
     await this.page.getByTestId("model-picker").click();
-    await this.page.getByText("test-provider").click();
-    await this.page.getByText("test-model").click();
+    const providerItem = this.page.getByText("test-provider");
+    await expect(providerItem).toBeVisible();
+    await providerItem.click();
+    const modelItem = this.page.getByText("test-model");
+    await expect(modelItem).toBeVisible();
+    await modelItem.click();
   }
 
   async selectTestOllamaModel() {

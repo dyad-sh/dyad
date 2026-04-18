@@ -260,3 +260,6 @@ export const queuedMessagesByIdAtom = atom<Map<number, QueuedMessageItem[]>>(
 export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
   new Map(),
 );
+
+// Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
+export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());

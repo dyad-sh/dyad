@@ -18,6 +18,7 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("search_replace");
 
@@ -133,6 +134,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
     await fs.promises.writeFile(fullFilePath, result.content);
     logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
+    queueCloudSandboxSnapshotSync({
+      appId: ctx.appId,
+      changedPaths: [args.file_path],
+    });
     sendTelemetryEvent("local_agent:search_replace:success", {
       filePath: args.file_path,
     });

@@ -5,7 +5,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { neon } from "@neondatabase/serverless";
 
 import log from "electron-log";
-import { getNeonClient } from "@/neon_admin/neon_management_client";
+import { getConnectionUri } from "@/neon_admin/neon_context";
 import { getCurrentCommitHash } from "./git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -62,7 +62,8 @@ export async function storeDbTimestampAtCurrentVersion({
       );
     }
 
-    if (!app.neonProjectId || !app.neonDevelopmentBranchId) {
+    const branchId = app.neonActiveBranchId ?? app.neonDevelopmentBranchId;
+    if (!app.neonProjectId || !branchId) {
       throw new DyadError(
         `App with ID ${appId} has no Neon project or branch`,
         DyadErrorKind.External,
@@ -75,17 +76,14 @@ export async function storeDbTimestampAtCurrentVersion({
 
     logger.info(`Current commit hash: ${currentCommitHash}`);
 
-    const neonClient = await getNeonClient();
-    const connectionUri = await neonClient.getConnectionUri({
+    const connectionUri = await getConnectionUri({
       projectId: app.neonProjectId,
-      branch_id: app.neonDevelopmentBranchId,
-      database_name: "neondb",
-      role_name: "neondb_owner",
+      branchId,
     });
 
     // 3. Get the current timestamp from Neon
     const currentTimestamp = await getLastUpdatedTimestampFromNeon({
-      neonConnectionUri: connectionUri.data.uri,
+      neonConnectionUri: connectionUri,
     });
 
     logger.info(`Current timestamp from Neon: ${currentTimestamp}`);

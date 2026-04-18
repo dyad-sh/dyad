@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CustomTagState } from "./stateTypes";
 import { Table2 } from "lucide-react";
 import {
@@ -10,7 +11,8 @@ import {
   DyadCardContent,
 } from "./DyadCardPrimitives";
 
-interface DyadSupabaseTableSchemaProps {
+interface DyadDbTableSchemaProps {
+  provider: string;
   node: {
     properties: {
       table?: string;
@@ -20,10 +22,12 @@ interface DyadSupabaseTableSchemaProps {
   children: React.ReactNode;
 }
 
-export function DyadSupabaseTableSchema({
+export function DyadDbTableSchema({
+  provider,
   node,
   children,
-}: DyadSupabaseTableSchemaProps) {
+}: DyadDbTableSchemaProps) {
+  const { t } = useTranslation("home");
   const [isContentVisible, setIsContentVisible] = useState(false);
   const { table, state } = node.properties;
   const isLoading = state === "pending";
@@ -39,7 +43,9 @@ export function DyadSupabaseTableSchema({
     >
       <DyadCardHeader icon={<Table2 size={15} />} accentColor="teal">
         <DyadBadge color="teal">
-          {table ? "Table Schema" : "Supabase Table Schema"}
+          {table
+            ? t("integrations.db.tableSchema")
+            : t("integrations.db.tableSchemaProvider", { provider })}
         </DyadBadge>
         {table && (
           <span className="font-medium text-sm text-foreground truncate">
@@ -47,10 +53,16 @@ export function DyadSupabaseTableSchema({
           </span>
         )}
         {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Fetching..." />
+          <DyadStateIndicator
+            state="pending"
+            pendingLabel={t("integrations.db.fetching")}
+          />
         )}
         {isAborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("integrations.db.didNotFinish")}
+          />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />

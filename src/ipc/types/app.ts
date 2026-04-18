@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
 
 // =============================================================================
 // App Schemas
@@ -24,6 +25,7 @@ export const AppBaseSchema = z.object({
   neonProjectId: z.string().nullable(),
   neonDevelopmentBranchId: z.string().nullable(),
   neonPreviewBranchId: z.string().nullable(),
+  neonActiveBranchId: z.string().nullable(),
   vercelProjectId: z.string().nullable(),
   vercelProjectName: z.string().nullable(),
   vercelDeploymentUrl: z.string().nullable(),
@@ -39,6 +41,7 @@ export const AppBaseSchema = z.object({
  */
 export const AppSchema = AppBaseSchema.extend({
   files: z.array(z.string()),
+  frameworkType: z.enum(APP_FRAMEWORK_TYPES).nullable().optional(),
   supabaseProjectName: z.string().nullable(),
   vercelTeamSlug: z.string().nullable(),
   resolvedPath: z.string().optional(),

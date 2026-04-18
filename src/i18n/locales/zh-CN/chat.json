@@ -228,6 +228,7 @@
     "requestsConsent": "请求您的同意。",
     "inputRequired": "需要输入"
   },
+  "guide": "指南",
   "agentModeActivated": "Agent 模式已激活",
   "agentModeTip": "提示：创建新聊天以给 Agent 一个干净的上下文，获得更好的结果。",
   "neverShowAgain": "不再显示"

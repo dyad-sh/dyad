@@ -12,11 +12,12 @@ import { renameFileTool } from "./tools/rename_file";
 import { copyFileTool } from "./tools/copy_file";
 import { addDependencyTool } from "./tools/add_dependency";
 import { executeSqlTool } from "./tools/execute_sql";
+import { getNeonProjectInfoTool } from "./tools/get_neon_project_info";
+import { getDatabaseTableSchemaTool } from "./tools/get_database_table_schema";
 
 import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
 import { getSupabaseProjectInfoTool } from "./tools/get_supabase_project_info";
-import { getSupabaseTableSchemaTool } from "./tools/get_supabase_table_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
@@ -33,6 +34,7 @@ import { codeSearchTool } from "./tools/code_search";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import { readGuideTool } from "./tools/read_guide";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -45,6 +47,7 @@ import {
 } from "./tools/types";
 import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
+import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 
@@ -79,7 +82,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   grepTool,
   codeSearchTool,
   getSupabaseProjectInfoTool,
-  getSupabaseTableSchemaTool,
+  getNeonProjectInfoTool,
+  getDatabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
   readLogsTool,
@@ -89,6 +93,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
+  readGuideTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,
@@ -299,33 +304,52 @@ export async function requireAgentToolConsent(
 // ============================================================================
 
 /**
- * Process placeholders in tool args (e.g. $$SUPABASE_CLIENT_CODE$$)
+ * Process placeholders in tool args (e.g. $$SUPABASE_CLIENT_CODE$$, $$NEON_CLIENT_CODE$$)
  * Recursively processes all string values in the args object.
  */
 async function processArgPlaceholders<T extends Record<string, any>>(
   args: T,
   ctx: AgentContext,
 ): Promise<T> {
-  if (!ctx.supabaseProjectId) {
-    return args;
-  }
-
-  // Check if any string values contain the placeholder
   const argsStr = JSON.stringify(args);
-  if (!argsStr.includes("$$SUPABASE_CLIENT_CODE$$")) {
+  const hasSupabasePlaceholder = argsStr.includes("$$SUPABASE_CLIENT_CODE$$");
+  const hasNeonPlaceholder = argsStr.includes("$$NEON_CLIENT_CODE$$");
+
+  if (!hasSupabasePlaceholder && !hasNeonPlaceholder) {
     return args;
   }
 
-  // Fetch the replacement value once
-  const supabaseClientCode = await getSupabaseClientCode({
-    projectId: ctx.supabaseProjectId,
-    organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-  });
+  let supabaseClientCode: string | undefined;
+  if (hasSupabasePlaceholder && ctx.supabaseProjectId) {
+    supabaseClientCode = await getSupabaseClientCode({
+      projectId: ctx.supabaseProjectId,
+      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+    });
+  }
+
+  let neonClientCode: string | undefined;
+  if (hasNeonPlaceholder) {
+    if (ctx.neonProjectId) {
+      neonClientCode = getNeonClientCode(ctx.frameworkType);
+    } else {
+      neonClientCode = "";
+    }
+  }
 
   // Process all string values in args
   const processValue = (value: any): any => {
     if (typeof value === "string") {
-      return value.replace(/\$\$SUPABASE_CLIENT_CODE\$\$/g, supabaseClientCode);
+      let result = value;
+      if (supabaseClientCode) {
+        result = result.replace(
+          /\$\$SUPABASE_CLIENT_CODE\$\$/g,
+          supabaseClientCode,
+        );
+      }
+      if (neonClientCode !== undefined) {
+        result = result.replace(/\$\$NEON_CLIENT_CODE\$\$/g, neonClientCode);
+      }
+      return result;
     }
     if (Array.isArray(value)) {
       return value.map(processValue);

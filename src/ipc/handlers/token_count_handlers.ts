@@ -10,6 +10,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
@@ -92,10 +93,18 @@ export function registerTokenCountHandlers() {
           supabaseProjectId: chat.app.supabaseProjectId,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
-      } else if (
-        // Neon projects don't need Supabase.
-        !chat.app?.neonProjectId
-      ) {
+      } else if (chat.app?.neonProjectId) {
+        systemPrompt +=
+          "\n\n" +
+          (await buildNeonPromptForApp({
+            appPath: chat.app.path,
+            neonProjectId: chat.app.neonProjectId!,
+            neonActiveBranchId: chat.app.neonActiveBranchId,
+            neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
+            selectedChatMode: settings.selectedChatMode ?? "",
+          }));
+      } else {
+        // Neon projects don't need Supabase (already handled above).
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 

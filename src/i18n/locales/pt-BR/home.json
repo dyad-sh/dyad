@@ -554,7 +554,101 @@
       "connectedSuccess": "Conectado ao Neon com sucesso!",
       "disconnect": "Desconectar do Neon",
       "disconnected": "Desconectado do Neon com sucesso",
-      "failedDisconnect": "Falha ao desconectar do Neon"
+      "failedDisconnect": "Falha ao desconectar do Neon",
+      "activeBranch": "Branch Ativa",
+      "branchSwitched": "Mudou para a branch",
+      "cancel": "Cancelar",
+      "connectedToProject": "Conectado ao projeto",
+      "create": "Criar",
+      "createNewProject": "Criar Novo Projeto",
+      "creating": "Criando...",
+      "development": "Desenvolvimento",
+      "disconnectConfirmation": "Tem certeza de que deseja desconectar este projeto Neon? Isso pode quebrar a conexão com o banco de dados do seu app.",
+      "disconnectProject": "Desconectar projeto",
+      "emailVerificationDisabled": "Verificação de e-mail desativada",
+      "emailVerificationEnabled": "Verificação de e-mail ativada",
+      "emailVerificationHelp": "Quando ativada, os usuários devem verificar seu endereço de e-mail antes de poderem fazer login no seu app.",
+      "envUpdated": "DATABASE_URL atualizado em .env.local.",
+      "errorLoadingBranches": "Falha ao carregar branches: {{message}}",
+      "errorLoadingProjects": "Falha ao carregar projetos: {{message}}",
+      "failedConnectProject": "Falha ao conectar projeto: {{error}}",
+      "failedDisconnectProject": "Falha ao desconectar projeto",
+      "failedSetBranch": "Falha ao mudar de branch: {{error}}",
+      "failedUpdateEmailVerification": "Falha ao atualizar verificação de e-mail: {{error}}",
+      "nextjsOnly": "A integração com Neon está disponível apenas para projetos Next.js.",
+      "noProjectsFound": "Nenhum projeto encontrado. Crie um novo projeto para começar.",
+      "noBranchesFound": "Ainda não foram encontradas branches para este projeto Neon.",
+      "preview": "Pré-visualização",
+      "production": "Produção",
+      "snapshot": "Instantâneo",
+      "project": "Projeto Neon",
+      "projectConnected": "Projeto Neon conectado com sucesso",
+      "projectName": "Nome do projeto",
+      "projects": "Projetos Neon",
+      "refreshProjects": "Atualizar projetos",
+      "requireEmailVerification": "Exigir verificação de e-mail",
+      "retry": "Tentar novamente",
+      "selectAProject": "Selecione um projeto...",
+      "selectBranch": "Selecione uma branch...",
+      "selectProjectDescription": "Selecione um projeto Neon existente ou crie um novo",
+      "openInConsole": "Abrir no Console Neon",
+      "completingSignIn": "Complete o login no seu navegador…",
+      "projectDisconnected": "Projeto desconectado com sucesso",
+      "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
+      "connecting": "Conectando...",
+      "disconnectAccountTitle": "Desconectar conta Neon",
+      "disconnectAccountConfirmation": "Tem certeza de que deseja desconectar sua conta Neon? Você precisará autenticar novamente via OAuth para reconectar."
+    },
+    "db": {
+      "projectInfo": "{{provider}} Informações do Projeto",
+      "tableSchema": "Esquema da Tabela",
+      "tableSchemaProvider": "{{provider}} Esquema da Tabela",
+      "fetching": "Buscando...",
+      "didNotFinish": "Não foi concluído"
+    },
+    "databaseSetup": {
+      "badge": "Integração",
+      "integrationComplete": "Integração concluída",
+      "completeDescription": "Integração com {{provider}} concluída",
+      "connectedToProject": "Este app está conectado ao projeto {{provider}}:",
+      "continue": "Continuar",
+      "continuing": "Continuando...",
+      "chooseProvider": "Escolha um provedor de banco de dados",
+      "setUpProvider": "Configurar {{provider}}",
+      "setUpDatabase": "Configurar banco de dados",
+      "experimental": "Experimental",
+      "providers": {
+        "supabase": {
+          "name": "Supabase",
+          "description": "Backend completo como serviço: banco de dados Postgres, storage e edge functions."
+        },
+        "neon": {
+          "name": "Neon",
+          "description": "Banco de dados Postgres serverless com time-travel e generoso limite de projetos gratuitos."
+        }
+      }
+    },
+    "migration": {
+      "title": "Migração de Banco de Dados",
+      "description": "Copie o schema da sua branch de desenvolvimento ativa para a branch de produção.",
+      "descriptionWithBranches": "Copie o schema em {{projectName}} de {{sourceBranchName}} para {{targetBranchName}}.",
+      "migrateToProduction": "Migrar para Produção",
+      "migrating": "Migrando...",
+      "success": "Migração aplicada com sucesso.",
+      "errorMessage": "Não foi possível aplicar a migração.",
+      "showDetails": "Mostrar detalhes",
+      "hideDetails": "Ocultar detalhes",
+      "alreadyInSync": "Os bancos de desenvolvimento e produção já estão sincronizados.",
+      "switchBranchHint": "Mude para uma branch que não seja de produção no painel do Neon antes de migrar.",
+      "confirmDescription": "Isso modificará o schema do seu banco de dados de produção. Tem certeza de que deseja continuar?",
+      "confirmDescriptionWithBranches": "Isso modificará o schema de {{targetBranchName}} em {{projectName}} usando o schema de {{sourceBranchName}}. Tem certeza de que deseja continuar?",
+      "cancel": "Cancelar",
+      "backupWarning": "Certifique-se de ter os backups do banco de dados habilitados, caso contrário, você não poderá desfazer esta ação."
+    },
+    "mutualExclusion": {
+      "supabaseUnavailable": "O Supabase não está disponível porque um banco de dados Neon já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",
+      "neonUnavailable": "O Neon não está disponível porque um projeto Supabase já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",
+      "chooseOne": "Escolha uma integração de banco de dados. Conectar Supabase ou Neon bloqueará o outro para este aplicativo."
     }
   }
 }

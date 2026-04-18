@@ -21,6 +21,7 @@ import { eq } from "drizzle-orm";
 import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
+import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
@@ -41,6 +42,7 @@ import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
 } from "./processors/file_operations";
+import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
@@ -504,6 +506,10 @@ export async function handleLocalAgentStream(
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
+      neonProjectId: chat.app.neonProjectId,
+      neonActiveBranchId:
+        chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
+      frameworkType: detectFrameworkType(appPath),
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: persistedTodos,
@@ -1288,6 +1294,18 @@ export async function handleLocalAgentStream(
           .update(messages)
           .set({ commitHash: commitResult.commitHash })
           .where(eq(messages.id, placeholderMessageId));
+      }
+
+      // Store Neon DB timestamp for version tracking / time-travel
+      if (ctx.neonProjectId && ctx.neonActiveBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({ appId: ctx.appId });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+        }
       }
     }
 

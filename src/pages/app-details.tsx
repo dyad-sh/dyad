@@ -35,10 +35,17 @@ import {
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { NeonConnector } from "@/components/NeonConnector";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useCheckName } from "@/hooks/useCheckName";
@@ -46,11 +53,39 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { useTranslation } from "react-i18next";
+
+function UnavailableIntegrationCard({
+  provider,
+}: {
+  provider: "supabase" | "neon";
+}) {
+  const { t } = useTranslation("home");
+  const label = provider === "supabase" ? "Supabase" : "Neon";
+  const descriptionKey =
+    provider === "supabase"
+      ? "integrations.mutualExclusion.supabaseUnavailable"
+      : "integrations.mutualExclusion.neonUnavailable";
+  return (
+    <Card className="mt-1">
+      <CardHeader className="flex flex-row items-center gap-3 py-3">
+        <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+        <div>
+          <CardTitle className="text-sm">{label}</CardTitle>
+          <CardDescription className="text-xs">
+            {t(descriptionKey)}
+          </CardDescription>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
+  const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -80,8 +115,9 @@ export default function AppDetailsPage() {
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
 
-  // Get the appId from search params and find the corresponding app
+  // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
+  const providerFilter = search.provider;
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
   const handleDeleteApp = async () => {
@@ -436,7 +472,48 @@ export default function AppDetailsPage() {
               </div>
             )}
           </div>
-          {appId && <SupabaseConnector appId={appId} />}
+          {/* When providerFilter is set, show the selected connector only if the other provider isn't already active */}
+          {providerFilter === "supabase" &&
+            appId &&
+            !selectedApp?.neonProjectId && <SupabaseConnector appId={appId} />}
+          {providerFilter === "supabase" &&
+            appId &&
+            selectedApp?.neonProjectId && (
+              <UnavailableIntegrationCard provider="supabase" />
+            )}
+          {providerFilter === "neon" &&
+            appId &&
+            !selectedApp?.supabaseProjectId && <NeonConnector appId={appId} />}
+          {providerFilter === "neon" &&
+            appId &&
+            selectedApp?.supabaseProjectId && (
+              <UnavailableIntegrationCard provider="neon" />
+            )}
+          {/* When no providerFilter, show both with existing mutual exclusion */}
+          {!providerFilter && (
+            <>
+              {appId &&
+                !selectedApp?.neonProjectId &&
+                !selectedApp?.supabaseProjectId && (
+                  <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{t("integrations.mutualExclusion.chooseOne")}</span>
+                  </div>
+                )}
+              {appId && !selectedApp?.neonProjectId && (
+                <SupabaseConnector appId={appId} />
+              )}
+              {appId && selectedApp?.neonProjectId && (
+                <UnavailableIntegrationCard provider="supabase" />
+              )}
+              {appId && !selectedApp?.supabaseProjectId && (
+                <NeonConnector appId={appId} />
+              )}
+              {appId && selectedApp?.supabaseProjectId && (
+                <UnavailableIntegrationCard provider="neon" />
+              )}
+            </>
+          )}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
         </div>

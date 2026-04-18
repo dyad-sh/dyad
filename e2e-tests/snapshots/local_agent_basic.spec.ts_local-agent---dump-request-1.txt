@@ -358,22 +358,21 @@
         "type": "function",
         "function": {
           "name": "add_integration",
-          "description": "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+          "description": "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "provider": {
+                "description": "Optional preferred database provider. Use 'none' (or omit) if the user did not explicitly name a provider. Only use 'supabase' or 'neon' if the user specifically mentions that provider name in their prompt.",
                 "type": "string",
                 "enum": [
-                  "supabase"
-                ],
-                "description": "The integration provider to add (e.g., 'supabase')"
+                  "none",
+                  "supabase",
+                  "neon"
+                ]
               }
             },
-            "required": [
-              "provider"
-            ],
             "additionalProperties": false
           }
         }
@@ -576,6 +575,27 @@
                 }
               }
             },
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "read_guide",
+          "description": "Read a detailed instruction guide. Use this when the system prompt tells you to load a guide before implementing a feature.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "guide": {
+                "type": "string",
+                "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification')"
+              }
+            },
+            "required": [
+              "guide"
+            ],
             "additionalProperties": false
           }
         }

@@ -91,6 +91,7 @@ import {
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { detectFrameworkType } from "../utils/framework_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -1377,6 +1378,7 @@ export function registerAppHandlers() {
     return {
       ...app,
       files,
+      frameworkType: detectFrameworkType(appPath),
       resolvedPath: appPath,
       supabaseProjectName,
       vercelTeamSlug,

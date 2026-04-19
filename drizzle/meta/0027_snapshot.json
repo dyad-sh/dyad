@@ -107,7 +107,6 @@
           "notNull": false,
           "autoincrement": false
         },
-
         "neon_active_branch_id": {
           "name": "neon_active_branch_id",
           "type": "text",
@@ -115,7 +114,6 @@
           "notNull": false,
           "autoincrement": false
         },
-
         "vercel_project_id": {
           "name": "vercel_project_id",
           "type": "text",
@@ -218,7 +216,6 @@
           "notNull": false,
           "autoincrement": false
         },
-
         "created_at": {
           "name": "created_at",
           "type": "integer",

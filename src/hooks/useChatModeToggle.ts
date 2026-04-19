@@ -69,11 +69,6 @@ export function useChatModeToggle() {
 
   const toggleChatMode = useCallback(async () => {
     if (toggleInFlightRef.current) {
-      toast.info(
-        latestRef.current.t("chatMode.switchInProgress", {
-          defaultValue: "Mode switch already in progress",
-        }),
-      );
       return;
     }
 

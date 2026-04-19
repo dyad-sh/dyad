@@ -237,6 +237,13 @@ export function ChatModeSelector() {
             description="Best for coding"
             isProEnabled={isProEnabled}
             t={t}
+            badge={
+              enabledMcpServersCount > 0
+                ? t("chatMode.mcpCount", {
+                    count: enabledMcpServersCount,
+                  })
+                : undefined
+            }
           />
           <ModeOption
             mode="ask"

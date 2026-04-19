@@ -58,6 +58,11 @@ export function useRestoreChatMode({
   isContextReadyRef.current = isContextReady;
 
   useEffect(() => {
+    lastRestoredChatIdRef.current = undefined;
+    lastRestoredAppIdRef.current = null;
+  }, [isQuotaExceeded]);
+
+  useEffect(() => {
     if (!chatId || !settingsRef.current || !isContextReadyRef.current) {
       return;
     }
@@ -86,6 +91,7 @@ export function useRestoreChatMode({
     ) => {
       const effectiveCandidateMode: ChatMode =
         candidateMode ??
+        snapshottedSettings.selectedChatMode ??
         getEffectiveDefaultChatMode(
           snapshottedSettings,
           snapshottedEnvVars,
@@ -307,6 +313,7 @@ export function useRestoreChatMode({
     chatId,
     appId,
     isContextReady,
+    isQuotaExceeded,
     persistChatMode,
     queryClient,
     t,

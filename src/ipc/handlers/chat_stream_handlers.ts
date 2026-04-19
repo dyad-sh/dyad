@@ -557,11 +557,12 @@ ${componentSnippet}
         );
       }
 
-      // Per-chat mode is the source of truth when set; fall back to request mode
-      // and then global setting for legacy chats. Default to 'build' if all are unset.
+      // Request mode reflects the user's latest explicit selection for this turn.
+      // Fall back to persisted per-chat mode, then global setting for legacy chats.
+      // Default to 'build' if all are unset.
       const effectiveStreamMode: ChatMode =
-        chatBeforePlaceholder.chatMode ??
         req.chatMode ??
+        chatBeforePlaceholder.chatMode ??
         settings.selectedChatMode ??
         "build";
 

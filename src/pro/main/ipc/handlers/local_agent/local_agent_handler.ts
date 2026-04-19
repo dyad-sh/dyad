@@ -342,8 +342,8 @@ export async function handleLocalAgentStream(
   // gate on effectiveStreamMode === "local-agent", but this check protects against
   // future direct callers that might not validate mode before calling.
   const effectiveChatMode =
-    initialChat.chatMode ??
     req.chatMode ??
+    initialChat.chatMode ??
     settings.selectedChatMode ??
     "build";
   const isLocalAgentMode = effectiveChatMode === "local-agent";

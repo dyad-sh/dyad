@@ -1014,7 +1014,7 @@ function SuggestionButton({
 }: {
   onClick: () => void;
   children: React.ReactNode;
-  tooltipText: string;
+  tooltipText: string | string[];
 }) {
   const { isStreaming } = useStreamChat();
   return (
@@ -1031,7 +1031,11 @@ function SuggestionButton({
       >
         {children}
       </TooltipTrigger>
-      <TooltipContent>{tooltipText}</TooltipContent>
+      <TooltipContent>
+        {Array.isArray(tooltipText)
+          ? tooltipText.map((line) => <div key={line}>{line}</div>)
+          : tooltipText}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -1065,7 +1069,10 @@ function RefactorFileButton({ path }: { path: string }) {
     });
   };
   return (
-    <SuggestionButton onClick={onClick} tooltipText={t("refactorDescription")}>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText={[t("refactorDescription"), path]}
+    >
       <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
         {t("refactorFile", { path: path.split("/").slice(-2).join("/") })}
       </span>

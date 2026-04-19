@@ -181,30 +181,6 @@ export function ChatModeSelector() {
     }
   };
 
-  const getModeTooltip = (mode: ChatMode) => {
-    switch (mode) {
-      case "build":
-        return t("chatMode.buildDesc", {
-          defaultValue: "Build: Best for coding and generating code.",
-        });
-      case "ask":
-        return t("chatMode.askDesc", {
-          defaultValue: "Ask: Best for answering questions about your code.",
-        });
-      case "local-agent":
-        return t("chatMode.agentDesc", {
-          defaultValue:
-            "Agent: Best for complex tasks that require multiple steps.",
-        });
-      case "plan":
-        return t("chatMode.planDesc", {
-          defaultValue: "Plan: Best for planning out a new feature.",
-        });
-      default:
-        return "";
-    }
-  };
-
   return (
     <div className="flex items-center gap-2">
       <Select value={selectedMode} onValueChange={handleModeChange}>
@@ -251,28 +227,22 @@ export function ChatModeSelector() {
               )}
             </SelectValue>
           </TooltipTrigger>
-          <TooltipContent>
-            {t("chatMode.toggleShortcut", {
-              defaultValue: "{{modeDescription}} ({{shortcut}} to toggle)",
-              modeDescription: getModeTooltip(selectedMode),
-              shortcut: isMac ? "⌘ + ." : "Ctrl + .",
-            })}
-          </TooltipContent>
+          <TooltipContent>{isMac ? "⌘ + ." : "Ctrl + ."}</TooltipContent>
         </Tooltip>
         <SelectContent align="start" className="min-w-[150px]">
-          <ModeOption
-            mode="ask"
-            icon={<MessageCircle size={14} />}
-            label="Ask"
-            description="Best for asking questions"
-            isProEnabled={isProEnabled}
-            t={t}
-          />
           <ModeOption
             mode="build"
             icon={<Hammer size={14} />}
             label="Build"
             description="Best for coding"
+            isProEnabled={isProEnabled}
+            t={t}
+          />
+          <ModeOption
+            mode="ask"
+            icon={<MessageCircle size={14} />}
+            label="Ask"
+            description="Best for asking questions"
             isProEnabled={isProEnabled}
             t={t}
           />

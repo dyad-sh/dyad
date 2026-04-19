@@ -81,6 +81,40 @@ export function useRestoreChatMode({
     const snapshottedEnvVars = { ...envVarsRef.current };
     const snapshottedIsQuotaExceeded = isQuotaExceededRef.current;
 
+    const resolveModeForCandidate = (
+      candidateMode: ChatSummary["chatMode"],
+    ) => {
+      const effectiveCandidateMode: ChatMode =
+        candidateMode ??
+        getEffectiveDefaultChatMode(
+          snapshottedSettings,
+          snapshottedEnvVars,
+          !snapshottedIsQuotaExceeded,
+        );
+
+      let fallbackMode = snapshottedSettings.selectedChatMode ?? "build";
+      if (
+        !isChatModeAllowed(
+          fallbackMode,
+          snapshottedSettings,
+          snapshottedEnvVars,
+          !snapshottedIsQuotaExceeded,
+        )
+      ) {
+        fallbackMode = "build";
+      }
+
+      const resolvedMode = resolveAllowedChatMode({
+        desiredMode: effectiveCandidateMode,
+        fallbackMode,
+        settings: snapshottedSettings,
+        envVars: snapshottedEnvVars,
+        freeAgentQuotaAvailable: !snapshottedIsQuotaExceeded,
+      });
+
+      return { effectiveCandidateMode, resolvedMode };
+    };
+
     const restoreTimeout = window.setTimeout(() => {
       if (!isCancelled && !restoreAbortController.signal.aborted) {
         restoreAbortController.abort();
@@ -130,34 +164,8 @@ export function useRestoreChatMode({
         return;
       }
 
-      // For null/undefined candidateMode (new chats) fall back to effective default
-      const effectiveCandidateMode: ChatMode =
-        candidateMode ??
-        getEffectiveDefaultChatMode(
-          snapshottedSettings,
-          snapshottedEnvVars,
-          !snapshottedIsQuotaExceeded,
-        );
-
-      let fallbackMode = snapshottedSettings.selectedChatMode ?? "build";
-      if (
-        !isChatModeAllowed(
-          fallbackMode,
-          snapshottedSettings,
-          snapshottedEnvVars,
-          !snapshottedIsQuotaExceeded,
-        )
-      ) {
-        fallbackMode = "build";
-      }
-
-      const resolvedMode = resolveAllowedChatMode({
-        desiredMode: effectiveCandidateMode,
-        fallbackMode,
-        settings: snapshottedSettings,
-        envVars: snapshottedEnvVars,
-        freeAgentQuotaAvailable: !snapshottedIsQuotaExceeded,
-      });
+      const { effectiveCandidateMode, resolvedMode } =
+        resolveModeForCandidate(candidateMode);
 
       clearRestoreTimeout();
 
@@ -241,34 +249,9 @@ export function useRestoreChatMode({
         const cachedChat = cachedChats?.find((c) => c.id === chatId);
 
         if (cachedChat) {
-          const cachedCandidateMode: ChatMode =
-            cachedChat.chatMode ??
-            getEffectiveDefaultChatMode(
-              snapshottedSettings,
-              snapshottedEnvVars,
-              !snapshottedIsQuotaExceeded,
-            );
-
-          let cachedFallbackMode =
-            snapshottedSettings.selectedChatMode ?? "build";
-          if (
-            !isChatModeAllowed(
-              cachedFallbackMode,
-              snapshottedSettings,
-              snapshottedEnvVars,
-              !snapshottedIsQuotaExceeded,
-            )
-          ) {
-            cachedFallbackMode = "build";
-          }
-
-          const cachedResolvedMode = resolveAllowedChatMode({
-            desiredMode: cachedCandidateMode,
-            fallbackMode: cachedFallbackMode,
-            settings: snapshottedSettings,
-            envVars: snapshottedEnvVars,
-            freeAgentQuotaAvailable: !snapshottedIsQuotaExceeded,
-          });
+          const { resolvedMode: cachedResolvedMode } = resolveModeForCandidate(
+            cachedChat.chatMode ?? null,
+          );
 
           if (
             snapshottedSettings.selectedChatMode !== cachedResolvedMode.mode
@@ -291,34 +274,9 @@ export function useRestoreChatMode({
           return;
         }
 
-        const fetchedCandidateMode: ChatMode =
-          chat.chatMode ??
-          getEffectiveDefaultChatMode(
-            snapshottedSettings,
-            snapshottedEnvVars,
-            !snapshottedIsQuotaExceeded,
-          );
-
-        let fetchedFallbackMode =
-          snapshottedSettings.selectedChatMode ?? "build";
-        if (
-          !isChatModeAllowed(
-            fetchedFallbackMode,
-            snapshottedSettings,
-            snapshottedEnvVars,
-            !snapshottedIsQuotaExceeded,
-          )
-        ) {
-          fetchedFallbackMode = "build";
-        }
-
-        const fetchedResolvedMode = resolveAllowedChatMode({
-          desiredMode: fetchedCandidateMode,
-          fallbackMode: fetchedFallbackMode,
-          settings: snapshottedSettings,
-          envVars: snapshottedEnvVars,
-          freeAgentQuotaAvailable: !snapshottedIsQuotaExceeded,
-        });
+        const { resolvedMode: fetchedResolvedMode } = resolveModeForCandidate(
+          chat.chatMode ?? null,
+        );
 
         if (snapshottedSettings.selectedChatMode !== fetchedResolvedMode.mode) {
           bannerTimeoutId = window.setTimeout(setBannerVisible, 200);
@@ -345,7 +303,15 @@ export function useRestoreChatMode({
       clearRestoreTimeout();
       setIsRestoringMode(false);
     };
-  }, [chatId, appId, persistChatMode, queryClient, t, updateSettings]);
+  }, [
+    chatId,
+    appId,
+    isContextReady,
+    persistChatMode,
+    queryClient,
+    t,
+    updateSettings,
+  ]);
 
   return { isRestoringMode };
 }

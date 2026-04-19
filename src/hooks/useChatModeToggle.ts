@@ -40,34 +40,37 @@ export function useChatModeToggle() {
   );
 
   const toggleInFlightRef = useRef(false);
-
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
-  const envVarsRef = useRef(envVars);
-  envVarsRef.current = envVars;
-  const isQuotaLoadingRef = useRef(isQuotaLoading);
-  isQuotaLoadingRef.current = isQuotaLoading;
-  const isQuotaExceededRef = useRef(isQuotaExceeded);
-  isQuotaExceededRef.current = isQuotaExceeded;
-  const selectedAppIdRef = useRef(selectedAppId);
-  selectedAppIdRef.current = selectedAppId;
-  const updateSettingsRef = useRef(updateSettings);
-  updateSettingsRef.current = updateSettings;
-  const getCurrentChatIdRef = useRef(getCurrentChatId);
-  getCurrentChatIdRef.current = getCurrentChatId;
-  const queryClientRef = useRef(queryClient);
-  queryClientRef.current = queryClient;
-  const persistChatModeRef = useRef(persistChatMode);
-  persistChatModeRef.current = persistChatMode;
-  const posthogRef = useRef(posthog);
-  posthogRef.current = posthog;
-  const tRef = useRef(t);
-  tRef.current = t;
+  const latestRef = useRef({
+    settings,
+    envVars,
+    isQuotaLoading,
+    isQuotaExceeded,
+    selectedAppId,
+    updateSettings,
+    getCurrentChatId,
+    queryClient,
+    persistChatMode,
+    posthog,
+    t,
+  });
+  latestRef.current = {
+    settings,
+    envVars,
+    isQuotaLoading,
+    isQuotaExceeded,
+    selectedAppId,
+    updateSettings,
+    getCurrentChatId,
+    queryClient,
+    persistChatMode,
+    posthog,
+    t,
+  };
 
   const toggleChatMode = useCallback(async () => {
     if (toggleInFlightRef.current) {
       toast.info(
-        tRef.current("chatMode.switchInProgress", {
+        latestRef.current.t("chatMode.switchInProgress", {
           defaultValue: "Mode switch already in progress",
         }),
       );
@@ -79,17 +82,19 @@ export function useChatModeToggle() {
     let loadingToastId: string | number | undefined;
     let loadingToastTimerId: number | undefined;
     try {
-      const settings = settingsRef.current;
-      const envVars = envVarsRef.current;
-      const isQuotaLoading = isQuotaLoadingRef.current;
-      const isQuotaExceeded = isQuotaExceededRef.current;
-      const selectedAppId = selectedAppIdRef.current;
-      const updateSettings = updateSettingsRef.current;
-      const getCurrentChatId = getCurrentChatIdRef.current;
-      const queryClient = queryClientRef.current;
-      const persistChatMode = persistChatModeRef.current;
-      const posthog = posthogRef.current;
-      const t = tRef.current;
+      const {
+        settings,
+        envVars,
+        isQuotaLoading,
+        isQuotaExceeded,
+        selectedAppId,
+        updateSettings,
+        getCurrentChatId,
+        queryClient,
+        persistChatMode,
+        posthog,
+        t,
+      } = latestRef.current;
 
       if (!settings) return;
       const currentMode =

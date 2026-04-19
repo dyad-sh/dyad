@@ -24,7 +24,8 @@
  *  5. Push Notifications — unified push config (APNs + FCM + Web Push)
  *  6. App Identity — icons, splash, colors, metadata for all stores
  *  7. OTA Updates — live updates without store re-submission
- *  8. CI/CD & Environments — build pipelines, multi-env config
+ *  8. Web3 / DePIN Deploy — 8 decentralized platforms, ENS domains, sovereign hosting
+ *  9. CI/CD & Environments — build pipelines, multi-env config
  */
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -107,6 +108,7 @@ const TABS = [
   { id: "push", label: "Push Notifications", icon: Bell },
   { id: "identity", label: "App Identity", icon: Paintbrush },
   { id: "ota", label: "OTA Updates", icon: RefreshCw },
+  { id: "web3", label: "Web3 / DePIN", icon: Shield },
   { id: "cicd", label: "CI/CD", icon: GitBranch },
 ] as const;
 
@@ -227,6 +229,11 @@ function OverviewTab({ selectedApp, setSelectedApp }: {
     { id: "desktop", label: "Desktop App", icon: Monitor, desc: "Windows, macOS, Linux via Electron", color: "text-orange-500", gradient: "from-orange-500 to-red-500" },
     { id: "api", label: "API Server", icon: Server, desc: "REST/GraphQL backend deployment", color: "text-cyan-500", gradient: "from-cyan-500 to-blue-500" },
     { id: "docker", label: "Docker Container", icon: Box, desc: "Containerized with docker-compose", color: "text-sky-500", gradient: "from-sky-500 to-teal-500" },
+    { id: "4everland", label: "4EVERLAND", icon: Globe, desc: "Decentralized hosting — IPFS + Arweave backed", color: "text-emerald-500", gradient: "from-emerald-500 to-teal-500" },
+    { id: "ipfs", label: "IPFS / Filecoin", icon: Shield, desc: "Content-addressed permanent storage", color: "text-indigo-500", gradient: "from-indigo-500 to-violet-500" },
+    { id: "arweave", label: "Arweave", icon: Lock, desc: "Permanent storage — pay once, store forever", color: "text-amber-500", gradient: "from-amber-500 to-yellow-500" },
+    { id: "fleek", label: "Fleek", icon: Zap, desc: "Edge-optimized Web3 deployment", color: "text-pink-500", gradient: "from-pink-500 to-rose-500" },
+    { id: "spheron", label: "Spheron", icon: Cloud, desc: "Decentralized compute + storage", color: "text-violet-500", gradient: "from-violet-500 to-purple-500" },
   ];
 
   return (
@@ -1036,7 +1043,406 @@ function OTAUpdatesTab() {
   );
 }
 
-// ── 8. CI/CD Tab ─────────────────────────────────────────────────────────────
+// ── 8. Web3 / DePIN Deploy Tab ──────────────────────────────────────────────
+
+const DEPIN_PLATFORMS = [
+  {
+    id: "4everland" as const,
+    name: "4EVERLAND",
+    desc: "Decentralized hosting backed by IPFS & Arweave. Closest to Vercel UX but fully Web3.",
+    icon: Globe,
+    color: "text-emerald-500",
+    gradient: "from-emerald-500 to-teal-500",
+    features: ["IPFS pinning", "Arweave backup", "ENS domains", "Custom domains", "CI/CD", "Preview deploys"],
+    credFields: [{ key: "apiKey", label: "API Key", placeholder: "4EVERLAND API key" }],
+    gateway: "https://4everland.io",
+    pricing: "Free tier: 5GB storage, 100GB bandwidth",
+    permanence: "IPFS + Arweave (permanent)",
+  },
+  {
+    id: "fleek" as const,
+    name: "Fleek",
+    desc: "Edge-optimized decentralized deployment. Automatic IPFS + Filecoin with CDN.",
+    icon: Zap,
+    color: "text-pink-500",
+    gradient: "from-pink-500 to-rose-500",
+    features: ["Edge functions", "IPFS + Filecoin", "ENS/HNS domains", "Auto SSL", "Preview deploys", "API"],
+    credFields: [{ key: "apiKey", label: "API Key", placeholder: "Fleek API key" }],
+    gateway: "https://fleek.xyz",
+    pricing: "Free tier: 3 sites, 50GB bandwidth",
+    permanence: "IPFS + Filecoin (permanent)",
+  },
+  {
+    id: "ipfs-pinata" as const,
+    name: "Pinata (IPFS)",
+    desc: "Reliable IPFS pinning with dedicated gateways. The most popular IPFS infrastructure.",
+    icon: Shield,
+    color: "text-indigo-500",
+    gradient: "from-indigo-500 to-violet-500",
+    features: ["IPFS pinning", "Dedicated gateway", "Pin by CID", "Submarining", "API", "Farcaster Frames"],
+    credFields: [
+      { key: "apiKey", label: "API Key", placeholder: "Pinata API key" },
+      { key: "apiSecret", label: "API Secret", placeholder: "Pinata API secret" },
+    ],
+    gateway: "https://gateway.pinata.cloud",
+    pricing: "Free: 500 files, 100 requests/min",
+    permanence: "IPFS (pinned, not permanent without backup)",
+  },
+  {
+    id: "ipfs-web3storage" as const,
+    name: "Web3.Storage",
+    desc: "Free decentralized storage backed by Filecoin. Data stored across the Filecoin network.",
+    icon: Database,
+    color: "text-blue-500",
+    gradient: "from-blue-500 to-cyan-500",
+    features: ["IPFS + Filecoin", "Free storage", "W3UP protocol", "Content addressing", "Verifiable"],
+    credFields: [{ key: "token", label: "API Token", placeholder: "Web3.Storage token" }],
+    gateway: "https://web3.storage",
+    pricing: "Free: 5GB, pay-as-you-go after",
+    permanence: "IPFS + Filecoin (verifiable deals)",
+  },
+  {
+    id: "arweave" as const,
+    name: "Arweave",
+    desc: "Pay once, store forever. Permanent, immutable storage for apps that must never go down.",
+    icon: Lock,
+    color: "text-amber-500",
+    gradient: "from-amber-500 to-yellow-500",
+    features: ["Permanent storage", "One-time payment", "ArNS names", "SmartWeave", "Bundlr", "GraphQL"],
+    credFields: [{ key: "walletPath", label: "Wallet JSON Path", placeholder: "/path/to/arweave-wallet.json" }],
+    gateway: "https://arweave.net",
+    pricing: "~$5/GB one-time (permanent)",
+    permanence: "Permanent (200+ year endowment)",
+  },
+  {
+    id: "spheron" as const,
+    name: "Spheron",
+    desc: "Decentralized compute + storage. Deploy full-stack apps with serverless functions.",
+    icon: Cloud,
+    color: "text-violet-500",
+    gradient: "from-violet-500 to-purple-500",
+    features: ["IPFS + Filecoin", "Compute", "Custom domains", "CI/CD", "Preview deploys", "Serverless"],
+    credFields: [{ key: "token", label: "Access Token", placeholder: "Spheron access token" }],
+    gateway: "https://spheron.network",
+    pricing: "Free tier: 100 deploys/month",
+    permanence: "IPFS + Filecoin (verifiable)",
+  },
+  {
+    id: "filecoin" as const,
+    name: "Filecoin (Estuary)",
+    desc: "Direct Filecoin storage deals with automatic pinning and retrieval.",
+    icon: Database,
+    color: "text-teal-500",
+    gradient: "from-teal-500 to-green-500",
+    features: ["Filecoin deals", "IPFS pinning", "Retrieval", "Deal tracking", "API"],
+    credFields: [{ key: "apiKey", label: "API Key", placeholder: "Estuary/Filecoin API key" }],
+    gateway: "https://estuary.tech",
+    pricing: "Free: 32GB, verified deals",
+    permanence: "Filecoin (deal-based, renewable)",
+  },
+  {
+    id: "filebase" as const,
+    name: "Filebase",
+    desc: "S3-compatible gateway to IPFS, Sia, Skynet, and Storj. Familiar API, decentralized backend.",
+    icon: Server,
+    color: "text-orange-500",
+    gradient: "from-orange-500 to-red-500",
+    features: ["S3-compatible", "Multi-network", "IPFS", "Sia", "Storj", "Geo-redundant"],
+    credFields: [
+      { key: "accessKey", label: "Access Key", placeholder: "Filebase access key" },
+      { key: "secretKey", label: "Secret Key", placeholder: "Filebase secret key" },
+    ],
+    gateway: "https://filebase.com",
+    pricing: "Free: 5GB, $5.99/TB after",
+    permanence: "Multi-network (IPFS + Sia + Storj)",
+  },
+];
+
+function Web3DeployTab({ app }: { app: AppInfo | null }) {
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [platforms, setPlatforms] = useState<any[]>([]);
+  const [deployments, setDeployments] = useState<any[]>([]);
+  const [credentials, setCredentials] = useState<Record<string, any>>({});
+  const [credInputs, setCredInputs] = useState<Record<string, string>>({});
+  const [deploying, setDeploying] = useState(false);
+  const [deployStep, setDeployStep] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [plats, deps] = await Promise.all([
+          invoke("decentralized:get-platforms").catch(() => null),
+          invoke("decentralized:list-deployments", app?.id ? { appId: app.id } : {}).catch(() => []),
+        ]);
+        if (plats) setPlatforms(plats);
+        setDeployments(deps ?? []);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [app?.id]);
+
+  const saveCreds = async (platformId: string) => {
+    try {
+      await invoke("decentralized:save-credentials", { platform: platformId, credentials: credInputs });
+      setCredentials({ ...credentials, [platformId]: credInputs });
+      setCredInputs({});
+    } catch (err) { console.error(err); }
+  };
+
+  const deploy = async (platformId: string) => {
+    if (!app) return;
+    setDeploying(true);
+    setDeployStep(0);
+    try {
+      setDeployStep(1);
+      const result = await invoke("decentralized:deploy", {
+        appId: app.id,
+        platform: platformId,
+        metadata: { name: app.name, deployedAt: new Date().toISOString() },
+      });
+      setDeployStep(3);
+      // Refresh deployments
+      const deps = await invoke("decentralized:list-deployments", { appId: app.id }).catch(() => []);
+      setDeployments(deps ?? []);
+    } catch (err) {
+      console.error(err);
+    }
+    setDeploying(false);
+  };
+
+  const DEPLOY_STEPS = ["Build App", "Upload to Network", "Pin / Store", "Verify & Resolve"];
+  const selected = DEPIN_PLATFORMS.find((p) => p.id === selectedPlatform);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Shield className="h-5 w-5 text-emerald-500" /> Web3 & DePIN Deploy
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Deploy to decentralized infrastructure — same ease as Vercel, but your data is sovereign and uncensorable
+          </p>
+        </div>
+      </div>
+
+      {/* DePIN vs Centralized comparison */}
+      <div className="rounded-xl border bg-gradient-to-br from-emerald-500/5 to-purple-500/5 p-5">
+        <h4 className="font-semibold mb-3">🌐 Why DePIN? Your App, Your Infrastructure</h4>
+        <div className="grid md:grid-cols-2 gap-4 text-xs">
+          <div className="rounded-lg bg-card border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Server className="h-4 w-4 text-red-500" />
+              <span className="font-semibold text-red-600">Centralized (Vercel, AWS, Netlify)</span>
+            </div>
+            <ul className="space-y-1 text-muted-foreground">
+              <li>• Company can shut down your app</li>
+              <li>• Data stored in corporate silos</li>
+              <li>• Vendor lock-in with proprietary APIs</li>
+              <li>• Monthly recurring costs that increase</li>
+              <li>• Geographic censorship possible</li>
+            </ul>
+          </div>
+          <div className="rounded-lg bg-card border border-emerald-500/20 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="h-4 w-4 text-emerald-500" />
+              <span className="font-semibold text-emerald-600">Decentralized (IPFS, Arweave, Filecoin)</span>
+            </div>
+            <ul className="space-y-1 text-muted-foreground">
+              <li>• <strong>No one can take your app down</strong></li>
+              <li>• Content-addressed — verifiable & tamper-proof</li>
+              <li>• Open protocols, zero vendor lock-in</li>
+              <li>• Pay once, store forever (Arweave)</li>
+              <li>• Globally distributed, censorship-resistant</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {!app && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-600 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4" /> Select an app from the Overview tab first
+        </div>
+      )}
+
+      {deploying && <StepIndicator steps={DEPLOY_STEPS} current={deployStep} />}
+
+      {/* Platform grid */}
+      <div>
+        <h4 className="font-semibold mb-3">Choose Your Decentralized Platform</h4>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {DEPIN_PLATFORMS.map((p) => {
+            const Icon = p.icon;
+            const isSelected = selectedPlatform === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelectedPlatform(isSelected ? null : p.id)}
+                className={cn(
+                  "text-left rounded-xl border overflow-hidden transition-all",
+                  isSelected ? "border-primary ring-1 ring-primary/20" : "hover:border-primary/30",
+                )}
+              >
+                <div className={cn("h-1 bg-gradient-to-r", p.gradient)} />
+                <div className="p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon className={cn("h-4 w-4", p.color)} />
+                    <span className="font-semibold text-sm">{p.name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{p.desc}</p>
+                  <div className="mt-2">
+                    <Badge variant="outline" className="text-xs">{p.permanence}</Badge>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Selected platform detail */}
+      {selected && (
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <div className={cn("h-1.5 bg-gradient-to-r", selected.gradient)} />
+          <div className="p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-semibold">{selected.name}</h4>
+                <p className="text-sm text-muted-foreground">{selected.desc}</p>
+              </div>
+              <Button
+                onClick={() => deploy(selected.id)}
+                disabled={deploying || !app}
+              >
+                {deploying ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Rocket className="h-4 w-4 mr-1" />}
+                Deploy to {selected.name}
+              </Button>
+            </div>
+
+            {/* Features */}
+            <div className="flex gap-1.5 flex-wrap">
+              {selected.features.map((f) => (
+                <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
+              ))}
+            </div>
+
+            {/* Pricing & permanence */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-muted/30 p-3">
+                <div className="text-xs text-muted-foreground font-medium">Pricing</div>
+                <div className="text-sm font-medium mt-0.5">{selected.pricing}</div>
+              </div>
+              <div className="rounded-lg bg-muted/30 p-3">
+                <div className="text-xs text-muted-foreground font-medium">Data Permanence</div>
+                <div className="text-sm font-medium mt-0.5">{selected.permanence}</div>
+              </div>
+            </div>
+
+            {/* Credentials */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <h5 className="text-sm font-semibold">Credentials</h5>
+              <div className="grid md:grid-cols-2 gap-3">
+                {selected.credFields.map((f) => (
+                  <ConfigField
+                    key={f.key}
+                    label={f.label}
+                    value={credInputs[f.key] ?? ""}
+                    onChange={(v) => setCredInputs({ ...credInputs, [f.key]: v })}
+                    placeholder={f.placeholder}
+                  />
+                ))}
+              </div>
+              <Button size="sm" variant="outline" onClick={() => saveCreds(selected.id)}>
+                <Save className="h-3 w-3 mr-1" /> Save Credentials
+              </Button>
+            </div>
+
+            {/* Gateway link */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ExternalLink className="h-3 w-3" />
+              <a href={selected.gateway} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">
+                {selected.gateway}
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deployment history */}
+      {deployments.length > 0 && (
+        <div className="rounded-xl border bg-card p-5">
+          <h4 className="font-semibold mb-3">Deployment History</h4>
+          <div className="space-y-2">
+            {deployments.map((d: any) => (
+              <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                <div className={cn(
+                  "w-2 h-2 rounded-full",
+                  d.status === "live" ? "bg-green-500" : d.status === "deploying" ? "bg-yellow-500 animate-pulse" : "bg-red-500",
+                )} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{d.platform}</span>
+                    <Badge variant="outline" className="text-xs">{d.status}</Badge>
+                  </div>
+                  {d.url && <a href={d.url} target="_blank" rel="noopener" className="text-xs text-primary hover:underline">{d.url}</a>}
+                  {d.cid && <span className="text-xs text-muted-foreground font-mono">CID: {d.cid.slice(0, 20)}...</span>}
+                </div>
+                <span className="text-xs text-muted-foreground">{new Date(d.createdAt ?? d.deployedAt).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ENS / IPNS domain resolution */}
+      <div className="rounded-xl border bg-card p-5">
+        <h4 className="font-semibold mb-3">Decentralized Domains</h4>
+        <p className="text-xs text-muted-foreground mb-3">Point a human-readable name at your decentralized app — no DNS needed.</p>
+        <div className="grid md:grid-cols-3 gap-3">
+          {[
+            { name: "ENS (.eth)", desc: "Ethereum Name Service — yourapp.eth resolves to IPFS", icon: Hash },
+            { name: "HNS (.crypto)", desc: "Handshake domains — truly decentralized TLD", icon: Link },
+            { name: "ArNS", desc: "Arweave Name System — permanent name for permanent data", icon: Lock },
+            { name: "Unstoppable Domains", desc: ".crypto, .nft, .wallet — blockchain-native", icon: Shield },
+            { name: "IPNS", desc: "IPFS Name System — mutable pointer to immutable content", icon: RefreshCw },
+            { name: "Custom Domain", desc: "Point any domain via CNAME to your IPFS gateway", icon: Globe },
+          ].map((d) => (
+            <div key={d.name} className="rounded-lg border p-3">
+              <d.icon className="h-4 w-4 mb-1 text-primary" />
+              <div className="font-semibold text-xs">{d.name}</div>
+              <p className="text-xs text-muted-foreground mt-0.5">{d.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* The pitch */}
+      <div className="rounded-xl border bg-gradient-to-br from-green-500/5 to-emerald-500/5 p-6">
+        <h4 className="font-semibold mb-3">🛡️ Sovereign App Deployment</h4>
+        <div className="grid md:grid-cols-2 gap-3 text-xs">
+          {[
+            { check: true, text: "Same 1-click UX as Vercel/Netlify" },
+            { check: true, text: "Content-addressed (CID) — tamper-proof" },
+            { check: true, text: "No single point of failure" },
+            { check: true, text: "No corporate ToS can remove your app" },
+            { check: true, text: "Pay once (Arweave) or free (Web3.Storage)" },
+            { check: true, text: "Automatic IPFS gateway CDN" },
+            { check: true, text: "ENS/HNS/ArNS domain support" },
+            { check: true, text: "Publish to JoyMarketplace simultaneously" },
+          ].map((f, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+              <span>{f.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 9. CI/CD Tab ─────────────────────────────────────────────────────────────
 
 function CICDTab() {
   const [selectedCI, setSelectedCI] = useState("github-actions");
@@ -1264,6 +1670,7 @@ export default function AppPublishingStudio() {
         {activeTab === "push" && <PushNotificationsTab />}
         {activeTab === "identity" && <AppIdentityTab />}
         {activeTab === "ota" && <OTAUpdatesTab />}
+        {activeTab === "web3" && <Web3DeployTab app={selectedApp} />}
         {activeTab === "cicd" && <CICDTab />}
       </div>
     </div>

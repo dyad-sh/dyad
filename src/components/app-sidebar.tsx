@@ -370,6 +370,15 @@ const menuCategories = [
         activeText: "text-amber-600 dark:text-amber-400",
       },
       {
+        title: "NLP Studio",
+        to: "/nlp-studio",
+        icon: Brain,
+        gradient: "from-emerald-500 to-cyan-500",
+        hoverBg: "hover:bg-emerald-500/10",
+        activeBg: "bg-emerald-500/15",
+        activeText: "text-emerald-600 dark:text-emerald-400",
+      },
+      {
         title: "My Creations",
         to: "/creator",
         icon: Sparkles,

@@ -146,6 +146,7 @@ import { registerTelegramHandlers } from "./handlers/telegram_handlers";
 import { registerDiscordHandlers } from "./handlers/discord_handlers";
 import { registerDatasetTrainingHandlers } from "./handlers/dataset_training_handlers";
 import { registerOnchainAssetBridgeHandlers } from "./handlers/onchain_asset_bridge_handlers";
+import { registerNlpPipelineHandlers } from "./handlers/nlp_pipeline_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -466,4 +467,7 @@ export function registerIpcHandlers() {
 
   // On-Chain Asset Bridge — Import ERC-1155 tokens into Asset Studio + Agent marketplace autonomy
   registerOnchainAssetBridgeHandlers();
+
+  // NLP Pipeline — UIMA/GATE/CoreNLP-inspired text analysis + dataset tagging for marketplace
+  registerNlpPipelineHandlers();
 }

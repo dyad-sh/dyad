@@ -211,6 +211,86 @@ const CASES: EvalCase[] = [
     ],
   },
   {
+    name: "Extract multiple shared helpers from duplicated reporting logic",
+    fileName: "report_builders.ts",
+    fileContent: loadFixture("report_builders.ts"),
+    prompt:
+      "The exported report functions in this file repeat several patterns. Extract these " +
+      "into named helper functions at the top of the module (below the interfaces and " +
+      "MONTH_NAMES) and reuse them throughout:\n\n" +
+      "1. A helper `filterByDateField<T>(items: T[], range: ReportRange, getDate: (item: T) => string): T[]` " +
+      "that filters items whose ISO date (extracted via `getDate`) falls in `[range.from, range.to)`. " +
+      "Every `Date.parse` range-filter block should call this helper.\n" +
+      "2. A helper `formatUsd(amount: number): string` that returns the USD-formatted string " +
+      "currently produced by the repeated `new Intl.NumberFormat(...).format(amount)` calls. " +
+      "Every such call should go through this helper.\n" +
+      "3. A helper `formatRangeLabel(range: ReportRange): string` that returns the " +
+      '`"Jan 1, 2025 – Feb 1, 2025"`-style label built from MONTH_NAMES. Every occurrence ' +
+      "of that block should go through this helper.\n" +
+      "4. A helper `sumBy<T>(items: T[], get: (item: T) => number): number` that returns the " +
+      "sum, and a helper `groupSumBy<T>(items: T[], getKey: (item: T) => string, getValue: (item: T) => number): Map<string, number>` " +
+      "that builds a keyed-sum Map. Use them wherever a manual `for`-loop *revenue/amount " +
+      "sum* or *keyed-sum* Map accumulation appears (for example summing `unitPrice * quantity`, " +
+      "`amount`, or `mrr`). Do NOT force count-accumulation or conditional-tally loops " +
+      "through these helpers — leave counts (e.g. `countByReason`, `countByPlan`) and " +
+      "conditional counters (e.g. `churnRate`'s `activeAtStart` / `canceledInRange`) as " +
+      "manual loops.\n\n" +
+      "Preserve every exported function's signature and return type exactly. Do not change " +
+      "sort order, rounding, or numeric results. Do not remove any exported function.",
+    structuralChecks: [
+      "function filterByDateField",
+      "function formatUsd",
+      "function formatRangeLabel",
+      "function sumBy",
+      "function groupSumBy",
+      "filterByDateField(",
+      "formatUsd(",
+      "formatRangeLabel(",
+    ],
+  },
+  {
+    name: "Migrate Contact schema: split name into firstName and lastName",
+    fileName: "contact_book.ts",
+    fileContent: loadFixture("contact_book.ts"),
+    prompt:
+      "Replace the `name: string` field on the `Contact` interface with two separate " +
+      "fields: `firstName: string` and `lastName: string`. Update every function in the " +
+      "file to use the new fields. Specifically:\n\n" +
+      "- `createContact` must accept `firstName` and `lastName` in its input (instead of " +
+      "`name`), each trimmed.\n" +
+      "- `fromCsv` must read two columns `firstName,lastName` from the header instead of " +
+      "a single `name` column. `toCsv` must emit the same two columns. The CSV header must " +
+      "start with `firstName,lastName,email,phone,tags,starred`.\n" +
+      '- `displayName` must return `"${firstName} ${lastName}"` (single space, no trim ' +
+      "beyond what is already stored).\n" +
+      '- `lastFirstDisplay` must return `"${lastName}, ${firstName}"` directly — no more ' +
+      "string splitting.\n" +
+      "- `initials` must return `firstName.charAt(0).toUpperCase() + lastName.charAt(0).toUpperCase()` " +
+      "— no splitting, no length guards.\n" +
+      '- `greetingFor` must greet using `firstName` directly (fall back to `"there"` if ' +
+      "`firstName` is empty). \n" +
+      "- `searchByName` must match the query (case-insensitive) against either `firstName` " +
+      "OR `lastName` (not the concatenation).\n" +
+      "- `sortByName` must sort by `lastName` then `firstName` (both case-insensitive).\n" +
+      "- `sortByLastName` must sort by `lastName` (case-insensitive), no more splitting.\n" +
+      "- `dedupeByName` must treat two contacts as duplicates when both their `firstName` " +
+      "and `lastName` match case-insensitively.\n" +
+      '- `validateContact` must report `"firstName is required"` if `firstName.trim()` is ' +
+      'empty, and `"lastName is required"` if `lastName.trim()` is empty (keep the email ' +
+      "check unchanged).\n" +
+      '- `formatLine` must render `"${firstName} ${lastName} <${email}>"` (with the ' +
+      "existing star prefix).\n\n" +
+      "Do not leave any reference to a `.name` property on a Contact anywhere in the file. " +
+      "Do not change any other public API (function names, return types, other fields).",
+    structuralChecks: [
+      "firstName: string",
+      "lastName: string",
+      "firstName,lastName,email,phone,tags,starred",
+      "firstName is required",
+      "lastName is required",
+    ],
+  },
+  {
     name: "Rename exported function but preserve references in string literals",
     fileName: "order_math.ts",
     fileContent: loadFixture("order_math.ts"),
@@ -407,7 +487,7 @@ function makeRecord(
       newLabel: `${filePath} (after call ${index + 1})`,
     }),
     succeeded,
-    error: succeeded ? null : opts.error ?? null,
+    error: succeeded ? null : (opts.error ?? null),
   };
 }
 
@@ -892,7 +972,14 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
           for (const c of CASES) {
             it.concurrent(c.name, async () => {
               try {
-                await runCase(suite, c, provider, modelName, label, temperature);
+                await runCase(
+                  suite,
+                  c,
+                  provider,
+                  modelName,
+                  label,
+                  temperature,
+                );
               } catch (err) {
                 console.error(
                   `\n[${suite.name} / ${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
@@ -906,4 +993,3 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
     }
   }
 }
-

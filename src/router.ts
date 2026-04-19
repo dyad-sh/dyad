@@ -55,6 +55,11 @@ import { skillsRoute } from "./routes/skills";
 import { trainingCenterRoute } from "./routes/training-center";
 import { createAssetRoute } from "./routes/create-asset";
 import { onChainMarketplaceRoute } from "./routes/on-chain-marketplace";
+import { tokenomicsRoute } from "./routes/tokenomics";
+import { a2aNetworkRoute } from "./routes/a2a-network";
+import { governanceRoute } from "./routes/governance";
+import { nlpStudioRoute } from "./routes/nlp-studio";
+import { appPublishingRoute } from "./routes/app-publishing";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -117,6 +122,11 @@ const routeTree = rootRoute.addChildren([
   trainingCenterRoute,
   createAssetRoute,
   onChainMarketplaceRoute,
+  tokenomicsRoute,
+  a2aNetworkRoute,
+  governanceRoute,
+  nlpStudioRoute,
+  appPublishingRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

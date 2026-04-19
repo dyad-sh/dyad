@@ -2122,6 +2122,180 @@ async function handleCelestiaWalletValidate(body: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Tokenomics handlers
+// ---------------------------------------------------------------------------
+
+async function handleTokenomicsGetStats(_body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-stats");
+}
+
+async function handleTokenomicsGetStakes(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-stakes", body.stakerId as string | undefined);
+}
+
+async function handleTokenomicsCreateStake(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:create-stake", body.stakerId, body.stakeType, body.amount, body.currency);
+}
+
+async function handleTokenomicsUnstake(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:unstake", body.stakeId);
+}
+
+async function handleTokenomicsGetEarnings(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-earnings", body.userId, body.period);
+}
+
+async function handleTokenomicsGetReputation(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-reputation", body.userId);
+}
+
+async function handleTokenomicsRecordMeter(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:record-meter", body.consumerId, body.assetId, body.assetType, body.usage);
+}
+
+async function handleTokenomicsGetFeeSchedule(_body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-fee-schedule");
+}
+
+async function handleTokenomicsGetRewardRules(_body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-reward-rules");
+}
+
+async function handleTokenomicsCreateBilling(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:create-billing-account", body.walletAddress, body.did);
+}
+
+async function handleTokenomicsGetBillingAccounts(body: Record<string, unknown>) {
+  return invokeIpcHandler("tokenomics:get-billing-accounts", body.walletAddress);
+}
+
+// ---------------------------------------------------------------------------
+// A2A Protocol handlers
+// ---------------------------------------------------------------------------
+
+async function handleA2ARegisterAgent(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:register-agent", body);
+}
+
+async function handleA2AGetMyAgents(_body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:get-my-agents");
+}
+
+async function handleA2ASearchAgents(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:search-agents", body);
+}
+
+async function handleA2AGetAgent(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:get-agent", body.agentId);
+}
+
+async function handleA2ACreateTask(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:create-task", body.requesterId, body.executorId, body.capabilityId, body.input, body.options);
+}
+
+async function handleA2AAcceptTask(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:accept-task", body.taskId, body.agreedPrice);
+}
+
+async function handleA2AGetTasks(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:get-tasks", body.filters);
+}
+
+async function handleA2AGetNetworkStats(_body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:get-network-stats");
+}
+
+async function handleA2ACompleteTask(body: Record<string, unknown>) {
+  return invokeIpcHandler("a2a:complete-task", body.taskId, body.output, body.usage);
+}
+
+// ---------------------------------------------------------------------------
+// Governance handlers
+// ---------------------------------------------------------------------------
+
+async function handleGovernanceGetStats(_body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:get-stats");
+}
+
+async function handleGovernanceCreateProposal(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:create-proposal", body);
+}
+
+async function handleGovernanceGetProposal(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:get-proposal", body.proposalId);
+}
+
+async function handleGovernanceListProposals(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:list-proposals", body);
+}
+
+async function handleGovernanceCastVote(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:cast-vote", body);
+}
+
+async function handleGovernanceGetVotingPower(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:get-voting-power", body.userId);
+}
+
+async function handleGovernanceDelegate(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:delegate", body);
+}
+
+async function handleGovernanceGetDelegations(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:get-delegations", body.userId);
+}
+
+async function handleGovernanceGetTreasuryStats(_body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:get-treasury-stats");
+}
+
+async function handleGovernanceGetConfig(_body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:get-config");
+}
+
+async function handleGovernanceExecuteProposal(body: Record<string, unknown>) {
+  return invokeIpcHandler("governance:execute-proposal", body.proposalId);
+}
+
+// ---------------------------------------------------------------------------
+// NLP Pipeline handlers
+// ---------------------------------------------------------------------------
+
+async function handleNlpListEngines(_body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:list-engines");
+}
+
+async function handleNlpListPipelines(_body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:list-pipelines");
+}
+
+async function handleNlpProcessText(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:process-text", body);
+}
+
+async function handleNlpProcessDataset(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:process-dataset", body);
+}
+
+async function handleNlpAutoTagDataset(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:auto-tag-dataset", body);
+}
+
+async function handleNlpPrepareListing(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:prepare-marketplace-listing", body);
+}
+
+async function handleNlpPublishDataset(body: Record<string, unknown>) {
+  return invokeIpcHandler("nlp:publish-dataset", body);
+}
+
+async function handleNlpRecommendModel(body: Record<string, unknown>) {
+  const datasetId = body.datasetId as string;
+  if (!datasetId) throw new Error("datasetId is required");
+  return invokeIpcHandler("nlp:recommend-model", datasetId);
+}
+
+// ---------------------------------------------------------------------------
 // On-Chain Asset Bridge handlers
 // ---------------------------------------------------------------------------
 
@@ -2436,6 +2610,15 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/github/create-repo": handleGithubCreateRepo,
   "POST /api/github/push": handleGithubPush,
   // Marketplace Sync & Subgraph
+  // NLP Pipeline
+  "GET /api/nlp/engines": handleNlpListEngines,
+  "GET /api/nlp/pipelines": handleNlpListPipelines,
+  "POST /api/nlp/process-text": handleNlpProcessText,
+  "POST /api/nlp/process-dataset": handleNlpProcessDataset,
+  "POST /api/nlp/auto-tag-dataset": handleNlpAutoTagDataset,
+  "POST /api/nlp/prepare-listing": handleNlpPrepareListing,
+  "POST /api/nlp/publish-dataset": handleNlpPublishDataset,
+  "POST /api/nlp/recommend-model": handleNlpRecommendModel,
   // On-Chain Asset Bridge
   "POST /api/onchain-bridge/get-owned-tokens": handleOnchainGetOwnedTokens,
   "POST /api/onchain-bridge/import-token": handleOnchainImportToken,
@@ -2482,6 +2665,40 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/celestia/blob/verify": handleCelestiaBlobVerify,
   "POST /api/celestia/namespace/generate": handleCelestiaNamespaceGenerate,
   "POST /api/celestia/wallet/validate": handleCelestiaWalletValidate,
+  // Tokenomics
+  "GET /api/tokenomics/stats": handleTokenomicsGetStats,
+  "POST /api/tokenomics/stakes": handleTokenomicsGetStakes,
+  "POST /api/tokenomics/create-stake": handleTokenomicsCreateStake,
+  "POST /api/tokenomics/unstake": handleTokenomicsUnstake,
+  "POST /api/tokenomics/earnings": handleTokenomicsGetEarnings,
+  "POST /api/tokenomics/reputation": handleTokenomicsGetReputation,
+  "POST /api/tokenomics/record-meter": handleTokenomicsRecordMeter,
+  "GET /api/tokenomics/fee-schedule": handleTokenomicsGetFeeSchedule,
+  "GET /api/tokenomics/reward-rules": handleTokenomicsGetRewardRules,
+  "POST /api/tokenomics/create-billing": handleTokenomicsCreateBilling,
+  "POST /api/tokenomics/billing-accounts": handleTokenomicsGetBillingAccounts,
+  // A2A Protocol
+  "POST /api/a2a/register-agent": handleA2ARegisterAgent,
+  "GET /api/a2a/my-agents": handleA2AGetMyAgents,
+  "POST /api/a2a/search-agents": handleA2ASearchAgents,
+  "POST /api/a2a/get-agent": handleA2AGetAgent,
+  "POST /api/a2a/create-task": handleA2ACreateTask,
+  "POST /api/a2a/accept-task": handleA2AAcceptTask,
+  "POST /api/a2a/get-tasks": handleA2AGetTasks,
+  "GET /api/a2a/network-stats": handleA2AGetNetworkStats,
+  "POST /api/a2a/complete-task": handleA2ACompleteTask,
+  // Governance
+  "GET /api/governance/stats": handleGovernanceGetStats,
+  "POST /api/governance/create-proposal": handleGovernanceCreateProposal,
+  "POST /api/governance/get-proposal": handleGovernanceGetProposal,
+  "POST /api/governance/list-proposals": handleGovernanceListProposals,
+  "POST /api/governance/cast-vote": handleGovernanceCastVote,
+  "POST /api/governance/get-voting-power": handleGovernanceGetVotingPower,
+  "POST /api/governance/delegate": handleGovernanceDelegate,
+  "POST /api/governance/get-delegations": handleGovernanceGetDelegations,
+  "GET /api/governance/treasury-stats": handleGovernanceGetTreasuryStats,
+  "GET /api/governance/config": handleGovernanceGetConfig,
+  "POST /api/governance/execute-proposal": handleGovernanceExecuteProposal,
 };
 
 // ---------------------------------------------------------------------------

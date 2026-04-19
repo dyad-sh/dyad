@@ -25,7 +25,7 @@ import { TrustlessEncryptionStep } from '@/components/asset-creation/steps/Trust
 import { TrustlessEncryptionConfig } from '@/hooks/useTrustlessEncryption';
 import { toast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
-import { mintTo } from "thirdweb/extensions/erc1155";
+import { lazyMint, claimTo, nextTokenIdToMint } from "thirdweb/extensions/erc1155";
 import { getContract } from "thirdweb";
 import { useSendTransaction } from "thirdweb/react";
 import { nftCreationFlowService } from '@/services/nftCreationFlowService';
@@ -42,7 +42,7 @@ import { getJoyFlowBridge } from '@/services/joyflow-bridge';
 import { usePostMintWeb3Pipeline } from '@/hooks/usePostMintWeb3Pipeline';
 import { Web3PipelineStatus } from '@/components/asset-creation/Web3PipelineStatus';
 import { useThirdwebMarketplace } from '@/hooks/useThirdwebMarketplace';
-import { THIRDWEB_CONTRACTS, thirdwebClient, getThirdwebChain } from '@/config/thirdweb';
+import { THIRDWEB_CONTRACTS, thirdwebClient, getThirdwebChain, querySubgraph } from '@/config/thirdweb';
 
 // Constants
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -2322,18 +2322,19 @@ contract ${contractData.contractName} is ERC1155, Ownable {
         throw new Error('No store found');
       }
 
-      const { error: updateError } = await supabase
+      // Fire-and-forget DB update — local state resets immediately regardless
+      supabase
         .from('stores')
-        .update({ 
+        .update({
           preferred_contract_address: null,
           contract_address: null,
           updated_at: new Date().toISOString()
         })
-        .eq('id', storeId);
-      
-      if (updateError) {
-        throw updateError;
-      }
+        .eq('id', storeId)
+        .then(({ error: updateError }) => {
+          if (updateError) console.warn('[Wizard] Store contract reset failed (non-blocking):', updateError.message);
+        })
+        .catch((err: any) => console.warn('[Wizard] Store contract reset error (non-blocking):', err.message));
 
       // Reset local state
       setStoreHasContract(false);
@@ -2912,18 +2913,22 @@ async function reassembleAsset(metadata) {
       addLog(11, 'info', `   • Quality Score: ${nftData.qualityScore}/100`);
 
       // Build Thirdweb ERC-1155 contract instance
-      addLog(11, 'info', '🚀 Minting via Thirdweb SDK (ERC-1155 mintTo)...');
+      addLog(11, 'info', '🚀 Minting via Thirdweb SDK (ERC-1155 Drop Edition)...');
       const nftContract = getContract({
         client: thirdwebClient,
         chain: getThirdwebChain(TARGET_CHAIN_ID),
         address: CONTRACT_ADDRESS,
       });
 
-      const tx = mintTo({
+      // Capture the next token ID before lazyMint so we know which ID to claim
+      const nextId = await nextTokenIdToMint({ contract: nftContract });
+      addLog(11, 'info', `📋 Next token ID to mint: ${nextId.toString()}`);
+
+      // Step 1: lazyMint — register token metadata on-chain (Drop Edition)
+      addLog(11, 'info', '📦 Registering token metadata on-chain (lazyMint)...');
+      const lazyMintTx = lazyMint({
         contract: nftContract,
-        to: mintWallet,
-        supply: 1n,
-        nft: {
+        nfts: [{
           name: nftData.name || 'Untitled Asset',
           description: nftData.description || '',
           image: tokenURI,
@@ -2937,15 +2942,26 @@ async function reassembleAsset(metadata) {
             version: nftData.version || '1.0.0',
             assetType: nftData.modelType || 'ai-model',
           },
-        },
+        }],
       });
+      addLog(11, 'info', '✍️ Please confirm the lazyMint transaction in your wallet...');
+      await sendMintTx(lazyMintTx);
+      addLog(11, 'success', '✅ Token metadata registered on-chain');
 
-      addLog(11, 'info', '✍️ Please confirm the transaction in your wallet...');
-      const receipt = await sendMintTx(tx);
+      // Step 2: claimTo — mint/assign token to recipient (Drop Edition)
+      addLog(11, 'info', '🎯 Claiming token to recipient wallet (claimTo)...');
+      const claimTx = claimTo({
+        contract: nftContract,
+        to: mintWallet,
+        tokenId: nextId,
+        quantity: 1n,
+      });
+      addLog(11, 'info', '✍️ Please confirm the claim transaction in your wallet...');
+      const receipt = await sendMintTx(claimTx);
       const txHash = receipt.transactionHash;
 
-      // Extract tokenId from TransferSingle event
-      let mintedTokenId = 1;
+      // Extract tokenId from TransferSingle event (fallback to known nextId)
+      let mintedTokenId = Number(nextId);
       try {
         const receiptLogs = (receipt as any).logs || [];
         // TransferSingle event signature: TransferSingle(address,address,address,uint256,uint256)
@@ -2990,6 +3006,12 @@ async function reassembleAsset(metadata) {
         address: CONTRACT_ADDRESS,
         deployed: true,
       }));
+
+      // ═══ GOLDSKY: Verify drop event indexed (fire-and-forget) ═══
+      const goldskyQuery = `{ transfers(where: { tokenId: "${mintedTokenId}", to: "${mintWallet.toLowerCase()}" }, first: 1) { id tokenId to blockNumber } }`;
+      querySubgraph('drop', goldskyQuery)
+        .then(() => addLog(11, 'success', '📊 Goldsky drop subgraph indexed'))
+        .catch((e: any) => addLog(11, 'info', `⚠️ Goldsky indexing skipped (non-blocking): ${e.message}`));
 
       markStepComplete(11);
       toast({ title: 'NFT Minted! 🎉', description: 'ERC-1155 license token minted successfully' });
@@ -3457,23 +3479,23 @@ async function reassembleAsset(metadata) {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold mb-2">
-          🚀 Complete NFT Creation Flow <span className="text-sm bg-primary text-primary-foreground px-3 py-1 rounded-full ml-2">AI-POWERED</span>
+    <div className="container mx-auto p-2 sm:p-4 lg:p-6 max-w-7xl">
+      <div className="text-center mb-4 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl lg:text-4xl font-bold mb-2">
+          🚀 Complete NFT Creation Flow <span className="text-xs sm:text-sm bg-primary text-primary-foreground px-2 sm:px-3 py-1 rounded-full ml-2">AI-POWERED</span>
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground text-xs sm:text-sm">
           Asset Upload → AI Smart Chunking → IPFS Upload → Smart Contract → License → Royalties → NFT Minting → Marketplace
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 lg:gap-6">
         {/* Sidebar */}
-        <Card className="h-fit sticky top-6">
-          <CardHeader>
+        <Card className="h-fit lg:sticky lg:top-6">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wide opacity-60">Process Steps</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-1 max-h-[40vh] lg:max-h-none overflow-y-auto">
             {WIZARD_STEPS.map((step, displayIndex) => {
               const Icon = step.icon;
               const isActive = currentStep === step.id;
@@ -3551,14 +3573,14 @@ async function reassembleAsset(metadata) {
         </Card>
 
         {/* Main Content */}
-        <Card>
-          <CardHeader>
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
-              <StepIcon className="w-6 h-6" />
-              <CardTitle>{WIZARD_STEPS.find(s => s.id === currentStep)?.title}</CardTitle>
+              <StepIcon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+              <CardTitle className="text-base sm:text-lg truncate">{WIZARD_STEPS.find(s => s.id === currentStep)?.title}</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4 sm:space-y-6 overflow-x-hidden">
             {/* Step 1: Upload Asset */}
             {currentStep === 1 && (
               <div className="space-y-4">
@@ -5640,7 +5662,7 @@ async function reassembleAsset(metadata) {
 
       {/* Detailed NFT Preview Modal - Matches Step 13 */}
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
@@ -5648,7 +5670,7 @@ async function reassembleAsset(metadata) {
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-6">
+          <div className="flex-1 overflow-y-auto space-y-6 px-1">
             {/* NFT Details Card */}
             <NFTDetailsCard
               tokenId={nftData.tokenId}

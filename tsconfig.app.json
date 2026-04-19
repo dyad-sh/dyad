@@ -25,7 +25,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "types": ["vite/client"]
   },
   "include": ["src", "e2e-tests", "shared"],
   "exclude": ["e2e-tests/fixtures"]

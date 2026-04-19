@@ -146,6 +146,83 @@ export const SecretsVaultClient = {
     getIpcRenderer()?.on("secrets-vault:event", handler);
     return () => getIpcRenderer()?.off("secrets-vault:event", handler);
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // API KEY MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getByName(name: string): Promise<Secret | null> {
+    return getIpcRenderer()?.invoke("secrets-vault:get-by-name", { name });
+  },
+
+  async resolveApiKey(
+    providerId: string
+  ): Promise<{ value: string; source: "vault" | "settings" | "env"; providerId: string } | null> {
+    return getIpcRenderer()?.invoke("secrets-vault:resolve-api-key", { providerId });
+  },
+
+  async getProviderStatus(): Promise<ProviderKeyStatus[]> {
+    return getIpcRenderer()?.invoke("secrets-vault:get-provider-status") ?? [];
+  },
+
+  async getProviderRegistry(): Promise<ProviderTemplate[]> {
+    return getIpcRenderer()?.invoke("secrets-vault:get-provider-registry") ?? [];
+  },
+
+  async quickStoreApiKey(providerId: string, apiKey: string): Promise<Secret> {
+    return getIpcRenderer()?.invoke("secrets-vault:quick-store-api-key", { providerId, apiKey });
+  },
+
+  async removeApiKey(providerId: string): Promise<boolean> {
+    return getIpcRenderer()?.invoke("secrets-vault:remove-api-key", { providerId });
+  },
+
+  async syncFromSettings(): Promise<{ importedCount: number }> {
+    return getIpcRenderer()?.invoke("secrets-vault:sync-from-settings");
+  },
+
+  async getContext(): Promise<{
+    providers: Array<{
+      name: string;
+      service: string | undefined;
+      tags: string[];
+      category: string;
+    }>;
+  }> {
+    return getIpcRenderer()?.invoke("secrets-vault:get-context") ?? { providers: [] };
+  },
+
+  async resolveEnvVars(): Promise<Record<string, string>> {
+    return getIpcRenderer()?.invoke("secrets-vault:resolve-env-vars") ?? {};
+  },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TYPE EXPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ProviderKeyStatus {
+  providerId: string;
+  label: string;
+  icon: string;
+  description: string;
+  helpUrl: string;
+  category: string;
+  configured: boolean;
+  source: "vault" | "settings" | "env" | "none";
+  vaultProtected: boolean;
+  maskedKey: string | null;
+}
+
+export interface ProviderTemplate {
+  id: string;
+  label: string;
+  description: string;
+  helpUrl: string;
+  envVar: string;
+  category: string;
+  icon: string;
+  placeholder: string;
+}
 
 export type { SecretId, SecretType, SecretCategory, SecretMetadata, VaultConfig, Secret, VaultStats, VaultBackup, VaultEvent };

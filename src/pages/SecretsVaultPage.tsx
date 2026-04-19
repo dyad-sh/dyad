@@ -16,6 +16,7 @@ import type {
   SecretType,
   SecretCategory,
 } from "../ipc/secrets_vault_client";
+import { ApiKeyManager } from "../components/vault/ApiKeyManager";
 
 // =============================================================================
 // CONSTANTS
@@ -46,7 +47,7 @@ const SECRET_CATEGORIES: { value: SecretCategory; label: string; color: string }
 
 export function SecretsVaultPage() {
   const vault = useSecretsVaultManager();
-  const [activeTab, setActiveTab] = useState<"secrets" | "backups" | "settings">("secrets");
+  const [activeTab, setActiveTab] = useState<"api-keys" | "secrets" | "backups" | "settings">("api-keys");
 
   // Show unlock screen if vault is locked
   if (vault.isLoading) {
@@ -93,7 +94,8 @@ export function SecretsVaultPage() {
       <div className="border-b px-6">
         <nav className="flex gap-4">
           {[
-            { id: "secrets" as const, label: "Secrets", icon: "🔑" },
+            { id: "api-keys" as const, label: "API Keys", icon: "🔐" },
+            { id: "secrets" as const, label: "All Secrets", icon: "🔑" },
             { id: "backups" as const, label: "Backups", icon: "💾" },
             { id: "settings" as const, label: "Settings", icon: "⚙️" },
           ].map((tab) => (
@@ -114,6 +116,7 @@ export function SecretsVaultPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
+        {activeTab === "api-keys" && <ApiKeyManager />}
         {activeTab === "secrets" && <SecretsTab vault={vault} />}
         {activeTab === "backups" && <BackupsTab vault={vault} />}
         {activeTab === "settings" && <SettingsTab vault={vault} />}

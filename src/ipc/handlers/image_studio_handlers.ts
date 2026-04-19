@@ -2,6 +2,7 @@ import { ipcMain, shell, dialog, app } from "electron";
 import { db } from "@/db";
 import { imageStudioImages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
+import { resolveApiKey } from "@/lib/api_key_resolver";
 import { desc, eq, like, or } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
@@ -58,6 +59,25 @@ function getImageStoreDir(): string {
   return dir;
 }
 
+let _apiKeyCache = new Map<string, { value: string; ts: number }>();
+
+async function getApiKeyAsync(providerName: string): Promise<string> {
+  // Short TTL cache to avoid repeated vault lookups within a single generation
+  const cached = _apiKeyCache.get(providerName);
+  if (cached && Date.now() - cached.ts < 30_000) return cached.value;
+
+  const resolved = await resolveApiKey(providerName);
+  if (!resolved) {
+    throw new Error(
+      `No API key configured for provider: ${providerName}. ` +
+      `Add one in Secrets Vault → API Keys tab, or in Settings → Providers.`
+    );
+  }
+  _apiKeyCache.set(providerName, { value: resolved.value, ts: Date.now() });
+  return resolved.value;
+}
+
+/** @deprecated — sync wrapper kept for backward compat; prefer getApiKeyAsync */
 function getApiKey(providerName: string): string {
   const settings = readSettings();
   const prov = settings.providerSettings[providerName];
@@ -90,7 +110,7 @@ function uniqueFilename(provider: string): string {
 // ── Provider Implementations ───────────────────────────────────────────────────
 
 async function generateWithOpenAI(params: GenerateImageParams): Promise<string> {
-  const apiKey = getApiKey("openai");
+  const apiKey = await getApiKeyAsync("openai");
   const openai = new OpenAI({ apiKey });
 
   const validSizes = ["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"] as const;
@@ -114,7 +134,7 @@ async function generateWithOpenAI(params: GenerateImageParams): Promise<string> 
 }
 
 async function generateWithGoogle(params: GenerateImageParams): Promise<string> {
-  const apiKey = getApiKey("google");
+  const apiKey = await getApiKeyAsync("google");
   const model = params.model || "imagen-3.0-generate-002";
 
   const response = await fetch(
@@ -146,7 +166,7 @@ async function generateWithGoogle(params: GenerateImageParams): Promise<string> 
 }
 
 async function generateWithStabilityAI(params: GenerateImageParams): Promise<string> {
-  const apiKey = getApiKey("stabilityai");
+  const apiKey = await getApiKeyAsync("stabilityai");
 
   const formData = new FormData();
   formData.append("prompt", params.prompt);
@@ -190,7 +210,7 @@ async function generateWithStabilityAI(params: GenerateImageParams): Promise<str
 }
 
 async function generateWithReplicate(params: GenerateImageParams): Promise<string> {
-  const apiKey = getApiKey("replicate");
+  const apiKey = await getApiKeyAsync("replicate");
   const modelVersion = params.model || "black-forest-labs/flux-schnell";
 
   const input: Record<string, unknown> = {
@@ -251,7 +271,7 @@ async function generateWithReplicate(params: GenerateImageParams): Promise<strin
 }
 
 async function generateWithFal(params: GenerateImageParams): Promise<string> {
-  const apiKey = getApiKey("fal");
+  const apiKey = await getApiKeyAsync("fal");
   const model = params.model || "fal-ai/flux/dev";
 
   const body: Record<string, unknown> = {
@@ -311,7 +331,7 @@ async function generateWithFal(params: GenerateImageParams): Promise<string> {
 }
 
 async function generateWithRunway(params: GenerateImageParams): Promise<string> {
-  const apiKey = getApiKey("runway");
+  const apiKey = await getApiKeyAsync("runway");
 
   const res = await fetch("https://api.runwayml.com/v1/image_to_video", {
     method: "POST",
@@ -498,7 +518,7 @@ export function registerImageStudioHandlers() {
       .get();
     if (!original) throw new Error(`Image not found: ${params.imageId}`);
 
-    const apiKey = getApiKey("openai");
+    const apiKey = await getApiKeyAsync("openai");
     const openai = new OpenAI({ apiKey });
 
     const imageBuffer = fs.readFileSync(original.filePath);
@@ -621,7 +641,6 @@ export function registerImageStudioHandlers() {
   });
 
   ipcMain.handle("image-studio:available-providers", async () => {
-    const settings = readSettings();
     const imageProviders = ["openai", "google", "stabilityai", "replicate", "fal", "runway"];
 
     interface ProviderModel {
@@ -696,8 +715,8 @@ export function registerImageStudioHandlers() {
     };
 
     for (const id of imageProviders) {
-      const prov = settings.providerSettings[id];
-      if (prov?.apiKey?.value) {
+      const resolved = await resolveApiKey(id);
+      if (resolved) {
         const meta = providerMeta[id];
         available.push({
           id,
@@ -801,7 +820,7 @@ Rules:
     let outputPath: string;
 
     if (params.provider === "stabilityai") {
-      const apiKey = getApiKey("stabilityai");
+      const apiKey = await getApiKeyAsync("stabilityai");
       const formData = new FormData();
       formData.append("image", new Blob([imageBuffer], { type: "image/png" }), "image.png");
       formData.append("output_format", "png");
@@ -826,7 +845,7 @@ Rules:
       const buffer = Buffer.from(await res.arrayBuffer());
       outputPath = await saveBinaryImage(buffer, uniqueFilename("stabilityai-upscale"));
     } else if (params.provider === "fal") {
-      const apiKey = getApiKey("fal");
+      const apiKey = await getApiKeyAsync("fal");
       const b64 = imageBuffer.toString("base64");
       const dataUri = `data:image/png;base64,${b64}`;
 
@@ -913,11 +932,10 @@ Rules:
     const rows = [];
 
     // Use OpenAI variations API if available
-    const settings = readSettings();
-    const openaiKey = settings.providerSettings.openai?.apiKey?.value;
+    const openaiResolved = await resolveApiKey("openai");
 
-    if (openaiKey) {
-      const openai = new OpenAI({ apiKey: openaiKey });
+    if (openaiResolved) {
+      const openai = new OpenAI({ apiKey: openaiResolved.value });
       const imgFile = new File([imageBuffer], "image.png", { type: "image/png" });
 
       const response = await openai.images.createVariation({

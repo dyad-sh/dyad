@@ -1,6 +1,13 @@
 /**
  * JoyMarketplace.io Integration Configuration
  * Connects local JoyCreate app to the online JoyMarketplace system
+ *
+ * Architecture: fire-and-forget
+ *   1. Verify API key via Supabase edge function (joy-create-verify)
+ *   2. Pin to IPFS (Pinata / Helia)
+ *   3. Lazy-mint DropERC1155 on Polygon Amoy
+ *   4. List on MarketplaceV3
+ *   5. Goldsky subgraphs index → marketplace UI picks up
  */
 
 // =============================================================================
@@ -13,6 +20,19 @@ export const POLYGON_MAINNET = {
   name: "Polygon Mainnet",
   rpcUrl: "https://polygon-rpc.com",
   blockExplorer: "https://polygonscan.com",
+  nativeCurrency: {
+    name: "MATIC",
+    symbol: "MATIC",
+    decimals: 18,
+  },
+};
+
+export const POLYGON_AMOY = {
+  chainId: 80002,
+  chainIdHex: "0x13882",
+  name: "Polygon Amoy Testnet",
+  rpcUrl: "https://rpc-amoy.polygon.technology",
+  blockExplorer: "https://amoy.polygonscan.com",
   nativeCurrency: {
     name: "MATIC",
     symbol: "MATIC",
@@ -75,35 +95,27 @@ export const JOYMARKETPLACE_API = {
   baseUrl: process.env.JOYMARKETPLACE_API_URL || "https://jgsbmnzhvuwiujqbaieo.supabase.co/functions/v1",
   webUrl: process.env.JOYMARKETPLACE_WEB_URL || "https://joymarketplace.io",
   
-  // Supabase backend (for direct database operations)
+  // Supabase backend
   supabaseUrl: process.env.JOYMARKETPLACE_SUPABASE_URL || "https://jgsbmnzhvuwiujqbaieo.supabase.co",
-  supabaseAnonKey: process.env.JOYMARKETPLACE_SUPABASE_ANON_KEY || "",
+  supabaseAnonKey: process.env.JOYMARKETPLACE_SUPABASE_ANON_KEY
+    || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+    || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impnc2JtbnpodnV3aXVqcWJhaWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA2MDAxNTEsImV4cCI6MjA1NjE3NjE1MX0.jGGW8mTgX7jXcWiylbxmjOwCIGdl226LRauVMXiWtc4",
   
-  // API Endpoints (Edge Functions)
+  // API Endpoints (Supabase Edge Functions)
   endpoints: {
-    // Auth & Profile
-    verifyPublisher: "/joycreate-publisher-verify",
-    getProfile: "/joycreate-publisher-verify",
+    // The only backend endpoint — verifies the JOY_API_KEY and returns
+    // { ok, user_id, scopes, network } including Goldsky subgraph URLs.
+    verify: "/joy-create-verify",
     
-    // Listings Sync - syncs to user's store (digital_assets + store_ai_assets)
+    // Listing sync (optional — JoyCreate can also go direct to contracts)
     syncListing: "/joycreate-sync-listing",
     
-    // Receipts - ingest IPLD inference receipts
+    // Receipts — ingest IPLD inference receipts
     ingestReceipt: "/joycreate-receipt-ingest",
-    
-    // Legacy endpoints (kept for compatibility)
-    listAssets: "/marketplace-listing",
-    getAsset: "/marketplace-listing",
-    publishAsset: "/marketplace-listing",
-    updateAsset: "/marketplace-listing",
-    archiveAsset: "/marketplace-listing",
-    verifyReceipt: "/joycreate-receipt-ingest",
-    getEarnings: "/database-operations",
-    requestPayout: "/process-royalty",
   },
   
   // Auth scheme
-  authScheme: "Bearer", // Authorization: Bearer <API_KEY>
+  authScheme: "Bearer", // Authorization: Bearer <JOY_API_KEY>
 };
 
 // =============================================================================

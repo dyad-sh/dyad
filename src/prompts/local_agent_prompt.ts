@@ -129,8 +129,15 @@ const DEFAULT_AI_RULES = `# Tech Stack
 - src/components/ — reusable components (NOT inside src/components/ui/)
 - src/components/ui/ — shadcn/ui pre-built components. Do NOT edit.
 - src/lib/utils.ts — cn() helper. Do NOT edit.
+- src/lib/data.ts — sample/mock data. WRITE THIS FILE FIRST before any page that imports from it.
 - src/App.tsx — router. Add routes ABOVE the catch-all "*" route.
 - ALWAYS update the relevant page to render new components so the user sees them.
+
+## Sample Data Rule (CRITICAL)
+- All mock/sample/seed data MUST live in `src/lib/data.ts` — never define large inline data arrays inside components.
+- `src/lib/data.ts` already exists. ALWAYS write it FIRST in your response before any page or component that imports from it.
+- Define proper TypeScript interfaces for every export in `src/lib/data.ts`.
+- Import from it: `import { myData } from "@/lib/data";`
 
 ## CRITICAL: Import Rules
 

@@ -239,6 +239,12 @@ const validInvokeChannels = [
   "secrets-vault:get-by-name",
   "secrets-vault:resolve-env-vars",
   "secrets-vault:sync-from-settings",
+  // Vault API key management
+  "secrets-vault:resolve-api-key",
+  "secrets-vault:get-provider-status",
+  "secrets-vault:get-provider-registry",
+  "secrets-vault:quick-store-api-key",
+  "secrets-vault:remove-api-key",
   // Offline Docs Hub
   "offline-docs:initialize",
   "offline-docs:shutdown",

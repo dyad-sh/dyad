@@ -1,6 +1,14 @@
 /**
  * JoyMarketplace IPC Handlers
- * Handles app publishing, deployment, and marketplace operations
+ *
+ * Fire-and-forget architecture:
+ *   1. Verify API key via joy-create-verify edge function
+ *   2. Pin to IPFS (Pinata / Helia)
+ *   3. Lazy-mint DropERC1155 on Polygon Amoy
+ *   4. List on MarketplaceV3
+ *   5. Goldsky subgraphs index it → marketplace UI picks it up
+ *
+ * No backend publish/browse/earnings endpoints — those read from subgraphs.
  */
 
 import { ipcMain, app } from "electron";
@@ -12,14 +20,17 @@ import * as path from "path";
 import log from "electron-log";
 import AdmZip from "adm-zip";
 import { getJoyAppPath } from "../../paths/paths";
+import { JOYMARKETPLACE_API } from "@/config/joymarketplace";
+import {
+  getMarketplaceAssets,
+  getMarketplaceListings,
+  getMarketplaceStats,
+} from "@/lib/subgraph_client";
 import type {
   PublishAppRequest,
   PublishAppResponse,
-  MarketplaceAsset,
   MarketplaceCredentials,
-  PublisherProfile,
   DeploymentStatus,
-  EarningsReport,
   AppBundle,
   PublishModelRequest,
   ModelBundle,
@@ -28,9 +39,7 @@ import type {
 
 const logger = log.scope("marketplace_handlers");
 
-// JoyMarketplace API configuration
-const MARKETPLACE_API_URL = process.env.JOYMARKETPLACE_API_URL || "https://api.joymarketplace.io";
-const MARKETPLACE_WEB_URL = process.env.JOYMARKETPLACE_WEB_URL || "https://joymarketplace.io";
+const MARKETPLACE_WEB_URL = JOYMARKETPLACE_API.webUrl;
 
 // Store credentials in memory (should be persisted in settings)
 let marketplaceCredentials: MarketplaceCredentials | null = null;
@@ -74,37 +83,42 @@ async function saveCredentials(credentials: MarketplaceCredentials): Promise<voi
 }
 
 /**
- * Make authenticated API request to marketplace
+ * Call the joy-create-verify edge function to verify an API key.
+ * Returns { ok, user_id, scopes, network } on success.
  */
-async function marketplaceRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  if (!marketplaceCredentials) {
-    await loadCredentials();
-  }
-  
-  if (!marketplaceCredentials?.apiKey) {
-    throw new Error("Not authenticated with JoyMarketplace. Please connect your account in Settings.");
-  }
-
-  const url = `${MARKETPLACE_API_URL}${endpoint}`;
+async function verifyApiKey(apiKey: string): Promise<{
+  ok: boolean;
+  user_id: string;
+  scopes: string[];
+  network: {
+    chain: string;
+    chain_id: number;
+    drop_subgraph: string;
+    marketplace_subgraph: string;
+    stores_subgraph: string;
+  };
+}> {
+  const url = `${JOYMARKETPLACE_API.baseUrl}${JOYMARKETPLACE_API.endpoints.verify}`;
   const response = await fetch(url, {
-    ...options,
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${marketplaceCredentials.apiKey}`,
-      "X-Publisher-ID": marketplaceCredentials.publisherId,
-      ...options.headers,
+      "Authorization": `Bearer ${apiKey}`,
+      "x-joy-api-key": apiKey,
+      "apikey": JOYMARKETPLACE_API.supabaseAnonKey,
     },
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Marketplace API error: ${response.status} - ${error}`);
+    const body = await response.text();
+    throw new Error(`Verification failed (${response.status}): ${body}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  if (!data.ok) {
+    throw new Error("API key verification returned ok=false");
+  }
+  return data;
 }
 
 /**
@@ -319,12 +333,16 @@ export function registerMarketplaceHandlers() {
         };
       }
 
-      // Verify credentials with API
-      const profile = await marketplaceRequest<PublisherProfile>("/v1/publisher/profile");
+      // Re-verify credentials with the edge function
+      const data = await verifyApiKey(marketplaceCredentials.apiKey);
       
       return {
         connected: true,
-        profile,
+        profile: {
+          id: data.user_id,
+          scopes: data.scopes,
+          network: data.network,
+        },
       };
     } catch (error) {
       logger.error("Failed to check marketplace status:", error);
@@ -336,34 +354,27 @@ export function registerMarketplaceHandlers() {
     }
   });
 
-  // Connect to marketplace (authenticate)
+  // Connect to marketplace (authenticate via joy-create-verify)
   ipcMain.handle("marketplace:connect", async (_, apiKey: string) => {
     try {
-      // Verify the API key
-      const response = await fetch(`${MARKETPLACE_API_URL}/v1/publisher/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Invalid API key");
-      }
-
-      const data = await response.json();
+      const data = await verifyApiKey(apiKey);
       
       const credentials: MarketplaceCredentials = {
         apiKey,
-        publisherId: data.publisherId,
+        publisherId: data.user_id,
+        scopes: data.scopes,
+        network: data.network,
       };
       
       await saveCredentials(credentials);
       
+      logger.info(`Connected to JoyMarketplace (user=${data.user_id}, scopes=${data.scopes.join(",")})`);
+      
       return {
         success: true,
-        profile: data.profile,
+        userId: data.user_id,
+        scopes: data.scopes,
+        network: data.network,
       };
     } catch (error) {
       logger.error("Failed to connect to marketplace:", error);
@@ -386,52 +397,58 @@ export function registerMarketplaceHandlers() {
     }
   });
 
-  // Get publisher profile
+  // Get publisher profile — re-verify to get fresh scopes/network
   ipcMain.handle("marketplace:get-profile", async () => {
-    return marketplaceRequest<PublisherProfile>("/v1/publisher/profile");
+    await loadCredentials();
+    if (!marketplaceCredentials?.apiKey) {
+      throw new Error("Not connected to JoyMarketplace");
+    }
+    const data = await verifyApiKey(marketplaceCredentials.apiKey);
+    return {
+      id: data.user_id,
+      scopes: data.scopes,
+      network: data.network,
+    };
   });
 
-  // Get published assets
+  // Get published assets — read from Goldsky marketplace subgraph
   ipcMain.handle("marketplace:list-assets", async () => {
-    return marketplaceRequest<MarketplaceAsset[]>("/v1/publisher/assets");
+    await loadCredentials();
+    if (!marketplaceCredentials?.publisherId) {
+      throw new Error("Not connected to JoyMarketplace");
+    }
+    // Query subgraph for assets created by this publisher
+    return getMarketplaceAssets({ creator: marketplaceCredentials.publisherId });
   });
 
-  // Get single asset details
+  // Get single asset details — read from subgraph
   ipcMain.handle("marketplace:get-asset", async (_, assetId: string) => {
-    return marketplaceRequest<MarketplaceAsset>(`/v1/assets/${assetId}`);
+    const assets = await getMarketplaceAssets();
+    const asset = assets.find((a) => a.id === assetId || a.tokenId === assetId);
+    if (!asset) throw new Error(`Asset not found: ${assetId}`);
+    return asset;
   });
 
-  // Publish app to marketplace
+  // Publish app — fire-and-forget: bundle → IPFS → on-chain.
+  // The actual IPFS pinning + lazy-mint + MarketplaceV3 listing is driven
+  // by the renderer's CreateAssetWizard (Thirdweb SDK). This handler just
+  // prepares the bundle so the wizard has the files to pin.
   ipcMain.handle("marketplace:publish", async (_, request: PublishAppRequest): Promise<PublishAppResponse> => {
     try {
-      logger.info(`Publishing app ${request.appId} to marketplace...`);
-      
-      // Bundle the app
+      logger.info(`Bundling app ${request.appId} for marketplace publish...`);
       const bundle = await bundleApp(request.appId);
-      
-      // Prepare the publish payload
-      const payload = {
-        ...request,
-        bundle: {
-          files: bundle.files,
-          totalSize: bundle.totalSize,
-        },
-      };
 
-      // Upload to marketplace
-      const response = await marketplaceRequest<PublishAppResponse>("/v1/assets/publish", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      logger.info(`App published successfully: ${response.assetId}`);
-      
+      // Return the bundle metadata — the renderer will pin to IPFS,
+      // lazy-mint on DropERC1155, and list on MarketplaceV3.
       return {
-        ...response,
-        assetUrl: response.assetId ? `${MARKETPLACE_WEB_URL}/assets/${response.assetId}` : undefined,
+        success: true,
+        status: "pending-review",
+        message: `App bundled (${bundle.files.length} files, ${(bundle.totalSize / 1024 / 1024).toFixed(1)} MB). Ready for on-chain publish.`,
+        assetUrl: undefined,
+        assetId: undefined,
       };
     } catch (error) {
-      logger.error("Failed to publish app:", error);
+      logger.error("Failed to bundle app for publish:", error);
       return {
         success: false,
         status: "rejected",
@@ -440,37 +457,21 @@ export function registerMarketplaceHandlers() {
     }
   });
 
-  // Publish trained model/adapter to marketplace
+  // Publish trained model/adapter — same fire-and-forget pattern
   ipcMain.handle("marketplace:publish-model", async (_, request: PublishModelRequest): Promise<PublishAppResponse> => {
     try {
-      logger.info(`Publishing model ${request.name} to marketplace...`);
-
+      logger.info(`Bundling model ${request.name} for marketplace publish...`);
       const bundle = await bundleModel(request.adapterPath, request.name, request.baseModelId);
 
-      const payload = {
-        ...request,
-        assetType: "model" as const,
-        category: request.category || "model",
-        bundle: {
-          files: bundle.files,
-          totalSize: bundle.totalSize,
-          metadata: bundle.metadata,
-        },
-      };
-
-      const response = await marketplaceRequest<PublishAppResponse>("/v1/assets/publish", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      logger.info(`Model published successfully: ${response.assetId}`);
-
       return {
-        ...response,
-        assetUrl: response.assetId ? `${MARKETPLACE_WEB_URL}/assets/${response.assetId}` : undefined,
+        success: true,
+        status: "pending-review",
+        message: `Model bundled (${bundle.files.length} files, ${(bundle.totalSize / 1024 / 1024).toFixed(1)} MB). Ready for on-chain publish.`,
+        assetUrl: undefined,
+        assetId: undefined,
       };
     } catch (error) {
-      logger.error("Failed to publish model:", error);
+      logger.error("Failed to bundle model for publish:", error);
       return {
         success: false,
         status: "rejected",
@@ -479,24 +480,42 @@ export function registerMarketplaceHandlers() {
     }
   });
 
-  // Update published asset
-  ipcMain.handle("marketplace:update-asset", async (_, assetId: string, updates: Partial<PublishAppRequest>) => {
-    return marketplaceRequest<MarketplaceAsset>(`/v1/assets/${assetId}`, {
-      method: "PATCH",
-      body: JSON.stringify(updates),
-    });
+  // Update/unpublish are on-chain operations — not backend calls
+  ipcMain.handle("marketplace:update-asset", async () => {
+    throw new Error("Asset updates are performed on-chain via the MarketplaceV3 contract. Use the CreateAssetWizard.");
   });
 
-  // Unpublish/archive asset
-  ipcMain.handle("marketplace:unpublish", async (_, assetId: string) => {
-    return marketplaceRequest<{ success: boolean }>(`/v1/assets/${assetId}/archive`, {
-      method: "POST",
-    });
+  ipcMain.handle("marketplace:unpublish", async () => {
+    throw new Error("Unpublishing is performed on-chain via the MarketplaceV3 contract.");
   });
 
-  // Get earnings report
+  // Get earnings — read from Goldsky marketplace subgraph
   ipcMain.handle("marketplace:earnings", async () => {
-    return marketplaceRequest<EarningsReport>("/v1/publisher/earnings");
+    await loadCredentials();
+    const stats = await getMarketplaceStats();
+    const listings = marketplaceCredentials?.publisherId
+      ? await getMarketplaceListings({ seller: marketplaceCredentials.publisherId })
+      : [];
+
+    const totalEarnings = listings.reduce((sum, l) => sum + Number(l.totalPaid || 0), 0);
+
+    return {
+      totalEarnings,
+      thisMonth: 0,
+      lastMonth: 0,
+      pendingPayout: 0,
+      salesCount: listings.filter((l) => l.buyer).length,
+      topAssets: listings
+        .filter((l) => l.buyer)
+        .slice(0, 10)
+        .map((l) => ({
+          assetId: l.id,
+          name: l.asset?.name ?? l.listingId,
+          earnings: Number(l.totalPaid || 0),
+          sales: 1,
+        })),
+      marketplaceStats: stats,
+    };
   });
 
   // Export app as ZIP for manual upload
@@ -534,7 +553,7 @@ export function registerMarketplaceHandlers() {
   // Get marketplace URL
   ipcMain.handle("marketplace:get-url", async () => {
     return {
-      apiUrl: MARKETPLACE_API_URL,
+      apiUrl: JOYMARKETPLACE_API.baseUrl,
       webUrl: MARKETPLACE_WEB_URL,
     };
   });

@@ -129,10 +129,24 @@ export interface PublishAppResponse {
   message: string;
 }
 
-// Marketplace API credentials
+// Marketplace API credentials — stored after joy-create-verify succeeds
 export interface MarketplaceCredentials {
   apiKey: string;
+  /** maps to verify response `user_id` */
   publisherId: string;
+  /** Scopes granted by the API key (e.g. ["publish","read","agents","pinning"]) */
+  scopes?: string[];
+  /** Network info returned by verify — includes chain + subgraph URLs */
+  network?: MarketplaceNetwork;
+}
+
+/** Network descriptor returned by the joy-create-verify edge function */
+export interface MarketplaceNetwork {
+  chain: string;
+  chain_id: number;
+  drop_subgraph: string;
+  marketplace_subgraph: string;
+  stores_subgraph: string;
 }
 
 // Deployment target options

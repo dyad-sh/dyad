@@ -2,14 +2,7 @@ import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
-import {
-  RotateCcw,
-  X,
-  Database,
-  Loader2,
-  Search,
-  ImageOff,
-} from "lucide-react";
+import { RotateCcw, X, Database, Loader2, Search } from "lucide-react";
 import type { Version } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -241,7 +234,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                         className="w-full h-full object-cover object-top"
                       />
                     ) : (
-                      <ImageOff size={16} className="text-muted-foreground" />
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        {version.oid.slice(0, 4)}
+                      </span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">

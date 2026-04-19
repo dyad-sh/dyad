@@ -1,7 +1,7 @@
 import { ipcMain, app, dialog } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
-import { desc, eq, like } from "drizzle-orm";
+import { desc, eq, inArray, like } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { appContracts } from "../types/app";
 import type { AppFileSearchResult } from "../types/app";
@@ -41,6 +41,33 @@ import {
   MAX_SCREENSHOTS_PER_APP,
   SCREENSHOT_FILENAME_REGEX,
 } from "../utils/media_path_utils";
+
+/**
+ * Read screenshot entries for a single app directory, filtered by filename
+ * pattern and stat'd for mtime. Swallows per-file errors (races with prune).
+ */
+async function readScreenshotEntries(
+  screenshotDir: string,
+): Promise<{ name: string; mtimeMs: number }[]> {
+  let entries: string[];
+  try {
+    entries = await fsPromises.readdir(screenshotDir);
+  } catch {
+    return [];
+  }
+  const results: { name: string; mtimeMs: number }[] = [];
+  for (const entry of entries) {
+    if (!SCREENSHOT_FILENAME_REGEX.test(entry)) continue;
+    try {
+      const stat = await fsPromises.stat(path.join(screenshotDir, entry));
+      results.push({ name: entry, mtimeMs: stat.mtimeMs });
+    } catch {
+      // File disappeared between readdir and stat — skip.
+    }
+  }
+  results.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return results;
+}
 
 import fixPath from "fix-path";
 
@@ -2751,24 +2778,12 @@ export function registerAppHandlers() {
     // Prune: delete legacy file, keep only the newest MAX_SCREENSHOTS_PER_APP
     // by mtime. Swallow ENOENT on unlink to tolerate concurrent saves.
     try {
-      const entries = await fsPromises.readdir(screenshotDir);
-      const screenshots: { name: string; mtimeMs: number }[] = [];
-      for (const entry of entries) {
-        if (entry === LEGACY_SCREENSHOT_FILE_NAME) {
-          await fsPromises
-            .unlink(path.join(screenshotDir, entry))
-            .catch(() => {});
-          continue;
-        }
-        if (!SCREENSHOT_FILENAME_REGEX.test(entry)) continue;
-        try {
-          const stat = await fsPromises.stat(path.join(screenshotDir, entry));
-          screenshots.push({ name: entry, mtimeMs: stat.mtimeMs });
-        } catch {
-          // File disappeared between readdir and stat — skip.
-        }
-      }
-      screenshots.sort((a, b) => b.mtimeMs - a.mtimeMs);
+      // Opportunistically delete the legacy filename.
+      await fsPromises
+        .unlink(path.join(screenshotDir, LEGACY_SCREENSHOT_FILE_NAME))
+        .catch(() => {});
+
+      const screenshots = await readScreenshotEntries(screenshotDir);
       for (const extra of screenshots.slice(MAX_SCREENSHOTS_PER_APP)) {
         await fsPromises
           .unlink(path.join(screenshotDir, extra.name))
@@ -2792,29 +2807,44 @@ export function registerAppHandlers() {
     const appPath = getDyadAppPath(appRecord.path);
     const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
 
-    let entries: string[];
-    try {
-      entries = await fsPromises.readdir(screenshotDir);
-    } catch {
-      return { screenshots: [] };
+    const entries = await readScreenshotEntries(screenshotDir);
+    const screenshots = entries.map(({ name }) => ({
+      commitHash: name.slice(0, -".png".length),
+      url: `dyad-media://media/${encodeURIComponent(appRecord.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${name}`,
+    }));
+    return { screenshots };
+  });
+
+  createTypedHandler(appContracts.listAppThumbnails, async (_, params) => {
+    const { appIds } = params;
+    if (appIds.length === 0) {
+      return { thumbnails: [] };
     }
 
-    const items: { commitHash: string; url: string; mtimeMs: number }[] = [];
-    for (const entry of entries) {
-      if (!SCREENSHOT_FILENAME_REGEX.test(entry)) continue;
-      try {
-        const stat = await fsPromises.stat(path.join(screenshotDir, entry));
-        const commitHash = entry.slice(0, -".png".length);
-        const url = `dyad-media://media/${encodeURIComponent(appRecord.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${entry}`;
-        items.push({ commitHash, url, mtimeMs: stat.mtimeMs });
-      } catch {
-        // File disappeared between readdir and stat — skip.
-      }
-    }
-    items.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return {
-      screenshots: items.map(({ commitHash, url }) => ({ commitHash, url })),
-    };
+    const records = await db.query.apps.findMany({
+      where: inArray(apps.id, appIds),
+    });
+    const recordById = new Map(records.map((r) => [r.id, r]));
+
+    const thumbnails = await Promise.all(
+      appIds.map(async (appId) => {
+        const record = recordById.get(appId);
+        if (!record) {
+          return { appId, thumbnailUrl: null };
+        }
+        const appPath = getDyadAppPath(record.path);
+        const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
+        const entries = await readScreenshotEntries(screenshotDir);
+        const latest = entries[0];
+        if (!latest) {
+          return { appId, thumbnailUrl: null };
+        }
+        const thumbnailUrl = `dyad-media://media/${encodeURIComponent(record.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${latest.name}`;
+        return { appId, thumbnailUrl };
+      }),
+    );
+
+    return { thumbnails };
   });
 
   void reconcileCloudSandboxes().catch((error) => {

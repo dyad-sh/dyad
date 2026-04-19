@@ -1,14 +1,29 @@
 import path from "node:path";
 
 /**
+ * The root ".dyad" directory within each app that holds Dyad-managed files.
+ */
+export const DYAD_INTERNAL_DIR_NAME = ".dyad";
+
+/**
+ * The ".dyad"-relative subdir for uploaded media files.
+ */
+export const DYAD_MEDIA_SUBDIR = "media";
+
+/**
+ * The ".dyad"-relative subdir for screenshot files.
+ */
+export const DYAD_SCREENSHOT_SUBDIR = "screenshot";
+
+/**
  * The subdirectory within each app where uploaded media files are stored.
  */
-export const DYAD_MEDIA_DIR_NAME = ".dyad/media";
+export const DYAD_MEDIA_DIR_NAME = `${DYAD_INTERNAL_DIR_NAME}/${DYAD_MEDIA_SUBDIR}`;
 
 /**
  * The subdirectory within each app where screenshot files are stored.
  */
-export const DYAD_SCREENSHOT_DIR_NAME = ".dyad/screenshot";
+export const DYAD_SCREENSHOT_DIR_NAME = `${DYAD_INTERNAL_DIR_NAME}/${DYAD_SCREENSHOT_SUBDIR}`;
 
 /**
  * Maximum number of per-commit screenshots retained per app.

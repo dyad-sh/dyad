@@ -36,7 +36,11 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
-import { DYAD_SCREENSHOT_DIR_NAME } from "./ipc/utils/media_path_utils";
+import {
+  DYAD_INTERNAL_DIR_NAME,
+  DYAD_MEDIA_SUBDIR,
+  DYAD_SCREENSHOT_SUBDIR,
+} from "./ipc/utils/media_path_utils";
 import {
   stopAllAppsSync,
   stopAppGarbageCollection,
@@ -208,15 +212,15 @@ export async function onReady() {
   protocol.handle("dyad-media", async (request) => {
     const url = new URL(request.url);
     // Format: dyad-media://media/{app-path}/.dyad/{subdir}/{filename}
-    //   where {subdir} is "media" or "screenshot"
+    //   where {subdir} is DYAD_MEDIA_SUBDIR or DYAD_SCREENSHOT_SUBDIR.
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
     //   The app-path segment is URI-encoded, so split on "/" before decoding
     //   to correctly handle absolute paths (which contain encoded slashes).
     const pathSegments = url.pathname.slice(1).split("/");
-    const allowedSubdirs = ["media", path.basename(DYAD_SCREENSHOT_DIR_NAME)];
+    const allowedSubdirs = [DYAD_MEDIA_SUBDIR, DYAD_SCREENSHOT_SUBDIR];
     if (
       pathSegments.length !== 4 ||
-      pathSegments[1] !== ".dyad" ||
+      pathSegments[1] !== DYAD_INTERNAL_DIR_NAME ||
       !allowedSubdirs.includes(pathSegments[2])
     ) {
       return new Response("Forbidden", { status: 403 });
@@ -238,7 +242,9 @@ export async function onReady() {
     // Resolve the app directory, handling both relative names and absolute
     // paths from imported apps (skipCopy).
     const appPath = getDyadAppPath(appPathRaw);
-    const targetDir = path.resolve(path.join(appPath, ".dyad", subdir));
+    const targetDir = path.resolve(
+      path.join(appPath, DYAD_INTERNAL_DIR_NAME, subdir),
+    );
     const resolvedPath = path.resolve(path.join(targetDir, filename));
 
     // Security: ensure the resolved path stays within the app's .dyad/{subdir} directory

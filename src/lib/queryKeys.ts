@@ -42,6 +42,7 @@ export const queryKeys = {
       ["apps", "detail", appId] as const,
     screenshots: ({ appId }: { appId: number | null }) =>
       ["apps", "screenshots", appId] as const,
+    thumbnails: ["apps", "thumbnails"] as const,
     search: ({ query }: { query: string }) =>
       ["apps", "search", query] as const,
   },

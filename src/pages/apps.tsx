@@ -1,38 +1,60 @@
 import { useMemo, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { AppShowcaseCard } from "@/components/AppShowcaseCard";
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
+import { sortAppsForShowcase } from "@/lib/sortApps";
 
 export default function AppsPage() {
   const router = useRouter();
+  const navigate = useNavigate();
   const { apps, loading } = useLoadApps();
   const openApp = useOpenApp();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredApps = useMemo(() => {
-    const sorted = [...apps].sort((a, b) => {
-      if (a.isFavorite !== b.isFavorite) {
-        return a.isFavorite ? -1 : 1;
-      }
-      const aTime = new Date(a.updatedAt ?? a.createdAt).getTime();
-      const bTime = new Date(b.updatedAt ?? b.createdAt).getTime();
-      return bTime - aTime;
-    });
-
+    const sorted = sortAppsForShowcase(apps);
     const q = searchQuery.trim().toLowerCase();
     if (!q) return sorted;
     return sorted.filter((app) => app.name.toLowerCase().includes(q));
   }, [apps, searchQuery]);
 
+  const visibleAppIds = useMemo(
+    () => filteredApps.map((a) => a.id),
+    [filteredApps],
+  );
+  const { data: thumbnailsData } = useQuery({
+    queryKey: [...queryKeys.apps.thumbnails, "page", visibleAppIds],
+    queryFn: () => ipc.app.listAppThumbnails({ appIds: visibleAppIds }),
+    enabled: visibleAppIds.length > 0,
+  });
+  const thumbnailByAppId = useMemo(() => {
+    const map = new Map<number, string | null>();
+    for (const t of thumbnailsData?.thumbnails ?? []) {
+      map.set(t.appId, t.thumbnailUrl);
+    }
+    return map;
+  }, [thumbnailsData]);
+
+  const handleGoBack = () => {
+    if (router.history.length > 1) {
+      router.history.back();
+    } else {
+      navigate({ to: "/" });
+    }
+  };
+
   return (
     <div className="min-h-screen w-full px-8 py-4">
       <div className="max-w-6xl mx-auto pb-12">
         <Button
-          onClick={() => router.history.back()}
+          onClick={handleGoBack}
           variant="outline"
           size="sm"
           className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
@@ -70,8 +92,17 @@ export default function AppsPage() {
             Loading apps...
           </div>
         ) : filteredApps.length === 0 ? (
-          <div className="text-muted-foreground text-center py-12">
-            {searchQuery ? "No apps match your search." : "No apps yet."}
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <p className="text-muted-foreground text-center">
+              {searchQuery
+                ? "No apps match your search."
+                : "You haven't created any apps yet."}
+            </p>
+            {!searchQuery && (
+              <Button onClick={() => navigate({ to: "/" })} size="sm">
+                Create your first app
+              </Button>
+            )}
           </div>
         ) : (
           <div
@@ -79,7 +110,12 @@ export default function AppsPage() {
             className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
           >
             {filteredApps.map((app) => (
-              <AppShowcaseCard key={app.id} app={app} onClick={openApp} />
+              <AppShowcaseCard
+                key={app.id}
+                app={app}
+                thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
+                onClick={openApp}
+              />
             ))}
           </div>
         )}

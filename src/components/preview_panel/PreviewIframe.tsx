@@ -271,11 +271,32 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   } | null>(null);
   const pendingAnnotatorScreenshotRequestIdRef = useRef<string | null>(null);
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read the latest selected app inside the capture timeout so the bail-out
+  // check compares against the current selection, not a stale render closure.
+  const selectedAppIdRef = useRef<number | null>(selectedAppId);
+  // Track which apps have already had the on-load fallback attempted this
+  // session so the check doesn't re-run on every HMR/reload.
+  const fallbackAttemptedAppIdsRef = useRef<Set<number>>(new Set());
 
-  // Keep ref in sync with atom so the message handler always reads the latest value
+  // Keep refs in sync so the message handler and timeout callbacks always read
+  // the latest values.
   useEffect(() => {
     pendingScreenshotAppIdRef.current = pendingScreenshotAppId;
   }, [pendingScreenshotAppId]);
+
+  useEffect(() => {
+    selectedAppIdRef.current = selectedAppId;
+  }, [selectedAppId]);
+
+  // Drop any in-flight request state when the user switches apps so a stale
+  // guard from a replaced iframe doesn't block future captures.
+  useEffect(() => {
+    pendingCommitScreenshotRequestRef.current = null;
+    if (captureTimeoutRef.current !== null) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
+  }, [selectedAppId]);
 
   // Clean up pending screenshot timeout on unmount
   useEffect(() => {
@@ -288,25 +309,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   }, []);
 
   const captureScreenshot = (appId: number) => {
-    // Cancel any in-flight capture to avoid duplicate/racing requests
+    // If a capture is already scheduled, let it run — repeated triggers
+    // (HMR, onLoad, selector-initialized) shouldn't endlessly extend the wait.
     if (captureTimeoutRef.current !== null) {
-      clearTimeout(captureTimeoutRef.current);
-      captureTimeoutRef.current = null;
+      return;
     }
 
     // Wait for page animations to finish before capturing.
     captureTimeoutRef.current = setTimeout(() => {
       captureTimeoutRef.current = null;
-      // Bail out if the user switched to a different app during the delay
-      if (selectedAppId !== appId) {
-        setPendingScreenshotAppId(null);
+      // Bail out if the user switched to a different app during the delay.
+      // Read from a ref so the comparison uses the current selection, not the
+      // render closure that scheduled this timeout.
+      if (selectedAppIdRef.current !== appId) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
         return;
       }
       // Re-read contentWindow inside the timeout to avoid stale references
       // (e.g. if the iframe reloads or gets replaced during the delay).
       const contentWindow = iframeRef.current?.contentWindow;
       if (!contentWindow) {
-        setPendingScreenshotAppId(null);
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
         return;
       }
       const requestId = crypto.randomUUID();
@@ -718,13 +745,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           selectedAppId !== null &&
           iframeRef.current?.contentWindow &&
           captureTimeoutRef.current === null &&
-          pendingCommitScreenshotRequestRef.current === null
+          pendingCommitScreenshotRequestRef.current === null &&
+          !fallbackAttemptedAppIdsRef.current.has(selectedAppId)
         ) {
           // No pending commit screenshot and no capture already in flight —
           // check if the app already has a screenshot on disk. If not (e.g.
           // iframe was still loading when earlier commits happened), capture
-          // one now.
+          // one now. Only attempt once per app per session so repeated HMR
+          // reloads don't spam capture attempts for apps whose saves fail.
           const appId = selectedAppId;
+          fallbackAttemptedAppIdsRef.current.add(appId);
           ipc.app
             .listAppScreenshots({ appId })
             .then((result) => {
@@ -866,9 +896,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ) {
           const appId = pendingCommitScreenshotRequest.appId;
           pendingCommitScreenshotRequestRef.current = null;
+          // Only clear the pending-screenshot atom if it still points to the
+          // same app — otherwise another flow may have queued a newer capture
+          // for a different app and we'd erase its pending state.
+          const clearPendingIfMatches = () => {
+            if (pendingScreenshotAppIdRef.current === appId) {
+              setPendingScreenshotAppId(null);
+            }
+          };
           if (event.data.success && event.data.dataUrl) {
-            console.log("App screenshot taken for app", appId);
-            setPendingScreenshotAppId(null);
+            console.debug("App screenshot taken for app", appId);
+            clearPendingIfMatches();
             ipc.app
               .saveAppScreenshot({
                 appId,
@@ -879,12 +917,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   queryKey: queryKeys.apps.screenshots({ appId }),
                 }),
               )
+              .then(() =>
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.apps.thumbnails,
+                }),
+              )
               .catch((err: unknown) => {
                 console.error("Failed to save app screenshot:", err);
               });
           } else {
             console.warn("App screenshot capture failed for app", appId);
-            setPendingScreenshotAppId(null);
+            clearPendingIfMatches();
           }
           return;
         }

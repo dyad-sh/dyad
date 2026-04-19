@@ -476,6 +476,19 @@ export const appContracts = {
       ),
     }),
   }),
+
+  listAppThumbnails: defineContract({
+    channel: "app:list-thumbnails",
+    input: z.object({ appIds: z.array(z.number()) }),
+    output: z.object({
+      thumbnails: z.array(
+        z.object({
+          appId: z.number(),
+          thumbnailUrl: z.string().nullable(),
+        }),
+      ),
+    }),
+  }),
 } as const;
 
 // =============================================================================

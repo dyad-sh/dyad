@@ -125,6 +125,7 @@ export default function AppDetailsPage() {
     queryFn: () => ipc.app.listAppScreenshots({ appId: appId! }),
     enabled: !!appId,
   });
+  const [screenshotLoadFailed, setScreenshotLoadFailed] = useState(false);
   const latestScreenshotUrl = screenshotsData?.screenshots[0]?.url ?? null;
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
@@ -418,12 +419,13 @@ export default function AppDetailsPage() {
           </Popover>
         </div>
 
-        {latestScreenshotUrl && (
-          <div className="mb-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+        {latestScreenshotUrl && !screenshotLoadFailed && (
+          <div className="mb-4 rounded-lg overflow-hidden border border-border bg-muted aspect-video">
             <img
               src={latestScreenshotUrl}
               alt={`Preview of ${selectedApp?.name ?? "app"}`}
-              className="w-full max-h-80 object-cover object-top"
+              onError={() => setScreenshotLoadFailed(true)}
+              className="w-full h-full object-contain"
             />
           </div>
         )}

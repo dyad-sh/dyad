@@ -3,6 +3,8 @@ import path from "node:path";
 import { expect } from "@playwright/test";
 import { test, Timeout } from "./helpers/test_helper";
 
+const SCREENSHOT_FILENAME_REGEX = /^[0-9a-f]{40}\.png$/;
+
 test("captures an app screenshot after the first generated commit", async ({
   po,
 }) => {
@@ -11,20 +13,22 @@ test("captures an app screenshot after the first generated commit", async ({
   await po.previewPanel.expectPreviewIframeIsVisible();
 
   const appPath = await po.appManagement.getCurrentAppPath();
-  const screenshotPath = path.join(
-    appPath,
-    ".dyad",
-    "screenshot",
-    "screenshot.png",
-  );
+  const screenshotDir = path.join(appPath, ".dyad", "screenshot");
 
   await expect(async () => {
-    expect(fs.existsSync(screenshotPath)).toBe(true);
-    expect(fs.statSync(screenshotPath).size).toBeGreaterThan(0);
+    const entries = fs.existsSync(screenshotDir)
+      ? fs.readdirSync(screenshotDir)
+      : [];
+    const screenshots = entries.filter((entry) =>
+      SCREENSHOT_FILENAME_REGEX.test(entry),
+    );
+    expect(screenshots.length).toBeGreaterThan(0);
+    const size = fs.statSync(path.join(screenshotDir, screenshots[0])).size;
+    expect(size).toBeGreaterThan(0);
   }).toPass({ timeout: Timeout.MEDIUM });
 
   await po.appManagement.getTitleBarAppNameButton().click();
-  await expect(po.page.getByRole("img", { name: "App preview" })).toBeVisible({
+  await expect(po.page.getByRole("img", { name: /Preview of/ })).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 });

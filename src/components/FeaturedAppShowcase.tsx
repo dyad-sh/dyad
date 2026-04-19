@@ -1,9 +1,13 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { AppShowcaseCard } from "@/components/AppShowcaseCard";
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
+import { sortAppsForShowcase } from "@/lib/sortApps";
 
 const MAX_FEATURED_APPS = 10;
 
@@ -12,22 +16,31 @@ export function FeaturedAppShowcase() {
   const openApp = useOpenApp();
   const navigate = useNavigate();
 
-  const sortedApps = useMemo(() => {
-    return [...apps].sort((a, b) => {
-      if (a.isFavorite !== b.isFavorite) {
-        return a.isFavorite ? -1 : 1;
-      }
-      const aTime = new Date(a.updatedAt ?? a.createdAt).getTime();
-      const bTime = new Date(b.updatedAt ?? b.createdAt).getTime();
-      return bTime - aTime;
-    });
-  }, [apps]);
+  const sortedApps = useMemo(() => sortAppsForShowcase(apps), [apps]);
+
+  const featured = useMemo(
+    () => sortedApps.slice(0, MAX_FEATURED_APPS),
+    [sortedApps],
+  );
+  const featuredIds = useMemo(() => featured.map((a) => a.id), [featured]);
+
+  const { data: thumbnailsData } = useQuery({
+    queryKey: [...queryKeys.apps.thumbnails, "featured", featuredIds],
+    queryFn: () => ipc.app.listAppThumbnails({ appIds: featuredIds }),
+    enabled: featuredIds.length > 0,
+  });
+  const thumbnailByAppId = useMemo(() => {
+    const map = new Map<number, string | null>();
+    for (const t of thumbnailsData?.thumbnails ?? []) {
+      map.set(t.appId, t.thumbnailUrl);
+    }
+    return map;
+  }, [thumbnailsData]);
 
   if (sortedApps.length === 0) {
     return null;
   }
 
-  const featured = sortedApps.slice(0, MAX_FEATURED_APPS);
   const hasMore = sortedApps.length > MAX_FEATURED_APPS;
 
   return (
@@ -46,10 +59,19 @@ export function FeaturedAppShowcase() {
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
-      <div className="flex gap-4 overflow-x-auto scrollbar-on-hover pb-3">
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label="App showcase"
+        className="flex gap-4 overflow-x-auto scrollbar-on-hover pb-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg"
+      >
         {featured.map((app) => (
           <div key={app.id} className="w-56 flex-shrink-0">
-            <AppShowcaseCard app={app} onClick={openApp} />
+            <AppShowcaseCard
+              app={app}
+              thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
+              onClick={openApp}
+            />
           </div>
         ))}
         {hasMore && (

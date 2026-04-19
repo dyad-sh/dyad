@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   $getRoot,
   $createParagraphNode,
@@ -524,9 +525,12 @@ export function LexicalChatInput({
     }
   }, [value]);
 
+  // Disable  when restoring mode
+  const isEditable = !disabled;
+
   return (
-    <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative flex-1">
+    <LexicalComposer initialConfig={{ ...initialConfig, editable: isEditable }}>
+      <div className={cn("relative flex-1", !isEditable && "opacity-60")}>
         <PlainTextPlugin
           contentEditable={
             <ContentEditable

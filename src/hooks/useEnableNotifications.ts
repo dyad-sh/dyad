@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useSettings } from "@/hooks/useSettings";
-import { detectIsMac } from "@/hooks/useChatModeToggle";
+import { detectIsMac } from "@/lib/platformUtils";
 
 function sendTestNotification() {
   if (Notification.permission === "granted") {

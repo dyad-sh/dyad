@@ -7,6 +7,10 @@ export const SecretSchema = z.object({
 });
 export type Secret = z.infer<typeof SecretSchema>;
 
+// Chat modes schema for type  safety
+export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
+export type ChatMode = z.infer<typeof ChatModeSchema>;
+
 /**
  * Zod schema for chat summary objects returned by the get-chats IPC
  */
@@ -14,6 +18,8 @@ export const ChatSummarySchema = z.object({
   id: z.number(),
   appId: z.number(),
   title: z.string().nullable(),
+  // Persisted chat mode for this specific chat (null = use global setting)
+  chatMode: ChatModeSchema.nullable(),
   createdAt: z.date(),
 });
 
@@ -36,6 +42,8 @@ export const ChatSearchResultSchema = z.object({
   title: z.string().nullable(),
   createdAt: z.date(),
   matchedMessageContent: z.string().nullable(),
+  // Persisted chat mode for this specific chat (null = use global setting)
+  chatMode: ChatModeSchema.nullable(),
 });
 
 /**
@@ -155,12 +163,6 @@ export const StoredChatModeSchema = z.enum([
   "plan",
 ]);
 export type StoredChatMode = z.infer<typeof StoredChatModeSchema>;
-
-/**
- * Active chat modes (excludes deprecated values)
- */
-export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
-export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 export const GitHubSecretsSchema = z.object({
   accessToken: SecretSchema.nullable(),
@@ -447,8 +449,7 @@ export function hasDyadProKey(settings: UserSettings): boolean {
  *   - Otherwise, fall back to "build"
  * - If defaultChatMode is NOT set:
  *   - Pro users: use "local-agent"
- *   - Non-Pro users with quota AND OpenAI/Anthropic set up: use "local-agent" (basic agent mode)
- *   - Non-Pro users without quota or provider: use "build"
+ *   - Non-Pro users: default to "build" mode unless they have quota AND OpenAI/Anthropic set up (basic agent mode)
  */
 export function getEffectiveDefaultChatMode(
   settings: UserSettings,
@@ -480,16 +481,18 @@ export function getEffectiveDefaultChatMode(
   return "build";
 }
 
-/**
- * Determines if the current session is using Basic Agent mode (free tier with quota).
- * Basic Agent mode is when:
- * - User is NOT a Pro subscriber
- * - User is using local-agent chat mode
- */
-export function isBasicAgentMode(settings: UserSettings): boolean {
-  return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
-  );
+export function isChatModeAllowed(
+  chatMode: ChatMode,
+  settings: UserSettings,
+  envVars: Record<string, string | undefined>,
+  freeAgentQuotaAvailable = false,
+): boolean {
+  if (chatMode !== "local-agent") return true;
+  if (isDyadProEnabled(settings)) return true;
+  if (!freeAgentQuotaAvailable) return false;
+  // For non-Pro users, local-agent is only allowed when OpenAI or Anthropic
+  // is configured; otherwise basic quota should not enable the agent mode.
+  return isOpenAIOrAnthropicSetup(settings, envVars);
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {

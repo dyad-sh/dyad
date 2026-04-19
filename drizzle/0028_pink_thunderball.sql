@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `chat_mode` text;

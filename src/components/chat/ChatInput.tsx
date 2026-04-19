@@ -108,7 +108,13 @@ import { isDyadProEnabled } from "@/lib/schemas";
 
 const showTokenBarAtom = atom(false);
 
-export function ChatInput({ chatId }: { chatId?: number }) {
+export function ChatInput({
+  chatId,
+  isRestoringMode,
+}: {
+  chatId?: number;
+  isRestoringMode?: boolean;
+}) {
   const { t } = useTranslation("chat");
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
@@ -231,12 +237,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
-    settings?.selectedChatMode !== "local-agent" &&
-    lastMessage?.role === "assistant" &&
-    !lastMessage.approvalState &&
-    !!proposal &&
-    proposal.type === "code-proposal" &&
-    messageId === lastMessage.id;
+    isRestoringMode ||
+    (settings?.selectedChatMode !== "local-agent" &&
+      lastMessage?.role === "assistant" &&
+      !lastMessage.approvalState &&
+      !!proposal &&
+      proposal.type === "code-proposal" &&
+      messageId === lastMessage.id);
 
   // Extract user message history for terminal-style navigation
   const userMessageHistory = useMemo(() => {
@@ -447,6 +454,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleSubmit = async () => {
     if (
+      isRestoringMode ||
       (!inputValue.trim() &&
         attachments.length === 0 &&
         !hasSuccessfulImageJobs) ||
@@ -898,6 +906,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               placeholder={t("askDyadToBuild")}
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
+              disabled={isRestoringMode}
               messageHistory={userMessageHistory}
             />
 
@@ -985,19 +994,32 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <button
                       onClick={handleSubmit}
                       disabled={
+                        isRestoringMode ||
                         (!inputValue.trim() &&
                           attachments.length === 0 &&
                           !hasSuccessfulImageJobs) ||
                         disableSendButton
                       }
-                      aria-label={t("sendMessage")}
+                      aria-label={
+                        isRestoringMode
+                          ? t("chatMode.restoringChatMode", {
+                              defaultValue: "Restoring chat mode...",
+                            })
+                          : t("sendMessage")
+                      }
                       className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
                     />
                   }
                 >
                   <SendHorizontalIcon size={20} />
                 </TooltipTrigger>
-                <TooltipContent>{t("sendMessage")}</TooltipContent>
+                <TooltipContent>
+                  {isRestoringMode
+                    ? t("chatMode.restoringChatMode", {
+                        defaultValue: "Restoring chat mode...",
+                      })
+                    : t("sendMessage")}
+                </TooltipContent>
               </Tooltip>
             )}
           </div>

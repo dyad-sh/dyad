@@ -96,6 +96,7 @@ export function usePlanImplementation() {
             chatId,
             prompt,
             selectedComponents: [],
+            chatMode: "build",
           },
           {
             onChunk: ({

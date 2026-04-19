@@ -75,6 +75,10 @@ export const chats = sqliteTable("chats", {
     .references(() => apps.id, { onDelete: "cascade" }),
   title: text("title"),
   initialCommitHash: text("initial_commit_hash"),
+  // Persists the chat mode Falls back to user's global setting if NULL (buckward compatibility)
+  chatMode: text("chat_mode", {
+    enum: ["ask", "build", "local-agent", "plan"],
+  }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

@@ -330,6 +330,7 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: false });
+      mockChatData = buildTestChat();
 
       // Act
       await handleLocalAgentStream(
@@ -359,6 +360,7 @@ describe("handleLocalAgentStream", () => {
         enableDyadPro: true,
         hasApiKey: false,
       });
+      mockChatData = buildTestChat();
 
       // Act
       await handleLocalAgentStream(

@@ -6,7 +6,7 @@ import {
   ZOOM_LEVELS,
   DEFAULT_ZOOM_LEVEL,
 } from "@/lib/schemas";
-import { useIsMac } from "@/hooks/useChatModeToggle";
+import { useIsMac } from "@/lib/platformUtils";
 
 export function useZoomShortcuts() {
   const { settings, updateSettings } = useSettings();

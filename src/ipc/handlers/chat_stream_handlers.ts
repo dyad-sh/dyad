@@ -100,9 +100,10 @@ import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
-  isBasicAgentMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
+  isDyadProEnabled,
+  type ChatMode,
 } from "@/lib/schemas";
 import {
   getFreeAgentQuotaStatus,
@@ -537,6 +538,57 @@ ${componentSnippet}
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
       const settings = readSettings();
+
+      // Fetch updated chat data to get fresh per-chat mode setting
+      const chatBeforePlaceholder = await db.query.chats.findFirst({
+        where: eq(chats.id, req.chatId),
+        with: {
+          messages: {
+            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+          },
+          app: true, // Include app information
+        },
+      });
+
+      if (!chatBeforePlaceholder) {
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      // Per-chat mode is the source of truth when set; fall back to global setting for legacy chats
+      // Default to 'build' if both are unset
+      // Prefer the mode passed in the request (which reflects the user's current selection)
+      // over the DB value to avoid race conditions where mode changes haven't persisted yet
+      const effectiveStreamMode: ChatMode =
+        req.chatMode ??
+        chatBeforePlaceholder.chatMode ??
+        settings.selectedChatMode ??
+        "build";
+
+      // Legacy chat migration: if chat_mode is null (pre-migration 0027),
+      // persist the mode the stream actually uses (effectiveStreamMode).
+      // Validate the mode before imprinting to avoid persisticlearng unavailable modes.
+      const legacyImprintMode: ChatMode = effectiveStreamMode;
+      if (chatBeforePlaceholder.chatMode == null) {
+        try {
+          await db
+            .update(chats)
+            .set({ chatMode: legacyImprintMode })
+            .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)));
+          logger.info(
+            `Migrated legacy chat ${req.chatId} to mode ${legacyImprintMode} on first send`,
+          );
+        } catch (err) {
+          logger.error(
+            `Failed to migrate legacy chat ${req.chatId} to mode ${legacyImprintMode}:`,
+            err,
+          );
+          // Don't fail the stream on migration error; just log it
+        }
+      }
+
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message
@@ -553,33 +605,23 @@ ${componentSnippet}
           requestId: dyadRequestId,
           model: settings.selectedModel.name,
           sourceCommitHash: await getCurrentCommitHash({
-            path: getDyadAppPath(chat.app.path),
+            path: getDyadAppPath(chatBeforePlaceholder.app.path),
           }),
         })
         .returning();
 
-      // Fetch updated chat data after possible deletions and additions
-      const updatedChat = await db.query.chats.findFirst({
-        where: eq(chats.id, req.chatId),
-        with: {
-          messages: {
-            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
-          },
-          app: true, // Include app information
-        },
+      // Refetch messages after inserting the placeholder to include it in the initial chunk
+      const updatedMessages = await db.query.messages.findMany({
+        where: eq(messages.chatId, req.chatId),
+        orderBy: (messages, { asc }) => [asc(messages.createdAt)],
       });
 
-      if (!updatedChat) {
-        throw new DyadError(
-          `Chat not found: ${req.chatId}`,
-          DyadErrorKind.NotFound,
-        );
-      }
-
       // Send the messages right away so that the loading state is shown for the message.
+      // Now includes the placeholder assistant message so the stream anchor is visible.
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
-        messages: updatedChat.messages,
+        messages: updatedMessages,
+        streamingMessageId: placeholderAssistantMessage.id,
       });
 
       let fullResponse = "";
@@ -589,20 +631,22 @@ ${componentSnippet}
       const testResponse = getTestResponse(req.prompt);
 
       if (testResponse) {
-        // For test prompts, use the dedicated function
+        // For test prompts, use the dedicated function.
+        // chatBeforePlaceholder is the pre-placeholder snapshot used for app/chat metadata.
+        // Stream UI state uses updatedMessages below, which includes the placeholder row.
         fullResponse = await streamTestResponse(
           event,
           req.chatId,
           testResponse,
           abortController,
-          updatedChat,
+          chatBeforePlaceholder,
         );
       } else {
         // Normal AI processing for non-test prompts
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =
           await getModelClient(settings.selectedModel, settings);
 
-        const appPath = getDyadAppPath(updatedChat.app.path);
+        const appPath = getDyadAppPath(chatBeforePlaceholder.app.path);
         // When we don't have smart context enabled, we
         // only include the selected components' files for codebase context.
         //
@@ -618,7 +662,7 @@ ${componentSnippet}
                 })),
                 smartContextAutoIncludes: [],
               }
-            : validateChatContext(updatedChat.app.chatContext);
+            : validateChatContext(chatBeforePlaceholder.app.chatContext);
 
         // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
@@ -650,11 +694,11 @@ ${componentSnippet}
         // Extract codebases for mentioned apps
         const mentionedAppsCodebases = await extractMentionedAppsCodebases(
           mentionedAppNames,
-          updatedChat.app.id, // Exclude current app
+          chatBeforePlaceholder.app.id, // Exclude current app
         );
         const willUseLocalAgentStream =
-          (settings.selectedChatMode === "local-agent" ||
-            settings.selectedChatMode === "ask") &&
+          (effectiveStreamMode === "local-agent" ||
+            effectiveStreamMode === "ask") &&
           !mentionedAppsCodebases.length;
 
         const isDeepContextEnabled =
@@ -691,12 +735,14 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistoryRaw = updatedChat.messages.map((message) => ({
-          role: message.role as "user" | "assistant" | "system",
-          content: message.content,
-          sourceCommitHash: message.sourceCommitHash,
-          commitHash: message.commitHash,
-        }));
+        const messageHistoryRaw = chatBeforePlaceholder.messages.map(
+          (message) => ({
+            role: message.role as "user" | "assistant" | "system",
+            content: message.content,
+            sourceCommitHash: message.sourceCommitHash,
+            commitHash: message.commitHash,
+          }),
+        );
 
         // Filter out cancelled message pairs (user prompt + cancelled assistant response)
         // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
@@ -761,21 +807,27 @@ ${componentSnippet}
           );
         }
 
-        const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
+        const aiRules = await readAiRules(
+          getDyadAppPath(chatBeforePlaceholder.app.path),
+        );
 
         // Get theme prompt for the app (null themeId means "no theme")
-        const themePrompt = await getThemePromptById(updatedChat.app.themeId);
+        const themePrompt = await getThemePromptById(
+          chatBeforePlaceholder.app.themeId,
+        );
         logger.log(
-          `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
+          `Theme for app ${chatBeforePlaceholder.app.id}: ${chatBeforePlaceholder.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode: settings.selectedChatMode,
+          chatMode: effectiveStreamMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
-          basicAgentMode: isBasicAgentMode(settings),
+          basicAgentMode:
+            effectiveStreamMode === "local-agent" &&
+            !isDyadProEnabled(settings),
         });
 
         // Add information about mentioned apps if any
@@ -792,7 +844,7 @@ ${componentSnippet}
         if (isSecurityReviewIntent) {
           systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
           try {
-            const appPath = getDyadAppPath(updatedChat.app.path);
+            const appPath = getDyadAppPath(chatBeforePlaceholder.app.path);
             const rulesPath = path.join(appPath, "SECURITY_RULES.md");
             let securityRules = "";
 
@@ -810,41 +862,46 @@ ${componentSnippet}
         }
 
         if (
-          updatedChat.app?.supabaseProjectId &&
+          chatBeforePlaceholder.app?.supabaseProjectId &&
           isSupabaseConnected(settings)
         ) {
           const supabaseClientCode = await getSupabaseClientCode({
-            projectId: updatedChat.app.supabaseProjectId,
-            organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
+            projectId: chatBeforePlaceholder.app.supabaseProjectId,
+            organizationSlug:
+              chatBeforePlaceholder.app.supabaseOrganizationSlug ?? null,
           });
           systemPrompt +=
             "\n\n" +
             getSupabaseAvailableSystemPrompt(supabaseClientCode) +
             "\n\n" +
             // For local agent, we will explicitly fetch the database context when needed.
-            (settings.selectedChatMode === "local-agent"
+            (effectiveStreamMode === "local-agent"
               ? ""
               : await getSupabaseContext({
-                  supabaseProjectId: updatedChat.app.supabaseProjectId,
+                  supabaseProjectId:
+                    chatBeforePlaceholder.app.supabaseProjectId,
                   organizationSlug:
-                    updatedChat.app.supabaseOrganizationSlug ?? null,
+                    chatBeforePlaceholder.app.supabaseOrganizationSlug ?? null,
                 }));
-        } else if (updatedChat.app?.neonProjectId) {
+        } else if (chatBeforePlaceholder.app?.neonProjectId) {
           // Neon is connected — inject Neon prompt instead of Supabase
           systemPrompt +=
             "\n\n" +
             (await buildNeonPromptForApp({
-              appPath: updatedChat.app.path,
-              neonProjectId: updatedChat.app.neonProjectId!,
-              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
-              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
+              appPath: chatBeforePlaceholder.app.path,
+              neonProjectId: chatBeforePlaceholder.app.neonProjectId!,
+              neonActiveBranchId: chatBeforePlaceholder.app.neonActiveBranchId,
+              neonDevelopmentBranchId:
+                chatBeforePlaceholder.app.neonDevelopmentBranchId,
               selectedChatMode: settings.selectedChatMode ?? "",
             })) +
             "\n\n";
         } else if (
-          // In local agent mode, we will suggest integrations as part of the add-integration tool
-          settings.selectedChatMode !== "local-agent" &&
-          // If in security review mode, we don't need to mention integrations are available.
+          // Neon projects don't need Supabase.
+          !chatBeforePlaceholder.app?.neonProjectId &&
+          // In local agent mode, we will suggest supabase as part of the add-integration tool
+          effectiveStreamMode !== "local-agent" &&
+          // If in security review mode, we don't need to mention supabase is available.
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
@@ -873,7 +930,7 @@ ${componentSnippet}
         // print out the dyad-write tags.
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
-        const isAskMode = settings.selectedChatMode === "ask";
+        const isAskMode = effectiveStreamMode === "ask";
         if (hasUploadedAttachments) {
           if (willUseLocalAgentStream && !isAskMode) {
             systemPrompt += `
@@ -946,7 +1003,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Thinking tags are generally not critical for the context
           // and eats up extra tokens.
           content:
-            settings.selectedChatMode === "ask"
+            effectiveStreamMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
           providerOptions: {
@@ -964,36 +1021,36 @@ This conversation includes one or more image attachments. When the user uploads 
         ];
 
         // Check if the last message should include attachments
-        if (chatMessages.length >= 2) {
-          const lastUserIndex = chatMessages.length - 2;
+        const reversedLastUserIndex = [...chatMessages]
+          .reverse()
+          .findIndex((msg) => msg.role === "user");
+        if (reversedLastUserIndex >= 0) {
+          const lastUserIndex = chatMessages.length - 1 - reversedLastUserIndex;
           const lastUserMessage = chatMessages[lastUserIndex];
-          if (lastUserMessage.role === "user") {
-            if (attachmentPaths.length > 0) {
-              // Replace the last message with one that includes attachments
-              chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
-                lastUserMessage,
-                attachmentPaths,
-              );
-            }
-            // Save aiMessagesJson for modes that use handleLocalAgentStream
-            // (which reads from DB and needs structured image content)
-
-            if (willUseLocalAgentStream) {
-              // Insert into DB (with size guard)
-              const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
-                chatMessages[lastUserIndex],
-              ]);
-              if (userAiMessagesJson) {
-                await db
-                  .update(messages)
-                  .set({ aiMessagesJson: userAiMessagesJson })
-                  .where(eq(messages.id, userMessageId));
-              }
+          if (attachmentPaths.length > 0) {
+            // Replace the last user message with one that includes attachments
+            chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
+              lastUserMessage,
+              attachmentPaths,
+            );
+          }
+          // Save aiMessagesJson for modes that use handleLocalAgentStream
+          // (which reads from DB and needs structured image content)
+          if (willUseLocalAgentStream) {
+            // Insert into DB (with size guard)
+            const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
+              chatMessages[lastUserIndex],
+            ]);
+            if (userAiMessagesJson) {
+              await db
+                .update(messages)
+                .set({ aiMessagesJson: userAiMessagesJson })
+                .where(eq(messages.id, userMessageId));
             }
           }
         } else {
           logger.warn(
-            "Unexpected number of chat messages:",
+            "No user message found in chat messages to attach files to",
             chatMessages.length,
           );
         }
@@ -1051,7 +1108,7 @@ This conversation includes one or more image attachments. When the user uploads 
             ? "deep"
             : "balanced";
           const providerOptions = getProviderOptions({
-            dyadAppId: updatedChat.app.id,
+            dyadAppId: chatBeforePlaceholder.app.id,
             dyadRequestId,
             dyadDisableFiles,
             smartContextMode,
@@ -1164,10 +1221,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle ask mode: use local-agent in read-only mode
         // This gives users access to code reading tools while in ask mode
         // Ask mode does not consume free agent quota
-        if (
-          settings.selectedChatMode === "ask" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (effectiveStreamMode === "ask" && !mentionedAppsCodebases.length) {
           // Reconstruct system prompt for local-agent read-only mode
           const readOnlySystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1208,10 +1262,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle plan mode: use local-agent with plan tools only
         // Plan mode is for requirements gathering and creating implementation plans
-        if (
-          settings.selectedChatMode === "plan" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (effectiveStreamMode === "plan" && !mentionedAppsCodebases.length) {
           // Reconstruct system prompt for plan mode
           const planModeSystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1234,11 +1285,12 @@ This conversation includes one or more image attachments. When the user uploads 
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)
         if (
-          settings.selectedChatMode === "local-agent" &&
+          effectiveStreamMode === "local-agent" &&
           !mentionedAppsCodebases.length
         ) {
-          // Check quota for Basic Agent mode (non-Pro users)
-          const isBasicAgentModeRequest = isBasicAgentMode(settings);
+          // Check quota for local-agent mode (non-Pro users)
+          // Note: this block is already gated on effectiveStreamMode === "local-agent"
+          const isBasicAgentModeRequest = !isDyadProEnabled(settings);
           if (isBasicAgentModeRequest) {
             const quotaStatus = await getFreeAgentQuotaStatus();
             if (quotaStatus.isQuotaExceeded) {
@@ -1288,7 +1340,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // 2. Mode is "build" AND there are enabled MCP servers
         if (
           settings.enableMcpServersForBuildMode &&
-          settings.selectedChatMode === "build"
+          effectiveStreamMode === "build"
         ) {
           const tools = await getMcpTools(event);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;
@@ -1309,7 +1361,7 @@ This conversation includes one or more image attachments. When the user uploads 
               },
               systemPromptOverride: constructSystemPrompt({
                 aiRules: await readAiRules(
-                  getDyadAppPath(updatedChat.app.path),
+                  getDyadAppPath(chatBeforePlaceholder.app.path),
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
@@ -1356,12 +1408,12 @@ This conversation includes one or more image attachments. When the user uploads 
           fullResponse = result.fullResponse;
 
           if (
-            settings.selectedChatMode !== "ask" &&
+            effectiveStreamMode !== "ask" &&
             isTurboEditsV2Enabled(settings)
           ) {
             let issues = await dryRunSearchReplace({
               fullResponse,
-              appPath: getDyadAppPath(updatedChat.app.path),
+              appPath: getDyadAppPath(chatBeforePlaceholder.app.path),
             });
             sendTelemetryEvent("search_replace:fix", {
               attemptNumber: 0,
@@ -1440,7 +1492,7 @@ ${formattedSearchReplaceIssues}`,
               // Re-check for issues after the fix attempt
               issues = await dryRunSearchReplace({
                 fullResponse: result.incrementalResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
+                appPath: getDyadAppPath(chatBeforePlaceholder.app.path),
               });
 
               sendTelemetryEvent("search_replace:fix", {
@@ -1457,7 +1509,7 @@ ${formattedSearchReplaceIssues}`,
 
           if (
             !abortController.signal.aborted &&
-            settings.selectedChatMode !== "ask" &&
+            effectiveStreamMode !== "ask" &&
             hasUnclosedDyadWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
@@ -1511,13 +1563,13 @@ ${formattedSearchReplaceIssues}`,
             // installed yet.
             addDependencies.length === 0 &&
             settings.enableAutoFixProblems &&
-            settings.selectedChatMode !== "ask"
+            effectiveStreamMode !== "ask"
           ) {
             try {
               // IF auto-fix is enabled
               let problemReport = await generateProblemReport({
                 fullResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
+                appPath: getDyadAppPath(chatBeforePlaceholder.app.path),
               });
 
               let autoFixAttempts = 0;
@@ -1544,7 +1596,7 @@ ${problemReport.problems
                 const problemFixPrompt = createProblemFixPrompt(problemReport);
 
                 const virtualFileSystem = new AsyncVirtualFileSystem(
-                  getDyadAppPath(updatedChat.app.path),
+                  getDyadAppPath(chatBeforePlaceholder.app.path),
                   {
                     fileExists: (fileName: string) => fileExists(fileName),
                     readFile: (fileName: string) => readFileWithCache(fileName),
@@ -1615,7 +1667,7 @@ ${problemReport.problems
 
                 problemReport = await generateProblemReport({
                   fullResponse,
-                  appPath: getDyadAppPath(updatedChat.app.path),
+                  appPath: getDyadAppPath(chatBeforePlaceholder.app.path),
                 });
               }
             } catch (error) {
@@ -1696,10 +1748,7 @@ ${problemReport.problems
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
         const settings = readSettings();
-        if (
-          settings.autoApproveChanges &&
-          settings.selectedChatMode !== "ask"
-        ) {
+        if (settings.autoApproveChanges && effectiveStreamMode !== "ask") {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,
@@ -2002,7 +2051,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
     const servers = await db
       .select()
       .from(mcpServers)
-      .where(eq(mcpServers.enabled, true as any));
+      .where(eq(mcpServers.enabled, true));
     for (const s of servers) {
       const client = await mcpManager.getClient(s.id);
       const toolSet = await client.tools();

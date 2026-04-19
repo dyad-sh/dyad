@@ -6,7 +6,11 @@ import {
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
 } from "../atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
@@ -21,10 +25,13 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Loader } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
+import { isDyadProEnabled } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
-import { isBasicAgentMode } from "@/lib/schemas";
+import { useChats } from "@/hooks/useChats";
+import { usePersistChatMode } from "@/hooks/usePersistChatMode";
+import { useRestoreChatMode } from "@/hooks/useRestoreChatMode";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -44,10 +51,20 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  const { settings, updateSettings } = useSettings();
+  const { settings, envVars, updateSettings } = useSettings();
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { isQuotaExceeded } = useFreeAgentQuota();
+  const { chats } = useChats(selectedAppId);
+  const currentChat = chats.find((c) => c.id === chatId);
+  const quotaCheckMode =
+    settings?.selectedChatMode ?? currentChat?.chatMode ?? "build";
   const showFreeAgentQuotaBanner =
-    settings && isBasicAgentMode(settings) && isQuotaExceeded;
+    settings &&
+    !isDyadProEnabled(settings) &&
+    quotaCheckMode === "local-agent" &&
+    isQuotaExceeded;
+  const queryClient = useQueryClient();
+  const { persistChatMode } = usePersistChatMode();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -84,6 +101,15 @@ export function ChatPanel({
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<number | undefined>(undefined);
+
+  const { isRestoringMode } = useRestoreChatMode({
+    chatId,
+    appId: selectedAppId,
+    settings,
+    envVars,
+    isQuotaExceeded,
+    updateSettings,
+  });
 
   useEffect(() => {
     const isChatSwitch = prevChatIdRef.current !== chatId;
@@ -130,9 +156,43 @@ export function ChatPanel({
     fetchChatMessages();
   }, [fetchChatMessages]);
 
-  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
+  const switchToBuildMode = useCallback(() => {
+    if (!selectedAppId) {
+      toast.error(
+        t("chatMode.noAppSelected", {
+          defaultValue: "No app selected — can't change chat mode",
+        }),
+      );
+      return;
+    }
+    if (!chatId) {
+      toast.error(
+        t("chatMode.noChatSelected", {
+          defaultValue: "No chat selected — can't change chat mode",
+        }),
+      );
+      return;
+    }
 
-  // Scroll to bottom when streaming completes to ensure footer content is visible,
+    void persistChatMode({
+      chatId,
+      appId: selectedAppId,
+      chatMode: "build",
+      optimistic: true,
+      onPersistSuccess: () =>
+        queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }),
+      onPersistError: () => {
+        toast.error(
+          t("chatMode.persistFailed", {
+            defaultValue: "Failed to save chat mode to database",
+          }),
+          { id: "switch-to-build-error" },
+        );
+      },
+    });
+  }, [chatId, persistChatMode, queryClient, selectedAppId, t]);
+
+  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
   // but only if the user was following (at bottom) during the stream.
   useEffect(() => {
     const wasStreaming = prevIsStreamingRef.current;
@@ -221,14 +281,26 @@ export function ChatPanel({
 
             <ChatError error={error} onDismiss={() => setError(null)} />
             {showFreeAgentQuotaBanner && (
-              <FreeAgentQuotaBanner
-                onSwitchToBuildMode={() =>
-                  updateSettings({ selectedChatMode: "build" })
-                }
-              />
+              <FreeAgentQuotaBanner onSwitchToBuildMode={switchToBuildMode} />
             )}
             <NotificationBanner />
-            <ChatInput chatId={chatId} />
+            <div className="relative">
+              {isRestoringMode && (
+                <div className="absolute -top-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="w-fit px-3 py-1.5 text-xs bg-background/80 backdrop-blur-sm border border-border shadow-sm rounded-full text-muted-foreground flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                  >
+                    <Loader size={12} className="animate-spin" />
+                    {t("chatMode.restoringChatMode", {
+                      defaultValue: "Restoring chat mode...",
+                    })}
+                  </div>
+                </div>
+              )}
+              <ChatInput chatId={chatId} isRestoringMode={isRestoringMode} />
+            </div>
           </div>
         )}
         <VersionPane

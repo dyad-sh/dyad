@@ -1,17 +1,36 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useSettings } from "./useSettings";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
-import { ChatModeSchema } from "../lib/schemas";
+import {
+  ChatModeSchema,
+  getEffectiveDefaultChatMode,
+  isChatModeAllowed,
+  isDyadProEnabled,
+} from "../lib/schemas";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { useFreeAgentQuota } from "./useFreeAgentQuota";
+import { toast } from "sonner";
+import { usePersistChatMode } from "./usePersistChatMode";
+import { useTranslation } from "react-i18next";
+import { getChatModeLabelKey } from "@/lib/chatModeUtils";
+import { useAtomValue } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useCurrentChatIdFromRoute } from "./useCurrentChatIdFromRoute";
+import { useIsMac } from "@/lib/platformUtils";
 
 export function useChatModeToggle() {
-  const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("chat");
+  const { settings, updateSettings, envVars } = useSettings();
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
+  const { persistChatMode } = usePersistChatMode();
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const getCurrentChatId = useCurrentChatIdFromRoute();
 
-  // Detect if user is on mac
   const isMac = useIsMac();
-
-  // Memoize the modifiers object to prevent re-registration
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const modifiers = useMemo(
     () => ({
       ctrl: !isMac,
@@ -20,25 +39,168 @@ export function useChatModeToggle() {
     [isMac],
   );
 
-  // Function to toggle between chat modes
-  const toggleChatMode = useCallback(() => {
-    if (!settings || !settings.selectedChatMode) return;
+  const toggleInFlightRef = useRef(false);
 
-    const currentMode = settings.selectedChatMode;
-    // Migration on read ensures currentMode is never "agent"
-    const modes = ChatModeSchema.options;
-    const currentIndex = modes.indexOf(currentMode);
-    const newMode = modes[(currentIndex + 1) % modes.length];
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const envVarsRef = useRef(envVars);
+  envVarsRef.current = envVars;
+  const isQuotaLoadingRef = useRef(isQuotaLoading);
+  isQuotaLoadingRef.current = isQuotaLoading;
+  const isQuotaExceededRef = useRef(isQuotaExceeded);
+  isQuotaExceededRef.current = isQuotaExceeded;
+  const selectedAppIdRef = useRef(selectedAppId);
+  selectedAppIdRef.current = selectedAppId;
+  const updateSettingsRef = useRef(updateSettings);
+  updateSettingsRef.current = updateSettings;
+  const getCurrentChatIdRef = useRef(getCurrentChatId);
+  getCurrentChatIdRef.current = getCurrentChatId;
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+  const persistChatModeRef = useRef(persistChatMode);
+  persistChatModeRef.current = persistChatMode;
+  const posthogRef = useRef(posthog);
+  posthogRef.current = posthog;
+  const tRef = useRef(t);
+  tRef.current = t;
 
-    updateSettings({ selectedChatMode: newMode });
-    posthog.capture("chat:mode_toggle", {
-      from: currentMode,
-      to: newMode,
-      trigger: "keyboard_shortcut",
-    });
-  }, [settings, updateSettings, posthog]);
+  const toggleChatMode = useCallback(async () => {
+    if (toggleInFlightRef.current) {
+      toast.info(
+        tRef.current("chatMode.switchInProgress", {
+          defaultValue: "Mode switch already in progress",
+        }),
+      );
+      return;
+    }
 
-  // Add keyboard shortcut with memoized modifiers
+    toggleInFlightRef.current = true;
+
+    let loadingToastId: string | number | undefined;
+    let loadingToastTimerId: number | undefined;
+    try {
+      const settings = settingsRef.current;
+      const envVars = envVarsRef.current;
+      const isQuotaLoading = isQuotaLoadingRef.current;
+      const isQuotaExceeded = isQuotaExceededRef.current;
+      const selectedAppId = selectedAppIdRef.current;
+      const updateSettings = updateSettingsRef.current;
+      const getCurrentChatId = getCurrentChatIdRef.current;
+      const queryClient = queryClientRef.current;
+      const persistChatMode = persistChatModeRef.current;
+      const posthog = posthogRef.current;
+      const t = tRef.current;
+
+      if (!settings) return;
+      const currentMode =
+        settings.selectedChatMode ??
+        getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
+
+      const isProEnabled = isDyadProEnabled(settings);
+      const freeAgentQuotaAvailable =
+        isProEnabled || (!isQuotaLoading && !isQuotaExceeded);
+      const allModes = ChatModeSchema.options;
+      const availableModes = allModes.filter((mode) =>
+        isChatModeAllowed(mode, settings, envVars, freeAgentQuotaAvailable),
+      );
+      if (availableModes.length === 0) {
+        toast.error(
+          t("chatMode.noneAvailable", {
+            defaultValue: "No chat modes are currently available",
+          }),
+        );
+        return;
+      }
+
+      const currentIndex = availableModes.indexOf(currentMode);
+      // When current mode is filtered out (e.g., quota exceeded), start from the first mode
+      // not from the next one to avoid skipping availableModes[0]
+      const newMode =
+        currentIndex >= 0
+          ? availableModes[(currentIndex + 1) % availableModes.length]
+          : availableModes[0];
+
+      const modeLabels = {
+        build: t(getChatModeLabelKey("build"), { defaultValue: "Build" }),
+        ask: t(getChatModeLabelKey("ask"), { defaultValue: "Ask" }),
+        "local-agent": t(getChatModeLabelKey("local-agent", { isProEnabled }), {
+          defaultValue: isProEnabled ? "Agent" : "Basic Agent",
+        }),
+        plan: t(getChatModeLabelKey("plan"), { defaultValue: "Plan" }),
+      };
+
+      // If user was on local-agent and it became unavailable, show info toast about fallback
+      if (
+        currentMode === "local-agent" &&
+        currentIndex === -1 &&
+        !isChatModeAllowed(
+          "local-agent",
+          settings,
+          envVars,
+          freeAgentQuotaAvailable,
+        )
+      ) {
+        toast.info(
+          t("chatMode.agentFallbackSwitched", {
+            defaultValue: "Agent mode unavailable — switched to {{mode}}",
+            mode: modeLabels[newMode],
+          }),
+        );
+      }
+
+      const chatId = getCurrentChatId();
+
+      loadingToastTimerId = window.setTimeout(() => {
+        loadingToastId = toast.loading(
+          t("chatMode.switching", {
+            defaultValue: "Switching chat mode...",
+          }),
+        );
+      }, 400);
+
+      if (chatId && selectedAppId) {
+        const result = await persistChatMode({
+          chatId,
+          appId: selectedAppId,
+          chatMode: newMode,
+          optimistic: true,
+          onPersistSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }),
+          onPersistError: () => {
+            toast.error(
+              t("chatMode.persistFailed", {
+                defaultValue: "Failed to save chat mode to database",
+              }),
+            );
+          },
+        });
+
+        if (!result.success) {
+          return;
+        }
+        if (!result.sameRoute) {
+          return;
+        }
+      } else {
+        await updateSettings({ selectedChatMode: newMode });
+      }
+
+      posthog.capture("chat:mode_toggle", {
+        from: currentMode,
+        to: newMode,
+        trigger: "keyboard_shortcut",
+      });
+    } finally {
+      if (loadingToastTimerId !== undefined) {
+        window.clearTimeout(loadingToastTimerId);
+      }
+      if (loadingToastId !== undefined) {
+        toast.dismiss(loadingToastId);
+      }
+      toggleInFlightRef.current = false;
+    }
+  }, []);
+
   useShortcut(
     ".",
     modifiers,
@@ -47,26 +209,4 @@ export function useChatModeToggle() {
   );
 
   return { toggleChatMode, isMac };
-}
-
-// Add this function at the top
-type NavigatorWithUserAgentData = Navigator & {
-  userAgentData?: {
-    platform?: string;
-  };
-};
-
-export function detectIsMac(): boolean {
-  const nav = navigator as NavigatorWithUserAgentData;
-  // Try modern API first
-  if ("userAgentData" in nav && nav.userAgentData?.platform) {
-    return nav.userAgentData.platform.toLowerCase().includes("mac");
-  }
-
-  // Fallback to user agent check
-  return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
-}
-// Export the utility function and hook for use elsewhere
-export function useIsMac(): boolean {
-  return useMemo(() => detectIsMac(), []);
 }

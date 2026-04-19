@@ -167,6 +167,9 @@ export function useStreamChat({
 
       let hasIncrementedStreamCount = false;
       try {
+        // Use settings.selectedChatMode instead of cache to ensure fresh mode is sent
+        const chatMode = settings?.selectedChatMode ?? undefined;
+
         ipc.chatStream.start(
           {
             chatId,
@@ -174,6 +177,7 @@ export function useStreamChat({
             redo,
             attachments: convertedAttachments,
             selectedComponents: selectedComponents ?? [],
+            chatMode,
           },
           {
             onChunk: ({

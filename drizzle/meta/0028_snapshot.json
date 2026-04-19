@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "debcac95-faa1-4a6c-8bf6-0f04d2cd8291",
-  "prevId": "80dda8f1-cd0c-411a-8d8c-1e9c32c485e3",
+  "id": "fc03c193-47e7-412c-a2b3-fb083c86b97a",
+  "prevId": "debcac95-faa1-4a6c-8bf6-0f04d2cd8291",
   "tables": {
     "apps": {
       "name": "apps",
@@ -107,7 +107,6 @@
           "notNull": false,
           "autoincrement": false
         },
-
         "neon_active_branch_id": {
           "name": "neon_active_branch_id",
           "type": "text",
@@ -115,7 +114,6 @@
           "notNull": false,
           "autoincrement": false
         },
-
         "vercel_project_id": {
           "name": "vercel_project_id",
           "type": "text",
@@ -218,7 +216,13 @@
           "notNull": false,
           "autoincrement": false
         },
-
+        "chat_mode": {
+          "name": "chat_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",

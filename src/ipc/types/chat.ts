@@ -5,6 +5,11 @@ import {
   createClient,
   createStreamClient,
 } from "../contracts/core";
+import {
+  ChatModeSchema,
+  ChatSummarySchema,
+  ChatSearchResultSchema,
+} from "../../lib/schemas";
 
 // =============================================================================
 // Chat Schemas
@@ -38,6 +43,7 @@ export const ChatSchema = z.object({
   messages: z.array(MessageSchema),
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
+  chatMode: ChatModeSchema.nullable().optional(),
 });
 
 export type Chat = z.infer<typeof ChatSchema>;
@@ -86,6 +92,7 @@ export const ChatStreamParamsSchema = z.object({
   redo: z.boolean().optional(),
   attachments: z.array(ChatAttachmentSchema).optional(),
   selectedComponents: z.array(ComponentSelectionSchema).optional(),
+  chatMode: ChatModeSchema.optional(),
 });
 
 export type ChatStreamParams = z.infer<typeof ChatStreamParamsSchema>;
@@ -187,15 +194,8 @@ export const chatContracts = {
 
   getChats: defineContract({
     channel: "get-chats",
-    input: z.number().optional(), // appId (optional)
-    output: z.array(
-      z.object({
-        id: z.number(),
-        appId: z.number(),
-        title: z.string().nullable(),
-        createdAt: z.date(),
-      }),
-    ),
+    input: z.number().optional(),
+    output: z.array(ChatSummarySchema),
   }),
 
   createChat: defineContract({
@@ -207,6 +207,16 @@ export const chatContracts = {
   updateChat: defineContract({
     channel: "update-chat",
     input: UpdateChatParamsSchema,
+    output: z.void(),
+  }),
+
+  updateChatMode: defineContract({
+    channel: "update-chat-mode",
+    input: z.object({
+      chatId: z.number(),
+      appId: z.number(),
+      chatMode: ChatModeSchema.nullable(),
+    }),
     output: z.void(),
   }),
 
@@ -228,15 +238,7 @@ export const chatContracts = {
       appId: z.number(),
       query: z.string(),
     }),
-    output: z.array(
-      z.object({
-        id: z.number(),
-        appId: z.number(),
-        title: z.string().nullable(),
-        createdAt: z.date(),
-        matchedMessageContent: z.string().nullable(),
-      }),
-    ),
+    output: z.array(ChatSearchResultSchema),
   }),
 
   countTokens: defineContract({

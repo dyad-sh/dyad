@@ -51,16 +51,24 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  const { settings, envVars, updateSettings } = useSettings();
+  const {
+    settings,
+    envVars,
+    updateSettings,
+    loading: settingsLoading,
+  } = useSettings();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { isQuotaExceeded } = useFreeAgentQuota();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const { chats } = useChats(selectedAppId);
   const currentChat = chats.find((c) => c.id === chatId);
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  const isRestoreContextReady =
+    !settingsLoading && (isProEnabled || !isQuotaLoading);
   const quotaCheckMode =
     settings?.selectedChatMode ?? currentChat?.chatMode ?? "build";
   const showFreeAgentQuotaBanner =
     settings &&
-    !isDyadProEnabled(settings) &&
+    !isProEnabled &&
     quotaCheckMode === "local-agent" &&
     isQuotaExceeded;
   const queryClient = useQueryClient();
@@ -108,6 +116,7 @@ export function ChatPanel({
     settings,
     envVars,
     isQuotaExceeded,
+    isContextReady: isRestoreContextReady,
     updateSettings,
   });
 

@@ -557,13 +557,11 @@ ${componentSnippet}
         );
       }
 
-      // Per-chat mode is the source of truth when set; fall back to global setting for legacy chats
-      // Default to 'build' if both are unset
-      // Prefer the mode passed in the request (which reflects the user's current selection)
-      // over the DB value to avoid race conditions where mode changes haven't persisted yet
+      // Per-chat mode is the source of truth when set; fall back to request mode
+      // and then global setting for legacy chats. Default to 'build' if all are unset.
       const effectiveStreamMode: ChatMode =
-        req.chatMode ??
         chatBeforePlaceholder.chatMode ??
+        req.chatMode ??
         settings.selectedChatMode ??
         "build";
 
@@ -893,7 +891,7 @@ ${componentSnippet}
               neonActiveBranchId: chatBeforePlaceholder.app.neonActiveBranchId,
               neonDevelopmentBranchId:
                 chatBeforePlaceholder.app.neonDevelopmentBranchId,
-              selectedChatMode: settings.selectedChatMode ?? "",
+              selectedChatMode: effectiveStreamMode,
             })) +
             "\n\n";
         } else if (

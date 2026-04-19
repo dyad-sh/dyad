@@ -168,6 +168,16 @@ function EnterKeyPlugin({
   return null;
 }
 
+function EditableStatePlugin({ disabled }: { disabled: boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+
+  return null;
+}
+
 // Plugin to clear editor content
 function ClearEditorPlugin({
   shouldClear,
@@ -566,6 +576,7 @@ export function LexicalChatInput({
             (prompts || []).map((p) => [p.id, p.title]),
           )}
         />
+        <EditableStatePlugin disabled={disabled} />
         <ClearEditorPlugin
           shouldClear={shouldClear}
           onCleared={handleCleared}

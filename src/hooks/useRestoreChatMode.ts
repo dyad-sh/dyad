@@ -24,6 +24,7 @@ type UseRestoreChatModeOptions = {
   settings: UserSettings | null | undefined;
   envVars: Record<string, string | undefined>;
   isQuotaExceeded: boolean;
+  isContextReady: boolean;
   updateSettings: (
     settings: Partial<UserSettings>,
   ) => Promise<UserSettings | undefined>;
@@ -37,6 +38,7 @@ export function useRestoreChatMode({
   settings,
   envVars,
   isQuotaExceeded,
+  isContextReady,
   updateSettings,
 }: UseRestoreChatModeOptions) {
   const { t } = useTranslation("chat");
@@ -52,9 +54,11 @@ export function useRestoreChatMode({
   envVarsRef.current = envVars;
   const isQuotaExceededRef = useRef(isQuotaExceeded);
   isQuotaExceededRef.current = isQuotaExceeded;
+  const isContextReadyRef = useRef(isContextReady);
+  isContextReadyRef.current = isContextReady;
 
   useEffect(() => {
-    if (!chatId || !settingsRef.current) {
+    if (!chatId || !settingsRef.current || !isContextReadyRef.current) {
       return;
     }
     if (
@@ -211,36 +215,6 @@ export function useRestoreChatMode({
           setIsRestoringMode(false);
         }
       } else {
-        if (!appId) {
-          console.warn(
-            `Skipping chat mode persist for chat ${chatId}: appId not available`,
-          );
-        } else if (resolvedMode.mode !== effectiveCandidateMode) {
-          const persistResult = await persistChatMode({
-            chatId,
-            appId,
-            chatMode: resolvedMode.mode,
-            optimistic: false,
-            onPersistSuccess: () =>
-              queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }),
-            onPersistError: (error) => {
-              console.error("Failed to persist restored chat mode:", error);
-              toast.error(
-                t("chatMode.persistFailed", {
-                  defaultValue: "Failed to save chat mode to database",
-                }),
-                { id: `persist-fail-${chatId}` },
-              );
-            },
-          });
-
-          if (!persistResult.success) {
-            console.warn(
-              `Chat mode persist failed for chat ${chatId}, continuing with in-memory update`,
-            );
-          }
-        }
-
         if (
           !isCancelled &&
           !restoreAbortController.signal.aborted &&

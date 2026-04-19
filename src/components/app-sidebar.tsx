@@ -379,6 +379,15 @@ const menuCategories = [
         activeText: "text-emerald-600 dark:text-emerald-400",
       },
       {
+        title: "App Publishing",
+        to: "/app-publishing",
+        icon: Rocket,
+        gradient: "from-indigo-500 to-pink-500",
+        hoverBg: "hover:bg-indigo-500/10",
+        activeBg: "bg-indigo-500/15",
+        activeText: "text-indigo-600 dark:text-indigo-400",
+      },
+      {
         title: "My Creations",
         to: "/creator",
         icon: Sparkles,

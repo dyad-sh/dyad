@@ -59,6 +59,7 @@ import { tokenomicsRoute } from "./routes/tokenomics";
 import { a2aNetworkRoute } from "./routes/a2a-network";
 import { governanceRoute } from "./routes/governance";
 import { nlpStudioRoute } from "./routes/nlp-studio";
+import { appPublishingRoute } from "./routes/app-publishing";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -125,6 +126,7 @@ const routeTree = rootRoute.addChildren([
   a2aNetworkRoute,
   governanceRoute,
   nlpStudioRoute,
+  appPublishingRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -37,6 +37,9 @@ import {
   GitMerge,
   Calendar,
   GraduationCap,
+  Landmark,
+  Vote,
+  CircleDollarSign,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -374,6 +377,38 @@ const menuCategories = [
         hoverBg: "hover:bg-amber-500/10",
         activeBg: "bg-amber-500/15",
         activeText: "text-amber-600 dark:text-amber-400",
+      },
+    ],
+  },
+  {
+    label: "Sovereign AI",
+    items: [
+      {
+        title: "Token Economics",
+        to: "/tokenomics",
+        icon: CircleDollarSign,
+        gradient: "from-yellow-500 to-orange-500",
+        hoverBg: "hover:bg-yellow-500/10",
+        activeBg: "bg-yellow-500/15",
+        activeText: "text-yellow-600 dark:text-yellow-400",
+      },
+      {
+        title: "A2A Network",
+        to: "/a2a-network",
+        icon: Network,
+        gradient: "from-blue-500 to-purple-500",
+        hoverBg: "hover:bg-blue-500/10",
+        activeBg: "bg-blue-500/15",
+        activeText: "text-blue-600 dark:text-blue-400",
+      },
+      {
+        title: "Governance",
+        to: "/governance",
+        icon: Landmark,
+        gradient: "from-purple-500 to-pink-500",
+        hoverBg: "hover:bg-purple-500/10",
+        activeBg: "bg-purple-500/15",
+        activeText: "text-purple-600 dark:text-purple-400",
       },
     ],
   },

@@ -51,13 +51,12 @@ export function usePersistChatMode() {
         onPersistError,
       } = options;
 
-      const previousMode =
-        settingsRef.current?.selectedChatMode ??
-        initialChatModeRef.current ??
-        "build";
-
       const persistInternal = async (): Promise<PersistChatModeResult> => {
         const currentUpdateSettings = updateSettingsRef.current;
+        const previousMode =
+          settingsRef.current?.selectedChatMode ??
+          initialChatModeRef.current ??
+          "build";
 
         try {
           //optimistic for immediate ui update if enabled(without waiting persitence to complete)

@@ -341,9 +341,11 @@ export async function handleLocalAgentStream(
   // Note: This guard is defense-in-depth. Callers in chat_stream_handlers.ts already
   // gate on effectiveStreamMode === "local-agent", but this check protects against
   // future direct callers that might not validate mode before calling.
+  // Defense-in-depth: prefer the persisted DB mode over the client-supplied
+  // req.chatMode so a crafted request can't bypass the Pro gate below.
   const effectiveChatMode =
-    req.chatMode ??
     initialChat.chatMode ??
+    req.chatMode ??
     settings.selectedChatMode ??
     "build";
   const isLocalAgentMode = effectiveChatMode === "local-agent";

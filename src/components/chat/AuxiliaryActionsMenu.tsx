@@ -43,6 +43,7 @@ interface AuxiliaryActionsMenuProps {
     files: FileList,
     type: "chat-context" | "upload-to-codebase",
   ) => void;
+  disabled?: boolean;
   showTokenBar?: boolean;
   toggleShowTokenBar?: () => void;
   hideContextFilesPicker?: boolean;
@@ -52,6 +53,7 @@ interface AuxiliaryActionsMenuProps {
 
 export function AuxiliaryActionsMenu({
   onFileSelect,
+  disabled = false,
   showTokenBar,
   toggleShowTokenBar,
   hideContextFilesPicker,
@@ -135,6 +137,7 @@ export function AuxiliaryActionsMenu({
     <>
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger
+          disabled={disabled}
           className="inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-primary/20 hover:scale-105 bg-primary/10 text-primary cursor-pointer h-8 w-8 mb-1"
           data-testid="auxiliary-actions-menu"
         >
@@ -170,6 +173,7 @@ export function AuxiliaryActionsMenu({
             <DropdownMenuSubContent>
               <DropdownMenuItem
                 onClick={() => handleThemeSelect(null)}
+                disabled={disabled}
                 className={`py-2 px-3 ${currentThemeId === null ? "bg-primary/10" : ""}`}
                 data-testid="theme-option-none"
               >
@@ -189,6 +193,7 @@ export function AuxiliaryActionsMenu({
                   <DropdownMenuItem
                     key={theme.id}
                     onClick={() => handleThemeSelect(theme.id)}
+                    disabled={disabled}
                     className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
                     data-testid={`theme-option-${theme.id}`}
                     title={theme.description}
@@ -220,6 +225,7 @@ export function AuxiliaryActionsMenu({
                       <DropdownMenuItem
                         key={themeId}
                         onClick={() => handleThemeSelect(themeId)}
+                        disabled={disabled}
                         className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
                         data-testid={`theme-option-${themeId}`}
                         title={theme.description || "Custom theme"}
@@ -247,6 +253,7 @@ export function AuxiliaryActionsMenu({
                     setIsOpen(false);
                     setAllThemesDialogOpen(true);
                   }}
+                  disabled={disabled}
                   className="py-2 px-3"
                   data-testid="all-custom-themes-option"
                 >
@@ -265,6 +272,7 @@ export function AuxiliaryActionsMenu({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleCreateCustomTheme}
+                  disabled={disabled}
                   className="py-2 px-3"
                   data-testid="create-custom-theme"
                 >
@@ -287,6 +295,7 @@ export function AuxiliaryActionsMenu({
                 setIsOpen(false);
                 onGenerateImage();
               }}
+              disabled={disabled}
               className="py-2 px-3"
               data-testid="generate-image-menu-item"
             >
@@ -300,6 +309,7 @@ export function AuxiliaryActionsMenu({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={toggleShowTokenBar}
+                disabled={disabled}
                 className={`py-2 px-3 group ${showTokenBar ? "bg-primary/10 text-primary" : ""}`}
                 data-testid="token-bar-toggle"
               >

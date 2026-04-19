@@ -16,10 +16,12 @@ import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
 
 interface ChatImageGenerationStripProps {
   onGenerateImage: () => void;
+  disabled?: boolean;
 }
 
 export function ChatImageGenerationStrip({
   onGenerateImage,
+  disabled = false,
 }: ChatImageGenerationStripProps) {
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -104,6 +106,7 @@ export function ChatImageGenerationStrip({
                 </div>
                 <button
                   onClick={() => handleCancel(job.id)}
+                  disabled={disabled}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Cancel generation"
                 >
@@ -128,6 +131,7 @@ export function ChatImageGenerationStrip({
                 </div>
                 <button
                   onClick={() => handleRetry(job)}
+                  disabled={disabled}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Retry generation"
                   title="Retry"
@@ -136,6 +140,7 @@ export function ChatImageGenerationStrip({
                 </button>
                 <button
                   onClick={() => handleDismiss(job.id)}
+                  disabled={disabled}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Dismiss"
                 >
@@ -162,6 +167,7 @@ export function ChatImageGenerationStrip({
                 </div>
                 <button
                   onClick={() => handleDismiss(job.id)}
+                  disabled={disabled}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Dismiss"
                 >
@@ -173,6 +179,7 @@ export function ChatImageGenerationStrip({
         ))}
         <button
           onClick={onGenerateImage}
+          disabled={disabled}
           className="group flex items-center justify-center w-12 h-12 shrink-0 cursor-pointer"
           aria-label="Generate another image"
           title="Generate another image"

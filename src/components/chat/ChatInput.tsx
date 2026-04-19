@@ -885,6 +885,7 @@ export function ChatInput({
           {/* Chat image generation strip */}
           <ChatImageGenerationStrip
             onGenerateImage={handleOpenImageGenerator}
+            disabled={Boolean(isRestoringMode)}
           />
 
           {/* Use the DragDropOverlay component */}
@@ -917,7 +918,7 @@ export function ChatInput({
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isTranscribing}
+                      disabled={Boolean(isRestoringMode) || isTranscribing}
                       aria-label={
                         isRecording
                           ? t("stopRecording", "Stop recording")
@@ -955,6 +956,7 @@ export function ChatInput({
                 <TooltipTrigger
                   render={
                     <button
+                      disabled={Boolean(isRestoringMode)}
                       onClick={() =>
                         ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
@@ -1034,6 +1036,7 @@ export function ChatInput({
               toggleShowTokenBar={toggleShowTokenBar}
               appId={appId ?? undefined}
               onGenerateImage={handleOpenImageGenerator}
+              disabled={Boolean(isRestoringMode)}
             />
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}

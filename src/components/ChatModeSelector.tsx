@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   MiniSelectTrigger,
   Select,
@@ -232,7 +233,15 @@ export function ChatModeSelector() {
               )}
             </SelectValue>
           </TooltipTrigger>
-          <TooltipContent>{isMac ? "⌘ + ." : "Ctrl + ."}</TooltipContent>
+          <TooltipContent>
+            {t("chatMode.toggleShortcut", {
+              defaultValue: "{{modeDescription}} ({{shortcut}} to toggle)",
+              modeDescription: t("chatMode.openMenu", {
+                defaultValue: "Open mode menu",
+              }),
+              shortcut: isMac ? "⌘ + ." : "Ctrl + .",
+            })}
+          </TooltipContent>
         </Tooltip>
         <SelectContent align="start" className="min-w-[150px]">
           <ModeOption
@@ -317,7 +326,7 @@ function ModeOption({
   isProEnabled: boolean;
   disabled?: boolean;
   disabledReason?: string;
-  t: any;
+  t: TFunction<"chat">;
   badge?: string;
 }) {
   const content = (
@@ -346,7 +355,7 @@ function ModeOption({
         {t(`chatMode.${mode}DescMini`, { defaultValue: description })}
       </span>
       {disabled && disabledReason && (
-        <span className="text-[10px] text-muted-foreground/70 ml-5 mt-0.5">
+        <span className="text-[11px] text-muted-foreground ml-5 mt-0.5">
           {disabledReason}
         </span>
       )}

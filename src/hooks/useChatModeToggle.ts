@@ -19,6 +19,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useCurrentChatIdFromRoute } from "./useCurrentChatIdFromRoute";
 import { useIsMac } from "@/lib/platformUtils";
+import { useChats } from "./useChats";
 
 export function useChatModeToggle() {
   const { t } = useTranslation("chat");
@@ -27,6 +28,7 @@ export function useChatModeToggle() {
   const queryClient = useQueryClient();
   const { persistChatMode } = usePersistChatMode();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { chats } = useChats(selectedAppId);
   const getCurrentChatId = useCurrentChatIdFromRoute();
 
   const isMac = useIsMac();
@@ -46,6 +48,7 @@ export function useChatModeToggle() {
     isQuotaLoading,
     isQuotaExceeded,
     selectedAppId,
+    chats,
     updateSettings,
     getCurrentChatId,
     queryClient,
@@ -59,6 +62,7 @@ export function useChatModeToggle() {
     isQuotaLoading,
     isQuotaExceeded,
     selectedAppId,
+    chats,
     updateSettings,
     getCurrentChatId,
     queryClient,
@@ -83,6 +87,7 @@ export function useChatModeToggle() {
         isQuotaLoading,
         isQuotaExceeded,
         selectedAppId,
+        chats,
         updateSettings,
         getCurrentChatId,
         queryClient,
@@ -149,6 +154,11 @@ export function useChatModeToggle() {
       }
 
       const chatId = getCurrentChatId();
+      let appIdForPersist: number | null = selectedAppId;
+      if (!appIdForPersist && chatId) {
+        appIdForPersist =
+          chats.find((chat) => chat.id === chatId)?.appId ?? null;
+      }
 
       loadingToastTimerId = window.setTimeout(() => {
         loadingToastId = toast.loading(
@@ -158,10 +168,10 @@ export function useChatModeToggle() {
         );
       }, 400);
 
-      if (chatId && selectedAppId) {
+      if (chatId && appIdForPersist) {
         const result = await persistChatMode({
           chatId,
-          appId: selectedAppId,
+          appId: appIdForPersist,
           chatMode: newMode,
           optimistic: true,
           onPersistSuccess: () =>
@@ -176,9 +186,6 @@ export function useChatModeToggle() {
         });
 
         if (!result.success) {
-          return;
-        }
-        if (!result.sameRoute) {
           return;
         }
       } else {

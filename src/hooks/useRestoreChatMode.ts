@@ -56,6 +56,9 @@ export function useRestoreChatMode({
   isContextReadyRef.current = isContextReady;
 
   useEffect(() => {
+    if (settingsRef.current?.selectedChatMode !== "local-agent") {
+      return;
+    }
     lastRestoredChatIdRef.current = undefined;
     lastRestoredAppIdRef.current = null;
   }, [isQuotaExceeded]);

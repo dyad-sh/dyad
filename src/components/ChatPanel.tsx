@@ -119,6 +119,8 @@ export function ChatPanel({
     isContextReady: isRestoreContextReady,
     updateSettings,
   });
+  const isModeRestoreBlocking = Boolean(chatId) && !isRestoreContextReady;
+  const isModeTransitioning = isRestoringMode || isModeRestoreBlocking;
 
   useEffect(() => {
     const isChatSwitch = prevChatIdRef.current !== chatId;
@@ -302,8 +304,8 @@ export function ChatPanel({
             )}
             <NotificationBanner />
             <div className="flex flex-col gap-2">
-              {isRestoringMode && (
-                <div className="flex justify-center pointer-events-none">
+              <div className="min-h-8 flex justify-center pointer-events-none">
+                {isModeTransitioning && (
                   <div
                     role="status"
                     aria-live="polite"
@@ -314,9 +316,12 @@ export function ChatPanel({
                       defaultValue: "Restoring chat mode...",
                     })}
                   </div>
-                </div>
-              )}
-              <ChatInput chatId={chatId} isRestoringMode={isRestoringMode} />
+                )}
+              </div>
+              <ChatInput
+                chatId={chatId}
+                isRestoringMode={isModeTransitioning}
+              />
             </div>
           </div>
         )}

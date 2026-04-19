@@ -65,7 +65,7 @@ export function ChatPanel({
   const isRestoreContextReady =
     !settingsLoading && (isProEnabled || !isQuotaLoading);
   const quotaCheckMode =
-    settings?.selectedChatMode ?? currentChat?.chatMode ?? "build";
+    currentChat?.chatMode ?? settings?.selectedChatMode ?? "build";
   const showFreeAgentQuotaBanner =
     settings &&
     !isProEnabled &&
@@ -166,7 +166,8 @@ export function ChatPanel({
   }, [fetchChatMessages]);
 
   const switchToBuildMode = useCallback(() => {
-    if (!selectedAppId) {
+    const appIdForPersist = selectedAppId ?? currentChat?.appId;
+    if (!appIdForPersist) {
       toast.error(
         t("chatMode.noAppSelected", {
           defaultValue: "No app selected — can't change chat mode",
@@ -185,7 +186,7 @@ export function ChatPanel({
 
     void persistChatMode({
       chatId,
-      appId: selectedAppId,
+      appId: appIdForPersist,
       chatMode: "build",
       optimistic: true,
       onPersistSuccess: () =>
@@ -199,7 +200,14 @@ export function ChatPanel({
         );
       },
     });
-  }, [chatId, persistChatMode, queryClient, selectedAppId, t]);
+  }, [
+    chatId,
+    currentChat?.appId,
+    persistChatMode,
+    queryClient,
+    selectedAppId,
+    t,
+  ]);
 
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
   // but only if the user was following (at bottom) during the stream.
@@ -293,9 +301,9 @@ export function ChatPanel({
               <FreeAgentQuotaBanner onSwitchToBuildMode={switchToBuildMode} />
             )}
             <NotificationBanner />
-            <div className="relative">
+            <div className="flex flex-col gap-2">
               {isRestoringMode && (
-                <div className="absolute -top-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+                <div className="flex justify-center pointer-events-none">
                   <div
                     role="status"
                     aria-live="polite"

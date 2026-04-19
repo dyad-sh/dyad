@@ -44,7 +44,7 @@ export function ChatModeSelector() {
   const getCurrentChatId = useCurrentChatIdFromRoute();
   const chatId = getCurrentChatId();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { invalidateChats } = useChats(selectedAppId);
+  const { chats, invalidateChats } = useChats(selectedAppId);
   const [isPersisting, setIsPersisting] = useState(false);
   const { persistChatMode } = usePersistChatMode();
 
@@ -113,10 +113,15 @@ export function ChatModeSelector() {
       setIsPersisting(true);
 
       try {
-        if (chatId && selectedAppId) {
+        const currentChat = chatId
+          ? chats.find((chat) => chat.id === chatId)
+          : undefined;
+        const appIdForPersist = selectedAppId ?? currentChat?.appId;
+
+        if (chatId && appIdForPersist) {
           const result = await persistChatMode({
             chatId,
-            appId: selectedAppId,
+            appId: appIdForPersist,
             chatMode: value,
             optimistic: true,
             onPersistSuccess: () => {

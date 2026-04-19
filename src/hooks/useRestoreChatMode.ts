@@ -16,7 +16,6 @@ import {
   getChatModeLabelKey,
   resolveAllowedChatMode,
 } from "@/lib/chatModeUtils";
-import { usePersistChatMode } from "./usePersistChatMode";
 
 type UseRestoreChatModeOptions = {
   chatId?: number;
@@ -43,7 +42,6 @@ export function useRestoreChatMode({
 }: UseRestoreChatModeOptions) {
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
-  const { persistChatMode } = usePersistChatMode();
   const [isRestoringMode, setIsRestoringMode] = useState(false);
   const lastRestoredChatIdRef = useRef<number | undefined>(undefined);
   const lastRestoredAppIdRef = useRef<number | null>(null);
@@ -85,6 +83,7 @@ export function useRestoreChatMode({
     const snapshottedSettings = { ...settingsRef.current };
     const snapshottedEnvVars = { ...envVarsRef.current };
     const snapshottedIsQuotaExceeded = isQuotaExceededRef.current;
+    const selectedModeAtRestoreStart = snapshottedSettings.selectedChatMode;
 
     const resolveModeForCandidate = (
       candidateMode: ChatSummary["chatMode"],
@@ -173,9 +172,15 @@ export function useRestoreChatMode({
       const { effectiveCandidateMode, resolvedMode } =
         resolveModeForCandidate(candidateMode);
 
+      const shouldApplyToSettings =
+        settingsRef.current?.selectedChatMode === selectedModeAtRestoreStart;
+      const shouldSwitchMode =
+        shouldApplyToSettings &&
+        settingsRef.current?.selectedChatMode !== resolvedMode.mode;
+
       clearRestoreTimeout();
 
-      if (resolvedMode.usedFallback) {
+      if (resolvedMode.usedFallback && shouldSwitchMode) {
         toast.info(
           t("chatMode.modeUnavailableFallback", {
             defaultValue:
@@ -196,11 +201,8 @@ export function useRestoreChatMode({
           { id: "restore-fallback-quota" },
         );
 
-        // Update settings and persist fallback mode
-        if (
-          !isCancelled &&
-          snapshottedSettings.selectedChatMode !== resolvedMode.mode
-        ) {
+        // Apply fallback mode in settings for this session
+        if (!isCancelled) {
           await updateSettings({ selectedChatMode: resolvedMode.mode }).catch(
             (error) => {
               console.error(
@@ -211,20 +213,6 @@ export function useRestoreChatMode({
           );
         }
 
-        if (!isCancelled && appId) {
-          await persistChatMode({
-            chatId,
-            appId,
-            chatMode: resolvedMode.mode,
-            optimistic: false,
-            onPersistSuccess: () =>
-              queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }),
-            onPersistError: (error) => {
-              console.error("Failed to persist fallback chat mode:", error);
-            },
-          });
-        }
-
         if (!isCancelled) {
           setIsRestoringMode(false);
         }
@@ -232,6 +220,7 @@ export function useRestoreChatMode({
         if (
           !isCancelled &&
           !restoreAbortController.signal.aborted &&
+          shouldApplyToSettings &&
           snapshottedSettings.selectedChatMode !== resolvedMode.mode
         ) {
           await updateSettings({ selectedChatMode: resolvedMode.mode }).catch(
@@ -309,16 +298,7 @@ export function useRestoreChatMode({
       clearRestoreTimeout();
       setIsRestoringMode(false);
     };
-  }, [
-    chatId,
-    appId,
-    isContextReady,
-    isQuotaExceeded,
-    persistChatMode,
-    queryClient,
-    t,
-    updateSettings,
-  ]);
+  }, [chatId, appId, isContextReady, isQuotaExceeded, t, updateSettings]);
 
   return { isRestoringMode };
 }

@@ -61,6 +61,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { EnhancedNeuralStudio } from "@/components/neural/EnhancedNeuralStudio";
 
 // ── Types (mirrored from handler) ─────────────────────────────────────────────
 
@@ -527,6 +528,7 @@ export default function NeuralBuilderPage() {
           <TabsTrigger value="analytics"><BarChart3 className="w-3.5 h-3.5 mr-1.5" />Analytics</TabsTrigger>
           <TabsTrigger value="edge"><Cpu className="w-3.5 h-3.5 mr-1.5" />Edge Deploy</TabsTrigger>
           <TabsTrigger value="integrations"><Plug className="w-3.5 h-3.5 mr-1.5" />Integrations</TabsTrigger>
+          <TabsTrigger value="enhanced"><Sparkles className="w-3.5 h-3.5 mr-1.5" />Advanced Studio</TabsTrigger>
         </TabsList>
 
         <ScrollArea className="flex-1 px-6 py-4">
@@ -833,6 +835,10 @@ export default function NeuralBuilderPage() {
             ) : (
               <EmptyState icon={Plug} title="Select a network" description="Choose a network to configure integrations" />
             )}
+          </TabsContent>
+
+          <TabsContent value="enhanced" className="mt-0">
+            <EnhancedNeuralStudio />
           </TabsContent>
 
         </ScrollArea>

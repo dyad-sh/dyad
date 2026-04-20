@@ -37,6 +37,7 @@ import {
   MessagesSquare,
   Info,
   Pencil,
+  BrainCircuit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,6 +99,7 @@ import {
 import { SwarmNetworkGraph } from "@/components/agent/SwarmNetworkGraph";
 import { AgentTaskExecutionView } from "@/components/agent/AgentTaskExecutionView";
 import { AgentChatPanel } from "@/components/agent/AgentChatPanel";
+import { EnhancedSwarmCommandCenter } from "@/components/agent-swarm/EnhancedSwarmCommandCenter";
 import type {
   SwarmId,
   AgentNodeId,
@@ -314,6 +316,10 @@ export default function AgentSwarmPage() {
                     <Zap className="h-4 w-4" />
                     Events
                   </TabsTrigger>
+                  <TabsTrigger value="command" className="gap-2">
+                    <BrainCircuit className="h-4 w-4" />
+                    Command Center
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -355,6 +361,9 @@ export default function AgentSwarmPage() {
 
               <TabsContent value="events" className="flex-1 overflow-auto p-4 m-0">
                 <EventsTab swarmId={selectedSwarmId} events={events} />
+              </TabsContent>
+              <TabsContent value="command" className="flex-1 overflow-auto m-0">
+                <EnhancedSwarmCommandCenter />
               </TabsContent>
             </Tabs>
           </div>

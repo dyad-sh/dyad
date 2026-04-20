@@ -1207,11 +1207,16 @@ export async function handleLocalAgentStream(
       }
 
       // Check if the model ended with text only (no tool calls in the final step).
+      // A final set_chat_summary call is end-of-turn metadata, so it should not
+      // suppress the todo safety follow-up when the pass already produced text.
       // This is more reliable than passProducedChatText which is set on any text-delta
       // during the stream (including preambles before tool calls).
       const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
       const passEndedWithText =
-        passProducedChatText && (!lastStep || lastStep.toolCalls.length === 0);
+        passProducedChatText &&
+        (!lastStep ||
+          lastStep.toolCalls.length === 0 ||
+          stepOnlyCalledTool(lastStep, setChatSummaryTool.name));
 
       if (
         !shouldRunTodoFollowUpPass({
@@ -1561,6 +1566,18 @@ function buildPlanningQuestionnaireReflectionMessage(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function stepOnlyCalledTool(
+  step: { toolCalls: Array<unknown> },
+  toolName: string,
+): boolean {
+  return (
+    step.toolCalls.length > 0 &&
+    step.toolCalls.every(
+      (toolCall) => isRecord(toolCall) && toolCall.toolName === toolName,
+    )
+  );
 }
 
 function shouldRunTodoFollowUpPass(params: {

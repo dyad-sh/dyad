@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Compass, Pencil, Check, X } from "lucide-react";
+import { Compass, Pencil, Check, X, Plus } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 
 interface MiniPlanDesignDirectionProps {
@@ -64,6 +64,24 @@ export const MiniPlanDesignDirection: React.FC<
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (!direction) {
+    if (!canEdit) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setEditValue("");
+          setIsEditing(true);
+        }}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+        aria-label="Add design direction"
+      >
+        <Plus size={13} />
+        Add design direction
+      </button>
     );
   }
 

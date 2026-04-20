@@ -14,6 +14,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { createFromTemplate } from "./createFromTemplate";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 import {
   gitAdd,
   gitCommit,
@@ -83,6 +84,7 @@ export function registerTemplateHandlers() {
       );
       const stagedTemplatePath = path.join(tempRoot, "app");
 
+      let appWasStopped = false;
       try {
         try {
           await createFromTemplate({
@@ -93,6 +95,7 @@ export function registerTemplateHandlers() {
           const appInfo = runningApps.get(appId);
           if (appInfo) {
             await stopAppByInfo(appId, appInfo);
+            appWasStopped = true;
           }
 
           await clearAppDirectoryForTemplateSwap(appPath);
@@ -102,6 +105,14 @@ export function registerTemplateHandlers() {
             `Failed to stage template ${templateId} for app ${appId} at ${appPath}:`,
             error,
           );
+          if (appWasStopped) {
+            throw new DyadError(
+              `Failed to apply template "${templateId}". The dev server was stopped before the failure and will need to be started manually. (${
+                error instanceof Error ? error.message : String(error)
+              })`,
+              DyadErrorKind.Unknown,
+            );
+          }
           throw error;
         }
       } finally {
@@ -110,6 +121,10 @@ export function registerTemplateHandlers() {
           force: true,
         });
       }
+
+      // The new template's `.gitignore` likely doesn't contain `.dyad/`, so
+      // re-apply it before staging to keep internal metadata out of git.
+      await ensureDyadGitignored(appPath);
 
       await gitAdd({ path: appPath, filepath: "." });
 

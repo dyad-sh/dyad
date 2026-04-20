@@ -472,7 +472,7 @@ async function startCelestiaService(): Promise<ServiceStatus> {
     if (await fs.pathExists(scriptPath)) {
       launchPowerShellScript("Celestia Light Node", scriptPath);
     } else {
-      const celestiaCommand = `wsl bash -c "celestia light start --core.ip consensus.lunaroasis.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658"`;
+      const celestiaCommand = `wsl bash -c "celestia light start --core.ip rpc.celestia.pops.one --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658 --rpc.skip-auth"`;
       launchInExternalTerminal("Celestia Light Node", celestiaCommand);
     }
     

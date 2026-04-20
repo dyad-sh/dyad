@@ -404,6 +404,14 @@ export class IpcClient {
     return IpcClient.instance;
   }
 
+  /**
+   * Generic invoke for IPC channels that do not yet have a dedicated wrapper.
+   * Prefer adding a typed method per channel for new integrations.
+   */
+  public async invoke(channel: string, ...args: unknown[]): Promise<any> {
+    return this.ipcRenderer.invoke(channel, ...args);
+  }
+
   public async restartJoy(): Promise<void> {
     await this.ipcRenderer.invoke("restart-joy");
   }
@@ -2460,6 +2468,14 @@ export class IpcClient {
     request: import("../types/marketplace_types").PublishModelRequest,
   ): Promise<import("../types/marketplace_types").PublishAppResponse> {
     return this.ipcRenderer.invoke("marketplace:publish-model", request);
+  }
+
+  public async checkMintEligibility(walletAddress: string): Promise<{
+    eligible: boolean;
+    domains: string[];
+    reason?: string;
+  }> {
+    return this.ipcRenderer.invoke("marketplace:check-mint-eligibility", walletAddress);
   }
 
   // ==========================================================================

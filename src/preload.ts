@@ -239,6 +239,12 @@ const validInvokeChannels = [
   "secrets-vault:get-by-name",
   "secrets-vault:resolve-env-vars",
   "secrets-vault:sync-from-settings",
+  // Vault API key management
+  "secrets-vault:resolve-api-key",
+  "secrets-vault:get-provider-status",
+  "secrets-vault:get-provider-registry",
+  "secrets-vault:quick-store-api-key",
+  "secrets-vault:remove-api-key",
   // Offline Docs Hub
   "offline-docs:initialize",
   "offline-docs:shutdown",
@@ -306,6 +312,7 @@ const validInvokeChannels = [
   "library:pin-to-remote",
   "library:store-to-arweave",
   "library:store-to-filecoin",
+  "library:store-to-celestia",
   // adding app to favorite
   "add-to-favorite",
   "github:clone-repo-from-url",
@@ -453,6 +460,7 @@ const validInvokeChannels = [
   "celestia:config:get",
   "celestia:config:update",
   "celestia:config:reset",
+  "celestia:namespaces",
   "celestia:namespace:generate",
   "celestia:wallet:validate",
   // Creator Lifecycle Engine
@@ -562,6 +570,7 @@ const validInvokeChannels = [
   "marketplace:update-asset",
   "marketplace:unpublish",
   "marketplace:earnings",
+  "marketplace:check-mint-eligibility",
   "marketplace:export-zip",
   "marketplace:deployment-status",
   "marketplace:open",

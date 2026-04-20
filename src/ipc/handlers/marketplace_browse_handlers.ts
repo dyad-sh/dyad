@@ -1,24 +1,26 @@
 /**
  * Marketplace Browse IPC Handlers
- * Handles browsing, searching, and installing assets from JoyMarketplace
+ *
+ * Fire-and-forget architecture — browse data comes from Goldsky subgraphs,
+ * not a backend API. Assets are indexed on-chain after lazy-mint + listing.
  */
 
 import { ipcMain, app } from "electron";
 import log from "electron-log";
 import * as fs from "fs-extra";
 import * as path from "path";
+import {
+  getMarketplaceAssets,
+  getMarketplaceListings,
+  getMarketplaceStats,
+  getAIModels,
+} from "@/lib/subgraph_client";
 import type {
-  MarketplaceBrowseParams,
-  MarketplaceBrowseResult,
-  MarketplaceAssetDetail,
   InstallAssetRequest,
   InstallAssetResult,
 } from "@/types/publish_types";
 
 const logger = log.scope("marketplace_browse");
-
-const MARKETPLACE_API_URL =
-  process.env.JOYMARKETPLACE_API_URL || "https://api.joymarketplace.io";
 
 /**
  * Load cached credentials (same store as marketplace_handlers.ts)
@@ -39,70 +41,55 @@ async function getApiKey(): Promise<string | null> {
   return null;
 }
 
-/**
- * Unauthenticated marketplace GET — browsing is public
- */
-async function browseRequest<T>(
-  endpoint: string,
-  params?: Record<string, string | number | undefined>
-): Promise<T> {
-  const url = new URL(`${MARKETPLACE_API_URL}${endpoint}`);
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined) url.searchParams.set(k, String(v));
-    }
-  }
-
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-  };
-
-  // Attach auth if available (for personalized results like "installed")
-  const apiKey = await getApiKey();
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
-
-  const response = await fetch(url.toString(), { headers });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Marketplace API error: ${response.status} — ${body}`
-    );
-  }
-
-  return response.json();
-}
-
 export function registerMarketplaceBrowseHandlers() {
-  // Browse / search marketplace assets
+  // Browse / search marketplace assets — reads from Goldsky marketplace subgraph
   ipcMain.handle(
     "marketplace:browse",
-    async (_, params: MarketplaceBrowseParams): Promise<MarketplaceBrowseResult> => {
-      logger.info("Browsing marketplace", params);
-      return browseRequest<MarketplaceBrowseResult>("/v1/assets/browse", {
-        q: params.query,
-        category: params.category,
-        type: params.assetType,
-        pricing: params.pricingModel,
-        sort: params.sortBy,
-        page: params.page,
-        pageSize: params.pageSize,
-      });
+    async (_, params: {
+      query?: string;
+      category?: string;
+      assetType?: string;
+      page?: number;
+      pageSize?: number;
+    }) => {
+      logger.info("Browsing marketplace via subgraph", params);
+      const pageSize = params.pageSize ?? 20;
+      const page = params.page ?? 1;
+      const skip = (page - 1) * pageSize;
+
+      const [assets, listings, stats] = await Promise.all([
+        getMarketplaceAssets({
+          first: pageSize,
+          skip,
+          ...(params.assetType ? { assetType: params.assetType } : {}),
+        }),
+        getMarketplaceListings({ first: pageSize, skip, activeOnly: true }),
+        getMarketplaceStats(),
+      ]);
+
+      return {
+        assets,
+        listings,
+        total: stats?.totalListings ?? assets.length,
+        page,
+        pageSize,
+      };
     }
   );
 
-  // Get full detail for a single asset
+  // Get full detail for a single asset — from subgraph
   ipcMain.handle(
     "marketplace:asset-detail",
-    async (_, assetId: string): Promise<MarketplaceAssetDetail> => {
+    async (_, assetId: string) => {
       if (!assetId) throw new Error("assetId is required");
-      return browseRequest<MarketplaceAssetDetail>(`/v1/assets/${encodeURIComponent(assetId)}`);
+      const assets = await getMarketplaceAssets();
+      const asset = assets.find((a) => a.id === assetId || a.tokenId === assetId);
+      if (!asset) throw new Error(`Asset not found: ${assetId}`);
+      return asset;
     }
   );
 
-  // Install an asset from the marketplace into the local environment
+  // Install an asset — download from IPFS using the asset's contentCid
   ipcMain.handle(
     "marketplace:install-asset",
     async (_, request: InstallAssetRequest): Promise<InstallAssetResult> => {
@@ -117,29 +104,9 @@ export function registerMarketplaceBrowseHandlers() {
         );
       }
 
-      // Download the asset bundle from marketplace
-      const url = `${MARKETPLACE_API_URL}/v1/assets/${encodeURIComponent(request.assetId)}/download`;
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Download failed: ${response.status} — ${body}`);
-      }
-
-      const bundle = (await response.json()) as {
-        files?: { path: string; content: string }[];
-        config?: Record<string, unknown>;
-        localId?: string | number;
-      };
-
-      // The actual installation is asset-type-specific. For now we persist the
-      // downloaded bundle to a staging folder and return the reference so the
-      // renderer can redirect the user to the appropriate editor.
+      // In fire-and-forget architecture, asset content lives on IPFS.
+      // The renderer should resolve the asset's contentCid from the subgraph
+      // and fetch directly from IPFS gateway. This handler stages metadata.
       const stagingDir = path.join(
         app.getPath("userData"),
         "marketplace-installs",
@@ -150,28 +117,38 @@ export function registerMarketplaceBrowseHandlers() {
         assetId: request.assetId,
         assetType: request.assetType,
         installedAt: new Date().toISOString(),
-        bundle,
       });
 
       logger.info(`Asset ${request.assetId} staged at ${stagingDir}`);
 
       return {
         installed: true,
-        localId: bundle.localId ?? request.assetId,
-        message: `${request.assetType} installed successfully`,
+        localId: request.assetId,
+        message: `${request.assetType} install staged. Fetch content from IPFS.`,
       };
     }
   );
 
-  // Get featured / editorial picks
+  // Get featured — top assets by totalSales from subgraph
   ipcMain.handle("marketplace:featured", async () => {
-    return browseRequest<MarketplaceBrowseResult>("/v1/assets/featured");
+    const [assets, models] = await Promise.all([
+      getMarketplaceAssets({ first: 12, orderBy: "totalSales", orderDirection: "desc" }),
+      getAIModels({ first: 12, orderBy: "usageCount", orderDirection: "desc" }),
+    ]);
+    return { assets, models };
   });
 
-  // Get categories with counts
+  // Get categories with counts — derived from subgraph data
   ipcMain.handle("marketplace:categories", async () => {
-    return browseRequest<{ category: string; count: number }[]>(
-      "/v1/assets/categories"
-    );
+    const assets = await getMarketplaceAssets({ first: 1000 });
+    const counts = new Map<string, number>();
+    for (const a of assets) {
+      const cat = a.assetType || "other";
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([category, count]) => ({
+      category,
+      count,
+    }));
   });
 }

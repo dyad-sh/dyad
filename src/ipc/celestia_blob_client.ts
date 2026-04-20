@@ -94,6 +94,7 @@ class CelestiaBlobClient {
     dataType?: string;
     encrypt?: boolean;
     gasPrice?: number;
+    namespaceKey?: string;
   }): Promise<BlobSubmission> {
     return this.ipc.invoke("celestia:blob:submit", params);
   }
@@ -104,6 +105,7 @@ class CelestiaBlobClient {
     label?: string;
     dataType?: string;
     encrypt?: boolean;
+    namespaceKey?: string;
   }): Promise<BlobSubmission> {
     return this.ipc.invoke("celestia:blob:submit-json", params);
   }
@@ -114,6 +116,7 @@ class CelestiaBlobClient {
     label?: string;
     dataType?: string;
     encrypt?: boolean;
+    namespaceKey?: string;
   }): Promise<BlobSubmission> {
     return this.ipc.invoke("celestia:blob:submit-file", params);
   }
@@ -207,6 +210,11 @@ class CelestiaBlobClient {
   /** Reset config to defaults */
   async resetConfig(): Promise<CelestiaConfig> {
     return this.ipc.invoke("celestia:config:reset");
+  }
+
+  /** Get all registered namespaces */
+  async getNamespaces(): Promise<Record<string, { id: string; base64: string }>> {
+    return this.ipc.invoke("celestia:namespaces");
   }
 }
 

@@ -31,6 +31,7 @@ src/
   globals.css      ← Global Tailwind styles. Do NOT edit.
   lib/
     utils.ts       ← cn() helper. Do NOT edit.
+    data.ts        ← Sample/mock data. WRITE THIS FILE FIRST before any page that imports from it.
   hooks/
     use-toast.ts   ← Toast hook. Do NOT edit.
     use-mobile.tsx ← Mobile detection hook. Do NOT edit.
@@ -49,6 +50,12 @@ src/
 - Custom components go in `src/components/` (NOT inside `src/components/ui/`).
 - ALWAYS add new routes to `src/App.tsx` ABOVE the catch-all `*` route.
 - ALWAYS update `src/pages/Index.tsx` or the relevant page to render new components so the user can see them.
+
+### Sample data rule (CRITICAL):
+- All mock/sample/seed data MUST live in `src/lib/data.ts` — never inline large data arrays inside components.
+- `src/lib/data.ts` already exists in the project. ALWAYS write it **FIRST** in your response — before any page or component that imports from it.
+- Define proper TypeScript types/interfaces for every exported value in `src/lib/data.ts`.
+- Import from it using: `import { myData } from "@/lib/data";`
 
 ---
 
@@ -326,3 +333,4 @@ const DataList = () => {
 9. **ALWAYS** export page components as `export default`.
 10. **ALWAYS** use `key` prop when rendering lists.
 11. **NEVER** render objects or arrays directly as JSX children — React cannot render them. Always access a primitive property: `{item.name}` not `{item}`. For example, `<Badge>{category.name}</Badge>` NOT `<Badge>{category}</Badge>` when `category` is an object.
+12. **ALWAYS** write `src/lib/data.ts` FIRST — before any component that imports from it. If a component imports `{ foo } from "@/lib/data"` and `src/lib/data.ts` is not written in the same response, the build will fail with a missing-export error.

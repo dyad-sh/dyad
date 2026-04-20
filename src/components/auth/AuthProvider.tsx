@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryFn: async () => {
       try {
         const ipc = IpcClient.getInstance();
-        const settings = await ipc.invoke("settings:get-all");
+        const settings = await ipc.invoke("get-user-settings");
         // Derive a stable user id from available settings
         const id = settings?.userId ?? settings?.telemetryUserId ?? "local-user";
         return { id, name: settings?.username ?? undefined };

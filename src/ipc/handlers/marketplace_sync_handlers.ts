@@ -84,36 +84,44 @@ export function registerMarketplaceSyncHandlers() {
    */
   ipcMain.handle("marketplace-sync:connect", async (_, apiKey: string) => {
     try {
-      // Verify the API key with the marketplace
-      const response = await fetch(`${JOYMARKETPLACE_API.baseUrl}/v1/publisher/verify`, {
+      // Verify the API key with joy-create-verify edge function
+      const url = `${JOYMARKETPLACE_API.baseUrl}${JOYMARKETPLACE_API.endpoints.verify}`;
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
+          "x-joy-api-key": apiKey,
+          "apikey": JOYMARKETPLACE_API.supabaseAnonKey,
           "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
-        throw new Error("Invalid API key");
+        const body = await response.text();
+        throw new Error(`Verification failed (${response.status}): ${body}`);
       }
 
       const data = await response.json();
+      if (!data.ok) {
+        throw new Error("API key verification returned ok=false");
+      }
       
       // Save credentials
       await saveConfig({
         apiKey,
-        publisherId: data.publisherId,
+        publisherId: data.user_id,
       });
 
       // Initialize sync service
       await marketplaceSyncService.initialize(apiKey);
 
-      logger.info("Connected to JoyMarketplace");
+      logger.info(`Connected to JoyMarketplace (user=${data.user_id})`);
       
       return {
         success: true,
-        publisherId: data.publisherId,
-        profile: data.profile,
+        publisherId: data.user_id,
+        scopes: data.scopes,
+        network: data.network,
       };
     } catch (error) {
       logger.error("Failed to connect to marketplace:", error);

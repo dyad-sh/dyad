@@ -959,7 +959,7 @@ async function startCelestiaNode(): Promise<{
 
     // Start in tmux session
     await execAsync(
-      'wsl bash -c "tmux new-session -d -s celestia \'celestia light start --core.ip consensus-full.celestia-bootstrap.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658 2>&1 | tee ~/celestia-node.log\'"',
+      'wsl bash -c "tmux new-session -d -s celestia \'celestia light start --core.ip rpc.celestia.pops.one --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658 --rpc.skip-auth 2>&1 | tee ~/celestia-node.log\'"',
       { timeout: 10000 }
     );
 

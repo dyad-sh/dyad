@@ -170,7 +170,7 @@ export function CreateAssetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] ghost-panel">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[520px] max-h-[90vh] overflow-y-auto ghost-panel">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-violet-500" />
@@ -188,7 +188,7 @@ export function CreateAssetDialog({
             {/* Asset Type Selector */}
             <div className="grid gap-3">
               <Label>Asset Type</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {assetTypes.map((type) => {
                   const Icon = type.icon;
                   const isSelected = selectedType === type.id;

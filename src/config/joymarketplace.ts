@@ -1,6 +1,13 @@
 /**
  * JoyMarketplace.io Integration Configuration
  * Connects local JoyCreate app to the online JoyMarketplace system
+ *
+ * Architecture: fire-and-forget
+ *   1. Verify API key via Supabase edge function (joy-create-verify)
+ *   2. Pin to IPFS (Pinata / Helia)
+ *   3. Lazy-mint DropERC1155 on Polygon Amoy
+ *   4. List on MarketplaceV3
+ *   5. Goldsky subgraphs index → marketplace UI picks up
  */
 
 // =============================================================================
@@ -13,6 +20,19 @@ export const POLYGON_MAINNET = {
   name: "Polygon Mainnet",
   rpcUrl: "https://polygon-rpc.com",
   blockExplorer: "https://polygonscan.com",
+  nativeCurrency: {
+    name: "MATIC",
+    symbol: "MATIC",
+    decimals: 18,
+  },
+};
+
+export const POLYGON_AMOY = {
+  chainId: 80002,
+  chainIdHex: "0x13882",
+  name: "Polygon Amoy Testnet",
+  rpcUrl: "https://rpc-amoy.polygon.technology",
+  blockExplorer: "https://amoy.polygonscan.com",
   nativeCurrency: {
     name: "MATIC",
     symbol: "MATIC",
@@ -67,6 +87,47 @@ export const CONTRACT_ADDRESSES = {
 };
 
 // =============================================================================
+// ENS / IDENTITY CONTRACTS (Polygon Amoy – Chain ID 80002)
+// =============================================================================
+
+export const AMOY_ENS_CONTRACTS = {
+  /** ENS core registry — maps namehash → owner/resolver/ttl */
+  ENSRegistry: "0xc3a9e8066d1503d844bcf3b3be22ff4447256880" as const,
+  /** ERC-721 registrar — owns .joy 2LD tokens, handles expiry */
+  BaseRegistrar: "0x21df5f005531f028dbb39db59c69d3c5092c9aa7" as const,
+  /** CCIP-read resolver — stores creator text records */
+  JoyResolver: "0x38019fbf352f6027653eb63d1fe8c9e54b8e4a50" as const,
+  /** Public registration controller — name + duration + resolver data */
+  JoyRegistrarController: "0x40ccae3dbb263369b482588467116bed446eac7a" as const,
+  /** Gates platform mints: requires caller to own a .joy name */
+  JoyCreatorGate: "0x3af616adedf31cb2d959ece10aa4fed185853a40" as const,
+  /** ERC-1155 platform drop — lazy-minted tokens listed on MarketplaceV3 */
+  platformDrop: "0x541DbAc03B10352890E33A39b1107B0161474402" as const,
+  /** Verida DID ↔ wallet linkage SBT */
+  VeridaDIDLinkage: "0x2EF94B74319863c8Baf14A4FC75E640421DAD81A" as const,
+} as const;
+
+/** Duration constants for ENS registration (seconds) */
+export const ENS_DURATION = {
+  ONE_YEAR: 31_536_000,
+  TWO_YEARS: 63_072_000,
+  FIVE_YEARS: 157_680_000,
+} as const;
+
+/** Canonical text-record keys written to JoyResolver */
+export const JOY_TEXT_RECORD_KEYS = {
+  storeId: "joy.storeId",
+  storeName: "joy.storeName",
+  storeDescription: "joy.storeDescription",
+  storeLogo: "joy.storeLogo",
+  tagline: "joy.tagline",
+  name: "name",
+  description: "description",
+  avatar: "avatar",
+  url: "url",
+} as const;
+
+// =============================================================================
 // API CONFIGURATION
 // =============================================================================
 
@@ -75,35 +136,27 @@ export const JOYMARKETPLACE_API = {
   baseUrl: process.env.JOYMARKETPLACE_API_URL || "https://jgsbmnzhvuwiujqbaieo.supabase.co/functions/v1",
   webUrl: process.env.JOYMARKETPLACE_WEB_URL || "https://joymarketplace.io",
   
-  // Supabase backend (for direct database operations)
+  // Supabase backend
   supabaseUrl: process.env.JOYMARKETPLACE_SUPABASE_URL || "https://jgsbmnzhvuwiujqbaieo.supabase.co",
-  supabaseAnonKey: process.env.JOYMARKETPLACE_SUPABASE_ANON_KEY || "",
+  supabaseAnonKey: process.env.JOYMARKETPLACE_SUPABASE_ANON_KEY
+    || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+    || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impnc2JtbnpodnV3aXVqcWJhaWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA2MDAxNTEsImV4cCI6MjA1NjE3NjE1MX0.jGGW8mTgX7jXcWiylbxmjOwCIGdl226LRauVMXiWtc4",
   
-  // API Endpoints (Edge Functions)
+  // API Endpoints (Supabase Edge Functions)
   endpoints: {
-    // Auth & Profile
-    verifyPublisher: "/joycreate-publisher-verify",
-    getProfile: "/joycreate-publisher-verify",
+    // The only backend endpoint — verifies the JOY_API_KEY and returns
+    // { ok, user_id, scopes, network } including Goldsky subgraph URLs.
+    verify: "/joy-create-verify",
     
-    // Listings Sync - syncs to user's store (digital_assets + store_ai_assets)
+    // Listing sync (optional — JoyCreate can also go direct to contracts)
     syncListing: "/joycreate-sync-listing",
     
-    // Receipts - ingest IPLD inference receipts
+    // Receipts — ingest IPLD inference receipts
     ingestReceipt: "/joycreate-receipt-ingest",
-    
-    // Legacy endpoints (kept for compatibility)
-    listAssets: "/marketplace-listing",
-    getAsset: "/marketplace-listing",
-    publishAsset: "/marketplace-listing",
-    updateAsset: "/marketplace-listing",
-    archiveAsset: "/marketplace-listing",
-    verifyReceipt: "/joycreate-receipt-ingest",
-    getEarnings: "/database-operations",
-    requestPayout: "/process-royalty",
   },
   
   // Auth scheme
-  authScheme: "Bearer", // Authorization: Bearer <API_KEY>
+  authScheme: "Bearer", // Authorization: Bearer <JOY_API_KEY>
 };
 
 // =============================================================================
@@ -429,6 +482,44 @@ export const CONTRACT_ABIS = {
     "event RevenueDistributed(uint256 indexed tokenId, uint256 amount, uint256 creatorShare, uint256 platformShare)",
     "event Withdrawn(address indexed recipient, uint256 amount)",
     "event SharesUpdated(uint256 indexed tokenId, address[] recipients, uint256[] shares)",
+  ],
+
+  // ── ENS / Identity contracts (Polygon Amoy) ─────────────────────────────
+
+  /** JoyRegistrarController — public registration */
+  JOY_REGISTRAR_CONTROLLER: [
+    "function register(string name, address owner, uint256 duration, address resolver, bytes[] resolverData) payable",
+    "function available(string name) view returns (bool)",
+    "function rentPrice(string name, uint256 duration) view returns (uint256)",
+  ],
+
+  /** JoyResolver — CCIP-read resolver with text records */
+  JOY_RESOLVER: [
+    "function setText(bytes32 node, string key, string value)",
+    "function text(bytes32 node, string key) view returns (string)",
+    "function addr(bytes32 node) view returns (address)",
+    "function setAddr(bytes32 node, address a)",
+  ],
+
+  /** JoyCreatorGate — gates platform mints to .joy name owners */
+  JOY_CREATOR_GATE: [
+    "function mint(address creator, uint256 tokenId, uint256 quantity, bytes data)",
+    "function canMint(address creator) view returns (bool)",
+  ],
+
+  /** BaseRegistrar — ERC-721 .joy name tokens */
+  BASE_REGISTRAR: [
+    "function ownerOf(uint256 tokenId) view returns (address)",
+    "function nameExpires(uint256 id) view returns (uint256)",
+    "function available(uint256 id) view returns (bool)",
+  ],
+
+  /** ENSRegistry — core name registry */
+  ENS_REGISTRY: [
+    "function owner(bytes32 node) view returns (address)",
+    "function resolver(bytes32 node) view returns (address)",
+    "function ttl(bytes32 node) view returns (uint64)",
+    "function recordExists(bytes32 node) view returns (bool)",
   ],
 };
 

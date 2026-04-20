@@ -123,6 +123,14 @@ const ChatMessage = ({
     return null;
   }, [message.commitHash, message.role, liveVersions]);
 
+  // Calculate version number (sequential: oldest = 1, newest = liveVersions.length)
+  const versionNumber = useMemo(() => {
+    if (messageVersion && liveVersions.length) {
+      return liveVersions.length - liveVersions.indexOf(messageVersion);
+    }
+    return null;
+  }, [messageVersion, liveVersions]);
+
   // handle copy request id
   const [copiedRequestId, setCopiedRequestId] = useState(false);
   const copiedRequestIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -283,21 +291,20 @@ const ChatMessage = ({
               <Clock className="h-3 w-3" />
               <span>{formatTimestamp(message.createdAt)}</span>
             </div>
-            {messageVersion && messageVersion.message && (
+            {messageVersion && messageVersion.message && versionNumber && (
               <div className="flex items-center space-x-1">
                 <GitCommit className="h-3 w-3" />
-                {messageVersion && messageVersion.message && (
-                  <span
-                    className="max-w-50 truncate font-medium"
-                    title={messageVersion.message}
-                  >
-                    {
-                      messageVersion.message
-                        .replace(/^\[dyad\]\s*/i, "")
-                        .split("\n")[0]
-                    }
-                  </span>
-                )}
+                <span className="font-medium">{`Version ${versionNumber}:`}</span>
+                <span
+                  className="max-w-50 truncate"
+                  title={messageVersion.message}
+                >
+                  {
+                    messageVersion.message
+                      .replace(/^\[dyad\]\s*/i, "")
+                      .split("\n")[0]
+                  }
+                </span>
               </div>
             )}
             {message.requestId && (

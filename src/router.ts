@@ -69,6 +69,13 @@ import { profileRoute } from "./routes/profile";
 import { adminRoute } from "./routes/admin";
 import { auditLogRoute } from "./routes/audit-log";
 import { backupRoute } from "./routes/backup";
+import { federationRoute } from "./routes/federation";
+import { analyticsRoute } from "./routes/analytics";
+import { teamRoute } from "./routes/team";
+import { imageStudioRoute } from "./routes/image-studio";
+import { videoStudioRoute } from "./routes/video-studio";
+import { ssiCredentialsRoute } from "./routes/ssi-credentials";
+import { creatorProfileRoute } from "./routes/creator-profile";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -145,6 +152,13 @@ const routeTree = rootRoute.addChildren([
   adminRoute,
   auditLogRoute,
   backupRoute,
+  federationRoute,
+  analyticsRoute,
+  teamRoute,
+  imageStudioRoute,
+  videoStudioRoute,
+  ssiCredentialsRoute,
+  creatorProfileRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

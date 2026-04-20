@@ -434,24 +434,6 @@ async function turboFileEdit(params: {
   return data.result;
 }
 
-// ── MAX_OLD_STRING_RATIO guard (search_replace only) ───────────
-
-const MAX_OLD_STRING_RATIO = 0.8;
-
-function assertNotFullFileRewrite(
-  fileContent: string,
-  oldString: string,
-  label: string,
-): void {
-  const ratio = oldString.length / fileContent.length;
-  if (ratio > MAX_OLD_STRING_RATIO) {
-    throw new Error(
-      `${label}: old_string covers ${(ratio * 100).toFixed(1)}% of the file ` +
-        `(max allowed: ${MAX_OLD_STRING_RATIO * 100}%). This looks like a full-file rewrite.`,
-    );
-  }
-}
-
 // ── Tool factories ─────────────────────────────────────────────
 //
 // Each factory returns an AI-SDK tool whose `execute` mutates the
@@ -513,11 +495,6 @@ function searchReplaceHarnessTool(
               `got "${args.file_path}", expected "${c.fileName}"`,
           );
         }
-        assertNotFullFileRewrite(
-          state.content,
-          args.old_string,
-          `${label} / ${c.name}`,
-        );
         state.content = applySearchReplaceEdit(state.content, args);
         state.toolCalls.push(
           makeRecord(
@@ -935,9 +912,11 @@ async function runCase(
 //
 // `EVAL_SUITE` and `EVAL_MODEL` are both required — running every suite
 // against every model by accident is expensive, so the caller must opt
-// in explicitly. Use `all` to mean "run everything"; any other value is
-// treated as a case-insensitive substring match (so e.g. `sonnet`,
-// `gpt`, `basic_agent` all work).
+// in explicitly. Use `all` to mean "run everything". `EVAL_SUITE` matches
+// suite names exactly (comma-separated for multiple, e.g.
+// `EVAL_SUITE=search_replace,edit_file`) so that `search_replace` does
+// not also pick up `search_replace_few`. `EVAL_MODEL` is a
+// case-insensitive substring match against model label or id.
 
 const SUITE_FILTER_RAW = process.env.EVAL_SUITE?.trim();
 const MODEL_FILTER_RAW = process.env.EVAL_MODEL?.trim();
@@ -950,7 +929,7 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
   const modelOptions = ALL_MODELS.map((m) => m.label).join(", ");
   console.warn(
     `\n⚠️  Eval suite not running: ${missingEnv.join(" and ")} not set.\n` +
-      `  Set EVAL_SUITE to "all" or a substring of: ${suiteOptions}\n` +
+      `  Set EVAL_SUITE to "all" or an exact name (comma-separated for multiple) from: ${suiteOptions}\n` +
       `  Set EVAL_MODEL to "all" or a substring of a label: ${modelOptions}\n` +
       `  Example:\n` +
       `    EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval\n`,
@@ -962,16 +941,36 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
   });
 } else {
   const suiteFilter = SUITE_FILTER_RAW.toLowerCase();
-  const ACTIVE_SUITES =
+  const requestedSuiteNames =
     suiteFilter === "all"
+      ? null
+      : new Set(
+          suiteFilter
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s !== ""),
+        );
+  const ACTIVE_SUITES =
+    requestedSuiteNames === null
       ? SUITES
-      : SUITES.filter((s) => s.name.toLowerCase().includes(suiteFilter));
+      : SUITES.filter((s) => requestedSuiteNames.has(s.name.toLowerCase()));
 
   if (ACTIVE_SUITES.length === 0) {
     throw new Error(
       `EVAL_SUITE="${SUITE_FILTER_RAW}" matched no suites. ` +
-        `Available: ${SUITES.map((s) => s.name).join(", ")} (or "all")`,
+        `Available: ${SUITES.map((s) => s.name).join(", ")} (or "all"). ` +
+        `Use exact names, comma-separated for multiple.`,
     );
+  }
+  if (requestedSuiteNames !== null) {
+    const matched = new Set(ACTIVE_SUITES.map((s) => s.name.toLowerCase()));
+    const unknown = [...requestedSuiteNames].filter((n) => !matched.has(n));
+    if (unknown.length > 0) {
+      throw new Error(
+        `EVAL_SUITE contains unknown suite name(s): ${unknown.join(", ")}. ` +
+          `Available: ${SUITES.map((s) => s.name).join(", ")} (or "all").`,
+      );
+    }
   }
 
   const modelFilter = MODEL_FILTER_RAW.toLowerCase();

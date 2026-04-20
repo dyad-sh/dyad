@@ -30,7 +30,6 @@ import {
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
-import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -104,6 +103,7 @@ import {
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -536,7 +536,20 @@ ${componentSnippet}
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
-      const settings = readSettings();
+      const {
+        settings: storedSettings,
+        mode: selectedChatMode,
+        fallbackReason: chatModeFallbackReason,
+      } = await resolveChatModeForTurn({ storedChatMode: chat.chatMode });
+      const settings = {
+        ...storedSettings,
+        selectedChatMode,
+      };
+      safeSend(event.sender, "chat:response:chunk", {
+        chatId: req.chatId,
+        effectiveChatMode: selectedChatMode,
+        chatModeFallbackReason,
+      });
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message
@@ -653,8 +666,7 @@ ${componentSnippet}
           updatedChat.app.id, // Exclude current app
         );
         const willUseLocalAgentStream =
-          (settings.selectedChatMode === "local-agent" ||
-            settings.selectedChatMode === "ask") &&
+          (selectedChatMode === "local-agent" || selectedChatMode === "ask") &&
           !mentionedAppsCodebases.length;
 
         const isDeepContextEnabled =
@@ -772,7 +784,7 @@ ${componentSnippet}
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode: settings.selectedChatMode,
+          chatMode: selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
@@ -822,7 +834,7 @@ ${componentSnippet}
             getSupabaseAvailableSystemPrompt(supabaseClientCode) +
             "\n\n" +
             // For local agent, we will explicitly fetch the database context when needed.
-            (settings.selectedChatMode === "local-agent"
+            (selectedChatMode === "local-agent"
               ? ""
               : await getSupabaseContext({
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
@@ -838,12 +850,12 @@ ${componentSnippet}
               neonProjectId: updatedChat.app.neonProjectId!,
               neonActiveBranchId: updatedChat.app.neonActiveBranchId,
               neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
-              selectedChatMode: settings.selectedChatMode ?? "",
+              selectedChatMode,
             })) +
             "\n\n";
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
-          settings.selectedChatMode !== "local-agent" &&
+          selectedChatMode !== "local-agent" &&
           // If in security review mode, we don't need to mention integrations are available.
           !isSecurityReviewIntent
         ) {
@@ -873,7 +885,7 @@ ${componentSnippet}
         // print out the dyad-write tags.
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
-        const isAskMode = settings.selectedChatMode === "ask";
+        const isAskMode = selectedChatMode === "ask";
         if (hasUploadedAttachments) {
           if (willUseLocalAgentStream && !isAskMode) {
             systemPrompt += `
@@ -946,7 +958,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Thinking tags are generally not critical for the context
           // and eats up extra tokens.
           content:
-            settings.selectedChatMode === "ask"
+            selectedChatMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
           providerOptions: {
@@ -1164,10 +1176,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle ask mode: use local-agent in read-only mode
         // This gives users access to code reading tools while in ask mode
         // Ask mode does not consume free agent quota
-        if (
-          settings.selectedChatMode === "ask" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (selectedChatMode === "ask" && !mentionedAppsCodebases.length) {
           // Reconstruct system prompt for local-agent read-only mode
           const readOnlySystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1196,6 +1205,7 @@ This conversation includes one or more image attachments. When the user uploads 
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              settingsOverride: settings,
             },
           );
           if (!streamSuccess) {
@@ -1208,10 +1218,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle plan mode: use local-agent with plan tools only
         // Plan mode is for requirements gathering and creating implementation plans
-        if (
-          settings.selectedChatMode === "plan" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (selectedChatMode === "plan" && !mentionedAppsCodebases.length) {
           // Reconstruct system prompt for plan mode
           const planModeSystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1226,6 +1233,7 @@ This conversation includes one or more image attachments. When the user uploads 
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            settingsOverride: settings,
           });
           return;
         }
@@ -1234,7 +1242,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)
         if (
-          settings.selectedChatMode === "local-agent" &&
+          selectedChatMode === "local-agent" &&
           !mentionedAppsCodebases.length
         ) {
           // Check quota for Basic Agent mode (non-Pro users)
@@ -1271,6 +1279,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 systemPrompt,
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
+                settingsOverride: settings,
               },
             );
           } finally {
@@ -1288,7 +1297,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // 2. Mode is "build" AND there are enabled MCP servers
         if (
           settings.enableMcpServersForBuildMode &&
-          settings.selectedChatMode === "build"
+          selectedChatMode === "build"
         ) {
           const tools = await getMcpTools(event);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;
@@ -1355,10 +1364,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           fullResponse = result.fullResponse;
 
-          if (
-            settings.selectedChatMode !== "ask" &&
-            isTurboEditsV2Enabled(settings)
-          ) {
+          if (selectedChatMode !== "ask" && isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
@@ -1457,7 +1463,7 @@ ${formattedSearchReplaceIssues}`,
 
           if (
             !abortController.signal.aborted &&
-            settings.selectedChatMode !== "ask" &&
+            selectedChatMode !== "ask" &&
             hasUnclosedDyadWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
@@ -1511,7 +1517,7 @@ ${formattedSearchReplaceIssues}`,
             // installed yet.
             addDependencies.length === 0 &&
             settings.enableAutoFixProblems &&
-            settings.selectedChatMode !== "ask"
+            selectedChatMode !== "ask"
           ) {
             try {
               // IF auto-fix is enabled
@@ -1695,11 +1701,7 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        const settings = readSettings();
-        if (
-          settings.autoApproveChanges &&
-          settings.selectedChatMode !== "ask"
-        ) {
+        if (settings.autoApproveChanges && selectedChatMode !== "ask") {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,

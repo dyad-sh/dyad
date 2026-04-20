@@ -18,7 +18,11 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
+import {
+  isDyadProEnabled,
+  isBasicAgentMode,
+  type UserSettings,
+} from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
@@ -267,6 +271,7 @@ export async function handleLocalAgentStream(
     readOnly = false,
     planModeOnly = false,
     messageOverride,
+    settingsOverride,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -286,9 +291,10 @@ export async function handleLocalAgentStream(
      * Used for summarization where messages need to be transformed.
      */
     messageOverride?: ModelMessage[];
+    settingsOverride?: UserSettings;
   },
 ): Promise<boolean> {
-  const settings = readSettings();
+  const settings = settingsOverride ?? readSettings();
   const maxToolCallSteps =
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";

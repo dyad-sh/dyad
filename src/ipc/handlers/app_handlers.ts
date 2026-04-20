@@ -64,6 +64,7 @@ import {
   uploadCloudSandboxFiles,
 } from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
+import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 import {
   gitCommit,
   gitAdd,
@@ -1205,11 +1206,16 @@ export function registerAppHandlers() {
       })
       .returning();
 
+    const initialChatMode = await getInitialChatModeForNewChat(
+      params.initialChatMode,
+    );
+
     // Create an initial chat for this app
     const [chat] = await db
       .insert(chats)
       .values({
         appId: app.id,
+        chatMode: initialChatMode,
       })
       .returning();
 

@@ -44,7 +44,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
-  const { settings, updateSettings, envVars } = useSettings();
+  const { settings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
@@ -108,20 +108,18 @@ export function ChatList({ show }: { show?: boolean }) {
     // Only create a new chat if an app is selected
     if (selectedAppId) {
       try {
+        const initialChatMode = settings
+          ? getEffectiveDefaultChatMode(
+              settings,
+              envVars,
+              !isQuotaLoading && !isQuotaExceeded,
+            )
+          : undefined;
         // Create a new chat with an empty title for now
-        const chatId = await ipc.chat.createChat(selectedAppId);
-
-        // Set the default chat mode for the new chat
-        // Only consider quota available if it has finished loading and is not exceeded
-        if (settings) {
-          const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
-          const effectiveDefaultMode = getEffectiveDefaultChatMode(
-            settings,
-            envVars,
-            freeAgentQuotaAvailable,
-          );
-          updateSettings({ selectedChatMode: effectiveDefaultMode });
-        }
+        const chatId = await ipc.chat.createChat({
+          appId: selectedAppId,
+          initialChatMode,
+        });
 
         // Refresh the chat list first so the new chat is in the cache
         // before selectChat adds it to the tab bar

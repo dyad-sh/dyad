@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
+import type { StoredChatMode } from "@/lib/schemas";
 
 export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
 
@@ -82,6 +83,7 @@ export const chats = sqliteTable("chats", {
   compactedAt: integer("compacted_at", { mode: "timestamp" }),
   compactionBackupPath: text("compaction_backup_path"),
   pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
+  chatMode: text("chat_mode").$type<StoredChatMode | null>(),
 });
 
 export const messages = sqliteTable("messages", {

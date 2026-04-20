@@ -5,6 +5,12 @@ import {
   createClient,
   createStreamClient,
 } from "../contracts/core";
+import {
+  ChatModeSchema,
+  StoredChatModeSchema,
+  migrateStoredChatMode,
+  type ChatMode,
+} from "../../lib/schemas";
 
 // =============================================================================
 // Chat Schemas
@@ -29,6 +35,10 @@ export const MessageSchema = z.object({
 
 export type Message = z.infer<typeof MessageSchema>;
 
+export const NullableChatModeSchema = StoredChatModeSchema.nullable().transform(
+  (mode): ChatMode | null => migrateStoredChatMode(mode ?? undefined) ?? null,
+);
+
 /**
  * Schema for a Chat object.
  */
@@ -38,6 +48,7 @@ export const ChatSchema = z.object({
   messages: z.array(MessageSchema),
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
+  chatMode: NullableChatModeSchema,
 });
 
 export type Chat = z.infer<typeof ChatSchema>;
@@ -86,6 +97,7 @@ export const ChatStreamParamsSchema = z.object({
   redo: z.boolean().optional(),
   attachments: z.array(ChatAttachmentSchema).optional(),
   selectedComponents: z.array(ComponentSelectionSchema).optional(),
+  requestedChatMode: ChatModeSchema.optional(),
 });
 
 export type ChatStreamParams = z.infer<typeof ChatStreamParamsSchema>;
@@ -104,7 +116,13 @@ export const ChatResponseChunkSchema = z.object({
   messages: z.array(MessageSchema).optional(),
   streamingMessageId: z.number().optional(),
   streamingContent: z.string().optional(),
+  effectiveChatMode: ChatModeSchema.optional(),
+  chatModeFallbackReason: z
+    .enum(["pro-required", "quota-exhausted", "no-provider"])
+    .optional(),
 });
+
+export type ChatResponseChunk = z.infer<typeof ChatResponseChunkSchema>;
 
 /**
  * Schema for chat response end event.
@@ -143,7 +161,8 @@ export const CreateChatResultSchema = z.number();
  */
 export const UpdateChatParamsSchema = z.object({
   chatId: z.number(),
-  title: z.string(),
+  title: z.string().optional(),
+  chatMode: ChatModeSchema.nullable().optional(),
 });
 
 export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;
@@ -194,13 +213,20 @@ export const chatContracts = {
         appId: z.number(),
         title: z.string().nullable(),
         createdAt: z.date(),
+        chatMode: NullableChatModeSchema,
       }),
     ),
   }),
 
   createChat: defineContract({
     channel: "create-chat",
-    input: z.number(), // appId
+    input: z.union([
+      z.number(), // appId (legacy shape)
+      z.object({
+        appId: z.number(),
+        initialChatMode: ChatModeSchema.optional(),
+      }),
+    ]),
     output: CreateChatResultSchema,
   }),
 

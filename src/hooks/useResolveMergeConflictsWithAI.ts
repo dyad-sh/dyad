@@ -12,6 +12,9 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSettings } from "@/hooks/useSettings";
+import { isDyadProEnabled } from "@/lib/schemas";
+import { showChatModeFallbackToast } from "@/lib/chatModeToast";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
@@ -38,6 +41,7 @@ export function useResolveMergeConflictsWithAI({
   const isResolvingRef = useRef(false);
   const { invalidateChats } = useChats(appId);
   const { refreshApp } = useLoadApp(appId);
+  const { settings } = useSettings();
 
   const resolveWithAI = useCallback(async () => {
     if (!appId) {
@@ -97,7 +101,24 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           prompt,
         },
         {
-          onChunk: ({ messages, streamingMessageId, streamingContent }) => {
+          onChunk: ({
+            messages,
+            streamingMessageId,
+            streamingContent,
+            effectiveChatMode,
+            chatModeFallbackReason,
+          }) => {
+            if (effectiveChatMode) {
+              if (chatModeFallbackReason) {
+                showChatModeFallbackToast({
+                  reason: chatModeFallbackReason,
+                  effectiveMode: effectiveChatMode,
+                  isPro: settings ? isDyadProEnabled(settings) : false,
+                });
+              }
+              return;
+            }
+
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {
                 const next = new Map(prev);
@@ -183,6 +204,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     navigate,
     invalidateChats,
     refreshApp,
+    settings,
   ]);
 
   return { resolveWithAI, isResolving };

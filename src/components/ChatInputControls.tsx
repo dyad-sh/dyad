@@ -5,6 +5,8 @@ import { ChatModeSelector } from "./ChatModeSelector";
 import { McpToolsPicker } from "@/components/McpToolsPicker";
 import { useSettings } from "@/hooks/useSettings";
 import { useMcp } from "@/hooks/useMcp";
+import { useChatMode } from "@/hooks/useChatMode";
+import { useRouterState } from "@tanstack/react-router";
 
 export function ChatInputControls({
   showContextFilesPicker = false,
@@ -12,6 +14,12 @@ export function ChatInputControls({
   showContextFilesPicker?: boolean;
 }) {
   const { settings } = useSettings();
+  const routerState = useRouterState();
+  const chatId =
+    routerState.location.pathname === "/chat"
+      ? (routerState.location.search.id as number | undefined)
+      : null;
+  const { selectedMode } = useChatMode(chatId);
   const { servers } = useMcp();
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
 
@@ -20,7 +28,7 @@ export function ChatInputControls({
   // 2. Mode is "build" AND there are enabled MCP servers
   const showMcpToolsPicker =
     !!settings?.enableMcpServersForBuildMode &&
-    settings?.selectedChatMode === "build" &&
+    selectedMode === "build" &&
     enabledMcpServersCount > 0;
 
   return (

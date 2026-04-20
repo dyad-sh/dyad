@@ -31,6 +31,9 @@ import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
+import { useSettings } from "@/hooks/useSettings";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { getEffectiveDefaultChatMode } from "@/lib/schemas";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -53,6 +56,8 @@ export function ChatHeader({
   const { invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
   const { isStreaming } = useStreamChat();
+  const { settings, envVars } = useSettings();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const isAnyCheckoutVersionInProgress = useAtomValue(
     isAnyCheckoutVersionInProgressAtom,
   );
@@ -88,7 +93,17 @@ export function ChatHeader({
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const chatId = await ipc.chat.createChat(appId);
+        const initialChatMode = settings
+          ? getEffectiveDefaultChatMode(
+              settings,
+              envVars,
+              !isQuotaLoading && !isQuotaExceeded,
+            )
+          : undefined;
+        const chatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode,
+        });
         await invalidateChats();
         selectChat({ chatId, appId });
       } catch (error) {

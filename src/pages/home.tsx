@@ -184,15 +184,26 @@ export default function HomePage() {
 
       let chatId: number;
       let appId: number;
+      const initialChatMode = settings
+        ? getEffectiveDefaultChatMode(
+            settings,
+            envVars,
+            !isQuotaLoading && !isQuotaExceeded,
+          )
+        : "build";
 
       if (selectedApp) {
         // Existing app flow: create a new chat in the selected app
-        chatId = await ipc.chat.createChat(selectedApp.id);
+        chatId = await ipc.chat.createChat({
+          appId: selectedApp.id,
+          initialChatMode,
+        });
         appId = selectedApp.id;
       } else {
         // New app flow (default behavior)
         const result = await ipc.app.createApp({
           name: generateCuteAppName(),
+          initialChatMode,
         });
         chatId = result.chatId;
         appId = result.app.id;

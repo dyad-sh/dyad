@@ -10,6 +10,9 @@ import {
 import { useStreamChat } from "./useStreamChat";
 import { usePostHog } from "posthog-js/react";
 import { useSettings } from "./useSettings";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import type { Chat } from "@/ipc/types";
 
 /**
  * Root-level hook that processes queued messages for any chat,
@@ -26,6 +29,7 @@ export function useQueueProcessor() {
   const [isStreamingById] = useAtom(isStreamingByIdAtom);
   const posthog = usePostHog();
   const { settings } = useSettings();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Find any chatId that has both completed successfully and has queued messages
@@ -68,9 +72,11 @@ export function useQueueProcessor() {
 
       if (!messageToSend) return;
 
-      posthog.capture("chat:submit", {
-        chatMode: settings?.selectedChatMode,
-      });
+      const chatMode =
+        queryClient.getQueryData<Chat>(queryKeys.chats.detail({ chatId }))
+          ?.chatMode ?? settings?.selectedChatMode;
+
+      posthog.capture("chat:submit", { chatMode });
 
       streamMessage({
         prompt: messageToSend.prompt,
@@ -92,6 +98,7 @@ export function useQueueProcessor() {
     setQueuedMessagesById,
     setStreamCompletedSuccessfullyById,
     posthog,
+    queryClient,
     settings?.selectedChatMode,
   ]);
 }

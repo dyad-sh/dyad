@@ -124,6 +124,7 @@ export type {
   FileAttachment,
   ChatAttachment,
   ChatStreamParams,
+  ChatResponseChunk,
   ChatResponseEnd,
   UpdateChatParams,
   TokenCountParams,

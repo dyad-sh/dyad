@@ -135,14 +135,14 @@ jobs:
 
             ### Surfacing Helpful Comments
 
-            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@**, **wwwillchen-bot@**, **dyadbot@**, or **dyad-assistant@** on the original issue, include a recommendation in your comment:
+            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@**, **keppo-bot@**, or **dyad-assistant@** on the original issue, include a recommendation in your comment:
 
             > You might want to try [summary of the suggestion] based on this earlier [comment]([direct link to the comment]).
 
             **Notes:**
 
             - Only do this for high-confidence duplicates where you're very confident the issues are the same.
-            - Only surface comments from wwwillchen@, wwwillchen-bot@, dyadbot@, or dyad-assistant@ — do not surface comments from other users.
+            - Only surface comments from wwwillchen@, keppo-bot@, or dyad-assistant@ — do not surface comments from other users.
             - Link directly to the specific comment, not just the issue.
 
             ### If No Duplicates Found

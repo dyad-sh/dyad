@@ -15,15 +15,16 @@ import {
   getOrderedRecentChatIds,
   getVisibleTabCapacity,
   getFallbackChatIdAfterClose,
+  groupChatIdsByApp,
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
 
-function chat(id: number): ChatSummary {
+function chat(id: number, appId = 1): ChatSummary {
   return {
     id,
-    appId: 1,
+    appId,
     title: `Chat ${id}`,
     createdAt: new Date(),
   };
@@ -195,5 +196,44 @@ describe("close multiple tabs", () => {
     store.set(recentViewedChatIdsAtom, [1, 2, 3]);
     store.set(closeMultipleTabsAtom, []);
     expect(store.get(recentViewedChatIdsAtom)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("groupChatIdsByApp", () => {
+  function toMap(chats: ChatSummary[]): Map<number, ChatSummary> {
+    return new Map(chats.map((c) => [c.id, c]));
+  }
+
+  it("groups interleaved apps while preserving within-group order", () => {
+    // app1: chats 1, 3, 5  |  app2: chats 2, 4
+    const chats = [chat(1, 1), chat(2, 2), chat(3, 1), chat(4, 2), chat(5, 1)];
+    const result = groupChatIdsByApp([1, 2, 3, 4, 5], toMap(chats));
+    // app1 group first (seen first at index 0), then app2
+    expect(result).toEqual([1, 3, 5, 2, 4]);
+  });
+
+  it("returns same order when all tabs belong to one app", () => {
+    const chats = [chat(1, 1), chat(2, 1), chat(3, 1)];
+    const result = groupChatIdsByApp([1, 2, 3], toMap(chats));
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  it("handles empty input", () => {
+    expect(groupChatIdsByApp([], new Map())).toEqual([]);
+  });
+
+  it("orders app groups by first appearance", () => {
+    // app3 appears first, then app1, then app2
+    const chats = [chat(10, 3), chat(20, 1), chat(30, 2), chat(40, 3)];
+    const result = groupChatIdsByApp([10, 20, 30, 40], toMap(chats));
+    expect(result).toEqual([10, 40, 20, 30]);
+  });
+
+  it("handles chat IDs missing from chatsById gracefully", () => {
+    const chats = [chat(1, 1), chat(3, 2)];
+    // chatId 2 is not in the map — should be placed in fallback group (-1)
+    const result = groupChatIdsByApp([1, 2, 3], toMap(chats));
+    // app1 first (chat 1), then unknown (chat 2), then app2 (chat 3)
+    expect(result).toEqual([1, 2, 3]);
   });
 });

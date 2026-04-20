@@ -225,6 +225,11 @@ export const queryKeys = {
     info: ["userBudgetInfo"] as const,
   },
 
+  cloudSandboxes: {
+    status: ({ appId }: { appId: number | null }) =>
+      ["cloudSandboxStatus", appId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Free Agent Quota
   // ─────────────────────────────────────────────────────────────────────────────
@@ -293,8 +298,17 @@ export const queryKeys = {
   // Neon
   // ─────────────────────────────────────────────────────────────────────────────
   neon: {
+    all: ["neon"] as const,
+    projects: ["neon", "projects"] as const,
     project: ({ appId }: { appId: number | null }) =>
-      ["neon-project", appId] as const,
+      ["neon", "project", appId] as const,
+    emailPasswordConfig: ({
+      appId,
+      branchId,
+    }: {
+      appId: number | null;
+      branchId: string | null;
+    }) => ["neon", "emailPasswordConfig", appId, branchId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -360,6 +374,9 @@ export type AppQueryKey =
       (typeof queryKeys.languageModels)[keyof typeof queryKeys.languageModels]
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
+  | QueryKeyOf<
+      (typeof queryKeys.cloudSandboxes)[keyof typeof queryKeys.cloudSandboxes]
+    >
   | QueryKeyOf<
       (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
     >

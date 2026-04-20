@@ -9,6 +9,8 @@ import {
   ArrowUp,
   ArrowDown,
   Paperclip,
+  PlayIcon,
+  PauseIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +22,9 @@ interface QueuedMessagesListProps {
   onMoveDown: (id: string) => void;
   isStreaming: boolean;
   hasError: boolean;
+  isPaused: boolean;
+  onPauseQueue: () => void;
+  onResumeQueue: () => void;
 }
 
 interface QueuedMessageItemRowProps {
@@ -106,6 +111,9 @@ export function QueuedMessagesList({
   onMoveDown,
   isStreaming,
   hasError,
+  isPaused,
+  onPauseQueue,
+  onResumeQueue,
 }: QueuedMessagesListProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -118,25 +126,70 @@ export function QueuedMessagesList({
       : "ready to send";
 
   return (
-    <div className="border-b border-border bg-muted/30">
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/50 transition-colors"
-      >
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+    <div
+      data-testid="queue-header"
+      className={cn(
+        "border-b border-border bg-muted/30",
+        isPaused && "bg-yellow-500/10 border-yellow-500/50",
+      )}
+    >
+      <div className="w-full flex items-center justify-between px-3 py-2">
+        {/* Make left header area clickable for expand/collapse */}
+        <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setIsExpanded((v) => !v);
+            }
+          }}
+          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          onClick={() => setIsExpanded((v) => !v)}
+          title={isExpanded ? "Collapse" : "Expand"}
+        >
           <ListOrdered className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm">{messages.length} Queued</span>
-          <span className="text-xs text-muted-foreground">- {statusText}</span>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          {!isPaused && (
+            <span className="text-xs text-muted-foreground">
+              - {statusText}
+            </span>
+          )}
+          {isPaused && (
+            <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 font-medium">
+              Paused
+            </span>
           )}
         </div>
-      </button>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+          <button
+            type="button"
+            onClick={isPaused ? onResumeQueue : onPauseQueue}
+            aria-label={isPaused ? "Resume queue" : "Pause queue"}
+            title={isPaused ? "Resume queue" : "Pause queue"}
+            className={cn(
+              "ml-2 px-2 py-1 rounded-lg transition-colors duration-150 cursor-pointer",
+              isPaused
+                ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/30"
+                : "text-muted-foreground hover:text-primary hover:bg-muted/50",
+            )}
+          >
+            {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1 hover:bg-muted rounded cursor-pointer"
+            title={isExpanded ? "Collapse" : "Expand"}
+          >
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
+        </div>
+      </div>
 
       <div
         className="grid transition-[grid-template-rows] duration-200 ease-in-out"

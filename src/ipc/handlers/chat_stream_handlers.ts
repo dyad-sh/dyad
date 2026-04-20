@@ -27,6 +27,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
@@ -78,6 +79,10 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
+import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
@@ -686,12 +691,16 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistory = updatedChat.messages.map((message) => ({
+        const messageHistoryRaw = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
+
+        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
@@ -820,12 +829,22 @@ ${componentSnippet}
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
+        } else if (updatedChat.app?.neonProjectId) {
+          // Neon is connected — inject Neon prompt instead of Supabase
+          systemPrompt +=
+            "\n\n" +
+            (await buildNeonPromptForApp({
+              appPath: updatedChat.app.path,
+              neonProjectId: updatedChat.app.neonProjectId!,
+              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
+              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
+              selectedChatMode: settings.selectedChatMode ?? "",
+            })) +
+            "\n\n";
         } else if (
-          // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId &&
-          // In local agent mode, we will suggest supabase as part of the add-integration tool
+          // In local agent mode, we will suggest integrations as part of the add-integration tool
           settings.selectedChatMode !== "local-agent" &&
-          // If in security review mode, we don't need to mention supabase is available.
+          // If in security review mode, we don't need to mention integrations are available.
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
@@ -1611,34 +1630,49 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId);
-            // If we have a partial response, save it to the database
-            if (partialResponse) {
-              try {
-                // Update the placeholder assistant message with the partial content and cancellation note
-                await db
-                  .update(messages)
-                  .set({
-                    content: `${partialResponse}
+            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            try {
+              // Update the placeholder assistant message with the partial content and cancellation note
+              await db
+                .update(messages)
+                .set({
+                  content: appendCancelledResponseNotice(partialResponse),
+                })
+                .where(eq(messages.id, placeholderAssistantMessage.id));
 
-[Response cancelled by user]`,
-                  })
-                  .where(eq(messages.id, placeholderAssistantMessage.id));
-
-                logger.log(
-                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
-                );
-                partialResponses.delete(req.chatId);
-              } catch (error) {
-                logger.error(
-                  `Error saving partial response for chat ${chatId}:`,
-                  error,
-                );
-              }
+              logger.log(
+                `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
+              );
+              partialResponses.delete(req.chatId);
+            } catch (error) {
+              logger.error(
+                `Error saving partial response for chat ${chatId}:`,
+                error,
+              );
             }
             return req.chatId;
           }
           throw streamError;
+        }
+      }
+
+      // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
+      // save the cancellation notice to the placeholder message.
+      if (abortController.signal.aborted) {
+        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        try {
+          await db
+            .update(messages)
+            .set({
+              content: appendCancelledResponseNotice(partialResponse),
+            })
+            .where(eq(messages.id, placeholderAssistantMessage.id));
+          partialResponses.delete(req.chatId);
+        } catch (error) {
+          logger.error(
+            `Error saving cancelled response for chat ${req.chatId}:`,
+            error,
+          );
         }
       }
 
@@ -1693,6 +1727,7 @@ ${problemReport.problems
             safeSend(event.sender, "chat:response:error", {
               chatId: req.chatId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+              warningMessages: status.warningMessages,
             });
           }
 
@@ -1702,6 +1737,7 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            warningMessages: status.warningMessages,
             chatSummary,
           } satisfies ChatResponseEnd);
         } else {

@@ -11,13 +11,11 @@ jobs:
   trigger-bugbot:
     environment: ai-bots
     # Only review code from regular contributors since bug bot has a capped # of PR reviews.
-    if: |
-      (github.event.pull_request.user.login == 'wwwillchen' ||
-      github.event.pull_request.user.login == 'wwwillchen-bot' ||
-      github.event.pull_request.user.login == 'dyadbot' ||
-      github.event.pull_request.user.login == 'dyad-assistant' ||
-      github.event.pull_request.user.login == 'azizmejri1' ||
-      github.event.pull_request.user.login == 'princeaden1') &&
+    if: >-
+      contains(
+        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
+        github.event.pull_request.user.login
+      ) &&
       !contains(github.event.pull_request.body, '#skip-bugbot') &&
       !contains(github.event.pull_request.body, '#skip-bb')
     runs-on: ubuntu-latest

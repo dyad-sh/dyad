@@ -34,8 +34,9 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
-import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
+import { DyadDbTableSchema } from "./DyadDbTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
+import { DyadNeonProjectInfo } from "./DyadNeonProjectInfo";
 import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
@@ -43,6 +44,7 @@ import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadMiniPlanCard } from "./DyadMiniPlanCard";
+import { DyadReadGuide } from "./DyadReadGuide";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -76,8 +78,12 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-mcp-tool-result",
   "dyad-list-files",
   "dyad-database-schema",
+  "dyad-db-table-schema",
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
+  "dyad-neon-project-info",
+  "dyad-neon-table-schema",
+  "dyad-read-guide",
   "dyad-status",
   "dyad-compaction",
   "dyad-copy",
@@ -280,8 +286,12 @@ function preprocessUnclosedTags(content: string): {
 function parseCustomTags(content: string): ContentPiece[] {
   const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
 
+  // Sort tags longest-first so e.g. "dyad-read-guide" is tried before "dyad-read".
+  // The (?=[\s>]) lookahead ensures a tag name like "dyad-read" won't prefix-match
+  // "dyad-read-guide" (the char after must be whitespace or '>').
+  const sortedTags = [...DYAD_CUSTOM_TAGS].sort((a, b) => b.length - a.length);
   const tagPattern = new RegExp(
-    `<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
+    `<(${sortedTags.join("|")})(?=[\\s>])\\s*([^>]*)>(.*?)<\\/\\1>`,
     "gs",
   );
 
@@ -584,11 +594,11 @@ function renderCustomTag(
     case "dyad-add-integration":
       return (
         <DyadAddIntegration
-          node={{
-            properties: {
-              provider: attributes.provider || "",
-            },
-          }}
+          provider={
+            attributes.provider === "neon" || attributes.provider === "supabase"
+              ? attributes.provider
+              : undefined
+          }
         >
           {content}
         </DyadAddIntegration>
@@ -725,9 +735,19 @@ function renderCustomTag(
         </DyadDatabaseSchema>
       );
 
+    case "dyad-db-table-schema":
+    // Backward compat: old messages used provider-specific tags
     case "dyad-supabase-table-schema":
+    case "dyad-neon-table-schema":
       return (
-        <DyadSupabaseTableSchema
+        <DyadDbTableSchema
+          provider={
+            tag === "dyad-supabase-table-schema"
+              ? "Supabase"
+              : tag === "dyad-neon-table-schema"
+                ? "Neon"
+                : (attributes.provider as string) || ""
+          }
           node={{
             properties: {
               table: attributes.table || "",
@@ -736,7 +756,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadSupabaseTableSchema>
+        </DyadDbTableSchema>
       );
 
     case "dyad-supabase-project-info":
@@ -750,6 +770,33 @@ function renderCustomTag(
         >
           {content}
         </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-neon-project-info":
+      return (
+        <DyadNeonProjectInfo
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadNeonProjectInfo>
+      );
+
+    case "dyad-read-guide":
+      return (
+        <DyadReadGuide
+          node={{
+            properties: {
+              name: attributes.name || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadReadGuide>
       );
 
     case "dyad-image-generation":

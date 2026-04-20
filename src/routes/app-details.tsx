@@ -9,5 +9,6 @@ export const appDetailsRoute = createRoute({
   component: AppDetailsPage,
   validateSearch: z.object({
     appId: z.number().optional(),
+    provider: z.enum(["neon", "supabase"]).optional(),
   }),
 });

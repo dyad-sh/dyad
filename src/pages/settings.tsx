@@ -34,6 +34,8 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
+import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
+import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -194,6 +196,18 @@ export default function SettingsPage() {
                   This doesn't require any external Git installation and offers
                   a faster, native-Git performance experience.
                 </div>
+              </div>
+              <div
+                id={SETTING_IDS.enableCloudSandbox}
+                className="space-y-1 mt-4"
+              >
+                <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.blockUnsafeNpmPackages}
+                className="space-y-1 mt-4"
+              >
+                <BlockUnsafeNpmPackagesSwitch />
               </div>
               <div
                 id={SETTING_IDS.enableMcpServersForBuildMode}

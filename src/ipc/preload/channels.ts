@@ -23,6 +23,7 @@ import { mcpContracts, mcpEvents } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
 import { supabaseContracts } from "../types/supabase";
 import { neonContracts } from "../types/neon";
+import { migrationContracts } from "../types/migration";
 import { systemContracts, systemEvents } from "../types/system";
 import { versionContracts } from "../types/version";
 import { languageModelContracts } from "../types/language-model";
@@ -79,6 +80,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(vercelContracts),
   ...getInvokeChannels(supabaseContracts),
   ...getInvokeChannels(neonContracts),
+  ...getInvokeChannels(migrationContracts),
 
   // Features
   ...getInvokeChannels(systemContracts),

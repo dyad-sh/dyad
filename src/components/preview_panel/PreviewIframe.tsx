@@ -7,11 +7,13 @@ import {
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
   RefreshCw,
   ExternalLink,
+  Cloud,
   Loader2,
   X,
   Sparkles,
@@ -71,14 +73,21 @@ import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
+import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 
 interface ErrorBannerProps {
-  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
+  error:
+    | {
+        message: string;
+        source: "preview-app" | "dyad-app" | "dyad-sync";
+      }
+    | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -88,6 +97,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const { isStreaming } = useStreamChat();
   if (!error) return null;
   const isDockerError = error.message.includes("Cannot connect to the Docker");
+  const isInternalDyadError = error.source === "dyad-app";
+  const isSyncError = error.source === "dyad-sync";
 
   const getTruncatedError = () => {
     const firstLine = error.message.split("\n")[0];
@@ -111,10 +122,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
-      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
-      {error.source === "dyad-app" && (
+      {(isInternalDyadError || isSyncError) && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          Internal Dyad error
+          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
         </div>
       )}
 
@@ -122,7 +132,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       <div
         className={cn(
           "px-6 py-1 text-sm",
-          error.source === "dyad-app" && "pt-6",
+          (isInternalDyadError || isSyncError) && "pt-6",
         )}
       >
         <div
@@ -148,9 +158,11 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : error.source === "dyad-app"
-                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
-                : "Check if restarting the app fixes the error."}
+              : isSyncError
+                ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
+                : isInternalDyadError
+                  ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                  : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
@@ -176,14 +188,18 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
+  const { appUrl, originalUrl, mode } = useAtomValue(appUrlAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
-  const { routes: availableRoutes } = useParseRouter(selectedAppId);
+  const {
+    routes: availableRoutes,
+    loading: routesLoading,
+    error: routesError,
+  } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
@@ -250,6 +266,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const {
+    mutateAsync: createCloudSandboxShareLink,
+    isPending: isCreatingCloudSandboxShareLink,
+  } = useMutation({
+    mutationFn: async ({ appId }: { appId: number }) => {
+      return ipc.app.createCloudSandboxShareLink({ appId });
+    },
+  });
 
   // Device configurations
   const deviceWidthConfig = {
@@ -259,6 +284,85 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const isCloudMode = mode === "cloud";
+  const { data: cloudSandboxStatus } = useQuery({
+    queryKey: queryKeys.cloudSandboxes.status({ appId: selectedAppId }),
+    queryFn: async () => {
+      if (selectedAppId === null) {
+        return null;
+      }
+      return ipc.app.getCloudSandboxStatus({ appId: selectedAppId });
+    },
+    enabled: isCloudMode && selectedAppId !== null,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    if (
+      cloudSandboxStatus.status === "destroyed" &&
+      (cloudSandboxStatus.terminationReason === "credits_exhausted" ||
+        cloudSandboxStatus.terminationReason === "billing_unavailable" ||
+        cloudSandboxStatus.lastErrorCode === "sandbox_credits_exhausted" ||
+        cloudSandboxStatus.lastErrorCode === "sandbox_billing_unavailable")
+    ) {
+      setErrorMessage({
+        message: cloudSandboxStatus.lastErrorMessage
+          ? cloudSandboxStatus.lastErrorMessage.includes("Dyad stopped")
+            ? cloudSandboxStatus.lastErrorMessage
+            : cloudSandboxStatus.terminationReason === "credits_exhausted"
+              ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
+              : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again."
+          : cloudSandboxStatus.terminationReason === "credits_exhausted"
+            ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
+            : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again.",
+        source: "dyad-app",
+      });
+    }
+  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    const localSyncErrorMessage = cloudSandboxStatus.localSyncErrorMessage;
+
+    if (localSyncErrorMessage) {
+      setErrorMessage((current) =>
+        current && current.source !== "dyad-sync"
+          ? current
+          : {
+              message: localSyncErrorMessage,
+              source: "dyad-sync",
+            },
+      );
+      return;
+    }
+
+    setErrorMessage((current) =>
+      current?.source === "dyad-sync" ? undefined : current,
+    );
+  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.userBudget.info,
+    });
+  }, [
+    cloudSandboxStatus?.billingSlicesCharged,
+    cloudSandboxStatus?.terminationReason,
+    isCloudMode,
+    queryClient,
+  ]);
 
   const analyzeComponent = async (componentId: string) => {
     if (!componentId || !selectedAppId) return;
@@ -1124,6 +1228,23 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
+            {isCloudMode && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      aria-label="Running in a cloud sandbox"
+                      className="flex items-center rounded-full bg-sky-100 px-2 py-1 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                      data-testid="preview-cloud-badge"
+                      role="status"
+                    />
+                  }
+                >
+                  <Cloud size={14} />
+                </TooltipTrigger>
+                <TooltipContent>Running in a Cloud sandbox</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1243,7 +1364,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <ChevronDown size={14} className="flex-shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-full">
-                {availableRoutes.length > 0 ? (
+                {routesLoading ? (
+                  <DropdownMenuItem disabled>
+                    Loading routes...
+                  </DropdownMenuItem>
+                ) : routesError ? (
+                  <DropdownMenuItem disabled>
+                    Unable to load routes
+                  </DropdownMenuItem>
+                ) : availableRoutes.length > 0 ? (
                   availableRoutes.map((route) => (
                     <DropdownMenuItem
                       key={route.path}
@@ -1258,7 +1387,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   ))
                 ) : (
                   <DropdownMenuItem disabled>
-                    Loading routes...
+                    No routes detected
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -1277,17 +1406,36 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 }
               >
                 <Power size={16} />
-                <span>Restart</span>
+                <span>{isCloudMode ? "Restart Sandbox" : "Restart"}</span>
               </TooltipTrigger>
-              <TooltipContent>Restart App</TooltipContent>
+              <TooltipContent>
+                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              </TooltipContent>
             </Tooltip>
             <button
               data-testid="preview-open-browser-button"
-              onClick={() => {
-                if (originalUrl) {
-                  ipc.system.openExternalUrl(originalUrl);
+              onClick={async () => {
+                try {
+                  const url = await resolvePreviewBrowserUrl({
+                    isCloudMode,
+                    selectedAppId,
+                    originalUrl,
+                    createCloudSandboxShareLink,
+                  });
+                  await ipc.system.openExternalUrl(url);
+                } catch (error) {
+                  showError(
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to open cloud sandbox share link.",
+                  );
                 }
               }}
+              disabled={
+                isCloudMode
+                  ? selectedAppId === null || isCreatingCloudSandboxShareLink
+                  : !originalUrl
+              }
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             >
               <ExternalLink size={16} />

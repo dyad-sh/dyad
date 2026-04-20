@@ -15,6 +15,7 @@ import {
   Check,
   Info,
   Bot,
+  Ban,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -28,6 +29,10 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { unescapeXmlAttr } from "../../../shared/xmlEscape";
+import {
+  isCancelledResponseContent,
+  stripCancelledResponseNotice,
+} from "@/shared/chatCancellation";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -76,16 +81,29 @@ function stripAttachmentInfo(content: string): string {
 interface ChatMessageProps {
   message: Message;
   isLastMessage: boolean;
+  isCancelledPrompt?: boolean;
 }
 
-const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
+const ChatMessage = ({
+  message,
+  isLastMessage,
+  isCancelledPrompt,
+}: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
+  const assistantTextContent =
+    message.role === "assistant"
+      ? stripCancelledResponseNotice(message.content)
+      : "";
+  const hasAssistantText =
+    message.role === "assistant" && assistantTextContent.length > 0;
   //handle copy chat
   const { copyMessageContent, copied } = useCopyToClipboard();
   const handleCopyFormatted = async () => {
-    await copyMessageContent(message.content);
+    await copyMessageContent(
+      message.role === "assistant" ? assistantTextContent : message.content,
+    );
   };
   // Find the version that was active when this message was sent
   const messageVersion = useMemo(() => {
@@ -129,6 +147,8 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
     }
   };
 
+  const isCancelled =
+    isCancelledResponseContent(message.content) || !!isCancelledPrompt;
   const userTextContent =
     message.role === "user" ? stripAttachmentInfo(message.content) : "";
   const attachments =
@@ -141,7 +161,9 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
     <div
       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
     >
-      <div className={`mt-2 w-full max-w-3xl mx-auto group`}>
+      <div
+        className={`mt-2 w-full max-w-3xl mx-auto group ${isCancelled ? "opacity-50" : ""}`}
+      >
         {/* Show message box for assistant messages or user messages with text */}
         {(message.role === "assistant" || hasUserText) && (
           <div
@@ -150,10 +172,16 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             }`}
           >
             {message.role === "assistant" &&
-            !message.content &&
+            !hasAssistantText &&
             isStreaming &&
             isLastMessage ? (
               <StreamingLoadingAnimation variant="initial" />
+            ) : message.role === "assistant" &&
+              !hasAssistantText &&
+              isCancelled ? (
+              <div className="prose dark:prose-invert max-w-none text-[15px] italic text-muted-foreground">
+                Response cancelled before any content was generated.
+              </div>
             ) : (
               <div
                 className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words text-[15px]"
@@ -161,7 +189,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               >
                 {message.role === "assistant" ? (
                   <>
-                    <DyadMarkdownParser content={message.content} />
+                    <DyadMarkdownParser content={assistantTextContent} />
                     {isLastMessage && isStreaming && (
                       <StreamingLoadingAnimation variant="streaming" />
                     )}
@@ -171,45 +199,36 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                 )}
               </div>
             )}
-            {(message.role === "assistant" &&
-              message.content &&
-              !isStreaming) ||
-            message.approvalState ? (
+            {(hasAssistantText && !isStreaming) || message.approvalState ? (
               <div
                 className={`mt-2 flex items-center ${
-                  message.role === "assistant" &&
-                  message.content &&
-                  !isStreaming
-                    ? "justify-between"
-                    : ""
+                  hasAssistantText && !isStreaming ? "justify-between" : ""
                 } text-xs`}
               >
-                {message.role === "assistant" &&
-                  message.content &&
-                  !isStreaming && (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            data-testid="copy-message-button"
-                            onClick={handleCopyFormatted}
-                            aria-label="Copy"
-                            className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                          />
-                        }
-                      >
-                        {copied ? (
-                          <Check className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                        <span className="hidden sm:inline"></span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {copied ? "Copied!" : "Copy"}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
+                {hasAssistantText && !isStreaming && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          data-testid="copy-message-button"
+                          onClick={handleCopyFormatted}
+                          aria-label="Copy"
+                          className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                        />
+                      }
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      <span className="hidden sm:inline"></span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {copied ? "Copied!" : "Copy"}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {message.approvalState && (
                     <div className="flex items-center space-x-1">
@@ -333,6 +352,12 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                 <Info className="h-3 w-3" />
               </div>
             )}
+          </div>
+        )}
+        {isCancelled && (
+          <div className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <Ban className="h-3 w-3" />
+            <span>Cancelled</span>
           </div>
         )}
       </div>

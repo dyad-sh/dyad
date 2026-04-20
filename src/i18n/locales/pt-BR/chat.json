@@ -6,6 +6,7 @@
   "closeTab": "Fechar",
   "closeOtherTabs": "Fechar outras abas",
   "closeTabsToRight": "Fechar abas à direita",
+  "groupTabsByApp": "Agrupar abas por app",
   "chatInProgress": "Chat em andamento",
   "newActivity": "Nova atividade",
   "openOverflowTabs": "Abrir mais abas ({{count}})",
@@ -227,6 +228,7 @@
     "requestsConsent": "solicita seu consentimento.",
     "inputRequired": "Entrada Necessária"
   },
+  "guide": "Guia",
   "agentModeActivated": "Modo Agente Ativado",
   "agentModeTip": "Dica: Crie um novo chat para dar ao agente um contexto limpo para melhores resultados.",
   "neverShowAgain": "Não mostrar novamente"

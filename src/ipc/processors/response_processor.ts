@@ -7,7 +7,10 @@ import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
 
 import log from "electron-log";
-import { executeAddDependency } from "./executeAddDependency";
+import {
+  executeAddDependency,
+  ExecuteAddDependencyError,
+} from "./executeAddDependency";
 import {
   deleteSupabaseFunction,
   deploySupabaseFunction,
@@ -42,13 +45,24 @@ import {
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { executeNeonSql } from "../../neon_admin/neon_context";
 import { executeCopyFile } from "../utils/copy_file_utils";
+import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
+import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
 interface Output {
   message: string;
   error: unknown;
+}
+
+function formatOutputError(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displayDetails;
+  }
+
+  return error instanceof Error ? error.toString() : String(error);
 }
 
 export async function dryRunSearchReplace({
@@ -110,6 +124,7 @@ export async function processFullResponseActions(
   error?: string;
   extraFiles?: string[];
   extraFilesError?: string;
+  warningMessages?: string[];
 }> {
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
@@ -126,7 +141,8 @@ export async function processFullResponseActions(
 
   if (
     chatWithApp.app.neonProjectId &&
-    chatWithApp.app.neonDevelopmentBranchId
+    (chatWithApp.app.neonActiveBranchId ||
+      chatWithApp.app.neonDevelopmentBranchId)
   ) {
     try {
       await storeDbTimestampAtCurrentVersion({
@@ -153,6 +169,7 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Extract all tags
@@ -160,7 +177,9 @@ export async function processFullResponseActions(
     const dyadRenameTags = getDyadRenameTags(fullResponse);
     const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
-    const dyadExecuteSqlQueries = chatWithApp.app.supabaseProjectId
+    const hasDbProvider =
+      chatWithApp.app.supabaseProjectId || chatWithApp.app.neonProjectId;
+    const dyadExecuteSqlQueries = hasDbProvider
       ? getDyadExecuteSqlTags(fullResponse)
       : [];
 
@@ -181,26 +200,70 @@ export async function processFullResponseActions(
     if (dyadExecuteSqlQueries.length > 0) {
       for (const query of dyadExecuteSqlQueries) {
         try {
-          await executeSupabaseSql({
-            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            query: query.content,
-            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
-          });
-
-          // Only write migration file if SQL execution succeeded
-          if (settings.enableSupabaseWriteSqlMigration) {
-            try {
-              const migrationFilePath = await writeMigrationFile(
-                appPath,
-                query.content,
-                query.description,
+          if (chatWithApp.app.neonProjectId) {
+            // Route to Neon executor
+            const branchId =
+              chatWithApp.app.neonActiveBranchId ??
+              chatWithApp.app.neonDevelopmentBranchId;
+            if (!branchId) {
+              throw new DyadError(
+                "No active Neon branch found for SQL execution. Please select a branch in the Neon integration settings.",
+                DyadErrorKind.Precondition,
               );
-              writtenFiles.push(migrationFilePath);
-            } catch (error) {
-              errors.push({
-                message: `Failed to write SQL migration file for: ${query.description}`,
-                error: error,
+            }
+            try {
+              await executeNeonSql({
+                projectId: chatWithApp.app.neonProjectId,
+                branchId,
+                query: query.content,
               });
+            } catch (neonError) {
+              const errorMsg =
+                neonError instanceof Error
+                  ? neonError.message
+                  : String(neonError);
+              // These substrings come from @neondatabase/serverless wrapping
+              // Postgres auth errors. If the client library ever exposes
+              // structured error codes, prefer those over message matching.
+              if (
+                errorMsg.includes("password authentication failed") ||
+                errorMsg.includes("authentication failed") ||
+                errorMsg.includes("access token")
+              ) {
+                throw new DyadError(
+                  `Neon authentication failed. Please reconnect your Neon account in the integration settings. Details: ${errorMsg}`,
+                  DyadErrorKind.Auth,
+                );
+              }
+              throw new DyadError(
+                `Neon SQL query failed: ${errorMsg}`,
+                DyadErrorKind.External,
+              );
+            }
+          } else if (chatWithApp.app.supabaseProjectId) {
+            // Route to Supabase executor
+            await executeSupabaseSql({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId,
+              query: query.content,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
+            });
+
+            // Only write migration file if SQL execution succeeded
+            if (settings.enableSupabaseWriteSqlMigration) {
+              try {
+                const migrationFilePath = await writeMigrationFile(
+                  appPath,
+                  query.content,
+                  query.description,
+                );
+                writtenFiles.push(migrationFilePath);
+              } catch (error) {
+                errors.push({
+                  message: `Failed to write SQL migration file for: ${query.description}`,
+                  error: error,
+                });
+              }
             }
           }
         } catch (error) {
@@ -216,16 +279,25 @@ export async function processFullResponseActions(
     // TODO: Handle add dependency tags
     if (dyadAddDependencyPackages.length > 0) {
       try {
-        await executeAddDependency({
+        const addDependencyResult = await executeAddDependency({
           packages: dyadAddDependencyPackages,
           message: message,
           appPath,
         });
+        warningMessages.push(...addDependencyResult.warningMessages);
       } catch (error) {
-        errors.push({
-          message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
-          error: error,
-        });
+        if (error instanceof ExecuteAddDependencyError) {
+          warningMessages.push(...error.warningMessages);
+          errors.push({
+            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}. ${error.displaySummary}`,
+            error: error.displayDetails,
+          });
+        } else {
+          errors.push({
+            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
+            error: error,
+          });
+        }
       }
       writtenFiles.push("package.json");
       const pnpmFilename = "pnpm-lock.yaml";
@@ -624,26 +696,43 @@ export async function processFullResponseActions(
       })
       .where(eq(messages.id, messageId));
 
+    if (hasChanges) {
+      queueCloudSandboxSnapshotSync({
+        appId: chatWithApp.app.id,
+        changedPaths: [...writtenFiles, ...renamedFiles],
+        deletedPaths: [
+          ...dyadDeletePaths,
+          ...dyadRenameTags.map((renameTag) => renameTag.from),
+        ],
+      });
+    }
+
     return {
       updatedFiles: hasChanges,
       extraFiles: uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
       extraFilesError,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);
-    return { error: (error as any).toString() };
+    return {
+      error: (error as any).toString(),
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
+    };
   } finally {
     const appendedContent = `
     ${warnings
       .map(
         (warning) =>
-          `<dyad-output type="warning" message="${warning.message}">${warning.error}</dyad-output>`,
+          `<dyad-output type="warning" message="${escapeXmlAttr(warning.message)}">${escapeXmlContent(formatOutputError(warning.error))}</dyad-output>`,
       )
       .join("\n")}
     ${errors
       .map(
         (error) =>
-          `<dyad-output type="error" message="${error.message}">${error.error}</dyad-output>`,
+          `<dyad-output type="error" message="${escapeXmlAttr(error.message)}">${escapeXmlContent(formatOutputError(error.error))}</dyad-output>`,
       )
       .join("\n")}
     `;

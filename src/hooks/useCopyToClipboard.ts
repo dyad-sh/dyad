@@ -137,8 +137,7 @@ export const useCopyToClipboard = () => {
       }
 
       case "dyad-add-integration": {
-        const provider = attributes.provider || "";
-        return `### Add Integration: ${provider}\n\n`;
+        return `### Add Database Integration\n\n`;
       }
 
       case "dyad-codebase-context": {

@@ -48,6 +48,21 @@ import {
 import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
+import {
+  buildCloudSandboxFileMap,
+  CloudSandboxApiError,
+  createCloudSandboxShareLink,
+  createCloudSandbox,
+  destroyCloudSandbox,
+  getCloudSandboxStatus,
+  queueCloudSandboxSnapshotSync,
+  reconcileCloudSandboxes,
+  registerRunningCloudSandbox,
+  restartCloudSandbox,
+  setCloudSandboxSyncUpdateListener,
+  streamCloudSandboxLogs,
+  uploadCloudSandboxFiles,
+} from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import {
@@ -68,7 +83,7 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { AppSearchResult } from "@/lib/schemas";
+import type { AppSearchResult, RuntimeMode2 } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -77,9 +92,41 @@ import {
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { detectFrameworkType } from "../utils/framework_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
+
+function formatCloudSandboxError(error: unknown) {
+  if (!(error instanceof CloudSandboxApiError)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  switch (error.code) {
+    case "sandbox_pro_required":
+      return "Dyad Pro is required to use cloud sandboxes.";
+    case "sandbox_insufficient_credits":
+      return "You need at least 1 credit available to start a cloud sandbox.";
+    case "sandbox_billing_unavailable":
+      return "Dyad couldn’t verify sandbox billing right now. Please try again.";
+    case "sandbox_credits_exhausted":
+      return "This cloud sandbox stopped because your credits ran out.";
+    default:
+      if (error.status === 404) {
+        return "This cloud sandbox is no longer available.";
+      }
+      if (error.status === 401 || error.status === 403) {
+        return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
+      }
+      if (error.status === 429) {
+        return "Dyad is rate limiting cloud sandbox requests right now. Please try again.";
+      }
+      if (typeof error.status === "number" && error.status >= 500) {
+        return "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.";
+      }
+      return error.message;
+  }
+}
 
 function sanitizeSnippetText(text: string) {
   return text.replace(/\s+/g, " ").trim();
@@ -192,6 +239,14 @@ async function executeApp({
       installCommand,
       startCommand,
     });
+  } else if (runtimeMode === "cloud") {
+    await executeAppInCloud({
+      appPath,
+      appId,
+      event,
+      installCommand,
+      startCommand,
+    });
   } else {
     await executeAppLocalNode({
       appPath,
@@ -201,6 +256,100 @@ async function executeApp({
       installCommand,
       startCommand,
     });
+  }
+}
+
+function emitProxyServerStarted({
+  appId,
+  event,
+  proxyUrl,
+  originalUrl,
+  mode,
+}: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  proxyUrl: string;
+  originalUrl: string;
+  mode: RuntimeMode2;
+}) {
+  safeSend(event.sender, "app:output", {
+    type: "stdout",
+    message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}] mode=[${mode}]`,
+    appId,
+  });
+}
+
+async function ensureProxyForRunningApp({
+  appId,
+  event,
+  originalUrl,
+  mode,
+}: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  originalUrl: string;
+  mode: RuntimeMode2;
+}): Promise<void> {
+  const appInfo = runningApps.get(appId);
+  if (!appInfo) {
+    return;
+  }
+
+  const proxyAuthToken =
+    mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;
+
+  if (
+    appInfo.proxyWorker &&
+    appInfo.originalUrl === originalUrl &&
+    appInfo.proxyAuthToken === proxyAuthToken &&
+    appInfo.proxyUrl
+  ) {
+    emitProxyServerStarted({
+      appId,
+      event,
+      proxyUrl: appInfo.proxyUrl,
+      originalUrl,
+      mode,
+    });
+    return;
+  }
+
+  if (appInfo.proxyWorker) {
+    await appInfo.proxyWorker.terminate();
+    appInfo.proxyWorker = undefined;
+  }
+
+  const proxyWorker = await startProxy(originalUrl, {
+    onStarted: (proxyUrl) => {
+      const latestAppInfo = runningApps.get(appId);
+      if (latestAppInfo) {
+        latestAppInfo.proxyUrl = proxyUrl;
+        latestAppInfo.originalUrl = originalUrl;
+        latestAppInfo.proxyAuthToken = proxyAuthToken;
+      }
+      emitProxyServerStarted({
+        appId,
+        event,
+        proxyUrl,
+        originalUrl,
+        mode,
+      });
+    },
+    fixedHeaders:
+      mode === "cloud" && proxyAuthToken
+        ? {
+            Authorization: `Bearer ${proxyAuthToken}`,
+          }
+        : undefined,
+  });
+
+  const latestAppInfo = runningApps.get(appId);
+  if (latestAppInfo) {
+    latestAppInfo.proxyWorker = proxyWorker;
+    latestAppInfo.originalUrl = originalUrl;
+    latestAppInfo.proxyAuthToken = proxyAuthToken;
+  } else {
+    await proxyWorker.terminate();
   }
 }
 
@@ -276,7 +425,8 @@ Details: ${details || "n/a"}
   runningApps.set(appId, {
     process: spawnedProcess,
     processId: currentProcessId,
-    isDocker: false,
+    mode: "host",
+    rendererSender: event.sender,
     lastViewedAt: Date.now(),
   });
 
@@ -323,6 +473,73 @@ function flushAllAppOutputs(): void {
     }
   }
   pendingOutputs.clear();
+}
+
+let cloudSandboxSyncUpdateListenerRegistered = false;
+
+function registerCloudSandboxSyncUpdateListener(): void {
+  if (cloudSandboxSyncUpdateListenerRegistered) {
+    return;
+  }
+
+  setCloudSandboxSyncUpdateListener(({ appId, errorMessage }) => {
+    const appInfo = runningApps.get(appId);
+    if (!appInfo || appInfo.mode !== "cloud") {
+      return;
+    }
+
+    const previousErrorMessage = appInfo.cloudSyncErrorMessage ?? null;
+    appInfo.cloudSyncErrorMessage = errorMessage ?? undefined;
+
+    const sender = appInfo.rendererSender;
+    if (!sender) {
+      return;
+    }
+
+    if (errorMessage) {
+      if (previousErrorMessage === errorMessage) {
+        return;
+      }
+
+      addLog({
+        level: "error",
+        type: "server",
+        message: errorMessage,
+        timestamp: Date.now(),
+        appId,
+      });
+
+      safeSend(sender, "app:output", {
+        type: "sync-error",
+        message: errorMessage,
+        appId,
+      });
+      return;
+    }
+
+    if (!previousErrorMessage) {
+      return;
+    }
+
+    const recoveredMessage =
+      "Cloud sandbox sync recovered. Local changes are uploading again.";
+
+    addLog({
+      level: "info",
+      type: "server",
+      message: recoveredMessage,
+      timestamp: Date.now(),
+      appId,
+    });
+
+    safeSend(sender, "app:output", {
+      type: "sync-recovered",
+      message: recoveredMessage,
+      appId,
+    });
+  });
+
+  cloudSandboxSyncUpdateListenerRegistered = true;
 }
 
 function listenToProcess({
@@ -386,53 +603,12 @@ function listenToProcess({
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
         const originalUrl = urlMatch[1];
-        const appInfo = runningApps.get(appId);
-        if (!appInfo) {
-          return;
-        }
-
-        // Reuse the existing proxy worker for this app if it already targets this URL.
-        if (
-          appInfo.proxyWorker &&
-          appInfo.originalUrl === originalUrl &&
-          appInfo.proxyUrl
-        ) {
-          enqueueAppOutput(event.sender, {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${originalUrl}]`,
-            appId,
-          });
-          return;
-        }
-
-        if (appInfo.proxyWorker) {
-          await appInfo.proxyWorker.terminate();
-          appInfo.proxyWorker = undefined;
-        }
-
-        const proxyWorker = await startProxy(originalUrl, {
-          onStarted: (proxyUrl) => {
-            // Store proxy URL in running app info for re-emission on app switch
-            const latestAppInfo = runningApps.get(appId);
-            if (latestAppInfo) {
-              latestAppInfo.proxyUrl = proxyUrl;
-              latestAppInfo.originalUrl = originalUrl;
-            }
-            enqueueAppOutput(event.sender, {
-              type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}]`,
-              appId,
-            });
-          },
+        await ensureProxyForRunningApp({
+          appId,
+          event,
+          originalUrl,
+          mode: "host",
         });
-
-        const latestAppInfo = runningApps.get(appId);
-        if (latestAppInfo) {
-          latestAppInfo.proxyWorker = proxyWorker;
-          latestAppInfo.originalUrl = originalUrl;
-        } else {
-          await proxyWorker.terminate();
-        }
       }
     }
   });
@@ -662,7 +838,8 @@ ${errorOutput || "(empty)"}`,
   runningApps.set(appId, {
     process,
     processId: currentProcessId,
-    isDocker: true,
+    mode: "docker",
+    rendererSender: event.sender,
     containerName,
     lastViewedAt: Date.now(),
   });
@@ -673,6 +850,157 @@ ${errorOutput || "(empty)"}`,
     isNeon,
     event,
   });
+}
+
+async function executeAppInCloud({
+  appPath,
+  appId,
+  event,
+  installCommand,
+  startCommand,
+}: {
+  appPath: string;
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  installCommand?: string | null;
+  startCommand?: string | null;
+}): Promise<void> {
+  const currentProcessId = processCounter.increment();
+  let sandboxId: string | undefined;
+  let previewUrl: string | undefined;
+  let previewAuthToken: string | undefined;
+
+  try {
+    const createResult = await createCloudSandbox({
+      appId,
+      appPath,
+      installCommand,
+      startCommand,
+    });
+    sandboxId = createResult.sandboxId;
+    previewUrl = createResult.previewUrl;
+    previewAuthToken = createResult.previewAuthToken;
+
+    const files = await buildCloudSandboxFileMap(appPath);
+    const uploadResult = await uploadCloudSandboxFiles({
+      sandboxId,
+      files,
+      replaceAll: true,
+    });
+    previewUrl = uploadResult.previewUrl ?? previewUrl;
+    previewAuthToken = uploadResult.previewAuthToken ?? previewAuthToken;
+  } catch (error) {
+    if (sandboxId) {
+      try {
+        await destroyCloudSandbox(sandboxId);
+      } catch (cleanupError) {
+        logger.warn(
+          `Failed to clean up cloud sandbox ${sandboxId} after startup error for app ${appId}:`,
+          cleanupError,
+        );
+      }
+    }
+    throw new Error(formatCloudSandboxError(error));
+  }
+
+  const resolvedPreviewUrl = previewUrl;
+  const resolvedPreviewAuthToken = previewAuthToken;
+  if (!sandboxId || !resolvedPreviewUrl || !resolvedPreviewAuthToken) {
+    throw new Error(
+      "Cloud sandbox startup returned incomplete preview credentials.",
+    );
+  }
+
+  const cloudLogAbortController = new AbortController();
+  runningApps.set(appId, {
+    process: null,
+    processId: currentProcessId,
+    mode: "cloud",
+    rendererSender: event.sender,
+    cloudSandboxId: sandboxId,
+    cloudPreviewUrl: resolvedPreviewUrl,
+    cloudPreviewAuthToken: resolvedPreviewAuthToken,
+    cloudLogAbortController,
+    lastViewedAt: Date.now(),
+    originalUrl: resolvedPreviewUrl,
+  });
+  registerRunningCloudSandbox({
+    appId,
+    appPath,
+    sandboxId,
+  });
+
+  await ensureProxyForRunningApp({
+    appId,
+    event,
+    originalUrl: resolvedPreviewUrl,
+    mode: "cloud",
+  });
+
+  startCloudSandboxLogStream({
+    appId,
+    event,
+    sandboxId,
+    cloudLogAbortController,
+  });
+}
+
+function startCloudSandboxLogStream(input: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  sandboxId: string;
+  cloudLogAbortController: AbortController;
+}) {
+  void (async () => {
+    try {
+      for await (const message of streamCloudSandboxLogs(
+        input.sandboxId,
+        input.cloudLogAbortController.signal,
+      )) {
+        const appInfo = runningApps.get(input.appId);
+        if (!appInfo || appInfo.cloudSandboxId !== input.sandboxId) {
+          return;
+        }
+
+        addLog({
+          level: "info",
+          type: "server",
+          message,
+          timestamp: Date.now(),
+          appId: input.appId,
+        });
+
+        safeSend(input.event.sender, "app:output", {
+          type: "stdout",
+          message,
+          appId: input.appId,
+        });
+      }
+    } catch (error) {
+      if (input.cloudLogAbortController.signal.aborted) {
+        return;
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Cloud sandbox log stream failed: ${String(error)}`;
+
+      addLog({
+        level: "error",
+        type: "server",
+        message,
+        timestamp: Date.now(),
+        appId: input.appId,
+      });
+
+      safeSend(input.event.sender, "app:output", {
+        type: "stderr",
+        message,
+        appId: input.appId,
+      });
+    }
+  })();
 }
 
 // Helper to kill process on a specific port (cross-platform, using kill-port)
@@ -845,6 +1173,8 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
+  registerCloudSandboxSyncUpdateListener();
+
   createTypedHandler(systemContracts.restartDyad, async () => {
     app.relaunch();
     app.quit();
@@ -1055,6 +1385,7 @@ export function registerAppHandlers() {
     return {
       ...app,
       files,
+      frameworkType: detectFrameworkType(appPath),
       resolvedPath: appPath,
       supabaseProjectName,
       vercelTeamSlug,
@@ -1126,10 +1457,12 @@ export function registerAppHandlers() {
         // Re-emit the proxy URL so the frontend can restore the preview
         const appInfo = runningApps.get(appId);
         if (appInfo?.proxyUrl && appInfo?.originalUrl) {
-          safeSend(event.sender, "app:output", {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${appInfo.originalUrl}]`,
+          emitProxyServerStarted({
             appId,
+            event,
+            proxyUrl: appInfo.proxyUrl,
+            originalUrl: appInfo.originalUrl,
+            mode: appInfo.mode,
           });
         }
         return;
@@ -1193,11 +1526,14 @@ export function registerAppHandlers() {
 
       const { process, processId } = appInfo;
       logger.log(
-        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
+        `Found running app ${appId} with processId ${processId}${process?.pid ? ` (PID: ${process.pid})` : ""}. Attempting to stop.`,
       );
 
       // Check if the process is already exited or closed
-      if (process.exitCode !== null || process.signalCode !== null) {
+      if (
+        process &&
+        (process.exitCode !== null || process.signalCode !== null)
+      ) {
         logger.log(
           `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
         );
@@ -1209,16 +1545,22 @@ export function registerAppHandlers() {
         await stopAppByInfo(appId, appInfo);
 
         // Now, safely remove the app from the map *after* confirming closure
-        removeAppIfCurrentProcess(appId, process);
+        if (process) {
+          removeAppIfCurrentProcess(appId, process);
+        }
 
         return;
       } catch (error: any) {
         logger.error(
-          `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
+          `Error stopping app ${appId}${process?.pid ? ` (PID: ${process.pid}, processId: ${processId})` : ` (processId: ${processId})`}:`,
           error,
         );
         // Attempt cleanup even if an error occurred during the stop process
-        removeAppIfCurrentProcess(appId, process);
+        if (process) {
+          removeAppIfCurrentProcess(appId, process);
+        } else if (appInfo.mode !== "cloud") {
+          runningApps.delete(appId);
+        }
         throw new DyadError(
           `Failed to stop app ${appId}: ${error.message}`,
           DyadErrorKind.External,
@@ -1227,13 +1569,133 @@ export function registerAppHandlers() {
     });
   });
 
+  createTypedHandler(
+    appContracts.getCloudSandboxStatus,
+    async (event, params) => {
+      const { appId } = params;
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+        return null;
+      }
+
+      try {
+        const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
+        const previewChanged =
+          appInfo.cloudPreviewUrl !== status.previewUrl ||
+          appInfo.cloudPreviewAuthToken !== status.previewAuthToken;
+        appInfo.cloudPreviewUrl = status.previewUrl;
+        appInfo.cloudPreviewAuthToken = status.previewAuthToken;
+
+        if (previewChanged && appInfo.proxyWorker) {
+          await ensureProxyForRunningApp({
+            appId,
+            event,
+            originalUrl: status.previewUrl,
+            mode: "cloud",
+          });
+        } else {
+          appInfo.originalUrl = status.previewUrl;
+        }
+
+        return {
+          ...status,
+          localSyncErrorMessage: appInfo.cloudSyncErrorMessage ?? null,
+        };
+      } catch (error) {
+        logger.error(
+          `Failed to fetch cloud sandbox status for app ${appId}:`,
+          error,
+        );
+        throw new DyadError(
+          formatCloudSandboxError(error),
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
+
+  createTypedHandler(
+    appContracts.createCloudSandboxShareLink,
+    async (_, params) => {
+      const { appId, expiresInSeconds } = params;
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+        throw new DyadError(
+          `App ${appId} is not running in cloud mode`,
+          DyadErrorKind.External,
+        );
+      }
+
+      try {
+        return await createCloudSandboxShareLink(appInfo.cloudSandboxId, {
+          expiresInSeconds,
+        });
+      } catch (error) {
+        logger.error(
+          `Failed to create cloud sandbox share link for app ${appId}:`,
+          error,
+        );
+        throw new DyadError(
+          formatCloudSandboxError(error),
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
+
   createTypedHandler(appContracts.restartApp, async (event, params) => {
-    const { appId, removeNodeModules } = params;
+    const { appId, removeNodeModules, recreateSandbox } = params;
     logger.log(`Restarting app ${appId}`);
     return withLock(appId, async () => {
       try {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+
+        if (!app) {
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+
+        const appPath = getDyadAppPath(app.path);
+
         // First stop the app if it's running
         const appInfo = runningApps.get(appId);
+        if (
+          appInfo &&
+          appInfo.mode === "cloud" &&
+          appInfo.cloudSandboxId &&
+          !recreateSandbox
+        ) {
+          logger.log(`Restarting cloud sandbox app ${appId} in place`);
+
+          const restartResult = await restartCloudSandbox(
+            appInfo.cloudSandboxId,
+          );
+          appInfo.cloudPreviewUrl = restartResult.previewUrl;
+          appInfo.cloudPreviewAuthToken = restartResult.previewAuthToken;
+          appInfo.lastViewedAt = Date.now();
+
+          appInfo.cloudLogAbortController?.abort();
+          appInfo.cloudLogAbortController = new AbortController();
+
+          await ensureProxyForRunningApp({
+            appId,
+            event,
+            originalUrl: restartResult.previewUrl,
+            mode: "cloud",
+          });
+
+          startCloudSandboxLogStream({
+            appId,
+            event,
+            sandboxId: appInfo.cloudSandboxId,
+            cloudLogAbortController: appInfo.cloudLogAbortController,
+          });
+          return;
+        }
+
         if (appInfo) {
           const { processId } = appInfo;
           logger.log(
@@ -1246,17 +1708,6 @@ export function registerAppHandlers() {
 
         // There may have been a previous run that left a process on this port.
         await cleanUpPort(getAppPort(appId));
-
-        // Now start the app again
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-
-        const appPath = getDyadAppPath(app.path);
 
         // Remove node_modules if requested
         if (removeNodeModules) {
@@ -1312,6 +1763,7 @@ export function registerAppHandlers() {
         return;
       } catch (error) {
         logger.error(`Error restarting app ${appId}:`, error);
+        console.error(error);
         throw error;
       }
     });
@@ -1375,6 +1827,11 @@ export function registerAppHandlers() {
       );
     }
 
+    queueCloudSandboxSnapshotSync({
+      appId,
+      changedPaths: [filePath],
+    });
+
     if (app.supabaseProjectId) {
       // Check if shared module was modified - redeploy all functions
       if (isSharedServerModule(filePath)) {
@@ -1421,6 +1878,7 @@ export function registerAppHandlers() {
         }
       }
     }
+
     return {};
   });
 
@@ -1863,6 +2321,11 @@ export function registerAppHandlers() {
     }
 
     const { process } = appInfo;
+    if (!process) {
+      throw new Error(
+        `App ${appId} is running in ${appInfo.mode} mode and does not accept stdin responses.`,
+      );
+    }
 
     if (!process.stdin) {
       throw new DyadError(
@@ -2220,6 +2683,10 @@ export function registerAppHandlers() {
       logger.debug("No app selected for preview");
       setCurrentlySelectedAppId(null);
     }
+  });
+
+  void reconcileCloudSandboxes().catch((error) => {
+    logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
   });
 
   // Start the garbage collection for idle apps

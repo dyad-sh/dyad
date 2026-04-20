@@ -15,6 +15,7 @@ export async function startProxy(
     // port?: number;
     // env?: Record<string, string>;
     onStarted?: (proxyUrl: string) => void;
+    fixedHeaders?: Record<string, string>;
   } = {},
 ) {
   if (!/^https?:\/\//.test(targetOrigin))
@@ -28,6 +29,7 @@ export async function startProxy(
     // host = "localhost",
     // env = {}, // additional env vars to pass to the worker
     onStarted,
+    fixedHeaders,
   } = opts;
 
   const worker = new Worker(
@@ -36,6 +38,7 @@ export async function startProxy(
       workerData: {
         targetOrigin,
         port,
+        fixedHeaders,
       },
     },
   );

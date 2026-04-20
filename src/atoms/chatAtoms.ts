@@ -16,7 +16,27 @@ export const chatErrorByIdAtom = atom<Map<number, string | null>>(new Map());
 export const selectedChatIdAtom = atom<number | null>(null);
 
 export const isStreamingByIdAtom = atom<Map<number, boolean>>(new Map());
-export const chatInputValueAtom = atom<string>("");
+export const chatInputValuesByIdAtom = atom<Map<number, string>>(new Map());
+export const chatInputValueAtom = atom(
+  (get) => {
+    const chatId = get(selectedChatIdAtom);
+    if (chatId === null) return "";
+    return get(chatInputValuesByIdAtom).get(chatId) ?? "";
+  },
+  (get, set, newValue: string | ((prev: string) => string)) => {
+    const chatId = get(selectedChatIdAtom);
+    // Intentionally a no-op when no chat is selected (e.g. before the URL
+    // sync effect in chat.tsx has run). Callers on the chat page always have
+    // a valid chatId by the time they write, so no queuing is needed.
+    if (chatId === null) return;
+    const currentMap = get(chatInputValuesByIdAtom);
+    const prev = currentMap.get(chatId) ?? "";
+    const next = typeof newValue === "function" ? newValue(prev) : newValue;
+    const newMap = new Map(currentMap);
+    newMap.set(chatId, next);
+    set(chatInputValuesByIdAtom, newMap);
+  },
+);
 export const homeChatInputValueAtom = atom<string>("");
 export const homeSelectedAppAtom = atom<ListedApp | null>(null);
 
@@ -193,6 +213,13 @@ export const removeChatIdFromAllTrackingAtom = atom(
     removeFromClosedSet(get, set, chatId);
     // Also remove from session tracking
     removeFromSessionSet(get, set, [chatId]);
+    // Clear per-chat input
+    const inputs = get(chatInputValuesByIdAtom);
+    if (inputs.has(chatId)) {
+      const next = new Map(inputs);
+      next.delete(chatId);
+      set(chatInputValuesByIdAtom, next);
+    }
   },
 );
 
@@ -233,3 +260,6 @@ export const queuedMessagesByIdAtom = atom<Map<number, QueuedMessageItem[]>>(
 export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
   new Map(),
 );
+
+// Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
+export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());

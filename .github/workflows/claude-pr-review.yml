@@ -21,13 +21,11 @@ jobs:
     # It's also a safe-guard for preventing malicious PRs from doing bad things although we restrict
     # the permissions and tools allowed in this job.
     # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
-    if: |
-      github.event.pull_request.user.login == 'wwwillchen' ||
-      github.event.pull_request.user.login == 'wwwillchen-bot' ||
-      github.event.pull_request.user.login == 'dyadbot' ||
-      github.event.pull_request.user.login == 'dyad-assistant' ||
-      github.event.pull_request.user.login == 'azizmejri1' ||
-      github.event.pull_request.user.login == 'princeaden1'
+    if: >-
+      contains(
+        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
+        github.event.pull_request.user.login
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -61,7 +59,8 @@ jobs:
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ steps.app-token.outputs.token }}
-          allowed_non_write_users: "princeaden1,wwwillchen-bot,dyadbot,dyad-assistant" # remember, we already filter above.
+          allowed_non_write_users: "princeaden1,nourzakhama2003,ryangroch" # remember, we already filter above.
+          allowed_bots: "keppo-bot[bot]"
 
           # Disable progress tracking (try to save tokens)
           track_progress: false

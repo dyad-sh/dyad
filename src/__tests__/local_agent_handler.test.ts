@@ -304,6 +304,7 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 
 // ============================================================================
 // Tests
@@ -419,6 +420,54 @@ describe("handleLocalAgentStream", () => {
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
+    });
+  });
+
+  describe("Warning propagation", () => {
+    it("includes warning messages in the error payload when a tool fails after warning", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      const warningMessage = "Firewall checks were skipped for this install.";
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        return {
+          warn_then_fail: {
+            execute: async () => {
+              ctx.onWarningMessage?.(warningMessage);
+              throw new Error("Simulated tool failure");
+            },
+          },
+        } as any;
+      });
+
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          yield* [];
+          await options.tools.warn_then_fail.execute();
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(1);
+      expect(errorMessages[0].args[0]).toMatchObject({
+        chatId: 1,
+        error: expect.stringContaining("Simulated tool failure"),
+        warningMessages: [warningMessage],
+      });
     });
   });
 
@@ -1044,6 +1093,7 @@ describe("handleLocalAgentStream", () => {
         if (attemptCount === 1) {
           return {
             fullStream: (async function* () {
+              yield* [];
               throw {
                 type: "error",
                 sequence_number: 0,
@@ -1318,6 +1368,135 @@ describe("handleLocalAgentStream", () => {
     });
   });
 
+  describe("Todo follow-up", () => {
+    it("runs a follow-up pass when the first pass ends with set_chat_summary and incomplete todos remain", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+        return {
+          update_todos: {
+            execute: async (args: any) => {
+              if (args.merge) {
+                const todosById = new Map(
+                  ctx.todos.map((todo) => [todo.id, todo]),
+                );
+                for (const todo of args.todos) {
+                  const existing = todosById.get(todo.id);
+                  todosById.set(
+                    todo.id,
+                    existing ? { ...existing, ...todo } : todo,
+                  );
+                }
+                ctx.todos = Array.from(todosById.values());
+              } else {
+                ctx.todos = args.todos;
+              }
+              ctx.onUpdateTodos(ctx.todos);
+              return "Updated todos";
+            },
+          },
+        } as any;
+      });
+
+      const streamMessagesByPass: any[][] = [];
+      let passCount = 0;
+      mockStreamTextImpl = (options) => {
+        passCount += 1;
+        streamMessagesByPass.push(options.messages ?? []);
+
+        if (passCount === 1) {
+          return {
+            fullStream: (async function* () {
+              yield { type: "text-delta", text: "I started the work." };
+              await options.tools.update_todos.execute({
+                merge: false,
+                todos: [
+                  {
+                    id: "todo-1",
+                    content: "Finish the requested work",
+                    status: "pending",
+                  },
+                ],
+              });
+            })(),
+            response: Promise.resolve({
+              messages: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: "I started the work." }],
+                },
+              ],
+            }),
+            steps: Promise.resolve([
+              {
+                toolCalls: [{ toolName: "set_chat_summary" }],
+                response: {
+                  messages: [
+                    {
+                      role: "assistant",
+                      content: [{ type: "text", text: "I started the work." }],
+                    },
+                  ],
+                },
+              },
+            ]),
+          };
+        }
+
+        return {
+          fullStream: (async function* () {
+            await options.tools.update_todos.execute({
+              merge: true,
+              todos: [{ id: "todo-1", status: "completed" }],
+            });
+            yield { type: "text-delta", text: "Finished the work." };
+          })(),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "Finished the work." }],
+              },
+            ],
+          }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(passCount).toBe(2);
+      const secondPassMessages = streamMessagesByPass[1] ?? [];
+      const hasTodoReminder = secondPassMessages.some(
+        (message: any) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "text" &&
+              typeof part.text === "string" &&
+              part.text.includes("incomplete todo(s)") &&
+              part.text.includes("Finish the requested work"),
+          ),
+      );
+      expect(hasTodoReminder).toBe(true);
+    });
+  });
+
   describe("Abort handling", () => {
     it("should stop processing stream chunks when abort signal is triggered", async () => {
       // Arrange
@@ -1363,7 +1542,7 @@ describe("handleLocalAgentStream", () => {
       expect(contentUpdates.length).toBeGreaterThan(0);
       const finalContent = contentUpdates[contentUpdates.length - 1].data
         .content as string;
-      expect(finalContent).toContain("First ");
+      expect(finalContent).toContain("First");
       expect(finalContent).not.toContain("Second");
     });
 

@@ -35,6 +35,7 @@ export { mcpContracts, mcpEvents } from "./mcp";
 export { vercelContracts } from "./vercel";
 export { supabaseContracts } from "./supabase";
 export { neonContracts } from "./neon";
+export { migrationContracts } from "./migration";
 export { systemContracts, systemEvents } from "./system";
 export { versionContracts } from "./version";
 export { languageModelContracts } from "./language-model";
@@ -68,6 +69,7 @@ export { mcpClient, mcpEventClient } from "./mcp";
 export { vercelClient } from "./vercel";
 export { supabaseClient } from "./supabase";
 export { neonClient } from "./neon";
+export { migrationClient } from "./migration";
 export { systemClient, systemEventClient } from "./system";
 export { versionClient } from "./version";
 export { languageModelClient } from "./language-model";
@@ -200,11 +202,17 @@ export type {
 // Neon types
 export type {
   NeonProject,
+  NeonProjectListItem,
   NeonBranch,
   CreateNeonProjectParams,
   GetNeonProjectParams,
   GetNeonProjectResponse,
+  ListNeonProjectsResponse,
+  NeonAuthEmailAndPasswordConfig,
 } from "./neon";
+
+// Migration types
+export type { MigrationPushParams, MigrationPushResponse } from "./migration";
 
 // System types
 export type {
@@ -369,6 +377,7 @@ import { mcpClient, mcpEventClient } from "./mcp";
 import { vercelClient } from "./vercel";
 import { supabaseClient } from "./supabase";
 import { neonClient } from "./neon";
+import { migrationClient } from "./migration";
 import { systemClient, systemEventClient } from "./system";
 import { versionClient } from "./version";
 import { languageModelClient } from "./language-model";
@@ -426,6 +435,7 @@ export const ipc = {
   vercel: vercelClient,
   supabase: supabaseClient,
   neon: neonClient,
+  migration: migrationClient,
 
   // Features
   system: systemClient,

@@ -1,10 +1,61 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLoadAppFile } from "@/hooks/useLoadAppFile";
+import { useMemo } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export interface ParsedRoute {
   path: string;
   label: string;
+}
+
+const ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
+
+function hasRouteFileExtension(filePath: string): boolean {
+  const extension = filePath.split(".").pop()?.toLowerCase();
+  return extension !== undefined && ROUTE_FILE_EXTENSIONS.has(extension);
+}
+
+function isAppEntryFile(filePath: string): boolean {
+  return /(?:^|\/)App\.(?:js|jsx|ts|tsx)$/i.test(filePath);
+}
+
+function isRouteModuleFile(filePath: string): boolean {
+  if (!hasRouteFileExtension(filePath)) {
+    return false;
+  }
+
+  return (
+    /(?:^|\/)routes\/.+\.(?:js|jsx|ts|tsx)$/i.test(filePath) ||
+    /(?:^|\/)[^/]*routes?\.(?:js|jsx|ts|tsx)$/i.test(filePath) ||
+    /(?:^|\/)router\.(?:js|jsx|ts|tsx)$/i.test(filePath)
+  );
+}
+
+export function getReactRouterCandidateFiles(files: string[]): string[] {
+  const candidates = new Set<string>();
+
+  for (const file of files) {
+    if (!hasRouteFileExtension(file)) {
+      continue;
+    }
+
+    if (isAppEntryFile(file) || isRouteModuleFile(file)) {
+      candidates.add(file);
+    }
+  }
+
+  if (files.includes("src/App.tsx")) {
+    candidates.delete("src/App.tsx");
+    return ["src/App.tsx", ...Array.from(candidates)];
+  }
+
+  if (files.includes("App.tsx")) {
+    candidates.delete("App.tsx");
+    return ["App.tsx", ...Array.from(candidates)];
+  }
+
+  return Array.from(candidates);
 }
 
 /**
@@ -52,6 +103,24 @@ export function parseRoutesFromRouterFile(
     console.error("Error parsing router file:", e);
     return [];
   }
+}
+
+export function parseRoutesFromRouterFiles(
+  contents: Array<string | null | undefined>,
+): ParsedRoute[] {
+  const parsedRoutes: ParsedRoute[] = [];
+
+  for (const content of contents) {
+    for (const route of parseRoutesFromRouterFile(content ?? null)) {
+      if (
+        !parsedRoutes.some((existingRoute) => existingRoute.path === route.path)
+      ) {
+        parsedRoutes.push(route);
+      }
+    }
+  }
+
+  return parsedRoutes;
 }
 
 /**
@@ -132,8 +201,6 @@ export function parseRoutesFromNextFiles(files: string[]): ParsedRoute[] {
  * Loads the app router file and parses available routes for quick navigation.
  */
 export function useParseRouter(appId: number | null) {
-  const [routes, setRoutes] = useState<ParsedRoute[]>([]);
-
   // Load app to access the file list
   const {
     app,
@@ -142,33 +209,53 @@ export function useParseRouter(appId: number | null) {
     refreshApp,
   } = useLoadApp(appId);
 
-  // Load router related file to extract routes for non-Next apps
-  const {
-    content: routerContent,
-    loading: routerFileLoading,
-    error: routerFileError,
-    refreshFile,
-  } = useLoadAppFile(appId, "src/App.tsx");
-
   // Detect Next.js app by presence of next.config.* in file list
   const isNextApp = useMemo(() => {
     if (!app?.files) return false;
     return app.files.some((f) => f.toLowerCase().includes("next.config"));
   }, [app?.files]);
 
-  // Parse routes either from Next.js file-based routing or from router file
-  useEffect(() => {
-    if (isNextApp && app?.files) {
-      setRoutes(parseRoutesFromNextFiles(app.files));
-    } else {
-      setRoutes(parseRoutesFromRouterFile(routerContent ?? null));
+  const candidateRouterFiles = useMemo(() => {
+    if (!app?.files || isNextApp) {
+      return [];
     }
-  }, [isNextApp, app?.files, routerContent]);
 
+    return getReactRouterCandidateFiles(app.files);
+  }, [app?.files, isNextApp]);
+
+  const routerFileQueries = useQueries({
+    queries: candidateRouterFiles.map((filePath) => ({
+      queryKey: queryKeys.appFiles.content({ appId, filePath }),
+      queryFn: async () => {
+        return ipc.app.readAppFile({ appId: appId!, filePath });
+      },
+      enabled: appId !== null,
+    })),
+  });
+
+  const routes =
+    isNextApp && app?.files
+      ? parseRoutesFromNextFiles(app.files)
+      : parseRoutesFromRouterFiles(
+          routerFileQueries.map((query) => query.data ?? null),
+        );
+
+  const routerFileLoading =
+    !isNextApp &&
+    candidateRouterFiles.length > 0 &&
+    routerFileQueries.some((query) => query.isLoading);
+  const routerFileError = !isNextApp
+    ? (routerFileQueries.find((query) => query.error)?.error ?? null)
+    : null;
   const combinedLoading = appLoading || routerFileLoading;
   const combinedError = appError || routerFileError || null;
   const refresh = async () => {
-    await Promise.allSettled([refreshApp(), refreshFile()]);
+    await Promise.allSettled([
+      refreshApp(),
+      ...routerFileQueries.map(async (query) => {
+        await query.refetch();
+      }),
+    ]);
   };
 
   return {

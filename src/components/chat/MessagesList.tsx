@@ -20,6 +20,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
+import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
 interface MessagesListProps {
   messages: Message[];
@@ -98,13 +99,26 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     const currentMessage = messages[messages.length - 1];
                     // The user message that triggered this assistant response
                     const userMessage = messages[messages.length - 2];
-                    if (currentMessage?.sourceCommitHash) {
+                    const currentCommitIndex = currentMessage?.commitHash
+                      ? versions.findIndex(
+                          (version) =>
+                            version.oid === currentMessage.commitHash,
+                        )
+                      : -1;
+                    const previousVersionId =
+                      currentCommitIndex >= 0
+                        ? versions[currentCommitIndex + 1]?.oid
+                        : undefined;
+                    const revertTargetVersionId =
+                      previousVersionId ?? currentMessage?.sourceCommitHash;
+
+                    if (revertTargetVersionId) {
                       console.debug(
-                        "Reverting to source commit hash",
-                        currentMessage.sourceCommitHash,
+                        "Reverting to previous version",
+                        revertTargetVersionId,
                       );
                       await revertVersion({
-                        versionId: currentMessage.sourceCommitHash,
+                        versionId: revertTargetVersionId,
                         currentChatMessageId: userMessage
                           ? {
                               chatId: selectedChatId,
@@ -300,6 +314,21 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       isAnyProviderSetup,
     ]);
 
+    // Precompute which indices are cancelled prompts so the callback
+    // can depend on this set instead of the full messages array reference.
+    const cancelledPromptIndices = useMemo(() => {
+      const indices = new Set<number>();
+      for (let i = 0; i < messages.length - 1; i++) {
+        if (
+          messages[i].role === "user" &&
+          isCancelledResponseContent(messages[i + 1].content)
+        ) {
+          indices.add(i);
+        }
+      }
+      return indices;
+    }, [messages]);
+
     // Memoized item renderer for virtualized list
     const itemContent = useCallback(
       (index: number, message: Message) => {
@@ -311,11 +340,12 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             <MemoizedChatMessage
               message={message}
               isLastMessage={isLastMessage}
+              isCancelledPrompt={cancelledPromptIndices.has(index)}
             />
           </div>
         );
       },
-      [messages.length],
+      [messages.length, cancelledPromptIndices],
     );
 
     // Create context object for Footer component with stable references
@@ -400,7 +430,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             const isLastMessage = index === messages.length - 1;
             return (
               <div className="px-4" key={message.id}>
-                <ChatMessage message={message} isLastMessage={isLastMessage} />
+                <ChatMessage
+                  message={message}
+                  isLastMessage={isLastMessage}
+                  isCancelledPrompt={cancelledPromptIndices.has(index)}
+                />
               </div>
             );
           })}

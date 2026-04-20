@@ -1,4 +1,5 @@
 import { ipc } from "@/ipc/types";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import {
   X,
@@ -25,6 +26,8 @@ export function ChatErrorBox({
   isDyadProEnabled: boolean;
   onStartNewChat?: () => void;
 }) {
+  const { messagesLimit } = useFreeAgentQuota();
+
   if (error.includes("doesn't have a free quota tier")) {
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
@@ -118,8 +121,8 @@ export function ChatErrorBox({
   if (error.includes("FREE_AGENT_QUOTA_EXCEEDED")) {
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
-        You have used all 5 free Agent messages for today. Please upgrade to
-        Dyad Pro for unlimited access or switch to Build mode.
+        You have used all {messagesLimit} free Agent messages for today. Please
+        upgrade to Dyad Pro for unlimited access or switch to Build mode.
         <div className="mt-2 space-y-2 space-x-2">
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-agent-quota-exceeded"

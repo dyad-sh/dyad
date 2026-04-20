@@ -96,16 +96,11 @@ export interface GetAiHeadersParams {
 }
 
 /**
- * Returns AI request headers based on the provider.
- * Currently adds Anthropic-specific beta header for extended context.
+ * Returns extra AI request headers for the provider (e.g. beta flags).
+ * Currently none; reserved for future provider-specific headers.
  */
-export function getAiHeaders({
-  builtinProviderId,
-}: GetAiHeadersParams): Record<string, string> | undefined {
-  if (builtinProviderId === "anthropic") {
-    return {
-      "anthropic-beta": "context-1m-2025-08-07",
-    };
-  }
+export function getAiHeaders(
+  _params: GetAiHeadersParams,
+): Record<string, string> | undefined {
   return undefined;
 }

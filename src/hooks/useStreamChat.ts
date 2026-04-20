@@ -318,12 +318,23 @@ export function useStreamChat({
                 queryClient.invalidateQueries({
                   queryKey: queryKeys.proposals.detail({ chatId }),
                 });
-                const latestChat = await ipc.chat.getChat(chatId);
-                setMessagesById((prev) => {
-                  const next = new Map(prev);
-                  next.set(chatId, latestChat.messages);
-                  return next;
-                });
+                if (!response.wasCancelled) {
+                  // Re-fetch messages to pick up server-assigned fields (e.g. commitHash)
+                  // that may only be finalized at stream completion.
+                  try {
+                    const latestChat = await ipc.chat.getChat(chatId);
+                    setMessagesById((prev) => {
+                      const next = new Map(prev);
+                      next.set(chatId, latestChat.messages);
+                      return next;
+                    });
+                  } catch (error) {
+                    console.warn(
+                      `[CHAT] Failed to refresh latest chat for ${chatId}:`,
+                      error,
+                    );
+                  }
+                }
                 invalidateChats();
                 refreshApp();
                 refreshVersions();

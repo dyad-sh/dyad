@@ -60,6 +60,7 @@ import { a2aNetworkRoute } from "./routes/a2a-network";
 import { governanceRoute } from "./routes/governance";
 import { nlpStudioRoute } from "./routes/nlp-studio";
 import { appPublishingRoute } from "./routes/app-publishing";
+import { unifiedIdentityRoute } from "./routes/unified-identity";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -127,6 +128,7 @@ const routeTree = rootRoute.addChildren([
   governanceRoute,
   nlpStudioRoute,
   appPublishingRoute,
+  unifiedIdentityRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -40,6 +40,7 @@ import {
   Landmark,
   Vote,
   CircleDollarSign,
+  Fingerprint,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -341,6 +342,15 @@ const menuCategories = [
         hoverBg: "hover:bg-amber-500/10",
         activeBg: "bg-amber-500/15",
         activeText: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        title: "Universal Identity",
+        to: "/identity",
+        icon: Fingerprint,
+        gradient: "from-violet-500 to-blue-600",
+        hoverBg: "hover:bg-violet-500/10",
+        activeBg: "bg-violet-500/15",
+        activeText: "text-violet-600 dark:text-violet-400",
       },
       {
         title: "Creator Network",

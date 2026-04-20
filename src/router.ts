@@ -64,6 +64,11 @@ import { unifiedIdentityRoute } from "./routes/unified-identity";
 import { appBuilderRoute } from "./routes/app-builder";
 import { marketplaceExplorerRoute } from "./routes/marketplace-explorer";
 import { scrapingRoute } from "./routes/scraping";
+import { notificationsRoute } from "./routes/notifications";
+import { profileRoute } from "./routes/profile";
+import { adminRoute } from "./routes/admin";
+import { auditLogRoute } from "./routes/audit-log";
+import { backupRoute } from "./routes/backup";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -135,6 +140,11 @@ const routeTree = rootRoute.addChildren([
   appBuilderRoute,
   marketplaceExplorerRoute,
   scrapingRoute,
+  notificationsRoute,
+  profileRoute,
+  adminRoute,
+  auditLogRoute,
+  backupRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

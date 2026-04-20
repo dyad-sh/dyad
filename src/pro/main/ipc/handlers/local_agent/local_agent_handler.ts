@@ -95,6 +95,7 @@ import {
   maybeCaptureRetryReplayText,
   maybeAppendRetryReplayForRetry,
 } from "./retry_replay_utils";
+import { setChatSummaryTool } from "./tools/set_chat_summary";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -713,6 +714,9 @@ export async function handleLocalAgentStream(
             tools: allTools,
             stopWhen: [
               stepCountIs(maxToolCallSteps),
+              // We instruct AI to only emit set chat summary tool call at the end of the turn.
+              hasToolCall(setChatSummaryTool.name),
+              // User needs to explicitly set up integration before AI can continue.
               hasToolCall(addIntegrationTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
               ...(planModeOnly

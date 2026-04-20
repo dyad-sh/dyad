@@ -294,6 +294,15 @@ const menuCategories = [
         activeText: "text-red-600 dark:text-red-400",
       },
       {
+        title: "App Builder Studio",
+        to: "/app-builder",
+        icon: Hammer,
+        gradient: "from-pink-500 to-violet-600",
+        hoverBg: "hover:bg-pink-500/10",
+        activeBg: "bg-pink-500/15",
+        activeText: "text-pink-600 dark:text-pink-400",
+      },
+      {
         title: "Neural Builder",
         to: "/neural-builder",
         icon: Brain,
@@ -351,6 +360,15 @@ const menuCategories = [
         hoverBg: "hover:bg-amber-500/10",
         activeBg: "bg-amber-500/15",
         activeText: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        title: "Universal Identity",
+        to: "/identity",
+        icon: Fingerprint,
+        gradient: "from-violet-500 to-blue-600",
+        hoverBg: "hover:bg-violet-500/10",
+        activeBg: "bg-violet-500/15",
+        activeText: "text-violet-600 dark:text-violet-400",
       },
       {
         title: "Creator Network",

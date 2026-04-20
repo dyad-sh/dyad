@@ -2719,8 +2719,27 @@ export function registerAppHandlers() {
   });
 
   // Screenshot handlers
+  createTypedHandler(appContracts.getCurrentCommitHash, async (_, params) => {
+    const { appId } = params;
+
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!appRecord) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+    try {
+      const commitHash = await getCurrentCommitHash({ path: appPath });
+      return { commitHash };
+    } catch {
+      return { commitHash: null };
+    }
+  });
+
   createTypedHandler(appContracts.saveAppScreenshot, async (_, params) => {
-    const { appId, dataUrl } = params;
+    const { appId, dataUrl, commitHash } = params;
 
     // Validate data URL format
     if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) {
@@ -2748,16 +2767,6 @@ export function registerAppHandlers() {
 
     const appPath = getDyadAppPath(appRecord.path);
 
-    let commitHash: string;
-    try {
-      commitHash = await getCurrentCommitHash({ path: appPath });
-    } catch (err) {
-      logger.warn(
-        `Skipping screenshot save for app ${appId}: unable to resolve HEAD`,
-        err,
-      );
-      return;
-    }
     if (!SCREENSHOT_FILENAME_REGEX.test(`${commitHash}.png`)) {
       logger.warn(
         `Skipping screenshot save for app ${appId}: unexpected commit hash format`,

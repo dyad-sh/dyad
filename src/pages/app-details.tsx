@@ -4,7 +4,7 @@ import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -127,6 +127,9 @@ export default function AppDetailsPage() {
   });
   const [screenshotLoadFailed, setScreenshotLoadFailed] = useState(false);
   const latestScreenshotUrl = screenshotsData?.screenshots[0]?.url ?? null;
+  useEffect(() => {
+    setScreenshotLoadFailed(false);
+  }, [latestScreenshotUrl]);
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
   const handleDeleteApp = async () => {

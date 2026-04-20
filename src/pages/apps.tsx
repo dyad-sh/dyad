@@ -1,14 +1,12 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { AppShowcaseCard } from "@/components/AppShowcaseCard";
-import { ipc } from "@/ipc/types";
-import { queryKeys } from "@/lib/queryKeys";
+import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 
 export default function AppsPage() {
@@ -25,22 +23,12 @@ export default function AppsPage() {
     return sorted.filter((app) => app.name.toLowerCase().includes(q));
   }, [apps, searchQuery]);
 
-  const visibleAppIds = useMemo(
-    () => filteredApps.map((a) => a.id),
-    [filteredApps],
-  );
-  const { data: thumbnailsData } = useQuery({
-    queryKey: [...queryKeys.apps.thumbnails, "page", visibleAppIds],
-    queryFn: () => ipc.app.listAppThumbnails({ appIds: visibleAppIds }),
-    enabled: visibleAppIds.length > 0,
-  });
-  const thumbnailByAppId = useMemo(() => {
-    const map = new Map<number, string | null>();
-    for (const t of thumbnailsData?.thumbnails ?? []) {
-      map.set(t.appId, t.thumbnailUrl);
-    }
-    return map;
-  }, [thumbnailsData]);
+  // Fetch thumbnails for ALL apps once and filter client-side so typing in
+  // the search box doesn't trigger a burst of IPC + filesystem reads. This
+  // also lets the underlying query cache be shared with the featured
+  // showcase on the home page.
+  const allAppIds = useMemo(() => apps.map((a) => a.id), [apps]);
+  const thumbnailByAppId = useAppThumbnails(allAppIds);
 
   const handleGoBack = () => {
     if (router.history.length > 1) {

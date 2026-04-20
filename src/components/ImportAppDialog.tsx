@@ -109,8 +109,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const handleImportFromUrl = async () => {
     setImporting(true);
     try {
-      const match = extractRepoNameFromUrl(url);
-      const repoName = match ? match[2] : "";
+      const repoName = extractRepoNameFromUrl(url) ?? "";
       const appName = githubAppName.trim() || repoName;
       const result = await ipc.github.cloneRepoFromUrl({
         url,

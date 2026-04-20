@@ -172,7 +172,25 @@ export function useStreamChat({
       }
 
       let hasIncrementedStreamCount = false;
-      const targetAppId = appId ?? selectedAppId;
+      // Resolve the target app from the chat itself when the caller didn't
+      // pass one. Falling back to `selectedAppId` is wrong for background
+      // queue processing, where the user may have switched to a different
+      // app while a queued message streams for the original chat.
+      let resolvedAppIdFromChat: number | null = null;
+      if (appId === undefined) {
+        const chatsCaches = queryClient.getQueriesData<ChatSummary[]>({
+          queryKey: queryKeys.chats.all,
+        });
+        for (const [, cachedChats] of chatsCaches) {
+          const found = cachedChats?.find((c) => c.id === chatId);
+          if (found) {
+            resolvedAppIdFromChat = found.appId;
+            break;
+          }
+        }
+      }
+      const targetAppId =
+        appId ?? resolvedAppIdFromChat ?? selectedAppId ?? null;
       try {
         const cachedChat =
           requestedChatMode === null

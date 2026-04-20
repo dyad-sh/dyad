@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ListedApp } from "@/ipc/types/app";
 
 interface AppShowcaseCardProps {
@@ -22,6 +22,9 @@ export function AppShowcaseCard({
   onClick,
 }: AppShowcaseCardProps) {
   const [imageBroken, setImageBroken] = useState(false);
+  useEffect(() => {
+    setImageBroken(false);
+  }, [thumbnailUrl]);
   const showImage = thumbnailUrl && !imageBroken;
 
   return (

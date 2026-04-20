@@ -268,6 +268,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const pendingCommitScreenshotRequestRef = useRef<{
     appId: number;
     requestId: string;
+    commitHash: string;
   } | null>(null);
   const pendingAnnotatorScreenshotRequestIdRef = useRef<string | null>(null);
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -316,7 +317,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
 
     // Wait for page animations to finish before capturing.
-    captureTimeoutRef.current = setTimeout(() => {
+    captureTimeoutRef.current = setTimeout(async () => {
       captureTimeoutRef.current = null;
       // Bail out if the user switched to a different app during the delay.
       // Read from a ref so the comparison uses the current selection, not the
@@ -336,10 +337,34 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }
         return;
       }
+      // Resolve the commit hash at capture time so the saved screenshot
+      // corresponds to the current HEAD and not to a later commit that may
+      // land before the iframe responds with the image.
+      let commitHash: string | null = null;
+      try {
+        const result = await ipc.app.getCurrentCommitHash({ appId });
+        commitHash = result.commitHash;
+      } catch (err) {
+        console.warn("Failed to resolve commit hash for screenshot", err);
+      }
+      if (!commitHash) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
+        return;
+      }
+      // The user may have switched apps while resolving the commit hash.
+      if (selectedAppIdRef.current !== appId) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
+        return;
+      }
       const requestId = crypto.randomUUID();
       pendingCommitScreenshotRequestRef.current = {
         appId,
         requestId,
+        commitHash,
       };
       contentWindow.postMessage(
         { type: "dyad-take-screenshot", requestId },
@@ -758,6 +783,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ipc.app
             .listAppScreenshots({ appId })
             .then((result) => {
+              // Guard against app switches while this promise was in flight —
+              // otherwise the stale callback would occupy `captureTimeoutRef`
+              // for the old app and block the current app's commit-triggered
+              // captures.
+              if (selectedAppIdRef.current !== appId) {
+                return;
+              }
               if (result.screenshots.length === 0) {
                 captureScreenshot(appId);
               }
@@ -895,6 +927,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           requestId === pendingCommitScreenshotRequest.requestId
         ) {
           const appId = pendingCommitScreenshotRequest.appId;
+          const commitHash = pendingCommitScreenshotRequest.commitHash;
           pendingCommitScreenshotRequestRef.current = null;
           // Only clear the pending-screenshot atom if it still points to the
           // same app — otherwise another flow may have queued a newer capture
@@ -911,6 +944,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               .saveAppScreenshot({
                 appId,
                 dataUrl: event.data.dataUrl,
+                commitHash,
               })
               .then(() =>
                 queryClient.invalidateQueries({

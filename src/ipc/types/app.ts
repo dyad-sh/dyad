@@ -461,9 +461,22 @@ export const appContracts = {
     output: z.void(),
   }),
 
+  getCurrentCommitHash: defineContract({
+    channel: "app:get-current-commit-hash",
+    input: z.object({ appId: z.number() }),
+    output: z.object({ commitHash: z.string().nullable() }),
+  }),
+
   saveAppScreenshot: defineContract({
     channel: "app:save-screenshot",
-    input: z.object({ appId: z.number(), dataUrl: z.string() }),
+    input: z.object({
+      appId: z.number(),
+      dataUrl: z.string(),
+      // Commit hash captured at the time the screenshot was requested.
+      // Required to avoid saving the screenshot under a newer HEAD if
+      // another commit lands between capture request and save.
+      commitHash: z.string(),
+    }),
     output: z.void(),
   }),
 

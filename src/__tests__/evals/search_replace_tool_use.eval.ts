@@ -671,6 +671,17 @@ const SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT =
   "use the search_replace tool. You may call it multiple times " +
   "to make sequential edits. Do not explain.";
 
+const SIMPLE_EDIT_FILE_SYSTEM_PROMPT =
+  "You are a precise code editor. When asked to change a file, " +
+  "use the edit_file tool. You may call it multiple times " +
+  "to make sequential edits. Do not explain.";
+
+const SEARCH_REPLACE_FEW_SYSTEM_PROMPT =
+  SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT +
+  " Aim to use as few tool calls as possible — ideally a single call " +
+  "that bundles all the required changes. Only make additional calls " +
+  "if the edit genuinely cannot be expressed in one call.";
+
 interface SuiteConfig {
   name: string;
   displayName: string;
@@ -689,6 +700,22 @@ const SUITES: SuiteConfig[] = [
     systemPrompt: SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT,
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),
+    }),
+  },
+  {
+    name: "search_replace_few",
+    displayName: "search_replace_few (minimize call count)",
+    systemPrompt: SEARCH_REPLACE_FEW_SYSTEM_PROMPT,
+    buildTools: (state, c, label) => ({
+      search_replace: searchReplaceHarnessTool(state, c, label),
+    }),
+  },
+  {
+    name: "edit_file",
+    displayName: "edit_file",
+    systemPrompt: SIMPLE_EDIT_FILE_SYSTEM_PROMPT,
+    buildTools: (state, c, label) => ({
+      edit_file: editFileHarnessTool(state, c, label),
     }),
   },
   {

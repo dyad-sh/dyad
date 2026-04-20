@@ -2470,6 +2470,14 @@ export class IpcClient {
     return this.ipcRenderer.invoke("marketplace:publish-model", request);
   }
 
+  public async checkMintEligibility(walletAddress: string): Promise<{
+    eligible: boolean;
+    domains: string[];
+    reason?: string;
+  }> {
+    return this.ipcRenderer.invoke("marketplace:check-mint-eligibility", walletAddress);
+  }
+
   // ==========================================================================
   // Agent Factory Methods (Custom AI Agents)
   // ==========================================================================

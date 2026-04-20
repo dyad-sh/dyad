@@ -138,6 +138,10 @@ export interface MarketplaceCredentials {
   scopes?: string[];
   /** Network info returned by verify — includes chain + subgraph URLs */
   network?: MarketplaceNetwork;
+  /** Whether the connected wallet owns at least one .joy ENS name */
+  hasJoyDomain?: boolean;
+  /** List of .joy domain names owned by the wallet (e.g. ["alice.joy"]) */
+  domains?: string[];
 }
 
 /** Network descriptor returned by the joy-create-verify edge function */
@@ -147,6 +151,18 @@ export interface MarketplaceNetwork {
   drop_subgraph: string;
   marketplace_subgraph: string;
   stores_subgraph: string;
+}
+
+/** A .joy ENS domain registration as indexed by the stores subgraph */
+export interface JoyDomainInfo {
+  name: string;
+  fullName: string;
+  owner: string;
+  resolver: string;
+  resolvedAddress: string;
+  expiresAt: string;
+  registeredAt: string;
+  textRecords?: { key: string; value: string }[];
 }
 
 // Deployment target options

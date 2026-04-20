@@ -570,6 +570,7 @@ const validInvokeChannels = [
   "marketplace:update-asset",
   "marketplace:unpublish",
   "marketplace:earnings",
+  "marketplace:check-mint-eligibility",
   "marketplace:export-zip",
   "marketplace:deployment-status",
   "marketplace:open",

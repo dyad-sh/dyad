@@ -25,6 +25,7 @@ import {
   getMarketplaceAssets,
   getMarketplaceListings,
   getMarketplaceStats,
+  getUserDomains,
 } from "@/lib/subgraph_client";
 import type {
   PublishAppRequest,
@@ -335,6 +336,16 @@ export function registerMarketplaceHandlers() {
 
       // Re-verify credentials with the edge function
       const data = await verifyApiKey(marketplaceCredentials.apiKey);
+
+      // Refresh domain list
+      let domains: string[] = [];
+      try {
+        const domainRegs = await getUserDomains(data.user_id);
+        domains = domainRegs.map((d) => d.fullName || `${d.name}.joy`);
+      } catch {
+        // Use cached domains if subgraph is unreachable
+        domains = marketplaceCredentials.domains ?? [];
+      }
       
       return {
         connected: true,
@@ -342,6 +353,8 @@ export function registerMarketplaceHandlers() {
           id: data.user_id,
           scopes: data.scopes,
           network: data.network,
+          hasJoyDomain: domains.length > 0,
+          domains,
         },
       };
     } catch (error) {
@@ -359,22 +372,35 @@ export function registerMarketplaceHandlers() {
     try {
       const data = await verifyApiKey(apiKey);
       
+      // Look up .joy domains owned by this user via the stores subgraph
+      let domains: string[] = [];
+      try {
+        const domainRegs = await getUserDomains(data.user_id);
+        domains = domainRegs.map((d) => d.fullName || `${d.name}.joy`);
+      } catch (err) {
+        logger.warn("Failed to fetch .joy domains (non-fatal):", err);
+      }
+
       const credentials: MarketplaceCredentials = {
         apiKey,
         publisherId: data.user_id,
         scopes: data.scopes,
         network: data.network,
+        hasJoyDomain: domains.length > 0,
+        domains,
       };
       
       await saveCredentials(credentials);
       
-      logger.info(`Connected to JoyMarketplace (user=${data.user_id}, scopes=${data.scopes.join(",")})`);
+      logger.info(`Connected to JoyMarketplace (user=${data.user_id}, scopes=${data.scopes.join(",")}, domains=${domains.length})`);
       
       return {
         success: true,
         userId: data.user_id,
         scopes: data.scopes,
         network: data.network,
+        hasJoyDomain: domains.length > 0,
+        domains,
       };
     } catch (error) {
       logger.error("Failed to connect to marketplace:", error);
@@ -487,6 +513,30 @@ export function registerMarketplaceHandlers() {
 
   ipcMain.handle("marketplace:unpublish", async () => {
     throw new Error("Unpublishing is performed on-chain via the MarketplaceV3 contract.");
+  });
+
+  // Pre-flight mint eligibility — verifies wallet owns a .joy domain
+  // before the renderer attempts a JoyCreatorGate.mint() transaction.
+  ipcMain.handle("marketplace:check-mint-eligibility", async (_, walletAddress: string) => {
+    if (!walletAddress) {
+      throw new Error("Wallet address is required for mint eligibility check");
+    }
+
+    const domainRegs = await getUserDomains(walletAddress);
+    const domains = domainRegs.map((d) => d.fullName || `${d.name}.joy`);
+    const eligible = domains.length > 0;
+
+    if (!eligible) {
+      logger.warn(`Mint pre-flight failed: wallet ${walletAddress} owns no .joy domains`);
+    }
+
+    return {
+      eligible,
+      domains,
+      reason: eligible
+        ? undefined
+        : "You must own a .joy domain to mint on the JoyCreate platform. Register one at joymarketplace.io.",
+    };
   });
 
   // Get earnings — read from Goldsky marketplace subgraph

@@ -153,18 +153,39 @@ export function ChatPanel({
   useEffect(() => {
     if (!streamError) return;
 
+    const container = messagesContainerRef.current;
+    const distanceFromBottom = container
+      ? container.scrollHeight - (container.scrollTop + container.clientHeight)
+      : 0;
+    const isNearBottom = distanceFromBottom <= 220;
+    if (!isAtBottomRef.current && !isNearBottom) return;
+
+    let cancelled = false;
+    let firstRafId: number | undefined;
+    let secondRafId: number | undefined;
     let timeoutId: number | undefined;
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    firstRafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      secondRafId = requestAnimationFrame(() => {
+        if (cancelled) return;
         scrollToBottom("instant");
         timeoutId = window.setTimeout(() => {
-          scrollToBottom("smooth");
+          if (!cancelled) {
+            scrollToBottom("smooth");
+          }
         }, 120);
       });
     });
 
     return () => {
+      cancelled = true;
+      if (firstRafId !== undefined) {
+        window.cancelAnimationFrame(firstRafId);
+      }
+      if (secondRafId !== undefined) {
+        window.cancelAnimationFrame(secondRafId);
+      }
       if (timeoutId !== undefined) {
         window.clearTimeout(timeoutId);
       }

@@ -41,6 +41,7 @@ import {
   Vote,
   CircleDollarSign,
   Fingerprint,
+  Hammer,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -283,6 +284,15 @@ const menuCategories = [
         hoverBg: "hover:bg-red-500/10",
         activeBg: "bg-red-500/15",
         activeText: "text-red-600 dark:text-red-400",
+      },
+      {
+        title: "App Builder Studio",
+        to: "/app-builder",
+        icon: Hammer,
+        gradient: "from-pink-500 to-violet-600",
+        hoverBg: "hover:bg-pink-500/10",
+        activeBg: "bg-pink-500/15",
+        activeText: "text-pink-600 dark:text-pink-400",
       },
       {
         title: "Neural Builder",

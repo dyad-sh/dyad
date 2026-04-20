@@ -124,7 +124,7 @@ function getNextJsNeonPrompt(
   nextjsMajorVersion: number | null,
   isLocalAgentMode: boolean,
 ): string {
-  const supportsProxy = nextjsMajorVersion === null || nextjsMajorVersion >= 16;
+  const supportsProxy = nextjsMajorVersion !== null && nextjsMajorVersion >= 16;
 
   const authDecisionSteps = isLocalAgentMode
     ? `4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then follow the Neon Auth API path.

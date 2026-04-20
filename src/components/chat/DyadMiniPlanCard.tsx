@@ -59,6 +59,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
   const isApproved = chatId ? miniPlanState.approvedChatIds.has(chatId) : false;
   const planData = chatId ? miniPlanState.plansByChatId.get(chatId) : null;
+  const visualsReady = chatId
+    ? miniPlanState.visualsReadyChatIds.has(chatId)
+    : false;
   // Use atom data if available, fall back to XML attributes
   const appName = planData?.appName || props["app-name"] || "";
   const templateId = planData?.templateId || props.template || "react";
@@ -84,13 +87,17 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     })),
   ];
 
-  const isInProgress = props.state === "pending" || props.complete === "false";
+  const streamStillRunning =
+    props.state === "pending" || props.complete === "false";
+  const hasLivePlanData = planData != null;
+  const isReady = !streamStillRunning && (!hasLivePlanData || visualsReady);
   const inputIdPrefix = chatId ? `mini-plan-${chatId}` : "mini-plan";
   const appNameFieldId = `${inputIdPrefix}-app-name`;
   const templateFieldId = `${inputIdPrefix}-template`;
   const themeFieldId = `${inputIdPrefix}-theme`;
   const mainColorTextFieldId = `${inputIdPrefix}-main-color-text`;
   const mainColorPickerFieldId = `${inputIdPrefix}-main-color-picker`;
+  const statusId = `${inputIdPrefix}-status`;
 
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(appName);
@@ -289,7 +296,13 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       const applyErrors: string[] = [];
       const recordApplyError = (message: string, error: unknown) => {
         console.error(message, error);
-        applyErrors.push(message);
+        const detail =
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : undefined;
+        applyErrors.push(detail ? `${message} (${detail})` : message);
       };
 
       // Apply plan settings to the app before resolving the agent's promise
@@ -411,8 +424,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
   return (
     <div
+      aria-busy={!isReady}
       className={`my-4 border rounded-lg overflow-hidden transition-colors ${
-        isInProgress
+        !isReady
           ? "border-primary/60"
           : isApproved
             ? "border-emerald-500/30 bg-emerald-50/5"
@@ -423,14 +437,14 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       <div className="px-4 py-3 flex items-center justify-between border-b border-border/50">
         <div className="flex items-center gap-2">
           <Sparkles
-            className={`text-primary ${isInProgress ? "animate-pulse" : ""}`}
+            className={`text-primary ${!isReady ? "animate-pulse" : ""}`}
             size={18}
           />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Mini Plan
           </span>
         </div>
-        {isInProgress && (
+        {!isReady && (
           <span className="flex items-center gap-1.5 text-xs text-primary px-3 py-1 bg-primary/10 rounded-md font-medium">
             <Loader2 size={12} className="animate-spin" />
             Generating...
@@ -439,7 +453,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       </div>
 
       {/* Progress bar during generation */}
-      {isInProgress && (
+      {!isReady && (
         <div className="px-4 py-1.5">
           <div
             className="h-1 w-full rounded-full overflow-hidden"
@@ -671,11 +685,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         )}
 
         {/* Visuals */}
-        {(visuals.length > 0 || isInProgress) && (
+        {(visuals.length > 0 || !isReady) && (
           <div className="space-y-1">
             <MiniPlanVisuals
               visuals={visuals}
-              state={isInProgress ? "pending" : "finished"}
+              state={isReady ? "finished" : "pending"}
               isApproved={isApproved}
               onEditVisual={handleVisualEdit}
               onAddVisual={handleAddVisual}
@@ -686,20 +700,18 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       </div>
 
       {/* Footer */}
-      {!isInProgress && (
-        <div
-          className={`px-4 py-3 border-t border-border/50 flex gap-3 ${
-            approvalError ? "items-start justify-between" : "justify-end"
-          }`}
-        >
-          {approvalError && (
-            <p className="max-w-md text-xs text-destructive whitespace-pre-wrap">
-              {approvalError}
-            </p>
-          )}
-          {isApproved ? (
+      <div
+        className={`px-4 py-3 border-t border-border/50 flex gap-3 items-start justify-between`}
+      >
+        {isApproved ? (
+          <>
+            {approvalError && (
+              <p className="max-w-md text-xs text-destructive whitespace-pre-wrap">
+                {approvalError}
+              </p>
+            )}
             <span
-              className={`flex items-center gap-1.5 text-sm font-medium ${
+              className={`ml-auto flex items-center gap-1.5 text-sm font-medium ${
                 approvalError
                   ? "text-amber-600 dark:text-amber-400"
                   : "text-emerald-600 dark:text-emerald-400"
@@ -722,11 +734,28 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                 </>
               )}
             </span>
-          ) : (
+          </>
+        ) : (
+          <>
+            <p
+              id={statusId}
+              role="status"
+              aria-live="polite"
+              className={`max-w-md text-xs ${
+                isReady
+                  ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {isReady
+                ? "Your mini plan is ready to review."
+                : "Preparing mini plan..."}
+            </p>
             <button
               type="button"
               onClick={handleApprove}
-              disabled={!appName || isApproving}
+              disabled={!isReady || !appName || isApproving}
+              aria-describedby={statusId}
               className="flex items-center gap-1.5 text-sm font-medium text-primary-foreground px-5 py-2 bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isApproving ? (
@@ -743,9 +772,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                 </>
               )}
             </button>
-          )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

@@ -49,6 +49,7 @@ import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import { createFromTemplate } from "./createFromTemplate";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 import {
   gitCommit,
   gitAdd,
@@ -886,6 +887,12 @@ export function registerAppHandlers() {
     await createFromTemplate({
       fullAppPath,
     });
+
+    // Ensure `.dyad/` is gitignored before the initial commit so the agent's
+    // later `ensureDyadGitignored` call is a no-op and the app stays clean.
+    // Otherwise the first template swap (e.g. from mini-plan approval) fails
+    // the clean-working-tree check.
+    await ensureDyadGitignored(fullAppPath);
 
     // Initialize git repo and create first commit
 

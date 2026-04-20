@@ -14,7 +14,12 @@ import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { createFromTemplate } from "./createFromTemplate";
-import { gitAdd, gitCommit, isGitStatusClean } from "../utils/git_utils";
+import {
+  gitAdd,
+  gitCommit,
+  hasStagedChanges,
+  isGitStatusClean,
+} from "../utils/git_utils";
 
 const logger = log.scope("template_handlers");
 
@@ -79,18 +84,26 @@ export function registerTemplateHandlers() {
       const stagedTemplatePath = path.join(tempRoot, "app");
 
       try {
-        await createFromTemplate({
-          fullAppPath: stagedTemplatePath,
-          templateId,
-        });
+        try {
+          await createFromTemplate({
+            fullAppPath: stagedTemplatePath,
+            templateId,
+          });
 
-        const appInfo = runningApps.get(appId);
-        if (appInfo) {
-          await stopAppByInfo(appId, appInfo);
+          const appInfo = runningApps.get(appId);
+          if (appInfo) {
+            await stopAppByInfo(appId, appInfo);
+          }
+
+          await clearAppDirectoryForTemplateSwap(appPath);
+          await fsPromises.cp(stagedTemplatePath, appPath, { recursive: true });
+        } catch (error) {
+          logger.error(
+            `Failed to stage template ${templateId} for app ${appId} at ${appPath}:`,
+            error,
+          );
+          throw error;
         }
-
-        await clearAppDirectoryForTemplateSwap(appPath);
-        await fsPromises.cp(stagedTemplatePath, appPath, { recursive: true });
       } finally {
         await fsPromises.rm(tempRoot, {
           recursive: true,
@@ -99,6 +112,17 @@ export function registerTemplateHandlers() {
       }
 
       await gitAdd({ path: appPath, filepath: "." });
+
+      // If the clear-and-recopy produced no effective diff (e.g. the template
+      // is already applied), skip the commit — git would fail with "nothing to
+      // commit" — and report that no change was applied.
+      if (!(await hasStagedChanges({ path: appPath }))) {
+        logger.info(
+          `Template ${templateId} already applied to app ${appId}, skipping commit`,
+        );
+        return { applied: false };
+      }
+
       const commitHash = await gitCommit({
         path: appPath,
         message: `Apply ${templateId} template`,

@@ -158,6 +158,7 @@ describe("mini plan tools", () => {
       {
         chatId,
         visuals: persistedVisuals,
+        complete: true,
       },
     );
 

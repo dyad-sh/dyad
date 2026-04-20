@@ -40,10 +40,16 @@ export function useMiniPlanEvents() {
               visuals: payload.visuals,
             });
           }
-          return {
+          const next: typeof prev = {
             ...prev,
             plansByChatId: nextPlans,
           };
+          if (payload.complete) {
+            const nextReady = new Set(prev.visualsReadyChatIds);
+            nextReady.add(payload.chatId);
+            next.visualsReadyChatIds = nextReady;
+          }
+          return next;
         });
       },
     );

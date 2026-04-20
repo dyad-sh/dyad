@@ -85,6 +85,7 @@ import {
 } from "lucide-react";
 
 import { NlpAiStudioPanel } from "@/components/openclaw/NlpAiStudioPanel";
+import { AgentCommandCenter } from "@/components/openclaw/AgentCommandCenter";
 import { useAvailableModels, useTaskRating } from "@/hooks/useOpenClaw";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -2211,6 +2212,10 @@ export function OpenClawKanbanPage() {
               <Sparkles className="w-3.5 h-3.5 mr-1.5" />
               AI Studio
             </TabsTrigger>
+            <TabsTrigger value="command" className="text-xs">
+              <Cpu className="w-3.5 h-3.5 mr-1.5" />
+              Command Center
+            </TabsTrigger>
           </TabsList>
 
           {/* Filters (board tab only) */}
@@ -2360,6 +2365,11 @@ export function OpenClawKanbanPage() {
         {/* AI Studio Tab */}
         <TabsContent value="studio" className="flex-1 m-0 overflow-auto p-4">
           <NlpAiStudioPanel />
+        </TabsContent>
+
+        {/* Agent Command Center Tab */}
+        <TabsContent value="command" className="flex-1 m-0 overflow-hidden">
+          <AgentCommandCenter />
         </TabsContent>
       </Tabs>
 

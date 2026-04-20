@@ -569,6 +569,7 @@
       "emailVerificationDisabled": "邮箱验证已禁用",
       "emailVerificationEnabled": "邮箱验证已启用",
       "emailVerificationHelp": "启用后，用户必须验证其电子邮件地址才能登录您的应用。",
+      "customEmailProviderHint": "生产环境请配置自定义邮件服务商",
       "envUpdated": "DATABASE_URL 已在 .env.local 中更新。",
       "errorLoadingBranches": "加载分支失败：{{message}}",
       "errorLoadingProjects": "加载项目失败：{{message}}",

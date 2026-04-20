@@ -568,6 +568,7 @@
       "emailVerificationDisabled": "Verificação de e-mail desativada",
       "emailVerificationEnabled": "Verificação de e-mail ativada",
       "emailVerificationHelp": "Quando ativada, os usuários devem verificar seu endereço de e-mail antes de poderem fazer login no seu app.",
+      "customEmailProviderHint": "Para produção, configure um provedor de e-mail personalizado",
       "envUpdated": "DATABASE_URL atualizado em .env.local.",
       "errorLoadingBranches": "Falha ao carregar branches: {{message}}",
       "errorLoadingProjects": "Falha ao carregar projetos: {{message}}",

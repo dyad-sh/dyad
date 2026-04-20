@@ -594,6 +594,7 @@
       "errorLoadingBranches": "Failed to load branches: {{message}}",
       "noBranchesFound": "No branches were found for this Neon project yet.",
       "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app.",
+      "customEmailProviderHint": "For production, set up a custom email provider",
       "openInConsole": "Open in Neon Console",
       "completingSignIn": "Complete sign-in in your browser…",
       "projectDisconnected": "Project disconnected successfully",

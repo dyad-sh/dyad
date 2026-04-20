@@ -82,17 +82,15 @@ EVAL_SUITE=basic_agent EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 EVAL_SUITE=pro_agent EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 ```
 
-Note: `EVAL_SUITE` matches as a case-insensitive substring of the suite
-`name`. `search_replace` is an exact suite name *and* also appears inside
-no other suite name, so it only selects that one suite. `agent` would
-match both `basic_agent` and `pro_agent` — use `basic_agent` or `pro_agent`
-to narrow to one.
+Note: `EVAL_SUITE` matches suite `name`s exactly (case-insensitive), and
+accepts a comma-separated list for multiple suites (e.g.
+`EVAL_SUITE=search_replace,edit_file`). Unknown names error out with the
+available list.
 
 ### Running a single case
 
 Vitest's `-t` flag filters by test name. Case names are the `name` field in
-the `CASES` array of
-[search_replace_tool_use.eval.ts](search_replace_tool_use.eval.ts).
+the `CASES` array of [tool_use.eval.ts](tool_use.eval.ts).
 
 ```bash
 EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." \

@@ -312,7 +312,11 @@ Available packages and libraries:
 export function constructLocalAgentPrompt(
   aiRules: string | undefined,
   themePrompt?: string,
-  options?: { readOnly?: boolean; basicAgentMode?: boolean },
+  options?: {
+    readOnly?: boolean;
+    basicAgentMode?: boolean;
+    enableMiniPlan?: boolean;
+  },
 ): string {
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -322,6 +326,10 @@ export function constructLocalAgentPrompt(
     basePrompt = LOCAL_AGENT_BASIC_SYSTEM_PROMPT;
   } else {
     basePrompt = LOCAL_AGENT_SYSTEM_PROMPT;
+  }
+
+  if (options?.enableMiniPlan === false) {
+    basePrompt = basePrompt.replace(MINI_PLAN_BLOCK, "");
   }
 
   let prompt = basePrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);

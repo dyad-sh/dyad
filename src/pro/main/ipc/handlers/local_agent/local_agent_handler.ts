@@ -580,6 +580,7 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
+      enableMiniPlan: settings.enableMiniPlan !== false,
     });
     const mcpTools =
       readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);

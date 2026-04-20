@@ -465,6 +465,11 @@ export interface BuildAgentToolSetOptions {
    * Used for basic agent mode where some tools may not be available.
    */
   basicAgentMode?: boolean;
+  /**
+   * If false, exclude mini plan tools (mini_plan_questionnaire,
+   * write_mini_plan, plan_visuals).
+   */
+  enableMiniPlan?: boolean;
 }
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
@@ -516,6 +521,16 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
 const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
 /**
+ * Tools that are part of the mini plan flow. Excluded when the feature is
+ * disabled via the Workflow setting.
+ */
+const MINI_PLAN_TOOLS = new Set<string>([
+  "mini_plan_questionnaire",
+  "write_mini_plan",
+  "plan_visuals",
+]);
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
 export function buildAgentToolSet(
@@ -546,6 +561,11 @@ export function buildAgentToolSet(
 
     // Skip Pro-only tools in basic agent mode
     if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
+      continue;
+    }
+
+    // Skip mini plan tools when the feature is disabled
+    if (options.enableMiniPlan === false && MINI_PLAN_TOOLS.has(tool.name)) {
       continue;
     }
 

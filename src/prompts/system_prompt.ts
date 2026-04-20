@@ -514,6 +514,7 @@ export const constructSystemPrompt = ({
   themePrompt,
   readOnly,
   basicAgentMode,
+  enableMiniPlan,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -523,6 +524,8 @@ export const constructSystemPrompt = ({
   readOnly?: boolean;
   /** If true, use basic agent mode (free tier with limited tools) */
   basicAgentMode?: boolean;
+  /** If false, omit the mini plan block from the local-agent prompt. */
+  enableMiniPlan?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -532,6 +535,7 @@ export const constructSystemPrompt = ({
     return constructLocalAgentPrompt(aiRules, themePrompt, {
       readOnly,
       basicAgentMode,
+      enableMiniPlan,
     });
   }
 

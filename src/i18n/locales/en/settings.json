@@ -43,7 +43,9 @@
     "autoApprove": "Auto-approve changes",
     "autoApproveDescription": "This will automatically approve code changes and run them.",
     "autoFixProblems": "Auto-fix problems",
-    "autoFixProblemsDescription": "This will automatically fix TypeScript errors."
+    "autoFixProblemsDescription": "This will automatically fix TypeScript errors.",
+    "miniPlan": "Mini Plan",
+    "miniPlanDescription": "When creating a new app, generate a lightweight mini plan (name, design, color, template) before building."
   },
   "ai": {
     "title": "AI Settings",

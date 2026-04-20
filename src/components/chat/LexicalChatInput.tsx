@@ -541,6 +541,14 @@ export function LexicalChatInput({
   return (
     <LexicalComposer initialConfig={{ ...initialConfig, editable: isEditable }}>
       <div className={cn("relative flex-1", !isEditable && "opacity-60")}>
+        {!isEditable && (
+          <div
+            className="px-3 pt-2 text-xs text-muted-foreground"
+            aria-live="polite"
+          >
+            Input is temporarily disabled.
+          </div>
+        )}
         <PlainTextPlugin
           contentEditable={
             <ContentEditable

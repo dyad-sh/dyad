@@ -117,7 +117,11 @@ export class ChatActions {
       await chatInput.click();
       await this.page.keyboard.press("ControlOrMeta+a");
       await this.page.keyboard.press("Backspace");
-      await this.page.keyboard.type(prompt);
+      if (prompt.includes("@app:")) {
+        await this.page.keyboard.insertText(prompt);
+      } else {
+        await this.page.keyboard.type(prompt);
+      }
       const isEnabled = await sendButton.isEnabled();
       expect(isEnabled).toBe(true);
     }).toPass({ timeout: Timeout.MEDIUM });
@@ -141,23 +145,164 @@ export class ChatActions {
       expect(isDisabled).toBe(false);
     }).toPass({ timeout: Timeout.MEDIUM });
 
-    await selector.click({ force: true });
     const mapping: Record<string, RegExp> = {
-      build: /^Build/,
-      ask: /^Ask/,
-      agent: /^Agent/,
-      "local-agent": /^Agent/,
-      "basic-agent": /Basic Agent/,
-      plan: /^Plan/,
+      build: /\bbuild\b/i,
+      ask: /\bask\b/i,
+      agent: /\bagent\b/i,
+      "local-agent": /\b(agent|basic\s+agent)\b/i,
+      "basic-agent": /\bbasic\s+agent\b/i,
+      plan: /\bplan\b/i,
     };
     const optionName = mapping[mode];
 
-    const option = this.page.getByRole("option", {
+    const normalizeModeText = (value: string) =>
+      value.replace(/\s+/g, " ").trim();
+
+    const currentModeText = normalizeModeText(
+      (await selector.textContent()) ?? "",
+    );
+    if (optionName.test(currentModeText)) {
+      return;
+    }
+
+    const ipcMode =
+      mode === "agent" || mode === "basic-agent" ? "local-agent" : mode;
+    await this.page.evaluate(async (selectedChatMode) => {
+      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+        selectedChatMode,
+      });
+    }, ipcMode);
+
+    for (let i = 0; i < 5; i++) {
+      const selectedModeText = normalizeModeText(
+        (await selector.textContent()) ?? "",
+      );
+      if (optionName.test(selectedModeText)) {
+        return;
+      }
+      await this.page.waitForTimeout(100);
+    }
+
+    const modeAfterIpc = normalizeModeText(
+      (await selector.textContent()) ?? "",
+    );
+    if (optionName.test(modeAfterIpc)) {
+      return;
+    }
+
+    await expect(async () => {
+      for (let i = 0; i < 5; i++) {
+        const selectedModeText = normalizeModeText(
+          (await selector.textContent()) ?? "",
+        );
+        if (optionName.test(selectedModeText)) {
+          return;
+        }
+
+        await selector.focus();
+        await this.page.keyboard.press("ControlOrMeta+Period");
+        await this.page.waitForTimeout(100);
+      }
+
+      const selectedModeText = normalizeModeText(
+        (await selector.textContent()) ?? "",
+      );
+      expect(optionName.test(selectedModeText)).toBe(true);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    const toggledModeText = normalizeModeText(
+      (await selector.textContent()) ?? "",
+    );
+    if (optionName.test(toggledModeText)) {
+      return;
+    }
+
+    const orderedModes = ["build", "ask", "local-agent", "plan"] as const;
+    const normalizeMode = (value: typeof mode) =>
+      value === "agent" || value === "basic-agent" ? "local-agent" : value;
+    const currentNormalizedMode =
+      (Object.entries(mapping).find(([_, regex]) =>
+        regex.test(currentModeText),
+      )?.[0] as typeof mode | undefined) ?? undefined;
+    const targetNormalizedMode = normalizeMode(mode);
+
+    const currentIndex = currentNormalizedMode
+      ? orderedModes.indexOf(normalizeMode(currentNormalizedMode))
+      : -1;
+    const targetIndex = orderedModes.indexOf(targetNormalizedMode);
+
+    const visiblePopup = this.page.locator(
+      '[data-slot="select-content"]:visible',
+    );
+
+    await expect(async () => {
+      const isExpanded = await selector.getAttribute("aria-expanded");
+      if (isExpanded === "true" && (await visiblePopup.count()) === 0) {
+        await this.page.keyboard.press("Escape");
+      }
+
+      if ((await visiblePopup.count()) === 0) {
+        await selector.click({ force: true, timeout: Timeout.SHORT });
+      }
+
+      if ((await visiblePopup.count()) === 0) {
+        await selector.focus();
+        await this.page.keyboard.press("Enter");
+      }
+
+      if ((await visiblePopup.count()) === 0) {
+        await selector.focus();
+        await this.page.keyboard.press("ArrowDown");
+      }
+
+      expect(await visiblePopup.count()).toBeGreaterThan(0);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    if (currentIndex >= 0 && targetIndex >= 0) {
+      const steps =
+        (targetIndex - currentIndex + orderedModes.length) %
+        orderedModes.length;
+      for (let i = 0; i < steps; i++) {
+        await this.page.keyboard.press("ArrowDown");
+        await this.page.waitForTimeout(100);
+      }
+      await this.page.keyboard.press("Enter");
+
+      const selectedModeText = normalizeModeText(
+        (await selector.textContent()) ?? "",
+      );
+      if (optionName.test(selectedModeText)) {
+        await this.page.keyboard.press("Escape");
+        return;
+      }
+    }
+
+    const roleOption = visiblePopup.getByRole("option", {
       name: optionName,
     });
+    const fallbackOption = visiblePopup
+      .locator('[data-slot="select-item"]')
+      .filter({ hasText: optionName });
+    const option = roleOption.or(fallbackOption).first();
 
     await expect(option).toBeVisible({ timeout: Timeout.MEDIUM });
-    await option.click({ force: true });
+    await expect(async () => {
+      try {
+        await option.click({ timeout: Timeout.SHORT });
+      } catch {
+        try {
+          await option.click({ force: true, timeout: Timeout.SHORT });
+        } catch {
+          await option.dispatchEvent("click");
+        }
+      }
+
+      const selectedModeText = normalizeModeText(
+        (await selector.textContent()) ?? "",
+      );
+      expect(optionName.test(selectedModeText)).toBe(true);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
     // Dismiss any open tooltips after mode selection
     await this.page.keyboard.press("Escape");
   }

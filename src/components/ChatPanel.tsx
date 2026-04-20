@@ -309,8 +309,8 @@ export function ChatPanel({
             )}
             <NotificationBanner />
             <div className="flex flex-col gap-2">
-              <div className="min-h-8 flex justify-center pointer-events-none">
-                {isModeTransitioning && (
+              {isModeTransitioning && (
+                <div className="flex justify-center pointer-events-none">
                   <div
                     role="status"
                     aria-live="polite"
@@ -321,8 +321,8 @@ export function ChatPanel({
                       defaultValue: "Restoring chat mode...",
                     })}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               <ChatInput
                 chatId={chatId}
                 isRestoringMode={isModeTransitioning}

@@ -15,11 +15,6 @@ message:
   More
   EOM
 
-
-    
-    
-    
-
 ===
 role: user
 message: [dump] hi

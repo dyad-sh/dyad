@@ -1,6 +1,15 @@
 import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
+async function expectChatInputEditable(chatInput: {
+  isEditable: () => Promise<boolean>;
+}) {
+  await expect(async () => {
+    const isEditable = await chatInput.isEditable();
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
+}
+
 test("chat input is preserved when switching between chats", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
@@ -37,10 +46,7 @@ test("chat input is preserved when switching between chats", async ({ po }) => {
   await inactiveTab.locator("button").first().click();
 
   // Wait for input to become editable after chat switch (restoration may briefly disable it)
-  await expect(async () => {
-    const isEditable = await chatInput.isEditable();
-    expect(isEditable).toBe(true);
-  }).toPass({ timeout: Timeout.MEDIUM });
+  await expectChatInputEditable(chatInput);
 
   // Chat 1 should still have its unsent text
   await expect(chatInput).toContainText("unsent text in chat one", {
@@ -54,10 +60,7 @@ test("chat input is preserved when switching between chats", async ({ po }) => {
   await inactiveTab2.locator("button").first().click();
 
   // Wait for input to become editable after chat switch (restoration may briefly disable it)
-  await expect(async () => {
-    const isEditable = await chatInput.isEditable();
-    expect(isEditable).toBe(true);
-  }).toPass({ timeout: Timeout.MEDIUM });
+  await expectChatInputEditable(chatInput);
 
   // Chat 2 should still have its unsent text
   await expect(chatInput).toContainText("unsent text in chat two", {
@@ -152,10 +155,7 @@ test("input preserved when switching back and forth multiple times", async ({
   await getInactiveTab().locator("button").first().click();
 
   // Wait for input to become editable after chat switch (restoration may briefly disable it)
-  await expect(async () => {
-    const isEditable = await chatInput.isEditable();
-    expect(isEditable).toBe(true);
-  }).toPass({ timeout: Timeout.MEDIUM });
+  await expectChatInputEditable(chatInput);
 
   await expect(chatInput).toContainText("draft-alpha", {
     timeout: Timeout.MEDIUM,
@@ -165,10 +165,7 @@ test("input preserved when switching back and forth multiple times", async ({
   await getInactiveTab().locator("button").first().click();
 
   // Wait for input to become editable after chat switch (restoration may briefly disable it)
-  await expect(async () => {
-    const isEditable = await chatInput.isEditable();
-    expect(isEditable).toBe(true);
-  }).toPass({ timeout: Timeout.MEDIUM });
+  await expectChatInputEditable(chatInput);
 
   await expect(chatInput).toContainText("draft-beta", {
     timeout: Timeout.MEDIUM,
@@ -178,10 +175,7 @@ test("input preserved when switching back and forth multiple times", async ({
   await getInactiveTab().locator("button").first().click();
 
   // Wait for input to become editable after chat switch (restoration may briefly disable it)
-  await expect(async () => {
-    const isEditable = await chatInput.isEditable();
-    expect(isEditable).toBe(true);
-  }).toPass({ timeout: Timeout.MEDIUM });
+  await expectChatInputEditable(chatInput);
 
   await expect(chatInput).toContainText("draft-alpha", {
     timeout: Timeout.MEDIUM,

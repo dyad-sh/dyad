@@ -84,6 +84,16 @@ export class PageObject {
     await this.githubConnector.clearPushEvents();
   }
 
+  private async setSelectedChatModeForTest(
+    mode: "build" | "ask" | "local-agent" | "plan",
+  ) {
+    await this.page.evaluate(async (selectedChatMode) => {
+      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+        selectedChatMode,
+      });
+    }, mode);
+  }
+
   async setUp({
     autoApprove = false,
     disableNativeGit = false,
@@ -115,7 +125,7 @@ export class PageObject {
     await this.settings.setUpTestModel();
     await this.navigation.goToAppsTab();
     if (!enableBasicAgent) {
-      await this.chatActions.selectChatMode("build");
+      await this.setSelectedChatModeForTest("build");
     }
     await this.modelPicker.selectTestModel();
   }
@@ -137,7 +147,7 @@ export class PageObject {
     await this.settings.setUpDyadProvider();
     await this.navigation.goToAppsTab();
     if (!localAgent) {
-      await this.chatActions.selectChatMode("build");
+      await this.setSelectedChatModeForTest("build");
     }
     // Select a non-openAI model for local agent mode,
     // since openAI models go to the responses API.

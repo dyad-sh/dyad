@@ -167,8 +167,8 @@ export function useStreamChat({
 
       let hasIncrementedStreamCount = false;
       try {
-        // Use settings.selectedChatMode instead of cache to ensure fresh mode is sent
-        const chatMode = settings?.selectedChatMode ?? undefined;
+        // Always send an explicit mode; default to build when not selected yet.
+        const chatMode = settings?.selectedChatMode ?? "build";
 
         ipc.chatStream.start(
           {

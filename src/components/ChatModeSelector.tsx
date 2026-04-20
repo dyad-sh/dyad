@@ -38,6 +38,7 @@ import { useCurrentChatIdFromRoute } from "@/hooks/useCurrentChatIdFromRoute";
 import { useIsMac } from "@/lib/platformUtils";
 import { useRouterState } from "@tanstack/react-router";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { ipc } from "@/ipc/types";
 
 export function ChatModeSelector() {
   const { t } = useTranslation("chat");
@@ -117,7 +118,12 @@ export function ChatModeSelector() {
         const currentChat = chatId
           ? chats.find((chat) => chat.id === chatId)
           : undefined;
-        const appIdForPersist = selectedAppId ?? currentChat?.appId;
+        let appIdForPersist = selectedAppId ?? currentChat?.appId;
+
+        if (chatId && !appIdForPersist) {
+          const allChats = await ipc.chat.getChats(undefined);
+          appIdForPersist = allChats.find((chat) => chat.id === chatId)?.appId;
+        }
 
         if (chatId && appIdForPersist) {
           const result = await persistChatMode({

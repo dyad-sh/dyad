@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { usePersistChatMode } from "./usePersistChatMode";
 import { useTranslation } from "react-i18next";
 import { getChatModeLabelKey } from "@/lib/chatModeUtils";
+import { ipc } from "@/ipc/types";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useCurrentChatIdFromRoute } from "./useCurrentChatIdFromRoute";
@@ -158,6 +159,11 @@ export function useChatModeToggle() {
       if (!appIdForPersist && chatId) {
         appIdForPersist =
           chats.find((chat) => chat.id === chatId)?.appId ?? null;
+      }
+      if (!appIdForPersist && chatId) {
+        const allChats = await ipc.chat.getChats(undefined);
+        appIdForPersist =
+          allChats.find((chat) => chat.id === chatId)?.appId ?? null;
       }
 
       loadingToastTimerId = window.setTimeout(() => {

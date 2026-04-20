@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   Image,
   ChevronDown,
@@ -208,9 +208,37 @@ const VisualEntry: React.FC<{
   onRemove?: (visualId: string) => void;
 }> = ({ visual, isApproved, onEdit, onRemove }) => {
   const [showPrompt, setShowPrompt] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const confirmResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typeInfo = TYPE_LABELS[visual.type] ?? TYPE_LABELS.other;
   const canEdit = !isApproved && !!onEdit;
   const canRemove = !isApproved && !!onRemove;
+
+  useEffect(() => {
+    return () => {
+      if (confirmResetTimer.current) {
+        clearTimeout(confirmResetTimer.current);
+      }
+    };
+  }, []);
+
+  const handleRemoveClick = useCallback(() => {
+    if (!onRemove) return;
+    if (confirmingRemove) {
+      if (confirmResetTimer.current) {
+        clearTimeout(confirmResetTimer.current);
+        confirmResetTimer.current = null;
+      }
+      onRemove(visual.id);
+      return;
+    }
+    setConfirmingRemove(true);
+    // Auto-revert if the user moves away — prevents a stale "Confirm?" button.
+    confirmResetTimer.current = setTimeout(() => {
+      setConfirmingRemove(false);
+      confirmResetTimer.current = null;
+    }, 3000);
+  }, [confirmingRemove, onRemove, visual.id]);
 
   return (
     <div className="border border-border/50 rounded-md p-2.5 space-y-1.5 group/entry">
@@ -231,16 +259,27 @@ const VisualEntry: React.FC<{
           />
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {canRemove && (
-            <button
-              type="button"
-              onClick={() => onRemove(visual.id)}
-              className="opacity-0 group-hover/entry:opacity-100 group-focus-within/entry:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5 rounded"
-              aria-label="Remove visual"
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
+          {canRemove &&
+            (confirmingRemove ? (
+              <button
+                type="button"
+                onClick={handleRemoveClick}
+                className="flex items-center gap-1 text-xs font-medium text-destructive hover:text-destructive/80 px-1.5 py-0.5 rounded transition-colors"
+                aria-label="Confirm remove visual"
+              >
+                <Trash2 size={11} />
+                Confirm?
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRemoveClick}
+                className="opacity-0 group-hover/entry:opacity-100 group-focus-within/entry:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5 rounded"
+                aria-label="Remove visual"
+              >
+                <Trash2 size={13} />
+              </button>
+            ))}
           <button
             type="button"
             onClick={() => setShowPrompt(!showPrompt)}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -104,6 +104,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   const [colorTextValue, setColorTextValue] = useState(mainColor);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  // Synchronous guard against fast double-clicks on Approve — `isApproving`
+  // state wouldn't see a second click within the same render tick.
+  const approvingRef = useRef(false);
 
   // Sync local state when props change (e.g. from streaming updates)
   useEffect(() => {
@@ -210,15 +213,18 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     (visualId: string) => {
       if (!chatId || isApproved) return;
 
-      // Store for rollback
-      let removedVisual: MiniPlanVisual | undefined;
+      // Capture for rollback before mutating state — reading inside the
+      // updater is unsafe because React may invoke updaters more than once.
+      const removedVisual = miniPlanState.plansByChatId
+        .get(chatId)
+        ?.visuals.find((v) => v.id === visualId);
+      if (!removedVisual) return;
 
       // Update local state immediately
       setMiniPlanState((prev) => {
         const nextPlans = new Map(prev.plansByChatId);
         const existing = nextPlans.get(chatId);
         if (existing) {
-          removedVisual = existing.visuals.find((v) => v.id === visualId);
           nextPlans.set(chatId, {
             ...existing,
             visuals: existing.visuals.filter((v) => v.id !== visualId),
@@ -232,23 +238,20 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         console.error("Failed to remove visual:", error);
         showError("Could not remove visual. Please try again.");
         // Roll back
-        if (removedVisual) {
-          const restored = removedVisual;
-          setMiniPlanState((prev) => {
-            const nextPlans = new Map(prev.plansByChatId);
-            const existing = nextPlans.get(chatId);
-            if (existing) {
-              nextPlans.set(chatId, {
-                ...existing,
-                visuals: [...existing.visuals, restored],
-              });
-            }
-            return { ...prev, plansByChatId: nextPlans };
-          });
-        }
+        setMiniPlanState((prev) => {
+          const nextPlans = new Map(prev.plansByChatId);
+          const existing = nextPlans.get(chatId);
+          if (existing) {
+            nextPlans.set(chatId, {
+              ...existing,
+              visuals: [...existing.visuals, removedVisual],
+            });
+          }
+          return { ...prev, plansByChatId: nextPlans };
+        });
       });
     },
-    [chatId, isApproved, setMiniPlanState],
+    [chatId, isApproved, miniPlanState, setMiniPlanState],
   );
 
   const handleFieldEdit = useCallback(
@@ -276,6 +279,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
   const handleApprove = useCallback(async () => {
     if (!chatId || isApproved) return;
+    if (approvingRef.current) return;
 
     const plan = miniPlanState.plansByChatId.get(chatId);
     if (!plan) {
@@ -283,6 +287,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       return;
     }
 
+    approvingRef.current = true;
     setIsApproving(true);
     setApprovalError(null);
 
@@ -401,6 +406,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       showError("Failed to approve the mini plan. Please try again.");
     } finally {
       setIsApproving(false);
+      approvingRef.current = false;
     }
   }, [
     chatId,
@@ -534,7 +540,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         )}
 
         {/* Tech Stack & Theme Row */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Tech Stack */}
           <div className="space-y-1">
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
@@ -671,7 +677,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         )}
 
         {/* Design Direction */}
-        {designDirection && (
+        {(designDirection || !isApproved) && (
           <div className="space-y-1">
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               Design Direction

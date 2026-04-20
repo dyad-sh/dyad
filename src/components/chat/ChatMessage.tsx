@@ -21,15 +21,13 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { calculateVersionNumber } from "./versionUtils";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { CopyButton } from "@/components/ui/copy-button";
 import { unescapeXmlAttr } from "../../../shared/xmlEscape";
 import {
   isCancelledResponseContent,
@@ -128,12 +126,21 @@ const ChatMessage = ({
   // Calculate version number (reverse index: newest = 1, older = 2, 3, etc.)
   const versionNumber = useMemo(() => {
     if (messageVersion && liveVersions.length) {
-      return calculateVersionNumber(messageVersion, liveVersions);
+      return liveVersions.length - liveVersions.indexOf(messageVersion);
     }
     return null;
   }, [messageVersion, liveVersions]);
 
-  // handle copy request id and commit hash using CopyButton
+  // handle copy request id
+  const [copiedRequestId, setCopiedRequestId] = useState(false);
+  const copiedRequestIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copiedRequestIdTimeoutRef.current) {
+        clearTimeout(copiedRequestIdTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Format the message timestamp
   const formatTimestamp = (timestamp: string | Date) => {
@@ -284,41 +291,64 @@ const ChatMessage = ({
               <Clock className="h-3 w-3" />
               <span>{formatTimestamp(message.createdAt)}</span>
             </div>
-            {messageVersion && messageVersion.message && (
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1">
-                  <GitCommit className="h-3 w-3" />
-                  <span
-                    className="max-w-50 truncate font-medium"
-                    title={messageVersion.message}
-                  >
-                    {
-                      messageVersion.message
-                        .replace(/^\[dyad\]\s*/i, "")
-                        .split("\n")[0]
-                    }
-                  </span>
-                </div>
-                {versionNumber && (
-                  <CopyButton
-                    value={String(versionNumber)}
-                    ariaLabel="Copy Version Number"
-                    displayText={`Version ${versionNumber}`}
-                    tooltipText={`Version ${versionNumber}`}
-                    mono={true}
-                    raw={true}
-                  />
-                )}
+            {messageVersion && messageVersion.message && versionNumber && (
+              <div className="flex items-center space-x-1">
+                <GitCommit className="h-3 w-3" />
+                <span
+                  className="max-w-50 truncate font-medium"
+                  title={messageVersion.message}
+                >
+                  {`Version ${versionNumber}: ${
+                    messageVersion.message
+                      .replace(/^\[dyad\]\s*/i, "")
+                      .split("\n")[0]
+                  }`}
+                </span>
               </div>
             )}
             {message.requestId && (
-              <CopyButton
-                value={message.requestId}
-                ariaLabel="Copy Request ID"
-                displayText="Request ID"
-                tooltipText={`Copy Request ID: ${message.requestId.slice(0, 8)}...`}
-                raw={true}
-              />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={() => {
+                        if (!message.requestId) return;
+                        navigator.clipboard
+                          .writeText(message.requestId)
+                          .then(() => {
+                            setCopiedRequestId(true);
+                            if (copiedRequestIdTimeoutRef.current) {
+                              clearTimeout(copiedRequestIdTimeoutRef.current);
+                            }
+                            copiedRequestIdTimeoutRef.current = setTimeout(
+                              () => setCopiedRequestId(false),
+                              2000,
+                            );
+                          })
+                          .catch(() => {
+                            // noop
+                          });
+                      }}
+                      aria-label="Copy Request ID"
+                      className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                    />
+                  }
+                >
+                  {copiedRequestId ? (
+                    <Check className="h-3 w-3 text-green-500" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span className="text-xs">
+                    {copiedRequestId ? "Copied" : "Request ID"}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {copiedRequestId
+                    ? "Copied!"
+                    : `Copy Request ID: ${message.requestId.slice(0, 8)}...`}
+                </TooltipContent>
+              </Tooltip>
             )}
             {isLastMessage && message.totalTokens && (
               <div

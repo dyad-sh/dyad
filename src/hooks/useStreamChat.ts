@@ -318,6 +318,12 @@ export function useStreamChat({
                 queryClient.invalidateQueries({
                   queryKey: queryKeys.proposals.detail({ chatId }),
                 });
+                const latestChat = await ipc.chat.getChat(chatId);
+                setMessagesById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, latestChat.messages);
+                  return next;
+                });
                 invalidateChats();
                 refreshApp();
                 refreshVersions();

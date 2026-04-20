@@ -80,7 +80,7 @@ export const MiniPlanDesignDirection: React.FC<
             setEditValue(direction);
             setIsEditing(true);
           }}
-          className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded"
+          className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded"
           aria-label="Edit design direction"
         >
           <Pencil size={12} />

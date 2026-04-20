@@ -46,8 +46,12 @@ const writeMiniPlanSchema = z.object({
     ),
   main_color: z
     .string()
+    .regex(
+      /^#[0-9a-fA-F]{6}$/,
+      "main_color must be a 6-digit hex code like '#3B82F6'",
+    )
     .describe(
-      "The primary/accent color for the app as a hex code. Choose based on the industry and design direction. Example: '#3B82F6'",
+      "The primary/accent color for the app as a 6-digit hex code (e.g. '#3B82F6'). Choose based on the industry and design direction.",
     ),
 });
 

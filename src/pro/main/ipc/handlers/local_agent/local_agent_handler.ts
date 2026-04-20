@@ -341,11 +341,14 @@ export async function handleLocalAgentStream(
   // Note: This guard is defense-in-depth. Callers in chat_stream_handlers.ts already
   // gate on effectiveStreamMode === "local-agent", but this check protects against
   // future direct callers that might not validate mode before calling.
-  // Defense-in-depth: prefer the persisted DB mode over the client-supplied
-  // req.chatMode so a crafted request can't bypass the Pro gate below.
+  // Prefer req.chatMode because mode switches are persisted optimistically in the
+  // UI; the DB mode can lag by one round-trip. Using DB-first would reject valid
+  // non-Pro local-agent (basic agent) requests when a user switches and sends
+  // immediately. This guard is defense-in-depth: the actual Pro escalation path
+  // is gated by chat_stream_handlers before routing here.
   const effectiveChatMode =
-    initialChat.chatMode ??
     req.chatMode ??
+    initialChat.chatMode ??
     settings.selectedChatMode ??
     "build";
   const isLocalAgentMode = effectiveChatMode === "local-agent";

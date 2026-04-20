@@ -14,6 +14,9 @@ test("chat input is preserved when switching between chats", async ({ po }) => {
   await chatInput.fill("unsent text in chat one");
   await expect(chatInput).toContainText("unsent text in chat one");
 
+  // Small delay to ensure state is persisted
+  await po.page.waitForTimeout(500);
+
   // Create Chat 2
   await po.chatActions.clickNewChat();
   await expect(chatInput).toBeVisible();
@@ -24,11 +27,20 @@ test("chat input is preserved when switching between chats", async ({ po }) => {
   await chatInput.fill("unsent text in chat two");
   await expect(chatInput).toContainText("unsent text in chat two");
 
+  // Small delay to ensure state is persisted
+  await po.page.waitForTimeout(500);
+
   // Switch to Chat 1 via the inactive tab
   const inactiveTab = po.page
     .locator("div[draggable]")
     .filter({ hasNot: po.page.locator('button[aria-current="page"]') });
   await inactiveTab.locator("button").first().click();
+
+  // Wait for input to become editable after chat switch (restoration may briefly disable it)
+  await expect(async () => {
+    const isEditable = await chatInput.isEditable();
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
 
   // Chat 1 should still have its unsent text
   await expect(chatInput).toContainText("unsent text in chat one", {
@@ -40,6 +52,12 @@ test("chat input is preserved when switching between chats", async ({ po }) => {
     .locator("div[draggable]")
     .filter({ hasNot: po.page.locator('button[aria-current="page"]') });
   await inactiveTab2.locator("button").first().click();
+
+  // Wait for input to become editable after chat switch (restoration may briefly disable it)
+  await expect(async () => {
+    const isEditable = await chatInput.isEditable();
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
 
   // Chat 2 should still have its unsent text
   await expect(chatInput).toContainText("unsent text in chat two", {
@@ -132,18 +150,39 @@ test("input preserved when switching back and forth multiple times", async ({
       .filter({ hasNot: po.page.locator('button[aria-current="page"]') });
 
   await getInactiveTab().locator("button").first().click();
+
+  // Wait for input to become editable after chat switch (restoration may briefly disable it)
+  await expect(async () => {
+    const isEditable = await chatInput.isEditable();
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
   await expect(chatInput).toContainText("draft-alpha", {
     timeout: Timeout.MEDIUM,
   });
 
   // Switch back to Chat 2
   await getInactiveTab().locator("button").first().click();
+
+  // Wait for input to become editable after chat switch (restoration may briefly disable it)
+  await expect(async () => {
+    const isEditable = await chatInput.isEditable();
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
   await expect(chatInput).toContainText("draft-beta", {
     timeout: Timeout.MEDIUM,
   });
 
   // Switch to Chat 1 again — still preserved after multiple switches
   await getInactiveTab().locator("button").first().click();
+
+  // Wait for input to become editable after chat switch (restoration may briefly disable it)
+  await expect(async () => {
+    const isEditable = await chatInput.isEditable();
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
   await expect(chatInput).toContainText("draft-alpha", {
     timeout: Timeout.MEDIUM,
   });

@@ -62,10 +62,15 @@ export function ChatPanel({
   const { chats } = useChats(selectedAppId);
   const currentChat = chats.find((c) => c.id === chatId);
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
-  const isRestoreContextReady =
-    !settingsLoading && (isProEnabled || !isQuotaLoading);
   const quotaCheckMode =
     currentChat?.chatMode ?? settings?.selectedChatMode ?? "build";
+  // Only block on quota loading when it actually gates the resolved mode
+  // (non-Pro user on local-agent). Otherwise we'd show a misleading
+  // "Restoring chat mode..." banner while simply waiting on quota info.
+  const needsQuotaForRestore =
+    !isProEnabled && quotaCheckMode === "local-agent";
+  const isRestoreContextReady =
+    !settingsLoading && (!needsQuotaForRestore || !isQuotaLoading);
   const showFreeAgentQuotaBanner =
     settings &&
     !isProEnabled &&

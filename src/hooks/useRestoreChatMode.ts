@@ -74,6 +74,9 @@ export function useRestoreChatMode({
       return;
     }
 
+    // Reset restoring state at start to handle rapid chat switches cleanly
+    setIsRestoringMode(false);
+
     let isCancelled = false;
     const restoreAbortController = new AbortController();
     let bannerTimeoutId: number | undefined;

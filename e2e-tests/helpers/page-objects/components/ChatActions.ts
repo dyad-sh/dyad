@@ -18,7 +18,11 @@ export class ChatActions {
   }
 
   getChatInput() {
-    return this.getChatInputContainer().locator('[data-lexical-editor="true"]');
+    // Target the Lexical editor directly by placeholder attribute
+    // This works for both home and chat input containers
+    return this.page.locator(
+      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+    );
   }
 
   /**
@@ -97,7 +101,9 @@ export class ChatActions {
     }: { skipWaitForCompletion?: boolean; timeout?: number } = {},
   ) {
     const chatInput = this.getChatInput();
-    const sendButton = this.page.getByRole("button", { name: "Send message" });
+    const sendButton = this.page.getByRole("button", {
+      name: "Send message",
+    });
 
     // Wait until Lexical is editable (it may be temporarily disabled during mode restore)
     await expect(async () => {

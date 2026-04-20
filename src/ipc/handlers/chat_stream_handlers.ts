@@ -568,7 +568,7 @@ ${componentSnippet}
 
       // Legacy chat migration: if chat_mode is null (pre-migration 0027),
       // persist the mode the stream actually uses (effectiveStreamMode).
-      // Validate the mode before imprinting to avoid persisticlearng unavailable modes.
+      // Validate the mode before imprinting to avoid persisting unavailable modes.
       const legacyImprintMode: ChatMode = effectiveStreamMode;
       if (chatBeforePlaceholder.chatMode == null) {
         try {

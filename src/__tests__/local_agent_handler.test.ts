@@ -1367,6 +1367,135 @@ describe("handleLocalAgentStream", () => {
     });
   });
 
+  describe("Todo follow-up", () => {
+    it("runs a follow-up pass when the first pass ends with set_chat_summary and incomplete todos remain", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+        return {
+          update_todos: {
+            execute: async (args: any) => {
+              if (args.merge) {
+                const todosById = new Map(
+                  ctx.todos.map((todo) => [todo.id, todo]),
+                );
+                for (const todo of args.todos) {
+                  const existing = todosById.get(todo.id);
+                  todosById.set(
+                    todo.id,
+                    existing ? { ...existing, ...todo } : todo,
+                  );
+                }
+                ctx.todos = Array.from(todosById.values());
+              } else {
+                ctx.todos = args.todos;
+              }
+              ctx.onUpdateTodos(ctx.todos);
+              return "Updated todos";
+            },
+          },
+        } as any;
+      });
+
+      const streamMessagesByPass: any[][] = [];
+      let passCount = 0;
+      mockStreamTextImpl = (options) => {
+        passCount += 1;
+        streamMessagesByPass.push(options.messages ?? []);
+
+        if (passCount === 1) {
+          return {
+            fullStream: (async function* () {
+              yield { type: "text-delta", text: "I started the work." };
+              await options.tools.update_todos.execute({
+                merge: false,
+                todos: [
+                  {
+                    id: "todo-1",
+                    content: "Finish the requested work",
+                    status: "pending",
+                  },
+                ],
+              });
+            })(),
+            response: Promise.resolve({
+              messages: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: "I started the work." }],
+                },
+              ],
+            }),
+            steps: Promise.resolve([
+              {
+                toolCalls: [{ toolName: "set_chat_summary" }],
+                response: {
+                  messages: [
+                    {
+                      role: "assistant",
+                      content: [{ type: "text", text: "I started the work." }],
+                    },
+                  ],
+                },
+              },
+            ]),
+          };
+        }
+
+        return {
+          fullStream: (async function* () {
+            await options.tools.update_todos.execute({
+              merge: true,
+              todos: [{ id: "todo-1", status: "completed" }],
+            });
+            yield { type: "text-delta", text: "Finished the work." };
+          })(),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "Finished the work." }],
+              },
+            ],
+          }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(passCount).toBe(2);
+      const secondPassMessages = streamMessagesByPass[1] ?? [];
+      const hasTodoReminder = secondPassMessages.some(
+        (message: any) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "text" &&
+              typeof part.text === "string" &&
+              part.text.includes("incomplete todo(s)") &&
+              part.text.includes("Finish the requested work"),
+          ),
+      );
+      expect(hasTodoReminder).toBe(true);
+    });
+  });
+
   describe("Abort handling", () => {
     it("should stop processing stream chunks when abort signal is triggered", async () => {
       // Arrange

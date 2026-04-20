@@ -151,13 +151,24 @@ export function ChatPanel({
 
   // Keep footer actions (including Retry) visible when stream errors render below.
   useEffect(() => {
-    if (streamError && isAtBottomRef.current) {
+    if (!streamError) return;
+
+    let timeoutId: number | undefined;
+
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+        scrollToBottom("instant");
+        timeoutId = window.setTimeout(() => {
           scrollToBottom("smooth");
-        });
+        }, 120);
       });
-    }
+    });
+
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [streamError, scrollToBottom]);
 
   // Test mode only: Track scroll position to update isAtBottom state.

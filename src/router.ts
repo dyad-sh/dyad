@@ -62,6 +62,8 @@ import { nlpStudioRoute } from "./routes/nlp-studio";
 import { appPublishingRoute } from "./routes/app-publishing";
 import { unifiedIdentityRoute } from "./routes/unified-identity";
 import { appBuilderRoute } from "./routes/app-builder";
+import { marketplaceExplorerRoute } from "./routes/marketplace-explorer";
+import { scrapingRoute } from "./routes/scraping";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -131,6 +133,8 @@ const routeTree = rootRoute.addChildren([
   appPublishingRoute,
   unifiedIdentityRoute,
   appBuilderRoute,
+  marketplaceExplorerRoute,
+  scrapingRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

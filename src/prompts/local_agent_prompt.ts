@@ -369,6 +369,7 @@ export function constructLocalAgentPrompt(
     basicAgentMode?: boolean;
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
+    enableMiniPlan?: boolean;
   },
 ): string {
   // Select the appropriate base prompt
@@ -390,6 +391,10 @@ export function constructLocalAgentPrompt(
     options?.frameworkType === "vite" && !options?.hasSupabaseProject
       ? `\n${SERVER_LAYER_BLOCK}\n`
       : "";
+
+  if (options?.enableMiniPlan === false) {
+    basePrompt = basePrompt.replace(MINI_PLAN_BLOCK, "");
+  }
 
   let prompt = basePrompt
     .replace("[[SERVER_LAYER]]", serverLayer)

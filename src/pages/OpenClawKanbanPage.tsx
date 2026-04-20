@@ -495,8 +495,8 @@ function KanbanColumn({
         </div>
       )}
 
-      {/* Tasks — fills remaining space, scrolls vertically */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+      {/* Tasks — grow with content, board-level scroll handles overflow */}
+      <div className="flex-1 px-2 pb-2">
         <div className="flex flex-col gap-2 p-1">
           {tasks.map((task) => (
             <TaskCard
@@ -2302,7 +2302,7 @@ export function OpenClawKanbanPage() {
             </div>
           </div>
 
-          {/* Board with horizontal scroll + shadows */}
+          {/* Board with horizontal + vertical scroll + shadows */}
           <div className="flex-1 min-h-0 relative">
             {/* Left scroll shadow */}
             {canScrollLeft && (
@@ -2315,9 +2315,9 @@ export function OpenClawKanbanPage() {
 
             <div
               ref={boardScrollRef}
-              className="h-full overflow-x-auto overflow-y-auto"
+              className="h-full overflow-auto"
             >
-              <div className="flex gap-3 p-4 h-full min-w-max">
+              <div className="flex gap-3 p-4 min-h-full min-w-max">
                 {COLUMNS.map((col) => (
                   <KanbanColumn
                     key={col.id}

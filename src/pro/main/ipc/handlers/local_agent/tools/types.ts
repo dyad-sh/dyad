@@ -59,6 +59,7 @@ export interface AgentContext {
   neonProjectId: string | null;
   neonActiveBranchId: string | null;
   frameworkType: "nextjs" | "vite" | "other" | null;
+  nitroEnabled: boolean;
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;

@@ -1,5 +1,5 @@
 import path from "path";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 /**
  * Test for security review in local-agent mode
@@ -72,6 +72,24 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
 
   // Wait for chat to complete
   await po.chatActions.waitForChatCompletion();
+
+  await po.snapshotMessages();
+});
+
+/**
+ * Test for enable_nitro tool in local-agent mode on a Vite app.
+ */
+testSkipIfWindows("local-agent - enable nitro", async ({ po }) => {
+  await po.setUpDyadPro({ localAgent: true });
+  await po.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
+
+  await po.sendPrompt("tc=local-agent/enable-nitro", {
+    skipWaitForCompletion: true,
+  });
+
+  // Install of `nitro` goes through socket firewall, which can be slow on first run.
+  await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
   await po.snapshotMessages();
 });

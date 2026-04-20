@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add an opt-in server layer (Nitro) to Vite/React apps in Dyad, giving them filesystem-based API routes that deploy as Vercel Functions. This closes the architectural gap between Next.js (which has built-in API routes) and Vite for database-backed apps — specifically unblocking Neon database integration for Vite projects, which requires server-side access to `DATABASE_URL`.
+Add a server layer (Nitro) to Vite/React apps in Dyad through an **AI-callable tool** that the agent invokes automatically when the user's prompt indicates server-side needs (database access, secrets, API routes, webhooks). This closes the architectural gap between Next.js (which has built-in API routes) and Vite for database-backed apps — specifically unblocking Neon database integration for Vite projects, which requires server-side access to `DATABASE_URL`. Nitro-specific coding conventions are appended to the project's `AI_RULES.md` so all future chats know the patterns.
 
 ## Problem Statement
 
@@ -20,93 +20,84 @@ Since Vite is the default template, this affects the majority of Dyad apps.
 
 ### In Scope (MVP — This PR)
 
-- **Nitro toggle on app-details page** — A one-directional switch (enable only) with confirmation dialog, shown only for Vite/React apps
-- **Hybrid scaffolding** — Programmatically add `nitro` to `package.json` and create `server/routes/api/` directory; AI agent handles `vite.config.ts` modification via system prompt
-- **System prompt** — `nitro_prompt.ts` with Nitro-specific coding patterns (filesystem routing, `defineHandler`, `useRuntimeConfig()`, `server/routes/api/` convention)
+- **`enable_nitro` AI tool** — available in **local-agent** mode. The agent calls it when the user's prompt requires server-side capabilities (database access, secrets, API routes, webhooks, server logic).
+- **Hybrid scaffolding (tool execution)** — Tool programmatically adds `nitro` to `package.json`, creates `server/routes/api/` directory, appends Nitro rules to `AI_RULES.md`, and triggers install. The agent handles `vite.config.ts` modification in the same turn (guided by the newly-injected AI rules).
+- **`AI_RULES.md` modification** — the tool appends a "Nitro Server Layer" section to the project's `AI_RULES.md` (or creates it if missing). This keeps all project-level coding conventions in a single, user-visible file.
 - **Vercel compatibility** — Nitro's Vercel preset (`preset: "vercel"`) generates `.vercel/output/` at build time, which Vercel understands natively
-- **Integration test** — End-to-end: create Vite app → enable Nitro → chat to generate route → deploy to Vercel → verify API route responds
+- **Integration test** — End-to-end: create Vite app → user prompts "store users in Postgres" → agent calls `enable_nitro` → agent generates route → `vite build` produces `.vercel/output/` → deploy to Vercel → verify API route responds
 
 ### Out of Scope (Follow-up)
 
-- Making Nitro mandatory for Neon users (follow-up PR — auto-enable Nitro when Neon is connected to a Vite app)
-- Neon-specific agent tools or system prompts (separate Neon integration work)
+- Making Nitro mandatory for Neon users (follow-up PR — auto-call the tool when Neon is connected to a Vite app)
+- Neon-specific agent tools or AI rules (separate Neon integration work)
 - Supabase-specific Nitro patterns (Supabase has its own Edge Functions)
-- Disabling Nitro from UI (v1 is enable-only; removal via AI assistant in chat)
+- Disabling Nitro / removing the server layer (v1 is enable-only; removal via AI assistant in chat)
+- App-details UI surface for Nitro state (deferred — agent-driven flow only in v1; visibility via the chat itself + `AI_RULES.md` diff)
 - `vercel.json` modification (deferred — Nitro's Build Output API takes precedence)
 - Multi-platform deployment presets (MVP hardcodes Vercel preset)
 - Modifying the default scaffold template (Nitro is added dynamically, not baked in)
 
 ## User Stories
 
-1. **As a Vite app developer who wants server-side logic**, I want to enable backend API routes by flipping a switch and confirming, then have the AI assistant complete the Vite config setup on my next chat — so that I get a working server layer without manually configuring build tools.
+1. **As a Vite app developer who asks for server-side logic**, I want the AI assistant to recognize my intent (e.g., "save form submissions to Postgres", "add a Stripe webhook") and automatically scaffold the server layer in the same turn — so I never have to know that "Nitro" is the underlying tool.
 
 2. **As a Vite app developer deploying to Vercel**, I want my API routes to automatically become Vercel Functions — so that deployment just works without extra configuration.
 
-3. **As a Vite+Supabase developer**, I want the option to enable a server layer for custom API routes if I need it — but I don't want it forced on me since Supabase handles most server-side needs.
+3. **As a Vite+Supabase developer**, I want the agent to skip Nitro when Supabase already covers my use case (anon-key `fetch`, RLS-protected queries) and only scaffold it when I explicitly need custom server logic — so I don't get unnecessary dependencies.
 
-4. **As a user who enabled Nitro and wants to remove it**, I can ask the AI assistant to undo the setup in chat — so I'm not stuck with an irreversible action, even though the uncommon path is handled conversationally rather than with dedicated UI.
+4. **As a user who wants visibility into what the agent did**, I want the appended `AI_RULES.md` section and the tool-call message in chat to clearly explain that a server layer was added — so the change isn't hidden behind a black-box tool call.
 
-5. **(Follow-up) As a Vite+Neon developer**, I want the system to automatically enable the server layer when I connect Neon — so the AI agent can generate secure server-side database queries using `DATABASE_URL`.
+5. **As a user who wants to remove Nitro**, I can ask the AI assistant to undo the setup in chat — so I'm not stuck with an irreversible action, even though the uncommon path is handled conversationally.
+
+6. **(Follow-up) As a Vite+Neon developer**, I want the system to automatically call the `enable_nitro` tool when I connect Neon — so the AI agent can generate secure server-side database queries using `DATABASE_URL`.
 
 ## UX Design
 
-### User Flow
+### User Flow (agent-driven, local-agent mode)
 
-1. User navigates to App Details page for their Vite project
-2. User sees **"Server Layer"** card in the integrations section (between Supabase and Vercel connectors)
-3. Card shows a Switch (OFF) with label **"Enable backend API routes"** and subtitle _"Powered by Nitro"_
-4. User flips switch ON
-5. **Confirmation dialog appears:**
-   - Title: "Enable Server Layer?"
-   - Body: "This will enable backend API routes for your app, adding dependencies and creating a server/routes/api/ directory. Your Vite config will be updated by the AI assistant on your next chat message."
-   - Buttons: "Cancel" / "Enable"
-6. On confirm → scaffolding runs (package.json modification, directory creation, pnpm install)
-7. Switch shows loading state (disabled + Loader2 spinner, "Setting up...")
-8. On success → toast: "Server layer enabled"
-9. Card updates to enabled state with nudge: **"Open chat to finish setup"** button + tip: _"Try asking: 'Create a /api/users endpoint'"_
-10. User opens chat → AI agent detects Nitro enabled but `vite.config.ts` not configured → agent proactively adds Nitro plugin to vite.config.ts
-11. Server layer is fully operational
+1. User is in **local-agent mode** (Agent v2) — the only chat mode where real tool calls are dispatched.
+2. User opens chat in a Vite/React app and sends a prompt that requires server-side capability
+   _e.g., "save user signups to Postgres", "add a Stripe webhook handler", "create an `/api/me` endpoint that reads the session cookie"_
+3. The AI agent recognizes the intent and invokes the **`enable_nitro`** tool
+4. Tool execution renders a chat-visible XML tag (e.g., `<dyad-enable-nitro />`) similar to `<dyad-add-integration>`, so the user sees the scaffolding action in the message stream
+5. Tool runs scaffolding: modifies `package.json`, creates `server/routes/api/`, appends a "Nitro Server Layer" section to `AI_RULES.md`, triggers install
+6. Tool returns a brief success result; the agent then reads the just-injected `AI_RULES.md` (already loaded as part of the local-agent context for the next tool-loop step) for the ongoing route/security conventions, and follows the post-call setup steps from the tool description for the one-time `vite.config.ts` edit
+7. In the same turn, the agent updates `vite.config.ts` with the Nitro plugin and writes the requested API route(s)
+8. Final assistant message summarizes the change: _"I added a Nitro server layer so your app can run secure server-side code, then created `/api/signup` that writes to Postgres."_
 
-### Key States
+### Build mode constraint
 
-| State        | Visual                   | Switch                    | Description                                                                                                              |
-| ------------ | ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **OFF**      | Card with description    | Toggleable                | "Add server-side API routes to your project."                                                                            |
-| **ENABLING** | Loader2 spinner          | Disabled                  | "Setting up..." — scaffolding in progress                                                                                |
-| **ON**       | Green "Active" badge     | ON + disabled (permanent) | Shows "Open chat to finish setup" nudge, tip for first API route. Muted note: "To remove, ask the AI assistant in chat." |
-| **ERROR**    | Red alert + Retry button | Reverts to OFF            | Error message with actionable retry CTA                                                                                  |
+`enable_nitro` is **not registered in legacy build mode**. Build mode uses the text-stream + `dyad-write` XML-tag pipeline ([chat_stream_handlers.ts:1330](src/ipc/handlers/chat_stream_handlers.ts#L1330)), not real model tool calls. Two options for build-mode users in v1:
 
-The **LOCKED_ON** state (Neon requires Nitro) is deferred to the follow-up PR when Neon auto-enable lands.
+- **Option A (chosen for MVP)**: In build mode, when the system prompt detects a Vite app and the user prompt matches a server-side trigger, the agent emits a friendly nudge: _"Backend code requires the local-agent mode. Switch modes and re-send your request to add a server layer automatically."_ This is wording in `system_prompt.ts`, not new code.
+- **Option B (deferred)**: Add a parallel build-mode path that scaffolds Nitro via a `<dyad-enable-nitro />` XML tag the way `dyad-add-integration` already works. Skipped because it duplicates logic and build mode is being phased toward local-agent.
 
-### Interaction Details
+### When the agent must call the tool
 
-- **Confirmation dialog**: Follows the existing Rename dialog pattern (`DialogContent max-w-sm` with `DialogHeader`, `DialogDescription`, `DialogFooter` with Cancel/Confirm buttons)
-- **Switch component**: Uses existing `Switch` from `src/components/ui/switch.tsx`, consistent with ~10 existing switches in codebase
-- **One-directional**: Once ON, the switch is `disabled` — no off affordance in UI. Note: "To remove, ask the AI assistant in chat"
-- **Toast**: Success/error feedback via sonner (consistent with SupabaseConnector)
-- **"Open chat" button**: Secondary button in the Card that navigates to chat, similar to existing "Open in Chat" pattern
+Encoded in the local-agent tool's `description` (the tool-selection logic the model reads), with a parallel hint in `system_prompt.ts`:
 
-### Placement
+| Trigger condition (Vite app + `nitroEnabled === false`)         | Action                           |
+| --------------------------------------------------------------- | -------------------------------- |
+| Prompt requires server-side secrets (`DATABASE_URL`, API keys)  | **Call the tool**                |
+| Prompt asks for an API route, webhook, or server endpoint       | **Call the tool**                |
+| Prompt requests a database connection (Neon, Postgres, Mongo)   | **Call the tool**                |
+| Prompt asks for server-side compute (cron, email, payments)     | **Call the tool**                |
+| Prompt only needs client-side `fetch` to a public 3rd-party API | Do NOT call                      |
+| Use case fully covered by Supabase (anon key + RLS)             | Do NOT call                      |
+| User explicitly says "static only" or "no backend"              | Do NOT call                      |
+| App template is Next.js                                         | Tool's `isEnabled` returns false |
+| `nitroEnabled === true` already                                 | Tool's `isEnabled` returns false |
 
-On the app-details page, positioned between SupabaseConnector and CapacitorControls:
+### Visibility & feedback
 
-```
-GitHub Connector
-Supabase Connector
-→ Server Layer (Nitro) ← NEW
-Capacitor Controls
-```
-
-Only rendered for Vite/React template apps (not Next.js, which already has a server layer).
+- **Tool-call message in chat** — Renders like other agent tool calls (consistent with existing `dyad-write` / MCP tool UX) so the user sees what's being scaffolded.
+- **`AI_RULES.md` diff** — User can review the appended section in their editor; this is the canonical record of what changed.
+- **Removal path** — Conversational: user asks the agent to remove Nitro; agent uses standard file-edit tools (no dedicated `disable-nitro` tool in v1).
 
 ### Accessibility
 
-- Switch: `aria-label="Enable backend API routes"`
-- Disabled state (when ON): `aria-describedby` pointing to explanation text ("To remove, ask the AI assistant")
-- Loading state: `aria-busy="true"` on the Card
-- Status badge: text label alongside color (not color-only)
-- All interactive elements keyboard-focusable
-- Loading spinner respects `prefers-reduced-motion`
+- Tool-call message uses the same accessible status pattern as existing tool invocations (live-region announcement of "Server layer added").
+- No new UI components introduced in v1 — accessibility surface is inherited from the existing chat tool-call renderer.
 
 ## Technical Design
 
@@ -131,21 +122,23 @@ Only rendered for Vite/React template apps (not Next.js, which already has a ser
 
 **Hybrid setup approach:**
 
-- **Programmatic** (IPC handler): `package.json` modification, `server/routes/api/` directory creation
-- **AI agent** (system prompt): `vite.config.ts` modification (adding Nitro plugin import + config)
+- **Tool execution (programmatic)**: `package.json` modification, `server/routes/api/` directory creation, `AI_RULES.md` patching, install trigger
+- **AI agent (in-turn, guided by injected AI rules)**: `vite.config.ts` modification + writing the user-requested API route(s)
 - **Deferred**: `vercel.json` — Nitro's Vercel preset generates `.vercel/output/` which takes precedence
 
 ### Components Affected
 
-| Component            | File(s)                                    | Change                                                                      |
-| -------------------- | ------------------------------------------ | --------------------------------------------------------------------------- |
-| **DB Schema**        | `src/db/schema.ts`                         | Add `nitroEnabled` boolean column to `apps` table                           |
-| **IPC Handler**      | `src/ipc/handlers/nitro_handlers.ts` (new) | `app:set-nitro-enabled` — modify package.json, create server dir, update DB |
-| **IPC Types**        | `src/ipc/types/nitro.ts` (new)             | Contract schema for `app:set-nitro-enabled`                                 |
-| **App Details Page** | `src/pages/app-details.tsx`                | Add NitroToggle component (Vite apps only)                                  |
-| **Nitro Toggle**     | `src/components/NitroToggle.tsx` (new)     | Card + Switch + confirmation dialog + states                                |
-| **System Prompt**    | `src/prompts/nitro_prompt.ts` (new)        | Nitro setup instructions + API route patterns                               |
-| **Chat Stream**      | `src/ipc/handlers/chat_stream_handlers.ts` | Inject Nitro prompt when `nitroEnabled === true`                            |
+| Component               | File(s)                                                                                        | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DB Schema**           | `src/db/schema.ts`                                                                             | Add `nitroEnabled` boolean column to `apps` table (still needed for idempotency + future Neon auto-call)                                                                                                                                                                                                                                                                                                                                                                           |
+| **AI Tool**             | `src/pro/main/ipc/handlers/local_agent/tools/enable_nitro.ts` (new)                            | `enable_nitro` tool definition matching the existing `ToolDefinition` shape (mirrors `add_integration.ts` for signaling, `add_dependency.ts` for the install flow). Fields: `name`, `description` (carries post-call setup steps), `inputSchema`, `defaultConsent: "always"`, `modifiesState: true`, `isEnabled: (ctx) => ctx.frameworkType === "vite" && !ctx.nitroEnabled`, `getConsentPreview`, `buildXml` (renders `<dyad-enable-nitro />`), `execute` (the scaffolding logic) |
+| **Tool Registration**   | `src/pro/main/ipc/handlers/local_agent/tool_definitions.ts`                                    | Add `enable_nitro` to `TOOL_DEFINITIONS` and to `buildAgentToolSet`. Pass `nitroEnabled` into the tool-execution `ctx` so `isEnabled` can evaluate (app template is already available via existing `frameworkType` field).                                                                                                                                                                                                                                                         |
+| **Tool Context**        | `src/pro/main/ipc/handlers/local_agent/tools/types.ts`                                         | Extend the tool execution context type with `nitroEnabled: boolean`. Reuse the existing `frameworkType: "nextjs" \| "vite" \| "other" \| null` field (already populated via `detectFrameworkType(appPath)` in `local_agent_handler.ts`) — do NOT add a parallel `appTemplate` field.                                                                                                                                                                                               |
+| **Chat UI renderer**    | `src/components/chat/DyadMarkdownParser.tsx` + `src/components/chat/DyadEnableNitro.tsx` (new) | Add `dyad-enable-nitro` to the `DYAD_CUSTOM_TAGS` allowlist and a `case "dyad-enable-nitro":` in `renderCustomTag` (mirror the `dyad-add-integration` case). Render a minimal status card — no interactive UI; the tool's `execute` already did the scaffolding.                                                                                                                                                                                                                   |
+| **System Prompt**       | `src/prompts/system_prompt.ts` + `src/prompts/local_agent_prompt.ts`                           | Local-agent prompt: reinforce the trigger table for `enable_nitro` selection. Build-mode prompt (`system_prompt.ts`): add the "switch to local-agent mode for backend" nudge for Vite apps. No new prompt file.                                                                                                                                                                                                                                                                    |
+| **AI Rules (scaffold)** | `scaffold/AI_RULES.md`                                                                         | Unchanged at scaffold time. Patched **per-app** by the tool when called.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **AI Rules (per-app)**  | `<app>/AI_RULES.md`                                                                            | Tool appends a "## Nitro Server Layer" section (or creates the file if missing) with `vite.config.ts` setup, route conventions, security rules                                                                                                                                                                                                                                                                                                                                     |
+| **AI Rules patcher**    | `src/ipc/utils/ai_rules_patcher.ts` (new)                                                      | Idempotent helper: read `AI_RULES.md`, check for marker comment, append Nitro section between `<!-- nitro:start -->` / `<!-- nitro:end -->` markers                                                                                                                                                                                                                                                                                                                                |
 
 ### Data Model Changes
 
@@ -161,126 +154,221 @@ Simple boolean, backward-compatible. Defaults to false.
 
 ### API Changes
 
-**New IPC contract:**
+**New AI tool (registered in the local-agent `TOOL_DEFINITIONS`):**
 
-| Contract                | Input                              | Output                 |
-| ----------------------- | ---------------------------------- | ---------------------- |
-| `app:set-nitro-enabled` | `{ appId: number, enabled: true }` | `{ success: boolean }` |
+Matches the existing `ToolDefinition` shape used by [add_integration.ts](src/pro/main/ipc/handlers/local_agent/tools/add_integration.ts). The tool description carries the **one-time post-call setup steps** the agent must execute in the same turn (modifying `vite.config.ts`). Ongoing conventions (route patterns, security rules) live in `AI_RULES.md` instead, because they apply to every future turn — not just the call that flipped Nitro on.
 
-**Handler logic (enable only):**
+```ts
+// src/pro/main/ipc/handlers/local_agent/tools/enable_nitro.ts
+import { z } from "zod";
+import { ToolDefinition } from "./types";
 
-1. Read app's `package.json` → add `nitro` (pinned version) to dependencies → write back
-2. Create `server/routes/api/.gitkeep`
-3. Set `nitroEnabled = true` in DB (commit step — only after file ops succeed)
-4. Trigger install (hook into existing install mechanism via `installCommand`)
+const enableNitroSchema = z.object({
+  reason: z
+    .string()
+    .describe(
+      "One sentence explaining why server-side code is needed for this prompt.",
+    ),
+});
 
-**Rollback on failure:** If any file operation fails, revert previously written files (read originals into memory before mutations). DB write is last, so `nitroEnabled` is never true if file setup failed.
+export const enableNitroTool: ToolDefinition<
+  z.infer<typeof enableNitroSchema>
+> = {
+  name: "enable_nitro",
+  description: `
+Add a Nitro server layer to this Vite app so it can run secure server-side code
+(API routes, database clients, secrets, webhooks).
 
-### System Prompt Design (`nitro_prompt.ts`)
+WHEN TO CALL: Before writing any code under server/, before referencing DATABASE_URL
+or any server-only env var, or when the user asks for an API route, webhook, or
+server-side compute. Skip for client-side fetch with public/anon keys, for use
+cases fully covered by Supabase (anon key + RLS), or when the user explicitly
+says "static only" / "no backend".
 
+This tool is auto-disabled (via isEnabled) on non-Vite apps and once Nitro is
+already enabled — if it appears in your toolset, it is safe and appropriate to call.
+
+==== POST-CALL SETUP STEPS (you MUST perform these in the same turn) ====
+
+After this tool returns successfully, you MUST update vite.config.ts to register
+the Nitro plugin. The tool itself does NOT touch vite.config.ts because TS config
+files are fragile to edit programmatically.
+
+1. Add the import:
+     import { nitro } from "nitro/vite";
+
+2. Add nitro() to the plugins array. Place it AFTER react() so Vite's
+   module-transform middleware runs first — otherwise Nitro's SPA fallback
+   returns index.html for Vite internal URLs (/src/*.tsx, /@vite/client,
+   /@react-refresh, /@fs/*) and the preview iframe fails to load modules
+   with a "text/html MIME type" error.
+
+Example final vite.config.ts:
+
+     import { defineConfig } from "vite";
+     import react from "@vitejs/plugin-react";
+     import { nitro } from "nitro/vite";
+     import { dyadComponentTagger } from "@dyad-sh/react-vite-component-tagger";
+
+     export default defineConfig({
+       plugins: [dyadComponentTagger(), react(), nitro()],
+     });
+
+3. Then write the user-requested API route(s) following the conventions documented
+   in AI_RULES.md — the tool appended a "Nitro Server Layer" section with route
+   filesystem conventions, defineHandler usage, useRuntimeConfig patterns, and
+   security rules. That is the source of truth for ongoing code.
+  `.trim(),
+  inputSchema: enableNitroSchema,
+  defaultConsent: "always",
+  modifiesState: true,
+  isEnabled: (ctx) => ctx.frameworkType === "vite" && !ctx.nitroEnabled,
+  getConsentPreview: (args) => `Add Nitro server layer (${args.reason})`,
+  buildXml: (_args, _isComplete) => `<dyad-enable-nitro />`,
+  execute: async (_args, ctx) => {
+    /* see logic below */
+  },
+};
 ```
+
+**Why `isEnabled` instead of a runtime guard inside `execute`:** Mirrors the `add_integration` pattern — `isEnabled` removes the tool from the model's toolset entirely when it shouldn't be called, which is cheaper and clearer than a no-op execute path.
+
+**Tool execution logic (idempotent, enable-only):**
+
+1. **Guard**: If `nitroEnabled === true` → return early "already enabled" message (no filesystem writes)
+2. Back up `AI_RULES.md` in memory, then patch it via `ai_rules_patcher.ts` — append Nitro section between marker comments (idempotent on re-call)
+3. Create `server/routes/api/.gitkeep`
+4. Install the `nitro` and `vite` packages (both bare — matches `npm install nitro vite` from the quick-start) by delegating to `executeAddDependency({ packages: ["nitro", "vite"], message, appPath })` from `src/ipc/processors/executeAddDependency.ts` — same pattern as [add_dependency.ts](src/pro/main/ipc/handlers/local_agent/tools/add_dependency.ts). This handles `package.json` modification + install atomically and surfaces warnings via `ctx.onWarningMessage`.
+5. Write `nitro.config.ts` at the app root with `serverDir: "./server"` if it does not already exist (matches the upstream quick-start).
+6. Set `nitroEnabled = true` in DB (commit step — only after file ops succeed)
+7. Return a success message — the tool description already carries the setup steps the agent needs for the same turn, and the appended `AI_RULES.md` will be re-read on subsequent turns.
+
+**Rollback on failure:** Because `executeAddDependency` owns the `package.json` mutation atomically, the only in-memory backup we need is `AI_RULES.md`. If any step fails after the patch, restore the original `AI_RULES.md` from the backup and rethrow. DB write is last, so `nitroEnabled` is never true if file setup failed.
+
+**Tool registration logic (in `local_agent/tool_definitions.ts`):**
+
+Add `enable_nitro` to `TOOL_DEFINITIONS` and `buildAgentToolSet`. Visibility/availability is controlled by the tool's own `isEnabled(ctx)` (not by call-site filtering), matching the precedent set by `add_integration` and `execute_sql`. The tool execution context must include `nitroEnabled: boolean`; the existing `frameworkType` field (already populated for every turn) supplies the Vite vs. Next.js check. Once `nitroEnabled` flips true, `isEnabled` returns false and the tool drops out of the agent's toolset on the next turn — no second-guessing.
+
+**Build mode**: not applicable. The legacy build-mode path ([chat_stream_handlers.ts:1330](src/ipc/handlers/chat_stream_handlers.ts#L1330)) doesn't dispatch real tool calls; instead, `system_prompt.ts` adds a nudge instructing build-mode users to switch to local-agent mode when their prompt requires backend code. (See _Build mode constraint_ in UX Design.)
+
+### AI Rules Modification (replaces `nitro_prompt.ts`)
+
+The tool appends this section to the project's `AI_RULES.md`. **Setup steps are NOT here** — those live in the tool description and run once. This section holds the conventions and security rules that govern every future turn (writing new routes, reviewing existing ones, refactoring, etc.):
+
+```markdown
+<!-- nitro:start -->
+
 ## Nitro Server Layer
 
-The user has enabled backend API routes (Nitro) for this project.
+This project has a Nitro server layer for backend API routes. (Initial setup of `vite.config.ts` was performed when the server layer was added.)
 
-### Setup Check
-
-Check if `vite.config.ts` imports and uses the Nitro plugin.
-If NOT present, update vite.config.ts to include:
-
-1. Add import: `import { nitro } from "nitro/vite";`
-2. Add `nitro({ preset: "vercel" })` to the plugins array
-
-Example vite.config.ts:
-[full example with nitro plugin in correct position]
+A `nitro.config.ts` at the app root sets `serverDir: "./server"` — do not move or remove it.
 
 ### API Route Conventions
 
 - Write routes in `server/routes/api/` (NEVER top-level `/api/`)
-- Use `defineHandler` from "nitro" for handlers
+- Use `defineHandler` from `"nitro"` for handlers
 - Dynamic routes: `[param].ts`
 - Method-specific: `hello.get.ts`, `hello.post.ts`
 - Runtime config: `useRuntimeConfig()` (env vars prefixed with `NITRO_`)
 
 ### Security Rules
 
-NEVER import server-side code (database clients, secrets, env vars)
-in client-side React components. Server code lives in `server/` only.
+NEVER import server-side code (database clients, secrets, env vars) in client-side React components. Server code lives in `server/` only.
+
+<!-- nitro:end -->
 ```
 
-**Critical**: The prompt must detect the half-configured state (Nitro enabled in DB but plugin not in vite.config.ts) and proactively complete the setup on first chat interaction.
+**Why this split (setup in tool description, conventions in `AI_RULES.md`):**
+
+- **Setup is one-time** — the agent only needs `vite.config.ts` instructions in the turn that calls the tool. Putting them in the tool description gives the model the steps exactly when it needs them, and avoids polluting future turns with stale setup instructions.
+- **Conventions are forever** — every future turn that touches a route or server file needs to know the filesystem layout, handler API, and security boundaries. `AI_RULES.md` is the right home: user-visible, already loaded by `system_prompt.ts` via `readAiRules()`, and survives across chats.
+- **No injection branching** — no new code path; the existing `readAiRules()` flow picks up the appended section.
+- **Single source of truth** — users can read, edit, or extend the conventions in their own project.
+
+**Tool-selection rules** are encoded primarily in the tool's own `description` field (the WHEN TO CALL block — see the tool definition above), which the local-agent model reads as part of the toolset. A short reinforcement is added to `local_agent_prompt.ts` for cross-tool prioritization context, but the canonical "when to call" guidance lives with the tool itself, since `description` is the most reliable place a model attends to before deciding to invoke. **Build mode** (legacy text-stream path) instead gets a "switch to local-agent mode for backend code" nudge in `system_prompt.ts`.
 
 ### Vercel Compatibility Strategy
 
-- System prompt hardcodes `nitro({ preset: "vercel" })` in the plugin config
+- The appended `AI_RULES.md` section hardcodes `nitro({ preset: "vercel" })` in the plugin example
 - At build time, Nitro produces `.vercel/output/` (Build Output API v3) which Vercel understands natively
 - The existing `vercel.json` SPA rewrite should be harmless because Build Output API takes precedence when `.vercel/output/` exists
 - `detectFramework()` in `vercel_handlers.ts` returns `"vite"` (correct — Vercel recognizes Vite+Nitro)
-- **Fallback**: If integration test reveals `vercel.json` interferes, add vercel.json deletion/modification to the toggle handler
+- **Fallback**: If integration test reveals `vercel.json` interferes, add vercel.json deletion/modification to the tool's `execute` function
 
 ## Implementation Plan
 
-### Phase 1: DB + IPC (Foundation)
+### Phase 1: DB + AI Rules Patcher (Foundation)
 
-- [ ] Add `nitroEnabled` column to `apps` table in `src/db/schema.ts`
-- [ ] Create `src/ipc/types/nitro.ts` with contract schema
-- [ ] Create `src/ipc/handlers/nitro_handlers.ts` with `app:set-nitro-enabled` handler
-- [ ] Handler: read/modify package.json, create server/routes/api/, write DB, trigger install
-- [ ] Implement rollback logic (revert file changes if any step fails)
+- [ ] Add `nitroEnabled` column to `apps` table in `src/db/schema.ts` (mirror the `isFavorite` pattern: `integer("nitro_enabled", { mode: "boolean" }).notNull().default(sql`0`)`)
+- [ ] Run `pnpm drizzle-kit generate` to auto-generate the next `drizzle/NNNN_*.sql` migration file — do NOT hand-write migrations; drizzle-kit owns this directory
+- [ ] Create `src/ipc/utils/ai_rules_patcher.ts` — read `<app>/AI_RULES.md`, idempotently append the Nitro section between `<!-- nitro:start -->` / `<!-- nitro:end -->` markers, create the file if missing. Expose `appendNitroRules(appPath)` returning the original contents (for rollback) and `restoreAiRules(appPath, backup)` for failure recovery
+- [ ] Unit test: patcher is idempotent (running twice produces identical file), preserves existing rules above the marker
 
-### Phase 2: UI
+### Phase 2: Local-Agent Tool Definition + Registration
 
-- [ ] Create `src/components/NitroToggle.tsx` — Card with Switch, confirmation dialog, loading/error/enabled states
-- [ ] Integrate NitroToggle into `src/pages/app-details.tsx` (between Supabase and Vercel connectors, Vite apps only)
-- [ ] One-directional: switch is `disabled` once ON, with "To remove, ask AI" note
-- [ ] "Open chat to finish setup" nudge button in enabled state
+- [ ] Create `src/pro/main/ipc/handlers/local_agent/tools/enable_nitro.ts` exporting `enableNitroTool` matching the existing `ToolDefinition` shape (mirror `add_integration.ts`)
+- [ ] Tool description: include the WHEN TO CALL block (trigger table) AND the post-call `vite.config.ts` setup steps with worked example
+- [ ] `isEnabled: (ctx) => ctx.frameworkType === "vite" && !ctx.nitroEnabled` so the tool drops out of the toolset on non-Vite apps and after enable
+- [ ] `buildXml: () => "<dyad-enable-nitro />"` so the action renders in the chat stream
+- [ ] `execute`: patch `AI_RULES.md` via `ai_rules_patcher` (with in-memory backup), create `server/routes/api/.gitkeep`, install `nitro` via `executeAddDependency({ packages: ["nitro"], message, appPath })`, set `nitroEnabled=true`; on failure restore `AI_RULES.md` from backup (`executeAddDependency` owns `package.json` atomicity)
+- [ ] Extend tool execution context type in `local_agent/tools/types.ts` with `nitroEnabled: boolean` (reuse existing `frameworkType`); wire `nitroEnabled: chat.app.nitroEnabled` in `local_agent_handler.ts` where `ctx` is constructed
+- [ ] Register `enable_nitro` in `local_agent/tool_definitions.ts` (`TOOL_DEFINITIONS` + `buildAgentToolSet`)
+- [ ] Add `dyad-enable-nitro` to the `DYAD_CUSTOM_TAGS` allowlist in `src/components/chat/DyadMarkdownParser.tsx` and a `case "dyad-enable-nitro":` in `renderCustomTag` (mirror the `dyad-add-integration` case); create `src/components/chat/DyadEnableNitro.tsx` for the minimal status-card render
 
-### Phase 3: System Prompt
+### Phase 3: Prompt Updates (Cross-Mode)
 
-- [ ] Create `src/prompts/nitro_prompt.ts` with vite.config.ts setup check + API route conventions + security rules
-- [ ] Integrate into `src/ipc/handlers/chat_stream_handlers.ts` — inject when `nitroEnabled === true`
-- [ ] Ensure prompt detects half-configured state and proactively completes vite.config.ts setup
+- [ ] Reinforce `enable_nitro` selection priorities in `src/prompts/local_agent_prompt.ts` (canonical rules stay in the tool's `description`)
+- [ ] Add a Vite-app, build-mode-only nudge to `src/prompts/system_prompt.ts`: when the user prompt requires backend code, instruct the agent to ask the user to switch to local-agent mode (since legacy build mode can't dispatch the tool)
+- [ ] No new prompt file. No `nitro_prompt.ts`.
+- [ ] Verify the existing `readAiRules()` path picks up the appended Nitro section after the tool runs (it should — `AI_RULES.md` is re-read on the next tool-loop step / next chat invocation)
 
 ### Phase 4: Verification
 
-- [ ] Integration test: create Vite app → enable Nitro → chat to trigger vite.config.ts setup → generate sample API route → `vite build` produces `.vercel/output/`
+- [ ] Integration test: create Vite app → user prompt "store form submissions in Postgres" → agent calls `enable_nitro` → agent updates `vite.config.ts` and writes route → `vite build` produces `.vercel/output/`
 - [ ] Integration test: deploy Nitro-enabled Vite app to Vercel → verify API route responds
+- [ ] Tool-selection eval: prompts that should trigger the tool do; prompts that shouldn't (pure UI, public-key fetch, "static only") don't
 - [ ] Verify `vercel.json` catch-all rewrite doesn't interfere with Nitro's Build Output API
 - [ ] Verify Vite 6.x + `nitro/vite` compatibility
-- [ ] Verify `dyadComponentTagger` plugin doesn't conflict with Nitro plugin
+- [ ] Verify `dyadComponentTagger` plugin doesn't conflict with Nitro plugin (rules dictate Nitro-last ordering so Vite's module-transform middleware runs before Nitro's SPA fallback)
 - [ ] Verify dev server serves both React app and API routes on same port (8080)
 - [ ] Regression test: existing Vite apps without Nitro still work unchanged
+- [ ] Idempotency test: agent calling `enable_nitro` twice in one turn (e.g., due to a re-prompt) produces no duplicate edits
 
-### Phase 5: Follow-up PR (Neon Auto-Enable)
+### Phase 5: Follow-up PR (Neon Auto-Call)
 
-- [ ] Auto-enable Nitro when Neon is connected to a Vite app
-- [ ] Add LOCKED_ON state to NitroToggle (switch disabled with "Required by Neon" tooltip)
-- [ ] Update Neon system prompt to generate `DATABASE_URL`-based server routes via Nitro
+- [ ] When Neon is connected to a Vite app, auto-invoke `enable_nitro` (server-side, not via the agent) so the next chat starts with the server layer ready
+- [ ] Update Neon AI rules to generate `DATABASE_URL`-based server routes via Nitro
 - [ ] Update `plans/neondb-integration.md` to replace Data API approach with Nitro for Vite apps
-- [ ] Per-app Neon connector on app-details page (must ship alongside locked state)
+- [ ] Per-app Neon connector on app-details page
 
 ## Testing Strategy
 
-- [ ] Unit test: `app:set-nitro-enabled` IPC handler — verify package.json modification, directory creation, DB state
-- [ ] Unit test: rollback on partial failure — simulate file write failure, verify clean state
-- [ ] Unit test: NitroToggle component — confirmation dialog, loading states, one-directional behavior
-- [ ] Integration test: full Nitro scaffolding + AI config + build + deploy pipeline
+- [ ] Unit test: `enable_nitro` tool execute — verify package.json modification, directory creation, AI_RULES.md patch, DB state
+- [ ] Unit test: tool guard — calling when `nitroEnabled === true` returns early without filesystem writes
+- [ ] Unit test: rollback on partial failure — simulate file write failure, verify package.json AND AI_RULES.md are restored, DB unchanged
+- [ ] Unit test: `ai_rules_patcher` — idempotent (run twice → identical file), preserves user content above/below markers, creates file if missing
+- [ ] Unit test: tool registration — present for Vite apps with `nitroEnabled=false`, absent for Next.js apps and Vite apps with `nitroEnabled=true`
+- [ ] Integration test: full agent-driven scaffolding (prompt → tool call → vite.config.ts edit → route file write → build → deploy)
 - [ ] Integration test: dev server with Nitro — API routes accessible at `localhost:8080/api/*`
-- [ ] Regression test: Vite app without Nitro — toggle not shown for Next.js apps, existing apps unaffected
-- [ ] System prompt test: AI generates correct `server/routes/api/*.ts` with `defineHandler` pattern
+- [ ] Tool-selection eval (prompt → expected tool-call decision) covering the trigger table — both positive and negative cases
+- [ ] Regression test: Vite app without Nitro and Next.js apps unaffected; tool never registered for Next.js
 
 ## Risks & Mitigations
 
-| Risk                                                                     | Likelihood | Impact | Mitigation                                                                             |
-| ------------------------------------------------------------------------ | ---------- | ------ | -------------------------------------------------------------------------------------- |
-| `vercel.json` catch-all rewrite interferes with Nitro's Build Output API | Medium     | High   | Integration test verifies; fallback: delete/modify vercel.json in toggle handler       |
-| Vite 6.x incompatible with `nitro/vite` plugin                           | Low        | High   | Pin compatible Nitro version; verify in integration test                               |
-| AI agent fails to modify vite.config.ts correctly                        | Medium     | Medium | System prompt includes exact example; half-configured state is recoverable via re-chat |
-| pnpm install not triggered after package.json modification               | Medium     | Medium | Hook into existing install lifecycle; toast instructs user if needed                   |
-| `dyadComponentTagger` plugin conflicts with Nitro plugin                 | Low        | Low    | Test plugin ordering; Nitro should be first in plugins array                           |
-| Dev server port conflict (Nitro vs Vite port 8080)                       | Low        | Low    | `nitro/vite` integrates into Vite's dev middleware; verify in integration test         |
-| Half-configured state confuses users                                     | Medium     | Medium | Card shows "Open chat to finish setup" nudge; prompt auto-completes config             |
-| Nitro version drift causes breaking changes                              | Low        | Medium | Pin specific tested version in package.json modification                               |
+| Risk                                                                                  | Likelihood | Impact | Mitigation                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------- | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent fails to call `enable_nitro` when it should (false negative)                    | Medium     | High   | Detailed trigger table in `system_prompt.ts`; tool-selection eval catches regressions; user can re-prompt and the tool is still registered                                                                |
+| Agent calls `enable_nitro` when it shouldn't (false positive — adds dependency noise) | Medium     | Medium | Negative cases in eval suite; tool description explicitly excludes Supabase/anon-key flows; user can revert via chat                                                                                      |
+| Agent forgets to update `vite.config.ts` after tool returns                           | Medium     | Medium | Tool description carries the explicit `vite.config.ts` setup steps with a worked example, framed as a mandatory post-call action; eval covers the "tool called → vite.config.ts edited in same turn" case |
+| `AI_RULES.md` patcher corrupts user-written rules                                     | Low        | High   | Marker-comment-bounded section; patcher only edits between markers; idempotency unit test; in-memory backup before write                                                                                  |
+| `vercel.json` catch-all rewrite interferes with Nitro's Build Output API              | Medium     | High   | Integration test verifies; fallback: delete/modify vercel.json in tool's execute                                                                                                                          |
+| Vite 6.x incompatible with `nitro/vite` plugin                                        | Low        | High   | Pin compatible Nitro version; verify in integration test                                                                                                                                                  |
+| pnpm install not triggered after package.json modification                            | Medium     | Medium | Hook into existing install lifecycle; tool-call message instructs user if needed                                                                                                                          |
+| `dyadComponentTagger` plugin conflicts with Nitro plugin                              | Low        | Low    | AI rules dictate Nitro-last ordering in the plugins array so Vite's module-transform middleware handles `/src/*`, `/@vite/*`, `/@fs/*` before Nitro's SPA fallback                                        |
+| Dev server port conflict (Nitro vs Vite port 8080)                                    | Low        | Low    | `nitro/vite` integrates into Vite's dev middleware; verify in integration test                                                                                                                            |
+| Nitro version drift causes breaking changes                                           | Low        | Medium | Pin specific tested version in package.json modification                                                                                                                                                  |
+| User loses visibility (no UI surface)                                                 | Medium     | Medium | Tool-call renders in chat like other agent tools; appended `AI_RULES.md` is user-visible and diffable; final agent message summarizes what changed                                                        |
 
 ## Open Questions
 
@@ -290,17 +378,21 @@ in client-side React components. Server code lives in `server/` only.
 
 ## Decision Log
 
-| Decision                                                 | Reasoning                                                                                                                                                                                            |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Hybrid setup** (programmatic JSON + AI vite.config.ts) | JSON files are trivially safe to modify programmatically; TypeScript config is fragile and better handled contextually by AI agent. Mirrors Supabase client file pattern.                            |
-| **One-directional toggle (enable only, v1)**             | Disabling requires file cleanup with no codebase precedent. Avoids destructive edge cases. Removal via AI assistant is sufficient escape hatch.                                                      |
-| **Confirmation dialog on enable**                        | Toggle modifies project files — heavier than a preference switch. Transparency principle requires user consent for file changes.                                                                     |
-| **"Server Layer" label, not "Nitro"**                    | Users think in capabilities ("I need API routes"), not tools ("I need Nitro"). "Powered by Nitro" as subtitle for power users.                                                                       |
-| **Show on ALL Vite apps**                                | Nitro is useful beyond databases (webhooks, API proxies, server logic). Gating behind database connection would artificially limit a general-purpose capability.                                     |
-| **Standalone card, not nested under DB connector**       | Nitro is a server layer feature, not a database feature. Avoids false dependency. Follow-up PR adds visual link ("Required by Neon" badge).                                                          |
-| **`nitroEnabled` boolean, not enum**                     | YAGNI. Nitro is the only server layer for Vite. Migration from boolean to enum is trivial if ever needed.                                                                                            |
-| **Defer vercel.json modification**                       | Nitro's Vercel preset generates `.vercel/output/` which Build Output API understands natively. No need to touch vercel.json unless proven necessary.                                                 |
-| **Replace Data API approach in Neon plan**               | Nitro gives Vite apps conventional server-side access identical to Next.js. Data API + RLS is non-standard and harder for the AI agent to reason about. Update `neondb-integration.md` in follow-up. |
+| Decision                                                               | Reasoning                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Agent-callable tool, not a UI toggle**                               | Users describe goals ("save signups to Postgres"), not tools. The agent has full prompt context to make the right call. Removes a UI step the user shouldn't have to think about. UI toggle deferred — can be added later if eval shows the agent under-triggers.                                                                          |
+| **Local-agent mode only (build mode gets a switch-mode nudge)**        | Real model-dispatched tool calls only flow through `handleLocalAgentStream`; legacy build mode uses text-stream + `dyad-write` XML tags. Adding a parallel build-mode XML scaffolder duplicates logic for a code path that's being phased out. A prompt-level nudge in build mode keeps users informed without forking the implementation. |
+| **Tool gating via `isEnabled(ctx)`, not call-site filtering**          | Matches the established `add_integration` / `execute_sql` precedent in the local-agent toolset. Removes the tool from the model's view entirely when not applicable, which is cheaper and clearer than a runtime `execute` no-op.                                                                                                          |
+| **Modify `AI_RULES.md`, not a separate `nitro_prompt.ts`**             | `AI_RULES.md` is already the canonical per-project rules surface, already loaded by `system_prompt.ts` via `readAiRules()`. User-visible and diffable. Avoids a parallel injection path that could drift.                                                                                                                                  |
+| **Marker-bounded section in `AI_RULES.md`**                            | `<!-- nitro:start -->` / `<!-- nitro:end -->` makes the patcher idempotent and lets users edit around the section without conflict.                                                                                                                                                                                                        |
+| **Tool-selection rules live in `system_prompt.ts`, not `AI_RULES.md`** | Per-project rules describe code conventions; tool-selection is a runtime behavior of the agent across all projects. Keeps the two layers conceptually clean.                                                                                                                                                                               |
+| **Setup steps in tool description, conventions in `AI_RULES.md`**      | Setup is a one-time post-call action (the model needs `vite.config.ts` instructions exactly when it calls the tool); conventions apply to every future turn (writing/reviewing routes). Splitting puts each piece where it's most reliably available without duplication.                                                                  |
+| **Hybrid setup** (programmatic JSON + AI vite.config.ts)               | JSON files are trivially safe to modify programmatically; TypeScript config is fragile and better handled contextually by AI agent. Mirrors Supabase client file pattern.                                                                                                                                                                  |
+| **Idempotent / enable-only**                                           | Disabling requires file cleanup with no codebase precedent. Avoids destructive edge cases. Removal via AI assistant in chat is sufficient escape hatch.                                                                                                                                                                                    |
+| **`nitroEnabled` boolean, not enum**                                   | YAGNI. Nitro is the only server layer for Vite. Migration from boolean to enum is trivial if ever needed. Still required (not derived from filesystem) so the tool can be cheaply gated/un-registered.                                                                                                                                     |
+| **Auto-deregister tool once enabled**                                  | Stops the model from second-guessing or re-calling. Cheaper than a no-op call.                                                                                                                                                                                                                                                             |
+| **Defer vercel.json modification**                                     | Nitro's Vercel preset generates `.vercel/output/` which Build Output API understands natively. No need to touch vercel.json unless proven necessary.                                                                                                                                                                                       |
+| **Replace Data API approach in Neon plan**                             | Nitro gives Vite apps conventional server-side access identical to Next.js. Data API + RLS is non-standard and harder for the AI agent to reason about. Update `neondb-integration.md` in follow-up.                                                                                                                                       |
 
 ---
 

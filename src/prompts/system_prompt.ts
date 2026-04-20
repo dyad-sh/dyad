@@ -334,11 +334,23 @@ export const BUILD_SYSTEM_POSTFIX = `Directory names MUST be all lower-case (src
 > Do NOT use <dyad-file> tags in the output. ALWAYS use <dyad-write> to generate code.
 `;
 
+const BUILD_SERVER_LAYER_NUDGE = `
+# Server-side Code in Vite Apps
+
+If the user asks for server-side code in a Vite app (API routes, database access via \`DATABASE_URL\`, webhooks, server-only secrets, Stripe handlers, cron jobs, etc.), do NOT generate server-side files directly. Instead, tell the user:
+
+> "Backend code requires a server layer. Please switch to **local-agent** mode and re-send your request — I'll add the Nitro server layer and generate the route in the same turn."
+
+This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
+`;
+
 export const BUILD_SYSTEM_PROMPT = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
 
-${BUILD_SYSTEM_POSTFIX}`;
+${BUILD_SYSTEM_POSTFIX}
+
+${BUILD_SERVER_LAYER_NUDGE}`;
 
 const DEFAULT_AI_RULES = `# Tech Stack
 - You are building a React application.

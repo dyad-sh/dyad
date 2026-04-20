@@ -11,6 +11,7 @@ import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadLogs } from "./DyadLogs";
 import { DyadGrep } from "./DyadGrep";
 import { DyadAddIntegration } from "./DyadAddIntegration";
+import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
@@ -57,6 +58,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-execute-sql",
   "dyad-read-logs",
   "dyad-add-integration",
+  "dyad-enable-nitro",
   "dyad-output",
   "dyad-problem-report",
   "dyad-chat-summary",
@@ -611,6 +613,9 @@ function renderCustomTag(
           {content}
         </DyadAddIntegration>
       );
+
+    case "dyad-enable-nitro":
+      return <DyadEnableNitro />;
 
     case "dyad-edit":
       return (

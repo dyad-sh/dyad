@@ -191,6 +191,26 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 `;
 
 // ============================================================================
+// Server Layer Block (shared across Pro + Basic modes)
+// ============================================================================
+
+const SERVER_LAYER_BLOCK = `<server_layer>
+Vite apps in Dyad have NO server layer by default. If the user's request requires server-side code, you MUST call the \`enable_nitro\` tool BEFORE writing any server-side code. This applies when:
+- Using \`DATABASE_URL\` or any server-only secret/env var
+- Creating an API route, webhook, or server endpoint
+- Connecting to a database that exposes a server-side client (Neon, Postgres, MongoDB)
+- Implementing server-side compute (cron, email senders, payments, Stripe webhooks)
+
+Do NOT call \`enable_nitro\` when:
+- The user only needs a client-side \`fetch\` to a public third-party API
+- The use case is fully covered by Supabase's anon key + RLS
+- The user explicitly says "static only" / "no backend"
+- The tool is already absent from your toolset (it auto-disables on non-Vite apps and after Nitro is enabled)
+
+The tool's description carries the authoritative WHEN TO CALL rules and the post-call \`vite.config.ts\` setup steps — follow them exactly.
+</server_layer>`;
+
+// ============================================================================
 // Image Generation Block (Pro mode only)
 // ============================================================================
 
@@ -226,6 +246,8 @@ ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
 
+${SERVER_LAYER_BLOCK}
+
 ${IMAGE_GENERATION_BLOCK}
 
 [[AI_RULES]]
@@ -249,6 +271,8 @@ ${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${BASIC_DEVELOPMENT_WORKFLOW_BLOCK}
+
+${SERVER_LAYER_BLOCK}
 
 [[AI_RULES]]
 `;

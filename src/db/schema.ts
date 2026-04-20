@@ -65,6 +65,9 @@ export const apps = sqliteTable("apps", {
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  nitroEnabled: integer("nitro_enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
   // Theme ID for design system theming (null means "no theme")
   themeId: text("theme_id"),
 });

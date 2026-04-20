@@ -1,18 +1,14 @@
 import { z } from "zod";
 import crypto from "node:crypto";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
+import { ToolDefinition, AgentContext } from "./types";
 import {
   getMiniPlanForChat,
   updateMiniPlanVisuals,
 } from "@/ipc/handlers/mini_plan_handlers";
 import { MiniPlanVisualTypeSchema } from "@/ipc/types/mini_plan";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { waitForMiniPlanApproval } from "../tool_definitions";
 
 const logger = log.scope("plan_visuals");
 
@@ -89,20 +85,6 @@ export const planVisualsTool: ToolDefinition<
 
   getConsentPreview: (args) => `Plan Visuals (${args.visuals.length} assets)`,
 
-  buildXml: (args, isComplete) => {
-    const count = args.visuals?.length ?? 0;
-    if (count === 0 && !isComplete) return undefined;
-
-    const visualEntries = (args.visuals ?? [])
-      .map(
-        (v) =>
-          `<visual type="${escapeXmlAttr(v.type ?? "other")}" description="${escapeXmlAttr(v.description ?? "")}">${escapeXmlContent(v.prompt ?? "")}</visual>`,
-      )
-      .join("\n");
-
-    return `<dyad-mini-plan-visuals count="${count}" complete="${isComplete}">\n${visualEntries}\n</dyad-mini-plan-visuals>`;
-  },
-
   execute: async (args, ctx: AgentContext) => {
     if (!getMiniPlanForChat(ctx.chatId)) {
       return "Error: No mini plan found. Call write_mini_plan first.";
@@ -122,12 +104,44 @@ export const planVisualsTool: ToolDefinition<
     safeSend(ctx.event.sender, "mini-plan:visuals-update", {
       chatId: ctx.chatId,
       visuals,
+      complete: true,
     });
 
-    const summary = visuals
-      .map((v) => `- **${v.type}**: ${v.description}`)
-      .join("\n");
+    logger.log(`Waiting for user to approve mini plan for chat ${ctx.chatId}`);
 
-    return `Visual assets planned (${visuals.length} items):\n${summary}\n\nThe visual plan has been added to the mini plan card. The user can now review the complete mini plan and approve it to begin building.`;
+    const approved = await waitForMiniPlanApproval(ctx.chatId);
+
+    if (!approved) {
+      return "The user dismissed the mini plan without approving. Ask them how they'd like to proceed.";
+    }
+
+    // Read back the plan data which may have been edited by the user
+    const approvedPlan = getMiniPlanForChat(ctx.chatId);
+    if (!approvedPlan) {
+      return "The mini plan was approved but the data is no longer available. Ask the user to try again.";
+    }
+
+    const visualsSummary =
+      approvedPlan.visuals.length > 0
+        ? approvedPlan.visuals
+            .map((v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`)
+            .join("\n")
+        : "No visuals planned";
+
+    return [
+      `[Mini Plan Approved]`,
+      `App Name: ${approvedPlan.appName}`,
+      `Template: ${approvedPlan.templateId}`,
+      `Theme: ${approvedPlan.themeId}`,
+      `Main Color: ${approvedPlan.mainColor}`,
+      `Design Direction: ${approvedPlan.designDirection}`,
+      ``,
+      `Visual Assets:`,
+      visualsSummary,
+      ``,
+      `Original Prompt: ${approvedPlan.userPrompt}`,
+      ``,
+      `The user has approved the mini plan. Proceed with building the app based on the approved plan above.`,
+    ].join("\n");
   },
 };

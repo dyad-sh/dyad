@@ -53,6 +53,7 @@ export type MiniPlanUpdatePayload = z.infer<typeof MiniPlanUpdatePayloadSchema>;
 export const MiniPlanVisualsUpdatePayloadSchema = z.object({
   chatId: z.number(),
   visuals: z.array(MiniPlanVisualSchema),
+  complete: z.boolean().optional().default(false),
 });
 
 export type MiniPlanVisualsUpdatePayload = z.infer<

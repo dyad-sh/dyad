@@ -41,6 +41,8 @@ import {
   Vote,
   CircleDollarSign,
   KeyRound,
+  Hammer,
+  Fingerprint,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";

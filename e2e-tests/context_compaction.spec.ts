@@ -25,7 +25,9 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/simple-response");
 
     // Verify the compaction status indicator is visible
-    await expect(po.page.getByText("Conversation compacted")).toBeVisible({
+    await expect(
+      po.page.getByText("Conversation compacted").first(),
+    ).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
@@ -35,10 +37,10 @@ testSkipIfWindows(
     // Verify key compaction elements are present (order-independent checks
     // since compaction restructures messages non-deterministically)
     await expect(
-      po.page.getByRole("button", { name: "Conversation compacted" }),
+      po.page.getByRole("button", { name: "Conversation compacted" }).first(),
     ).toBeVisible();
     await expect(
-      po.page.getByRole("heading", { name: "Key Decisions Made" }),
+      po.page.getByRole("heading", { name: "Key Decisions Made" }).first(),
     ).toBeVisible();
     await expect(
       po.page.getByText(
@@ -62,7 +64,9 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/compaction-mid-turn");
 
     // Mid-turn compaction summary should be visible after a single prompt.
-    await expect(po.page.getByText("Conversation compacted")).toBeVisible({
+    await expect(
+      po.page.getByText("Conversation compacted").first(),
+    ).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
@@ -77,10 +81,10 @@ testSkipIfWindows(
     // Verify key compaction elements are present (order-independent checks
     // since compaction restructures messages non-deterministically)
     await expect(
-      po.page.getByRole("button", { name: "Conversation compacted" }),
+      po.page.getByRole("button", { name: "Conversation compacted" }).first(),
     ).toBeVisible();
     await expect(
-      po.page.getByRole("heading", { name: "Key Decisions Made" }),
+      po.page.getByRole("heading", { name: "Key Decisions Made" }).first(),
     ).toBeVisible();
     await expect(po.page.getByText("END OF COMPACTED TURN.")).toBeVisible();
   },

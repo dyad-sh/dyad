@@ -17,11 +17,11 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: "Version 2: wrote 1 file(s)"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
   - link /http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6/:
-    - /url: /http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6/
+    - /url: http://localhost:57206/src/pages/Index.tsx:6:6
   - text: )
 - button "Copy":
   - img
@@ -43,7 +43,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: "Version 3: wrote 1 file(s)"
 - button "Undo":
   - img
   - text: ""

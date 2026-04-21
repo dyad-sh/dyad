@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: (1 files changed)
+- text: "Version 2: (1 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""
@@ -171,6 +171,156 @@
 - paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
+- paragraph: "/Step \\d+: reading file\\./"
+- img
+- text: Read package.json
 - img
 - text: /Paused after \d+ tool calls/
 - button "Continue":
@@ -199,6 +349,8 @@
 - paragraph: More EOM
 - button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: claude-opus-4-5
 - img

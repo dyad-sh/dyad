@@ -61,7 +61,10 @@ export function useResolveMergeConflictsWithAI({
     let chatId: number | null = null;
     try {
       // Create a new chat for conflict resolution
-      const newChatId = await ipc.chat.createChat(appId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "build",
+      });
       chatId = newChatId;
 
       // Clear conflicts state after successful chat creation

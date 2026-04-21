@@ -57,8 +57,16 @@ export function showChatModeFallbackToast({
         const trigger = document.querySelector<HTMLElement>(
           '[data-testid="chat-mode-selector"]',
         );
-        trigger?.focus();
-        trigger?.click();
+        if (trigger) {
+          trigger.focus();
+          trigger.click();
+          return;
+        }
+
+        if (toastId) {
+          toast.dismiss(toastId);
+        }
+        toast.info("Open a chat to switch modes.", { duration: 5000 });
       },
     },
   });

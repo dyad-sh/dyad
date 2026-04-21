@@ -116,6 +116,7 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
+import { readSettings } from "@/main/settings";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -1704,7 +1705,8 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        if (settings.autoApproveChanges && selectedChatMode !== "ask") {
+        const latestSettings = readSettings();
+        if (latestSettings.autoApproveChanges && selectedChatMode !== "ask") {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,

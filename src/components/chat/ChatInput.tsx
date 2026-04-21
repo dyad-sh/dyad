@@ -115,8 +115,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const { settings } = useSettings();
-  const { selectedMode: chatMode, isLoading: isChatModeLoading } =
-    useChatMode(chatId);
+  const {
+    selectedMode: chatMode,
+    effectiveMode,
+    isLoading: isChatModeLoading,
+  } = useChatMode(chatId);
   const initialChatMode = useInitialChatMode();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
@@ -236,7 +239,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
-    chatMode !== "local-agent" &&
+    effectiveMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -830,8 +833,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingAgentConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            chatMode !== "ask" &&
-            chatMode !== "local-agent" && (
+            effectiveMode !== "ask" &&
+            effectiveMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}

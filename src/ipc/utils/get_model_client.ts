@@ -357,11 +357,13 @@ async function getRegularModelClient(
       // Ensure the model is registered with the Ollama server before
       // creating the provider. Ollama ≥0.15 can have models on disk
       // that aren't in its internal DB, causing "model not found" errors.
-      await ensureOllamaModelReady(model.name);
+      // ensureOllamaModelReady returns the resolved name (e.g. "llama3.2" → "llama3.2:3b")
+      // so the provider uses the exact tag the server recognizes.
+      const resolvedModelName = await ensureOllamaModelReady(model.name);
       const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

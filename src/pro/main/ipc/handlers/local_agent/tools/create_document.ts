@@ -15,7 +15,7 @@ const documentTypeSchema = z.enum(["document", "spreadsheet", "presentation"]);
 const createDocumentSchema = z.object({
   name: z.string().describe("The name of the document"),
   type: documentTypeSchema.describe("The type of document: 'document' for Word-like docs, 'spreadsheet' for Excel-like sheets, 'presentation' for PowerPoint-like slides"),
-  content: z.string().describe("The main content/text for the document"),
+  content: z.string().describe("The FULL, COMPLETE content to put in the document. For documents: write all paragraphs, headings, and body text. For spreadsheets: use tab-separated or pipe-separated values. For presentations: write full slide content separated by --- dividers. IMPORTANT: Do NOT pass a prompt or outline — write the entire finished content yourself before calling this tool."),
   description: z.string().optional().describe("Brief description of the document"),
 });
 
@@ -29,7 +29,7 @@ const FORMAT_EXTENSIONS: Record<DocumentType, string> = {
 
 export const createDocumentTool: ToolDefinition<z.infer<typeof createDocumentSchema>> = {
   name: "create_document",
-  description: "Create a document, spreadsheet, or presentation that can be viewed in Libre Studio. Use this for creating Word documents, Excel spreadsheets, or PowerPoint presentations.",
+  description: "Create a document, spreadsheet, or presentation that can be viewed in Libre Studio. IMPORTANT: You MUST write the full, complete content yourself before calling this tool. Do NOT pass a prompt, outline, or instructions as the content — write every paragraph, heading, and section with real text. The content field should contain the finished document text, not a description of what to write. If the user asks for a research paper, YOU write the entire paper and pass it as content.",
   inputSchema: createDocumentSchema,
   defaultConsent: "always",
 
@@ -60,15 +60,54 @@ export const createDocumentTool: ToolDefinition<z.infer<typeof createDocumentSch
       const fileName = `${args.name.replace(/[^a-zA-Z0-9-_]/g, "_")}_${Date.now()}.${format}`;
       const filePath = path.join(documentsDir, fileName);
 
-      // Generate document content
+      let finalContent = args.content;
+
+      // Detect if the bot passed a prompt/outline instead of actual content.
+      // Heuristic: if the content looks like generation instructions (contains
+      // numbered section headings with word-count targets, or explicit meta-
+      // instructions like "PAPER STRUCTURE" / "REQUIREMENTS" / "generate"),
+      // run it through the AI document generation pipeline.
+      const looksLikePrompt =
+        /\b(PAPER STRUCTURE|REQUIREMENTS|generate|produce|create a comprehensive|8000\+ words|word count|TECHNICAL DEPTH)\b/i.test(finalContent) &&
+        finalContent.length > 1500;
+
+      if (looksLikePrompt) {
+        logger.info("Detected prompt-style content — routing through AI document generation pipeline");
+        try {
+          const { LibreOfficeManager } = require("@/ipc/handlers/libreoffice_handlers");
+          const manager = LibreOfficeManager.getInstance();
+          const result = await manager.createDocument({
+            name: args.name,
+            type: args.type,
+            aiGenerate: {
+              prompt: finalContent,
+              tone: "professional",
+              length: "detailed",
+            },
+          });
+          if (result.success && result.document) {
+            ctx.onXmlComplete(
+              `<joy-document type="${escapeXmlAttr(args.type)}" name="${escapeXmlAttr(args.name)}" id="${result.document.id}" description="${escapeXmlAttr(args.description ?? "")}"></joy-document>`
+            );
+            const typeLabel = args.type === "document" ? "Document" : args.type === "spreadsheet" ? "Spreadsheet" : "Presentation";
+            return `Successfully created ${typeLabel} "${args.name}" (ID: ${result.document.id}) using AI generation. The user can view it in Libre Studio.`;
+          }
+          // If AI generation failed, fall through to direct content approach
+          logger.warn("AI generation failed, falling back to direct content");
+        } catch (aiError) {
+          logger.warn("AI generation pipeline unavailable, using direct content:", aiError);
+        }
+      }
+
+      // Generate document content directly from the provided text
       let xmlContent: string;
       
       if (args.type === "document") {
-        xmlContent = generateDocumentXML(args.name, args.content);
+        xmlContent = generateDocumentXML(args.name, finalContent);
       } else if (args.type === "spreadsheet") {
-        xmlContent = generateSpreadsheetXML(args.name, args.content);
+        xmlContent = generateSpreadsheetXML(args.name, finalContent);
       } else {
-        xmlContent = generatePresentationXML(args.name, args.content);
+        xmlContent = generatePresentationXML(args.name, finalContent);
       }
 
       // Create ODF file (which is a ZIP archive)

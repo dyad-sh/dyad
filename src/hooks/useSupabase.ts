@@ -23,6 +23,7 @@ export interface UseSupabaseOptions {
   branchesOrganizationSlug?: string | null;
   edgeLogsProjectId?: string | null;
   edgeLogsOrganizationSlug?: string | null;
+  edgeLogsAppId?: number | null; // The app id that `edgeLogsProjectId` belongs to
 }
 
 export function useSupabase(options: UseSupabaseOptions = {}) {
@@ -31,6 +32,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     branchesOrganizationSlug,
     edgeLogsProjectId,
     edgeLogsOrganizationSlug,
+    edgeLogsAppId,
   } = options;
   const queryClient = useQueryClient();
   const { settings } = useSettings();
@@ -122,7 +124,8 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const lastLogTimestampRef = useRef(lastLogTimestamp);
   lastLogTimestampRef.current = lastLogTimestamp;
 
-  const edgeLogsEnabled = !!edgeLogsProjectId && !!selectedAppId;
+  const edgeLogsEnabled =
+    !!edgeLogsProjectId && !!selectedAppId && edgeLogsAppId === selectedAppId;
   const edgeLogsQuery = useQuery<ConsoleEntry[], Error>({
     queryKey: edgeLogsEnabled
       ? queryKeys.supabase.edgeLogs({

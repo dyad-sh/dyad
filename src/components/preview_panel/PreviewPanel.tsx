@@ -83,6 +83,7 @@ export function PreviewPanel() {
   useSupabase({
     edgeLogsProjectId: app?.supabaseProjectId,
     edgeLogsOrganizationSlug: app?.supabaseOrganizationSlug,
+    edgeLogsAppId: app?.id,
   });
 
   useEffect(() => {

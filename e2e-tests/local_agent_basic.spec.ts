@@ -124,16 +124,8 @@ testSkipIfWindows(
       skipWaitForCompletion: true,
     });
 
-    const generatingButton = po.page.getByRole("button", {
-      name: "Generating plan...",
-    });
     const approveButton = po.page.getByRole("button", { name: "Approve Plan" });
     await expect(async () => {
-      if (await generatingButton.isVisible().catch(() => false)) {
-        await expect(generatingButton).toBeDisabled();
-        return;
-      }
-
       await expect(approveButton).toBeVisible();
       await expect(approveButton).toBeDisabled();
     }).toPass({ timeout: Timeout.MEDIUM });

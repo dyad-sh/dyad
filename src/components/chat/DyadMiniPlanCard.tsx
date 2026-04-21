@@ -62,6 +62,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   const visualsReady = chatId
     ? miniPlanState.visualsReadyChatIds.has(chatId)
     : false;
+  const isTimedOut = chatId ? miniPlanState.timedOutChatIds.has(chatId) : false;
   // Use atom data if available, fall back to XML attributes
   const appName = planData?.appName || props["app-name"] || "";
   const templateId = planData?.templateId || props.template || "react";
@@ -299,6 +300,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     });
     try {
       const applyErrors: string[] = [];
+      let templateApplyFailed = false;
       const recordApplyError = (message: string, error: unknown) => {
         console.error(message, error);
         const detail =
@@ -347,6 +349,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           });
           templateApplied = applied;
         } catch (error) {
+          templateApplyFailed = true;
           recordApplyError("Could not apply the selected template.", error);
         }
 
@@ -384,6 +387,21 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           refreshApp(),
           queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
         ]);
+      }
+
+      // Template application is the critical step — if it failed, don't
+      // unblock the agent so the user can fix the plan and re-approve.
+      // The agent would otherwise build for the wrong framework.
+      if (templateApplyFailed) {
+        setMiniPlanState((prev) => {
+          const nextApproved = new Set(prev.approvedChatIds);
+          nextApproved.delete(chatId);
+          return { ...prev, approvedChatIds: nextApproved };
+        });
+        const errorMessage = `Could not apply the selected template. Please review the plan and try again:\n- ${applyErrors.join("\n- ")}`;
+        setApprovalError(errorMessage);
+        showError(errorMessage);
+        return;
       }
 
       if (applyErrors.length > 0) {
@@ -748,19 +766,23 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               role="status"
               aria-live="polite"
               className={`max-w-md text-xs ${
-                isReady
-                  ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                  : "text-muted-foreground"
+                isTimedOut
+                  ? "text-destructive font-medium"
+                  : isReady
+                    ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                    : "text-muted-foreground"
               }`}
             >
-              {isReady
-                ? "Your mini plan is ready to review."
-                : "Preparing mini plan..."}
+              {isTimedOut
+                ? "Plan timed out — start a new chat to try again."
+                : isReady
+                  ? "Your mini plan is ready to review."
+                  : "Preparing mini plan..."}
             </p>
             <button
               type="button"
               onClick={handleApprove}
-              disabled={!isReady || !appName || isApproving}
+              disabled={!isReady || !appName || isApproving || isTimedOut}
               aria-describedby={statusId}
               className="flex items-center gap-1.5 text-sm font-medium text-primary-foreground px-5 py-2 bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -769,6 +791,8 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                   <Loader2 size={14} className="animate-spin" />
                   Applying plan...
                 </>
+              ) : isTimedOut ? (
+                "Plan timed out"
               ) : !appName ? (
                 "Add an app name to continue"
               ) : (

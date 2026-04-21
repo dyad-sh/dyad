@@ -3,9 +3,10 @@
  * Each tool includes a zod schema, description, and execute function
  */
 
-import { IpcMainInvokeEvent } from "electron";
+import { IpcMainInvokeEvent, WebContents } from "electron";
 import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -53,6 +54,7 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import { getMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -234,7 +236,10 @@ const pendingMiniPlanResolvers = new Map<number, PendingMiniPlanEntry>();
 
 const MINI_PLAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
-export function waitForMiniPlanApproval(chatId: number): Promise<boolean> {
+export function waitForMiniPlanApproval(
+  chatId: number,
+  sender?: WebContents,
+): Promise<boolean> {
   // Cancel any existing pending approval for this chat
   const existing = pendingMiniPlanResolvers.get(chatId);
   if (existing) {
@@ -247,6 +252,11 @@ export function waitForMiniPlanApproval(chatId: number): Promise<boolean> {
       const entry = pendingMiniPlanResolvers.get(chatId);
       if (entry) {
         pendingMiniPlanResolvers.delete(chatId);
+        if (sender) {
+          // Notify the renderer so the card can disable the approve button
+          // and surface a "plan timed out" message instead of silently no-op.
+          safeSend(sender, "mini-plan:timeout", { chatId });
+        }
         entry.resolve(false);
       }
     }, MINI_PLAN_TIMEOUT_MS);
@@ -583,6 +593,25 @@ export function buildAgentToolSet(
       inputSchema: tool.inputSchema,
       execute: async (args: any) => {
         try {
+          // Guard against state-modifying tools running before mini plan
+          // approval is resolved. `plan_visuals` owns the approval gate, but
+          // if the model skips it the agent would otherwise proceed to build.
+          // Mini plan tools themselves are allowed through so the flow can
+          // progress to approval.
+          if (
+            tool.modifiesState &&
+            !MINI_PLAN_TOOLS.has(tool.name) &&
+            !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+          ) {
+            const plan = getMiniPlanForChat(ctx.chatId);
+            if (plan && !plan.approved) {
+              throw new DyadError(
+                `Mini plan must be approved before running ${tool.name}. Call plan_visuals to present the plan for approval.`,
+                DyadErrorKind.Precondition,
+              );
+            }
+          }
+
           const processedArgs = await processArgPlaceholders(args, ctx);
 
           // Check consent before executing the tool

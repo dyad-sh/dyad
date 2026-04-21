@@ -6,6 +6,7 @@ import {
   type MiniPlanUpdatePayload,
   type MiniPlanVisualsUpdatePayload,
   type MiniPlanApprovedPayload,
+  type MiniPlanTimeoutPayload,
 } from "@/ipc/types/mini_plan";
 
 /**
@@ -67,10 +68,24 @@ export function useMiniPlanEvents() {
       },
     );
 
+    const unsubscribeTimeout = miniPlanEventClient.onTimeout(
+      (payload: MiniPlanTimeoutPayload) => {
+        setMiniPlanState((prev) => {
+          const nextTimedOut = new Set(prev.timedOutChatIds);
+          nextTimedOut.add(payload.chatId);
+          return {
+            ...prev,
+            timedOutChatIds: nextTimedOut,
+          };
+        });
+      },
+    );
+
     return () => {
       unsubscribeUpdate();
       unsubscribeVisualsUpdate();
       unsubscribeApproved();
+      unsubscribeTimeout();
     };
   }, [setMiniPlanState]);
 }

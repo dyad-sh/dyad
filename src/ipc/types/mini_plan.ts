@@ -134,6 +134,12 @@ export const MiniPlanApprovedSchema = z.object({
 
 export type MiniPlanApprovedPayload = z.infer<typeof MiniPlanApprovedSchema>;
 
+export const MiniPlanTimeoutSchema = z.object({
+  chatId: z.number(),
+});
+
+export type MiniPlanTimeoutPayload = z.infer<typeof MiniPlanTimeoutSchema>;
+
 // =============================================================================
 // Mini Plan Events (Main -> Renderer)
 // =============================================================================
@@ -152,6 +158,11 @@ export const miniPlanEvents = {
   approved: defineEvent({
     channel: "mini-plan:approved",
     payload: MiniPlanApprovedSchema,
+  }),
+
+  timeout: defineEvent({
+    channel: "mini-plan:timeout",
+    payload: MiniPlanTimeoutSchema,
   }),
 } as const;
 

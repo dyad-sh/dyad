@@ -329,7 +329,17 @@ export function constructLocalAgentPrompt(
   }
 
   if (options?.enableMiniPlan === false) {
-    basePrompt = basePrompt.replace(MINI_PLAN_BLOCK, "");
+    const stripped = basePrompt.replace(MINI_PLAN_BLOCK, "");
+    // Exact-string replace silently no-ops if MINI_PLAN_BLOCK drifts from how
+    // it's embedded in the prompt templates. Fail loudly so the mismatch is
+    // caught in tests instead of shipping mini plan instructions in the
+    // prompt when the feature is disabled.
+    if (stripped === basePrompt || stripped.includes("<mini_plan>")) {
+      throw new Error(
+        "Failed to strip MINI_PLAN_BLOCK from base prompt — the constant no longer matches its usage in the prompt template.",
+      );
+    }
+    basePrompt = stripped;
   }
 
   let prompt = basePrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);

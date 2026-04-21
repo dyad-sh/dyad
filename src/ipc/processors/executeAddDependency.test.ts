@@ -365,19 +365,19 @@ describe("executeAddDependency", () => {
     });
   });
 
-  it("rejects npm package specs with shell-unsafe characters", async () => {
+  it("rejects invalid npm package specs before invoking the shell", async () => {
     await expect(
       executeAddDependency({
-        packages: ["react;rm -rf /"],
+        packages: ["react@^18.0.0"],
         message: {
           id: 1,
           content:
-            '<dyad-add-dependency packages="react;rm -rf /"></dyad-add-dependency>',
+            '<dyad-add-dependency packages="react@^18.0.0"></dyad-add-dependency>',
         } as any,
         appPath: "/tmp/app",
       }),
     ).rejects.toMatchObject({
-      displaySummary: "Invalid npm package name: react;rm -rf /",
+      displaySummary: "Invalid npm package name: react@^18.0.0",
       warningMessages: [],
     });
 

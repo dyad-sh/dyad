@@ -12,7 +12,6 @@ import {
 } from "@/ipc/processors/executeAddDependency";
 import { appendNitroRules, restoreAiRules } from "@/ipc/utils/ai_rules_patcher";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { patchNitroViteConfig } from "./nitro_vite_config";
 
 const NITRO_CONFIG_CONTENTS = `import { defineConfig } from "nitro";
 
@@ -33,49 +32,6 @@ async function writeNitroConfigIfMissing(
   }
   await fs.writeFile(filePath, NITRO_CONFIG_CONTENTS, "utf8");
   return { filePath, wasCreated: true };
-}
-
-const VITE_CONFIG_FILENAMES = [
-  "vite.config.ts",
-  "vite.config.js",
-  "vite.config.mjs",
-] as const;
-
-async function findViteConfigPath(appPath: string): Promise<string> {
-  for (const fileName of VITE_CONFIG_FILENAMES) {
-    const filePath = path.join(appPath, fileName);
-    try {
-      await fs.access(filePath);
-      return filePath;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error;
-      }
-    }
-  }
-
-  throw new DyadError(
-    "Could not find vite.config.ts, vite.config.js, or vite.config.mjs.",
-    DyadErrorKind.NotFound,
-  );
-}
-
-async function patchViteConfigForNitro(appPath: string): Promise<{
-  filePath: string;
-  originalContents: string;
-  patchedContents: string;
-  changed: boolean;
-}> {
-  const filePath = await findViteConfigPath(appPath);
-  const originalContents = await fs.readFile(filePath, "utf8");
-  const result = patchNitroViteConfig(originalContents);
-
-  return {
-    filePath,
-    originalContents,
-    patchedContents: result.content,
-    changed: result.changed,
-  };
 }
 
 const enableNitroSchema = z.object({
@@ -99,16 +55,21 @@ says "static only" / "no backend".
 This tool is auto-disabled (via isEnabled) on non-Vite apps and once Nitro is
 already enabled — if it appears in your toolset, it is safe and appropriate to call.
 
-==== POST-CALL BEHAVIOR ====
+==== POST-CALL SETUP STEPS (you MUST perform these in the same turn) ====
 
-This tool also updates vite.config.* for you. It adds:
+After this tool returns successfully, you MUST update vite.config.ts to register
+the Nitro plugin. The tool itself does NOT touch vite.config.ts because TS config
+files are fragile to edit programmatically.
+
+1. Add the import:
      import { nitro } from "nitro/vite";
 
-and ensures nitro(...) is the LAST Vite plugin (after react()). That ordering is
-required so Nitro does not catch Vite internal module URLs like /src/*.tsx,
-/@vite/client, /@react-refresh, or /@fs/* — otherwise Nitro's SPA fallback
-returns index.html for those requests and the browser rejects them with a
-"text/html MIME type" error, leaving the preview blank.
+2. Add nitro() to the plugins array as the LAST entry (after react()). Nitro
+   must run AFTER Vite's module-transform middleware so it doesn't catch Vite
+   internal URLs like /src/*.tsx, /@vite/client, /@react-refresh, or /@fs/* —
+   otherwise Nitro's SPA fallback returns index.html for those requests and
+   the browser rejects them with a "text/html MIME type" error, leaving the
+   preview blank.
 
 Example final vite.config.ts:
 
@@ -121,10 +82,10 @@ Example final vite.config.ts:
        plugins: [dyadComponentTagger(), react(), nitro()],
      }));
 
-Then write the user-requested API route(s) following the conventions documented
-in AI_RULES.md — the tool appended a "Nitro Server Layer" section with route
-filesystem conventions, defineHandler usage, useRuntimeConfig patterns, and
-security rules. That is the source of truth for ongoing code.
+3. Then write the user-requested API route(s) following the conventions documented
+   in AI_RULES.md — the tool appended a "Nitro Server Layer" section with route
+   filesystem conventions, defineHandler usage, useRuntimeConfig patterns, and
+   security rules. That is the source of truth for ongoing code.
 `.trim();
 
 export const enableNitroTool: ToolDefinition<
@@ -161,17 +122,8 @@ export const enableNitroTool: ToolDefinition<
 
     const rulesBackup = await appendNitroRules(ctx.appPath);
     const nitroConfigResult = await writeNitroConfigIfMissing(ctx.appPath);
-    let viteConfigResult:
-      | {
-          filePath: string;
-          originalContents: string;
-          patchedContents: string;
-          changed: boolean;
-        }
-      | undefined;
 
     try {
-      viteConfigResult = await patchViteConfigForNitro(ctx.appPath);
       await fs.mkdir(path.join(ctx.appPath, "server", "routes", "api"), {
         recursive: true,
       });
@@ -189,25 +141,10 @@ export const enableNitroTool: ToolDefinition<
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }
-
-      if (viteConfigResult.changed) {
-        await fs.writeFile(
-          viteConfigResult.filePath,
-          viteConfigResult.patchedContents,
-          "utf8",
-        );
-      }
     } catch (error) {
       await restoreAiRules(ctx.appPath, rulesBackup.backup);
       if (nitroConfigResult.wasCreated) {
         await fs.rm(nitroConfigResult.filePath, { force: true });
-      }
-      if (viteConfigResult?.changed) {
-        await fs.writeFile(
-          viteConfigResult.filePath,
-          viteConfigResult.originalContents,
-          "utf8",
-        );
       }
       if (error instanceof ExecuteAddDependencyError) {
         for (const warningMessage of error.warningMessages) {
@@ -222,6 +159,6 @@ export const enableNitroTool: ToolDefinition<
       .set({ nitroEnabled: true })
       .where(eq(apps.id, ctx.appId));
 
-    return "Nitro server layer added and vite.config updated to place nitro() last. Now write the requested API route(s) under server/routes/api/.";
+    return "Nitro server layer added. Now update vite.config.ts per the setup steps in the tool description, then write the requested API route(s) under server/routes/api/.";
   },
 };

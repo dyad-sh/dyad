@@ -35,7 +35,8 @@ type TaskComplexity = "light" | "medium" | "heavy";
  * Tried in order — first one with a configured key wins.
  */
 const FAST_MODEL_PREFERENCES = [
-  { provider: "ollama", name: "llama3.2" },
+  { provider: "ollama", name: "llama3.2:3b" },
+  { provider: "ollama", name: "llama3.2:latest" },
   { provider: "ollama", name: "mistral" },
   { provider: "ollama", name: "phi3" },
   { provider: "lmstudio", name: "default" },
@@ -53,7 +54,8 @@ const CAPABLE_MODEL_PREFERENCES = [
   { provider: "openai", name: "gpt-4.1" },
   { provider: "google", name: "gemini-2.5-flash" },
   { provider: "openrouter", name: "qwen/qwen3-coder:free" },
-  { provider: "ollama", name: "llama3.2" },
+  { provider: "ollama", name: "llama3.2:3b" },
+  { provider: "ollama", name: "llama3.2:latest" },
   { provider: "lmstudio", name: "default" },
 ];
 

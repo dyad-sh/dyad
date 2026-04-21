@@ -226,7 +226,15 @@ async function ensureModelRegistered(modelName: string): Promise<boolean> {
  * Called from get_model_client.ts before creating the AI SDK provider,
  * so that "model not found" errors from Ollama are avoided.
  */
-export async function ensureOllamaModelReady(modelName: string): Promise<void> {
+/**
+ * Ensure a model is available in the Ollama server for inference.
+ * Returns the **resolved** model name that should be passed to the AI SDK.
+ *
+ * This handles the common Ollama ≥0.15 issue where bare names like "llama3.2"
+ * resolve to "llama3.2:latest" which may not exist, even though the model
+ * is installed under a specific tag like "llama3.2:3b".
+ */
+export async function ensureOllamaModelReady(modelName: string): Promise<string> {
   const apiUrl = getOllamaApiUrl();
   try {
     // Quick check: is the model already known to the server?
@@ -237,10 +245,47 @@ export async function ensureOllamaModelReady(modelName: string): Promise<void> {
       signal: AbortSignal.timeout(5_000),
     });
     if (showRes.ok) {
-      return; // Model is known to the server, nothing to do
+      return modelName; // Model is known to the server by this exact name
     }
   } catch {
     // Server might not be running; we'll still try to register
+  }
+
+  // Model not found by exact name — try resolving bare names like "llama3.2"
+  // to an actual tag like "llama3.2:3b" from the API tags list.
+  // Ollama's /api/show resolves bare names to ":latest" which may not exist
+  // even if the model is installed under a different tag.
+  if (!modelName.includes(":")) {
+    try {
+      const tagsRes = await fetch(`${apiUrl}/api/tags`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (tagsRes.ok) {
+        const data = (await tagsRes.json()) as { models?: { name: string }[] };
+        const models = data.models ?? [];
+        // Prefer :latest, then any matching tag
+        const match =
+          models.find((m) => m.name === `${modelName}:latest`) ||
+          models.find((m) => m.name.startsWith(`${modelName}:`));
+        if (match) {
+          // Verify the resolved name works
+          const verifyRes = await fetch(`${apiUrl}/api/show`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: match.name }),
+            signal: AbortSignal.timeout(5_000),
+          });
+          if (verifyRes.ok) {
+            logger.info(
+              `Resolved bare model name "${modelName}" → "${match.name}" from API tags`,
+            );
+            return match.name; // Return the resolved tag name
+          }
+        }
+      }
+    } catch {
+      // tags lookup failed, continue with disk registration
+    }
   }
 
   // Model not in the server — try to register it from disk via CLI
@@ -248,6 +293,7 @@ export async function ensureOllamaModelReady(modelName: string): Promise<void> {
     `Model "${modelName}" not found in Ollama server, registering from disk...`,
   );
   await ensureModelRegistered(modelName);
+  return modelName;
 }
 
 /**

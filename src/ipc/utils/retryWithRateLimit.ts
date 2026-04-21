@@ -26,7 +26,9 @@ export class RateLimitError extends Error {
  * in milliseconds, or undefined if the header is missing or unparseable.
  * Negative dates (in the past) clamp to 0.
  */
-export function parseRetryAfter(headerValue: string | null): number | undefined {
+export function parseRetryAfter(
+  headerValue: string | null,
+): number | undefined {
   if (!headerValue) return undefined;
   const trimmed = headerValue.trim();
   if (/^\d+$/.test(trimmed)) {
@@ -122,7 +124,11 @@ export async function retryWithRateLimit<T>(
       const retryAfterMs =
         error instanceof RateLimitError ? error.retryAfterMs : undefined;
       if (retryAfterMs !== undefined) {
-        delay = retryAfterMs;
+        // Clamp to the 32-bit signed int max (~24.8 days) that setTimeout
+        // accepts. In practice Retry-After from Supabase is seconds to
+        // minutes, so this ceiling should never be reached — pure defense
+        // against a malformed/pathological HTTP-date value.
+        delay = Math.min(retryAfterMs, 2_147_483_647);
         logger.warn(
           `${context}: Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), honoring Retry-After: ${Math.round(delay)}ms`,
         );

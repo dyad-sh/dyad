@@ -1,7 +1,10 @@
 import type { ChatMode, UserSettings } from "./schemas";
 import { isDyadProEnabled } from "./schemas";
 import type { ChatModeFallbackReason } from "./chatMode";
-import { showChatModeFallbackToast } from "./chatModeToast";
+import {
+  getChatModeFallbackToastId,
+  showChatModeFallbackToast,
+} from "./chatModeToast";
 
 export function handleEffectiveChatModeChunk(
   chunk: {
@@ -9,6 +12,7 @@ export function handleEffectiveChatModeChunk(
     chatModeFallbackReason?: ChatModeFallbackReason;
   },
   settings: UserSettings | null | undefined,
+  chatId?: number,
 ): boolean {
   if (!chunk.effectiveChatMode) {
     return false;
@@ -19,6 +23,11 @@ export function handleEffectiveChatModeChunk(
       reason: chunk.chatModeFallbackReason,
       effectiveMode: chunk.effectiveChatMode,
       isPro: settings ? isDyadProEnabled(settings) : false,
+      toastId: getChatModeFallbackToastId({
+        chatId,
+        reason: chunk.chatModeFallbackReason,
+        effectiveMode: chunk.effectiveChatMode,
+      }),
     });
   }
 

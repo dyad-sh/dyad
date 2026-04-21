@@ -597,7 +597,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
-      requestedChatMode: chatMode,
+      requestedChatMode: isChatModeLoading ? null : chatMode,
     });
     clearAttachments();
     posthog.capture("chat:submit", { chatMode });

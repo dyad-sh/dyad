@@ -114,6 +114,7 @@ export function usePlanImplementation() {
                 handleEffectiveChatModeChunk(
                   { effectiveChatMode, chatModeFallbackReason },
                   settings,
+                  chatId,
                 )
               ) {
                 return;

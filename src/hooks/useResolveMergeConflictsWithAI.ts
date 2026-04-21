@@ -111,6 +111,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               handleEffectiveChatModeChunk(
                 { effectiveChatMode, chatModeFallbackReason },
                 settings,
+                newChatId,
               )
             ) {
               return;

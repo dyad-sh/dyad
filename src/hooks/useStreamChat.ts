@@ -99,7 +99,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
-      requestedChatMode?: Chat["chatMode"];
+      requestedChatMode?: Chat["chatMode"] | null;
       onSettled?: (result: { success: boolean }) => void;
     }) => {
       if (
@@ -170,9 +170,12 @@ export function useStreamChat({
 
       let hasIncrementedStreamCount = false;
       try {
-        const cachedChat = queryClient.getQueryData<Chat>(
-          queryKeys.chats.detail({ chatId }),
-        );
+        const cachedChat =
+          requestedChatMode === null
+            ? undefined
+            : queryClient.getQueryData<Chat>(
+                queryKeys.chats.detail({ chatId }),
+              );
 
         ipc.chatStream.start(
           {
@@ -182,7 +185,9 @@ export function useStreamChat({
             attachments: convertedAttachments,
             selectedComponents: selectedComponents ?? [],
             requestedChatMode:
-              requestedChatMode ?? cachedChat?.chatMode ?? undefined,
+              requestedChatMode === null
+                ? undefined
+                : (requestedChatMode ?? cachedChat?.chatMode ?? undefined),
           },
           {
             onChunk: ({
@@ -196,6 +201,7 @@ export function useStreamChat({
                 handleEffectiveChatModeChunk(
                   { effectiveChatMode, chatModeFallbackReason },
                   settings,
+                  chatId,
                 )
               ) {
                 queryClient.invalidateQueries({

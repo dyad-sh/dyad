@@ -90,7 +90,8 @@ async function getFreeAgentQuotaAvailableIfNeeded(
   const defaultMayUseLocalAgent =
     !settings.defaultChatMode || settings.defaultChatMode === "local-agent";
   const needsQuota =
-    chatMode === "local-agent" || defaultMayUseLocalAgent === true;
+    chatMode === "local-agent" ||
+    (chatMode === null && defaultMayUseLocalAgent);
 
   if (!needsQuota) {
     return undefined;

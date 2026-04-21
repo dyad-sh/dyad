@@ -15,14 +15,30 @@ export function getChatModeDisplayName(mode: ChatMode, isPro: boolean): string {
   }
 }
 
+export function getChatModeFallbackToastId({
+  chatId,
+  reason,
+  effectiveMode,
+}: {
+  chatId?: number;
+  reason: ChatModeFallbackReason;
+  effectiveMode: ChatMode;
+}) {
+  return chatId
+    ? `chat-mode-fallback:${chatId}:${reason}:${effectiveMode}`
+    : `chat-mode-fallback:${reason}:${effectiveMode}`;
+}
+
 export function showChatModeFallbackToast({
   reason,
   effectiveMode,
   isPro,
+  toastId,
 }: {
   reason: ChatModeFallbackReason;
   effectiveMode: ChatMode;
   isPro: boolean;
+  toastId?: string;
 }) {
   const modeName = getChatModeDisplayName(effectiveMode, isPro);
   const message =
@@ -33,6 +49,7 @@ export function showChatModeFallbackToast({
         : `No provider configured. Using ${modeName} mode.`;
 
   toast.warning(message, {
+    id: toastId,
     duration: 8000,
     action: {
       label: "Switch mode",

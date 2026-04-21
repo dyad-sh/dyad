@@ -53,19 +53,19 @@ export function getUnavailableChatModeReason({
     return undefined;
   }
 
+  if (isOpenAIOrAnthropicSetup(settings, envVars)) {
+    if (freeAgentQuotaAvailable === false) {
+      return "quota-exhausted";
+    }
+
+    return undefined;
+  }
+
   if (settings.enableDyadPro === true && !hasDyadProKey(settings)) {
     return "pro-required";
   }
 
-  if (!isOpenAIOrAnthropicSetup(settings, envVars)) {
-    return "no-provider";
-  }
-
-  if (freeAgentQuotaAvailable === false) {
-    return "quota-exhausted";
-  }
-
-  return undefined;
+  return "no-provider";
 }
 
 export function resolveChatMode({

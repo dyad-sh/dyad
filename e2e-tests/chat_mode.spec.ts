@@ -30,6 +30,9 @@ test("chat mode selector - mode persists per chat", async ({ po }) => {
 
   const selector = po.page.getByTestId("chat-mode-selector");
 
+  await po.sendPrompt("[dump] first chat setup");
+  await po.chatActions.waitForChatCompletion();
+
   await po.chatActions.selectChatMode("ask");
   await expect(selector).toContainText("Ask");
 

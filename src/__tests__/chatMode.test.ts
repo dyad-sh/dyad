@@ -91,6 +91,44 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "local-agent" });
   });
 
+  it("allows basic agent mode when Pro is enabled without a key but free quota is available", () => {
+    const settings = makeSettings({
+      enableDyadPro: true,
+      defaultChatMode: "build",
+      providerSettings: {
+        openai: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("reports quota exhausted before Pro required when a provider is configured", () => {
+    const settings = makeSettings({
+      enableDyadPro: true,
+      defaultChatMode: "build",
+      providerSettings: {
+        openai: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: false,
+      }),
+    ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
+  });
+
   it("allows stored local-agent mode for Pro users", () => {
     const settings = makeSettings({
       enableDyadPro: true,

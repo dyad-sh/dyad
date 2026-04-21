@@ -17,6 +17,7 @@ import { useMcp } from "@/hooks/useMcp";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import {
+  getChatModeFallbackToastId,
   getChatModeDisplayName,
   showChatModeFallbackToast,
 } from "@/lib/chatModeToast";
@@ -59,7 +60,11 @@ export function ChatModeSelector() {
       return;
     }
 
-    const toastKey = `${chatId}:${storedChatMode}:${fallbackReason}:${effectiveMode}`;
+    const toastKey = getChatModeFallbackToastId({
+      chatId,
+      reason: fallbackReason,
+      effectiveMode,
+    });
     if (fallbackToastKeyRef.current === toastKey) {
       return;
     }
@@ -69,6 +74,7 @@ export function ChatModeSelector() {
       reason: fallbackReason,
       effectiveMode,
       isPro: isProEnabled,
+      toastId: toastKey,
     });
   }, [chatId, effectiveMode, fallbackReason, isProEnabled, storedChatMode]);
 

@@ -24,6 +24,10 @@ self.addEventListener("fetch", (event) => {
   // ---- Guardrails: avoid breaking things we shouldn't touch ----
   // Skip navigations (HTML document loads) to reduce dev-time weirdness.
   if (request.mode === "navigate") return;
+  // Only observe programmatic fetch/XHR traffic. Re-fetching script/module
+  // requests from a service worker can change browser metadata like
+  // Sec-Fetch-Dest and break Nitro+Vite dev module serving.
+  if (request.destination) return;
 
   // Only handle http(s)
   let urlObj;

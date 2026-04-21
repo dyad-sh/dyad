@@ -1,5 +1,7 @@
 import path from "path";
+import fs from "node:fs/promises";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
 
 /**
  * Test for security review in local-agent mode
@@ -90,6 +92,14 @@ testSkipIfWindows("local-agent - enable nitro", async ({ po }) => {
 
   // Install of `nitro` goes through socket firewall, which can be slow on first run.
   await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+
+  const appPath = await po.appManagement.getCurrentAppPath();
+  const viteConfig = await fs.readFile(path.join(appPath, "vite.config.ts"), {
+    encoding: "utf8",
+  });
+
+  expect(viteConfig).toContain('import { nitro } from "nitro/vite";');
+  expect(viteConfig).toMatch(/plugins:\s*\[react\(\), nitro\(\)\]/);
 
   await po.snapshotMessages();
 });

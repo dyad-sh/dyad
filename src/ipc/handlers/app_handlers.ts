@@ -80,6 +80,7 @@ import {
 import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
+import { waitForPreviewReady } from "../utils/preview_readiness";
 import {
   buildCloudSandboxFileMap,
   CloudSandboxApiError,
@@ -129,6 +130,7 @@ import { detectFrameworkType } from "../utils/framework_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
+const pendingPreviewProxyStarts = new Map<string, Promise<void>>();
 
 function formatCloudSandboxError(error: unknown) {
   if (!(error instanceof CloudSandboxApiError)) {
@@ -250,6 +252,7 @@ async function executeApp({
   appId,
   event, // Keep event for local-node case
   isNeon,
+  waitForPreviewModules,
   installCommand,
   startCommand,
 }: {
@@ -257,6 +260,7 @@ async function executeApp({
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   isNeon: boolean;
+  waitForPreviewModules?: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
@@ -286,6 +290,7 @@ async function executeApp({
       appId,
       event,
       isNeon,
+      waitForPreviewModules,
       installCommand,
       startCommand,
     });
@@ -391,6 +396,7 @@ async function executeAppLocalNode({
   appId,
   event,
   isNeon,
+  waitForPreviewModules,
   installCommand,
   startCommand,
 }: {
@@ -398,6 +404,7 @@ async function executeAppLocalNode({
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   isNeon: boolean;
+  waitForPreviewModules?: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
@@ -468,6 +475,7 @@ Details: ${details || "n/a"}
     appId,
     isNeon,
     event,
+    waitForPreviewModules,
   });
 }
 
@@ -580,11 +588,13 @@ function listenToProcess({
   appId,
   isNeon,
   event,
+  waitForPreviewModules,
 }: {
   process: ChildProcess;
   appId: number;
   isNeon: boolean;
   event: Electron.IpcMainInvokeEvent;
+  waitForPreviewModules?: boolean;
 }) {
   // Log output
   spawnedProcess.stdout?.on("data", async (data) => {
@@ -636,12 +646,41 @@ function listenToProcess({
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
         const originalUrl = urlMatch[1];
-        await ensureProxyForRunningApp({
-          appId,
-          event,
-          originalUrl,
-          mode: "host",
-        });
+        const pendingKey = `${appId}:${originalUrl}`;
+        const existingPending = pendingPreviewProxyStarts.get(pendingKey);
+
+        if (existingPending) {
+          await existingPending;
+          return;
+        }
+
+        const pendingStart = (async () => {
+          if (waitForPreviewModules) {
+            try {
+              await waitForPreviewReady(originalUrl);
+            } catch (error) {
+              logger.warn(
+                `Preview readiness check timed out for app ${appId} at ${originalUrl}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+
+          await ensureProxyForRunningApp({
+            appId,
+            event,
+            originalUrl,
+            mode: "host",
+          });
+        })();
+
+        pendingPreviewProxyStarts.set(pendingKey, pendingStart);
+        try {
+          await pendingStart;
+        } finally {
+          pendingPreviewProxyStarts.delete(pendingKey);
+        }
       }
     }
   });
@@ -1519,6 +1558,8 @@ export function registerAppHandlers() {
           appId,
           event,
           isNeon: !!app.neonProjectId,
+          waitForPreviewModules:
+            detectFrameworkType(appPath) === "vite" && !!app.nitroEnabled,
           installCommand: app.installCommand,
           startCommand: app.startCommand,
         });
@@ -1788,6 +1829,8 @@ export function registerAppHandlers() {
           appId,
           event,
           isNeon: !!app.neonProjectId,
+          waitForPreviewModules:
+            detectFrameworkType(appPath) === "vite" && !!app.nitroEnabled,
           installCommand: app.installCommand,
           startCommand: app.startCommand,
         }); // This will handle starting either mode

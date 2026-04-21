@@ -88,9 +88,24 @@ export class ChatActions {
       timeout,
     }: { skipWaitForCompletion?: boolean; timeout?: number } = {},
   ) {
-    await this.getChatInput().click();
-    await this.getChatInput().fill(prompt);
-    await this.page.getByRole("button", { name: "Send message" }).click();
+    // Retry fill + assertions to survive Lexical/jotai races during chat
+    // switches: the per-chat input atom is keyed off selectedChatIdAtom and
+    // there's a render window where the editor's onChange writes to the old
+    // chat's slot. In that case ExternalValueSyncPlugin clears the editor on
+    // the next render, so the Send button stays disabled. Re-filling once the
+    // atoms have settled deterministically recovers.
+    const chatInput = this.getChatInput();
+    const sendButton = this.page.getByRole("button", { name: "Send message" });
+
+    await expect(chatInput).toBeVisible();
+    await expect(async () => {
+      await chatInput.click();
+      await chatInput.fill(prompt);
+      await expect(chatInput).toContainText(prompt);
+      await expect(sendButton).toBeEnabled();
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    await sendButton.click();
     if (!skipWaitForCompletion) {
       await this.waitForChatCompletion({ timeout });
     }

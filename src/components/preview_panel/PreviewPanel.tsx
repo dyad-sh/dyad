@@ -63,7 +63,6 @@ export function PreviewPanel() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { runApp, loading, app } = useRunApp();
-  const { loadEdgeLogs } = useSupabase();
   const key = useAtomValue(previewPanelKeyAtom);
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
 
@@ -80,6 +79,11 @@ export function PreviewPanel() {
       console.error("Failed to notify app selection:", error);
     }
   }, []);
+
+  useSupabase({
+    edgeLogsProjectId: app?.supabaseProjectId,
+    edgeLogsOrganizationSlug: app?.supabaseOrganizationSlug,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -120,27 +124,6 @@ export function PreviewPanel() {
   // Note: We no longer stop all apps on unmount. The garbage collector
   // will handle cleanup of idle apps, and users may want apps to keep
   // running in the background.
-
-  // Load edge logs if app has Supabase project configured
-  useEffect(() => {
-    const projectId = app?.supabaseProjectId;
-    const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
-    if (!projectId) return;
-
-    // Load logs immediately
-    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-      console.error("Failed to load edge logs:", error);
-    });
-
-    // Poll for new logs every 5 seconds
-    const intervalId = setInterval(() => {
-      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-        console.error("Failed to load edge logs:", error);
-      });
-    }, 5000);
-
-    return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
 
   return (
     <div className="flex flex-col h-full">

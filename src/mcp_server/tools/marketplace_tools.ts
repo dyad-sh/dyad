@@ -1,13 +1,14 @@
 /**
  * MCP Tools — Joy Marketplace
  *
- * Browse and inspect assets on the Joy Marketplace (api.joymarketplace.io).
+ * Browse and inspect assets on the Joy Marketplace via Goldsky subgraphs.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { JOYMARKETPLACE_API } from "@/config/joymarketplace";
 
-const API_BASE = "https://api.joymarketplace.io";
+const API_BASE = JOYMARKETPLACE_API.baseUrl;
 
 async function marketplaceFetch(path: string) {
   const res = await fetch(`${API_BASE}${path}`);

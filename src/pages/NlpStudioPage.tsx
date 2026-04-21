@@ -624,8 +624,8 @@ function CorpusManagerTab() {
     setLoading(true);
     try {
       // Use dataset tools as corpus backend
-      const result = await invoke("dataset:list");
-      setCorpora(result?.datasets ?? []);
+      const result = await invoke("scraper:dataset:list");
+      setCorpora(result ?? []);
     } catch { setCorpora([]); }
     setLoading(false);
   };
@@ -633,7 +633,7 @@ function CorpusManagerTab() {
   const createCorpus = async () => {
     if (!corpusName) return;
     try {
-      await invoke("dataset:create", {
+      await invoke("scraper:dataset:create", {
         name: corpusName,
         description: corpusDesc,
         type: "text",
@@ -913,8 +913,8 @@ function ModelTrainingTab() {
   useEffect(() => {
     (async () => {
       try {
-        // Check for trained models
-        const result = await invoke("model-manager:list");
+        // Check for installed/trained models
+        const result = await invoke("model-manager:list-installed");
         setModels(result?.models?.filter((m: any) => m.details?.family?.includes("fine-tuned")) ?? []);
       } catch {}
       setLoading(false);
@@ -1151,8 +1151,8 @@ function EmbeddingsTab() {
     if (!text.trim()) return;
     setProcessing(true);
     try {
-      const result = await invoke("embedding:generate", { text, model: "nomic-embed-text" });
-      setEmbedding(result?.embedding ?? result?.vector ?? null);
+      const result = await invoke("embedding:embed-query", text);
+      setEmbedding(Array.isArray(result) ? result : (result?.embedding ?? result?.vector ?? null));
     } catch (err) { console.error(err); }
     setProcessing(false);
   };

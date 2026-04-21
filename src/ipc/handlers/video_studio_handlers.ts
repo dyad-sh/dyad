@@ -2,6 +2,7 @@ import { ipcMain, shell, dialog, app } from "electron";
 import { db } from "@/db";
 import { videoStudioVideos, imageStudioImages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
+import { resolveApiKey } from "@/lib/api_key_resolver";
 import { desc, eq, like, or } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
@@ -49,12 +50,15 @@ function getVideoStoreDir(): string {
   return dir;
 }
 
-function getApiKey(providerName: string): string {
-  const settings = readSettings();
-  const prov = settings.providerSettings[providerName];
-  const key = prov?.apiKey?.value;
-  if (!key) throw new Error(`No API key configured for provider: ${providerName}`);
-  return key;
+async function getApiKey(providerName: string): Promise<string> {
+  const resolved = await resolveApiKey(providerName);
+  if (!resolved) {
+    throw new Error(
+      `No API key configured for provider: ${providerName}. ` +
+      `Add one in Secrets Vault → API Keys tab, or in Settings → Providers.`
+    );
+  }
+  return resolved.value;
 }
 
 // ── Video Saving Utility ───────────────────────────────────────────────────────
@@ -90,7 +94,7 @@ async function saveThumbnailFromUrl(videoUrl: string, provider: string): Promise
 // ── Provider Implementations ───────────────────────────────────────────────────
 
 async function generateWithRunway(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("runway");
+  const apiKey = await getApiKey("runway");
 
   const body: Record<string, unknown> = {
     model: params.model || "gen3a_turbo",
@@ -151,7 +155,7 @@ async function generateWithRunway(params: GenerateVideoParams): Promise<{ filePa
 }
 
 async function generateWithFal(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("fal");
+  const apiKey = await getApiKey("fal");
   const model = params.model || "fal-ai/kling-video/v2/master/text-to-video";
 
   const body: Record<string, unknown> = {
@@ -215,7 +219,7 @@ async function generateWithFal(params: GenerateVideoParams): Promise<{ filePath:
 }
 
 async function generateWithReplicate(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("replicate");
+  const apiKey = await getApiKey("replicate");
   const modelVersion = params.model || "cjwbw/cogvideox-5b:latest";
 
   const input: Record<string, unknown> = {
@@ -281,7 +285,7 @@ async function generateWithReplicate(params: GenerateVideoParams): Promise<{ fil
 }
 
 async function generateWithLuma(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("luma");
+  const apiKey = await getApiKey("luma");
 
   const body: Record<string, unknown> = {
     prompt: params.prompt,
@@ -369,7 +373,7 @@ async function generateWithLuma(params: GenerateVideoParams): Promise<{ filePath
 }
 
 async function generateWithStabilityAI(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("stabilityai");
+  const apiKey = await getApiKey("stabilityai");
 
   if (!params.referenceImageBase64) {
     throw new Error("Stability AI video generation requires a reference image (image-to-video only)");
@@ -422,7 +426,7 @@ async function generateWithStabilityAI(params: GenerateVideoParams): Promise<{ f
 }
 
 async function generateWithGoogleVeo(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("google");
+  const apiKey = await getApiKey("google");
   const model = params.model || "veo-002";
 
   const instance: Record<string, unknown> = {
@@ -481,7 +485,7 @@ async function generateWithGoogleVeo(params: GenerateVideoParams): Promise<{ fil
 }
 
 async function generateWithOpenAI(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
-  const apiKey = getApiKey("openai");
+  const apiKey = await getApiKey("openai");
 
   const body: Record<string, unknown> = {
     model: params.model || "sora",
@@ -769,15 +773,12 @@ export function registerVideoStudioHandlers() {
 
   // ── Available Providers ───────────────────────────────────────────────────
   ipcMain.handle("video-studio:available-providers", async () => {
-    const settings = readSettings();
     const catalog = getProviderCatalog();
     const result: { id: string; label: string; models: ProviderModel[] }[] = [];
 
     for (const [providerId, info] of Object.entries(catalog)) {
-      const providerKey = providerId;
-      const setting = settings.providerSettings[providerKey];
-      const hasKey = !!setting?.apiKey?.value;
-      if (hasKey) {
+      const resolved = await resolveApiKey(providerId);
+      if (resolved) {
         result.push({
           id: providerId,
           label: info.label,

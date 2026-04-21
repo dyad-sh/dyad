@@ -28,8 +28,9 @@ import type {
 
 const logger = log.scope("nft_handlers");
 
-// JoyMarketplace API
-const MARKETPLACE_API = "https://api.joymarketplace.io";
+// JoyMarketplace API — use shared config
+import { JOYMARKETPLACE_API } from "@/config/joymarketplace";
+const MARKETPLACE_API = JOYMARKETPLACE_API.baseUrl;
 
 /**
  * Get NFT data directory
@@ -335,7 +336,7 @@ function createNFTMetadata(
   return {
     name: `${asset.name} - Part ${chunk.index + 1}/${chunk.total_chunks}`,
     description: `${asset.description || asset.name}\n\nChunk ${chunk.index + 1} of ${chunk.total_chunks}. ${chunk.chunk_type} containing ${chunk.size_bytes} bytes.`,
-    image: `https://api.joymarketplace.io/nft/preview/${chunk.id}`,
+    image: `${MARKETPLACE_API}/nft/preview/${chunk.id}`,
     external_url: `https://joymarketplace.io/asset/${chunk.id}`,
     attributes: [
       { trait_type: "Asset Type", value: asset.type },

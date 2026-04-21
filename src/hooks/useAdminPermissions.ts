@@ -17,7 +17,7 @@ export function useAdminPermissions() {
       queryFn: async () => {
         try {
           const ipc = IpcClient.getInstance();
-          const settings = await ipc.invoke("settings:get-all");
+          const settings = await ipc.invoke("get-user-settings");
           return {
             isSuperAdmin: settings?.isAdmin === true,
             canManageGlobalSettings: settings?.isAdmin === true,

@@ -212,8 +212,8 @@ interface LocalProbeResult {
   modelId: string;
 }
 
-/** Probe Ollama for available models and return the first one ready. */
-async function probeOllama(): Promise<LocalProbeResult | null> {
+/** Probe Ollama for available models. Prefers the user's configured model if it's an Ollama model. */
+async function probeOllama(preferredModel?: string): Promise<LocalProbeResult | null> {
   try {
     const baseUrl = getOllamaApiUrl();
     const res = await fetch(`${baseUrl}/api/tags`, {
@@ -225,8 +225,17 @@ async function probeOllama(): Promise<LocalProbeResult | null> {
     const models = data.models ?? [];
     if (models.length === 0) return null;
 
-    // Pick the first available model
-    const modelName = models[0].name;
+    // Prefer the user's configured model if it exists on this Ollama instance
+    let modelName = models[0].name;
+    if (preferredModel) {
+      const found = models.find(
+        (m) => m.name === preferredModel || m.name.startsWith(`${preferredModel}:`),
+      );
+      if (found) {
+        modelName = found.name;
+      }
+    }
+
     const provider = createOllamaProvider({ baseURL: baseUrl });
     logger.info(`Local-first: Ollama available with model "${modelName}"`);
     return {
@@ -269,9 +278,9 @@ async function probeLMStudio(): Promise<LocalProbeResult | null> {
 }
 
 /** Try local providers (Ollama, then LM Studio). Returns null if none available. */
-async function tryGetLocalModelClient(): Promise<LocalProbeResult | null> {
+async function tryGetLocalModelClient(preferredModel?: string): Promise<LocalProbeResult | null> {
   // Try Ollama first (most common local provider)
-  const ollama = await probeOllama();
+  const ollama = await probeOllama(preferredModel);
   if (ollama) return ollama;
 
   // Fall back to LM Studio
@@ -340,12 +349,15 @@ export async function chat(
     const settings = readSettings();
 
     // Local-first: probe Ollama / LM Studio before falling back to cloud
+    // Pass configured model name so Ollama picks the user's preferred model
     let modelClient: ModelClient;
     let providerId: string;
     let modelId: string;
     let isLocal: boolean;
 
-    const localResult = await tryGetLocalModelClient();
+    const selectedModel = settings.selectedModel ?? { provider: "auto", name: "auto" };
+    const preferredLocal = selectedModel.provider === "ollama" ? selectedModel.name : undefined;
+    const localResult = await tryGetLocalModelClient(preferredLocal);
     if (localResult) {
       modelClient = localResult.modelClient;
       providerId = localResult.providerId;
@@ -354,7 +366,6 @@ export async function chat(
       logger.info("Joy assistant using LOCAL model", { providerId, modelId });
     } else {
       // No local model available — fall back to cloud/auto routing
-      const selectedModel = settings.selectedModel ?? { provider: "auto", name: "auto" };
       const resolved = await getModelClient(selectedModel, settings);
       modelClient = resolved.modelClient;
       providerId = modelClient.builtinProviderId ?? selectedModel.provider;
@@ -516,6 +527,8 @@ interface RawToolCall {
  *   {"name": "run_command", "parameters": {"command": "dir"}}
  *
  * Also handles markdown-fenced JSON blocks and `arguments` as alias.
+ * Skips malformed calls where parameters look like JSON Schema ({"type":"","properties":{}})
+ * rather than actual tool arguments.
  */
 function parseRawToolCalls(text: string): RawToolCall[] {
   const calls: RawToolCall[] = [];
@@ -527,6 +540,17 @@ function parseRawToolCalls(text: string): RawToolCall[] {
       const name = match[1];
       const params = JSON.parse(match[2]);
       if (name && typeof params === "object") {
+        // Skip malformed params that look like JSON Schema definitions
+        // (e.g. {"type":"","properties":{}}) instead of actual tool arguments
+        const keys = Object.keys(params);
+        const isSchemaLike =
+          keys.length <= 2 &&
+          ("type" in params || "properties" in params) &&
+          !keys.some((k) => ["infoType", "command", "filePath", "dirPath", "url", "appName", "query", "route", "content", "documentType", "name", "cwd", "args", "category"].includes(k));
+        if (isSchemaLike) {
+          logger.debug(`Skipping malformed raw tool call "${name}" — params look like JSON Schema`, params);
+          continue;
+        }
         calls.push({ name, parameters: params });
       }
     } catch {
@@ -631,13 +655,27 @@ async function executeRawToolCall(
  * sees the actual results instead of the raw function-call JSON.
  */
 function stripRawToolCalls(text: string): string {
-  // Remove JSON blocks that look like tool calls
-  return text
+  // Remove JSON blocks that look like tool calls (including malformed params)
+  let cleaned = text
     .replace(/\{[^{}]*"name"\s*:\s*"[^"]+?"[^{}]*(?:"parameters"|"arguments")\s*:\s*\{[^{}]*\}[^{}]*\}/g, "")
-    // Also remove surrounding markdown fences if the JSON was the only code block content
+    // Also catch tool calls where parameters contain nested braces (e.g. "type":"","properties":{})
+    .replace(/\{[^{}]*"name"\s*:\s*"[^"]+?"[^{}]*\}/g, (match) => {
+      // Only strip if it looks like a tool call (has "parameters" or "arguments" key)
+      if (/"parameters"|"arguments"/.test(match)) return "";
+      return match;
+    })
+    // Remove surrounding markdown fences if the JSON was the only code block content
     .replace(/```(?:json)?\s*\n?\s*\n?```/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  // If after stripping, the content is empty or only whitespace, return empty
+  // This handles the case where the entire response was a raw tool call
+  if (!cleaned || /^\s*$/.test(cleaned)) {
+    cleaned = "";
+  }
+
+  return cleaned;
 }
 
 /**
@@ -687,20 +725,26 @@ function formatToolResult(toolName: string, result: unknown): string {
 // ============================================================================
 
 const SYSTEM_TOOLS_PROMPT = `
+## Important Response Guidelines
+
+- For conversational questions about JoyCreate (features, capabilities, what it can do, how it works), answer directly from your knowledge. Do NOT call any tools for these questions.
+- Only use tools when the user explicitly asks you to perform an action (run a command, read/write files, open an app, get real-time system data, navigate, or search the marketplace).
+- Never output raw JSON tool-call objects as text. If you are unsure whether to use a tool, respond conversationally instead.
+
 ## System-Level Tools
 
-You have full access to the user's operating system through these tools. Use them proactively when the user's request involves files, commands, system info, or applications.
+You have access to the user's operating system through these tools. Use them ONLY when the user's request requires performing an action or retrieving real-time data.
 
 ### Available Tools
-- **run_command** — Execute any shell command (PowerShell on Windows, bash on Linux/macOS). Use for installs, builds, git, file operations, etc.
-- **read_file** — Read file contents. Show relevant sections to the user.
-- **write_file** — Write or create files. Always preview what you'll write.
+- **run_command** — Execute a shell command (PowerShell on Windows, bash on Linux/macOS).
+- **read_file** — Read file contents from disk.
+- **write_file** — Write or create files on disk.
 - **list_directory** — List files/folders in a directory.
-- **open_app** — Launch any app (notepad, vscode, calculator, browser, explorer, etc.)
+- **open_app** — Launch an application (notepad, vscode, calculator, etc.)
 - **open_url** — Open a URL in the default browser.
-- **system_info** — Get real-time system data: os, hardware, processes, disk, memory, network.
-- **navigate** — Navigate to any JoyCreate page.
-- **search_marketplace** — Search the JoyCreate marketplace for assets.
+- **system_info** — Get real-time system data (os, hardware, processes, disk, memory, network). Only use when the user asks about their system.
+- **navigate** — Navigate to a JoyCreate page.
+- **search_marketplace** — Search the JoyCreate marketplace.
 - **create_document** — Create documents, spreadsheets, or presentations.
 
 ### Tool Usage Guidelines
@@ -708,7 +752,6 @@ You have full access to the user's operating system through these tools. Use the
 - For potentially destructive commands (rm, del, format, drop), explain the impact first.
 - Chain multiple tool calls when needed for complex tasks (e.g., read file → modify → write back).
 - Show file contents and command outputs in code blocks.
-- When asked about the system, always use the system_info tool for accurate real-time data.
 `;
 
 function buildAssistantTools(intent: AssistantIntent) {
@@ -723,92 +766,6 @@ function buildAssistantTools(intent: AssistantIntent) {
     }),
     execute: async ({ route, label }) => {
       return { type: "navigate", route, label, executed: true };
-    },
-  });
-
-  // System tools — available for all intents, but especially "system"
-  tools.run_command = tool({
-    description: "Execute a shell command on the user's system. Use PowerShell on Windows, bash on Linux/macOS.",
-    parameters: z.object({
-      command: z.string().describe("The shell command to execute"),
-      cwd: z.string().optional().describe("Working directory (defaults to user home)"),
-    }),
-    execute: async ({ command, cwd }) => {
-      const safety = isCommandSafe(command);
-      if (!safety.safe) {
-        return { error: safety.reason, executed: false };
-      }
-      const result = await runCommand(command, cwd);
-      return { ...result, executed: true };
-    },
-  });
-
-  tools.read_file = tool({
-    description: "Read the contents of a file on the user's system",
-    parameters: z.object({
-      filePath: z.string().describe("Absolute path to the file to read"),
-    }),
-    execute: async ({ filePath }) => {
-      const content = await readFileContent(filePath);
-      return { content: content.slice(0, 20_000), executed: true };
-    },
-  });
-
-  tools.write_file = tool({
-    description: "Write content to a file on the user's system",
-    parameters: z.object({
-      filePath: z.string().describe("Absolute path for the file"),
-      content: z.string().describe("Content to write to the file"),
-    }),
-    execute: async ({ filePath, content }) => {
-      await writeFileContent(filePath, content);
-      return { filePath, size: content.length, executed: true };
-    },
-  });
-
-  tools.list_directory = tool({
-    description: "List files and directories in a directory",
-    parameters: z.object({
-      dirPath: z.string().describe("Absolute path to the directory"),
-    }),
-    execute: async ({ dirPath }) => {
-      const entries = await listDirectory(dirPath);
-      return { entries, executed: true };
-    },
-  });
-
-  tools.open_app = tool({
-    description: "Open an application on the user's system (e.g. notepad, calculator, vscode, file explorer)",
-    parameters: z.object({
-      appName: z.string().describe("Application name or path"),
-      args: z.array(z.string()).optional().describe("Arguments to pass to the app"),
-    }),
-    execute: async ({ appName, args }) => {
-      await openApp(appName, args);
-      return { opened: appName, executed: true };
-    },
-  });
-
-  tools.open_url = tool({
-    description: "Open a URL in the user's default browser",
-    parameters: z.object({
-      url: z.string().describe("The URL to open"),
-    }),
-    execute: async ({ url }) => {
-      await openUrl(url);
-      return { opened: url, executed: true };
-    },
-  });
-
-  tools.system_info = tool({
-    description: "Get system information: os, hardware, processes, disk, memory, or network",
-    parameters: z.object({
-      infoType: z.enum(["os", "hardware", "processes", "disk", "memory", "network"])
-        .describe("Type of system information to retrieve"),
-    }),
-    execute: async ({ infoType }) => {
-      const info = await getSystemInfo(infoType);
-      return { info, executed: true };
     },
   });
 
@@ -833,6 +790,97 @@ function buildAssistantTools(intent: AssistantIntent) {
       return { type: "create-document", documentType, name, executed: true };
     },
   });
+
+  // Only include system-level tools when the intent requires system interaction.
+  // This prevents small local models from being overwhelmed by tool definitions
+  // and incorrectly calling tools for conversational questions.
+  const systemIntents: AssistantIntent[] = ["system", "fill", "configure"];
+  if (systemIntents.includes(intent)) {
+    tools.run_command = tool({
+      description: "Execute a shell command on the user's system. Use PowerShell on Windows, bash on Linux/macOS.",
+      parameters: z.object({
+        command: z.string().describe("The shell command to execute"),
+        cwd: z.string().optional().describe("Working directory (defaults to user home)"),
+      }),
+      execute: async ({ command, cwd }) => {
+        const safety = isCommandSafe(command);
+        if (!safety.safe) {
+          return { error: safety.reason, executed: false };
+        }
+        const result = await runCommand(command, cwd);
+        return { ...result, executed: true };
+      },
+    });
+
+    tools.read_file = tool({
+      description: "Read the contents of a file on the user's system",
+      parameters: z.object({
+        filePath: z.string().describe("Absolute path to the file to read"),
+      }),
+      execute: async ({ filePath }) => {
+        const content = await readFileContent(filePath);
+        return { content: content.slice(0, 20_000), executed: true };
+      },
+    });
+
+    tools.write_file = tool({
+      description: "Write content to a file on the user's system",
+      parameters: z.object({
+        filePath: z.string().describe("Absolute path for the file"),
+        content: z.string().describe("Content to write to the file"),
+      }),
+      execute: async ({ filePath, content }) => {
+        await writeFileContent(filePath, content);
+        return { filePath, size: content.length, executed: true };
+      },
+    });
+
+    tools.list_directory = tool({
+      description: "List files and directories in a directory",
+      parameters: z.object({
+        dirPath: z.string().describe("Absolute path to the directory"),
+      }),
+      execute: async ({ dirPath }) => {
+        const entries = await listDirectory(dirPath);
+        return { entries, executed: true };
+      },
+    });
+
+    tools.open_app = tool({
+      description: "Open an application on the user's system (e.g. notepad, calculator, vscode, file explorer)",
+      parameters: z.object({
+        appName: z.string().describe("Application name or path"),
+        args: z.array(z.string()).optional().describe("Arguments to pass to the app"),
+      }),
+      execute: async ({ appName, args }) => {
+        await openApp(appName, args);
+        return { opened: appName, executed: true };
+      },
+    });
+
+    tools.open_url = tool({
+      description: "Open a URL in the user's default browser",
+      parameters: z.object({
+        url: z.string().describe("The URL to open"),
+      }),
+      execute: async ({ url }) => {
+        await openUrl(url);
+        return { opened: url, executed: true };
+      },
+    });
+
+    tools.system_info = tool({
+      description: "Get system information: os, hardware, processes, disk, memory, or network",
+      parameters: z.object({
+        infoType: z.enum(["os", "hardware", "processes", "disk", "memory", "network"])
+          .describe("Type of system information to retrieve"),
+      }),
+      execute: async ({ infoType }) => {
+        const info = await getSystemInfo(infoType);
+        return { info, executed: true };
+      },
+    });
+  }
 
   return tools;
 }

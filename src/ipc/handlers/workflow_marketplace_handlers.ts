@@ -11,11 +11,11 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import type { UnifiedPublishPayload, PublishResult } from "@/types/publish_types";
 import type { PublishAppResponse } from "@/types/marketplace_types";
+import { JOYMARKETPLACE_API } from "@/config/joymarketplace";
 
 const logger = log.scope("workflow_marketplace");
 
-const MARKETPLACE_API_URL =
-  process.env.JOYMARKETPLACE_API_URL || "https://api.joymarketplace.io";
+const MARKETPLACE_API_URL = JOYMARKETPLACE_API.baseUrl;
 
 async function getCredentials(): Promise<{ apiKey: string; publisherId: string }> {
   const credPath = path.join(

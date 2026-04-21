@@ -129,10 +129,40 @@ export interface PublishAppResponse {
   message: string;
 }
 
-// Marketplace API credentials
+// Marketplace API credentials — stored after joy-create-verify succeeds
 export interface MarketplaceCredentials {
   apiKey: string;
+  /** maps to verify response `user_id` */
   publisherId: string;
+  /** Scopes granted by the API key (e.g. ["publish","read","agents","pinning"]) */
+  scopes?: string[];
+  /** Network info returned by verify — includes chain + subgraph URLs */
+  network?: MarketplaceNetwork;
+  /** Whether the connected wallet owns at least one .joy ENS name */
+  hasJoyDomain?: boolean;
+  /** List of .joy domain names owned by the wallet (e.g. ["alice.joy"]) */
+  domains?: string[];
+}
+
+/** Network descriptor returned by the joy-create-verify edge function */
+export interface MarketplaceNetwork {
+  chain: string;
+  chain_id: number;
+  drop_subgraph: string;
+  marketplace_subgraph: string;
+  stores_subgraph: string;
+}
+
+/** A .joy ENS domain registration as indexed by the stores subgraph */
+export interface JoyDomainInfo {
+  name: string;
+  fullName: string;
+  owner: string;
+  resolver: string;
+  resolvedAddress: string;
+  expiresAt: string;
+  registeredAt: string;
+  textRecords?: { key: string; value: string }[];
 }
 
 // Deployment target options

@@ -495,8 +495,8 @@ function KanbanColumn({
         </div>
       )}
 
-      {/* Tasks — fills remaining space, scrolls vertically */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+      {/* Tasks — grow with content, board-level scroll handles overflow */}
+      <div className="flex-1 px-2 pb-2">
         <div className="flex flex-col gap-2 p-1">
           {tasks.map((task) => (
             <TaskCard
@@ -2182,7 +2182,7 @@ export function OpenClawKanbanPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
         <div className="flex-shrink-0 px-4 pt-2 border-b border-border/50 flex items-center gap-4">
           <TabsList className="bg-transparent">
             <TabsTrigger value="board" className="text-xs">
@@ -2262,7 +2262,7 @@ export function OpenClawKanbanPage() {
         </div>
 
         {/* Board Tab */}
-        <TabsContent value="board" className="flex-1 m-0 overflow-hidden flex flex-col">
+        <TabsContent value="board" className="flex-1 m-0 min-h-0 overflow-hidden flex flex-col">
           {/* Column quick-nav pills */}
           <div className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 border-b border-border/30 overflow-x-auto">
             {COLUMNS.map((col) => {
@@ -2302,7 +2302,7 @@ export function OpenClawKanbanPage() {
             </div>
           </div>
 
-          {/* Board with horizontal scroll + shadows */}
+          {/* Board with horizontal + vertical scroll + shadows */}
           <div className="flex-1 min-h-0 relative">
             {/* Left scroll shadow */}
             {canScrollLeft && (
@@ -2315,9 +2315,9 @@ export function OpenClawKanbanPage() {
 
             <div
               ref={boardScrollRef}
-              className="h-full overflow-x-auto overflow-y-hidden"
+              className="h-full overflow-auto"
             >
-              <div className="flex gap-3 p-4 h-full min-w-max">
+              <div className="flex gap-3 p-4 min-h-full min-w-max">
                 {COLUMNS.map((col) => (
                   <KanbanColumn
                     key={col.id}
@@ -2336,7 +2336,7 @@ export function OpenClawKanbanPage() {
         </TabsContent>
 
         {/* Analytics Tab */}
-        <TabsContent value="analytics" className="flex-1 m-0 overflow-auto p-4">
+        <TabsContent value="analytics" className="flex-1 m-0 min-h-0 overflow-auto p-4">
           {analyticsLoading ? (
             <div className="flex items-center justify-center h-40 text-muted-foreground/60">
               <RefreshCw className="w-5 h-5 animate-spin mr-2" />
@@ -2348,27 +2348,27 @@ export function OpenClawKanbanPage() {
         </TabsContent>
 
         {/* Inference Tab */}
-        <TabsContent value="inference" className="flex-1 m-0 overflow-auto p-4">
+        <TabsContent value="inference" className="flex-1 m-0 min-h-0 overflow-auto p-4">
           <InferencePanel />
         </TabsContent>
 
         {/* Audit Trail Tab */}
-        <TabsContent value="audit" className="flex-1 m-0 overflow-auto p-4">
+        <TabsContent value="audit" className="flex-1 m-0 min-h-0 overflow-auto p-4">
           <AuditTrailPanel />
         </TabsContent>
 
         {/* Live Feed Tab */}
-        <TabsContent value="live" className="flex-1 m-0 overflow-auto p-4">
+        <TabsContent value="live" className="flex-1 m-0 min-h-0 overflow-auto p-4">
           <LiveFeedPanel events={liveEvents} connected={wsConnected} />
         </TabsContent>
 
         {/* AI Studio Tab */}
-        <TabsContent value="studio" className="flex-1 m-0 overflow-auto p-4">
+        <TabsContent value="studio" className="flex-1 m-0 min-h-0 overflow-auto p-4">
           <NlpAiStudioPanel />
         </TabsContent>
 
         {/* Agent Command Center Tab */}
-        <TabsContent value="command" className="flex-1 m-0 overflow-hidden">
+        <TabsContent value="command" className="flex-1 m-0 min-h-0 overflow-hidden">
           <AgentCommandCenter />
         </TabsContent>
       </Tabs>

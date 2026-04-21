@@ -210,7 +210,7 @@ export class MarketplaceSyncService {
   async verifyPublisher(): Promise<VerifyResponse> {
     try {
       const result = await this.apiRequest<VerifyResponse>(
-        JOYMARKETPLACE_API.endpoints.verifyPublisher,
+        JOYMARKETPLACE_API.endpoints.verify,
         { method: "POST" }
       );
       return result;
@@ -245,6 +245,8 @@ export class MarketplaceSyncService {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `${JOYMARKETPLACE_API.authScheme} ${token}`,
+        "x-joy-api-key": token,
+        "apikey": JOYMARKETPLACE_API.supabaseAnonKey,
         ...options.headers,
       },
     });
@@ -474,7 +476,7 @@ export class MarketplaceSyncService {
   async verifyReceipt(cid: string): Promise<{ verified: boolean; receipt?: IpldInferenceReceipt }> {
     try {
       const result = await this.apiRequest<{ verified: boolean; receipt?: IpldInferenceReceipt }>(
-        JOYMARKETPLACE_API.endpoints.verifyReceipt.replace(":cid", cid),
+        `${JOYMARKETPLACE_API.endpoints.ingestReceipt}?cid=${encodeURIComponent(cid)}`,
         { method: "GET" }
       );
       return result;

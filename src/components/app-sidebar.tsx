@@ -40,7 +40,7 @@ import {
   Landmark,
   Vote,
   CircleDollarSign,
-  Fingerprint,
+  KeyRound,
   Hammer,
   Gauge,
   Code2,
@@ -63,6 +63,7 @@ import {
   Video,
   Stamp,
   UserCheck,
+  Fingerprint,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -305,6 +306,15 @@ const menuCategories = [
         hoverBg: "hover:bg-amber-500/10",
         activeBg: "bg-amber-500/15",
         activeText: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        title: "Secrets Vault",
+        to: "/secrets-vault",
+        icon: KeyRound,
+        gradient: "from-emerald-500 to-cyan-500",
+        hoverBg: "hover:bg-emerald-500/10",
+        activeBg: "bg-emerald-500/15",
+        activeText: "text-emerald-600 dark:text-emerald-400",
       },
       {
         title: "Asset Studio",

@@ -17,11 +17,11 @@ import type {
   CreatorAnalytics,
   PublishableAssetType,
 } from "@/types/publish_types";
+import { JOYMARKETPLACE_API } from "@/config/joymarketplace";
 
 const logger = log.scope("creator_dashboard");
 
-const MARKETPLACE_API_URL =
-  process.env.JOYMARKETPLACE_API_URL || "https://api.joymarketplace.io";
+const MARKETPLACE_API_URL = JOYMARKETPLACE_API.baseUrl;
 
 async function getApiKey(): Promise<string | null> {
   try {

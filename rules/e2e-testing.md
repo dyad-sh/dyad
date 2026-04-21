@@ -109,6 +109,10 @@ If this happens:
 2. Re-run the same `npm run e2e -- e2e-tests/<spec>` command outside the sandbox before treating it as an app regression.
 3. If the test passes outside the sandbox, treat the sandbox launch failure as environmental rather than a product bug.
 
+## Native rebuild Python issues during E2E builds
+
+If `npm run build` fails while rebuilding native modules with `ImportError` from Homebrew Python 3.14's `pyexpat` (for example `Symbol not found: _XML_SetAllocTrackerActivationThreshold`), rerun the build with the system Python: `PYTHON=/usr/bin/python3 npm run build`.
+
 ## Common flaky test patterns and fixes
 
 - **After `po.importApp(...)`**: Some imports trigger an initial assistant turn (for example `minimal` generating `AI_RULES.md`) that can leave a visible `Retry` button in the chat. If the test is about a later prompt, first wait for that import-time turn to finish, then start a new chat before calling `sendPrompt()`, or helper methods that wait on `Retry` visibility may return too early.

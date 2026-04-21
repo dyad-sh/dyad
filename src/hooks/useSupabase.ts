@@ -16,7 +16,7 @@ import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 
-const EDGE_LOGS_POLL_INTERVAL_MS = 15_000;
+const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
 
 export interface UseSupabaseOptions {
   branchesProjectId?: string | null;

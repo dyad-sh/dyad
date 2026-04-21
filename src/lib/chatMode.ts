@@ -61,7 +61,7 @@ export function getUnavailableChatModeReason({
     return "no-provider";
   }
 
-  if (!freeAgentQuotaAvailable) {
+  if (freeAgentQuotaAvailable === false) {
     return "quota-exhausted";
   }
 

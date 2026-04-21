@@ -37,7 +37,7 @@ export function useChatMode(chatId: number | null | undefined) {
     enabled: activeChatId !== null,
   });
 
-  const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
+  const freeAgentQuotaAvailable = isQuotaLoading ? undefined : !isQuotaExceeded;
   const effectiveDefaultMode = settings
     ? getEffectiveDefaultChatMode(settings, envVars, freeAgentQuotaAvailable)
     : "build";

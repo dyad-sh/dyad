@@ -18,12 +18,15 @@ export { normalizeStoredChatMode };
 
 export async function resolveChatModeForTurn({
   storedChatMode,
+  requestedChatMode,
   settings = readSettings(),
 }: {
   storedChatMode: string | null | undefined;
+  requestedChatMode?: ChatMode;
   settings?: UserSettings;
 }): Promise<ChatModeResolution & { settings: UserSettings }> {
-  const normalizedChatMode = normalizeStoredChatMode(storedChatMode);
+  const modeForTurn = requestedChatMode ?? storedChatMode;
+  const normalizedChatMode = normalizeStoredChatMode(modeForTurn);
   const envVars = getChatModeEnvVars();
   const freeAgentQuotaAvailable = await getFreeAgentQuotaAvailableIfNeeded(
     settings,
@@ -32,7 +35,7 @@ export async function resolveChatModeForTurn({
 
   return {
     ...resolveChatMode({
-      storedChatMode,
+      storedChatMode: modeForTurn,
       settings,
       envVars,
       freeAgentQuotaAvailable,

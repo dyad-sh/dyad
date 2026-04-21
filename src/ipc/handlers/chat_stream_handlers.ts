@@ -540,7 +540,10 @@ ${componentSnippet}
         settings: storedSettings,
         mode: selectedChatMode,
         fallbackReason: chatModeFallbackReason,
-      } = await resolveChatModeForTurn({ storedChatMode: chat.chatMode });
+      } = await resolveChatModeForTurn({
+        storedChatMode: chat.chatMode,
+        requestedChatMode: req.requestedChatMode,
+      });
       const settings = {
         ...storedSettings,
         selectedChatMode,

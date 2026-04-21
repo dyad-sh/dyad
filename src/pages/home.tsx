@@ -44,6 +44,7 @@ import {
 } from "@/components/ProBanner";
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 // Track whether we've already checked release notes this session (module-scoped
 // so it persists across component unmount/remount cycles).
@@ -63,6 +64,7 @@ export default function HomePage() {
   const { refreshApps } = useLoadApps();
   const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const initialChatMode = useInitialChatMode();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const { selectChat } = useSelectChat();
@@ -184,14 +186,6 @@ export default function HomePage() {
 
       let chatId: number;
       let appId: number;
-      const initialChatMode = settings
-        ? getEffectiveDefaultChatMode(
-            settings,
-            envVars,
-            !isQuotaLoading && !isQuotaExceeded,
-          )
-        : "build";
-
       if (selectedApp) {
         // Existing app flow: create a new chat in the selected app
         chatId = await ipc.chat.createChat({
@@ -232,6 +226,7 @@ export default function HomePage() {
         prompt: inputValue,
         chatId,
         attachments,
+        requestedChatMode: initialChatMode,
       });
       await new Promise((resolve) =>
         setTimeout(resolve, settings?.isTestMode ? 0 : 2000),

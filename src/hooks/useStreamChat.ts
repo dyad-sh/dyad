@@ -20,7 +20,6 @@ import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ChatResponseEnd, App, Chat } from "@/ipc/types";
 import type { ChatSummary } from "@/lib/schemas";
-import { isDyadProEnabled } from "@/lib/schemas";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -36,7 +35,7 @@ import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
-import { showChatModeFallbackToast } from "@/lib/chatModeToast";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -92,6 +91,7 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponents,
+      requestedChatMode,
       onSettled,
     }: {
       prompt: string;
@@ -99,6 +99,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
+      requestedChatMode?: Chat["chatMode"];
       onSettled?: (result: { success: boolean }) => void;
     }) => {
       if (
@@ -180,7 +181,8 @@ export function useStreamChat({
             redo,
             attachments: convertedAttachments,
             selectedComponents: selectedComponents ?? [],
-            requestedChatMode: cachedChat?.chatMode ?? undefined,
+            requestedChatMode:
+              requestedChatMode ?? cachedChat?.chatMode ?? undefined,
           },
           {
             onChunk: ({
@@ -190,14 +192,12 @@ export function useStreamChat({
               effectiveChatMode,
               chatModeFallbackReason,
             }) => {
-              if (effectiveChatMode) {
-                if (chatModeFallbackReason) {
-                  showChatModeFallbackToast({
-                    reason: chatModeFallbackReason,
-                    effectiveMode: effectiveChatMode,
-                    isPro: settings ? isDyadProEnabled(settings) : false,
-                  });
-                }
+              if (
+                handleEffectiveChatModeChunk(
+                  { effectiveChatMode, chatModeFallbackReason },
+                  settings,
+                )
+              ) {
                 queryClient.invalidateQueries({
                   queryKey: queryKeys.chats.detail({ chatId }),
                 });

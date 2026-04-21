@@ -14,9 +14,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 import { ipc } from "@/ipc/types";
 import { showError, showSuccess } from "@/lib/toast";
-import { useSettings } from "@/hooks/useSettings";
-import { getEffectiveDefaultChatMode } from "@/lib/schemas";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -44,8 +42,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
-  const { settings, envVars } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const initialChatMode = useInitialChatMode();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
   const routerState = useRouterState();
@@ -108,13 +105,6 @@ export function ChatList({ show }: { show?: boolean }) {
     // Only create a new chat if an app is selected
     if (selectedAppId) {
       try {
-        const initialChatMode = settings
-          ? getEffectiveDefaultChatMode(
-              settings,
-              envVars,
-              !isQuotaLoading && !isQuotaExceeded,
-            )
-          : undefined;
         // Create a new chat with an empty title for now
         const chatId = await ipc.chat.createChat({
           appId: selectedAppId,

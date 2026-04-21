@@ -73,6 +73,24 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
   });
 
+  it("does not treat unknown quota as exhausted", () => {
+    const settings = makeSettings({
+      defaultChatMode: "build",
+      providerSettings: {
+        openai: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: undefined,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
   it("allows stored local-agent mode for Pro users", () => {
     const settings = makeSettings({
       enableDyadPro: true,

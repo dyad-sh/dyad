@@ -13,8 +13,7 @@ import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
-import { showChatModeFallbackToast } from "@/lib/chatModeToast";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
@@ -108,14 +107,12 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
             effectiveChatMode,
             chatModeFallbackReason,
           }) => {
-            if (effectiveChatMode) {
-              if (chatModeFallbackReason) {
-                showChatModeFallbackToast({
-                  reason: chatModeFallbackReason,
-                  effectiveMode: effectiveChatMode,
-                  isPro: settings ? isDyadProEnabled(settings) : false,
-                });
-              }
+            if (
+              handleEffectiveChatModeChunk(
+                { effectiveChatMode, chatModeFallbackReason },
+                settings,
+              )
+            ) {
               return;
             }
 

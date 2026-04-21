@@ -8,8 +8,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { useSettings } from "./useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
-import { showChatModeFallbackToast } from "@/lib/chatModeToast";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 
 /**
  * Hook to handle starting plan implementation when a plan is accepted.
@@ -111,14 +110,12 @@ export function usePlanImplementation() {
             }) => {
               if (!isMountedRef.current) return;
 
-              if (effectiveChatMode) {
-                if (chatModeFallbackReason) {
-                  showChatModeFallbackToast({
-                    reason: chatModeFallbackReason,
-                    effectiveMode: effectiveChatMode,
-                    isPro: settings ? isDyadProEnabled(settings) : false,
-                  });
-                }
+              if (
+                handleEffectiveChatModeChunk(
+                  { effectiveChatMode, chatModeFallbackReason },
+                  settings,
+                )
+              ) {
                 return;
               }
 

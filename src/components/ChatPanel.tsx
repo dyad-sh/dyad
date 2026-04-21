@@ -46,12 +46,12 @@ export function ChatPanel({
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const { settings } = useSettings();
-  const { selectedMode, setChatMode } = useChatMode(chatId);
+  const { effectiveMode, setChatMode } = useChatMode(chatId);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
     settings &&
     !isDyadProEnabled(settings) &&
-    selectedMode === "local-agent" &&
+    effectiveMode === "local-agent" &&
     isQuotaExceeded;
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);

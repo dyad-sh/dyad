@@ -204,9 +204,11 @@ export function useStreamChat({
                   chatId,
                 )
               ) {
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.chats.detail({ chatId }),
-                });
+                if (chatModeFallbackReason) {
+                  queryClient.invalidateQueries({
+                    queryKey: queryKeys.chats.detail({ chatId }),
+                  });
+                }
                 return;
               }
 

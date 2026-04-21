@@ -169,12 +169,21 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       return;
     }
 
-    logs.forEach((log) => {
+    // Filter out logs we've already processed. React Query serves cached
+    // data on remount with a non-zero dataUpdatedAt, which would otherwise
+    // re-fire this effect and duplicate entries that were appended during
+    // the original fetch. Also defends against StrictMode double-invoke.
+    const newLogs = lastTimestamp
+      ? logs.filter((log) => log.timestamp > lastTimestamp)
+      : logs;
+    if (newLogs.length === 0) return;
+
+    newLogs.forEach((log) => {
       ipc.misc.addLog(log);
     });
-    setConsoleEntries((prev) => [...prev, ...logs]);
+    setConsoleEntries((prev) => [...prev, ...newLogs]);
 
-    const latestLog = logs.reduce((latest, log) =>
+    const latestLog = newLogs.reduce((latest, log) =>
       log.timestamp > latest.timestamp ? log : latest,
     );
     setLastLogTimestamp((prev) => ({

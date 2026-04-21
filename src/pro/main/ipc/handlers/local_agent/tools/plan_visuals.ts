@@ -109,7 +109,10 @@ export const planVisualsTool: ToolDefinition<
 
     logger.log(`Waiting for user to approve mini plan for chat ${ctx.chatId}`);
 
-    const approved = await waitForMiniPlanApproval(ctx.chatId);
+    const approved = await waitForMiniPlanApproval(
+      ctx.chatId,
+      ctx.event.sender,
+    );
 
     if (!approved) {
       return "The user dismissed the mini plan without approving. Ask them how they'd like to proceed.";

@@ -5,10 +5,12 @@ export interface MiniPlanState {
   plansByChatId: Map<number, MiniPlanData>;
   approvedChatIds: Set<number>;
   visualsReadyChatIds: Set<number>;
+  timedOutChatIds: Set<number>;
 }
 
 export const miniPlanStateAtom = atom<MiniPlanState>({
   plansByChatId: new Map(),
   approvedChatIds: new Set<number>(),
   visualsReadyChatIds: new Set<number>(),
+  timedOutChatIds: new Set<number>(),
 });

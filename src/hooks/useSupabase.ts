@@ -148,6 +148,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     enabled: edgeLogsEnabled,
     refetchInterval: EDGE_LOGS_POLL_INTERVAL_MS,
     refetchOnWindowFocus: false,
+    retry: false,
   });
 
   // Apply side effects once per successful fetch. dataUpdatedAt changes on

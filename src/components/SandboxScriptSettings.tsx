@@ -97,46 +97,53 @@ export function SandboxScriptSettings() {
         </div>
       )}
 
-      <div className="space-y-1">
-        <div className="flex items-center gap-4">
-          <label
-            htmlFor="sandbox-script-timeout"
-            className="text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            Script timeout
-          </label>
-          <Select value={currentValue} onValueChange={handleTimeoutChange}>
-            <SelectTrigger className="w-[160px]" id="sandbox-script-timeout">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {timeoutOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          Limits read-only attachment scripts in local-agent mode.
-        </div>
-      </div>
+      {scriptTool && (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-4">
+              <label
+                htmlFor="sandbox-script-timeout"
+                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Script timeout
+              </label>
+              <Select value={currentValue} onValueChange={handleTimeoutChange}>
+                <SelectTrigger
+                  className="w-[160px]"
+                  id="sandbox-script-timeout"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {timeoutOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Limits read-only attachment scripts in local-agent mode.
+            </div>
+          </div>
 
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={!mediaPath}
-        onClick={() => {
-          if (mediaPath) {
-            ipc.system.showItemInFolder(mediaPath);
-          }
-        }}
-      >
-        <FolderOpen className="size-4 mr-2" />
-        Open .dyad/media/
-      </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!mediaPath}
+            onClick={() => {
+              if (mediaPath) {
+                ipc.system.showItemInFolder(mediaPath);
+              }
+            }}
+          >
+            <FolderOpen className="size-4 mr-2" />
+            Open .dyad/media/
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

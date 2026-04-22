@@ -1,5 +1,6 @@
 import addAuthenticationGuide from "./guides/add-authentication.md?raw";
 import addEmailVerificationGuide from "./guides/add-email-verification.md?raw";
+import addPasswordResetGuide from "./guides/add-password-reset.md?raw";
 
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,
@@ -43,11 +44,14 @@ function getSharedNeonPrompt(
     ? `## Auth (detailed guide available)
 
 When the task involves authentication, login, sign-up, user sessions, or auth UI, you MUST call the \`read_guide\` tool with guide="add-authentication" BEFORE writing any auth code. Do NOT implement auth without reading the guide first.
-${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. After reading the auth guide and BEFORE writing any sign-up code, you MUST also call \`read_guide\` with guide="add-email-verification".` : ""}`
+${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. After reading the auth guide and BEFORE writing any sign-up code, you MUST also call \`read_guide\` with guide="add-email-verification".` : ""}
+
+**IMPORTANT:** If the task involves password reset, forgot-password, or "reset my password" flows, you MUST call \`read_guide\` with guide="add-password-reset" BEFORE writing any password-reset code. Do NOT hand-roll a reset-token flow.`
     : `## Auth
 
 ${addAuthenticationGuide}
-${emailVerificationEnabled ? `\n${addEmailVerificationGuide}` : ""}`;
+${emailVerificationEnabled ? `\n${addEmailVerificationGuide}` : ""}
+${addPasswordResetGuide}`;
 
   return `
 <neon-system-prompt>
@@ -128,9 +132,11 @@ function getNextJsNeonPrompt(
 
   const authDecisionSteps = isLocalAgentMode
     ? `4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then follow the Neon Auth API path.
-5. **If** user wants prebuilt auth or account pages → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then extend with the UI path.`
+5. **If** user wants prebuilt auth or account pages → call \`read_guide\` with guide="add-authentication"${emailVerificationEnabled ? `, then call \`read_guide\` with guide="add-email-verification"` : ""}, then extend with the UI path.
+6. **If** user wants password reset or forgot-password → call \`read_guide\` with guide="add-password-reset", then wire up the reset flow per that guide.`
     : `4. **If** user needs auth APIs or sessions → follow the Auth guide above${emailVerificationEnabled ? " and the Email Verification guide" : ""}, then follow the Neon Auth API path.
-5. **If** user wants prebuilt auth or account pages → follow the Auth guide above${emailVerificationEnabled ? " and the Email Verification guide" : ""}, then extend with the UI path.`;
+5. **If** user wants prebuilt auth or account pages → follow the Auth guide above${emailVerificationEnabled ? " and the Email Verification guide" : ""}, then extend with the UI path.
+6. **If** user wants password reset or forgot-password → follow the Password Reset guide above, then wire up the reset flow per that guide.`;
 
   return `
 <nextjs-instructions>

@@ -4,6 +4,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 import addAuthentication from "@/prompts/guides/add-authentication.md?raw";
 import addEmailVerification from "@/prompts/guides/add-email-verification.md?raw";
+import addPasswordReset from "@/prompts/guides/add-password-reset.md?raw";
 
 /**
  * Registry of available guides. To add a new guide, import its .md file
@@ -12,13 +13,14 @@ import addEmailVerification from "@/prompts/guides/add-email-verification.md?raw
 const GUIDES: Record<string, string> = {
   "add-authentication": addAuthentication,
   "add-email-verification": addEmailVerification,
+  "add-password-reset": addPasswordReset,
 };
 
 const readGuideSchema = z.object({
   guide: z
     .string()
     .describe(
-      "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification')",
+      "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')",
     ),
 });
 

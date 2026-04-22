@@ -90,6 +90,12 @@ export function SandboxScriptSettings() {
           </Select>
         </div>
       )}
+      {!scriptTool && (
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Script approval is available in local-agent mode on supported
+          platforms.
+        </div>
+      )}
 
       <div className="space-y-1">
         <div className="flex items-center gap-4">

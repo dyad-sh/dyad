@@ -27,7 +27,8 @@ self.addEventListener("fetch", (event) => {
   // Only observe programmatic fetch/XHR traffic. Re-fetching script/module
   // requests from a service worker can change browser metadata like
   // Sec-Fetch-Dest and break Nitro+Vite dev module serving.
-  if (request.destination) return;
+  if (request.destination === "script" || request.destination === "worker")
+    return;
 
   // Only handle http(s)
   let urlObj;

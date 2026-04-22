@@ -121,20 +121,30 @@ export const enableNitroTool: ToolDefinition<
     }
 
     const rulesBackup = await appendNitroRules(ctx.appPath);
-    const nitroConfigResult = await writeNitroConfigIfMissing(ctx.appPath);
+    let nitroConfigResult: { filePath: string; wasCreated: boolean } | null =
+      null;
+    let serverDirCreated = false;
+    const serverDirPath = path.join(ctx.appPath, "server");
 
     try {
-      await fs.mkdir(path.join(ctx.appPath, "server", "routes", "api"), {
+      nitroConfigResult = await writeNitroConfigIfMissing(ctx.appPath);
+
+      try {
+        await fs.access(serverDirPath);
+      } catch {
+        serverDirCreated = true;
+      }
+      await fs.mkdir(path.join(serverDirPath, "routes", "api"), {
         recursive: true,
       });
       await fs.writeFile(
-        path.join(ctx.appPath, "server", "routes", "api", ".gitkeep"),
+        path.join(serverDirPath, "routes", "api", ".gitkeep"),
         "",
         "utf8",
       );
 
       const result = await executeAddDependency({
-        packages: ["nitro", "vite"],
+        packages: ["nitro"],
         message,
         appPath: ctx.appPath,
       });
@@ -143,8 +153,11 @@ export const enableNitroTool: ToolDefinition<
       }
     } catch (error) {
       await restoreAiRules(ctx.appPath, rulesBackup.backup);
-      if (nitroConfigResult.wasCreated) {
+      if (nitroConfigResult?.wasCreated) {
         await fs.rm(nitroConfigResult.filePath, { force: true });
+      }
+      if (serverDirCreated) {
+        await fs.rm(serverDirPath, { recursive: true, force: true });
       }
       if (error instanceof ExecuteAddDependencyError) {
         for (const warningMessage of error.warningMessages) {

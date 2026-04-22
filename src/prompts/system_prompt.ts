@@ -339,7 +339,7 @@ const BUILD_SERVER_LAYER_NUDGE = `
 
 If the user asks for server-side code in a Vite app (API routes, database access via \`DATABASE_URL\`, webhooks, server-only secrets, Stripe handlers, cron jobs, etc.), do NOT generate server-side files directly. Instead, tell the user:
 
-> "Backend code requires a server layer. Please switch to **local-agent** mode and re-send your request — I'll add the Nitro server layer and generate the route in the same turn."
+> "Backend code requires a server layer. Please switch to **Agent** mode (top of the chat) and re-send your request — I'll add the Nitro server layer and generate the route in the same turn."
 
 This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
 `;
@@ -351,6 +351,12 @@ export const BUILD_SYSTEM_PROMPT = `${BUILD_SYSTEM_PREFIX}
 ${BUILD_SYSTEM_POSTFIX}
 
 ${BUILD_SERVER_LAYER_NUDGE}`;
+
+export const BUILD_SYSTEM_PROMPT_WITHOUT_SERVER_LAYER_NUDGE = `${BUILD_SYSTEM_PREFIX}
+
+[[AI_RULES]]
+
+${BUILD_SYSTEM_POSTFIX}`;
 
 const DEFAULT_AI_RULES = `# Tech Stack
 - You are building a React application.
@@ -526,6 +532,7 @@ export const constructSystemPrompt = ({
   themePrompt,
   readOnly,
   basicAgentMode,
+  nitroEnabled,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -535,6 +542,8 @@ export const constructSystemPrompt = ({
   readOnly?: boolean;
   /** If true, use basic agent mode (free tier with limited tools) */
   basicAgentMode?: boolean;
+  /** If true, skip the build-mode Nitro nudge (server layer is already set up) */
+  nitroEnabled?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -550,6 +559,7 @@ export const constructSystemPrompt = ({
   let systemPrompt = getSystemPromptForChatMode({
     chatMode,
     enableTurboEditsV2,
+    nitroEnabled,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -567,17 +577,19 @@ export const constructSystemPrompt = ({
 export const getSystemPromptForChatMode = ({
   chatMode,
   enableTurboEditsV2,
+  nitroEnabled,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
+  nitroEnabled?: boolean;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
-  return (
-    BUILD_SYSTEM_PROMPT +
-    (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "")
-  );
+  const buildPrompt = nitroEnabled
+    ? BUILD_SYSTEM_PROMPT_WITHOUT_SERVER_LAYER_NUDGE
+    : BUILD_SYSTEM_PROMPT;
+  return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };
 
 export const readAiRules = async (dyadAppPath: string) => {

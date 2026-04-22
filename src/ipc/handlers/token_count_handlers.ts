@@ -86,6 +86,7 @@ export function registerTokenCountHandlers() {
           selectedChatMode === "local-agent" ? "build" : selectedChatMode,
         enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         themePrompt,
+        nitroEnabled: chat.app?.nitroEnabled ?? false,
       });
       let supabaseContext = "";
 

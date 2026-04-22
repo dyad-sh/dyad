@@ -615,7 +615,7 @@ function renderCustomTag(
       );
 
     case "dyad-enable-nitro":
-      return <DyadEnableNitro />;
+      return <DyadEnableNitro state={getState({ isStreaming, inProgress })} />;
 
     case "dyad-edit":
       return (

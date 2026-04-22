@@ -18,7 +18,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import type { ChatResponseEnd, App } from "@/ipc/types";
+import type { ChatResponseEnd, App, Chat } from "@/ipc/types";
 import type { ChatSummary } from "@/lib/schemas";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
@@ -35,6 +35,7 @@ import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -90,6 +91,7 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponents,
+      requestedChatMode,
       onSettled,
     }: {
       prompt: string;
@@ -97,6 +99,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
+      requestedChatMode?: Chat["chatMode"] | null;
       onSettled?: (result: { success: boolean }) => void;
     }) => {
       if (
@@ -167,6 +170,13 @@ export function useStreamChat({
 
       let hasIncrementedStreamCount = false;
       try {
+        const cachedChat =
+          requestedChatMode === null
+            ? undefined
+            : queryClient.getQueryData<Chat>(
+                queryKeys.chats.detail({ chatId }),
+              );
+
         ipc.chatStream.start(
           {
             chatId,
@@ -174,13 +184,34 @@ export function useStreamChat({
             redo,
             attachments: convertedAttachments,
             selectedComponents: selectedComponents ?? [],
+            requestedChatMode:
+              requestedChatMode === null
+                ? undefined
+                : (requestedChatMode ?? cachedChat?.chatMode ?? undefined),
           },
           {
             onChunk: ({
               messages: updatedMessages,
               streamingMessageId,
               streamingContent,
+              effectiveChatMode,
+              chatModeFallbackReason,
             }) => {
+              if (
+                handleEffectiveChatModeChunk(
+                  { effectiveChatMode, chatModeFallbackReason },
+                  settings,
+                  chatId,
+                )
+              ) {
+                if (chatModeFallbackReason) {
+                  queryClient.invalidateQueries({
+                    queryKey: queryKeys.chats.detail({ chatId }),
+                  });
+                }
+                return;
+              }
+
               if (!hasIncrementedStreamCount) {
                 setStreamCountById((prev) => {
                   const next = new Map(prev);
@@ -323,6 +354,10 @@ export function useStreamChat({
                   // that may only be finalized at stream completion.
                   try {
                     const latestChat = await ipc.chat.getChat(chatId);
+                    queryClient.setQueryData(
+                      queryKeys.chats.detail({ chatId }),
+                      latestChat,
+                    );
                     setMessagesById((prev) => {
                       const next = new Map(prev);
                       next.set(chatId, latestChat.messages);

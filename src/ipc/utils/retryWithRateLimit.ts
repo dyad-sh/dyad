@@ -9,12 +9,36 @@ export const logger = log.scope("retryWithRateLimit");
 export class RateLimitError extends Error {
   public readonly status = 429;
   public readonly response: Response;
+  /** Parsed Retry-After value in milliseconds, if the server supplied one. */
+  public readonly retryAfterMs?: number;
 
-  constructor(message: string, response: Response) {
+  constructor(message: string, response: Response, retryAfterMs?: number) {
     super(message);
     this.name = "RateLimitError";
     this.response = response;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * Parses a Retry-After header value per RFC 7231. The header is either a
+ * non-negative integer number of seconds, or an HTTP-date. Returns the delay
+ * in milliseconds, or undefined if the header is missing or unparseable.
+ * Negative dates (in the past) clamp to 0.
+ */
+export function parseRetryAfter(
+  headerValue: string | null,
+): number | undefined {
+  if (!headerValue) return undefined;
+  const trimmed = headerValue.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return parseInt(trimmed, 10) * 1000;
+  }
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) {
+    return Math.max(0, dateMs - Date.now());
+  }
+  return undefined;
 }
 
 /**
@@ -95,14 +119,29 @@ export async function retryWithRateLimit<T>(
 
       let delay: number;
 
-      // Use exponential backoff with jitter
-      const exponentialDelay = baseDelay * Math.pow(2, attempt);
-      const jitter =
-        exponentialDelay * RETRY_CONFIG.jitterFactor * Math.random();
-      delay = Math.min(exponentialDelay + jitter, maxDelay);
-      logger.warn(
-        `${context}: Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
-      );
+      // Honor server-supplied Retry-After when present. It can legitimately
+      // exceed maxDelay — the server knows best; clamping would just 429 again.
+      const retryAfterMs =
+        error instanceof RateLimitError ? error.retryAfterMs : undefined;
+      if (retryAfterMs !== undefined) {
+        // Clamp to the 32-bit signed int max (~24.8 days) that setTimeout
+        // accepts. In practice Retry-After from Supabase is seconds to
+        // minutes, so this ceiling should never be reached — pure defense
+        // against a malformed/pathological HTTP-date value.
+        delay = Math.min(retryAfterMs, 2_147_483_647);
+        logger.warn(
+          `${context}: Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), honoring Retry-After: ${Math.round(delay)}ms`,
+        );
+      } else {
+        // Exponential backoff with jitter
+        const exponentialDelay = baseDelay * Math.pow(2, attempt);
+        const jitter =
+          exponentialDelay * RETRY_CONFIG.jitterFactor * Math.random();
+        delay = Math.min(exponentialDelay + jitter, maxDelay);
+        logger.warn(
+          `${context}: Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
+        );
+      }
 
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
@@ -131,9 +170,13 @@ export async function fetchWithRetry(
     async () => {
       const response = await fetch(input, init);
       if (response.status === 429) {
+        const retryAfterMs = parseRetryAfter(
+          response.headers.get("Retry-After"),
+        );
         throw new RateLimitError(
           `Rate limited (429): ${response.statusText}`,
           response,
+          retryAfterMs,
         );
       }
       return response;

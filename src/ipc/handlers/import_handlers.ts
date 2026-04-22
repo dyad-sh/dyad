@@ -13,6 +13,7 @@ import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -152,11 +153,14 @@ export function registerImportHandlers() {
         })
         .returning();
 
+      const initialChatMode = await getInitialChatModeForNewChat();
+
       // Create an initial chat for this app
       const [chat] = await db
         .insert(chats)
         .values({
           appId: app.id,
+          chatMode: initialChatMode,
         })
         .returning();
       return { appId: app.id, chatId: chat.id };

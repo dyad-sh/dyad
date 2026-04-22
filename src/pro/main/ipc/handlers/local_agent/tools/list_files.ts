@@ -9,6 +9,9 @@ import {
 } from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { resolveDirectoryWithinAppPath } from "./path_safety";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
+const MAX_PATHS_TO_RETURN = 1_000;
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),
@@ -16,42 +19,64 @@ const listFilesSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether to list files recursively (default: false)"),
-  include_hidden: z
+  include_ignored: z
     .boolean()
     .optional()
     .describe(
-      "Whether to include .dyad files which are git-ignored (default: false)",
+      "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
     ),
 });
 
 type ListFilesArgs = z.infer<typeof listFilesSchema>;
 
-function getXmlAttributes(args: ListFilesArgs) {
+interface ListedPath {
+  path: string;
+  isDirectory: boolean;
+}
+
+function getDisplayPath(entry: ListedPath): string {
+  return entry.isDirectory ? `${entry.path}/` : entry.path;
+}
+
+function sortListedPaths(entries: ListedPath[]): ListedPath[] {
+  return [...entries].sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) {
+      return a.isDirectory ? -1 : 1;
+    }
+    return a.path.localeCompare(b.path);
+  });
+}
+
+function getXmlAttributes(args: ListFilesArgs, count?: number, total?: number) {
   const dirAttr = args.directory
     ? ` directory="${escapeXmlAttr(args.directory)}"`
     : "";
   const recursiveAttr =
     args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
-  const includeHiddenAttr =
-    args.include_hidden !== undefined
-      ? ` include_hidden="${args.include_hidden}"`
+  const includeIgnoredAttr =
+    args.include_ignored !== undefined
+      ? ` include_ignored="${args.include_ignored}"`
       : "";
-  return `${dirAttr}${recursiveAttr}${includeHiddenAttr}`;
+  const countAttr = count !== undefined ? ` count="${count}"` : "";
+  const totalAttr =
+    total !== undefined && total > (count ?? 0) ? ` total="${total}"` : "";
+  const truncatedAttr = totalAttr ? ` truncated="true"` : "";
+  return `${dirAttr}${recursiveAttr}${includeIgnoredAttr}${countAttr}${totalAttr}${truncatedAttr}`;
 }
 
 export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   name: "list_files",
   description:
-    "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
+    "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
   inputSchema: listFilesSchema,
   defaultConsent: "always",
 
   getConsentPreview: (args) => {
     const recursiveText = args.recursive ? " (recursive)" : "";
-    const hiddenText = args.include_hidden ? " (include hidden)" : "";
+    const ignoredText = args.include_ignored ? " (include ignored)" : "";
     return args.directory
-      ? `List ${args.directory}${recursiveText}${hiddenText}`
-      : `List all files${recursiveText}${hiddenText}`;
+      ? `List ${args.directory}${recursiveText}${ignoredText}`
+      : `List all files${recursiveText}${ignoredText}`;
   },
 
   buildXml: (args, isComplete) => {
@@ -80,76 +105,87 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       sanitizedDirectory = normalizedRelativePath || undefined;
     }
 
+    if (args.include_ignored && args.recursive && !sanitizedDirectory) {
+      throw new DyadError(
+        "include_ignored=true with recursive=true requires a non-root directory to avoid listing too many files.",
+        DyadErrorKind.Validation,
+      );
+    }
+
     // Use "**" for recursive, "*" for non-recursive (immediate children only)
     const globSuffix = args.recursive ? "/**" : "/*";
     const globPath = sanitizedDirectory
       ? sanitizedDirectory + globSuffix
       : globSuffix.slice(1); // Remove leading "/" for root directory
 
-    const { files } = await extractCodebase({
-      appPath: ctx.appPath,
-      chatContext: {
-        contextPaths: [{ globPath }],
-        smartContextAutoIncludes: [],
-        excludePaths: [],
-      },
-    });
+    let allPaths: ListedPath[];
 
-    // Build the list of file paths
-    let allFilePaths = files.map((file) => file.path);
-
-    // If include_hidden is true, also include .dyad files
-    if (args.include_hidden) {
+    if (args.include_ignored) {
       const normalizedAppPath = ctx.appPath.replace(/\\/g, "/");
-      // Always search .dyad at the app root, regardless of directory filter
-      const dyadGlobPattern = `${normalizedAppPath}/.dyad${globSuffix}`;
-
-      const dyadFiles = await glob(dyadGlobPattern, {
-        nodir: true,
-        absolute: true,
-        ignore: [
-          "**/node_modules/**",
-          "**/.git/**",
-          "**/dist/**",
-          "**/build/**",
-          "**/.next/**",
-          "**/.venv/**",
-          "**/venv/**",
-        ],
+      const globPattern = `${normalizedAppPath}/${globPath}`;
+      const ignoredPaths = await glob(globPattern, {
+        withFileTypes: true,
+        dot: true,
+        ignore: ["**/.git", "**/.git/**"],
       });
 
-      // Convert to relative paths and add to the list
-      const dyadRelativePaths = dyadFiles.map((file) =>
-        path.relative(ctx.appPath, file).split(path.sep).join("/"),
+      allPaths = sortListedPaths(
+        ignoredPaths.map((entry) => ({
+          path: path
+            .relative(ctx.appPath, entry.fullpath())
+            .split(path.sep)
+            .join("/"),
+          isDirectory: entry.isDirectory(),
+        })),
       );
+    } else {
+      const { files } = await extractCodebase({
+        appPath: ctx.appPath,
+        chatContext: {
+          contextPaths: [{ globPath }],
+          smartContextAutoIncludes: [],
+          excludePaths: [],
+        },
+      });
 
-      // Deduplicate and sort
-      allFilePaths = [
-        ...new Set([...allFilePaths, ...dyadRelativePaths]),
-      ].sort();
+      // Build the list of file paths
+      allPaths = sortListedPaths(
+        files.map((file) => ({
+          path: file.path,
+          isDirectory: false,
+        })),
+      );
     }
+
+    const totalCount = allPaths.length;
+    const cappedPaths = allPaths.slice(0, MAX_PATHS_TO_RETURN);
+    const wasTruncated = totalCount > cappedPaths.length;
 
     // Build full file list for LLM
     const allFilesList =
-      allFilePaths.map((filePath) => " - " + filePath).join("\n") || "";
+      cappedPaths.map((entry) => " - " + getDisplayPath(entry)).join("\n") ||
+      "";
+    const resultText = wasTruncated
+      ? `${allFilesList}\n\n[TRUNCATED: Showing ${cappedPaths.length} of ${totalCount} paths. Use directory to narrow the listing.]`
+      : allFilesList;
 
     // Build abbreviated list for UI display
     const MAX_FILES_TO_SHOW = 20;
-    const totalCount = allFilePaths.length;
-    const displayedFiles = allFilePaths.slice(0, MAX_FILES_TO_SHOW);
+    const displayedFiles = cappedPaths.slice(0, MAX_FILES_TO_SHOW);
     const abbreviatedList =
-      displayedFiles.map((filePath) => " - " + filePath).join("\n") || "";
+      displayedFiles.map((entry) => " - " + getDisplayPath(entry)).join("\n") ||
+      "";
     const countInfo =
       totalCount > MAX_FILES_TO_SHOW
-        ? `\n... and ${totalCount - MAX_FILES_TO_SHOW} more files (${totalCount} total)`
-        : `\n(${totalCount} files total)`;
+        ? `\n... and ${totalCount - MAX_FILES_TO_SHOW} more paths (${totalCount} total)`
+        : `\n(${totalCount} paths total)`;
 
     // Write abbreviated list to UI
     ctx.onXmlComplete(
-      `<dyad-list-files${getXmlAttributes(args)}>${escapeXmlContent(abbreviatedList + countInfo)}</dyad-list-files>`,
+      `<dyad-list-files${getXmlAttributes(args, cappedPaths.length, totalCount)}>${escapeXmlContent(abbreviatedList + countInfo)}</dyad-list-files>`,
     );
 
     // Return full file list for LLM
-    return allFilesList;
+    return resultText;
   },
 };

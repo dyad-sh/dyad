@@ -4,10 +4,12 @@ import { getErrorMessage } from "./errors";
 describe("getErrorMessage", () => {
   it("strips the Electron IPC wrapper from Error messages", () => {
     const error = new Error(
-      "Error invoking remote method 'neon:set-active-branch': Error: Preview branches are read-only.",
+      "Error invoking remote method 'neon:set-active-branch': Error: Preview branches are used for historical rollback.",
     );
 
-    expect(getErrorMessage(error)).toBe("Preview branches are read-only.");
+    expect(getErrorMessage(error)).toBe(
+      "Preview branches are used for historical rollback.",
+    );
   });
 
   it("prefers a message field on plain objects", () => {

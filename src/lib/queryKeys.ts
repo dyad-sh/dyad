@@ -50,6 +50,8 @@ export const queryKeys = {
   chats: {
     all: ["chats"] as const,
     list: ({ appId }: { appId: number | null }) => ["chats", appId] as const,
+    detail: ({ chatId }: { chatId: number | null }) =>
+      ["chats", "detail", chatId] as const,
     search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["chats", "search", appId, query] as const,
   },
@@ -284,6 +286,15 @@ export const queryKeys = {
       projectId: string;
       organizationSlug: string | null;
     }) => ["supabase", "branches", projectId, organizationSlug] as const,
+    edgeLogs: ({
+      projectId,
+      appId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      appId: number | null;
+      organizationSlug: string | null;
+    }) => ["supabase", "edgeLogs", projectId, appId, organizationSlug] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

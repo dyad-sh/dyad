@@ -34,6 +34,7 @@ import { createLoggedHandler } from "./safe_handle";
 import { ApproveProposalResult } from "@/ipc/types";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
+import { resolveChatModeForTurn } from "./chat_mode_resolution";
 
 const logger = log.scope("proposal_handlers");
 const handle = createLoggedHandler(logger);
@@ -338,7 +339,15 @@ const approveProposalHandler = async (
   { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<ApproveProposalResult> => {
   const settings = readSettings();
-  if (settings.selectedChatMode === "ask") {
+  const chat = await db.query.chats.findFirst({
+    where: eq(chats.id, chatId),
+    columns: { chatMode: true },
+  });
+  const { mode: selectedChatMode } = await resolveChatModeForTurn({
+    storedChatMode: chat?.chatMode ?? null,
+    settings,
+  });
+  if (selectedChatMode === "ask") {
     throw new Error(
       "Ask mode is not supported for proposal approval. Please switch to build mode.",
     );

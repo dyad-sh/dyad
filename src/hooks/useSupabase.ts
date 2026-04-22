@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useEffect, useRef } from "react";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   ipc,
+  ConsoleEntry,
   SetSupabaseAppProjectParams,
   DeleteSupabaseOrganizationParams,
   SupabaseOrganizationInfo,
@@ -14,13 +16,24 @@ import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 
+const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
+
 export interface UseSupabaseOptions {
   branchesProjectId?: string | null;
   branchesOrganizationSlug?: string | null;
+  edgeLogsProjectId?: string | null;
+  edgeLogsOrganizationSlug?: string | null;
+  edgeLogsAppId?: number | null; // The app id that `edgeLogsProjectId` belongs to
 }
 
 export function useSupabase(options: UseSupabaseOptions = {}) {
-  const { branchesProjectId, branchesOrganizationSlug } = options;
+  const {
+    branchesProjectId,
+    branchesOrganizationSlug,
+    edgeLogsProjectId,
+    edgeLogsOrganizationSlug,
+    edgeLogsAppId,
+  } = options;
   const queryClient = useQueryClient();
   const { settings } = useSettings();
   const isConnected = isSupabaseConnected(settings);
@@ -105,53 +118,86 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     enabled: !!branchesProjectId,
   });
 
-  // Mutation: Load edge function logs for a Supabase project
-  // Using mutation because it has side effects (updating console entries)
-  const loadEdgeLogsMutation = useMutation<
-    void,
-    Error,
-    { projectId: string; organizationSlug?: string }
-  >({
-    mutationFn: async ({ projectId, organizationSlug }) => {
-      if (!selectedAppId) return;
+  // Query: Poll edge function logs for a Supabase project.
+  // Polling + in-flight serialization + background-tab pause are all handled
+  // by React Query. Side effects live in the useEffect below, not in queryFn.
+  const lastLogTimestampRef = useRef(lastLogTimestamp);
+  lastLogTimestampRef.current = lastLogTimestamp;
 
-      // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
-      const lastTimestamp = lastLogTimestamp[projectId];
+  const edgeLogsEnabled =
+    !!edgeLogsProjectId && !!selectedAppId && edgeLogsAppId === selectedAppId;
+  const edgeLogsQuery = useQuery<ConsoleEntry[], Error>({
+    queryKey: edgeLogsEnabled
+      ? queryKeys.supabase.edgeLogs({
+          projectId: edgeLogsProjectId!,
+          appId: selectedAppId,
+          organizationSlug: edgeLogsOrganizationSlug ?? null,
+        })
+      : ["supabase", "edgeLogs", "disabled"],
+    queryFn: async () => {
+      const projectId = edgeLogsProjectId!;
+      const lastTimestamp = lastLogTimestampRef.current[projectId];
       const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000;
-
-      const logs = await ipc.supabase.getEdgeLogs({
+      return ipc.supabase.getEdgeLogs({
         projectId,
         timestampStart,
-        appId: selectedAppId,
-        organizationSlug: organizationSlug ?? null,
+        appId: selectedAppId!,
+        organizationSlug: edgeLogsOrganizationSlug ?? null,
       });
-
-      if (logs.length === 0) {
-        // Even if no logs, set the timestamp so we don't keep looking back 10 minutes
-        if (!lastTimestamp) {
-          setLastLogTimestamp((prev) => ({
-            ...prev,
-            [projectId]: Date.now(),
-          }));
-        }
-        return;
-      }
-
-      logs.forEach((log) => {
-        ipc.misc.addLog(log);
-      });
-      setConsoleEntries((prev) => [...prev, ...logs]);
-
-      // Update the last timestamp for this project
-      const latestLog = logs.reduce((latest, log) =>
-        log.timestamp > latest.timestamp ? log : latest,
-      );
-      setLastLogTimestamp((prev) => ({
-        ...prev,
-        [projectId]: latestLog.timestamp,
-      }));
     },
+    enabled: edgeLogsEnabled,
+    refetchInterval: EDGE_LOGS_POLL_INTERVAL_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
+
+  // Apply side effects once per successful fetch. dataUpdatedAt changes on
+  // every successful response (even when the returned array is empty), so
+  // this fires exactly once per poll tick.
+  const edgeLogsDataUpdatedAt = edgeLogsQuery.dataUpdatedAt;
+  useEffect(() => {
+    if (!edgeLogsEnabled || !edgeLogsDataUpdatedAt) return;
+    const projectId = edgeLogsProjectId!;
+    const logs = edgeLogsQuery.data;
+    if (!logs) return;
+
+    const lastTimestamp = lastLogTimestampRef.current[projectId];
+
+    if (logs.length === 0) {
+      if (!lastTimestamp) {
+        setLastLogTimestamp((prev) => ({
+          ...prev,
+          [projectId]: Date.now(),
+        }));
+      }
+      return;
+    }
+
+    // Filter out logs we've already processed. React Query serves cached
+    // data on remount with a non-zero dataUpdatedAt, which would otherwise
+    // re-fire this effect and duplicate entries that were appended during
+    // the original fetch. Also defends against StrictMode double-invoke.
+    const newLogs = lastTimestamp
+      ? logs.filter((log) => log.timestamp > lastTimestamp)
+      : logs;
+    if (newLogs.length === 0) return;
+
+    newLogs.forEach((log) => {
+      ipc.misc.addLog(log);
+    });
+    setConsoleEntries((prev) => [...prev, ...newLogs]);
+
+    const latestLog = newLogs.reduce((latest, log) =>
+      log.timestamp > latest.timestamp ? log : latest,
+    );
+    setLastLogTimestamp((prev) => ({
+      ...prev,
+      [projectId]: latestLog.timestamp,
+    }));
+    // edgeLogsDataUpdatedAt is the stable per-fetch trigger; other deps are
+    // read via ref or are stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edgeLogsDataUpdatedAt]);
 
   return {
     // Data
@@ -178,14 +224,13 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     isDeletingOrganization: deleteOrganizationMutation.isPending,
     isSettingAppProject: setAppProjectMutation.isPending,
     isUnsettingAppProject: unsetAppProjectMutation.isPending,
-    isLoadingEdgeLogs: loadEdgeLogsMutation.isPending,
+    isLoadingEdgeLogs: edgeLogsQuery.isFetching,
 
     // Actions
     refetchOrganizations: organizationsQuery.refetch,
     refetchProjects: projectsQuery.refetch,
     refetchBranches: branchesQuery.refetch,
     deleteOrganization: deleteOrganizationMutation.mutateAsync,
-    loadEdgeLogs: loadEdgeLogsMutation.mutateAsync,
     setAppProject: setAppProjectMutation.mutateAsync,
     unsetAppProject: unsetAppProjectMutation.mutateAsync,
   };

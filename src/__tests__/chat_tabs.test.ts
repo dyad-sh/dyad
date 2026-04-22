@@ -27,6 +27,7 @@ function chat(id: number, appId = 1): ChatSummary {
     appId,
     title: `Chat ${id}`,
     createdAt: new Date(),
+    chatMode: null,
   };
 }
 

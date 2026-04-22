@@ -22,7 +22,11 @@ export function useSummarizeInNewChat() {
       return;
     }
     try {
-      const newChatId = await ipc.chat.createChat(appId);
+      const sourceChat = await ipc.chat.getChat(chatId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: sourceChat.chatMode ?? undefined,
+      });
       // navigate to new chat
       await navigate({ to: "/chat", search: { id: newChatId } });
       await streamMessage({

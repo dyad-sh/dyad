@@ -56,15 +56,21 @@ testSkipIfWindows(
       po.page.getByRole("button", { name: "Switch back to Build mode" }),
     ).toBeVisible();
 
-    // 6. Try to send an 11th message - should be blocked with error
+    // 6. Try to send an 11th message - the app should fall back to Build mode
+    // instead of attempting another Basic Agent request.
     await po.sendPrompt("tc=local-agent/simple-response message 11");
-    // Verify error message appears indicating quota exceeded
-    await expect(po.page.getByTestId("chat-error-box")).toBeVisible({
+    await expect(po.page.getByTestId("chat-error-box")).not.toBeVisible({
+      timeout: 1000,
+    });
+    await expect(
+      po.page
+        .getByText(
+          "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
+        )
+        .last(),
+    ).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
-    await expect(po.page.getByTestId("chat-error-box")).toContainText(
-      "You have used all 10 free Agent messages for today",
-    );
 
     // 8. Click "Switch back to Build mode" and verify mode changes
     await po.page

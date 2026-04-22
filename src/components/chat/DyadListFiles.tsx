@@ -15,7 +15,7 @@ interface DyadListFilesProps {
     properties: {
       directory?: string;
       recursive?: string;
-      include_hidden?: string;
+      include_ignored?: string;
       state?: CustomTagState;
     };
   };
@@ -23,10 +23,10 @@ interface DyadListFilesProps {
 }
 
 export function DyadListFiles({ node, children }: DyadListFilesProps) {
-  const { directory, recursive, include_hidden, state } = node.properties;
+  const { directory, recursive, include_ignored, state } = node.properties;
   const isLoading = state === "pending";
   const isRecursive = recursive === "true";
-  const isIncludeHidden = include_hidden === "true";
+  const isIncludeIgnored = include_ignored === "true";
   const content = typeof children === "string" ? children : "";
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -45,7 +45,9 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
           {title}
         </span>
         {isRecursive && <DyadBadge color="slate">recursive</DyadBadge>}
-        {isIncludeHidden && <DyadBadge color="slate">include hidden</DyadBadge>}
+        {isIncludeIgnored && (
+          <DyadBadge color="slate">include ignored</DyadBadge>
+        )}
         {isLoading && (
           <DyadStateIndicator state="pending" pendingLabel="Listing..." />
         )}

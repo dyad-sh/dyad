@@ -7,6 +7,8 @@ import {
   chatErrorByIdAtom,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
+import { useSettings } from "./useSettings";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 
 /**
  * Hook to handle starting plan implementation when a plan is accepted.
@@ -20,6 +22,7 @@ export function usePlanImplementation() {
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setErrorById = useSetAtom(chatErrorByIdAtom);
+  const { settings } = useSettings();
 
   // Track if we've already triggered implementation for this pending plan
   const hasTriggeredRef = useRef(false);
@@ -102,8 +105,20 @@ export function usePlanImplementation() {
               messages: updatedMessages,
               streamingMessageId,
               streamingContent,
+              effectiveChatMode,
+              chatModeFallbackReason,
             }) => {
               if (!isMountedRef.current) return;
+
+              if (
+                handleEffectiveChatModeChunk(
+                  { effectiveChatMode, chatModeFallbackReason },
+                  settings,
+                  chatId,
+                )
+              ) {
+                return;
+              }
 
               if (updatedMessages) {
                 // Full messages update (initial load, post-compaction, etc.)
@@ -177,5 +192,6 @@ export function usePlanImplementation() {
     setIsStreamingById,
     setMessagesById,
     setErrorById,
+    settings,
   ]);
 }

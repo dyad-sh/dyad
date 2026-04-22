@@ -28,6 +28,7 @@ import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolveChatModeForTurn } from "./chat_mode_resolution";
 
 const logger = log.scope("token_count_handlers");
 
@@ -63,7 +64,15 @@ export function registerTokenCountHandlers() {
       // Count input tokens
       const inputTokens = estimateTokens(req.input);
 
-      const settings = readSettings();
+      const storedSettings = readSettings();
+      const { mode: selectedChatMode } = await resolveChatModeForTurn({
+        storedChatMode: chat.chatMode,
+        settings: storedSettings,
+      });
+      const settings = {
+        ...storedSettings,
+        selectedChatMode,
+      };
 
       // Parse app mentions from the input
       const mentionedAppNames = parseAppMentions(req.input);
@@ -74,9 +83,7 @@ export function registerTokenCountHandlers() {
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode:
-          settings.selectedChatMode === "local-agent"
-            ? "build"
-            : settings.selectedChatMode,
+          selectedChatMode === "local-agent" ? "build" : selectedChatMode,
         enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         themePrompt,
       });
@@ -101,7 +108,7 @@ export function registerTokenCountHandlers() {
             neonProjectId: chat.app.neonProjectId!,
             neonActiveBranchId: chat.app.neonActiveBranchId,
             neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
-            selectedChatMode: settings.selectedChatMode ?? "",
+            selectedChatMode,
           }));
       } else {
         // Neon projects don't need Supabase (already handled above).

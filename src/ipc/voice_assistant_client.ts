@@ -115,7 +115,7 @@ function getIpcRenderer(): IpcRenderer {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ipcRenderer = (window as any).electron?.ipcRenderer;
     if (!ipcRenderer) {
-      throw new Error("IPC Renderer not available");
+      return { invoke: async () => null, on: () => {}, removeListener: () => {} } as any;
     }
   }
   return ipcRenderer;

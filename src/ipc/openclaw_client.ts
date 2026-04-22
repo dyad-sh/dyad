@@ -42,7 +42,12 @@ class OpenClawClientImpl {
 
   private constructor() {
     // @ts-ignore - window.electron is injected by preload
-    this.ipcRenderer = window.electron?.ipcRenderer;
+    this.ipcRenderer = window.electron?.ipcRenderer ?? {
+      invoke: async (..._args: any[]) => null,
+      on: () => {},
+      removeListener: () => {},
+      removeAllListeners: () => {},
+    };
 
     if (this.ipcRenderer) {
       // Set up event listener

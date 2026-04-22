@@ -22,7 +22,11 @@ import type {
 } from "../lib/ai_learning_mode";
 
 function getIpcRenderer() {
-  return (window as any).electron?.ipcRenderer;
+  const renderer = (window as any).electron?.ipcRenderer;
+  if (!renderer) {
+    return { invoke: async (..._args: any[]) => null, on: () => {}, removeListener: () => {} };
+  }
+  return renderer;
 }
 
 export const AILearningClient = {

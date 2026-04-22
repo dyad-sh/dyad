@@ -241,7 +241,11 @@ class DataStudioExtendedClient {
   private ipcRenderer: Electron.IpcRenderer;
 
   constructor() {
-    this.ipcRenderer = window.electron.ipcRenderer;
+    this.ipcRenderer = (window as any).electron?.ipcRenderer ?? {
+      invoke: async (..._args: any[]) => null,
+      on: () => {},
+      removeListener: () => {},
+    };
   }
 
   // ==========================================================================

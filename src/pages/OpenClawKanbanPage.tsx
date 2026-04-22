@@ -2262,7 +2262,7 @@ export function OpenClawKanbanPage() {
         </div>
 
         {/* Board Tab */}
-        <TabsContent value="board" className="flex-1 m-0 min-h-0 overflow-hidden flex flex-col">
+        <TabsContent value="board" className="flex-1 m-0 min-h-0 flex flex-col">
           {/* Column quick-nav pills */}
           <div className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 border-b border-border/30 overflow-x-auto">
             {COLUMNS.map((col) => {
@@ -2315,7 +2315,8 @@ export function OpenClawKanbanPage() {
 
             <div
               ref={boardScrollRef}
-              className="h-full overflow-auto"
+              className="h-full overflow-x-auto overflow-y-auto pb-4"
+              style={{ scrollbarWidth: 'auto', scrollbarColor: 'hsl(var(--muted-foreground) / 0.3) transparent' }}
             >
               <div className="flex gap-3 p-4 min-h-full min-w-max">
                 {COLUMNS.map((col) => (

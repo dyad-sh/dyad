@@ -25,7 +25,11 @@ class LibreOfficeClient {
   private ipcRenderer: IpcRenderer;
 
   private constructor() {
-    this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
+    this.ipcRenderer = ((window as any).electron?.ipcRenderer ?? {
+      invoke: async (..._args: any[]) => null,
+      on: () => {},
+      removeListener: () => {},
+    }) as any;
   }
 
   static getInstance(): LibreOfficeClient {

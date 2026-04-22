@@ -52,6 +52,12 @@ gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
 
+## Formatter Touching Unrelated Skill Files
+
+`npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After
+formatting, check `git status` and revert unrelated skill-file churn before
+committing unless the task intentionally changes those skill docs.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

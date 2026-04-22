@@ -66,7 +66,6 @@ Available host functions:
 Return a concise value. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "ask",
-    modifiesState: true,
 
     isEnabled: () => isSandboxSupportedPlatform(),
 
@@ -84,6 +83,7 @@ Return a concise value. Prefer range reads, filtering, aggregation, and small su
           appPath: ctx.appPath,
           script: args.script,
           timeoutMs: readSettings().sandboxScriptTimeoutMs,
+          persistFullOutput: false,
         });
 
         ctx.onXmlComplete(

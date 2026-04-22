@@ -274,13 +274,16 @@ function getMessageText(message: ModelMessage): string {
 }
 
 function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
-  if (toolName === "execute_sandbox_script") {
-    return true;
-  }
   if (!isRecord(input)) {
     return false;
   }
 
+  if (
+    toolName === "execute_sandbox_script" &&
+    typeof input.script === "string"
+  ) {
+    return input.script.includes("attachments:");
+  }
   if (toolName === "read_file" && typeof input.path === "string") {
     return input.path.startsWith("attachments:");
   }

@@ -116,6 +116,7 @@ export async function runSandboxScript(params: {
   appPath: string;
   script: string;
   timeoutMs?: number;
+  persistFullOutput?: boolean;
 }): Promise<SandboxRunResult> {
   if (
     Buffer.byteLength(params.script, "utf8") > SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES
@@ -155,9 +156,10 @@ export async function runSandboxScript(params: {
     const output = stringifyStructuredValue(result);
     const truncated =
       Buffer.byteLength(output, "utf8") > SANDBOX_LLM_OUTPUT_LIMIT_BYTES;
-    const fullOutputPath = truncated
-      ? await spillOutput({ appPath: params.appPath, output })
-      : undefined;
+    const fullOutputPath =
+      truncated && params.persistFullOutput !== false
+        ? await spillOutput({ appPath: params.appPath, output })
+        : undefined;
 
     return {
       value: truncated

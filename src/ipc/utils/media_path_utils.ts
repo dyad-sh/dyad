@@ -139,7 +139,10 @@ async function readAttachmentManifest(
         typeof entry.createdAt === "string",
     );
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      (error as NodeJS.ErrnoException).code === "ENOENT" ||
+      error instanceof SyntaxError
+    ) {
       return [];
     }
     throw error;

@@ -294,8 +294,7 @@ export const queryKeys = {
       projectId: string;
       appId: number | null;
       organizationSlug: string | null;
-    }) =>
-      ["supabase", "edgeLogs", projectId, appId, organizationSlug] as const,
+    }) => ["supabase", "edgeLogs", projectId, appId, organizationSlug] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

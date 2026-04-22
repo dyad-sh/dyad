@@ -50,7 +50,10 @@ async function loadMustard(): Promise<MustardModule> {
       DyadErrorKind.Precondition,
     );
   }
-  mustardModulePromise ??= import("mustardscript");
+  mustardModulePromise ??= import("mustardscript").catch((error) => {
+    mustardModulePromise = null;
+    throw error;
+  });
   return mustardModulePromise;
 }
 

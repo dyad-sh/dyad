@@ -37,7 +37,7 @@ export function usePlanEvents() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
 
   // Use refs for values accessed in event handlers to avoid stale closures
   const planStateRef = useRef(planState);
@@ -113,11 +113,6 @@ export function usePlanEvents() {
         const currentState = planStateRef.current;
         const planData = currentState.plansByChatId.get(payload.chatId);
 
-        // Switch chat mode to local-agent for implementation (only if currently in plan mode)
-        if (settingsRef.current?.selectedChatMode === "plan") {
-          updateSettings({ selectedChatMode: "local-agent" });
-        }
-
         // Switch preview back to preview mode
         setPreviewMode("preview");
 
@@ -146,7 +141,10 @@ export function usePlanEvents() {
         }
 
         try {
-          const newChatId = await ipc.chat.createChat(selectedAppIdRef.current);
+          const newChatId = await ipc.chat.createChat({
+            appId: selectedAppIdRef.current,
+            initialChatMode: "local-agent",
+          });
 
           // Navigate to the new chat
           setSelectedChatId(newChatId);
@@ -205,7 +203,6 @@ export function usePlanEvents() {
   }, [
     setPlanState,
     setPreviewMode,
-    updateSettings,
     setPendingPlanImplementation,
     setPendingQuestionnaire,
     setSelectedChatId,

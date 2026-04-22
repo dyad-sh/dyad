@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
+import { ChatModeSchema } from "../../lib/schemas";
 
 // =============================================================================
 // App Schemas
@@ -54,6 +55,7 @@ export type App = z.infer<typeof AppSchema>;
  */
 export const CreateAppParamsSchema = z.object({
   name: z.string().min(1),
+  initialChatMode: ChatModeSchema.optional(),
 });
 
 /**

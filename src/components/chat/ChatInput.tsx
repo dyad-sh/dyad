@@ -105,6 +105,8 @@ import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
+import { useChatMode } from "@/hooks/useChatMode";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 const showTokenBarAtom = atom(false);
 
@@ -113,6 +115,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const { settings } = useSettings();
+  const {
+    selectedMode: chatMode,
+    effectiveMode,
+    isLoading: isChatModeLoading,
+  } = useChatMode(chatId);
+  const initialChatMode = useInitialChatMode();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const {
@@ -231,7 +239,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
-    settings?.selectedChatMode !== "local-agent" &&
+    effectiveMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -269,10 +277,23 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
 
   // Detect transition to plan mode from another mode in a chat with messages
-  const prevModeRef = useRef(settings?.selectedChatMode);
+  const prevModeRef = useRef(chatMode);
+  const prevModeChatIdRef = useRef(chatId);
+  const hasInitializedModeRef = useRef(false);
   useEffect(() => {
+    if (isChatModeLoading) return;
+    if (
+      !hasInitializedModeRef.current ||
+      prevModeChatIdRef.current !== chatId
+    ) {
+      hasInitializedModeRef.current = true;
+      prevModeChatIdRef.current = chatId;
+      prevModeRef.current = chatMode;
+      return;
+    }
+
     const prevMode = prevModeRef.current;
-    const currentMode = settings?.selectedChatMode;
+    const currentMode = chatMode;
     prevModeRef.current = currentMode;
 
     if (prevMode && prevMode !== "plan" && currentMode === "plan") {
@@ -281,7 +302,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         setNeedsFreshPlanChat(true);
       }
     }
-  }, [settings?.selectedChatMode, chatId, messagesById, setNeedsFreshPlanChat]);
+  }, [
+    chatMode,
+    chatId,
+    isChatModeLoading,
+    messagesById,
+    setNeedsFreshPlanChat,
+  ]);
 
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
@@ -483,11 +510,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // If switching to plan mode from another mode in a chat with messages,
     // create a new chat for a clean context.
-    if (needsFreshPlanChat && settings?.selectedChatMode === "plan" && appId) {
+    if (needsFreshPlanChat && chatMode === "plan" && appId) {
       setInputValue("");
       setNeedsFreshPlanChat(false);
 
-      const newChatId = await ipc.chat.createChat(appId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "plan",
+      });
       setSelectedChatId(newChatId);
       navigate({ to: "/chat", search: { id: newChatId } });
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
@@ -498,9 +528,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         chatId: newChatId,
         attachments,
         redo: false,
+        requestedChatMode: "plan",
       });
       clearAttachments();
-      posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+      posthog.capture("chat:submit", { chatMode });
       return;
     }
 
@@ -569,9 +600,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
+      requestedChatMode: isChatModeLoading ? null : chatMode,
     });
     clearAttachments();
-    posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+    posthog.capture("chat:submit", { chatMode });
   };
 
   const handleCancel = () => {
@@ -598,7 +630,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const newChatId = await ipc.chat.createChat(appId);
+        const newChatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode,
+        });
         setSelectedChatId(newChatId);
         navigate({
           to: "/chat",
@@ -798,8 +833,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingAgentConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            settings.selectedChatMode !== "ask" &&
-            settings.selectedChatMode !== "local-agent" && (
+            effectiveMode !== "ask" &&
+            effectiveMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}

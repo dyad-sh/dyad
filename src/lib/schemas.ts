@@ -15,6 +15,7 @@ export const ChatSummarySchema = z.object({
   appId: z.number(),
   title: z.string().nullable(),
   createdAt: z.date(),
+  chatMode: z.enum(["build", "ask", "local-agent", "plan"]).nullable(),
 });
 
 /**

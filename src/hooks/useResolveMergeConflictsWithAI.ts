@@ -12,6 +12,8 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSettings } from "@/hooks/useSettings";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
@@ -38,6 +40,7 @@ export function useResolveMergeConflictsWithAI({
   const isResolvingRef = useRef(false);
   const { invalidateChats } = useChats(appId);
   const { refreshApp } = useLoadApp(appId);
+  const { settings } = useSettings();
 
   const resolveWithAI = useCallback(async () => {
     if (!appId) {
@@ -58,7 +61,10 @@ export function useResolveMergeConflictsWithAI({
     let chatId: number | null = null;
     try {
       // Create a new chat for conflict resolution
-      const newChatId = await ipc.chat.createChat(appId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "build",
+      });
       chatId = newChatId;
 
       // Clear conflicts state after successful chat creation
@@ -97,7 +103,23 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           prompt,
         },
         {
-          onChunk: ({ messages, streamingMessageId, streamingContent }) => {
+          onChunk: ({
+            messages,
+            streamingMessageId,
+            streamingContent,
+            effectiveChatMode,
+            chatModeFallbackReason,
+          }) => {
+            if (
+              handleEffectiveChatModeChunk(
+                { effectiveChatMode, chatModeFallbackReason },
+                settings,
+                newChatId,
+              )
+            ) {
+              return;
+            }
+
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {
                 const next = new Map(prev);
@@ -183,6 +205,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     navigate,
     invalidateChats,
     refreshApp,
+    settings,
   ]);
 
   return { resolveWithAI, isResolving };

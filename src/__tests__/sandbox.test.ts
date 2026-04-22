@@ -1,0 +1,134 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  appendAttachmentManifestEntries,
+  createUniqueAttachmentLogicalName,
+  getDyadMediaDir,
+} from "@/ipc/utils/media_path_utils";
+import {
+  sandboxFileStats,
+  sandboxListFiles,
+  sandboxReadFile,
+} from "@/ipc/utils/sandbox/capabilities";
+import {
+  isSandboxSupportedPlatform,
+  runSandboxScript,
+} from "@/ipc/utils/sandbox/runner";
+
+describe("sandbox capabilities", () => {
+  let appPath: string;
+
+  beforeEach(async () => {
+    appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-sandbox-"));
+    await fs.mkdir(path.join(appPath, "src"), { recursive: true });
+    await fs.writeFile(path.join(appPath, "src", "data.txt"), "abcdef", "utf8");
+    await fs.writeFile(path.join(appPath, ".env"), "SECRET=1", "utf8");
+    await fs.writeFile(path.join(appPath, ".envrc"), "SECRET=2", "utf8");
+    const mediaDir = getDyadMediaDir(appPath);
+    await fs.mkdir(mediaDir, { recursive: true });
+    await fs.writeFile(path.join(mediaDir, "stored-log.txt"), "line1\nline2\n");
+    await appendAttachmentManifestEntries(appPath, [
+      {
+        logicalName: "server.log",
+        originalName: "server.log",
+        storedFileName: "stored-log.txt",
+        mimeType: "text/plain",
+        sizeBytes: 12,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
+    ]);
+  });
+
+  afterEach(async () => {
+    await fs.rm(appPath, { recursive: true, force: true });
+  });
+
+  it("reads attachment logical paths with ranges", async () => {
+    await expect(
+      sandboxReadFile(appPath, "attachments:server.log", {
+        start: 6,
+        length: 5,
+      }),
+    ).resolves.toBe("line2");
+  });
+
+  it("denies protected app paths", async () => {
+    await expect(sandboxReadFile(appPath, ".env")).rejects.toThrow(
+      "protected path",
+    );
+    await expect(sandboxReadFile(appPath, ".envrc")).rejects.toThrow(
+      "protected path",
+    );
+    await expect(sandboxReadFile(appPath, "../outside.txt")).rejects.toThrow(
+      "Path traversal",
+    );
+    await expect(
+      sandboxReadFile(appPath, path.join(appPath, "src", "data.txt")),
+    ).rejects.toThrow("Absolute paths");
+  });
+
+  it("normalizes and deduplicates logical attachment names", () => {
+    const usedNames = new Set(["server.log"]);
+
+    expect(createUniqueAttachmentLogicalName("../server.log", usedNames)).toBe(
+      "server-2.log",
+    );
+    expect(
+      createUniqueAttachmentLogicalName("folder\\data:raw.txt", usedNames),
+    ).toBe("data_raw.txt");
+  });
+
+  it("lists attachment logical paths and returns file stats", async () => {
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+    ]);
+    await expect(
+      sandboxFileStats(appPath, "attachments:server.log"),
+    ).resolves.toMatchObject({
+      size: 12,
+      isText: true,
+    });
+  });
+
+  it("runs MustardScript against host capabilities on supported platforms", async () => {
+    if (!isSandboxSupportedPlatform()) {
+      return;
+    }
+
+    const result = await runSandboxScript({
+      appPath,
+      script: `
+        async function main() {
+          const text = await read_file("attachments:server.log");
+          return text.split("\\n").filter(Boolean).length;
+        }
+        main();
+      `,
+    });
+
+    expect(result).toMatchObject({
+      value: "2",
+      truncated: false,
+    });
+  });
+
+  it("spills oversized script output", async () => {
+    if (!isSandboxSupportedPlatform()) {
+      return;
+    }
+
+    const result = await runSandboxScript({
+      appPath,
+      script: `"x".repeat(70 * 1024);`,
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.value.length).toBe(64 * 1024);
+    expect(result.fullOutputPath).toBeTruthy();
+    await expect(
+      fs.readFile(result.fullOutputPath!, "utf8"),
+    ).resolves.toHaveLength(70 * 1024);
+  });
+});

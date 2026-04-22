@@ -49,6 +49,7 @@ vi.mock("@/db/schema", () => ({
 }));
 
 vi.mock("@/ipc/utils/media_path_utils", () => ({
+  ATTACHMENTS_MANIFEST_FILE: "attachments-manifest.json",
   DYAD_MEDIA_DIR_NAME: ".dyad/media",
 }));
 
@@ -175,6 +176,28 @@ describe("cleanupOldMediaFiles", () => {
       return Promise.resolve({ isFile: () => true, mtimeMs: oldMtimeMs });
     });
 
+    fsMocks.unlink.mockResolvedValue(undefined);
+
+    await cleanupOldMediaFiles();
+
+    expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
+    expect(fsMocks.unlink).toHaveBeenCalledWith(
+      expect.stringContaining("old-file.png"),
+    );
+  });
+
+  it("should keep the attachments manifest", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
+
+    const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
+
+    dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+    fsMocks.readdir.mockResolvedValue([
+      "attachments-manifest.json",
+      "old-file.png",
+    ]);
+    fsMocks.stat.mockResolvedValue({ isFile: () => true, mtimeMs: oldMtimeMs });
     fsMocks.unlink.mockResolvedValue(undefined);
 
     await cleanupOldMediaFiles();

@@ -4,7 +4,7 @@
 
 ## Summary
 
-Replace the current behavior of inlining attachment bytes into the LLM context window with an on-disk storage model under `.dyad/media/`. The model is told that attachments are available at logical paths (`attachments:<filename>`), and a new agent tool, `execute_sandbox_script`, lets it generate short MustardScript (sandboxed JavaScript subset) snippets to read, slice, search, and aggregate file contents — returning only the concise result it actually needs. This solves context-window overflows, prompt cost, and provider latency on large attachments; as a bonus, the same tool can target any file the AI has scoped access to. Shipping to all users (free + Pro), the project requires extending the existing Pro-agent tool loop to the default chat mode.
+For the local-agent flow, replace attachment-byte inlining with an on-disk storage model under `.dyad/media/`. The model is told in the user message that attachments are available at logical paths (`attachments:<filename>`), and a new agent tool, `execute_sandbox_script`, lets it generate short MustardScript (sandboxed JavaScript subset) snippets to read, slice, search, and aggregate file contents — returning only the concise result it actually needs. This solves context-window overflows, prompt cost, and provider latency on large attachments in the tool-capable local-agent path; as a bonus, the same tool can target any file the AI has scoped access to. When the request is not handled through `src/pro/main/ipc/handlers/local_agent/local_agent_handler.ts`, keep the current behavior: inline the attachment into the user message and do not add a tool loop to `src/ipc/handlers/chat_stream_handlers.ts`.
 
 ## Problem Statement
 
@@ -16,28 +16,30 @@ Today, every attachment's bytes are inlined directly into the message payload se
   2. **Cost spike** — users pay prefill tokens on hundreds of KB of noise to get a small answer.
   3. **Latency** — large prompts are slow to first token, and every follow-up turn re-sends the same bytes.
 
-The pain is most acute for power-user workflows: large error logs, spec PDFs, code dumps, long JSON/CSV exports. The fix is to stop inlining and let the model ask precise questions (via a sandboxed script) about files that live on disk.
+The pain is most acute for power-user workflows: large error logs, spec PDFs, code dumps, long JSON/CSV exports. The fix is to stop inlining in the local-agent path and let the model ask precise questions (via a sandboxed script) about files that live on disk. Non-local-agent/default chat keeps its existing inline behavior until a separate, explicitly scoped default-chat tool-loop project exists.
 
 ## Scope
 
 ### In Scope (MVP)
 
-- **On-disk attachments (A).** Every user attachment (text and binary) is copied to `.dyad/media/<md5>.<ext>` at send time. No size threshold — uniform rule. Text attachments are no longer inlined.
-- **System-info block (A).** The outgoing user message gets a stable-position `TextPart` listing each attachment as `attachments:<originalFilename>` with a terse type/size descriptor. The physical on-disk name (`<md5>.<ext>`) is resolved by the host; the model never sees it.
+- **On-disk attachments (A, local-agent only).** When the turn is handled by `src/pro/main/ipc/handlers/local_agent/local_agent_handler.ts`, every user attachment (text and binary) is copied to `.dyad/media/<md5>.<ext>` at send time. No size threshold — uniform rule. Text attachments are no longer inlined in this path.
+- **Default-chat compatibility.** Do **not** add `tools: { execute_sandbox_script }` or any other tool-loop machinery to `src/ipc/handlers/chat_stream_handlers.ts`. If the local-agent handler is not used, continue inlining the attachment into the user message exactly as the current default-chat path does.
+- **Attachment-info user-message block (A, local-agent only).** The outgoing user message gets a stable-position `TextPart` listing each attachment as `attachments:<originalFilename>` with a terse type/size descriptor. The physical on-disk name (`<md5>.<ext>`) is resolved by the host; the model never sees it. This is user-message content, not system-prompt content.
+- **System-prompt invariance.** The system prompt must not vary based on whether attachments are present in any mode. Do not add attachment-specific clauses, tool instructions, or platform-availability language to system prompts. Any attachment metadata belongs in the user message, and only for the local-agent path that can actually use it.
 - **`execute_sandbox_script` tool (B).** New agent tool wrapping MustardScript with a fixed host-capability set: `read_file(path, opts?)`, `list_files(dir)`, `file_stats(path)`. No `write_file`, no `fetch`, no `exec`, no env. Read-only by design for v1.
 - **Range-read support.** `read_file(path, { start?, length?, encoding? })` allows byte-range and head/tail reads so scripts avoid loading whole files.
 - **Output-cap split.** Tool result returns `{ value (≤64KB for LLM), truncated, fullOutputPath?, executionMs, instructionsUsed, heapBytesUsed }`. Outputs larger than 64KB are additionally written to `.dyad/media/script-output-<hash>.txt` and the path is surfaced to both the LLM and the UI — the user-visible card can load the full result (up to ~1MB virtualized).
-- **Consent model.** Default **always-allow** (per user's decision) in default-chat mode. Pro agent mode retains its current `ask` default to respect existing user mental model there. Opt-out to `ask` or `never` in Settings → Chat → Scripts. No per-call modal on the always-allow path.
-- **First-run education.** One-time, dismissible *inline* info strip anchored to the **first Script card a user ever sees** (not install-time, not a modal). Copy: *"Dyad just ran a small script to read your file. You'll see each one here. Not into this? Turn it off in Settings → Chat → Scripts."* Dismissed forever after one click. Plus a one-time composer-level tip on the user's first attachment: *"Attachments stay on disk — Dyad reads what it needs when you send."*
-- **Transparency UI.** `ScriptCard` component (mustard-amber accent), label **"Script"** (no "sandbox"), reuses `DyadCard` + `DyadMcpToolCall` expand/collapse. Collapsed by default on success, auto-expanded on error. Header auto-populates from the tool call's `description` field (*"Read last 500 lines of server.log"*), falling back to *"Ran a script on `server.log`"*. Overflow menu on every card: *Re-run · Copy script · Copy output · Manage scripts in Settings*. Truncated outputs show *"LLM saw X of Y"* badge.
-- **Default-chat tool-loop extension.** Minimum-viable cut: add `tools: { execute_sandbox_script }` to the existing `streamText()` call in `chat_stream_handlers.ts`. Vercel AI SDK already handles the tool-call loop natively. No generic tool registry in default chat; no porting of the Pro `ToolDefinition` interface; no arg-streaming. Render tool parts with the same components used in the Pro transcript.
-- **Small-model fallback UX.** If the model returns a final reply without invoking the tool *and* there's an unreferenced on-disk attachment for the turn, render a gentle hint banner: *"Your model didn't read the file — try a larger model or paste the contents inline."* Prevents silent failure on Ollama 7B-class models.
-- **Degraded-mode UX on unsupported platforms.** If the MustardScript native binding is unavailable (e.g., linux-arm64), the tool's `isEnabled()` returns false, default-chat gates it equivalently, and the system-info block says *"sandbox scripting unavailable on this platform"* so the model doesn't attempt it. Attachments still land on disk.
+- **Consent model.** Local-agent mode retains its current `ask` default to respect the existing user mental model there. Opt-out to `never` in Settings → Chat → Scripts.
+- **First-run education.** One-time, dismissible _inline_ info strip anchored to the **first Script card a user ever sees** (not install-time, not a modal). Copy: _"Dyad just ran a small script to read your file. You'll see each one here. Not into this? Turn it off in Settings → Chat → Scripts."_ Dismissed forever after one click. Plus a one-time composer-level tip on the user's first local-agent attachment: _"Attachments stay on disk — Dyad reads what it needs when you send."_
+- **Transparency UI.** `ScriptCard` component (mustard-amber accent), label **"Script"** (no "sandbox"), reuses `DyadCard` + `DyadMcpToolCall` expand/collapse. Collapsed by default on success, auto-expanded on error. Header auto-populates from the tool call's `description` field (_"Read last 500 lines of server.log"_), falling back to _"Ran a script on `server.log`"_. Overflow menu on every card: _Re-run · Copy script · Copy output · Manage scripts in Settings_. Truncated outputs show _"LLM saw X of Y"_ badge.
+- **No default-chat tool-loop extension.** Default chat is intentionally out of scope. Do not port the Pro `ToolDefinition` interface, do not add a generic registry, and do not wire Vercel AI SDK tools into `chat_stream_handlers.ts` for this project.
+- **Small-model fallback UX.** If a local-agent model returns a final reply without invoking the tool _and_ there's an unreferenced on-disk attachment for the turn, render a gentle hint banner: _"Your model didn't read the file — try a larger model or paste the contents inline."_ Prevents silent failure on Ollama 7B-class models in the tool-capable path.
+- **Degraded-mode UX on unsupported platforms.** If the MustardScript native binding is unavailable (e.g., linux-arm64), the tool's `isEnabled()` returns false and the local-agent attachment-info user-message block says _"sandbox scripting unavailable on this platform"_ so the model doesn't attempt it. Attachments still land on disk in the local-agent path. Do not put platform availability in the system prompt.
 - **Replay semantics.** Replaying a prior chat message renders the stored script + result verbatim; it does NOT re-execute. Users get an explicit "Re-run" button on the card.
-- **Backwards compatibility.** Existing chats with inline attachments keep their inline bytes in history; only new uploads go to disk. `prepareMessageWithAttachments()` handles the mixed history cleanly. Release notes call this out explicitly.
+- **Backwards compatibility.** Existing chats with inline attachments keep their inline bytes in history. New local-agent uploads go to disk; non-local-agent/default-chat uploads continue to inline. Attachment preparation handles the mixed history cleanly. Release notes call this out explicitly.
 - **Lifecycle.** Reuse `cleanupOldMediaFiles()` in `src/main.ts` for `.dyad/media/` attachments (including `script-output-*.txt`). `.dyad` is already added to `.gitignore` via `ensureDyadGitignored()`.
-- **Power-user settings surface.** *Open `.dyad/media/`* button (using the literal path, not a euphemistic label), timeout ceiling configuration (2s default, up to 10s), consent toggle (always-allow ↔ ask ↔ never).
-- **Security denylist.** `read_file` rejects paths outside `ctx.appPath`; denies absolute paths, `..` escapes, and a denylist covering `.env*`, `.git/`, `node_modules/`, `~/.ssh/`, `~/.aws/`, `~/.config/`, `~/.netrc`, `*.key`, `*.pem`. Path allowlist is the *only* security control under always-allow; it must stay conservative.
+- **Power-user settings surface.** _Open `.dyad/media/`_ button (using the literal path, not a euphemistic label), timeout ceiling configuration (2s default, up to 10s), consent toggle (always-allow ↔ ask ↔ never).
+- **Security denylist.** `read_file` rejects paths outside `ctx.appPath`; denies absolute paths, `..` escapes, and a denylist covering `.env*`, `.git/`, `node_modules/`, `~/.ssh/`, `~/.aws/`, `~/.config/`, `~/.netrc`, `*.key`, `*.pem`. Path allowlist is the _only_ security control under always-allow; it must stay conservative.
 - **Resource limits.** 2s wall-clock default (10s user-configurable ceiling), 500ms per-host-call timeout, 16MB heap, 1M-instruction budget, per-call `read_file` size cap of 1MB.
 - **Crash isolation.** Wrap all MustardScript `ExecutionContext` calls in try/catch; add a process-level `unhandledException` guard so a native-addon fault cannot kill Electron's main process.
 - **License hygiene.** Add `/NOTICE` at repo root aggregating Apache-2.0 attribution (MustardScript + Playwright + any others); include MustardScript's NOTICE content if shipped in its tarball. Add a CI check for new Apache-2.0 deps.
@@ -51,74 +53,75 @@ The pain is most acute for power-user workflows: large error logs, spec PDFs, co
 - **Cached script results** across turns. `execute_sandbox_script` is always fresh. Memoization only within a single tool fan-out if needed.
 - **Attachment management UI.** A Settings surface showing "Manage attachments — NNNMB across NN chats [Clean up unused]" is post-launch.
 - **Chat export privacy toggles** for bundled attachment contents.
-- **Generic tool registry in default chat.** Only `execute_sandbox_script` is exposed there in v1. Additional tools in default chat require a separate scoping pass.
+- **Any default-chat tool loop.** `execute_sandbox_script` is not exposed in default chat in v1. Any default-chat tool support requires a separate scoping pass.
 
 ## User Stories
 
-- As a developer debugging production, I want to drop a 4MB `error.log` into chat and ask "group and count unique stack traces" without hitting context limits or paying for 4MB of tokens — the AI writes a script that reads only what it needs.
-- As a PM reviewing a spec, I want to attach a long text export and ask "find sections mentioning auth" so the AI pulls back just relevant passages.
-- As a reviewer, I want to attach a whole-repo text dump and ask "list every callsite of `deprecatedFn`" — the AI's script does the grep, I get the answer.
+- As a developer debugging production in local-agent mode, I want to drop a 4MB `error.log` into chat and ask "group and count unique stack traces" without hitting context limits or paying for 4MB of tokens — the AI writes a script that reads only what it needs.
+- As a PM reviewing a spec in local-agent mode, I want to attach a long text export and ask "find sections mentioning auth" so the AI pulls back just relevant passages.
+- As a reviewer using local-agent mode, I want to attach a whole-repo text dump and ask "list every callsite of `deprecatedFn`" — the AI's script does the grep, I get the answer.
 - As a privacy-conscious user, I want to see every script the AI ran and its returned output in my chat transcript, with the ability to expand and inspect at any time.
-- As a free-tier user, I want large-file attachment support to work without upgrading — I get the same on-disk behavior and script tool as Pro users.
+- As a default-chat user, I want existing attachment behavior to remain stable — if I am not using the local-agent path, Dyad still inlines attachments into my message and does not show script/tool UI.
 - As a power user, I want the "Open `.dyad/media/`" settings button so I can inspect or share the raw files directly.
 - As an Ollama-local user on a small model, I want graceful failure — if my model can't invoke the tool, I want a hint, not silence.
 
 ## Success Metrics
 
-Metrics retired by the "always on-disk + always-allow + free tier" decisions:
+Metrics retired by the "local-agent only + no default-chat tool loop" decisions:
 
-- ❌ *On-disk usage share* — trivially 100% post-launch.
-- ❌ *Consent rejection rate* — no per-call modal on the always-allow default path.
+- ❌ _On-disk usage share within local-agent mode_ — trivially 100% post-launch for that path.
+- ❌ _Default-chat tool-use pickup_ — default chat continues to inline attachments and has no script tool in this project.
 
 New leading indicators:
 
-- **Tool-use pickup rate:** share of attachment-bearing turns where the AI emits at least one `read_file` / `execute_sandbox_script` call. Target ≥95% on frontier models. Watch small/local models separately — this is the "did the feature work at all" signal.
-- **Zero-tool-call attachment turns** (counter-metric). If non-trivial, the model is seeing the system-info block and ignoring it — a product failure we need to catch.
-- **Settings opt-out rate:** share of users who flip the consent toggle away from always-allow. >2% should trigger investigation.
-- **Tool-loop latency overhead:** p50/p90 added latency per attachment turn. Uniform-on-disk means even trivial attachments pay a tool round-trip; this catches regressions in the common case.
+- **Tool-use pickup rate:** share of local-agent attachment-bearing turns where the AI emits at least one `read_file` / `execute_sandbox_script` call. Target ≥95% on frontier models. Watch small/local models separately — this is the "did the feature work at all" signal.
+- **Zero-tool-call attachment turns** (counter-metric). If non-trivial in local-agent mode, the model is seeing the attachment-info user-message block and ignoring it — a product failure we need to catch.
+- **Settings opt-out rate:** share of users who disable scripts in local-agent mode. >2% should trigger investigation.
+- **Tool-loop latency overhead:** p50/p90 added latency per local-agent attachment turn. Uniform-on-disk in this mode means even trivial attachments pay a tool round-trip; this catches regressions in the common case.
 
 Kept from prior framing (reframed):
 
-- **Median & p90 input-token count per attachment turn** vs. a 1-week pre-launch baseline. The always-on-disk decision only pays off if the AI actually narrows its reads — this metric proves it. Targets: -40% median, -80% p90.
-- **Context-error rate** (`context_length_exceeded` / provider-specific) on attachment-bearing chats. Target: -90%.
+- **Median & p90 input-token count per local-agent attachment turn** vs. a 1-week pre-launch baseline. The local-agent always-on-disk decision only pays off if the AI actually narrows its reads — this metric proves it. Targets: -40% median, -80% p90.
+- **Context-error rate** (`context_length_exceeded` / provider-specific) on local-agent attachment-bearing chats. Target: -90%.
 
-Instrumentation events to emit (standard dashboard): `attachment.stored`, `sandbox.script.run`, `sandbox.script.completed`, `sandbox.script.timeout`, `sandbox.script.truncated`, `sandbox.script.denied`, `sandbox.tool.unused_with_attachment`.
+Instrumentation events to emit for the local-agent path (standard dashboard): `attachment.stored`, `sandbox.script.run`, `sandbox.script.completed`, `sandbox.script.timeout`, `sandbox.script.truncated`, `sandbox.script.denied`, `sandbox.tool.unused_with_attachment`.
 
 ## UX Design
 
 ### User Flow
 
-1. User drops `server.log` (80MB) into the composer via existing drag-and-drop or file picker (`src/hooks/useAttachments.ts`). An attachment chip appears — uniform design, no size/type variant. On the user's *first-ever* attach, a dismissible inline tip appears under the composer: *"Attachments stay on disk — Dyad reads what it needs when you send."*
+1. In local-agent mode, the user drops `server.log` (80MB) into the composer via existing drag-and-drop or file picker (`src/hooks/useAttachments.ts`). An attachment chip appears — uniform design, no size/type variant. On the user's _first-ever_ local-agent attach, a dismissible inline tip appears under the composer: _"Attachments stay on disk — Dyad reads what it needs when you send."_
 2. User types a question ("what's the most common error?") and sends.
-3. In the main process, the file is copied to `.dyad/media/<md5>.log`. The outgoing message gains a system-info `TextPart`:
+3. In the main process, because this turn is handled by `local_agent_handler.ts`, the file is copied to `.dyad/media/<md5>.log`. The outgoing user message gains an attachment-info `TextPart`:
    ```
    Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):
    - attachments:server.log (80 MB, text/plain)
    ```
 4. The model responds by calling `execute_sandbox_script` with a short MustardScript that tails `attachments:server.log`, groups by error code, returns the top 5.
 5. A `ScriptCard` renders inline:
-   - **Running state:** amber spinner, scramble-reveal verb (`skimming`, `sifting`, `tailing`, etc.), *"Running script…"* label.
-   - **Success state:** collapsed, header from tool-call `description` (*"Read last 500 lines of server.log"*), stats `Read 42KB · 812ms`, expandable.
+   - **Running state:** amber spinner, scramble-reveal verb (`skimming`, `sifting`, `tailing`, etc.), _"Running script…"_ label.
+   - **Success state:** collapsed, header from tool-call `description` (_"Read last 500 lines of server.log"_), stats `Read 42KB · 812ms`, expandable.
    - **Error state:** auto-expanded, red accent, error line visible, `Re-run` and `Retry with guidance` buttons.
-6. If this is the user's **very first Script card ever**, a small dismissible strip sits above it for onboarding: *"Dyad just ran a small script to read your file. You'll see each one here. Not into this? Turn it off in Settings → Chat → Scripts."* **[Got it]** **[Settings]**
+6. If this is the user's **very first Script card ever**, a small dismissible strip sits above it for onboarding: _"Dyad just ran a small script to read your file. You'll see each one here. Not into this? Turn it off in Settings → Chat → Scripts."_ **[Got it]** **[Settings]**
 7. Below the card, the model's prose answer streams referencing the findings.
-8. If the model never invokes the tool despite an attachment, a gentle banner renders below the reply: *"Your model didn't read the file — try a larger model or paste the contents inline."*
+8. If the local-agent model never invokes the tool despite an attachment, a gentle banner renders below the reply: _"Your model didn't read the file — try a larger model or paste the contents inline."_
+9. In default chat or any other path that does not use `local_agent_handler.ts`, no script tool is exposed and the attachment continues to be inlined into the user message.
 
 ### Key States
 
-- **Attachment chip (default):** uniform design across all types; no badge, no size split. Hover tooltip: *"Stored at `.dyad/media/server.log`. Dyad reads what it needs."*
+- **Attachment chip (local-agent):** uniform design across all types; no badge, no size split. Hover tooltip: _"Stored at `.dyad/media/server.log`. Dyad reads what it needs."_ Default chat keeps existing inline-attachment semantics.
 - **Script card — running:** mustard-amber accent, animated verb, `aria-live="polite"` announces "Running script".
 - **Script card — success (collapsed):** one-liner header from `description`, stats `Read 42KB · 812ms`, chevron, keyboard-operable.
-- **Script card — success (expanded):** tabs *Script* (syntax-highlighted MustardScript) and *Output* (monospace, virtualized for >10KB, "Copy" / "Save as…" / search-within). Footer strip: `instructionsUsed`, `heapBytesUsed` for power users.
-- **Script card — truncated output:** *"LLM saw 42KB of 850KB — [Open full output]"* linking to the side pane backed by `.dyad/media/script-output-*.txt`.
+- **Script card — success (expanded):** tabs _Script_ (syntax-highlighted MustardScript) and _Output_ (monospace, virtualized for >10KB, "Copy" / "Save as…" / search-within). Footer strip: `instructionsUsed`, `heapBytesUsed` for power users.
+- **Script card — truncated output:** _"LLM saw 42KB of 850KB — [Open full output]"_ linking to the side pane backed by `.dyad/media/script-output-*.txt`.
 - **Script card — error:** auto-expanded, red accent, one-line error + "Re-run" + "Retry with guidance" buttons.
-- **Script card — empty result:** neutral accent, *"Script returned empty — Dyad will try again"* (softer than a dead end; common now that small files also use scripts).
-- **Script card — timeout:** *"Script took too long — canceled (2s)"* + retry.
-- **Script card — overflow menu:** *Re-run · Copy script · Copy output · Manage scripts in Settings*.
+- **Script card — empty result:** neutral accent, _"Script returned empty — Dyad will try again"_ (softer than a dead end; common now that small files also use scripts).
+- **Script card — timeout:** _"Script took too long — canceled (2s)"_ + retry.
+- **Script card — overflow menu:** _Re-run · Copy script · Copy output · Manage scripts in Settings_.
 - **First-run toast (inline strip):** only above the user's first-ever Script card; dismissible.
-- **First-attach composer tip:** only on the user's first-ever attachment; dismissible.
-- **Small-model fallback banner:** when an attachment turn yields zero tool calls.
-- **Settings → Chat → Scripts:** default consent toggle (always-allow | ask | never), timeout ceiling slider (2s–10s), button *Open `.dyad/media/`*.
+- **First-attach composer tip:** only on the user's first-ever local-agent attachment; dismissible.
+- **Small-model fallback banner:** when a local-agent attachment turn yields zero tool calls.
+- **Settings → Chat → Scripts:** script consent toggle (always-allow | ask | never), timeout ceiling slider (2s–10s), button _Open `.dyad/media/`_.
 
 ### Interaction Details
 
@@ -143,52 +146,60 @@ Instrumentation events to emit (standard dashboard): `attachment.stored`, `sandb
 
 ### Architecture
 
-Four layered components:
+Five layered components:
 
-1. **Attachment data plane.** In `src/ipc/handlers/chat_stream_handlers.ts`, replace the inline-bytes branch with always-on-disk. Strip `prepareMessageWithAttachments()` of its text-embedding path; keep `ImagePart` for images. Handle mixed-history (legacy inlined attachments + new on-disk) cleanly.
-2. **System-info block builder.** A new utility that, given the attachments for the outgoing turn, emits a stable-position `TextPart` listing `attachments:<name>` with type/size. Placement: immediately before the user's text in the same user message, so provider prompt-cache boundaries stay consistent.
-3. **Sandbox runner.** Located at **`src/ipc/utils/sandbox/`** (non-Pro, importable by both Pro and default chat). Contains `runner.ts` (MustardScript wrapper with lazy-init, resource limits, `Promise.race` timeout, try/catch + unhandledException guard), `capabilities.ts` (`read_file` / `list_files` / `file_stats` host functions with path allowlist + denylist), `limits.ts` (timeout / heap / instruction budgets).
-4. **`execute_sandbox_script` tool.** Pro-mode definition stays under `src/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script.ts` (reuses the Pro `ToolDefinition` pattern). A thin sibling exposes the same tool to default chat via a direct wiring into `streamText()` in `chat_stream_handlers.ts`. No generic tool-registry infrastructure is built for default chat — just this one tool.
+1. **Attachment data plane.** In the local-agent path (`src/pro/main/ipc/handlers/local_agent/local_agent_handler.ts`), replace attachment byte inlining with always-on-disk attachment references. Do not make this change in `src/ipc/handlers/chat_stream_handlers.ts`; non-local-agent/default chat keeps inlining attachments into the user message. Handle mixed-history (legacy inlined attachments + new local-agent on-disk attachments) cleanly.
+2. **Attachment-info block builder.** A new utility that, given the attachments for the outgoing local-agent turn, emits a stable-position `TextPart` listing `attachments:<name>` with type/size. Placement: immediately before the user's text in the same user message, so provider prompt-cache boundaries stay consistent. This block is not part of the system prompt.
+3. **System-prompt invariant.** Across default chat, local-agent mode, plan mode, and any degraded platform state, system prompts must be identical for attachment and non-attachment turns. Attachment availability, unavailable-tool notices, and file metadata are user-message parts only.
+4. **Sandbox runner.** Located at **`src/ipc/utils/sandbox/`** (non-Pro utility, but only wired into local-agent mode for v1). Contains `runner.ts` (MustardScript wrapper with lazy-init, resource limits, `Promise.race` timeout, try/catch + unhandledException guard), `capabilities.ts` (`read_file` / `list_files` / `file_stats` host functions with path allowlist + denylist), `limits.ts` (timeout / heap / instruction budgets).
+5. **`execute_sandbox_script` tool.** Pro-mode definition stays under `src/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script.ts` (reuses the Pro `ToolDefinition` pattern). It is registered only through the local-agent tool system. No sibling default-chat tool, no direct wiring into `streamText()` in `chat_stream_handlers.ts`, and no default-chat generic tool-registry infrastructure.
 
 ### Components Affected
 
 **Attachment flow (modify):**
-- `src/ipc/handlers/chat_stream_handlers.ts` — L300-363: remove base64 → inline branch; always copy to disk. L1866-1930 `prepareMessageWithAttachments()`: emit system-info `TextPart` only (plus `ImagePart` for images). Handle mixed-history.
+
+- `src/pro/main/ipc/handlers/local_agent/local_agent_handler.ts` — switch local-agent attachment handling to `.dyad/media/` references and the attachment-info user-message block.
+- `src/ipc/handlers/chat_stream_handlers.ts` — preserve existing default-chat inline attachment behavior. Do not add a tool loop or script tool wiring here.
 - `src/ipc/utils/media_path_utils.ts` — add helpers for resolving `attachments:<name>` ↔ `<md5>.<ext>`.
 - `src/ipc/types/chat.ts` — `ChatAttachmentSchema` unchanged on wire; runtime types track `onDiskPath` + `logicalName`.
 - `src/hooks/useAttachments.ts` — frontend stays; chip uniform across types (no badge, tooltip carries the teaching).
 - `src/main.ts` — `cleanupOldMediaFiles()` continues to operate; ensure `script-output-*.txt` is also swept.
 
 **Sandbox runner (new, shared):**
+
 - `src/ipc/utils/sandbox/runner.ts`
 - `src/ipc/utils/sandbox/capabilities.ts`
 - `src/ipc/utils/sandbox/limits.ts`
 
 **Tool system (new):**
+
 - `src/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script.ts` — Pro definition using the runner.
 - `src/pro/main/ipc/handlers/local_agent/tool_definitions.ts` — register it for Pro agent.
-- `src/ipc/handlers/chat_stream_handlers.ts` — pass `tools: { execute_sandbox_script }` to `streamText()` when the selected provider/model supports tool calling.
+- No default-chat tool registration in `src/ipc/handlers/chat_stream_handlers.ts`.
 
 **UI (new / modify):**
+
 - `src/components/chat/ScriptCard.tsx` — new component (reuses `DyadCard` + `DyadMcpToolCall` patterns), label "Script", overflow menu, stats strip.
 - `src/components/chat/AttachmentsList.tsx` — uniform chip; tooltip with on-disk path.
-- `src/components/chat/ChatMessage.tsx` (or equivalent) — render tool-call / tool-result parts in default chat using the same Pro components.
+- `src/components/chat/ChatMessage.tsx` (or equivalent) — render local-agent script tool-call / tool-result parts using `ScriptCard`.
 - `src/components/chat/*` — first-run inline strip (anchored to first Script card), first-attach composer tip, small-model fallback banner.
 - `src/pages/settings/*` — Settings → Chat → Scripts section with consent toggle, timeout ceiling, "Open `.dyad/media/`" button.
 
 **Native binary / packaging:**
+
 - `forge.config.ts` — asar-unpack `@mustardscript/binding-*/*.node`.
 - Ensure macOS code-signing covers the `.node` files.
-- Platform gating: `isEnabled: () => isSupportedPlatform()` on `execute_sandbox_script`; equivalent gating in the default-chat wiring.
+- Platform gating: `isEnabled: () => isSupportedPlatform()` on `execute_sandbox_script`; attachment-info user-message block communicates unavailability in local-agent mode only.
 
 **Licensing:**
+
 - `/NOTICE` at repo root with Apache-2.0 attributions. CI check for new Apache-2.0 deps.
 
 ### Data Model Changes
 
 - **Database:** none required for MVP. Scripts + results persist inside the existing `aiMessagesJson` column via tool_call / tool_result parts.
 - **On-disk:** `.dyad/media/` continues to hold attachment files; adds `.dyad/media/script-output-<hash>.txt` for oversized script returns. `.dyad/` already in gitignore.
-- **No schema migration.** Legacy chats with inline bytes keep their inline bytes.
+- **No schema migration.** Legacy chats with inline bytes keep their inline bytes. Default-chat messages continue to store inline attachments.
 
 ### API Changes
 
@@ -230,7 +241,7 @@ file_stats(path: string): {
 };
 ```
 
-System-info block format (v1, frozen for schema stability):
+Attachment-info user-message block format (v1, frozen for schema stability):
 
 ```
 Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):
@@ -249,15 +260,17 @@ Attachments available on disk (use attachments:<name> with read_file / execute_s
 - [ ] Verify `ExecutionContext` exceptions do not escape to kill Electron main (try/catch + process guard).
 - [ ] Document a fallback plan (isolated-vm / QuickJS-WASM) in case any platform fails; do not pick up the fallback unless the spike fails.
 
-### Phase 1: Attachment data plane + system-info block — both modes (2–3 days)
+### Phase 1: Attachment data plane + attachment-info block — local-agent only (2–3 days)
 
-- [ ] Always-on-disk attachment path in `chat_stream_handlers.ts`. No threshold branch. Strip inline-text embedding.
-- [ ] System-info `TextPart` builder with stable placement.
+- [ ] Always-on-disk attachment path in `src/pro/main/ipc/handlers/local_agent/local_agent_handler.ts`. No threshold branch. Strip inline-text embedding in this path only.
+- [ ] Preserve current attachment inlining in `src/ipc/handlers/chat_stream_handlers.ts`; do not add tool-loop wiring there.
+- [ ] Attachment-info `TextPart` builder with stable placement in the user message.
+- [ ] Add a guard/test that system prompts are identical for attachment and non-attachment turns across all modes touched by this project.
 - [ ] Frontend uniform chip; tooltip with literal on-disk path; first-attach composer tip.
 - [ ] Mixed-history handling for legacy inlined attachments.
 - [ ] Telemetry: emit `attachment.stored`.
-- [ ] Unit tests for attachment save / system-info format / mixed-history.
-- [ ] E2E: attach a large log, verify system-info block, verify no inline bytes in the outgoing message; legacy chat still renders correctly.
+- [ ] Unit tests for attachment save / attachment-info format / mixed-history / default-chat still inlines.
+- [ ] E2E: attach a large log in local-agent mode, verify attachment-info block, verify no inline bytes in the outgoing local-agent message; default chat still inlines; legacy chat still renders correctly.
 - [ ] Ship behind a feature flag for internal dogfooding.
 
 ### Phase 2: `execute_sandbox_script` tool — Pro agent first (4–5 days)
@@ -268,21 +281,20 @@ Attachments available on disk (use attachments:<name> with read_file / execute_s
 - [ ] Oversized-output spill to `.dyad/media/script-output-<hash>.txt`, with path surfaced in tool result.
 - [ ] `ScriptCard` UI with all states (running/success/error/timeout/empty/truncated); overflow menu.
 - [ ] First-run inline strip anchored to first Script card.
-- [ ] Settings → Chat → Scripts surface (consent toggle, timeout ceiling, open-folder button). Pro mode retains `ask` default; default chat will use always-allow (next phase).
+- [ ] Settings → Chat → Scripts surface (consent toggle, timeout ceiling, open-folder button). Local-agent mode retains `ask` default.
 - [ ] Telemetry: `sandbox.script.{run,completed,timeout,truncated,denied}`.
 - [ ] Unit tests (runner, capabilities, path escape, limits, output spill).
 - [ ] E2E (Pro agent): successful run, timeout, denied consent, oversized output spill, replay does not re-execute.
 
-### Phase 3: Tool-loop in default chat — Feature B to free users (6–8 days)
+### Phase 3: Non-local-agent compatibility + prompt invariance (1–2 days)
 
-- [ ] Add `tools: { execute_sandbox_script }` to the existing `streamText()` call in `chat_stream_handlers.ts`.
-- [ ] Persist tool_call + tool_result parts into `aiMessagesJson` (reuse `convertToolResultForAiSdk` extracted to a shared util if needed).
-- [ ] Render tool parts in the default-chat transcript (reuse `ScriptCard`).
-- [ ] Default-chat consent defaults to always-allow; share the same Settings surface.
-- [ ] Provider/model capability gating: only expose the tool when the selected model supports tool calling.
-- [ ] Small-model fallback banner when an attachment turn yields zero tool calls.
-- [ ] Degraded-mode handling on unsupported platforms (system-info block says "sandbox scripting unavailable").
-- [ ] E2E: attach a large log in default chat, verify script tool invocation; small-model fallback banner; platform-gated degraded mode.
+- [ ] Audit `src/ipc/handlers/chat_stream_handlers.ts` and verify no `tools: { execute_sandbox_script }`, no Vercel tool-loop additions, and no attachment-specific system-prompt branches are introduced.
+- [ ] If a turn is not handled by `local_agent_handler.ts`, continue inlining attachment content into the user message.
+- [ ] Persist script tool_call + tool_result parts only for local-agent messages in `aiMessagesJson` (reuse existing local-agent tool persistence patterns).
+- [ ] Provider/model capability gating: only expose the tool through the local-agent tool set when the selected model supports tool calling.
+- [ ] Small-model fallback banner when a local-agent attachment turn yields zero tool calls.
+- [ ] Degraded-mode handling on unsupported platforms uses local-agent user-message attachment info, not system-prompt changes.
+- [ ] E2E: default chat with an attachment still sends inline content and has no script card; local-agent large-log flow invokes the script tool; platform-gated degraded mode does not vary the system prompt.
 
 ### Phase 4: Hardening + launch prep (~3–4 days)
 
@@ -292,47 +304,50 @@ Attachments available on disk (use attachments:<name> with read_file / execute_s
 - [ ] Managed-model cost delta forecast (if Dyad subsidizes any model calls).
 - [ ] Ollama small-model QA gate: tool-call success rate ≥80% on `llama3.1:8b` and `qwen2.5:7b` before GA; otherwise ship with a small-model warning.
 - [ ] Dogfood period on internal builds.
-- [ ] Release notes: "Large files now work — upload anything, Dyad reads just what it needs." Explicitly call out: legacy chats retain inline attachments; new uploads are on-disk.
+- [ ] Release notes: "Large files now work in agent mode — upload anything, Dyad reads just what it needs." Explicitly call out: legacy chats retain inline attachments; new local-agent uploads are on-disk; default chat still inlines attachments.
 - [ ] Flag removal.
 
-**Total MVP: ~4 weeks (one engineer)**, with ~1 week buffer if the native-binary spike surfaces platform issues. Each phase ends with something shippable behind a flag.
+**Total MVP: ~3 weeks (one engineer)**, with ~1 week buffer if the native-binary spike surfaces platform issues. Each phase ends with something shippable behind a flag.
 
 ## Testing Strategy
 
 - [ ] **Vitest — runner:** happy path, budget violation, host-capability rejection, timeout, crash-isolation (native-addon fault doesn't escape), non-determinism tolerance.
 - [ ] **Vitest — capabilities:** `read_file` path escape (`..`, absolute paths, symlinks where OS permits), denylist coverage (`.env`, `.ssh`, `.aws`, keys, pems), size cap, range-read correctness.
-- [ ] **Vitest — attachment handler:** always-on-disk for text and binary; system-info block format is stable; image attachments continue using `ImagePart`; legacy-inlined messages render correctly (mixed history).
+- [ ] **Vitest — attachment handler:** local-agent always-on-disk for text and binary; attachment-info user-message block format is stable; default-chat attachments continue to inline; image attachments continue using existing default-chat behavior; legacy-inlined messages render correctly (mixed history).
+- [ ] **Vitest — system prompt invariance:** attachment and non-attachment turns produce the same system prompt in every affected mode, including degraded platform states.
 - [ ] **Vitest — output-cap spill:** `fullOutputPath` is written and returned for >64KB results.
 - [ ] **Playwright E2E — happy path (Pro agent):** attach large log, script runs, result card renders with script + output.
-- [ ] **Playwright E2E — happy path (default chat):** same flow in default chat; confirms tool-loop wiring.
-- [ ] **Playwright E2E — consent:** Pro agent `ask` default triggers modal; default-chat always-allow runs silently; user flips to `ask` in settings, modal appears; denial is logged.
+- [ ] **Playwright E2E — default chat compatibility:** attach a large log in default chat; confirms inline content is still sent and no script card/tool loop appears.
+- [ ] **Playwright E2E — consent:** Local-agent `ask` default triggers modal; denial is logged.
 - [ ] **Playwright E2E — error paths:** script exceeds instruction budget; hits timeout; user cancels; empty return.
 - [ ] **Playwright E2E — replay:** reopening a chat with prior scripts renders them without re-execution; "Re-run" button executes fresh.
-- [ ] **Playwright E2E — small-model fallback:** turn yields no tool call → fallback banner appears.
-- [ ] **Playwright E2E — platform gating:** on a simulated unsupported platform, tool is disabled and system-info communicates unavailability.
+- [ ] **Playwright E2E — small-model fallback:** local-agent turn yields no tool call → fallback banner appears.
+- [ ] **Playwright E2E — platform gating:** on a simulated unsupported platform, tool is disabled and local-agent user-message attachment info communicates unavailability without changing the system prompt.
 - [ ] **Fixtures:** commit 3–4 attachments under `e2e-tests/fixtures/attachments/` (large log, CSV, JSON, small text); keep <1MB total.
 - [ ] **Manual QA matrix:** mac-arm64, mac-x64, linux-x64, win-x64. On linux-arm64 (if in shipping matrix), confirm graceful degraded mode.
 - [ ] **Local-LLM QA gate:** ≥80% tool-call success on `llama3.1:8b` and `qwen2.5:7b` before GA.
 
 ## Risks & Mitigations
 
-| Risk | Likelihood | Impact | Mitigation |
-| ---- | ---------- | ------ | ---------- |
-| MustardScript native binary fails to load in Electron on some platform | Med | High | Phase 0 spike gates everything else; platform-specific `isEnabled` fallback; documented interpreter fallback plan |
-| In-process sandbox is not a hard security boundary; prompt-injected attachment causes the LLM to write an exfil script | Med | High | Conservative path allowlist + strict denylist including `.env`/`.ssh`/`.aws`/keys/pems; lazy-init; Script card shows source (transparency); sidecar mode on roadmap; path allowlist is the sole control under always-allow — launch-blocker review must focus here |
-| Small local models (Ollama 7B-class) can't reliably emit tool calls, causing silent failures for free users | High | Med | Fallback banner when attachment turn yields no tool call; QA gate ≥80% on `llama3.1:8b` + `qwen2.5:7b`; if below, ship with warning banner |
-| Oversized script returns re-create the original context-blowup problem | Med | Med | 64KB LLM cap with truncation signaling; spill to disk for UI viewing; tool description encourages `.slice`/`.filter`/`.reduce` returns |
-| Native addon crash takes down Electron main process | Low | High | `ExecutionContext` calls wrapped in try/catch; process-level `unhandledException` guard; verified in Phase 0 spike |
-| Always-on-disk + always-allow + free tier widens prompt-injection attack surface | Med | High | Denylist extension (noted above); explicit mention in security doc; no-auto-replay policy prevents re-entrancy |
-| Cost delta for managed-model users from added tool-loop tokens | Low | Med | Forecast input-token delta in Phase 4; track `tool-loop latency overhead` metric post-launch |
-| Prompt-cache regression on small attachments (uniform on-disk means every attachment pays a tool round-trip) | Med | Low | Scramble-reveal verbs cover latency emotionally; track `tool-loop latency overhead` p50/p90; accept as scope given user's preference for mental-model consistency |
-| Mixed-history chats (legacy inlined + new on-disk) render inconsistently | Low | Med | Explicit mixed-history handling in `prepareMessageWithAttachments()`; E2E test coverage; release-notes call-out |
-| Apache-2.0 NOTICE obligation overlooked for bundled deps | Low | Low | One-time `/NOTICE` authoring; CI check on new Apache-2.0 deps |
-| Users surprised by MustardScript v0.1.1 alpha status / maintainership | Low | Med | Pin exact version; add a Dyad-CI canary that re-runs MustardScript's own tests on each bump |
-| Cold-start cost of native addon delays first paint | Low | Med | Lazy-init module only on first script execution; never at app startup |
-| `.dyad/media/` grows unbounded across sessions | Med | Low | Reuse `cleanupOldMediaFiles()`; Settings "Manage attachments" roadmapped for follow-up |
-| Settings opt-out rate spikes (users uncomfortable with default-allow) | Low | Med | >2% threshold triggers investigation; first-run inline strip clearly signals how to disable |
-| Chat export leaks attachment content users didn't realize was bundled | Low | Med | Explicit "include attachment contents" toggle on export (post-MVP) |
+| Risk                                                                                                                                  | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MustardScript native binary fails to load in Electron on some platform                                                                | Med        | High   | Phase 0 spike gates everything else; platform-specific `isEnabled` fallback; documented interpreter fallback plan                                                                                                                                                  |
+| In-process sandbox is not a hard security boundary; prompt-injected attachment causes the LLM to write an exfil script                | Med        | High   | Conservative path allowlist + strict denylist including `.env`/`.ssh`/`.aws`/keys/pems; lazy-init; Script card shows source (transparency); sidecar mode on roadmap; path allowlist is the sole control under always-allow — launch-blocker review must focus here |
+| Small local models (Ollama 7B-class) can't reliably emit tool calls in local-agent mode                                               | High       | Med    | Fallback banner when a local-agent attachment turn yields no tool call; QA gate ≥80% on `llama3.1:8b` + `qwen2.5:7b`; if below, ship with warning banner                                                                                                           |
+| Oversized script returns re-create the original context-blowup problem                                                                | Med        | Med    | 64KB LLM cap with truncation signaling; spill to disk for UI viewing; tool description encourages `.slice`/`.filter`/`.reduce` returns                                                                                                                             |
+| Native addon crash takes down Electron main process                                                                                   | Low        | High   | `ExecutionContext` calls wrapped in try/catch; process-level `unhandledException` guard; verified in Phase 0 spike                                                                                                                                                 |
+| Always-on-disk local-agent attachment handling widens prompt-injection attack surface in that mode                                    | Med        | High   | Denylist extension (noted above); explicit mention in security doc; no-auto-replay policy prevents re-entrancy                                                                                                                                                     |
+| Cost delta for managed-model users from added local-agent tool-loop tokens                                                            | Low        | Med    | Forecast input-token delta in Phase 4; track `tool-loop latency overhead` metric post-launch                                                                                                                                                                       |
+| Prompt-cache regression on small local-agent attachments (uniform on-disk means every attachment pays a tool round-trip in that mode) | Med        | Low    | Scramble-reveal verbs cover latency emotionally; track `tool-loop latency overhead` p50/p90; accept as scope given user's preference for mental-model consistency in local-agent mode                                                                              |
+| Mixed-history chats (legacy inlined + new local-agent on-disk) render inconsistently                                                  | Low        | Med    | Explicit mixed-history handling in attachment preparation; E2E test coverage; release-notes call-out                                                                                                                                                               |
+| Accidental default-chat tool-loop wiring changes behavior in `chat_stream_handlers.ts`                                                | Med        | High   | Explicit Phase 3 audit; tests proving default chat still inlines attachments and exposes no script tool                                                                                                                                                            |
+| Attachment-specific system-prompt changes fragment behavior or prompt caching                                                         | Med        | High   | System-prompt invariance test for attachment vs. non-attachment turns in all affected modes; attachment metadata stays in user-message parts only                                                                                                                  |
+| Apache-2.0 NOTICE obligation overlooked for bundled deps                                                                              | Low        | Low    | One-time `/NOTICE` authoring; CI check on new Apache-2.0 deps                                                                                                                                                                                                      |
+| Users surprised by MustardScript v0.1.1 alpha status / maintainership                                                                 | Low        | Med    | Pin exact version; add a Dyad-CI canary that re-runs MustardScript's own tests on each bump                                                                                                                                                                        |
+| Cold-start cost of native addon delays first paint                                                                                    | Low        | Med    | Lazy-init module only on first script execution; never at app startup                                                                                                                                                                                              |
+| `.dyad/media/` grows unbounded across sessions                                                                                        | Med        | Low    | Reuse `cleanupOldMediaFiles()`; Settings "Manage attachments" roadmapped for follow-up                                                                                                                                                                             |
+| Settings opt-out rate spikes (users uncomfortable with local-agent scripts)                                                           | Low        | Med    | >2% threshold triggers investigation; first-run inline strip clearly signals how to disable                                                                                                                                                                        |
+| Chat export leaks attachment content users didn't realize was bundled                                                                 | Low        | Med    | Explicit "include attachment contents" toggle on export (post-MVP)                                                                                                                                                                                                 |
 
 ## Open Questions
 
@@ -346,13 +361,13 @@ Resolved during implementation (not blocking planning):
 
 ## Decision Log
 
-- **Always on-disk, no size threshold** (user). Trade-off: loses prompt-cache efficiency on small attachments. Gain: single mental model ("attachments are files on disk") and single data-plane code path. Accepted.
-- **Keep `.dyad/media/` on disk; alias as `attachments:` in system-info only** (user). Trade-off: filesystem name and LLM-facing name diverge. Gain: zero rename churn across 15+ files. UI copy uses whichever reads naturally; "Open `.dyad/media/`" button uses the literal path so power users see the transition consistently.
-- **Default always-allow consent in default chat; Pro retains `ask` default** (user + Eng refinement). Trade-off: no per-call modal. Gain: zero friction during multi-turn debugging in default chat; Pro users keep existing behavior they've opted into.
-- **Feature available to free users — extend tool loop to default chat** (user). Trade-off: adds 2–4 weeks to MVP; prompt-injection attack surface scales with user count. Gain: feature parity; no Pro paywall on a universal pain. Accepted with hardening line items.
-- **Smallest viable default-chat tool-loop cut** (Eng): only `execute_sandbox_script` is exposed; no generic tool registry; Vercel AI SDK's native loop is sufficient. Saves ~1 week vs. a full Pro-tool-system port.
-- **Sandbox runner lives at `src/ipc/utils/sandbox/`** (Eng). Must be importable by default chat without depending on `src/pro/`. License-compatible (MustardScript is Apache-2.0).
-- **Label "Script", not "Sandbox Script"** (UX). The "sandbox" word implies a security frame the team deliberately stepped away from with always-allow.
+- **Always on-disk, no size threshold in local-agent mode** (user). Trade-off: loses prompt-cache efficiency on small attachments in the local-agent path. Gain: single mental model ("attachments are files on disk") for the tool-capable mode. Accepted.
+- **Keep `.dyad/media/` on disk; alias as `attachments:` in local-agent user-message attachment info only** (user). Trade-off: filesystem name and LLM-facing name diverge. Gain: zero rename churn across 15+ files. UI copy uses whichever reads naturally; "Open `.dyad/media/`" button uses the literal path so power users see the transition consistently.
+- **No default-chat tool loop in `chat_stream_handlers.ts`** (user). If `src/pro/main/ipc/handlers/local_agent/local_agent_handler.ts` is not used, continue inlining attachments into the user message. Default-chat tool support requires a separate plan.
+- **System prompt never varies with attachments** (user). Attachment presence, attachment paths, tool availability, and degraded platform state must not alter the system prompt in any mode. Put attachment metadata in user-message parts only.
+- **Local-agent consent retains `ask` default** (user + Eng refinement). Trade-off: a per-call modal remains. Gain: Pro/local-agent users keep existing behavior they've opted into.
+- **Sandbox runner lives at `src/ipc/utils/sandbox/`** (Eng). Shared utility location avoids coupling the runner to Pro internals, but v1 wires it only through the local-agent tool system. License-compatible (MustardScript is Apache-2.0).
+- **Label "Script", not "Sandbox Script"** (UX). The "sandbox" word implies a security frame the team deliberately steps away from whenever users enable always-allow.
 - **First-run education anchored to the first Script card** (UX). Non-blocking inline strip at the moment the user actually encounters the feature; no install-time modal.
 - **"Open `.dyad/media/`" button uses the literal path** (UX). Prevents confusion at the point where the naming split does surface.
 - **Read-only capabilities only in v1** (Eng). No `write_file`/`fetch`/`exec`. Huge return values use UI-side spill, not script-side write. Drastically reduced attack surface.
@@ -365,9 +380,9 @@ Resolved during implementation (not blocking planning):
 - **PDF/binary semantic reading deferred** (Eng). MustardScript stays text-first; `pdf_to_text` is a separate future tool.
 - **License hygiene via root `/NOTICE`** (Eng).
 - **Crash isolation for native addon** (Eng). `ExecutionContext` calls wrapped; process-level guard added.
-- **Legacy chats not migrated** (PM). New uploads on-disk; legacy history keeps inline bytes. Release-notes call-out.
+- **Legacy chats not migrated** (PM). New local-agent uploads on-disk; default-chat and legacy history keep inline bytes. Release-notes call-out.
 - **Small-model fallback banner** (PM). Explicit UI when an attachment turn yields zero tool calls.
-- **Non-negotiable launch line items** (PM): tool-use-pickup metric instrumented, small-model fallback UI shipped, denylist hardened, first-run inline strip delivered.
+- **Non-negotiable launch line items** (PM): local-agent tool-use-pickup metric instrumented, small-model fallback UI shipped, denylist hardened, first-run inline strip delivered, default-chat inline behavior preserved, system-prompt invariance verified.
 
 ---
 

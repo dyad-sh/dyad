@@ -25,7 +25,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { Switch } from "@/components/ui/switch";
-import { ExternalLink, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  Info,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
@@ -506,6 +513,21 @@ export function NeonConnector({ appId }: { appId: number }) {
                 <p className="text-xs text-muted-foreground pl-9">
                   {t("integrations.neon.emailVerificationHelp")}
                 </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    ipc.system.openExternalUrl(
+                      "https://neon.com/docs/auth/production-checklist#email-provider",
+                    )
+                  }
+                  className="mt-2 w-full flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30 transition-colors"
+                >
+                  <Info className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                  <span className="flex-1 text-left">
+                    {t("integrations.neon.customEmailProviderHint")}
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
+                </button>
               </div>
             )}
 

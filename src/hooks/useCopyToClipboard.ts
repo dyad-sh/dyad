@@ -13,6 +13,7 @@ const CUSTOM_TAG_NAMES = [
   "dyad-chat-summary",
   "dyad-edit",
   "dyad-codebase-context",
+  "dyad-script",
   "think",
   "dyad-command",
 ];
@@ -168,6 +169,19 @@ export const useCopyToClipboard = () => {
           outputResult += `\n\n${content}`;
         }
         return outputResult + "\n\n";
+      }
+
+      case "dyad-script": {
+        const description = attributes.description || "Script";
+        try {
+          const payload = JSON.parse(content) as {
+            script?: string;
+            output?: string;
+          };
+          return `### ${description}\n\n\`\`\`js\n${payload.script ?? ""}\n\`\`\`\n\n\`\`\`text\n${payload.output ?? ""}\n\`\`\`\n\n`;
+        } catch {
+          return `### ${description}\n\n\`\`\`text\n${content}\n\`\`\`\n\n`;
+        }
       }
 
       case "dyad-problem-report": {

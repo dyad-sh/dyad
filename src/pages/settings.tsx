@@ -36,6 +36,7 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
+import { SandboxScriptSettings } from "@/components/SandboxScriptSettings";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -463,6 +464,10 @@ export function AISettings() {
           Automatically compact long conversations to stay within context
           limits. Original messages are preserved in the app data directory.
         </div>
+      </div>
+
+      <div id={SETTING_IDS.sandboxScripts} className="mt-4">
+        <SandboxScriptSettings />
       </div>
     </div>
   );

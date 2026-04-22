@@ -1,9 +1,29 @@
 import path from "node:path";
+import fs from "node:fs/promises";
 
 /**
  * The subdirectory within each app where uploaded media files are stored.
  */
 export const DYAD_MEDIA_DIR_NAME = ".dyad/media";
+export const ATTACHMENTS_MANIFEST_FILE = "attachments-manifest.json";
+
+export interface AttachmentManifestEntry {
+  logicalName: string;
+  originalName: string;
+  storedFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface StoredAttachmentInfo {
+  logicalName: string;
+  originalName: string;
+  storedFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  filePath: string;
+}
 
 /**
  * Check if an absolute path falls within the app's .dyad/media directory.
@@ -45,4 +65,118 @@ export function isFileWithinAnyDyadMediaDir(absPath: string): boolean {
   const mediaDirPath = segments.slice(0, mediaIdx + 1).join(path.sep);
   const relativePath = path.relative(mediaDirPath, resolved);
   return !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+}
+
+export function getDyadMediaDir(appPath: string): string {
+  return path.join(appPath, DYAD_MEDIA_DIR_NAME);
+}
+
+export function getAttachmentsManifestPath(appPath: string): string {
+  return path.join(getDyadMediaDir(appPath), ATTACHMENTS_MANIFEST_FILE);
+}
+
+export function toAttachmentLogicalPath(logicalName: string): string {
+  return `attachments:${logicalName}`;
+}
+
+export function stripAttachmentLogicalPrefix(logicalPath: string): string {
+  return logicalPath.startsWith("attachments:")
+    ? logicalPath.slice("attachments:".length)
+    : logicalPath;
+}
+
+function normalizeAttachmentLogicalName(originalName: string): string {
+  const fileName = originalName.split(/[\\/]/).filter(Boolean).pop()?.trim();
+  return (fileName || "attachment").replace(/[:\0\r\n]/g, "_");
+}
+
+export function createUniqueAttachmentLogicalName(
+  originalName: string,
+  usedNames: Set<string>,
+): string {
+  const logicalName = normalizeAttachmentLogicalName(originalName);
+  if (!usedNames.has(logicalName)) {
+    usedNames.add(logicalName);
+    return logicalName;
+  }
+
+  const ext = path.extname(logicalName);
+  const base = ext ? logicalName.slice(0, -ext.length) : logicalName;
+  let suffix = 2;
+  while (true) {
+    const candidate = `${base}-${suffix}${ext}`;
+    if (!usedNames.has(candidate)) {
+      usedNames.add(candidate);
+      return candidate;
+    }
+    suffix++;
+  }
+}
+
+async function readAttachmentManifest(
+  appPath: string,
+): Promise<AttachmentManifestEntry[]> {
+  try {
+    const raw = await fs.readFile(getAttachmentsManifestPath(appPath), "utf8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(
+      (entry): entry is AttachmentManifestEntry =>
+        entry &&
+        typeof entry.logicalName === "string" &&
+        typeof entry.originalName === "string" &&
+        typeof entry.storedFileName === "string" &&
+        typeof entry.mimeType === "string" &&
+        typeof entry.sizeBytes === "number" &&
+        typeof entry.createdAt === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function appendAttachmentManifestEntries(
+  appPath: string,
+  entries: AttachmentManifestEntry[],
+): Promise<void> {
+  if (entries.length === 0) {
+    return;
+  }
+
+  const manifestPath = getAttachmentsManifestPath(appPath);
+  await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+  const existing = await readAttachmentManifest(appPath);
+  const byLogicalName = new Map<string, AttachmentManifestEntry>();
+  for (const entry of existing) {
+    byLogicalName.set(entry.logicalName, entry);
+  }
+  for (const entry of entries) {
+    byLogicalName.set(entry.logicalName, entry);
+  }
+  await fs.writeFile(
+    manifestPath,
+    JSON.stringify([...byLogicalName.values()], null, 2),
+  );
+}
+
+export async function listStoredAttachments(
+  appPath: string,
+): Promise<StoredAttachmentInfo[]> {
+  const mediaDir = getDyadMediaDir(appPath);
+  const entries = await readAttachmentManifest(appPath);
+  return entries.map((entry) => ({
+    ...entry,
+    filePath: path.join(mediaDir, path.basename(entry.storedFileName)),
+  }));
+}
+
+export async function resolveAttachmentLogicalPath(
+  appPath: string,
+  logicalPath: string,
+): Promise<StoredAttachmentInfo | null> {
+  const logicalName = stripAttachmentLogicalPrefix(logicalPath);
+  const entries = await listStoredAttachments(appPath);
+  return entries.find((entry) => entry.logicalName === logicalName) ?? null;
 }

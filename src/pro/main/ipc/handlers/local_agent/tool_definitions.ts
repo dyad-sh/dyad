@@ -35,6 +35,7 @@ import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
+import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -94,6 +95,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   updateTodosTool,
   runTypeChecksTool,
   readGuideTool,
+  executeSandboxScriptTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,

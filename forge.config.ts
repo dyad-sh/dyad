@@ -49,6 +49,12 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/node-pty")) {
     return false;
   }
+  if (file.startsWith("/node_modules/mustardscript")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/@mustardscript")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/node-addon-api")) {
     return false;
   }
@@ -121,7 +127,8 @@ const config: ForgeConfig = {
         },
     asar: {
       // node-pty loads helper binaries like spawn-helper and winpty-agent from disk.
-      unpackDir: "node_modules/node-pty",
+      unpackDir:
+        "{node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
     },
     ignore,
     extraResource: [

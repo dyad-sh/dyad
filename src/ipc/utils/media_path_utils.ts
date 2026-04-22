@@ -187,10 +187,26 @@ export async function listStoredAttachments(
 ): Promise<StoredAttachmentInfo[]> {
   const mediaDir = getDyadMediaDir(appPath);
   const entries = await readAttachmentManifest(appPath);
-  return entries.map((entry) => ({
-    ...entry,
-    filePath: path.join(mediaDir, path.basename(entry.storedFileName)),
-  }));
+  const storedAttachments: StoredAttachmentInfo[] = [];
+  for (const entry of entries) {
+    const filePath = path.join(mediaDir, path.basename(entry.storedFileName));
+    try {
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile()) {
+        continue;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    storedAttachments.push({
+      ...entry,
+      filePath,
+    });
+  }
+  return storedAttachments;
 }
 
 export async function resolveAttachmentLogicalPath(

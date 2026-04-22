@@ -282,7 +282,7 @@ function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
     toolName === "execute_sandbox_script" &&
     typeof input.script === "string"
   ) {
-    return input.script.includes("attachments:");
+    return /attachments:?/.test(input.script);
   }
   if (toolName === "read_file" && typeof input.path === "string") {
     return input.path.startsWith("attachments:");
@@ -1334,7 +1334,7 @@ export async function handleLocalAgentStream(
 
     if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
       const unreadAttachmentWarning =
-        "Your model didn't read the file. Try a larger model or paste the contents inline.";
+        "Your model did not reference the attached file. If this was unintended, try a larger model or paste the contents inline.";
       const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;
       fullResponse += warningMessage;
       await updateResponseInDb(placeholderMessageId, fullResponse);

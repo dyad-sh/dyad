@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import {
+  getDyadMediaDir,
   listStoredAttachments,
   resolveAttachmentLogicalPath,
   toAttachmentLogicalPath,
@@ -28,6 +29,7 @@ export interface SandboxReadFileOptions {
 
 const DENIED_PATH_PATTERNS = [
   /(^|[/\\])\.env[^/\\]*(?:[/\\]|$)/i,
+  /(^|[/\\])\.dyad([/\\]|$)/i,
   /(^|[/\\])\.git([/\\]|$)/i,
   /(^|[/\\])\.npmrc$/i,
   /(^|[/\\])\.yarnrc(?:\.yml)?$/i,
@@ -239,6 +241,17 @@ async function assertResolvedPathAllowed(params: {
       `Sandbox scripts cannot access files outside the app: ${params.displayPath}`,
       DyadErrorKind.Precondition,
     );
+  }
+  if (params.displayPath.startsWith("attachments:")) {
+    const realMediaPath = await fs.realpath(getDyadMediaDir(params.appPath));
+    const mediaRelative = path.relative(realMediaPath, realFilePath);
+    if (mediaRelative.startsWith("..") || path.isAbsolute(mediaRelative)) {
+      throw new DyadError(
+        `Sandbox scripts cannot access files outside attachment storage: ${params.displayPath}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+    return;
   }
   const normalized = relative.split(path.sep).join("/");
   if (DENIED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))) {

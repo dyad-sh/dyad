@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ScrollText } from "lucide-react";
+import { FolderOpen, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ipc } from "@/ipc/types";
 import { CodeHighlight } from "./CodeHighlight";
 import {
   DyadBadge,
@@ -22,6 +23,7 @@ interface ScriptPayload {
 }
 
 const SCRIPT_TIP_STORAGE_KEY = "dyad-script-card-tip-dismissed";
+let scriptTipShownThisSession = false;
 
 export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
   const navigate = useNavigate();
@@ -30,11 +32,17 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
   const executionMs: string = node?.properties?.executionMs || "";
   const fullOutputPath: string = node?.properties?.fullOutputPath || "";
   const [expanded, setExpanded] = useState(false);
-  const [showTip, setShowTip] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(SCRIPT_TIP_STORAGE_KEY) !== "true",
-  );
+  const [showTip, setShowTip] = useState(() => {
+    if (
+      typeof window === "undefined" ||
+      window.localStorage.getItem(SCRIPT_TIP_STORAGE_KEY) === "true" ||
+      scriptTipShownThisSession
+    ) {
+      return false;
+    }
+    scriptTipShownThisSession = true;
+    return true;
+  });
 
   const raw = typeof children === "string" ? children : String(children ?? "");
   const payload = useMemo<ScriptPayload>(() => {
@@ -125,14 +133,30 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
               <div className="text-xs font-medium text-muted-foreground">
                 Output
               </div>
-              <CodeHighlight className="language-text">
-                {payload.output ?? ""}
-              </CodeHighlight>
+              {payload.output?.trim() ? (
+                <CodeHighlight className="language-text">
+                  {payload.output}
+                </CodeHighlight>
+              ) : (
+                <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                  Script returned empty - Dyad will try again.
+                </div>
+              )}
             </div>
             {fullOutputPath && (
-              <div className="text-xs text-muted-foreground font-mono truncate">
-                Full output: {fullOutputPath}
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  ipc.system.showItemInFolder(fullOutputPath);
+                }}
+              >
+                <FolderOpen className="size-4 mr-2" />
+                Open full output
+              </Button>
             )}
           </div>
         </DyadCardContent>

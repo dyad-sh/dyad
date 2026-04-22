@@ -1,3 +1,8 @@
+import {
+  DEFAULT_SANDBOX_SCRIPT_TIMEOUT_MS,
+  MAX_SANDBOX_SCRIPT_TIMEOUT_MS,
+} from "@/constants/settings_constants";
+
 export const SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES = 32 * 1024;
 export const SANDBOX_LLM_OUTPUT_LIMIT_BYTES = 64 * 1024;
 export const SANDBOX_UI_OUTPUT_LIMIT_BYTES = 1024 * 1024;
@@ -22,7 +27,3 @@ export function clampSandboxTimeoutMs(timeoutMs: number | undefined): number {
     MAX_SANDBOX_TIMEOUT_MS,
   );
 }
-import {
-  DEFAULT_SANDBOX_SCRIPT_TIMEOUT_MS,
-  MAX_SANDBOX_SCRIPT_TIMEOUT_MS,
-} from "@/constants/settings_constants";

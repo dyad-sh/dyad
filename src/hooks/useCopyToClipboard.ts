@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { getLanguage } from "@/utils/get_language";
+import { unescapeXmlAttr, unescapeXmlContent } from "../../shared/xmlEscape";
 
 const CUSTOM_TAG_NAMES = [
   "dyad-write",
@@ -233,10 +234,10 @@ export const useCopyToClipboard = () => {
 
       // Parse attributes
       const attributes: Record<string, string> = {};
-      const attrPattern = /(\w+)="([^"]*)"/g;
+      const attrPattern = /([\w-]+)="([^"]*)"/g;
       let attrMatch;
       while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
-        attributes[attrMatch[1]] = attrMatch[2];
+        attributes[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
       }
 
       // Add the tag info
@@ -245,7 +246,7 @@ export const useCopyToClipboard = () => {
         tagInfo: {
           tag,
           attributes,
-          content: tagContent,
+          content: unescapeXmlContent(tagContent),
           fullMatch,
         },
       });

@@ -102,6 +102,7 @@ import {
   listStoredAttachments,
   toAttachmentLogicalPath,
   type AttachmentManifestEntry,
+  type StoredAttachmentInfo,
 } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
@@ -130,14 +131,9 @@ type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
 
-interface StoredChatAttachment {
-  logicalName: string;
-  originalName: string;
-  mimeType: string;
-  sizeBytes: number;
-  filePath: string;
+type StoredChatAttachment = StoredAttachmentInfo & {
   attachmentType: "upload-to-codebase" | "chat-context";
-}
+};
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
@@ -204,6 +200,14 @@ function buildLocalAgentAttachmentInfo(
   }
 
   return `\n\n${lines.join("\n")}\n`;
+}
+
+function hasScriptReadableAttachment(
+  attachments: StoredChatAttachment[],
+): boolean {
+  return attachments.some(
+    (attachment) => !attachment.mimeType.toLowerCase().startsWith("image/"),
+  );
 }
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
@@ -404,6 +408,7 @@ export function registerChatStreamHandlers() {
           storedAttachments.push({
             logicalName,
             originalName: attachment.name,
+            storedFileName: filename,
             mimeType: attachment.type,
             sizeBytes: fileBuffer.byteLength,
             filePath: persistentPath,
@@ -524,6 +529,7 @@ export function registerChatStreamHandlers() {
             storedAttachments.push({
               logicalName,
               originalName: media.fileName,
+              storedFileName: media.fileName,
               mimeType: media.mimeType,
               sizeBytes: stat.size,
               filePath: media.filePath,
@@ -1006,6 +1012,39 @@ ${componentSnippet}
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
 
+        if (!willUseLocalAgentStream) {
+          const hasImageAttachments = storedAttachments.some((attachment) =>
+            attachment.mimeType.startsWith("image/"),
+          );
+          const hasUploadedAttachments = storedAttachments.some(
+            (attachment) => attachment.attachmentType === "upload-to-codebase",
+          );
+          const isAskMode = selectedChatMode === "ask";
+
+          if (hasUploadedAttachments && !isAskMode) {
+            systemPrompt += `
+
+When files are attached to this conversation for upload to the codebase, copy them into the project using this exact format:
+
+<dyad-copy from="/absolute/path/to/.dyad/media/source.ext" to="path/to/destination/filename.ext" description="Upload file to codebase"></dyad-copy>
+
+Use the attached file path from the user's message as the \`from\` value. Choose an appropriate project-relative \`to\` path.
+
+`;
+          } else if (hasImageAttachments) {
+            systemPrompt += `
+
+# Image Analysis Instructions
+This conversation includes one or more image attachments. When the user uploads images:
+1. If the user explicitly asks for analysis, description, or information about the image, please analyze the image content.
+2. Describe what you see in the image if asked.
+3. You can use images as references when the user has coding or design-related questions.
+4. For diagrams or wireframes, try to understand the content and structure shown.
+5. For screenshots of code or errors, try to identify the issue or explain the code.
+`;
+          }
+        }
+
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
             []
@@ -1294,7 +1333,8 @@ ${componentSnippet}
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
-              currentTurnHasOnDiskAttachment: storedAttachments.length > 0,
+              currentTurnHasOnDiskAttachment:
+                hasScriptReadableAttachment(storedAttachments),
             },
           );
           if (!streamSuccess) {
@@ -1370,7 +1410,8 @@ ${componentSnippet}
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
-                currentTurnHasOnDiskAttachment: storedAttachments.length > 0,
+                currentTurnHasOnDiskAttachment:
+                  hasScriptReadableAttachment(storedAttachments),
               },
             );
           } finally {

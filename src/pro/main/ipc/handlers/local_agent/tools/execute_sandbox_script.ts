@@ -83,7 +83,6 @@ Return a concise value. Prefer range reads, filtering, aggregation, and small su
           appPath: ctx.appPath,
           script: args.script,
           timeoutMs: readSettings().sandboxScriptTimeoutMs,
-          persistFullOutput: false,
         });
 
         ctx.onXmlComplete(

@@ -73,6 +73,12 @@ describe("sandbox capabilities", () => {
     await expect(
       sandboxReadFile(appPath, path.join(appPath, "src", "data.txt")),
     ).rejects.toThrow("Absolute paths");
+    await expect(
+      sandboxReadFile(appPath, ".dyad/media/attachments-manifest.json"),
+    ).rejects.toThrow("protected path");
+    await expect(sandboxListFiles(appPath, ".dyad")).rejects.toThrow(
+      "protected path",
+    );
   });
 
   it("normalizes and deduplicates logical attachment names", () => {
@@ -96,6 +102,26 @@ describe("sandbox capabilities", () => {
       size: 12,
       isText: true,
     });
+  });
+
+  it("filters stale attachment manifest entries", async () => {
+    await appendAttachmentManifestEntries(appPath, [
+      {
+        logicalName: "missing.log",
+        originalName: "missing.log",
+        storedFileName: "missing-log.txt",
+        mimeType: "text/plain",
+        sizeBytes: 12,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
+    ]);
+
+    await expect(listStoredAttachments(appPath)).resolves.toEqual([
+      expect.objectContaining({ logicalName: "server.log" }),
+    ]);
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+    ]);
   });
 
   it("recovers from malformed attachment manifests", async () => {

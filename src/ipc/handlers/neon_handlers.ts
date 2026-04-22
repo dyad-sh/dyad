@@ -169,7 +169,7 @@ export function registerNeonHandlers() {
         const previewBranchResponse = await retryOnLocked(
           () =>
             neonClient.createProjectBranch(project.id, {
-              endpoints: [{ type: EndpointType.ReadOnly }],
+              endpoints: [{ type: EndpointType.ReadWrite }],
               branch: {
                 name: "preview",
                 parent_id: developmentBranch.id,
@@ -651,7 +651,7 @@ export function registerNeonHandlers() {
 
       if (branchId === appData.neonPreviewBranchId) {
         throw new DyadError(
-          "Preview branches are read-only and cannot be selected as the active Neon branch.",
+          "Preview branches are used for historical rollback and cannot be selected as the active Neon branch.",
           DyadErrorKind.Precondition,
         );
       }

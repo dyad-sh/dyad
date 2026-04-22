@@ -1110,7 +1110,7 @@ ${componentSnippet}
                 lastUserMessage,
                 attachmentPaths,
                 {
-                  includeImageAttachments: selectedChatMode !== "local-agent",
+                  includeImageAttachments: true,
                   inlineTextAttachments: !willUseOnDiskAttachmentPrompt,
                 },
               );

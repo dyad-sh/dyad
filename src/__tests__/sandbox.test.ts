@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendAttachmentManifestEntries,
   createUniqueAttachmentLogicalName,
+  getAttachmentsManifestPath,
   getDyadMediaDir,
+  listStoredAttachments,
 } from "@/ipc/utils/media_path_utils";
 import {
   sandboxFileStats,
@@ -94,6 +96,15 @@ describe("sandbox capabilities", () => {
       size: 12,
       isText: true,
     });
+  });
+
+  it("recovers from malformed attachment manifests", async () => {
+    await fs.writeFile(getAttachmentsManifestPath(appPath), "{", "utf8");
+
+    await expect(listStoredAttachments(appPath)).resolves.toEqual([]);
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual(
+      [],
+    );
   });
 
   it("runs MustardScript against host capabilities on supported platforms", async () => {

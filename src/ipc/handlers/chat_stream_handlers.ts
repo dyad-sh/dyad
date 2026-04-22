@@ -105,6 +105,7 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isBasicAgentMode,
+  isLocalAgentBackedMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
@@ -129,26 +130,6 @@ const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
-
-/**
- * Append a referenced-apps manifest to a system prompt so the local agent
- * knows which `app_name` values it can pass to read-only tools. Used by agent,
- * ask, and plan modes — all of which route through handleLocalAgentStream
- * and reach referenced apps via tool calls rather than prompt injection.
- */
-function appendReferencedAppManifest(
-  systemPrompt: string,
-  referencedApps: readonly { appName: string }[],
-): string {
-  if (referencedApps.length === 0) {
-    return systemPrompt;
-  }
-  const list = referencedApps.map(({ appName }) => appName).join(", ");
-  return (
-    systemPrompt +
-    `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.`
-  );
-}
 
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
@@ -692,8 +673,7 @@ ${componentSnippet}
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
-        const willUseLocalAgentStream =
-          isLocalAgentMode || isAskMode || isPlanMode;
+        const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
 
         // Agent/ask/plan modes reach referenced apps via tool calls (`app_name`
         // on read-only tools), so we only need name/path pairs — skip the heavy
@@ -841,24 +821,19 @@ ${componentSnippet}
           basicAgentMode: isBasicAgentMode(settings),
         });
 
-        // Add information about mentioned apps if any.
-        // Two modes:
-        //   1. Full codebase injection (build mode): full file contents already
-        //      concatenated into `otherAppsCodebaseInfo`.
-        //   2. Manifest only (agent/ask/plan modes): list referenced apps by
-        //      name so the model knows which values it can pass as `app_name`
-        //      to read-only tools (read_file, list_files, grep, code_search).
+        // Add information about mentioned apps for build mode only.
+        // Full codebase injection (build mode): full file contents already
+        // concatenated into `otherAppsCodebaseInfo`.
+        //
+        // Agent/ask/plan modes don't need anything in the system prompt —
+        // handleLocalAgentStream injects a `<system-reminder>` into the
+        // user's latest message so the system prompt stays static.
         if (otherAppsCodebaseInfo) {
           const mentionedAppsList = mentionedAppsCodebases
             .map(({ appName }) => appName)
             .join(", ");
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
-        } else if (useReferencedAppManifest) {
-          systemPrompt = appendReferencedAppManifest(
-            systemPrompt,
-            referencedAppsForAgent,
-          );
         }
 
         const isSecurityReviewIntent =
@@ -1247,13 +1222,6 @@ This conversation includes one or more image attachments. When the user uploads 
             readOnly: true,
           });
 
-          // When referenced apps are mentioned, append the manifest so the
-          // agent knows which `app_name` values are valid on read-only tools.
-          const systemPromptWithManifest = appendReferencedAppManifest(
-            readOnlySystemPrompt,
-            referencedAppsForAgent,
-          );
-
           // Return value indicates success/failure for quota tracking.
           // Ask mode doesn't consume quota, but we still capture it for
           // consistent error handling.
@@ -1269,7 +1237,7 @@ This conversation includes one or more image attachments. When the user uploads 
               //
               // This is OK because those intents should always happen in a new chat
               // and new chats will default to non-ask modes.
-              systemPrompt: systemPromptWithManifest,
+              systemPrompt: readOnlySystemPrompt,
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
@@ -1296,14 +1264,9 @@ This conversation includes one or more image attachments. When the user uploads 
             themePrompt,
           });
 
-          const systemPromptWithManifest = appendReferencedAppManifest(
-            planModeSystemPrompt,
-            referencedAppsForAgent,
-          );
-
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
-            systemPrompt: systemPromptWithManifest,
+            systemPrompt: planModeSystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
@@ -1316,9 +1279,9 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle local-agent mode (Agent v2).
         // Referenced apps (from `@app:Name` mentions) are accessed by the
         // agent via tool calls with an `app_name` parameter — see
-        // appendReferencedAppManifest above and resolveTargetAppPath in the
-        // local agent tools. `systemPrompt` already includes the manifest
-        // when referencedAppsForAgent is non-empty.
+        // resolveTargetAppPath in the local agent tools. handleLocalAgentStream
+        // injects a `<system-reminder>` into the user's latest message telling
+        // the agent which `app_name` values are valid.
         if (isLocalAgentMode) {
           // Check quota for Basic Agent mode (non-Pro users)
           const isBasicAgentModeRequest = isBasicAgentMode(settings);

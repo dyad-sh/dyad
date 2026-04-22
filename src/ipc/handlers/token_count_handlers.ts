@@ -26,7 +26,7 @@ import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
-import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { isLocalAgentBackedMode, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 
@@ -149,10 +149,9 @@ export function registerTokenCountHandlers() {
       // injecting full codebases into the prompt, so mentioned apps contribute
       // ~0 tokens upfront. Match the extraction behavior in chat_stream_handlers
       // so the UI estimate tracks what's actually sent.
-      const willUseLocalAgentStream =
-        settings.selectedChatMode === "local-agent" ||
-        settings.selectedChatMode === "ask" ||
-        settings.selectedChatMode === "plan";
+      const willUseLocalAgentStream = isLocalAgentBackedMode(
+        settings.selectedChatMode,
+      );
 
       let mentionedAppsTokens = 0;
       if (!willUseLocalAgentStream) {

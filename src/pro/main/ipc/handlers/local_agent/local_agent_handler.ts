@@ -228,6 +228,34 @@ function buildChatMessageHistory(
   );
 }
 
+/**
+ * Append a `<system-reminder>` to the latest user message listing referenced
+ * apps so the agent knows which `app_name` values it can pass to read-only
+ * tools (`read_file`, `list_files`, `grep`, `code_search`). Mutates the last
+ * user message in-place to avoid copying unrelated parts of the history.
+ */
+function injectReferencedAppsReminder(
+  messageHistory: ModelMessage[],
+  referencedApps: readonly { appName: string }[],
+): void {
+  const list = referencedApps.map(({ appName }) => appName).join(", ");
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+
+  for (let i = messageHistory.length - 1; i >= 0; i--) {
+    const msg = messageHistory[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string") {
+      messageHistory[i] = { ...msg, content: msg.content + reminder };
+    } else {
+      messageHistory[i] = {
+        ...msg,
+        content: [...msg.content, { type: "text", text: reminder }],
+      };
+    }
+    return;
+  }
+}
+
 function getMidTurnCompactionSummaryIds(
   chatMessages: Array<{
     id: number;
@@ -609,6 +637,13 @@ export async function handleLocalAgentStream(
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
       : buildChatMessageHistory(chat.messages);
+
+    // Inject the referenced-apps manifest into the user's latest message as a
+    // `<system-reminder>` block (instead of appending it to the system prompt)
+    // so the system prompt stays static and cacheable.
+    if (referencedApps.length > 0) {
+      injectReferencedAppsReminder(messageHistory, referencedApps);
+    }
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
     let baseMessageHistoryCount = messageHistory.length;

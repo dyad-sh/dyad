@@ -129,7 +129,6 @@ import { detectFrameworkType } from "../utils/framework_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
-const pendingPreviewProxyStarts = new Map<string, Promise<void>>();
 
 function formatCloudSandboxError(error: unknown) {
   if (!(error instanceof CloudSandboxApiError)) {
@@ -637,27 +636,12 @@ function listenToProcess({
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
         const originalUrl = urlMatch[1];
-        const pendingKey = `${appId}:${originalUrl}`;
-        const existingPending = pendingPreviewProxyStarts.get(pendingKey);
-
-        if (existingPending) {
-          await existingPending;
-          return;
-        }
-
-        const pendingStart = ensureProxyForRunningApp({
+        await ensureProxyForRunningApp({
           appId,
           event,
           originalUrl,
           mode: "host",
         });
-
-        pendingPreviewProxyStarts.set(pendingKey, pendingStart);
-        try {
-          await pendingStart;
-        } finally {
-          pendingPreviewProxyStarts.delete(pendingKey);
-        }
       }
     }
   });

@@ -125,7 +125,20 @@ describe("listFilesTool", () => {
     ).rejects.toMatchObject({
       kind: DyadErrorKind.Validation,
       message:
-        "include_ignored=true with recursive=true requires directory to be set to avoid listing too many files.",
+        "include_ignored=true with recursive=true requires a non-root directory to avoid listing too many files.",
+    });
+  });
+
+  it("rejects recursive ignored listings for the app root", async () => {
+    await expect(
+      listFilesTool.execute(
+        { directory: ".", recursive: true, include_ignored: true },
+        mockContext,
+      ),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Validation,
+      message:
+        "include_ignored=true with recursive=true requires a non-root directory to avoid listing too many files.",
     });
   });
 

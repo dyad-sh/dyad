@@ -710,7 +710,8 @@ function renderCustomTag(
             properties: {
               directory: attributes.directory || "",
               recursive: attributes.recursive || "",
-              include_ignored: attributes.include_ignored || "",
+              include_ignored:
+                attributes.include_ignored || attributes.include_hidden || "",
               state: getState({ isStreaming, inProgress }),
             },
           }}

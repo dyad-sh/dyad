@@ -102,6 +102,7 @@ async function runRipgrep({
   excludePat,
   includeIgnored,
   caseSensitive,
+  maxMatches,
 }: {
   appPath: string;
   query: string;
@@ -109,9 +110,11 @@ async function runRipgrep({
   excludePat?: string;
   includeIgnored?: boolean;
   caseSensitive?: boolean;
-}): Promise<RipgrepMatch[]> {
+  maxMatches?: number;
+}): Promise<{ matches: RipgrepMatch[]; stoppedEarly: boolean }> {
   return new Promise((resolve, reject) => {
     const results: RipgrepMatch[] = [];
+    let stoppedEarly = false;
     const args: string[] = [
       "--json",
       "--no-config",
@@ -152,6 +155,10 @@ async function runRipgrep({
     let buffer = "";
 
     rg.stdout.on("data", (data) => {
+      if (stoppedEarly) {
+        return;
+      }
+
       buffer += data.toString();
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
@@ -177,11 +184,23 @@ async function runRipgrep({
           // Normalize path (remove leading ./)
           const normalizedPath = matchPath.replace(/^\.\//, "");
 
+          if (maxMatches !== undefined && results.length >= maxMatches) {
+            stoppedEarly = true;
+            rg.kill();
+            break;
+          }
+
           results.push({
             path: normalizedPath,
             lineNumber,
             lineText: lineText.replace(/\r?\n$/, ""),
           });
+
+          if (maxMatches !== undefined && results.length >= maxMatches) {
+            stoppedEarly = true;
+            rg.kill();
+            break;
+          }
         } catch {
           // Skip malformed JSON lines
         }
@@ -193,12 +212,17 @@ async function runRipgrep({
     });
 
     rg.on("close", (code) => {
+      if (stoppedEarly) {
+        resolve({ matches: results, stoppedEarly });
+        return;
+      }
+
       // rg exits with code 1 when no matches are found; treat as success
       if (code !== 0 && code !== 1) {
         reject(new Error(`ripgrep exited with code ${code}`));
         return;
       }
-      resolve(results);
+      resolve({ matches: results, stoppedEarly });
     });
 
     rg.on("error", (error) => {
@@ -244,24 +268,25 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
   execute: async (args, ctx: AgentContext) => {
     const includePatWasWildcard = args.include_pattern === "*";
+    const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
-    const allMatches = await runRipgrep({
+    const { matches: allMatches, stoppedEarly } = await runRipgrep({
       appPath: ctx.appPath,
       query: args.query,
       includePat: args.include_pattern,
       excludePat: args.exclude_pattern,
       includeIgnored: args.include_ignored,
       caseSensitive: args.case_sensitive,
+      maxMatches: args.include_ignored ? limit + 1 : undefined,
     });
 
     const totalCount = allMatches.length;
-    const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     // Sort for deterministic output (ripgrep's parallel execution can produce varying order)
     const sortedMatches = [...allMatches].sort(
       (a, b) => a.path.localeCompare(b.path) || a.lineNumber - b.lineNumber,
     );
     const matches = sortedMatches.slice(0, limit);
-    const wasTruncated = totalCount > limit;
+    const wasTruncated = stoppedEarly || totalCount > limit;
 
     const attrs = buildGrepAttributes(args, matches.length, totalCount);
 
@@ -278,7 +303,8 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
     // Add truncation notice for the AI
     if (wasTruncated) {
-      resultText += `\n\n[TRUNCATED: Showing ${matches.length} of ${totalCount} matches. Use include_pattern to narrow your search (e.g., include_pattern="*.tsx") or use a more specific query.]`;
+      const totalText = stoppedEarly ? `at least ${totalCount}` : totalCount;
+      resultText += `\n\n[TRUNCATED: Showing ${matches.length} of ${totalText} matches. Use include_pattern to narrow your search (e.g., include_pattern="*.tsx") or use a more specific query.]`;
     }
 
     // Warn the LLM that "*" was ignored so it doesn't retry with the same pattern

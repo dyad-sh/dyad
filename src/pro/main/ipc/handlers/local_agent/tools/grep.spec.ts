@@ -414,6 +414,35 @@ function deepHello() {
         expect.stringContaining('total="'),
       );
     });
+
+    it("stops ignored searches after collecting enough matches", async () => {
+      const nodeModulesDir = path.join(testDir, "node_modules", "many-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await Promise.all(
+        Array.from({ length: 20 }, (_, index) =>
+          fs.promises.writeFile(
+            path.join(nodeModulesDir, `file-${index}.js`),
+            "ignoredSearchNeedle\n",
+          ),
+        ),
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "ignoredSearchNeedle",
+          include_ignored: true,
+          include_pattern: "node_modules/many-pkg/**",
+          limit: 3,
+        },
+        mockContext,
+      );
+
+      const matchLines = result
+        .split("\n")
+        .filter((line) => line.match(/:\d+:/));
+      expect(matchLines).toHaveLength(3);
+      expect(result).toContain("[TRUNCATED: Showing 3 of at least 4 matches.");
+    });
   });
 
   describe("execute - result sorting", () => {

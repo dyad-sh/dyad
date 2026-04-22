@@ -87,13 +87,6 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    if (args.include_ignored && args.recursive && !args.directory) {
-      throw new DyadError(
-        "include_ignored=true with recursive=true requires directory to be set to avoid listing too many files.",
-        DyadErrorKind.Validation,
-      );
-    }
-
     // Validate directory path to prevent path traversal attacks
     let sanitizedDirectory: string | undefined;
     if (args.directory) {
@@ -110,6 +103,13 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
 
       // Empty means "root"
       sanitizedDirectory = normalizedRelativePath || undefined;
+    }
+
+    if (args.include_ignored && args.recursive && !sanitizedDirectory) {
+      throw new DyadError(
+        "include_ignored=true with recursive=true requires a non-root directory to avoid listing too many files.",
+        DyadErrorKind.Validation,
+      );
     }
 
     // Use "**" for recursive, "*" for non-recursive (immediate children only)

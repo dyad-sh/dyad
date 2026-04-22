@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
+  chatErrorByIdAtom,
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
@@ -12,7 +13,6 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
-import { ChatError } from "./chat/ChatError";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
 import { Button } from "@/components/ui/button";
@@ -40,9 +40,9 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation("chat");
   const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const chatErrorById = useAtomValue(chatErrorByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const { settings } = useSettings();
@@ -86,6 +86,7 @@ export function ChatPanel({
   // Scroll to bottom when a new stream starts (user sent a message)
   const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<number | undefined>(undefined);
@@ -152,6 +153,49 @@ export function ChatPanel({
       });
     }
   }, [isStreaming, scrollToBottom]);
+
+  // Keep footer actions (including Retry) visible when stream errors render below.
+  useEffect(() => {
+    if (!streamError) return;
+
+    const container = messagesContainerRef.current;
+    const distanceFromBottom = container
+      ? container.scrollHeight - (container.scrollTop + container.clientHeight)
+      : 0;
+    const isNearBottom = distanceFromBottom <= 220;
+    if (!isAtBottomRef.current && !isNearBottom) return;
+
+    let cancelled = false;
+    let firstRafId: number | undefined;
+    let secondRafId: number | undefined;
+    let timeoutId: number | undefined;
+
+    firstRafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      secondRafId = requestAnimationFrame(() => {
+        if (cancelled) return;
+        scrollToBottom("instant");
+        timeoutId = window.setTimeout(() => {
+          if (!cancelled) {
+            scrollToBottom("smooth");
+          }
+        }, 120);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (firstRafId !== undefined) {
+        window.cancelAnimationFrame(firstRafId);
+      }
+      if (secondRafId !== undefined) {
+        window.cancelAnimationFrame(secondRafId);
+      }
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [streamError, scrollToBottom]);
 
   // Test mode only: Track scroll position to update isAtBottom state.
   // In production, Virtuoso's atBottomStateChange handles this.
@@ -223,8 +267,6 @@ export function ChatPanel({
                 </div>
               )}
             </div>
-
-            <ChatError error={error} onDismiss={() => setError(null)} />
             {showFreeAgentQuotaBanner && (
               <FreeAgentQuotaBanner
                 onSwitchToBuildMode={() =>

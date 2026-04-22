@@ -9,7 +9,6 @@ import {
 } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
 import { usePostHog } from "posthog-js/react";
-import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import type { Chat } from "@/ipc/types";
@@ -28,7 +27,6 @@ export function useQueueProcessor() {
   const [queuePausedById] = useAtom(queuePausedByIdAtom);
   const [isStreamingById] = useAtom(isStreamingByIdAtom);
   const posthog = usePostHog();
-  const { settings } = useSettings();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -72,9 +70,9 @@ export function useQueueProcessor() {
 
       if (!messageToSend) return;
 
-      const chatMode =
-        queryClient.getQueryData<Chat>(queryKeys.chats.detail({ chatId }))
-          ?.chatMode ?? settings?.selectedChatMode;
+      const chatMode = queryClient.getQueryData<Chat>(
+        queryKeys.chats.detail({ chatId }),
+      )?.chatMode;
 
       posthog.capture("chat:submit", { chatMode });
 
@@ -100,6 +98,5 @@ export function useQueueProcessor() {
     setStreamCompletedSuccessfullyById,
     posthog,
     queryClient,
-    settings?.selectedChatMode,
   ]);
 }

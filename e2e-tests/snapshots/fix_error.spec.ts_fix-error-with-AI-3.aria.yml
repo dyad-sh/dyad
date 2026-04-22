@@ -21,7 +21,7 @@
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
   - link /http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6/:
-    - /url: http://localhost:57206/src/pages/Index.tsx:6:6
+    - /url: /http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6/
   - text: )
 - button "Copy":
   - img

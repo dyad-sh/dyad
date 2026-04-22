@@ -22,7 +22,11 @@ class CNSClient {
 
   private constructor() {
     // @ts-ignore
-    this.ipcRenderer = window.electron?.ipcRenderer;
+    this.ipcRenderer = window.electron?.ipcRenderer ?? {
+      invoke: async (..._args: any[]) => null,
+      on: () => {},
+      removeListener: () => {},
+    };
   }
 
   static getInstance(): CNSClient {
@@ -183,8 +187,15 @@ export function useCNSStatus() {
 
   const { data: status, isLoading, error } = useQuery({
     queryKey: CNS_QUERY_KEYS.status,
-    queryFn: () => cnsClient.getStatus(),
+    queryFn: async () => {
+      try {
+        return await cnsClient.getStatus();
+      } catch {
+        return { initialized: false, ollamaAvailable: false, n8nConnected: false, stats: null };
+      }
+    },
     refetchInterval: 5000,
+    retry: 1,
   });
 
   // Listen for status events

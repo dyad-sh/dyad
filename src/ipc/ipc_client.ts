@@ -186,7 +186,12 @@ export class IpcClient {
   private forceCloseHandlers: Set<(data: any) => void>;
   private agentBlueprintHandlers: Set<(data: { chatId: number; blueprint: any; intent: any }) => void>;
   private constructor() {
-    this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
+    this.ipcRenderer = ((window as any).electron?.ipcRenderer ?? {
+      invoke: async (..._args: any[]) => null,
+      on: () => {},
+      removeListener: () => {},
+      removeAllListeners: () => {},
+    }) as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();

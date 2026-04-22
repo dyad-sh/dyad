@@ -3,7 +3,7 @@
  * Create, manage, and export documents using LibreOffice
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -83,6 +83,9 @@ import { showError, showSuccess } from "@/lib/toast";
 import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
+
+// Lazy-load the Offline Docs page to combine into Document Studio
+const OfflineDocsPage = lazy(() => import("./OfflineDocsPage"));
 
 import type {
   DocumentType,
@@ -293,8 +296,9 @@ export default function DocumentsPage() {
     queryKey: ["documents", activeTab],
     queryFn: () =>
       libreOfficeClient.listDocuments({
-        type: activeTab !== "all" ? (activeTab as DocumentType) : undefined,
+        type: activeTab !== "all" && activeTab !== "offline-docs" ? (activeTab as DocumentType) : undefined,
       }),
+    enabled: activeTab !== "offline-docs",
   });
 
   // Create document mutation
@@ -1041,6 +1045,13 @@ export default function DocumentsPage() {
                 <Presentation className="h-4 w-4 mr-1" />
                 Presentations
               </TabsTrigger>
+              <TabsTrigger
+                value="offline-docs"
+                className="data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-600"
+              >
+                <FolderOpen className="h-4 w-4 mr-1" />
+                Offline Docs
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -1069,6 +1080,22 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      {/* Offline Docs Tab Content */}
+      {activeTab === "offline-docs" ? (
+        <div className="flex-1 overflow-auto">
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-12">
+              <div className="flex items-center gap-3 text-muted-foreground">
+                <Sparkles className="h-5 w-5 animate-pulse text-purple-500" />
+                <span>Loading offline docs...</span>
+              </div>
+            </div>
+          }>
+            <OfflineDocsPage />
+          </Suspense>
+        </div>
+      ) : (
+      <>
       {/* Document List */}
       <div className="flex-1 overflow-auto p-6">
         {isDocsLoading ? (
@@ -1247,6 +1274,8 @@ export default function DocumentsPage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

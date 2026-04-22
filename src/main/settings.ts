@@ -24,6 +24,7 @@ import {
   getRemoteDesktopConfig,
   type RemoteDesktopConfig,
 } from "@/ipc/shared/remote_desktop_config";
+import { DEFAULT_SANDBOX_SCRIPT_TIMEOUT_MS } from "@/constants/settings_constants";
 
 const logger = log.scope("settings");
 
@@ -54,6 +55,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   previewIdleTimeoutPolicy: "default",
+  sandboxScriptTimeoutMs: DEFAULT_SANDBOX_SCRIPT_TIMEOUT_MS,
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";

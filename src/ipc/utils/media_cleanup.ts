@@ -2,7 +2,10 @@ import log from "electron-log";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDyadAppPath } from "@/paths/paths";
-import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import {
+  ATTACHMENTS_MANIFEST_FILE,
+  DYAD_MEDIA_DIR_NAME,
+} from "@/ipc/utils/media_path_utils";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 
@@ -36,6 +39,9 @@ export async function cleanupOldMediaFiles(): Promise<void> {
 
         const results = await Promise.all(
           files.map(async (file) => {
+            if (file === ATTACHMENTS_MANIFEST_FILE) {
+              return 0;
+            }
             const filePath = path.join(mediaDir, file);
             try {
               const stat = await fs.stat(filePath);

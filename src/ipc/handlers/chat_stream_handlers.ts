@@ -106,7 +106,14 @@ import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference"
 import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
-import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import {
+  appendAttachmentManifestEntries,
+  createUniqueAttachmentLogicalName,
+  DYAD_MEDIA_DIR_NAME,
+  listStoredAttachments,
+  toAttachmentLogicalPath,
+  type AttachmentManifestEntry,
+} from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -129,10 +136,20 @@ import {
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings } from "@/main/settings";
+import { isSandboxSupportedPlatform } from "../utils/sandbox/runner";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
+
+interface StoredChatAttachment {
+  logicalName: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  filePath: string;
+  attachmentType: "upload-to-codebase" | "chat-context";
+}
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
@@ -155,6 +172,44 @@ const TEXT_FILE_EXTENSIONS = [
 async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
   return TEXT_FILE_EXTENSIONS.includes(ext);
+}
+
+function formatAttachmentSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${Math.round(sizeBytes / 1024)} KB`;
+  }
+  return `${Math.round((sizeBytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
+function buildLocalAgentAttachmentInfo(
+  attachments: StoredChatAttachment[],
+): string {
+  if (attachments.length === 0) {
+    return "";
+  }
+
+  const lines = isSandboxSupportedPlatform()
+    ? [
+        "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
+      ]
+    : [
+        "Attachments available on disk (use attachments:<name> with read_file; execute_sandbox_script is unavailable on this platform):",
+      ];
+
+  for (const attachment of attachments) {
+    const uploadNote =
+      attachment.attachmentType === "upload-to-codebase"
+        ? "; if this should become part of the project, use copy_file from this attachment path"
+        : "";
+    lines.push(
+      `- ${toAttachmentLogicalPath(attachment.logicalName)} (${formatAttachmentSize(attachment.sizeBytes)}, ${attachment.mimeType}${uploadNote})`,
+    );
+  }
+
+  return `\n\n${lines.join("\n")}\n`;
 }
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
@@ -321,37 +376,67 @@ export function registerChatStreamHandlers() {
       let attachmentInfo = "";
       // Display-only attachment info uses <dyad-attachment> tags for inline rendering
       let displayAttachmentInfo = "";
+      const storedAttachments: StoredChatAttachment[] = [];
+      const manifestEntries: AttachmentManifestEntry[] = [];
+      const usedLogicalNames = new Set<string>();
+      const appPath = getDyadAppPath(chat.app.path);
+
+      for (const existingAttachment of await listStoredAttachments(appPath)) {
+        usedLogicalNames.add(existingAttachment.logicalName);
+      }
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
         // Create persistent .dyad/media directory for this app
-        const appPath = getDyadAppPath(chat.app.path);
         const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
         }
         await ensureDyadGitignored(appPath);
 
-        for (let i = 0; i < req.attachments.length; i++) {
-          const attachment = req.attachments[i];
-          // Generate a unique filename (include index to avoid collisions
-          // when multiple attachments share the same name within the same ms)
-          const hash = crypto
-            .createHash("md5")
-            .update(attachment.name + Date.now() + i)
-            .digest("hex");
-          const fileExtension = path.extname(attachment.name);
-          const filename = `${hash}${fileExtension}`;
-
+        for (const attachment of req.attachments) {
           // Extract the base64 data (remove the data:mime/type;base64, prefix)
           const base64Data = attachment.data.split(";base64,").pop() || "";
           const fileBuffer = Buffer.from(base64Data, "base64");
+          const hash = crypto
+            .createHash("md5")
+            .update(fileBuffer)
+            .digest("hex");
+          const fileExtension = path.extname(attachment.name);
+          const filename = `${hash}${fileExtension}`;
+          const logicalName = createUniqueAttachmentLogicalName(
+            attachment.name,
+            usedLogicalNames,
+          );
 
           // Save to .dyad/media dir
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
           attachmentPaths.push(persistentPath);
+          storedAttachments.push({
+            logicalName,
+            originalName: attachment.name,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+            filePath: persistentPath,
+            attachmentType: attachment.attachmentType,
+          });
+          manifestEntries.push({
+            logicalName,
+            originalName: attachment.name,
+            storedFileName: filename,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+            createdAt: new Date().toISOString(),
+          });
+          sendTelemetryEvent("attachment.stored", {
+            appId: chat.app.id,
+            chatId: req.chatId,
+            attachmentType: attachment.attachmentType,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+          });
 
           // Build dyad-media:// URL for display
           // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
@@ -364,7 +449,7 @@ export function registerChatStreamHandlers() {
 
           if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the .dyad/media path so the AI can copy it into the codebase
-            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
+            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool when tools are available, or emit a <dyad-copy> tag otherwise, to copy this file into the codebase at the appropriate location.\n`;
           } else {
             // For chat-context, provide file info for reference (no path to avoid auto-copying)
             attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
@@ -382,8 +467,9 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      // Build the full AI prompt (with .dyad/media paths and copy_file instructions)
-      let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      // Build the full AI prompt. Attachment-specific instructions are added
+      // to the user message, never the system prompt.
+      let userPrompt = req.prompt;
       // Build the display prompt (with <dyad-attachment> tags for inline rendering)
       // This separates what the user sees from what the AI receives.
       let displayUserPrompt: string | undefined;
@@ -443,6 +529,27 @@ export function registerChatStreamHandlers() {
           let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {
             attachmentPaths.push(media.filePath);
+            const logicalName = createUniqueAttachmentLogicalName(
+              media.fileName,
+              usedLogicalNames,
+            );
+            const stat = await fs.promises.stat(media.filePath);
+            storedAttachments.push({
+              logicalName,
+              originalName: media.fileName,
+              mimeType: media.mimeType,
+              sizeBytes: stat.size,
+              filePath: media.filePath,
+              attachmentType: "chat-context",
+            });
+            manifestEntries.push({
+              logicalName,
+              originalName: media.fileName,
+              storedFileName: media.fileName,
+              mimeType: media.mimeType,
+              sizeBytes: stat.size,
+              createdAt: new Date().toISOString(),
+            });
             const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
             mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
           }
@@ -465,6 +572,8 @@ export function registerChatStreamHandlers() {
           logger.error("Failed to resolve media mentions:", e);
         }
       }
+
+      await appendAttachmentManifestEntries(appPath, manifestEntries);
 
       // Expand /implement-plan= into full implementation prompt
       // Keep the original short form for display in the UI; the expanded
@@ -546,13 +655,20 @@ ${componentSnippet}
         }
       }
 
+      const defaultAiUserPrompt =
+        userPrompt + (attachmentInfo ? attachmentInfo : "");
+      const localAgentAiUserPrompt =
+        userPrompt + buildLocalAgentAttachmentInfo(storedAttachments);
+
       const [insertedUserMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content:
-            implementPlanDisplayPrompt ?? displayUserPrompt ?? userPrompt,
+            implementPlanDisplayPrompt ??
+            displayUserPrompt ??
+            defaultAiUserPrompt,
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
@@ -710,6 +826,9 @@ ${componentSnippet}
         }
         const useReferencedAppManifest =
           willUseLocalAgentStream && referencedAppsForAgent.length > 0;
+        const effectiveAiUserPrompt = willUseLocalAgentStream
+          ? localAgentAiUserPrompt
+          : defaultAiUserPrompt;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
@@ -767,7 +886,7 @@ ${componentSnippet}
             if (messageHistory[i].role === "user") {
               messageHistory[i] = {
                 ...messageHistory[i],
-                content: userPrompt,
+                content: effectiveAiUserPrompt,
               };
               break;
             }
@@ -977,7 +1096,6 @@ This conversation includes one or more image attachments. When the user uploads 
 5. For screenshots of code or errors, try to identify the issue or explain the code.
 `;
         }
-
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
             []
@@ -1041,6 +1159,10 @@ This conversation includes one or more image attachments. When the user uploads 
               chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
                 lastUserMessage,
                 attachmentPaths,
+                {
+                  includeImageAttachments: !willUseLocalAgentStream,
+                  inlineTextAttachments: !willUseLocalAgentStream,
+                },
               );
             }
             // Save aiMessagesJson for modes that use handleLocalAgentStream
@@ -1943,6 +2065,10 @@ async function replaceTextAttachmentWithContent(
 async function prepareMessageWithAttachments(
   message: ModelMessage,
   attachmentPaths: string[],
+  options: {
+    includeImageAttachments?: boolean;
+    inlineTextAttachments?: boolean;
+  } = {},
 ): Promise<ModelMessage> {
   let textContent = message.content;
   // Get the original text content
@@ -1953,14 +2079,16 @@ async function prepareMessageWithAttachments(
     return message;
   }
 
-  // Process text file attachments - replace placeholder tags with full content
-  for (const filePath of attachmentPaths) {
-    const fileName = path.basename(filePath);
-    textContent = await replaceTextAttachmentWithContent(
-      textContent,
-      filePath,
-      fileName,
-    );
+  if (options.inlineTextAttachments !== false) {
+    // Process text file attachments - replace placeholder tags with full content
+    for (const filePath of attachmentPaths) {
+      const fileName = path.basename(filePath);
+      textContent = await replaceTextAttachmentWithContent(
+        textContent,
+        filePath,
+        fileName,
+      );
+    }
   }
 
   // For user messages with attachments, create a content array
@@ -1972,29 +2100,31 @@ async function prepareMessageWithAttachments(
     text: textContent,
   });
 
-  // Add image parts for any image attachments
-  for (const filePath of attachmentPaths) {
-    const ext = path.extname(filePath).toLowerCase();
-    if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) {
-      try {
-        // Read the file as a buffer and convert to base64 string
-        // Using base64 strings instead of raw Buffers ensures proper JSON serialization
-        // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
-        const imageBuffer = await readFile(filePath);
-        const mimeType =
-          ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
-        const base64Data = imageBuffer.toString("base64");
+  if (options.includeImageAttachments !== false) {
+    // Add image parts for any image attachments
+    for (const filePath of attachmentPaths) {
+      const ext = path.extname(filePath).toLowerCase();
+      if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) {
+        try {
+          // Read the file as a buffer and convert to base64 string
+          // Using base64 strings instead of raw Buffers ensures proper JSON serialization
+          // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
+          const imageBuffer = await readFile(filePath);
+          const mimeType =
+            ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
+          const base64Data = imageBuffer.toString("base64");
 
-        // Add the image to the content parts with base64 data and mediaType
-        contentParts.push({
-          type: "image",
-          image: base64Data,
-          mediaType: mimeType,
-        });
+          // Add the image to the content parts with base64 data and mediaType
+          contentParts.push({
+            type: "image",
+            image: base64Data,
+            mediaType: mimeType,
+          });
 
-        logger.log(`Added image attachment: ${filePath}`);
-      } catch (error) {
-        logger.error(`Error reading image file: ${error}`);
+          logger.log(`Added image attachment: ${filePath}`);
+        } catch (error) {
+          logger.error(`Error reading image file: ${error}`);
+        }
       }
     }
   }

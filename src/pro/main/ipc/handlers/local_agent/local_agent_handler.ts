@@ -282,7 +282,10 @@ function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
     toolName === "execute_sandbox_script" &&
     typeof input.script === "string"
   ) {
-    return /attachments:?/.test(input.script);
+    return (
+      /\b(?:read_file|file_stats)\s*\(\s*["']attachments:/.test(input.script) ||
+      /\blist_files\s*\(\s*["']attachments:?["']\s*\)/.test(input.script)
+    );
   }
   if (toolName === "read_file" && typeof input.path === "string") {
     return input.path.startsWith("attachments:");

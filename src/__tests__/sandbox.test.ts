@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendAttachmentManifestEntries,
+  appendAttachmentManifestEntriesWithLogicalNames,
   createUniqueAttachmentLogicalName,
   getAttachmentsManifestPath,
   getDyadMediaDir,
@@ -90,6 +91,31 @@ describe("sandbox capabilities", () => {
     expect(
       createUniqueAttachmentLogicalName("folder\\data:raw.txt", usedNames),
     ).toBe("data_raw.txt");
+  });
+
+  it("allocates manifest logical names under the manifest lock", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await fs.writeFile(path.join(mediaDir, "stored-log-2.txt"), "line3\n");
+
+    const [entry] = await appendAttachmentManifestEntriesWithLogicalNames(
+      appPath,
+      [
+        {
+          requestedLogicalName: "server.log",
+          originalName: "server.log",
+          storedFileName: "stored-log-2.txt",
+          mimeType: "text/plain",
+          sizeBytes: 6,
+          createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+        },
+      ],
+    );
+
+    expect(entry.logicalName).toBe("server-2.log");
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+      "attachments:server-2.log",
+    ]);
   });
 
   it("lists attachment logical paths and returns file stats", async () => {

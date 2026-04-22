@@ -96,12 +96,11 @@ import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import {
-  appendAttachmentManifestEntries,
+  appendAttachmentManifestEntriesWithLogicalNames,
   createUniqueAttachmentLogicalName,
   DYAD_MEDIA_DIR_NAME,
-  listStoredAttachments,
   toAttachmentLogicalPath,
-  type AttachmentManifestEntry,
+  type AttachmentManifestEntryInput,
   type StoredAttachmentInfo,
 } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
@@ -135,6 +134,13 @@ type StoredChatAttachment = StoredAttachmentInfo & {
   attachmentType: "upload-to-codebase" | "chat-context";
 };
 
+type PendingStoredChatAttachment = Omit<
+  StoredChatAttachment,
+  "logicalName" | "originalName" | "storedFileName" | "mimeType" | "sizeBytes"
+> & {
+  attachmentType: "upload-to-codebase" | "chat-context";
+};
+
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
 
@@ -152,6 +158,29 @@ const TEXT_FILE_EXTENSIONS = [
   ".html",
   ".css",
 ];
+const INLINE_IMAGE_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+]);
+
+function getInlineImageMimeType(filePath: string): string | null {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!INLINE_IMAGE_EXTENSIONS.has(ext)) {
+    return null;
+  }
+  return ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
+}
+
+function isInlineImageAttachmentPath(filePath: string): boolean {
+  return getInlineImageMimeType(filePath) !== null;
+}
+
+function isInlineImageAttachment(attachment: StoredChatAttachment): boolean {
+  return isInlineImageAttachmentPath(attachment.filePath);
+}
 
 async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
@@ -175,20 +204,30 @@ function buildLocalAgentAttachmentInfo(
     includeCopyFile: boolean;
   },
 ): string {
-  if (attachments.length === 0) {
+  const diskAttachments = attachments.filter(
+    (attachment) =>
+      !isInlineImageAttachment(attachment) ||
+      (options.includeCopyFile &&
+        attachment.attachmentType === "upload-to-codebase"),
+  );
+  if (diskAttachments.length === 0) {
     return "";
   }
 
-  const lines =
-    options.includeSandboxScript && isSandboxSupportedPlatform()
+  const hasReadableAttachment = diskAttachments.some(
+    (attachment) => !isInlineImageAttachment(attachment),
+  );
+  const lines = hasReadableAttachment
+    ? options.includeSandboxScript && isSandboxSupportedPlatform()
       ? [
           "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
         ]
       : [
           "Attachments available on disk (use attachments:<name> with read_file):",
-        ];
+        ]
+    : ["Attachments available on disk for copying into the codebase:"];
 
-  for (const attachment of attachments) {
+  for (const attachment of diskAttachments) {
     const uploadNote =
       options.includeCopyFile &&
       attachment.attachmentType === "upload-to-codebase"
@@ -205,9 +244,7 @@ function buildLocalAgentAttachmentInfo(
 function hasScriptReadableAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
-  return attachments.some(
-    (attachment) => !attachment.mimeType.toLowerCase().startsWith("image/"),
-  );
+  return attachments.some((attachment) => !isInlineImageAttachment(attachment));
 }
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
@@ -367,14 +404,11 @@ export function registerChatStreamHandlers() {
       let attachmentInfo = "";
       // Display-only attachment info uses <dyad-attachment> tags for inline rendering
       let displayAttachmentInfo = "";
-      const storedAttachments: StoredChatAttachment[] = [];
-      const manifestEntries: AttachmentManifestEntry[] = [];
+      let storedAttachments: StoredChatAttachment[] = [];
+      const pendingStoredAttachments: PendingStoredChatAttachment[] = [];
+      const manifestEntries: AttachmentManifestEntryInput[] = [];
       const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
-
-      for (const existingAttachment of await listStoredAttachments(appPath)) {
-        usedLogicalNames.add(existingAttachment.logicalName);
-      }
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
@@ -405,17 +439,12 @@ export function registerChatStreamHandlers() {
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
           attachmentPaths.push(persistentPath);
-          storedAttachments.push({
-            logicalName,
-            originalName: attachment.name,
-            storedFileName: filename,
-            mimeType: attachment.type,
-            sizeBytes: fileBuffer.byteLength,
+          pendingStoredAttachments.push({
             filePath: persistentPath,
             attachmentType: attachment.attachmentType,
           });
           manifestEntries.push({
-            logicalName,
+            requestedLogicalName: logicalName,
             originalName: attachment.name,
             storedFileName: filename,
             mimeType: attachment.type,
@@ -526,17 +555,12 @@ export function registerChatStreamHandlers() {
               usedLogicalNames,
             );
             const stat = await fs.promises.stat(media.filePath);
-            storedAttachments.push({
-              logicalName,
-              originalName: media.fileName,
-              storedFileName: media.fileName,
-              mimeType: media.mimeType,
-              sizeBytes: stat.size,
+            pendingStoredAttachments.push({
               filePath: media.filePath,
               attachmentType: "chat-context",
             });
             manifestEntries.push({
-              logicalName,
+              requestedLogicalName: logicalName,
               originalName: media.fileName,
               storedFileName: media.fileName,
               mimeType: media.mimeType,
@@ -566,7 +590,16 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      await appendAttachmentManifestEntries(appPath, manifestEntries);
+      const finalizedManifestEntries =
+        await appendAttachmentManifestEntriesWithLogicalNames(
+          appPath,
+          manifestEntries,
+        );
+      storedAttachments = finalizedManifestEntries.map((entry, index) => ({
+        ...entry,
+        filePath: pendingStoredAttachments[index].filePath,
+        attachmentType: pendingStoredAttachments[index].attachmentType,
+      }));
 
       // Expand /implement-plan= into full implementation prompt
       // Keep the original short form for display in the UI; the expanded
@@ -678,7 +711,8 @@ ${componentSnippet}
       const localAgentAiUserPrompt =
         userPrompt +
         buildLocalAgentAttachmentInfo(storedAttachments, {
-          includeSandboxScript: selectedChatMode === "local-agent",
+          includeSandboxScript:
+            selectedChatMode === "local-agent" || selectedChatMode === "ask",
           includeCopyFile: selectedChatMode === "local-agent",
         });
       safeSend(event.sender, "chat:response:chunk", {
@@ -2039,15 +2073,13 @@ async function prepareMessageWithAttachments(
   if (options.includeImageAttachments !== false) {
     // Add image parts for any image attachments
     for (const filePath of attachmentPaths) {
-      const ext = path.extname(filePath).toLowerCase();
-      if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) {
+      const mimeType = getInlineImageMimeType(filePath);
+      if (mimeType) {
         try {
           // Read the file as a buffer and convert to base64 string
           // Using base64 strings instead of raw Buffers ensures proper JSON serialization
           // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
           const imageBuffer = await readFile(filePath);
-          const mimeType =
-            ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
           const base64Data = imageBuffer.toString("base64");
 
           // Add the image to the content parts with base64 data and mediaType

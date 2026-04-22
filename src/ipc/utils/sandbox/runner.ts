@@ -26,8 +26,8 @@ export interface SandboxRunResult {
   truncated: boolean;
   fullOutputPath?: string;
   executionMs: number;
-  instructionsUsed: number;
-  heapBytesUsed: number;
+  instructionsUsed?: number;
+  heapBytesUsed?: number;
 }
 
 export function isSandboxSupportedPlatform(): boolean {
@@ -100,12 +100,12 @@ async function spillOutput(params: {
   appPath: string;
   output: string;
 }): Promise<string> {
-  const capped = truncateUtf8(params.output, SANDBOX_UI_OUTPUT_LIMIT_BYTES);
   const hash = crypto
     .createHash("sha256")
-    .update(capped)
+    .update(params.output)
     .digest("hex")
     .slice(0, 16);
+  const capped = truncateUtf8(params.output, SANDBOX_UI_OUTPUT_LIMIT_BYTES);
   const outputPath = path.join(
     getDyadMediaDir(params.appPath),
     `script-output-${hash}.txt`,
@@ -171,8 +171,6 @@ export async function runSandboxScript(params: {
       truncated,
       fullOutputPath,
       executionMs: Date.now() - started,
-      instructionsUsed: 0,
-      heapBytesUsed: 0,
     };
   } catch (error) {
     if (abortController.signal.aborted) {

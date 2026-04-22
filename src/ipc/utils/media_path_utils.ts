@@ -26,6 +26,13 @@ export interface StoredAttachmentInfo {
   filePath: string;
 }
 
+export type AttachmentManifestEntryInput = Omit<
+  AttachmentManifestEntry,
+  "logicalName"
+> & {
+  requestedLogicalName: string;
+};
+
 /**
  * Check if an absolute path falls within the app's .dyad/media directory.
  * Used to validate that file copy operations only read from the allowed media dir.
@@ -173,6 +180,44 @@ async function appendAttachmentManifestEntriesUnlocked(
   );
 }
 
+async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
+  appPath: string,
+  entries: AttachmentManifestEntryInput[],
+): Promise<AttachmentManifestEntry[]> {
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const manifestPath = getAttachmentsManifestPath(appPath);
+  await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+  const existing = await readAttachmentManifest(appPath);
+  const byLogicalName = new Map<string, AttachmentManifestEntry>();
+  const usedNames = new Set<string>();
+  for (const entry of existing) {
+    byLogicalName.set(entry.logicalName, entry);
+    usedNames.add(entry.logicalName);
+  }
+
+  const finalized = entries.map(({ requestedLogicalName, ...entry }) => ({
+    ...entry,
+    logicalName: createUniqueAttachmentLogicalName(
+      requestedLogicalName,
+      usedNames,
+    ),
+  }));
+
+  for (const entry of finalized) {
+    byLogicalName.set(entry.logicalName, entry);
+  }
+
+  await fs.writeFile(
+    manifestPath,
+    JSON.stringify([...byLogicalName.values()], null, 2),
+  );
+
+  return finalized;
+}
+
 export async function appendAttachmentManifestEntries(
   appPath: string,
   entries: AttachmentManifestEntry[],
@@ -182,6 +227,37 @@ export async function appendAttachmentManifestEntries(
   );
 }
 
+export async function appendAttachmentManifestEntriesWithLogicalNames(
+  appPath: string,
+  entries: AttachmentManifestEntryInput[],
+): Promise<AttachmentManifestEntry[]> {
+  return withLock(`attachments-manifest:${appPath}`, () =>
+    appendAttachmentManifestEntriesWithLogicalNamesUnlocked(appPath, entries),
+  );
+}
+
+async function toStoredAttachmentInfoIfPresent(
+  mediaDir: string,
+  entry: AttachmentManifestEntry,
+): Promise<StoredAttachmentInfo | null> {
+  const filePath = path.join(mediaDir, path.basename(entry.storedFileName));
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+      return null;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+  return {
+    ...entry,
+    filePath,
+  };
+}
+
 export async function listStoredAttachments(
   appPath: string,
 ): Promise<StoredAttachmentInfo[]> {
@@ -189,22 +265,13 @@ export async function listStoredAttachments(
   const entries = await readAttachmentManifest(appPath);
   const storedAttachments: StoredAttachmentInfo[] = [];
   for (const entry of entries) {
-    const filePath = path.join(mediaDir, path.basename(entry.storedFileName));
-    try {
-      const stat = await fs.stat(filePath);
-      if (!stat.isFile()) {
-        continue;
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        continue;
-      }
-      throw error;
+    const storedAttachment = await toStoredAttachmentInfoIfPresent(
+      mediaDir,
+      entry,
+    );
+    if (storedAttachment) {
+      storedAttachments.push(storedAttachment);
     }
-    storedAttachments.push({
-      ...entry,
-      filePath,
-    });
   }
   return storedAttachments;
 }
@@ -214,6 +281,12 @@ export async function resolveAttachmentLogicalPath(
   logicalPath: string,
 ): Promise<StoredAttachmentInfo | null> {
   const logicalName = stripAttachmentLogicalPrefix(logicalPath);
-  const entries = await listStoredAttachments(appPath);
-  return entries.find((entry) => entry.logicalName === logicalName) ?? null;
+  const entry =
+    (await readAttachmentManifest(appPath)).find(
+      (manifestEntry) => manifestEntry.logicalName === logicalName,
+    ) ?? null;
+  if (!entry) {
+    return null;
+  }
+  return toStoredAttachmentInfoIfPresent(getDyadMediaDir(appPath), entry);
 }

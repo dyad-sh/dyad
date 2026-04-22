@@ -29,6 +29,10 @@ export interface SandboxReadFileOptions {
 const DENIED_PATH_PATTERNS = [
   /(^|[/\\])\.env[^/\\]*(?:[/\\]|$)/i,
   /(^|[/\\])\.git([/\\]|$)/i,
+  /(^|[/\\])\.npmrc$/i,
+  /(^|[/\\])\.yarnrc(?:\.yml)?$/i,
+  /(^|[/\\])\.pypirc$/i,
+  /(^|[/\\])\.(?:bash|zsh|fish|python|mysql|psql|sqlite)_history$/i,
   /(^|[/\\])node_modules([/\\]|$)/i,
   /(^|[/\\])\.ssh([/\\]|$)/i,
   /(^|[/\\])\.aws([/\\]|$)/i,
@@ -330,7 +334,18 @@ export async function sandboxListFiles(
     assertAllowedGuestPath(dir);
     const dirPath = safeJoin(appPath, dir);
     const realAppPath = await fs.realpath(appPath);
-    const realDirPath = await fs.realpath(dirPath);
+    let realDirPath: string;
+    try {
+      realDirPath = await fs.realpath(dirPath);
+    } catch (error) {
+      if (isNodeErrorWithCode(error, "ENOENT")) {
+        throw new DyadError(
+          `Directory not found: ${dir}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      throw error;
+    }
     const relative = path.relative(realAppPath, realDirPath);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new DyadError(

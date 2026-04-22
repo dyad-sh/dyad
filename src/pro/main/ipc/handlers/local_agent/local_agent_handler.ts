@@ -305,6 +305,7 @@ export async function handleLocalAgentStream(
     planModeOnly = false,
     messageOverride,
     settingsOverride,
+    currentTurnHasOnDiskAttachment,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -325,6 +326,7 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
+    currentTurnHasOnDiskAttachment?: boolean;
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
@@ -632,11 +634,12 @@ export async function handleLocalAgentStream(
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");
-    const currentTurnHasOnDiskAttachment =
-      latestUserMessage != null &&
-      getMessageText(latestUserMessage).includes(
-        "Attachments available on disk",
-      );
+    const shouldWarnIfAttachmentUnread =
+      currentTurnHasOnDiskAttachment ??
+      (latestUserMessage != null &&
+        getMessageText(latestUserMessage).includes(
+          "Attachments available on disk",
+        ));
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
     let baseMessageHistoryCount = messageHistory.length;
@@ -1326,7 +1329,7 @@ export async function handleLocalAgentStream(
       );
     }
 
-    if (currentTurnHasOnDiskAttachment && !usedAttachmentAccessTool) {
+    if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
       const unreadAttachmentWarning =
         "Your model didn't read the file. Try a larger model or paste the contents inline.";
       const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;

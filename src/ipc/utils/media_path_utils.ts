@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import { withLock } from "./lock_utils";
 
 /**
  * The subdirectory within each app where uploaded media files are stored.
@@ -87,7 +88,12 @@ export function stripAttachmentLogicalPrefix(logicalPath: string): string {
 
 function normalizeAttachmentLogicalName(originalName: string): string {
   const fileName = originalName.split(/[\\/]/).filter(Boolean).pop()?.trim();
-  return (fileName || "attachment").replace(/[:\0\r\n]/g, "_");
+  const sanitized = (fileName || "attachment")
+    .replace(/```/g, "_")
+    .replace(/[<>{}`:\0\r\n]/g, "_")
+    .slice(0, 160)
+    .trim();
+  return sanitized || "attachment";
 }
 
 export function createUniqueAttachmentLogicalName(
@@ -132,12 +138,15 @@ async function readAttachmentManifest(
         typeof entry.sizeBytes === "number" &&
         typeof entry.createdAt === "string",
     );
-  } catch {
-    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
   }
 }
 
-export async function appendAttachmentManifestEntries(
+async function appendAttachmentManifestEntriesUnlocked(
   appPath: string,
   entries: AttachmentManifestEntry[],
 ): Promise<void> {
@@ -158,6 +167,15 @@ export async function appendAttachmentManifestEntries(
   await fs.writeFile(
     manifestPath,
     JSON.stringify([...byLogicalName.values()], null, 2),
+  );
+}
+
+export async function appendAttachmentManifestEntries(
+  appPath: string,
+  entries: AttachmentManifestEntry[],
+): Promise<void> {
+  return withLock(`attachments-manifest:${appPath}`, () =>
+    appendAttachmentManifestEntriesUnlocked(appPath, entries),
   );
 }
 

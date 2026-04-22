@@ -66,6 +66,7 @@ Available host functions:
 Return a concise value. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "ask",
+    modifiesState: true,
 
     isEnabled: () => isSandboxSupportedPlatform(),
 

@@ -81,11 +81,22 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const attachment = args.path.startsWith("attachments:")
-      ? await resolveAttachmentLogicalPath(ctx.appPath, args.path)
-      : null;
-    const fullFilePath =
-      attachment?.filePath ?? safeJoin(ctx.appPath, args.path);
+    let fullFilePath: string;
+    if (args.path.startsWith("attachments:")) {
+      const attachment = await resolveAttachmentLogicalPath(
+        ctx.appPath,
+        args.path,
+      );
+      if (!attachment) {
+        throw new DyadError(
+          `Attachment does not exist: ${args.path}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      fullFilePath = attachment.filePath;
+    } else {
+      fullFilePath = safeJoin(ctx.appPath, args.path);
+    }
 
     if (!fs.existsSync(fullFilePath)) {
       throw new DyadError(

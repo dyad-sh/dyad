@@ -74,8 +74,12 @@ const TASK_TYPES: Array<{ value: TaskType; label: string; icon: React.ReactNode;
   { value: "review", label: "Review", icon: <CheckCircle2 className="h-4 w-4" />, description: "Review code for issues" },
 ];
 
+// Sentinel value for "no language selected" — Radix Select rejects empty strings
+// because empty is reserved for clearing the selection.
+const LANGUAGE_AUTO = "__auto";
+
 const LANGUAGES: Array<{ value: string; label: string }> = [
-  { value: "", label: "Auto-detect" },
+  { value: LANGUAGE_AUTO, label: "Auto-detect" },
   { value: "typescript", label: "TypeScript" },
   { value: "javascript", label: "JavaScript" },
   { value: "python", label: "Python" },
@@ -105,7 +109,7 @@ const LANGUAGES: Array<{ value: string; label: string }> = [
 export default function CodingAgentPage() {
   const [taskType, setTaskType] = useState<TaskType>("code");
   const [taskDescription, setTaskDescription] = useState("");
-  const [selectedLanguage, setSelectedLanguage] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(LANGUAGE_AUTO);
   const [codeSnippet, setCodeSnippet] = useState("");
   const [showCodeSnippet, setShowCodeSnippet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -142,16 +146,20 @@ export default function CodingAgentPage() {
   const handleRunTask = async () => {
     if (!taskDescription.trim()) return;
     const context: Partial<TaskContext> = {};
-    if (selectedLanguage) {
-      context.language = selectedLanguage;
+    const resolvedLanguage =
+      selectedLanguage && selectedLanguage !== LANGUAGE_AUTO
+        ? selectedLanguage
+        : "";
+    if (resolvedLanguage) {
+      context.language = resolvedLanguage;
     }
     if (codeSnippet.trim()) {
-      const ext = selectedLanguage || "txt";
+      const ext = resolvedLanguage || "txt";
       context.files = [
         {
           path: `snippet.${ext}`,
           content: codeSnippet,
-          language: selectedLanguage || "text",
+          language: resolvedLanguage || "text",
           relevance: 1.0,
         },
       ];
@@ -237,7 +245,7 @@ export default function CodingAgentPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {LANGUAGES.map((lang) => (
-                      <SelectItem key={lang.value || "__auto"} value={lang.value}>
+                      <SelectItem key={lang.value} value={lang.value}>
                         {lang.label}
                       </SelectItem>
                     ))}

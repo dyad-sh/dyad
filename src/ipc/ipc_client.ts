@@ -245,6 +245,10 @@ export class IpcClient {
     });
 
     this.ipcRenderer.on("chat:response:end", (payload) => {
+      if (!payload || typeof payload !== "object" || !("chatId" in payload)) {
+        console.warn("[IPC] chat:response:end received invalid payload:", payload);
+        return;
+      }
       const { chatId } = payload as unknown as ChatResponseEnd;
       const callbacks = this.chatStreams.get(chatId);
       if (callbacks) {
@@ -350,12 +354,14 @@ export class IpcClient {
 
     // MCP tool consent request from main
     this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
+      if (!payload || typeof payload !== "object") return;
       const handler = this.mcpConsentHandlers.get("consent");
       if (handler) handler(payload);
     });
 
     // Agent tool consent request from main
     this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
+      if (!payload || typeof payload !== "object") return;
       const handler = this.agentConsentHandlers.get("consent");
       if (handler) handler(payload);
     });

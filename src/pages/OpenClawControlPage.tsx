@@ -64,9 +64,9 @@ import {
   XCircle,
   AlertTriangle,
   Radio,
+  Brain,
   Maximize2,
   Minimize2,
-  Brain,
   Zap,
   ChevronDown,
   ChevronRight,
@@ -87,9 +87,10 @@ const integrationClient = OpenClawIntegrationClient.getInstance();
 export function OpenClawControlPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("portal");
-  const [isPortalFullscreen, setIsPortalFullscreen] = useState(false);
-  const [portalLoadError, setPortalLoadError] = useState(false);
+  const [portalView, setPortalView] = useState<"dashboard" | "iframe">("iframe");
   const [portalKey, setPortalKey] = useState(0);
+  const [portalLoadError, setPortalLoadError] = useState(false);
+  const [isPortalFullscreen, setIsPortalFullscreen] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Real-time event subscription — daemon events invalidate queries instantly
@@ -380,29 +381,53 @@ export function OpenClawControlPage() {
         </TabsList>
 
         {/* ================================================================= */}
-        {/* PORTAL TAB — iframe to real OpenClaw Control                       */}
+        {/* PORTAL TAB — built-in dashboard + optional iframe view             */}
         {/* ================================================================= */}
         <TabsContent
           value="portal"
-          className={`flex-1 m-0 ${isPortalFullscreen ? "fixed inset-0 z-50 bg-background flex flex-col" : "flex flex-col"}`}
+          className={`flex-1 m-0 flex flex-col ${
+            isPortalFullscreen ? "fixed inset-0 z-50 bg-background" : ""
+          }`}
         >
-          <div className="flex flex-col flex-1 min-h-0 h-full">
-            <div className="flex items-center justify-between px-4 py-1 border-b shrink-0">
-              <span className="text-xs text-muted-foreground">
-                http://127.0.0.1:{portalPort}
-              </span>
+          {/* Sub-view toolbar */}
+          <div className="flex items-center justify-between px-4 py-1.5 border-b shrink-0">
+            <div className="flex items-center gap-1 rounded-md border p-0.5 bg-muted/40">
+              <Button
+                size="sm"
+                variant={portalView === "dashboard" ? "secondary" : "ghost"}
+                className="h-6 px-2 text-xs"
+                onClick={() => setPortalView("dashboard")}
+              >
+                Dashboard
+              </Button>
+              <Button
+                size="sm"
+                variant={portalView === "iframe" ? "secondary" : "ghost"}
+                className="h-6 px-2 text-xs"
+                onClick={() => {
+                  setPortalView("iframe");
+                  setPortalLoadError(false);
+                }}
+              >
+                Portal (iframe)
+              </Button>
+            </div>
+            {portalView === "iframe" && (
               <div className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground font-mono">
+                  127.0.0.1:{portalPort}
+                </span>
                 <Button
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6"
-                  title="Reload portal"
+                  title="Reload"
                   onClick={() => {
                     setPortalLoadError(false);
                     setPortalKey((k) => k + 1);
                   }}
                 >
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <RefreshCw className="h-3 w-3" />
                 </Button>
                 <Button
                   size="icon"
@@ -411,15 +436,63 @@ export function OpenClawControlPage() {
                   onClick={() => setIsPortalFullscreen((f) => !f)}
                 >
                   {isPortalFullscreen ? (
-                    <Minimize2 className="h-3.5 w-3.5" />
+                    <Minimize2 className="h-3 w-3" />
                   ) : (
-                    <Maximize2 className="h-3.5 w-3.5" />
+                    <Maximize2 className="h-3 w-3" />
                   )}
                 </Button>
               </div>
+            )}
+          </div>
+
+          {/* Dashboard view */}
+          {portalView === "dashboard" && (
+            <div className="flex-1 overflow-auto p-4">
+              <GatewayDashboard
+                gatewayStatus={gatewayStatus}
+                isStatusLoading={isStatusLoading}
+                isConnected={isConnected}
+                isBridged={isBridged}
+                isLoading={isLoading}
+                portalPort={portalPort}
+                gatewayToken={gatewayToken}
+                providers={providers}
+                onStart={() => startMutation.mutate()}
+                onStop={() => stopMutation.mutate()}
+                onRestart={() => restartMutation.mutate()}
+              />
             </div>
-            {isConnected ? (
-              portalLoadError ? (
+          )}
+
+          {/* Iframe view */}
+          {portalView === "iframe" && (
+            <div className="flex-1 flex flex-col min-h-0">
+              {isStatusLoading && !gatewayStatus ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : !isConnected ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <Card className="max-w-sm text-center">
+                    <CardHeader>
+                      <AlertTriangle className="h-10 w-10 mx-auto text-orange-500 mb-2" />
+                      <CardTitle>Gateway Offline</CardTitle>
+                      <CardDescription>
+                        Start the OpenClaw gateway to load the portal.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        onClick={() => startMutation.mutate()}
+                        disabled={isLoading}
+                        className="bg-gradient-to-r from-rose-500 to-orange-500 text-white"
+                      >
+                        <Play className="h-4 w-4 mr-1" />Start Gateway
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : portalLoadError ? (
                 <div className="flex-1 flex items-center justify-center">
                   <Card className="max-w-sm text-center">
                     <CardHeader>
@@ -427,7 +500,7 @@ export function OpenClawControlPage() {
                       <CardTitle>Portal Failed to Load</CardTitle>
                       <CardDescription>
                         The gateway is running but the control UI could not be loaded.
-                        This can happen if the external gateway restarted or the assets are missing.
+                        The external OpenClaw daemon's control-ui may not be installed.
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -438,16 +511,21 @@ export function OpenClawControlPage() {
                         }}
                         className="w-full"
                       >
-                        <RefreshCw className="h-4 w-4 mr-1" />
-                        Retry
+                        <RefreshCw className="h-4 w-4 mr-1" />Retry
                       </Button>
                       <Button
                         variant="outline"
                         className="w-full"
                         onClick={() => window.open(portalUrl, "_blank")}
                       >
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        Open in Browser
+                        <ExternalLink className="h-4 w-4 mr-1" />Open in Browser
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full text-xs"
+                        onClick={() => setPortalView("dashboard")}
+                      >
+                        Switch to built-in Dashboard
                       </Button>
                     </CardContent>
                   </Card>
@@ -458,7 +536,9 @@ export function OpenClawControlPage() {
                   src={portalUrl}
                   className="flex-1 w-full border-0"
                   style={{
-                    minHeight: isPortalFullscreen ? "calc(100vh - 2rem)" : "calc(100vh - 12rem)",
+                    minHeight: isPortalFullscreen
+                      ? "calc(100vh - 2rem)"
+                      : "calc(100vh - 14rem)",
                     height: "100%",
                   }}
                   title="OpenClaw Portal"
@@ -466,31 +546,9 @@ export function OpenClawControlPage() {
                   allow="clipboard-read; clipboard-write"
                   onError={() => setPortalLoadError(true)}
                 />
-              )
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <Card className="max-w-sm text-center">
-                  <CardHeader>
-                    <AlertTriangle className="h-10 w-10 mx-auto text-orange-500 mb-2" />
-                    <CardTitle>Gateway Offline</CardTitle>
-                    <CardDescription>
-                      Start the OpenClaw gateway to access the portal.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button
-                      onClick={() => startMutation.mutate()}
-                      disabled={isLoading}
-                      className="bg-gradient-to-r from-rose-500 to-orange-500 text-white"
-                    >
-                      <Play className="h-4 w-4 mr-1" />
-                      Start Gateway
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </TabsContent>
 
         {/* ================================================================= */}
@@ -549,6 +607,222 @@ export function OpenClawControlPage() {
           <CostsPanel />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// =============================================================================
+// GATEWAY DASHBOARD — built-in portal, no external package needed
+// =============================================================================
+
+function GatewayDashboard({
+  gatewayStatus,
+  isStatusLoading,
+  isConnected,
+  isBridged,
+  isLoading,
+  portalPort,
+  gatewayToken,
+  providers,
+  onStart,
+  onStop,
+  onRestart,
+}: {
+  gatewayStatus: any;
+  isStatusLoading: boolean;
+  isConnected: boolean;
+  isBridged: boolean;
+  isLoading: boolean;
+  portalPort: number;
+  gatewayToken: string;
+  providers: any;
+  onStart: () => void;
+  onStop: () => void;
+  onRestart: () => void;
+}) {
+  const providerList: Array<{ name: string; type: string; available: boolean }> =
+    Array.isArray(providers) ? providers : [];
+  const connectedProviders = providerList.filter((p) => p.available).length;
+  const apiUrl = `http://127.0.0.1:${portalPort}/api/status`;
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Status card */}
+      <Card className={`border-2 ${isConnected ? "border-emerald-500/40" : "border-destructive/40"}`}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-destructive"}`} />
+              {isStatusLoading ? "Checking…" : isConnected ? (isBridged ? "Bridged to External Daemon" : "Internal Gateway Running") : "Gateway Offline"}
+            </CardTitle>
+            <div className="flex gap-2">
+              {isConnected ? (
+                <>
+                  <Button size="sm" variant="outline" onClick={onRestart} disabled={isLoading}>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />Restart
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={onStop} disabled={isLoading}>
+                    <Square className="h-3.5 w-3.5 mr-1" />Stop
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={onStart}
+                  disabled={isLoading}
+                  className="bg-gradient-to-r from-rose-500 to-orange-500 text-white"
+                >
+                  <Play className="h-3.5 w-3.5 mr-1" />Start Gateway
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {isConnected && (
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground text-xs">Port</p>
+                <p className="font-mono font-medium">{portalPort}</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground text-xs">Mode</p>
+                <p className="font-medium">{isBridged ? "Bridge" : "Internal"}</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground text-xs">Providers</p>
+                <p className="font-medium">{connectedProviders} / {providerList.length || "—"} online</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground text-xs">Token</p>
+                <p className="font-mono font-medium truncate">{gatewayToken ? gatewayToken.slice(0, 8) + "…" : "none"}</p>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-rose-500" />Chat with AI
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Send messages through OpenClaw to any AI provider
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Use the <strong>Chat</strong> tab to talk to local Ollama models or cloud providers directly.
+            </p>
+            <Badge variant="secondary" className="text-xs">Use Chat tab →</Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-blue-500" />AI Providers
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Connect Ollama, Anthropic, OpenAI and more
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Configure which AI models power OpenClaw's responses and agents.
+            </p>
+            <Badge variant="secondary" className="text-xs">Use Providers tab →</Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Plug className="h-4 w-4 text-purple-500" />Channels
+            </CardTitle>
+            <CardDescription className="text-xs">
+              WhatsApp, Telegram, Discord, Slack and more
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Connect messaging platforms so OpenClaw can relay AI responses.
+            </p>
+            <Badge variant="secondary" className="text-xs">Use Channels tab →</Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Brain className="h-4 w-4 text-amber-500" />Autonomous
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Multi-step AI task execution across JoyCreate
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Let OpenClaw plan and execute complex tasks autonomously.
+            </p>
+            <Badge variant="secondary" className="text-xs">Use Autonomous tab →</Badge>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* API info */}
+      {isConnected && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Globe className="h-4 w-4 text-emerald-500" />Local API
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-muted px-2 py-1 rounded font-mono truncate">
+                {apiUrl}
+              </code>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => window.open(apiUrl, "_blank")}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {gatewayToken && (
+              <p className="text-xs text-muted-foreground">
+                Auth header: <code className="bg-muted px-1 rounded">X-Auth-Token: {gatewayToken}</code>
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {!isConnected && !isStatusLoading && (
+        <Card className="border-dashed">
+          <CardContent className="py-8 text-center">
+            <AlertTriangle className="h-8 w-8 mx-auto text-orange-500 mb-3" />
+            <p className="font-medium mb-1">Gateway is not running</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Click <strong>Start Gateway</strong> above to launch the local OpenClaw server.
+              It will start automatically the next time JoyCreate opens.
+            </p>
+            <Button
+              onClick={onStart}
+              disabled={isLoading}
+              className="bg-gradient-to-r from-rose-500 to-orange-500 text-white"
+            >
+              <Play className="h-4 w-4 mr-1" />Start Gateway
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

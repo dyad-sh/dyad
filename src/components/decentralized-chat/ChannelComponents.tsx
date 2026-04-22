@@ -149,14 +149,15 @@ export function CreateChannelDialog({
   const [name, setName] = useState("");
   const [type, setType] = useState<ChannelType>("text");
   const [topic, setTopic] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("");
+  // "__none" is a sentinel for "no category" — Radix Select rejects empty string values.
+  const [categoryId, setCategoryId] = useState<string>("__none");
   const [isPrivate, setIsPrivate] = useState(false);
 
   const handleCreate = () => {
     if (!name.trim()) return;
     onCreateChannel({
       communityId,
-      categoryId: categoryId || undefined,
+      categoryId: categoryId && categoryId !== "__none" ? categoryId : undefined,
       name: name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
       type,
       topic: topic || undefined,
@@ -165,7 +166,7 @@ export function CreateChannelDialog({
     setName("");
     setType("text");
     setTopic("");
-    setCategoryId("");
+    setCategoryId("__none");
     setIsPrivate(false);
     onOpenChange(false);
   };
@@ -240,7 +241,7 @@ export function CreateChannelDialog({
                   <SelectValue placeholder="None (top-level)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="__none">None</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>
                       {cat.name}

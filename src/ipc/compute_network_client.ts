@@ -37,11 +37,17 @@ class ComputeNetworkClient {
   private constructor() {
     this.ipcRenderer = window.electron.ipcRenderer;
 
-    // Set up event listener from main process
+    // Set up event listener from main process.
+    // The renderer-side preload wrapper strips the IpcRendererEvent and
+    // forwards only the payload, so the listener receives (payload) — NOT
+    // (event, payload) like a raw Electron ipcRenderer.on listener does.
     this.ipcRenderer.on(
       "compute-network:event",
-      (_event: unknown, networkEvent: ComputeNetworkEvent) => {
-        this.dispatchEvent(networkEvent);
+      (networkEvent: unknown) => {
+        if (!networkEvent || typeof networkEvent !== "object") {
+          return;
+        }
+        this.dispatchEvent(networkEvent as ComputeNetworkEvent);
       }
     );
   }
@@ -58,6 +64,10 @@ class ComputeNetworkClient {
   // ============================================================================
 
   private dispatchEvent(event: ComputeNetworkEvent): void {
+    if (!event || !event.type) {
+      console.warn("[ComputeNetworkClient] Event missing type:", event);
+      return;
+    }
     const listeners = this.eventListeners.get("*") || new Set();
     const typeListeners = this.eventListeners.get(event.type) || new Set();
 

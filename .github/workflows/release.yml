@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: [
             { name: "windows", image: "windows-latest" },
-            # See https://github.com/dyad-sh/dyad/issues/96
+            # See https://github.com/DisciplesofLove/JoyCreate/issues/96
             { name: "linux", image: "ubuntu-22.04" },
             { name: "macos-intel", image: "macos-15-intel" },
             { name: "macos", image: "macos-latest" },

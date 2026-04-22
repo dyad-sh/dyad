@@ -146,7 +146,11 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: "./assets/icon/logo.ico",
+      iconUrl:
+        "https://raw.githubusercontent.com/DisciplesofLove/JoyCreate/main/assets/icon/logo.ico",
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({

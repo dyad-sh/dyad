@@ -407,15 +407,6 @@ const menuCategories = [
         activeText: "text-amber-600 dark:text-amber-400",
       },
       {
-        title: "Secrets Vault",
-        to: "/secrets-vault",
-        icon: Lock,
-        gradient: "from-red-500 to-rose-500",
-        hoverBg: "hover:bg-red-500/10",
-        activeBg: "bg-red-500/15",
-        activeText: "text-red-600 dark:text-red-400",
-      },
-      {
         title: "Memory",
         to: "/memory",
         icon: Brain,

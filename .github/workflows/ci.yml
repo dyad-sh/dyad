@@ -19,7 +19,7 @@ jobs:
   test:
     # Why Mac and Windows?
     # I can't run electron playwright on ubuntu-latest and
-    # Linux support for Dyad is experimental so not as important
+    # Linux support for JoyCreate is experimental so not as important
     # as Mac + Windows
     strategy:
       fail-fast: false

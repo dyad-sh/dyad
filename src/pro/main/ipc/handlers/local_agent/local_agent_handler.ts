@@ -336,6 +336,7 @@ export async function handleLocalAgentStream(
     messageOverride,
     settingsOverride,
     referencedApps = [],
+    currentTurnHasOnDiskAttachment,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -364,6 +365,7 @@ export async function handleLocalAgentStream(
       appName: string;
       appPath: string;
     }[];
+    currentTurnHasOnDiskAttachment?: boolean;
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
@@ -667,11 +669,12 @@ export async function handleLocalAgentStream(
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");
-    const currentTurnHasOnDiskAttachment =
-      latestUserMessage != null &&
-      getMessageText(latestUserMessage).includes(
-        "Attachments available on disk",
-      );
+    const shouldWarnIfAttachmentUnread =
+      currentTurnHasOnDiskAttachment ??
+      (latestUserMessage != null &&
+        getMessageText(latestUserMessage).includes(
+          "Attachments available on disk",
+        ));
 
     // Inject the referenced-apps manifest into the user's latest message as a
     // `<system-reminder>` block (instead of appending it to the system prompt)
@@ -1413,7 +1416,7 @@ export async function handleLocalAgentStream(
       });
     }
 
-    if (currentTurnHasOnDiskAttachment && !usedAttachmentAccessTool) {
+    if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
       const unreadAttachmentWarning =
         "Your model didn't read the file. Try a larger model or paste the contents inline.";
       const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;

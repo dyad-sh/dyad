@@ -69,7 +69,28 @@ function truncateUtf8(value: string, maxBytes: number): string {
   if (bytes.byteLength <= maxBytes) {
     return value;
   }
-  return bytes.subarray(0, maxBytes).toString("utf8");
+  let end = maxBytes;
+  let charStart = end - 1;
+  while (charStart > 0 && (bytes[charStart] & 0xc0) === 0x80) {
+    charStart--;
+  }
+
+  const lead = bytes[charStart];
+  const expectedLength =
+    lead < 0x80
+      ? 1
+      : (lead & 0xe0) === 0xc0
+        ? 2
+        : (lead & 0xf0) === 0xe0
+          ? 3
+          : (lead & 0xf8) === 0xf0
+            ? 4
+            : 1;
+  if (charStart + expectedLength > end) {
+    end = charStart;
+  }
+
+  return bytes.subarray(0, end).toString("utf8");
 }
 
 async function spillOutput(params: {

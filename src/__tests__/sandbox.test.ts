@@ -16,6 +16,10 @@ import {
   isSandboxSupportedPlatform,
   runSandboxScript,
 } from "@/ipc/utils/sandbox/runner";
+import {
+  SANDBOX_LLM_OUTPUT_LIMIT_BYTES,
+  SANDBOX_UI_OUTPUT_LIMIT_BYTES,
+} from "@/ipc/utils/sandbox/limits";
 
 describe("sandbox capabilities", () => {
   let appPath: string;
@@ -121,14 +125,14 @@ describe("sandbox capabilities", () => {
 
     const result = await runSandboxScript({
       appPath,
-      script: `"x".repeat(70 * 1024);`,
+      script: `"x".repeat(2 * 1024 * 1024);`,
     });
 
     expect(result.truncated).toBe(true);
-    expect(result.value.length).toBe(64 * 1024);
+    expect(result.value.length).toBe(SANDBOX_LLM_OUTPUT_LIMIT_BYTES);
     expect(result.fullOutputPath).toBeTruthy();
     await expect(
       fs.readFile(result.fullOutputPath!, "utf8"),
-    ).resolves.toHaveLength(70 * 1024);
+    ).resolves.toHaveLength(SANDBOX_UI_OUTPUT_LIMIT_BYTES);
   });
 });

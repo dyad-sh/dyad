@@ -186,21 +186,27 @@ function formatAttachmentSize(sizeBytes: number): string {
 
 function buildLocalAgentAttachmentInfo(
   attachments: StoredChatAttachment[],
+  options: {
+    includeSandboxScript: boolean;
+    includeCopyFile: boolean;
+  },
 ): string {
   if (attachments.length === 0) {
     return "";
   }
 
-  const lines = isSandboxSupportedPlatform()
-    ? [
-        "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
-      ]
-    : [
-        "Attachments available on disk (use attachments:<name> with read_file; execute_sandbox_script is unavailable on this platform):",
-      ];
+  const lines =
+    options.includeSandboxScript && isSandboxSupportedPlatform()
+      ? [
+          "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
+        ]
+      : [
+          "Attachments available on disk (use attachments:<name> with read_file):",
+        ];
 
   for (const attachment of attachments) {
     const uploadNote =
+      options.includeCopyFile &&
       attachment.attachmentType === "upload-to-codebase"
         ? "; if this should become part of the project, use copy_file from this attachment path"
         : "";
@@ -400,7 +406,7 @@ export function registerChatStreamHandlers() {
           const base64Data = attachment.data.split(";base64,").pop() || "";
           const fileBuffer = Buffer.from(base64Data, "base64");
           const hash = crypto
-            .createHash("md5")
+            .createHash("sha256")
             .update(fileBuffer)
             .digest("hex");
           const fileExtension = path.extname(attachment.name);
@@ -657,8 +663,6 @@ ${componentSnippet}
 
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
-      const localAgentAiUserPrompt =
-        userPrompt + buildLocalAgentAttachmentInfo(storedAttachments);
 
       const [insertedUserMessage] = await db
         .insert(messages)
@@ -684,6 +688,12 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
+      const localAgentAiUserPrompt =
+        userPrompt +
+        buildLocalAgentAttachmentInfo(storedAttachments, {
+          includeSandboxScript: selectedChatMode === "local-agent",
+          includeCopyFile: selectedChatMode === "local-agent",
+        });
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
         effectiveChatMode: selectedChatMode,
@@ -826,7 +836,9 @@ ${componentSnippet}
         }
         const useReferencedAppManifest =
           willUseLocalAgentStream && referencedAppsForAgent.length > 0;
-        const effectiveAiUserPrompt = willUseLocalAgentStream
+        const willUseOnDiskAttachmentPrompt =
+          isLocalAgentMode || isAskMode;
+        const effectiveAiUserPrompt = willUseOnDiskAttachmentPrompt
           ? localAgentAiUserPrompt
           : defaultAiUserPrompt;
 
@@ -1044,58 +1056,6 @@ ${componentSnippet}
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
 
-        // Update the system prompt for images if there are image attachments
-        const hasImageAttachments =
-          req.attachments &&
-          req.attachments.some((attachment) =>
-            attachment.type.startsWith("image/"),
-          );
-
-        const hasUploadedAttachments =
-          req.attachments &&
-          req.attachments.some(
-            (attachment) => attachment.attachmentType === "upload-to-codebase",
-          );
-        // If there's mixed attachments (e.g. some upload to codebase attachments and some upload images as chat context attachemnts)
-        // we will just include the file upload system prompt, otherwise the AI gets confused and doesn't reliably
-        // print out the dyad-write tags.
-        // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
-        // it's not that critical to include the image analysis instructions.
-        if (hasUploadedAttachments) {
-          if (isLocalAgentMode) {
-            systemPrompt += `
-
-When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
-
-Example:
-\`\`\`
-copy_file(from=".dyad/media/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
-\`\`\`
-
-The file paths are provided in the attachment information above.
-`;
-          } else if (!isAskMode && !isPlanMode) {
-            systemPrompt += `
-
-When files are attached for upload to the codebase, copy them into the project using this format:
-
-<dyad-copy from=".dyad/media/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
-
-The file paths are provided in the attachment information above.
-`;
-          }
-        } else if (hasImageAttachments) {
-          systemPrompt += `
-
-# Image Analysis Instructions
-This conversation includes one or more image attachments. When the user uploads images:
-1. If the user explicitly asks for analysis, description, or information about the image, please analyze the image content.
-2. Describe what you see in the image if asked.
-3. You can use images as references when the user has coding or design-related questions.
-4. For diagrams or wireframes, try to understand the content and structure shown.
-5. For screenshots of code or errors, try to identify the issue or explain the code.
-`;
-        }
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
             []
@@ -1160,8 +1120,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 lastUserMessage,
                 attachmentPaths,
                 {
-                  includeImageAttachments: !willUseLocalAgentStream,
-                  inlineTextAttachments: !willUseLocalAgentStream,
+                  includeImageAttachments: selectedChatMode !== "local-agent",
+                  inlineTextAttachments: !willUseOnDiskAttachmentPrompt,
                 },
               );
             }
@@ -1400,6 +1360,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               referencedApps: referencedAppsForAgent,
+              currentTurnHasOnDiskAttachment: storedAttachments.length > 0,
             },
           );
           if (!streamSuccess) {
@@ -1429,6 +1390,7 @@ This conversation includes one or more image attachments. When the user uploads 
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
             referencedApps: referencedAppsForAgent,
+            currentTurnHasOnDiskAttachment: false,
           });
           return;
         }
@@ -1476,6 +1438,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
                 referencedApps: referencedAppsForAgent,
+                currentTurnHasOnDiskAttachment: storedAttachments.length > 0,
               },
             );
           } finally {

@@ -128,14 +128,14 @@
       {
         "type": "function",
         "name": "copy_file",
-        "description": "Copy a file from one location to another. Can copy uploaded attachment files (from .dyad/media) into the codebase, or copy files within the codebase.",
+        "description": "Copy a file from one location to another. Can copy uploaded attachment files (attachments:<name> or .dyad/media paths) into the codebase, or copy files within the codebase.",
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "from": {
               "type": "string",
-              "description": "The source file path (can be a .dyad/media path or a path relative to the app root)"
+              "description": "The source file path (can be attachments:<name>, a .dyad/media path, or a path relative to the app root)"
             },
             "to": {
               "type": "string",
@@ -221,7 +221,7 @@
       {
         "type": "function",
         "name": "read_file",
-        "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
+        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
@@ -567,11 +567,36 @@
           "properties": {
             "guide": {
               "type": "string",
-              "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification')"
+              "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
             }
           },
           "required": [
             "guide"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "type": "function",
+        "name": "execute_sandbox_script",
+        "description": "Run a small read-only MustardScript program to inspect attached files or project files without loading all contents into context.\n\nAvailable host functions:\n- read_file(path, { start?, length?, encoding? }) for app-relative paths or attachments:<filename>\n- list_files(dir) where dir can be \".\" or \"attachments:\"\n- file_stats(path)\n\nReturn a concise value. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.",
+        "parameters": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "script": {
+              "type": "string",
+              "maxLength": 32768,
+              "description": "MustardScript source code to execute."
+            },
+            "description": {
+              "description": "One-line human-readable summary of what the script reads.",
+              "type": "string",
+              "maxLength": 160
+            }
+          },
+          "required": [
+            "script"
           ],
           "additionalProperties": false
         }

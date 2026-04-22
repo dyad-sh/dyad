@@ -31,6 +31,12 @@ const grepSchema = z.object({
     .string()
     .optional()
     .describe("Glob pattern for files to exclude"),
+  include_ignored: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
+    ),
   case_sensitive: z
     .boolean()
     .optional()
@@ -66,6 +72,9 @@ function buildGrepAttributes(
   if (args.exclude_pattern) {
     attrs.push(`exclude="${escapeXmlAttr(args.exclude_pattern)}"`);
   }
+  if (args.include_ignored) {
+    attrs.push(`include_ignored="true"`);
+  }
   if (args.case_sensitive) {
     attrs.push(`case-sensitive="true"`);
   }
@@ -91,12 +100,14 @@ async function runRipgrep({
   query,
   includePat,
   excludePat,
+  includeIgnored,
   caseSensitive,
 }: {
   appPath: string;
   query: string;
   includePat?: string;
   excludePat?: string;
+  includeIgnored?: boolean;
   caseSensitive?: boolean;
 }): Promise<RipgrepMatch[]> {
   return new Promise((resolve, reject) => {
@@ -107,6 +118,10 @@ async function runRipgrep({
       "--max-filesize",
       `${MAX_FILE_SEARCH_SIZE}`,
     ];
+
+    if (includeIgnored) {
+      args.push("--no-ignore", "--hidden");
+    }
 
     // Case sensitivity: default is case-insensitive
     if (!caseSensitive) {
@@ -126,7 +141,10 @@ async function runRipgrep({
 
     // Exclusion globs come LAST so they always take precedence over any
     // include pattern (later --glob flags override earlier ones in ripgrep)
-    args.push(...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]));
+    const exclusionGlobs = includeIgnored
+      ? RIPGREP_EXCLUDED_GLOBS.filter((glob) => glob === "!.git/**")
+      : RIPGREP_EXCLUDED_GLOBS;
+    args.push(...exclusionGlobs.flatMap((glob) => ["--glob", glob]));
 
     args.push("--", query, ".");
 
@@ -197,6 +215,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 - By default, the search is case-insensitive
 - Use include_pattern to filter by file type (e.g. '*.tsx')
 - Use exclude_pattern to skip certain files (e.g. '*.test.ts')
+- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.
 - Results are limited to ${DEFAULT_LIMIT} matches by default (max ${MAX_LIMIT}). If results are truncated, narrow your search with include_pattern or a more specific query.`,
   inputSchema: grepSchema,
   defaultConsent: "always",
@@ -205,6 +224,9 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     let preview = `Search for "${args.query}"`;
     if (args.include_pattern) {
       preview += ` in ${args.include_pattern}`;
+    }
+    if (args.include_ignored) {
+      preview += " including ignored files";
     }
     return preview;
   },
@@ -228,6 +250,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
       query: args.query,
       includePat: args.include_pattern,
       excludePat: args.exclude_pattern,
+      includeIgnored: args.include_ignored,
       caseSensitive: args.case_sensitive,
     });
 

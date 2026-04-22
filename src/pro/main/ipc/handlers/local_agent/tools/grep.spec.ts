@@ -289,6 +289,63 @@ function deepHello() {
       expect(result).toContain("test1.ts");
       expect(result).not.toContain("node_modules");
     });
+
+    it("searches node_modules when include_ignored is true", async () => {
+      const nodeModulesDir = path.join(testDir, "node_modules", "some-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(nodeModulesDir, "index.js"),
+        `function dependencyHello() { return "hello from node_modules"; }`,
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "dependencyHello",
+          include_ignored: true,
+          include_pattern: "node_modules/some-pkg/**",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("node_modules/some-pkg/index.js");
+      expect(result).toContain("dependencyHello");
+    });
+
+    it("searches hidden ignored files when include_ignored is true", async () => {
+      const dyadDir = path.join(testDir, ".dyad");
+      await fs.promises.mkdir(dyadDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(dyadDir, "backup.txt"),
+        "hiddenIgnoredNeedle",
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "hiddenIgnoredNeedle",
+          include_ignored: true,
+          include_pattern: ".dyad/**",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain(".dyad/backup.txt");
+    });
+
+    it("keeps .git excluded when include_ignored is true", async () => {
+      const gitDir = path.join(testDir, ".git");
+      await fs.promises.mkdir(gitDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(gitDir, "config"),
+        "gitIgnoredNeedle",
+      );
+
+      const result = await grepTool.execute(
+        { query: "gitIgnoredNeedle", include_ignored: true },
+        mockContext,
+      );
+
+      expect(result).toBe("No matches found.");
+    });
   });
 
   describe("execute - regex patterns", () => {
@@ -460,6 +517,14 @@ function deepHello() {
       expect(result).toContain('exclude="*.md"');
     });
 
+    it("includes include_ignored in attributes", () => {
+      const result = grepTool.buildXml?.(
+        { query: "test", include_ignored: true },
+        false,
+      );
+      expect(result).toContain('include_ignored="true"');
+    });
+
     it("includes case-sensitive in attributes when true", () => {
       const result = grepTool.buildXml?.(
         { query: "test", case_sensitive: true },
@@ -481,6 +546,14 @@ function deepHello() {
         include_pattern: "*.ts",
       });
       expect(preview).toBe('Search for "hello" in *.ts');
+    });
+
+    it("includes include_ignored in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "hello",
+        include_ignored: true,
+      });
+      expect(preview).toBe('Search for "hello" including ignored files');
     });
   });
 });

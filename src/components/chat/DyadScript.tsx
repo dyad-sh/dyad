@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { FolderOpen, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
+import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
+import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
 import { CodeHighlight } from "./CodeHighlight";
 import {
   DyadBadge,
@@ -26,7 +27,9 @@ const SCRIPT_TIP_STORAGE_KEY = "dyad-script-card-tip-dismissed";
 let scriptTipShownThisSession = false;
 
 export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
-  const navigate = useNavigate();
+  const scrollAndNavigateToSettings = useScrollAndNavigateTo("/settings", {
+    highlight: true,
+  });
   const description: string = node?.properties?.description || "Ran a script";
   const truncated = node?.properties?.truncated === "true";
   const executionMs: string = node?.properties?.executionMs || "";
@@ -74,7 +77,10 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
                 variant="ghost"
                 onClick={() => {
                   dismissTip();
-                  navigate({ to: "/settings" });
+                  void scrollAndNavigateToSettings(
+                    SETTING_IDS.sandboxScripts,
+                    SECTION_IDS.ai,
+                  );
                 }}
               >
                 Settings
@@ -139,7 +145,8 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
                 </CodeHighlight>
               ) : (
                 <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
-                  Script returned empty - Dyad will try again.
+                  Script produced no output. The model may try a different
+                  approach.
                 </div>
               )}
             </div>

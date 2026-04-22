@@ -238,8 +238,8 @@ function injectReferencedAppsReminder(
   messageHistory: ModelMessage[],
   referencedApps: readonly { appName: string }[],
 ): void {
-  const list = referencedApps.map(({ appName }) => appName).join(", ");
-  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`). Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+  const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
 
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];

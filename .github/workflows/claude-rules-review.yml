@@ -34,6 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 200
+          persist-credentials: false
 
       - name: Review AGENTS.md and rules/
         uses: anthropics/claude-code-action@v1

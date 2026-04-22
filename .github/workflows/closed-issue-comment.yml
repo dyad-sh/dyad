@@ -25,6 +25,8 @@ jobs:
           permission-issues: write
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: anthropics/claude-code-action@v1
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}

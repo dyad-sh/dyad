@@ -238,6 +238,7 @@ jobs:
           repository: ${{ steps.pr-info.outputs.head_repo }}
           ref: ${{ steps.pr-info.outputs.head_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Record HEAD before Claude Code
         if: steps.pr-info.outputs.should_continue == 'true'
@@ -370,6 +371,7 @@ jobs:
         with:
           path: __base
           sparse-checkout: scripts/pr-status-labeler.js
+          persist-credentials: false
 
       - name: Apply needs-human status label
         # Run when PR reaches a terminal state (cc:done or cc:failed) but NOT when

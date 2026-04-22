@@ -33,6 +33,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Check if only .claude files changed
         id: check
         run: |
@@ -147,6 +148,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
+          persist-credentials: false
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
@@ -222,6 +224,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
+          persist-credentials: false
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
@@ -322,6 +325,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*

@@ -329,7 +329,7 @@
             "properties": {
               "guide": {
                 "type": "string",
-                "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification')"
+                "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
               }
             },
             "required": [

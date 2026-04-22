@@ -86,7 +86,7 @@
         "type": "function",
         "function": {
           "name": "list_files",
-          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
+          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -99,8 +99,8 @@
                 "description": "Whether to list files recursively (default: false)",
                 "type": "boolean"
               },
-              "include_hidden": {
-                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
                 "type": "boolean"
               }
             },
@@ -112,7 +112,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -128,6 +128,10 @@
               "exclude_pattern": {
                 "description": "Glob pattern for files to exclude",
                 "type": "string"
+              },
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
+                "type": "boolean"
               },
               "case_sensitive": {
                 "description": "Whether the search should be case sensitive (default: false)",

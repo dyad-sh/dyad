@@ -1,22 +1,23 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "List files including hidden .dyad files",
+  description: "List files including ignored .dyad files",
   turns: [
     {
-      text: "I'll list all files including the hidden .dyad directory for you.",
+      text: "I'll list all files including the ignored .dyad directory for you.",
       toolCalls: [
         {
           name: "list_files",
           args: {
+            directory: ".dyad",
             recursive: true,
-            include_hidden: true,
+            include_ignored: true,
           },
         },
       ],
     },
     {
-      text: "Here are all the files including the hidden .dyad files.",
+      text: "Here are the ignored .dyad files.",
     },
   ],
 };

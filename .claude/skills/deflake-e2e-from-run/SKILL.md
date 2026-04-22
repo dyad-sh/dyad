@@ -5,7 +5,7 @@ description: Root-cause flaky or failing E2E tests from a specific CI run by dow
 
 # Deflake E2E Tests from a CI Run
 
-Use this skill when the user points you at a specific failing CI run (e.g. `https://github.com/dyad-sh/dyad/actions/runs/<id>`) and asks you to root-cause the E2E failures. Unlike `deflake-e2e`, this skill does NOT rebuild and re-run tests — it reads the already-recorded Playwright report from the run's artifacts, which is faster and gives you the *exact* failure state CI saw.
+Use this skill when the user points you at a specific failing CI run (e.g. `https://github.com/dyad-sh/dyad/actions/runs/<id>`) and asks you to root-cause the E2E failures. Unlike `deflake-e2e`, this skill does NOT rebuild and re-run tests — it reads the already-recorded Playwright report from the run's artifacts, which is faster and gives you the _exact_ failure state CI saw.
 
 ## Arguments
 
@@ -60,7 +60,7 @@ Group by error shape. If every failure shares the same locator / error ("element
        if obj.get('type') == 'before' and obj.get('class') == 'Test':
            print(round(obj['startTime']/1000, 2), obj.get('method'), obj.get('title','')[:200])
    ```
-   Look for the last few actions before the timeout — that tells you *which call hung and what its locator resolved to*.
+   Look for the last few actions before the timeout — that tells you _which call hung and what its locator resolved to_.
 4. Correlate with app logs. Electron `console.log`/`console.error` lands in `stderr`/`stdout` trace events:
    ```python
    for line in open('/tmp/trace-extract/test.trace'):
@@ -81,7 +81,7 @@ Group by error shape. If every failure shares the same locator / error ("element
 
 Common patterns and what they mean:
 
-- **"element is not enabled" on a button after fill()** → React render race between URL/atom state updates and the editor's onChange. The fill runs, onChange writes under the *old* key, next render clears the editor for the new context. Fix: wrap fill+click in `expect.toPass()` and assert editor content + button enabled before clicking. See `ChatActions.sendPrompt()`.
+- **"element is not enabled" on a button after fill()** → React render race between URL/atom state updates and the editor's onChange. The fill runs, onChange writes under the _old_ key, next render clears the editor for the new context. Fix: wrap fill+click in `expect.toPass()` and assert editor content + button enabled before clicking. See `ChatActions.sendPrompt()`.
 - **"locator.click timeout"** with multiple matching elements → stale component still in DOM during a transition. Fix: scope the locator tighter (`getChatInputContainer().locator(...)`) or add a visibility assertion on the stable target first.
 - **Assertion flakes right after navigation** → atom/URL mismatch during a single render cycle. Either wait for a post-navigation signal (e.g. a data-loaded state) or wrap the assertion in `toPass` with a bounded timeout.
 - **Different error on retry vs. first attempt** → test is mutating shared state. Look for missing teardown or cross-test singletons.
@@ -92,7 +92,7 @@ Prefer fixing the test over the app unless the race would actually bite a real u
 
 1. Make the minimal change — usually in `e2e-tests/helpers/page-objects/` since many specs share the same helper.
 2. `npm run fmt && npm run lint && npm run ts`.
-3. Skip local `npm run build && npm run e2e` unless you're genuinely unsure — the CI loop is ~15min and this analysis path is for *obvious* root causes. If you're guessing, stop guessing and run it locally instead.
+3. Skip local `npm run build && npm run e2e` unless you're genuinely unsure — the CI loop is ~15min and this analysis path is for _obvious_ root causes. If you're guessing, stop guessing and run it locally instead.
 4. Use `/dyad:pr-push` or commit + `gh pr create` directly. The PR body MUST include:
    - A link to the failing run.
    - The root-cause narrative (what raced, in concrete terms — not "timing issue").
@@ -101,7 +101,7 @@ Prefer fixing the test over the app unless the race would actually bite a real u
 ## Gotchas
 
 - `gh run download` needs `-R <owner>/<repo>` if you're not in a cwd with matching origin.
-- `results.json` paths inside `attachments[]` are *CI-side*; only use them to match hashes, never to read files.
+- `results.json` paths inside `attachments[]` are _CI-side_; only use them to match hashes, never to read files.
 - A fork PR's artifacts live on the fork's run, not the upstream's. Make sure `run_id` is on the right repo.
 - Many traces unpack to the same `/tmp/trace-extract/` — clean between extractions or use unique subdirs.
-- The `html-report` is the *merged* report across shards. Individual shard artifacts (`blob-report-*`, `flakiness-report-*`) are usually unnecessary for root-causing.
+- The `html-report` is the _merged_ report across shards. Individual shard artifacts (`blob-report-*`, `flakiness-report-*`) are usually unnecessary for root-causing.

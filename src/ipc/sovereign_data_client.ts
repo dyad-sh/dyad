@@ -25,7 +25,12 @@ import type {
 // ============================================================================
 
 function getIpcRenderer() {
-  return (window as any).electron.ipcRenderer;
+  const r = (window as any).electron?.ipcRenderer;
+  if (!r) {
+    // Not running inside Electron — return a no-op stub so hooks don't throw.
+    return { invoke: async (..._args: unknown[]) => null };
+  }
+  return r;
 }
 
 // ============================================================================

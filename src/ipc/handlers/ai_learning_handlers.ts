@@ -19,6 +19,11 @@ import {
 export function registerAILearningHandlers(): void {
   const learning = getAILearningMode();
 
+  // Auto-initialize on startup so the DB is ready without the UI needing to call initialize first.
+  learning.initialize().catch((err) => {
+    console.error("[ai-learning] Auto-initialization failed:", err);
+  });
+
   // Initialize
   ipcMain.handle("ai-learning:initialize", async () => {
     await learning.initialize();

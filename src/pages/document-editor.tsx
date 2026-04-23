@@ -44,15 +44,23 @@ export default function DocumentEditorPage() {
 
   // ─── Initialize content from query ────────────────────────────────────────
   useEffect(() => {
-    if (!content?.success) return;
-    if (content.text !== undefined && textContent === null) {
-      setTextContent(content.text);
-    }
-    if (content.rows !== undefined && spreadsheetRows === null) {
-      setSpreadsheetRows(content.rows);
-    }
-    if (content.slides !== undefined && slides === null) {
-      setSlides(content.slides.map((s) => ({ title: s.title ?? "", content: s.content ?? "", notes: s.notes })));
+    if (!content) return;
+    if (content.success) {
+      if (content.text !== undefined && textContent === null) {
+        setTextContent(content.text);
+      }
+      if (content.rows !== undefined && spreadsheetRows === null) {
+        setSpreadsheetRows(content.rows);
+      }
+      if (content.slides !== undefined && slides === null) {
+        setSlides(content.slides.map((s) => ({ title: s.title ?? "", content: s.content ?? "", notes: s.notes })));
+      }
+    } else {
+      // File not found or unreadable — initialise editors with empty content so the
+      // user can still write and save (which will recreate the file).
+      if (textContent === null) setTextContent("");
+      if (spreadsheetRows === null) setSpreadsheetRows([[""]]);
+      if (slides === null) setSlides([{ title: "New Slide", content: "" }]);
     }
   }, [content]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -185,11 +193,11 @@ export default function DocumentEditorPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Editor area */}
         <div className="flex-1 overflow-auto">
-          {doc.type === "document" && (
+          {doc.type === "document" && textContent !== null && (
             <div className="mx-auto max-w-3xl px-16 py-12">
               <RichTextEditor
                 ref={editorRef}
-                initialText={textContent ?? ""}
+                initialText={textContent}
                 onChange={setTextContent}
                 placeholder="Start writing…"
                 className="min-h-[calc(100vh-8rem)]"

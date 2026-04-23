@@ -2316,7 +2316,7 @@ export function OpenClawKanbanPage() {
             <div
               ref={boardScrollRef}
               className="h-full overflow-x-auto overflow-y-auto pb-4"
-              style={{ scrollbarWidth: 'auto', scrollbarColor: 'hsl(var(--muted-foreground) / 0.3) transparent' }}
+              style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(120,120,120,0.5) rgba(0,0,0,0.1)' }}
             >
               <div className="flex gap-3 p-4 min-h-full min-w-max">
                 {COLUMNS.map((col) => (

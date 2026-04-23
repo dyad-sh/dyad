@@ -295,6 +295,53 @@ body[data-scroll-locked] .app-region-drag {
   }
 }
 
+.scrollbar-on-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.35s ease;
+}
+.scrollbar-on-hover:hover,
+.scrollbar-on-hover:focus-within {
+  scrollbar-color: rgba(128, 134, 139, 0.45) transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+  background: transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0 8px;
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+  min-width: 40px;
+  min-height: 40px;
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease;
+}
+.scrollbar-on-hover:hover::-webkit-scrollbar-thumb,
+.scrollbar-on-hover:focus-within::-webkit-scrollbar-thumb {
+  background-color: rgba(128, 134, 139, 0.45);
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(128, 134, 139, 0.75);
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb:active {
+  background-color: rgba(95, 99, 104, 0.9);
+}
+.dark .scrollbar-on-hover:hover::-webkit-scrollbar-thumb,
+.dark .scrollbar-on-hover:focus-within::-webkit-scrollbar-thumb {
+  background-color: rgba(200, 205, 210, 0.35);
+}
+.dark .scrollbar-on-hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(220, 225, 230, 0.6);
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(-100%);

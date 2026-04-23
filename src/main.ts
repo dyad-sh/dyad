@@ -37,6 +37,11 @@ import {
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
 import {
+  DYAD_INTERNAL_DIR_NAME,
+  DYAD_MEDIA_SUBDIR,
+  DYAD_SCREENSHOT_SUBDIR,
+} from "./ipc/utils/media_path_utils";
+import {
   stopAllAppsSync,
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
@@ -45,10 +50,6 @@ import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
-import {
-  DYAD_MEDIA_DIR_NAME,
-  isWithinDyadMediaDir,
-} from "./ipc/utils/media_path_utils";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -207,23 +208,26 @@ export async function onReady() {
   // Start performance monitoring
   startPerformanceMonitoring();
 
-  // Handle dyad-media:// protocol requests to serve persistent media files.
+  // Handle dyad-media:// protocol requests to serve persistent media and screenshot files.
   protocol.handle("dyad-media", async (request) => {
     const url = new URL(request.url);
-    // Format: dyad-media://media/{app-path}/.dyad/media/{filename}
+    // Format: dyad-media://media/{app-path}/.dyad/{subdir}/{filename}
+    //   where {subdir} is DYAD_MEDIA_SUBDIR or DYAD_SCREENSHOT_SUBDIR.
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
     //   The app-path segment is URI-encoded, so split on "/" before decoding
     //   to correctly handle absolute paths (which contain encoded slashes).
     const pathSegments = url.pathname.slice(1).split("/");
+    const allowedSubdirs = [DYAD_MEDIA_SUBDIR, DYAD_SCREENSHOT_SUBDIR];
     if (
       pathSegments.length !== 4 ||
-      pathSegments[1] !== ".dyad" ||
-      pathSegments[2] !== "media"
+      pathSegments[1] !== DYAD_INTERNAL_DIR_NAME ||
+      !allowedSubdirs.includes(pathSegments[2])
     ) {
       return new Response("Forbidden", { status: 403 });
     }
 
     const appPathRaw = decodeURIComponent(pathSegments[0]);
+    const subdir = pathSegments[2];
     const filename = decodeURIComponent(pathSegments[3]);
 
     // Defense-in-depth: reject filenames with path separators or traversal
@@ -238,11 +242,14 @@ export async function onReady() {
     // Resolve the app directory, handling both relative names and absolute
     // paths from imported apps (skipCopy).
     const appPath = getDyadAppPath(appPathRaw);
-    const mediaDir = path.resolve(path.join(appPath, DYAD_MEDIA_DIR_NAME));
-    const resolvedPath = path.resolve(path.join(mediaDir, filename));
+    const targetDir = path.resolve(
+      path.join(appPath, DYAD_INTERNAL_DIR_NAME, subdir),
+    );
+    const resolvedPath = path.resolve(path.join(targetDir, filename));
 
-    // Security: ensure the resolved path stays within the app's .dyad/media directory
-    if (!isWithinDyadMediaDir(resolvedPath, appPath)) {
+    // Security: ensure the resolved path stays within the app's .dyad/{subdir} directory
+    const relativePath = path.relative(targetDir, resolvedPath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
       return new Response("Forbidden", { status: 403 });
     }
 

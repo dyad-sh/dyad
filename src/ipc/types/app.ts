@@ -460,6 +460,48 @@ export const appContracts = {
     input: z.object({ appId: z.number().nullable() }),
     output: z.void(),
   }),
+
+  getCurrentCommitHash: defineContract({
+    channel: "app:get-current-commit-hash",
+    input: z.object({ appId: z.number() }),
+    output: z.object({ commitHash: z.string().nullable() }),
+  }),
+
+  saveAppScreenshot: defineContract({
+    channel: "app:save-screenshot",
+    input: z.object({
+      appId: z.number(),
+      dataUrl: z.string(),
+      // Commit hash captured at the time the screenshot was requested.
+      // Required to avoid saving the screenshot under a newer HEAD if
+      // another commit lands between capture request and save.
+      commitHash: z.string(),
+    }),
+    output: z.void(),
+  }),
+
+  listAppScreenshots: defineContract({
+    channel: "app:list-screenshots",
+    input: z.object({ appId: z.number() }),
+    output: z.object({
+      screenshots: z.array(
+        z.object({ commitHash: z.string(), url: z.string() }),
+      ),
+    }),
+  }),
+
+  listAppThumbnails: defineContract({
+    channel: "app:list-thumbnails",
+    input: z.object({ appIds: z.array(z.number()) }),
+    output: z.object({
+      thumbnails: z.array(
+        z.object({
+          appId: z.number(),
+          thumbnailUrl: z.string().nullable(),
+        }),
+      ),
+    }),
+  }),
 } as const;
 
 // =============================================================================

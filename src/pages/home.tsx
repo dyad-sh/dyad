@@ -32,6 +32,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
 
 import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
@@ -225,6 +226,7 @@ export default function HomePage() {
       streamMessage({
         prompt: inputValue,
         chatId,
+        appId,
         attachments,
         requestedChatMode: initialChatMode,
       });
@@ -282,119 +284,124 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
-      <div className="fixed top-16 right-8 z-50">
-        {settings && hasDyadProKey(settings) ? (
-          <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
-        ) : (
-          <SetupDyadProButton />
-        )}
-      </div>
-      <ForceCloseDialog
-        isOpen={forceCloseDialogOpen}
-        onClose={() => setForceCloseDialogOpen(false)}
-        performanceData={performanceData}
-      />
-      <SetupBanner />
-
-      <div className="w-full">
-        <div className="flex items-center justify-center gap-4 mb-4">
-          <ImportAppButton className="px-0 pb-0 flex-none" />
+    <div className="flex flex-col w-full">
+      <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
+        <div className="fixed top-16 right-8 z-50">
+          {settings && hasDyadProKey(settings) ? (
+            <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
+          ) : (
+            <SetupDyadProButton />
+          )}
         </div>
-        <HomeChatInput onSubmit={handleSubmit} />
+        <ForceCloseDialog
+          isOpen={forceCloseDialogOpen}
+          onClose={() => setForceCloseDialogOpen(false)}
+          performanceData={performanceData}
+        />
+        <SetupBanner />
 
-        <div className="flex flex-col gap-4 mt-2">
-          <div className="flex flex-wrap gap-4 justify-center">
-            {randomPrompts.map((item, index) => (
-              <button
-                type="button"
-                key={index}
-                onClick={() =>
-                  setInputValue(t("buildMeA", { label: item.label }))
-                }
-                className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
+        <div className="w-full">
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <ImportAppButton className="px-0 pb-0 flex-none" />
+          </div>
+          <HomeChatInput onSubmit={handleSubmit} />
+
+          <div className="flex flex-col gap-4 mt-2">
+            <div className="flex flex-wrap gap-4 justify-center">
+              {randomPrompts.map((item, index) => (
+                <button
+                  type="button"
+                  key={index}
+                  onClick={() =>
+                    setInputValue(t("buildMeA", { label: item.label }))
+                  }
+                  className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
                            bg-white/50 backdrop-blur-sm
                            transition-all duration-200
                            hover:bg-white hover:shadow-md hover:border-gray-300
                            active:scale-[0.98]
                            dark:bg-gray-800/50 dark:border-gray-700
                            dark:hover:bg-gray-800 dark:hover:border-gray-600"
-              >
-                <span className="text-gray-700 dark:text-gray-300">
-                  {item.icon}
-                </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {item.label}
-                </span>
-              </button>
-            ))}
-          </div>
+                >
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {item.icon}
+                  </span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setRandomPrompts(getRandomPrompts())}
-            className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
+            <button
+              type="button"
+              onClick={() => setRandomPrompts(getRandomPrompts())}
+              className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
                        bg-white/50 backdrop-blur-sm
                        transition-all duration-200
                        hover:bg-white hover:shadow-md hover:border-gray-300
                        active:scale-[0.98]
                        dark:bg-gray-800/50 dark:border-gray-700
                        dark:hover:bg-gray-800 dark:hover:border-gray-600"
-          >
-            <svg
-              className="w-5 h-5 text-gray-700 dark:text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {t("moreIdeas")}
-            </span>
-          </button>
-        </div>
-        <ProBanner />
-      </div>
-      <PrivacyBanner />
-
-      {/* Release Notes Dialog */}
-      <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
-        <DialogContent className="max-w-4xl bg-(--docs-bg) pr-0 pt-4 pl-4 gap-1">
-          <DialogHeader>
-            <DialogTitle>{t("whatsNew", { version: appVersion })}</DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
-              onClick={() =>
-                window.open(
-                  releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
-                  "_blank",
-                )
-              }
-            >
-              <ExternalLink className="w-4 h-4" />
-            </Button>
-          </DialogHeader>
-          <div className="overflow-auto h-[70vh] flex flex-col ">
-            {releaseUrl && (
-              <div className="flex-1">
-                <iframe
-                  src={releaseUrl}
-                  className="w-full h-full border-0 rounded-lg"
-                  title={t("releaseNotesTitle", { version: appVersion })}
+              <svg
+                className="w-5 h-5 text-gray-700 dark:text-gray-300"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                 />
-              </div>
-            )}
+              </svg>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t("moreIdeas")}
+              </span>
+            </button>
           </div>
-        </DialogContent>
-      </Dialog>
+          <ProBanner />
+        </div>
+        <PrivacyBanner />
+
+        {/* Release Notes Dialog */}
+        <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
+          <DialogContent className="max-w-4xl bg-(--docs-bg) pr-0 pt-4 pl-4 gap-1">
+            <DialogHeader>
+              <DialogTitle>
+                {t("whatsNew", { version: appVersion })}
+              </DialogTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
+                onClick={() =>
+                  window.open(
+                    releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
+                    "_blank",
+                  )
+                }
+              >
+                <ExternalLink className="w-4 h-4" />
+              </Button>
+            </DialogHeader>
+            <div className="overflow-auto h-[70vh] flex flex-col ">
+              {releaseUrl && (
+                <div className="flex-1">
+                  <iframe
+                    src={releaseUrl}
+                    className="w-full h-full border-0 rounded-lg"
+                    title={t("releaseNotesTitle", { version: appVersion })}
+                  />
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <FeaturedAppShowcase />
     </div>
   );
 }

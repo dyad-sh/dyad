@@ -121,12 +121,13 @@ export function registerMigrationHandlers() {
 
       // 8. Find the generated schema file
       const schemaOutDir = path.join(tmpDir, "schema-out");
+      const introspectDiagnostics = `drizzle-kit exit=${introspectResult.exitCode}; stdout=${introspectResult.stdout.trim() || "<empty>"}; stderr=${introspectResult.stderr.trim() || "<empty>"}`;
       let schemaFiles: string[];
       try {
         schemaFiles = await fs.readdir(schemaOutDir);
       } catch {
         throw new DyadError(
-          "drizzle-kit introspect did not generate output. Your development database may have an unsupported schema.",
+          `drizzle-kit introspect did not generate output (schema-out missing). ${introspectDiagnostics}`,
           DyadErrorKind.Internal,
         );
       }
@@ -136,7 +137,7 @@ export function registerMigrationHandlers() {
         schemaFiles.find((f) => f.endsWith(".ts") && f !== "relations.ts");
       if (!tsSchemaFile) {
         throw new DyadError(
-          "drizzle-kit introspect did not generate any schema files.",
+          `drizzle-kit introspect did not generate any schema files. schema-out contents: [${schemaFiles.join(", ") || "<empty>"}]. ${introspectDiagnostics}`,
           DyadErrorKind.Internal,
         );
       }

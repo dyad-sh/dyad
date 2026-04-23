@@ -35,19 +35,20 @@ export async function getProductionBranchId(
   return { branchId: prodBranch.id };
 }
 
-/**
- * Resolves the path to the drizzle-kit bin.cjs file.
- */
-export function getDrizzleKitPath(): string {
+type StagedPackage = "drizzle-kit" | "drizzle-orm" | "@neondatabase/serverless";
+
+// In packaged builds these live directly under process.resourcesPath (no
+// surrounding node_modules/), because forge's extraResource copies them
+// to the Resources root.
+function getBundledPackageDir(pkg: StagedPackage): string {
   if (!app.isPackaged) {
-    return path.join(
-      app.getAppPath(),
-      "node_modules",
-      "drizzle-kit",
-      "bin.cjs",
-    );
+    return path.join(app.getAppPath(), "node_modules", pkg);
   }
-  return path.join(process.resourcesPath, "drizzle-kit", "bin.cjs");
+  return path.join(process.resourcesPath, pkg);
+}
+
+export function getDrizzleKitPath(): string {
+  return path.join(getBundledPackageDir("drizzle-kit"), "bin.cjs");
 }
 
 /**
@@ -126,23 +127,56 @@ export async function spawnDrizzleKit({
     );
   }
 
-  const drizzleKitBin = getDrizzleKitPath();
+  // Build a node_modules/ tree so drizzle-kit's bin.cjs can resolve its
+  // peer deps via the normal upward walk. bin.cjs MUST be copied, not
+  // symlinked: Electron's utilityProcess.fork ignores --preserve-symlinks-main,
+  // so a symlinked entry point realpath's back to resourcesPath/ where the
+  // peer deps aren't reachable.
+  const nodeModulesDir = path.join(cwd, "node_modules");
+  await fs.mkdir(nodeModulesDir, { recursive: true });
 
-  // Create a node_modules symlink in the working directory so that generated
-  // schema files can resolve drizzle-orm and other dependencies through
-  // standard Node.js module resolution (walking up to find node_modules),
-  // in addition to the NODE_PATH env var set below.
-  const nodeModulesPath = app.isPackaged
-    ? process.resourcesPath
-    : path.join(app.getAppPath(), "node_modules");
-  const symlinkTarget = path.join(cwd, "node_modules");
+  const stagedDrizzleKitDir = path.join(nodeModulesDir, "drizzle-kit");
+  await fs.mkdir(stagedDrizzleKitDir, { recursive: true });
+  const srcDrizzleKitDir = getBundledPackageDir("drizzle-kit");
+  await fs.copyFile(
+    path.join(srcDrizzleKitDir, "bin.cjs"),
+    path.join(stagedDrizzleKitDir, "bin.cjs"),
+  );
+  await fs.copyFile(
+    path.join(srcDrizzleKitDir, "package.json"),
+    path.join(stagedDrizzleKitDir, "package.json"),
+  );
+  // esbuild is bundled under drizzle-kit/node_modules and is needed to
+  // compile the .ts schema during push.
   try {
-    await fs.symlink(nodeModulesPath, symlinkTarget, "junction");
-  } catch (symlinkErr) {
-    logger.warn(
-      `Failed to create node_modules symlink: ${symlinkErr}. Falling back to NODE_PATH.`,
+    await fs.symlink(
+      path.join(srcDrizzleKitDir, "node_modules"),
+      path.join(stagedDrizzleKitDir, "node_modules"),
+      "junction",
     );
+  } catch (symlinkErr) {
+    logger.warn(`Failed to stage drizzle-kit node_modules: ${symlinkErr}`);
   }
+
+  // @neondatabase/serverless is the Postgres driver drizzle-kit picks for
+  // Neon. If it can't be resolved, drizzle-kit's introspect catches the
+  // error and still exits 0 — the failure looks like "no schema produced".
+  const peerPackages: StagedPackage[] = [
+    "drizzle-orm",
+    "@neondatabase/serverless",
+  ];
+  for (const pkg of peerPackages) {
+    const stagedPath = path.join(nodeModulesDir, pkg);
+    try {
+      // Scoped packages need their @scope/ parent created first.
+      await fs.mkdir(path.dirname(stagedPath), { recursive: true });
+      await fs.symlink(getBundledPackageDir(pkg), stagedPath, "junction");
+    } catch (symlinkErr) {
+      logger.warn(`Failed to stage ${pkg} symlink: ${symlinkErr}`);
+    }
+  }
+
+  const drizzleKitBin = path.join(stagedDrizzleKitDir, "bin.cjs");
 
   return new Promise((resolve, reject) => {
     logger.info(`Running drizzle-kit: ${drizzleKitBin} ${args.join(" ")}`);
@@ -164,7 +198,7 @@ export async function spawnDrizzleKit({
             TEMP: process.env.TEMP,
             TMP: process.env.TMP,
             TMPDIR: process.env.TMPDIR,
-            NODE_PATH: nodeModulesPath,
+            NODE_PATH: nodeModulesDir,
             DRIZZLE_DATABASE_URL: connectionUri,
           }).filter(([, v]) => v !== undefined),
         ),

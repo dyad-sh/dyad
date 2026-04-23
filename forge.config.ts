@@ -129,6 +129,12 @@ const config: ForgeConfig = {
       "node_modules/@vscode",
       "node_modules/drizzle-kit",
       "node_modules/drizzle-orm",
+      // Peer-dep driver that drizzle-kit dynamically imports for Neon
+      // migrations. Without this, packaged builds swallow the "package not
+      // found" error (drizzle-kit's introspect catches and exits 0) and
+      // silently produce no schema. We copy the whole @neondatabase scope
+      // dir so the staged resolution path matches the scope'd package name.
+      "node_modules/@neondatabase",
     ],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },

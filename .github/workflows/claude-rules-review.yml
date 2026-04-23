@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 200
 
       - name: Review AGENTS.md and rules/
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.96
         env:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:

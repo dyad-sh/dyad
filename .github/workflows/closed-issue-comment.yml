@@ -25,7 +25,7 @@ jobs:
           permission-issues: write
 
       - uses: actions/checkout@v4
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@v1.0.96
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}

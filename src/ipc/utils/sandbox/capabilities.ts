@@ -27,8 +27,15 @@ export interface SandboxReadFileOptions {
   encoding?: "utf8" | "base64";
 }
 
+export type SandboxHostCallName = "read_file" | "list_files" | "file_stats";
+
+export type SandboxHostCallObserver = (params: {
+  name: SandboxHostCallName;
+  path?: string;
+}) => void;
+
 const DENIED_PATH_PATTERNS = [
-  /(^|[/\\])\.env[^/\\]*(?:[/\\]|$)/i,
+  /(^|[/\\])(?:\.env(?:\.[^/\\]+)*|\.envrc)(?:[/\\]|$)/i,
   /(^|[/\\])\.dyad([/\\]|$)/i,
   /(^|[/\\])\.git([/\\]|$)/i,
   /(^|[/\\])\.npmrc$/i,
@@ -191,9 +198,6 @@ async function resolveSandboxPath(params: {
   guestPath: string;
 }): Promise<{ filePath: string; displayPath: string }> {
   if (params.guestPath.startsWith("attachments:")) {
-    assertAllowedGuestPath(
-      params.guestPath.slice("attachments:".length) || params.guestPath,
-    );
     const attachment = await resolveAttachmentLogicalPath(
       params.appPath,
       params.guestPath,
@@ -334,14 +338,9 @@ export async function sandboxListFiles(
     const dir = guestDir ?? ".";
     if (dir === "attachments:" || dir === "attachments") {
       const attachments = await listStoredAttachments(appPath);
-      return attachments
-        .filter(
-          (attachment) =>
-            !DENIED_PATH_PATTERNS.some((pattern) =>
-              pattern.test(attachment.logicalName),
-            ),
-        )
-        .map((attachment) => toAttachmentLogicalPath(attachment.logicalName));
+      return attachments.map((attachment) =>
+        toAttachmentLogicalPath(attachment.logicalName),
+      );
     }
 
     assertAllowedGuestPath(dir);
@@ -381,6 +380,13 @@ export async function sandboxListFiles(
 }
 
 export function buildSandboxCapabilities(appPath: string) {
+  return buildSandboxCapabilitiesWithObserver(appPath);
+}
+
+export function buildSandboxCapabilitiesWithObserver(
+  appPath: string,
+  onHostCall?: SandboxHostCallObserver,
+) {
   return {
     read_file: (guestPath: unknown, options?: unknown) => {
       if (typeof guestPath !== "string") {
@@ -389,6 +395,7 @@ export function buildSandboxCapabilities(appPath: string) {
           DyadErrorKind.Validation,
         );
       }
+      onHostCall?.({ name: "read_file", path: guestPath });
       return sandboxReadFile(appPath, guestPath, options);
     },
     list_files: (dir?: unknown) => {
@@ -398,6 +405,7 @@ export function buildSandboxCapabilities(appPath: string) {
           DyadErrorKind.Validation,
         );
       }
+      onHostCall?.({ name: "list_files", path: dir });
       return sandboxListFiles(appPath, dir);
     },
     file_stats: (guestPath: unknown) => {
@@ -407,6 +415,7 @@ export function buildSandboxCapabilities(appPath: string) {
           DyadErrorKind.Validation,
         );
       }
+      onHostCall?.({ name: "file_stats", path: guestPath });
       return sandboxFileStats(appPath, guestPath);
     },
   };

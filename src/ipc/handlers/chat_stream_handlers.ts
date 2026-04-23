@@ -876,8 +876,7 @@ ${componentSnippet}
         }
         const useReferencedAppManifest =
           willUseLocalAgentStream && referencedAppsForAgent.length > 0;
-        const willUseOnDiskAttachmentPrompt =
-          isLocalAgentMode || isAskMode;
+        const willUseOnDiskAttachmentPrompt = isLocalAgentMode || isAskMode;
         const effectiveAiUserPrompt = willUseOnDiskAttachmentPrompt
           ? localAgentAiUserPrompt
           : defaultAiUserPrompt;
@@ -1096,15 +1095,14 @@ ${componentSnippet}
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
 
-        if (!willUseLocalAgentStream) {
-          const hasImageAttachments = storedAttachments.some((attachment) =>
-            attachment.mimeType.startsWith("image/"),
-          );
-          const hasUploadedAttachments = storedAttachments.some(
-            (attachment) => attachment.attachmentType === "upload-to-codebase",
-          );
-          const isAskMode = selectedChatMode === "ask";
+        const hasImageAttachments = storedAttachments.some((attachment) =>
+          attachment.mimeType.startsWith("image/"),
+        );
+        const hasUploadedAttachments = storedAttachments.some(
+          (attachment) => attachment.attachmentType === "upload-to-codebase",
+        );
 
+        if (!willUseLocalAgentStream) {
           if (hasUploadedAttachments && !isAskMode) {
             systemPrompt += `
 
@@ -1115,8 +1113,15 @@ When files are attached to this conversation for upload to the codebase, copy th
 Use the attached file path from the user's message as the \`from\` value. Choose an appropriate project-relative \`to\` path.
 
 `;
-          } else if (hasImageAttachments) {
-            systemPrompt += `
+          }
+        }
+
+        if (
+          hasImageAttachments &&
+          (!willUseLocalAgentStream || selectedChatMode === "plan") &&
+          !(hasUploadedAttachments && !isAskMode)
+        ) {
+          systemPrompt += `
 
 # Image Analysis Instructions
 This conversation includes one or more image attachments. When the user uploads images:
@@ -1126,7 +1131,6 @@ This conversation includes one or more image attachments. When the user uploads 
 4. For diagrams or wireframes, try to understand the content and structure shown.
 5. For screenshots of code or errors, try to identify the issue or explain the code.
 `;
-          }
         }
 
         const codebasePrefix = isEngineEnabled

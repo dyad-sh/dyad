@@ -650,6 +650,9 @@ export async function handleLocalAgentStream(
       onWarningMessage: (message) => {
         warningMessages.push(message);
       },
+      onAttachmentAccess: () => {
+        usedAttachmentAccessTool = true;
+      },
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -1428,14 +1431,7 @@ export async function handleLocalAgentStream(
       const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;
       fullResponse += warningMessage;
       await updateResponseInDb(placeholderMessageId, fullResponse);
-      sendResponseChunk(
-        event,
-        req.chatId,
-        chat,
-        fullResponse,
-        placeholderMessageId,
-        hiddenMessageIdsForStreaming,
-      );
+      sendChunk(fullResponse);
       sendTelemetryEvent("sandbox.tool.unused_with_attachment", {
         chatId: req.chatId,
         appId: ctx.appId,

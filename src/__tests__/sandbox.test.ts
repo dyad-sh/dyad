@@ -33,6 +33,17 @@ describe("sandbox capabilities", () => {
     await fs.writeFile(path.join(appPath, "src", "data.txt"), "abcdef", "utf8");
     await fs.writeFile(path.join(appPath, ".env"), "SECRET=1", "utf8");
     await fs.writeFile(path.join(appPath, ".envrc"), "SECRET=2", "utf8");
+    await fs.writeFile(
+      path.join(appPath, ".environment-setup.md"),
+      "docs",
+      "utf8",
+    );
+    await fs.mkdir(path.join(appPath, ".envoy"), { recursive: true });
+    await fs.writeFile(
+      path.join(appPath, ".envoy", "config.yaml"),
+      "x",
+      "utf8",
+    );
     const mediaDir = getDyadMediaDir(appPath);
     await fs.mkdir(mediaDir, { recursive: true });
     await fs.writeFile(path.join(mediaDir, "stored-log.txt"), "line1\nline2\n");
@@ -68,6 +79,12 @@ describe("sandbox capabilities", () => {
     await expect(sandboxReadFile(appPath, ".envrc")).rejects.toThrow(
       "protected path",
     );
+    await expect(
+      sandboxReadFile(appPath, ".environment-setup.md"),
+    ).resolves.toBe("docs");
+    await expect(sandboxListFiles(appPath, ".envoy")).resolves.toStrictEqual([
+      ".envoy/config.yaml",
+    ]);
     await expect(sandboxReadFile(appPath, "../outside.txt")).rejects.toThrow(
       "Path traversal",
     );
@@ -130,6 +147,29 @@ describe("sandbox capabilities", () => {
     });
   });
 
+  it("allows explicit attachment aliases with protected-looking names", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await fs.writeFile(path.join(mediaDir, "stored-env.txt"), "ATTACHED=1");
+    await appendAttachmentManifestEntries(appPath, [
+      {
+        logicalName: ".env",
+        originalName: ".env",
+        storedFileName: "stored-env.txt",
+        mimeType: "text/plain",
+        sizeBytes: 10,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
+    ]);
+
+    await expect(sandboxReadFile(appPath, "attachments:.env")).resolves.toBe(
+      "ATTACHED=1",
+    );
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+      "attachments:.env",
+    ]);
+  });
+
   it("filters stale attachment manifest entries", async () => {
     await appendAttachmentManifestEntries(appPath, [
       {
@@ -178,6 +218,31 @@ describe("sandbox capabilities", () => {
     expect(result).toMatchObject({
       value: "2",
       truncated: false,
+    });
+  });
+
+  it("reports actual attachment host calls from MustardScript", async () => {
+    if (!isSandboxSupportedPlatform()) {
+      return;
+    }
+
+    const hostCalls: Array<{ name: string; path?: string }> = [];
+    const result = await runSandboxScript({
+      appPath,
+      script: `
+        async function main() {
+          const p = "attachments:server.log";
+          return await read_file(p, { length: 5 });
+        }
+        main();
+      `,
+      onHostCall: (hostCall) => hostCalls.push(hostCall),
+    });
+
+    expect(result.value).toBe("line1");
+    expect(hostCalls).toContainEqual({
+      name: "read_file",
+      path: "attachments:server.log",
     });
   });
 

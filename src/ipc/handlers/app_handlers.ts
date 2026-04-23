@@ -37,7 +37,6 @@ import { readSettings } from "../../main/settings";
 import { addLog, clearLogs } from "../../lib/log_store";
 import {
   DYAD_SCREENSHOT_DIR_NAME,
-  LEGACY_SCREENSHOT_FILE_NAME,
   MAX_SCREENSHOTS_PER_APP,
   SCREENSHOT_FILENAME_REGEX,
 } from "../utils/media_path_utils";
@@ -2784,14 +2783,9 @@ export function registerAppHandlers() {
       buffer,
     );
 
-    // Prune: delete legacy file, keep only the newest MAX_SCREENSHOTS_PER_APP
-    // by mtime. Swallow ENOENT on unlink to tolerate concurrent saves.
+    // Prune: keep only the newest MAX_SCREENSHOTS_PER_APP by mtime.
+    // Swallow ENOENT on unlink to tolerate concurrent saves.
     try {
-      // Opportunistically delete the legacy filename.
-      await fsPromises
-        .unlink(path.join(screenshotDir, LEGACY_SCREENSHOT_FILE_NAME))
-        .catch(() => {});
-
       const screenshots = await readScreenshotEntries(screenshotDir);
       for (const extra of screenshots.slice(MAX_SCREENSHOTS_PER_APP)) {
         await fsPromises

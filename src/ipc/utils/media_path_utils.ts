@@ -36,12 +36,6 @@ export const MAX_SCREENSHOTS_PER_APP = 100;
 export const SCREENSHOT_FILENAME_REGEX = /^[0-9a-f]{40}\.png$/;
 
 /**
- * Legacy filename used before screenshots were keyed by commit hash.
- * Opportunistically removed when we prune the screenshot directory.
- */
-export const LEGACY_SCREENSHOT_FILE_NAME = "screenshot.png";
-
-/**
  * Check if an absolute path falls within the app's .dyad/media directory.
  * Used to validate that file copy operations only read from the allowed media dir.
  */

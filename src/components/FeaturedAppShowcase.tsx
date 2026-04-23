@@ -36,7 +36,7 @@ export function FeaturedAppShowcase() {
       className="w-full max-w-6xl mx-auto px-8 mt-8 mb-12"
     >
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Featured App Showcase</h2>
+        <h2 className="text-lg font-semibold">Featured Apps </h2>
         <button
           type="button"
           onClick={() => navigate({ to: "/apps" })}

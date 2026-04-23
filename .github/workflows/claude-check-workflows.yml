@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Check workflow health
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.96
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000

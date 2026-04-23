@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 1
 
       - name: PR Review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.96
         env:
           # Default is 32,000 which Claude willl sometimes hit.
           # https://code.claude.com/docs/en/settings

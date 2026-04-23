@@ -720,8 +720,6 @@ export async function handleLocalAgentStream(
             tools: allTools,
             stopWhen: [
               stepCountIs(maxToolCallSteps),
-              // We instruct AI to only emit set chat summary tool call at the end of the turn.
-              hasToolCall(setChatSummaryTool.name),
               // User needs to explicitly set up integration before AI can continue.
               hasToolCall(addIntegrationTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
@@ -1213,7 +1211,7 @@ export async function handleLocalAgentStream(
       }
 
       // Check if the model ended with text only (no tool calls in the final step).
-      // A final set_chat_summary call is end-of-turn metadata, so it should not
+      // set_chat_summary is metadata, so a summary-only final step should not
       // suppress the todo safety follow-up when the pass already produced text.
       // This is more reliable than passProducedChatText which is set on any text-delta
       // during the stream (including preambles before tool calls).

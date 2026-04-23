@@ -1368,6 +1368,32 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Todo follow-up", () => {
+    it("does not stop the stream when set_chat_summary is called", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([]);
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      const streamOptions = vi.mocked(streamText).mock.calls[0]?.[0] as any;
+      expect(streamOptions.stopWhen).not.toContainEqual({
+        toolName: "set_chat_summary",
+      });
+    });
+
     it("runs a follow-up pass when the first pass ends with set_chat_summary and incomplete todos remain", async () => {
       // Arrange
       const { event } = createFakeEvent();

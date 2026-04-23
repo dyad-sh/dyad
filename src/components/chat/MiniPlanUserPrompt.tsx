@@ -58,7 +58,7 @@ export const MiniPlanUserPrompt: React.FC<MiniPlanUserPromptProps> = ({
           </span>
           <div className="flex gap-1 flex-wrap">
             {attachments.map((attachment) => {
-              const fileName = attachment.split("/").pop() || attachment;
+              const fileName = attachment.split(/[/\\]/).pop() || attachment;
               return (
                 <span
                   key={attachment}

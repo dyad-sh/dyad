@@ -57,6 +57,10 @@ export type ApplyAppTemplateParams = z.infer<
 
 export const ApplyAppTemplateResultSchema = z.object({
   applied: z.boolean(),
+  // True when the caller should restart the dev server — either because the
+  // template was applied, or because the handler stopped a running dev server
+  // and made no changes (so the user is left without a running preview).
+  needsRestart: z.boolean(),
 });
 
 export type ApplyAppTemplateResult = z.infer<

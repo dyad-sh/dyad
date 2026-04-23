@@ -26,6 +26,14 @@ const executeSandboxScriptSchema = z.object({
 
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
 
+function isAttachmentHostCallPath(path: string | undefined): boolean {
+  return (
+    path === "attachments" ||
+    path === "attachments:" ||
+    path?.startsWith("attachments:") === true
+  );
+}
+
 function buildScriptXml(params: {
   args: ExecuteSandboxScriptArgs;
   output: string;
@@ -83,6 +91,11 @@ Return a concise value. Prefer range reads, filtering, aggregation, and small su
           appPath: ctx.appPath,
           script: args.script,
           timeoutMs: readSettings().sandboxScriptTimeoutMs,
+          onHostCall: ({ path }) => {
+            if (isAttachmentHostCallPath(path)) {
+              ctx.onAttachmentAccess?.();
+            }
+          },
         });
 
         ctx.onXmlComplete(

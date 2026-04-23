@@ -615,6 +615,9 @@ export async function handleLocalAgentStream(
       onWarningMessage: (message) => {
         warningMessages.push(message);
       },
+      onAttachmentAccess: () => {
+        usedAttachmentAccessTool = true;
+      },
     };
 
     // Build tool set (agent tools + MCP tools)

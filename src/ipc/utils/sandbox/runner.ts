@@ -4,7 +4,10 @@ import path from "node:path";
 import type { Capability, StructuredValue } from "mustardscript";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getDyadMediaDir } from "@/ipc/utils/media_path_utils";
-import { buildSandboxCapabilities } from "./capabilities";
+import {
+  buildSandboxCapabilitiesWithObserver,
+  type SandboxHostCallObserver,
+} from "./capabilities";
 import {
   clampSandboxTimeoutMs,
   SANDBOX_ALLOCATION_BUDGET,
@@ -120,6 +123,7 @@ export async function runSandboxScript(params: {
   script: string;
   timeoutMs?: number;
   persistFullOutput?: boolean;
+  onHostCall?: SandboxHostCallObserver;
 }): Promise<SandboxRunResult> {
   if (
     Buffer.byteLength(params.script, "utf8") > SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES
@@ -139,8 +143,9 @@ export async function runSandboxScript(params: {
   try {
     const program = new Mustard(params.script);
     const context = new ExecutionContext({
-      capabilities: buildSandboxCapabilities(
+      capabilities: buildSandboxCapabilitiesWithObserver(
         params.appPath,
+        params.onHostCall,
       ) as unknown as Record<string, Capability>,
       limits: {
         instructionBudget: SANDBOX_INSTRUCTION_BUDGET,

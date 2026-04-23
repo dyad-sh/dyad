@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import { withLock } from "./lock_utils";
 
 /**
@@ -174,10 +175,9 @@ async function appendAttachmentManifestEntriesUnlocked(
   for (const entry of entries) {
     byLogicalName.set(entry.logicalName, entry);
   }
-  await fs.writeFile(
-    manifestPath,
-    JSON.stringify([...byLogicalName.values()], null, 2),
-  );
+  await writeAttachmentManifestAtomic(manifestPath, [
+    ...byLogicalName.values(),
+  ]);
 }
 
 async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
@@ -210,12 +210,28 @@ async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
     byLogicalName.set(entry.logicalName, entry);
   }
 
-  await fs.writeFile(
-    manifestPath,
-    JSON.stringify([...byLogicalName.values()], null, 2),
-  );
+  await writeAttachmentManifestAtomic(manifestPath, [
+    ...byLogicalName.values(),
+  ]);
 
   return finalized;
+}
+
+async function writeAttachmentManifestAtomic(
+  manifestPath: string,
+  entries: AttachmentManifestEntry[],
+): Promise<void> {
+  const tempPath = path.join(
+    path.dirname(manifestPath),
+    `.${path.basename(manifestPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+  try {
+    await fs.writeFile(tempPath, JSON.stringify(entries, null, 2), "utf8");
+    await fs.rename(tempPath, manifestPath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function appendAttachmentManifestEntries(

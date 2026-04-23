@@ -4,6 +4,7 @@ import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 import { constructLocalAgentPrompt } from "./local_agent_prompt";
 import { constructPlanModePrompt } from "./plan_mode_prompt";
+import { CavemanMode } from "@/lib/schemas";
 
 const logger = log.scope("system_prompt");
 
@@ -506,6 +507,61 @@ When tools are used, provide a brief human-readable summary of the information g
 
 When tools are not used, simply state: **"Ok, looks like I don't need any tools, I can start building."**
 `;
+//caveman prompts
+const CAVEMAN_PROMPTS: Record<"lite" | "full" | "ultra", string> = {
+  lite: `# CAVEMAN MODE: LITE
+No filler. No hedging. Keep articles + full sentences. Professional but tight.
+DROP: just/really/basically/actually/simply/essentially/generally
+DROP: "sure", "certainly", "of course", "happy to", "I'd recommend"
+DROP: "it might be worth", "you could consider", "in order to", "make sure to"
+Keep: articles (a/an/the), full grammar, complete sentences.
+Technical terms exact. Code blocks unchanged. Errors quoted exact.
+Pattern: [thing] [action] [reason]. [next step].`,
+
+  full: `# CAVEMAN MODE: FULL
+Terse like smart caveman. Technical substance stay. Fluff die.
+DROP: articles (a/an/the), filler (just/really/basically/actually/simply),
+pleasantries (sure/certainly/of course/happy to/I'd be happy to),
+hedging (might/could consider/it's worth noting/perhaps/maybe).
+Fragments OK. Short synonyms: big not "extensive", fix not "implement a solution for",
+use not "utilize", because not "the reason is because".
+Drop "you should/make sure to/remember to" — state the action directly.
+Technical terms exact. Code blocks unchanged. Errors quoted exact.
+Pattern: [thing] [action] [reason]. [next step].
+NOT: "Sure! I'd be happy to help. The issue you're experiencing is likely caused by..."
+YES: "Bug in auth middleware. Token expiry check use < not <=. Fix:"
+AUTO-CLARITY: security warnings, irreversible/destructive actions, multi-step sequences
+where fragment order risks misread — write those in full. Resume caveman after.`,
+
+  ultra: `# CAVEMAN MODE: ULTRA — OVERRIDES ALL OTHER STYLE INSTRUCTIONS
+Maximum compression. One word when one word enough.
+DROP: articles, conjunctions, pronouns, all filler and hedging.
+ABBREVIATE: DB/auth/config/req/res/fn/impl/ctx/env/deps
+ARROWS for causality: X → Y
+Fragments only. No intro. No outro. No follow-up question.
+Short synonyms: big/fix/use/fast/slow — never the long version.
+Technical terms exact. Code blocks unchanged. Errors quoted exact.
+Pattern: [thing] → [effect]. [fix].
+NOT: "The reason your component re-renders is that you're creating a new object reference."
+YES: "Inline obj prop → new ref → re-render. useMemo."
+AUTO-CLARITY (no exception): security warnings, irreversible/destructive actions,
+breaking changes, data migrations — write these in full plain English,
+then resume ultra. Future debuggers need the context.`,
+};
+
+/**
+ * Injects caveman mode instructions into a system prompt if enabled.
+ */
+export const injectCavemanPrompt = (
+  prompt: string,
+  cavemanMode?: CavemanMode,
+) => {
+  if (cavemanMode && cavemanMode !== "off") {
+    // Prepend for higher priority and to ensure it overrides other style instructions
+    return CAVEMAN_PROMPTS[cavemanMode] + "\n\n" + prompt;
+  }
+  return prompt;
+};
 
 export const constructSystemPrompt = ({
   aiRules,
@@ -514,6 +570,7 @@ export const constructSystemPrompt = ({
   themePrompt,
   readOnly,
   basicAgentMode,
+  cavemanMode,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -523,16 +580,19 @@ export const constructSystemPrompt = ({
   readOnly?: boolean;
   /** If true, use basic agent mode (free tier with limited tools) */
   basicAgentMode?: boolean;
+  cavemanMode?: CavemanMode;
 }) => {
   if (chatMode === "plan") {
-    return constructPlanModePrompt(aiRules, themePrompt);
+    const planPrompt = constructPlanModePrompt(aiRules, themePrompt);
+    return injectCavemanPrompt(planPrompt, cavemanMode);
   }
 
   if (chatMode === "local-agent") {
-    return constructLocalAgentPrompt(aiRules, themePrompt, {
+    const localAgentPrompt = constructLocalAgentPrompt(aiRules, themePrompt, {
       readOnly,
       basicAgentMode,
     });
+    return injectCavemanPrompt(localAgentPrompt, cavemanMode);
   }
 
   let systemPrompt = getSystemPromptForChatMode({
@@ -549,7 +609,7 @@ export const constructSystemPrompt = ({
     systemPrompt += "\n\n" + themePrompt;
   }
 
-  return systemPrompt;
+  return injectCavemanPrompt(systemPrompt, cavemanMode);
 };
 
 export const getSystemPromptForChatMode = ({

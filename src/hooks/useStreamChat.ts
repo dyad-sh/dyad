@@ -178,11 +178,14 @@ export function useStreamChat({
       // app while a queued message streams for the original chat.
       let resolvedAppIdFromChat: number | null = null;
       if (appId === undefined) {
+        // queryKeys.chats.all matches detail/search caches too (non-array data),
+        // so guard against non-array entries before calling .find.
         const chatsCaches = queryClient.getQueriesData<ChatSummary[]>({
           queryKey: queryKeys.chats.all,
         });
         for (const [, cachedChats] of chatsCaches) {
-          const found = cachedChats?.find((c) => c.id === chatId);
+          if (!Array.isArray(cachedChats)) continue;
+          const found = cachedChats.find((c) => c.id === chatId);
           if (found) {
             resolvedAppIdFromChat = found.appId;
             break;

@@ -9,7 +9,10 @@ import {
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { resolveTargetAppPath } from "./resolve_app_context";
+import {
+  filterDyadInternalFiles,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 
 const logger = log.scope("code_search");
 
@@ -128,18 +131,7 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
       },
     });
 
-    // Never expose .dyad/ from a referenced app — rules, chat history, and
-    // other internal metadata are not part of the @app reference contract.
-    // This mirrors the exclusions in grep.ts and list_files.ts.
-    const filteredFiles = args.app_name
-      ? files.filter((file) => {
-          const firstSegment = file.path
-            .replace(/\\/g, "/")
-            .replace(/^\.\//, "")
-            .split("/")[0];
-          return firstSegment !== ".dyad";
-        })
-      : files;
+    const filteredFiles = filterDyadInternalFiles(files, args.app_name);
 
     // Map files to FileContext format
     const filesContext = filteredFiles.map((file) => ({

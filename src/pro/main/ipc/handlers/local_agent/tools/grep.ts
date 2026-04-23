@@ -11,7 +11,10 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "@/ipc/utils/ripgrep_utils";
-import { resolveTargetAppPath } from "./resolve_app_context";
+import {
+  DYAD_INTERNAL_RIPGREP_EXCLUDE,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -161,10 +164,8 @@ async function runRipgrep({
       : RIPGREP_EXCLUDED_GLOBS;
     args.push(...exclusionGlobs.flatMap((glob) => ["--glob", glob]));
 
-    // Never expose .dyad/ from a referenced app — rules/chat history
-    // are not part of the @app reference contract.
     if (excludeDyadFolder) {
-      args.push("--glob", "!.dyad/**");
+      args.push("--glob", DYAD_INTERNAL_RIPGREP_EXCLUDE);
     }
 
     args.push("--", query, ".");

@@ -10,7 +10,11 @@ import {
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { resolveDirectoryWithinAppPath } from "./path_safety";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { resolveTargetAppPath } from "./resolve_app_context";
+import {
+  DYAD_INTERNAL_GLOB,
+  filterDyadInternalFiles,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 
 const MAX_PATHS_TO_RETURN = 1_000;
 
@@ -135,10 +139,8 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     if (args.include_ignored) {
       const normalizedAppPath = targetAppPath.replace(/\\/g, "/");
       const globPattern = `${normalizedAppPath}/${globPath}`;
-      // Never expose .dyad/ from a referenced app — its rules and chat history
-      // are not part of the @app reference contract.
       const ignoredGlobs = args.app_name
-        ? ["**/.git", "**/.git/**", "**/.dyad/**"]
+        ? ["**/.git", "**/.git/**", DYAD_INTERNAL_GLOB]
         : ["**/.git", "**/.git/**"];
       const ignoredPaths = await glob(globPattern, {
         withFileTypes: true,
@@ -165,19 +167,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
         },
       });
 
-      // Never expose .dyad/ from a referenced app — rules, chat history, and
-      // other internal metadata are not part of the @app reference contract.
-      // This mirrors the exclusion in the include_ignored branch above and
-      // the pattern used by code_search.ts.
-      const filteredFiles = args.app_name
-        ? files.filter((file) => {
-            const firstSegment = file.path
-              .replace(/\\/g, "/")
-              .replace(/^\.\//, "")
-              .split("/")[0];
-            return firstSegment !== ".dyad";
-          })
-        : files;
+      const filteredFiles = filterDyadInternalFiles(files, args.app_name);
 
       // Build the list of file paths
       allPaths = sortListedPaths(

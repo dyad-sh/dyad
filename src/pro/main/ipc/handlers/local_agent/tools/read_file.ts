@@ -1,10 +1,12 @@
 import fs from "node:fs";
-import path from "node:path";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { resolveTargetAppPath } from "./resolve_app_context";
+import {
+  assertDyadInternalAccessAllowed,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 
 const readFile = fs.promises.readFile;
 
@@ -98,23 +100,11 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
 
     const fullFilePath = safeJoin(targetAppPath, args.path);
 
-    // Never expose .dyad/ from a referenced app — rules, chat history, and
-    // other internal metadata are not part of the @app reference contract.
-    // This mirrors the exclusions in grep.ts and list_files.ts.
-    // We check the resolved relative path (not the raw input) so that
-    // normalized traversal aliases like "src/../.dyad/..." are also blocked.
-    if (args.app_name) {
-      const relativeFromApp = path
-        .relative(targetAppPath, fullFilePath)
-        .replace(/\\/g, "/");
-      const firstSegment = relativeFromApp.split("/")[0];
-      if (firstSegment === ".dyad") {
-        throw new DyadError(
-          `Cannot read .dyad/ paths from referenced apps — these files are not part of the @app reference contract.`,
-          DyadErrorKind.Validation,
-        );
-      }
-    }
+    assertDyadInternalAccessAllowed({
+      targetAppPath,
+      fullFilePath,
+      appName: args.app_name,
+    });
 
     if (!fs.existsSync(fullFilePath)) {
       const appContext = args.app_name ? ` (in app: ${args.app_name})` : "";

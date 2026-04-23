@@ -673,7 +673,8 @@ ${componentSnippet}
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
-        const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
+        const willUseLocalAgentStream =
+          isLocalAgentBackedMode(selectedChatMode);
 
         // Agent/ask/plan modes reach referenced apps via tool calls (`app_name`
         // on read-only tools), so we only need name/path pairs — skip the heavy
@@ -1403,7 +1404,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           fullResponse = result.fullResponse;
 
-          if (selectedChatMode !== "ask" && isTurboEditsV2Enabled(settings)) {
+          if (isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
@@ -1502,7 +1503,6 @@ ${formattedSearchReplaceIssues}`,
 
           if (
             !abortController.signal.aborted &&
-            selectedChatMode !== "ask" &&
             hasUnclosedDyadWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
@@ -1555,8 +1555,7 @@ ${formattedSearchReplaceIssues}`,
             // because there's going to be type errors since the packages aren't
             // installed yet.
             addDependencies.length === 0 &&
-            settings.enableAutoFixProblems &&
-            selectedChatMode !== "ask"
+            settings.enableAutoFixProblems
           ) {
             try {
               // IF auto-fix is enabled

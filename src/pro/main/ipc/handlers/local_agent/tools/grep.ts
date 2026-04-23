@@ -161,6 +161,12 @@ async function runRipgrep({
       : RIPGREP_EXCLUDED_GLOBS;
     args.push(...exclusionGlobs.flatMap((glob) => ["--glob", glob]));
 
+    // Never expose .dyad/ from a referenced app — rules/chat history
+    // are not part of the @app reference contract.
+    if (excludeDyadFolder) {
+      args.push("--glob", "!.dyad/**");
+    }
+
     args.push("--", query, ".");
 
     const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });

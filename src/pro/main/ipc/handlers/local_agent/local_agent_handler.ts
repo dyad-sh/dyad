@@ -821,6 +821,16 @@ export async function handleLocalAgentStream(
                       excludeMessageIds: new Set([placeholderMessageId]),
                     },
                   );
+                  // The referenced-apps reminder lives only in-memory on the
+                  // latest user message and is not persisted, so rebuilding
+                  // history from the DB drops it. Re-inject so post-compaction
+                  // tool steps keep the explicit app_name allow-list.
+                  if (referencedApps.length > 0) {
+                    injectReferencedAppsReminder(
+                      compactedMessageHistory,
+                      referencedApps,
+                    );
+                  }
                   baseMessageHistoryCount = compactedMessageHistory.length;
                   // The compacted history includes the compaction summary, but the
                   // AI SDK's initialMessages does not. Track the delta so we can

@@ -344,15 +344,7 @@ If the user asks for server-side code in a Vite app (API routes, database access
 This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
 `;
 
-export const BUILD_SYSTEM_PROMPT = `${BUILD_SYSTEM_PREFIX}
-
-[[AI_RULES]]
-
-${BUILD_SYSTEM_POSTFIX}
-
-${BUILD_SERVER_LAYER_NUDGE}`;
-
-export const BUILD_SYSTEM_PROMPT_WITHOUT_SERVER_LAYER_NUDGE = `${BUILD_SYSTEM_PREFIX}
+const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
 
@@ -586,9 +578,9 @@ export const getSystemPromptForChatMode = ({
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
-  const buildPrompt = nitroEnabled
-    ? BUILD_SYSTEM_PROMPT_WITHOUT_SERVER_LAYER_NUDGE
-    : BUILD_SYSTEM_PROMPT;
+  const buildPrompt =
+    BUILD_SYSTEM_PROMPT_BASE +
+    (nitroEnabled ? "" : `\n\n${BUILD_SERVER_LAYER_NUDGE}`);
   return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };
 

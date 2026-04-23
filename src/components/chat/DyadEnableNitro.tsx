@@ -25,17 +25,21 @@ export const DyadEnableNitro: React.FC<DyadEnableNitroProps> = ({ state }) => {
       <DyadCardHeader icon={<Server size={15} />} accentColor="emerald">
         <DyadBadge color="emerald">Server layer</DyadBadge>
         <span className="text-sm font-medium text-foreground">{headline}</span>
-        {state && <DyadStateIndicator state={state} />}
+        {state && (
+          <DyadStateIndicator state={state} abortedLabel="Did not finish" />
+        )}
       </DyadCardHeader>
-      <div className="px-3 pb-3">
-        <p className="text-xs text-muted-foreground leading-snug">
-          API routes can now live under{" "}
-          <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-muted">
-            server/routes/api/
-          </code>
-          . Secrets and database clients must stay on the server.
-        </p>
-      </div>
+      {!isPending && !isAborted && (
+        <div className="px-3 pb-3">
+          <p className="text-xs text-muted-foreground leading-snug">
+            API routes can now live under{" "}
+            <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-muted">
+              server/routes/api/
+            </code>
+            . Secrets and database clients must stay on the server.
+          </p>
+        </div>
+      )}
     </DyadCard>
   );
 };

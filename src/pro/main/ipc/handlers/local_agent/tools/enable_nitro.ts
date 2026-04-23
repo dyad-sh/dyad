@@ -2,16 +2,18 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
+import log from "electron-log";
 
 import { ToolDefinition, AgentContext } from "./types";
 import { db } from "../../../../../../db";
-import { apps, messages } from "../../../../../../db/schema";
+import { apps } from "../../../../../../db/schema";
 import {
-  executeAddDependency,
+  installPackages,
   ExecuteAddDependencyError,
 } from "@/ipc/processors/executeAddDependency";
 import { appendNitroRules, restoreAiRules } from "@/ipc/utils/ai_rules_patcher";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
+const logger = log.scope("enable_nitro");
 
 const NITRO_CONFIG_CONTENTS = `import { defineConfig } from "nitro";
 
@@ -100,24 +102,11 @@ export const enableNitroTool: ToolDefinition<
 
   getConsentPreview: (args) => `Add Nitro server layer (${args.reason})`,
 
-  buildXml: () => `<dyad-enable-nitro />`,
+  buildXml: () => `<dyad-enable-nitro></dyad-enable-nitro>`,
 
   execute: async (_args, ctx: AgentContext) => {
     if (ctx.nitroEnabled) {
       return "Nitro is already enabled for this app. Skipping setup.";
-    }
-
-    const message = ctx.messageId
-      ? await db.query.messages.findFirst({
-          where: eq(messages.id, ctx.messageId),
-        })
-      : undefined;
-
-    if (!message) {
-      throw new DyadError(
-        "Message not found for enabling Nitro",
-        DyadErrorKind.NotFound,
-      );
     }
 
     const rulesBackup = await appendNitroRules(ctx.appPath);
@@ -131,7 +120,8 @@ export const enableNitroTool: ToolDefinition<
 
       try {
         await fs.access(serverDirPath);
-      } catch {
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
         serverDirCreated = true;
       }
       await fs.mkdir(path.join(serverDirPath, "routes", "api"), {
@@ -143,21 +133,29 @@ export const enableNitroTool: ToolDefinition<
         "utf8",
       );
 
-      const result = await executeAddDependency({
+      const result = await installPackages({
         packages: ["nitro"],
-        message,
         appPath: ctx.appPath,
       });
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }
+
+      await db
+        .update(apps)
+        .set({ nitroEnabled: true })
+        .where(eq(apps.id, ctx.appId));
     } catch (error) {
-      await restoreAiRules(ctx.appPath, rulesBackup.backup);
-      if (nitroConfigResult?.wasCreated) {
-        await fs.rm(nitroConfigResult.filePath, { force: true });
-      }
-      if (serverDirCreated) {
-        await fs.rm(serverDirPath, { recursive: true, force: true });
+      try {
+        await restoreAiRules(ctx.appPath, rulesBackup.backup);
+        if (nitroConfigResult?.wasCreated) {
+          await fs.rm(nitroConfigResult.filePath, { force: true });
+        }
+        if (serverDirCreated) {
+          await fs.rm(serverDirPath, { recursive: true, force: true });
+        }
+      } catch (rollbackError) {
+        logger.error("Rollback failed during enable_nitro:", rollbackError);
       }
       if (error instanceof ExecuteAddDependencyError) {
         for (const warningMessage of error.warningMessages) {
@@ -166,11 +164,6 @@ export const enableNitroTool: ToolDefinition<
       }
       throw error;
     }
-
-    await db
-      .update(apps)
-      .set({ nitroEnabled: true })
-      .where(eq(apps.id, ctx.appId));
 
     return "Nitro server layer added. Now update vite.config.ts per the setup steps in the tool description, then write the requested API route(s) under server/routes/api/.";
   },

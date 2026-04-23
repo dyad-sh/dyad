@@ -1,11 +1,11 @@
 ---
 name: dyad:deflake-e2e-from-run
-description: Root-cause flaky or failing E2E tests from a specific CI run by downloading and analyzing the Playwright HTML report (traces, screenshots, errors). Use this when given a GitHub Actions run URL and asked to investigate failures - do NOT re-run tests locally, read the report artifacts instead.
+description: Root-cause flaky or failing E2E tests from a specific CI run by downloading and analyzing the Playwright HTML report (traces, screenshots, errors). Use this when given a GitHub Actions run URL and asked to investigate failures. Diagnose from report artifacts first, then rebuild and rerun the affected E2E tests locally after making fixes.
 ---
 
 # Deflake E2E Tests from a CI Run
 
-Use this skill when the user points you at a specific failing CI run (e.g. `https://github.com/dyad-sh/dyad/actions/runs/<id>`) and asks you to root-cause the E2E failures. Unlike `deflake-e2e`, this skill does NOT rebuild and re-run tests — it reads the already-recorded Playwright report from the run's artifacts, which is faster and gives you the _exact_ failure state CI saw.
+Use this skill when the user points you at a specific failing CI run (e.g. `https://github.com/dyad-sh/dyad/actions/runs/<id>`) and asks you to root-cause the E2E failures. Unlike `deflake-e2e`, this skill starts by reading the already-recorded Playwright report from the run's artifacts, which is faster and gives you the _exact_ failure state CI saw. After making fixes, always rebuild and rerun the affected E2E tests locally before committing/pushing.
 
 ## Arguments
 
@@ -92,11 +92,24 @@ Prefer fixing the test over the app unless the race would actually bite a real u
 
 1. Make the minimal change — usually in `e2e-tests/helpers/page-objects/` since many specs share the same helper.
 2. `npm run fmt && npm run lint && npm run ts`.
-3. Skip local `npm run build && npm run e2e` unless you're genuinely unsure — the CI loop is ~15min and this analysis path is for _obvious_ root causes. If you're guessing, stop guessing and run it locally instead.
-4. Use `/dyad:pr-push` or commit + `gh pr create` directly. The PR body MUST include:
+3. Rebuild the app locally before running E2E. E2E tests run against the built app, so use the repository's standard build command:
+   ```
+   npm run build
+   ```
+   If the known Homebrew Python 3.14 `pyexpat` native rebuild issue occurs, rerun with:
+   ```
+   PYTHON=/usr/bin/python3 npm run build
+   ```
+4. Rerun the affected E2E test files locally after the rebuild. Prefer the narrowest set that covers the CI failures you fixed:
+   ```
+   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<affected-file>.spec.ts
+   ```
+   If the fix is in a shared helper that affected several failing specs, run all representative affected specs in one command or separate commands.
+5. Use `/dyad:pr-push` or commit + `gh pr create` directly. The PR body MUST include:
    - A link to the failing run.
    - The root-cause narrative (what raced, in concrete terms — not "timing issue").
    - Why the fix is correct (what the retry loop is doing that the original flow wasn't).
+   - The local build and affected E2E commands you ran.
 
 ## Gotchas
 

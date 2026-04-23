@@ -59,17 +59,22 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
   const isApproved = chatId ? miniPlanState.approvedChatIds.has(chatId) : false;
   const planData = chatId ? miniPlanState.plansByChatId.get(chatId) : null;
-  const visualsReady = chatId
-    ? miniPlanState.visualsReadyChatIds.has(chatId)
-    : false;
   const isTimedOut = chatId ? miniPlanState.timedOutChatIds.has(chatId) : false;
-  // Use atom data if available, fall back to XML attributes
-  const appName = planData?.appName || props["app-name"] || "";
-  const templateId = planData?.templateId || props.template || "react";
-  const themeId = planData?.themeId || props.theme || "default";
+  // Use atom data if available, fall back to XML attributes. Preserve
+  // intentionally empty user edits (e.g. cleared app name) by checking for
+  // live plan data presence rather than truthiness of individual fields.
+  const appName =
+    planData != null ? planData.appName : (props["app-name"] ?? "");
+  const templateId =
+    planData != null ? planData.templateId : (props.template ?? "react");
+  const themeId =
+    planData != null ? planData.themeId : (props.theme ?? "default");
   const designDirection =
-    planData?.designDirection || props["design-direction"] || "";
-  const mainColor = planData?.mainColor || props["main-color"] || "";
+    planData != null
+      ? planData.designDirection
+      : (props["design-direction"] ?? "");
+  const mainColor =
+    planData != null ? planData.mainColor : (props["main-color"] ?? "");
   const userPrompt = planData?.userPrompt || "";
   const attachments = planData?.attachments || [];
   const visuals = planData?.visuals || [];
@@ -88,10 +93,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     })),
   ];
 
-  const streamStillRunning =
-    props.state === "pending" || props.complete === "false";
-  const hasLivePlanData = planData != null;
-  const isReady = !streamStillRunning && (!hasLivePlanData || visualsReady);
+  // The XML tag's `complete` attribute is the definitive signal that the
+  // agent finished emitting the plan. Don't gate readiness on a separate
+  // visuals-update event — if the agent skips `plan_visuals` or the event
+  // never arrives, the card would otherwise stay permanently disabled.
+  const isReady = props.state !== "pending" && props.complete !== "false";
   const inputIdPrefix = chatId ? `mini-plan-${chatId}` : "mini-plan";
   const appNameFieldId = `${inputIdPrefix}-app-name`;
   const templateFieldId = `${inputIdPrefix}-template`;
@@ -315,7 +321,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       // Apply plan settings to the app before resolving the agent's promise
       if (selectedAppId) {
         let currentApp = app;
-        let templateApplied = false;
+        let templateNeedsRestart = false;
 
         if (!currentApp) {
           try {
@@ -342,12 +348,12 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         }
 
         try {
-          const { applied } = await ipc.template.applyAppTemplate({
+          const { needsRestart } = await ipc.template.applyAppTemplate({
             appId: selectedAppId,
             templateId: plan.templateId,
             chatId: chatId ?? undefined,
           });
-          templateApplied = applied;
+          templateNeedsRestart = needsRestart;
         } catch (error) {
           templateApplyFailed = true;
           recordApplyError("Could not apply the selected template.", error);
@@ -368,7 +374,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           recordApplyError("Could not apply the selected theme.", error);
         }
 
-        if (templateApplied) {
+        if (templateNeedsRestart) {
           try {
             await ipc.app.restartApp({
               appId: selectedAppId,
@@ -793,6 +799,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                 </>
               ) : isTimedOut ? (
                 "Plan timed out"
+              ) : !isReady ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Generating...
+                </>
               ) : !appName ? (
                 "Add an app name to continue"
               ) : (

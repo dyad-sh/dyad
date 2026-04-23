@@ -597,8 +597,11 @@ export function buildAgentToolSet(
           // approval is resolved. `plan_visuals` owns the approval gate, but
           // if the model skips it the agent would otherwise proceed to build.
           // Mini plan tools themselves are allowed through so the flow can
-          // progress to approval.
+          // progress to approval. Skip entirely when the mini plan feature
+          // is disabled — otherwise a plan left over from before the toggle
+          // would permanently block the agent.
           if (
+            options.enableMiniPlan !== false &&
             tool.modifiesState &&
             !MINI_PLAN_TOOLS.has(tool.name) &&
             !PLANNING_SPECIFIC_TOOLS.has(tool.name)

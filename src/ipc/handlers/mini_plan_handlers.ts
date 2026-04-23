@@ -8,6 +8,7 @@ import {
 } from "../types/mini_plan";
 import { safeSend } from "../utils/safe_sender";
 import { resolveMiniPlanApproval } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("mini_plan_handlers");
 
@@ -122,14 +123,16 @@ export function registerMiniPlanHandlers() {
   createTypedHandler(miniPlanContracts.addVisual, async (_, params) => {
     const plan = miniPlanStore.get(params.chatId);
     if (!plan) {
-      throw new Error(
+      throw new DyadError(
         `No mini plan found for chat ${params.chatId} when adding visual`,
+        DyadErrorKind.NotFound,
       );
     }
 
     if (plan.approved) {
-      throw new Error(
+      throw new DyadError(
         `Cannot add visual to approved mini plan for chat ${params.chatId}`,
+        DyadErrorKind.Precondition,
       );
     }
 

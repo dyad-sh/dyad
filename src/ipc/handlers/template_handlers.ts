@@ -130,12 +130,14 @@ export function registerTemplateHandlers() {
 
       // If the clear-and-recopy produced no effective diff (e.g. the template
       // is already applied), skip the commit — git would fail with "nothing to
-      // commit" — and report that no change was applied.
+      // commit" — and report that no change was applied. The dev server still
+      // needs to be restarted if we stopped it above, otherwise the preview
+      // would remain offline after a no-op apply.
       if (!(await hasStagedChanges({ path: appPath }))) {
         logger.info(
           `Template ${templateId} already applied to app ${appId}, skipping commit`,
         );
-        return { applied: false };
+        return { applied: false, needsRestart: appWasStopped };
       }
 
       const commitHash = await gitCommit({
@@ -156,7 +158,7 @@ export function registerTemplateHandlers() {
         }
       }
 
-      return { applied: true };
+      return { applied: true, needsRestart: true };
     });
   });
 }

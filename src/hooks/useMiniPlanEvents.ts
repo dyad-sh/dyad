@@ -22,9 +22,18 @@ export function useMiniPlanEvents() {
         setMiniPlanState((prev) => {
           const nextPlans = new Map(prev.plansByChatId);
           nextPlans.set(payload.chatId, payload.data);
+          // A fresh plan update supersedes any prior timeout/readiness state
+          // for this chat — otherwise a regenerated plan could stay stuck as
+          // "timed out" or carry over stale visuals readiness.
+          const nextTimedOut = new Set(prev.timedOutChatIds);
+          nextTimedOut.delete(payload.chatId);
+          const nextVisualsReady = new Set(prev.visualsReadyChatIds);
+          nextVisualsReady.delete(payload.chatId);
           return {
             ...prev,
             plansByChatId: nextPlans,
+            timedOutChatIds: nextTimedOut,
+            visualsReadyChatIds: nextVisualsReady,
           };
         });
       },

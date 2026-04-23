@@ -1362,7 +1362,12 @@ export async function handleLocalAgentStream(
     clearPendingConsentsForChat(req.chatId);
     clearPendingQuestionnairesForChat(req.chatId);
     clearPendingMiniPlanApprovalsForChat(req.chatId);
-    deleteMiniPlanForChat(req.chatId);
+    // Only drop the mini plan itself on explicit cancellation — a transient
+    // stream error should leave the plan around so the user can retry from
+    // the same approval state instead of losing their edits.
+    if (abortController.signal.aborted) {
+      deleteMiniPlanForChat(req.chatId);
+    }
 
     if (abortController.signal.aborted) {
       // Handle cancellation

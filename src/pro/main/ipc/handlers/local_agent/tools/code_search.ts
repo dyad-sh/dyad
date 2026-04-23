@@ -128,8 +128,21 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
       },
     });
 
+    // Never expose .dyad/ from a referenced app — rules, chat history, and
+    // other internal metadata are not part of the @app reference contract.
+    // This mirrors the exclusions in grep.ts and list_files.ts.
+    const filteredFiles = args.app_name
+      ? files.filter((file) => {
+          const firstSegment = file.path
+            .replace(/\\/g, "/")
+            .replace(/^\.\//, "")
+            .split("/")[0];
+          return firstSegment !== ".dyad";
+        })
+      : files;
+
     // Map files to FileContext format
-    const filesContext = files.map((file) => ({
+    const filesContext = filteredFiles.map((file) => ({
       path: file.path,
       content: file.content,
     }));

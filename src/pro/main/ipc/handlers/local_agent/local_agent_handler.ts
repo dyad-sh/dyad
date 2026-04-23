@@ -369,10 +369,13 @@ export async function handleLocalAgentStream(
     !isDyadProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
+    const errorMessage =
+      referencedApps.length > 0
+        ? "Referencing other apps (@app:Name) in local-agent mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro."
+        : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error:
-        "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
+      error: errorMessage,
     });
     return false;
   }

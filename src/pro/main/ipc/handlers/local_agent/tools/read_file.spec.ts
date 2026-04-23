@@ -512,6 +512,40 @@ line 5`;
         ),
       ).rejects.toThrow(/\(none available\)/);
     });
+
+    it("file-not-found error includes app_name when reading from a referenced app", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      await expect(
+        readFileTool.execute(
+          { path: "missing.txt", app_name: "other-app" },
+          mockContext,
+        ),
+      ).rejects.toThrow("File does not exist: missing.txt (in app: other-app)");
+    });
+
+    it("blocks .dyad/ paths when targeting a referenced app", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      await expect(
+        readFileTool.execute(
+          { path: ".dyad/chats/secret.md", app_name: "other-app" },
+          mockContext,
+        ),
+      ).rejects.toThrow(/Cannot read \.dyad\/ paths from referenced apps/);
+    });
+
+    it("allows .dyad/ paths on the current app (no app_name)", async () => {
+      const dyadDir = path.join(testDir, ".dyad");
+      await fs.promises.mkdir(dyadDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(dyadDir, "notes.md"),
+        "local dyad metadata",
+      );
+      const result = await readFileTool.execute(
+        { path: ".dyad/notes.md" },
+        mockContext,
+      );
+      expect(result).toBe("local dyad metadata");
+    });
   });
 
   describe("getConsentPreview with app_name", () => {

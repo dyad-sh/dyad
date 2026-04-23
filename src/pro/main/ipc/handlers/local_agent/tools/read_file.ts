@@ -94,11 +94,27 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
 
   execute: async (args, ctx: AgentContext) => {
     const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
+
+    // Never expose .dyad/ from a referenced app — rules, chat history, and
+    // other internal metadata are not part of the @app reference contract.
+    // This mirrors the exclusions in grep.ts and list_files.ts.
+    if (args.app_name) {
+      const normalized = args.path.replace(/\\/g, "/").replace(/^\.\//, "");
+      const firstSegment = normalized.split("/")[0];
+      if (firstSegment === ".dyad") {
+        throw new DyadError(
+          `Cannot read .dyad/ paths from referenced apps — these files are not part of the @app reference contract.`,
+          DyadErrorKind.Validation,
+        );
+      }
+    }
+
     const fullFilePath = safeJoin(targetAppPath, args.path);
 
     if (!fs.existsSync(fullFilePath)) {
+      const appContext = args.app_name ? ` (in app: ${args.app_name})` : "";
       throw new DyadError(
-        `File does not exist: ${args.path}`,
+        `File does not exist: ${args.path}${appContext}`,
         DyadErrorKind.NotFound,
       );
     }

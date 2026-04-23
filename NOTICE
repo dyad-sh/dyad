@@ -1,0 +1,12 @@
+Dyad
+Copyright (c) Dyad contributors.
+
+This product bundles dependencies that carry separate attribution requirements.
+
+mustardscript
+License: Apache-2.0
+Repository: https://github.com/mustardscript/mustardscript
+
+Playwright
+License: Apache-2.0
+Repository: https://github.com/microsoft/playwright

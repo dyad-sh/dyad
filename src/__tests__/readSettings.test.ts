@@ -79,6 +79,7 @@ describe("readSettings", () => {
           "lastKnownPerformance": undefined,
           "providerSettings": {},
           "releaseChannel": "stable",
+          "sandboxScriptTimeoutMs": 2000,
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",
@@ -471,6 +472,7 @@ describe("readSettings", () => {
           "lastKnownPerformance": undefined,
           "providerSettings": {},
           "releaseChannel": "stable",
+          "sandboxScriptTimeoutMs": 2000,
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",

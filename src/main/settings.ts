@@ -19,6 +19,7 @@ import {
   getRemoteDesktopConfig,
   type RemoteDesktopConfig,
 } from "@/ipc/shared/remote_desktop_config";
+import { DEFAULT_SANDBOX_SCRIPT_TIMEOUT_MS } from "@/constants/settings_constants";
 
 const logger = log.scope("settings");
 
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableNativeGit: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
+  sandboxScriptTimeoutMs: DEFAULT_SANDBOX_SCRIPT_TIMEOUT_MS,
 };
 
 const SETTINGS_FILE = "user-settings.json";

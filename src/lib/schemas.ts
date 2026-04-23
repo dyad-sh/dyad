@@ -317,6 +317,7 @@ const BaseUserSettingsFields = {
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
   maxToolCallSteps: z.number().optional(),
+  sandboxScriptTimeoutMs: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
   proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),

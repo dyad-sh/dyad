@@ -314,6 +314,16 @@ describe("listFilesTool", () => {
       expect(result).not.toContain(".dyad/rules.md");
     });
 
+    it("excludes .dyad files from referenced apps in the default (non-include_ignored) listing", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      const result = await listFilesTool.execute(
+        { app_name: "other-app", recursive: true },
+        mockContext,
+      );
+      expect(result).not.toContain(".dyad/rules.md");
+      expect(result).toContain("other-a.ts");
+    });
+
     it("emits app_name attribute in the final XML output", async () => {
       mockContext.referencedApps.set("other-app", otherAppDir);
       await listFilesTool.execute({ app_name: "other-app" }, mockContext);

@@ -165,9 +165,23 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
         },
       });
 
+      // Never expose .dyad/ from a referenced app — rules, chat history, and
+      // other internal metadata are not part of the @app reference contract.
+      // This mirrors the exclusion in the include_ignored branch above and
+      // the pattern used by code_search.ts.
+      const filteredFiles = args.app_name
+        ? files.filter((file) => {
+            const firstSegment = file.path
+              .replace(/\\/g, "/")
+              .replace(/^\.\//, "")
+              .split("/")[0];
+            return firstSegment !== ".dyad";
+          })
+        : files;
+
       // Build the list of file paths
       allPaths = sortListedPaths(
-        files.map((file) => ({
+        filteredFiles.map((file) => ({
           path: file.path,
           isDirectory: false,
         })),

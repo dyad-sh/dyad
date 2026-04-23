@@ -533,6 +533,26 @@ line 5`;
       ).rejects.toThrow(/Cannot read \.dyad\/ paths from referenced apps/);
     });
 
+    it("blocks .dyad/ paths reached via traversal aliases (e.g. src/../.dyad/...)", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      const dyadDir = path.join(otherAppDir, ".dyad");
+      await fs.promises.mkdir(dyadDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(dyadDir, "secret.md"),
+        "should not be exposed",
+      );
+      await fs.promises.mkdir(path.join(otherAppDir, "src"), {
+        recursive: true,
+      });
+
+      await expect(
+        readFileTool.execute(
+          { path: "src/../.dyad/secret.md", app_name: "other-app" },
+          mockContext,
+        ),
+      ).rejects.toThrow(/Cannot read \.dyad\/ paths from referenced apps/);
+    });
+
     it("allows .dyad/ paths on the current app (no app_name)", async () => {
       const dyadDir = path.join(testDir, ".dyad");
       await fs.promises.mkdir(dyadDir, { recursive: true });

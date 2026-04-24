@@ -27,6 +27,12 @@ import {
   type JudgeRecord,
 } from "./helpers/eval_recorder";
 import { createUnifiedDiff } from "./helpers/unified_diff";
+import {
+  SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT,
+  SIMPLE_EDIT_FILE_SYSTEM_PROMPT,
+  SEARCH_REPLACE_FEW_SYSTEM_PROMPT,
+  PRO_AGENT_EXPERIMENTAL_SYSTEM_PROMPT,
+} from "./helpers/prompts";
 
 // ── Fixture loader ─────────────────────────────────────────────
 
@@ -291,6 +297,21 @@ const CASES: EvalCase[] = [
     ],
   },
   {
+    name: "Replace Math.pow with exponentiation operator",
+    fileName: "stat_utils.ts",
+    fileContent: loadFixture("stat_utils.ts"),
+    prompt:
+      "Replace every `Math.pow(base, exponent)` call in this file with the " +
+      "JavaScript exponentiation operator `**`. When `base` is a compound " +
+      "expression (i.e. anything other than a bare identifier or numeric literal), " +
+      "wrap it in parentheses so operator precedence is preserved. Single " +
+      "identifiers and numeric literals do not need extra parentheses. " +
+      "The `correlation` function is currently duplicated. Delete all but one declaration. " +
+      "Additionally, fix the currently incorrect `median` function." +
+      "Do not change any other code.",
+    structuralChecks: ["** 2", "** 3", "** 4"],
+  },
+  {
     name: "Rename exported function but preserve references in string literals",
     fileName: "order_math.ts",
     fileContent: loadFixture("order_math.ts"),
@@ -305,6 +326,15 @@ const CASES: EvalCase[] = [
       "computeOrderTotal(",
       "calculateTotal failed",
     ],
+  },
+  {
+    name: "Restrict moderator from managing users",
+    fileName: "permissions.ts",
+    fileContent: loadFixture("permissions.ts"),
+    prompt:
+      "In `ModeratorPolicy`, change `canManageUsers` to return `false` instead of `true`. " +
+      "Do not modify any other methods or classes.",
+    structuralChecks: [],
   },
 ];
 
@@ -640,25 +670,6 @@ function editFileHarnessTool(
 
 // ── Suite configs ──────────────────────────────────────────────
 
-// System prompt used by the original focused search_replace suite.
-// Kept as a baseline so we can compare tool-selection behavior against
-// the production Basic/Pro prompts below.
-const SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT =
-  "You are a precise code editor. When asked to change a file, " +
-  "use the search_replace tool. You may call it multiple times " +
-  "to make sequential edits. Do not explain.";
-
-const SIMPLE_EDIT_FILE_SYSTEM_PROMPT =
-  "You are a precise code editor. When asked to change a file, " +
-  "use the edit_file tool. You may call it multiple times " +
-  "to make sequential edits. Do not explain.";
-
-const SEARCH_REPLACE_FEW_SYSTEM_PROMPT =
-  SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT +
-  " Aim to use as few tool calls as possible — ideally a single call " +
-  "that bundles all the required changes. Only make additional calls " +
-  "if the edit genuinely cannot be expressed in one call.";
-
 interface SuiteConfig {
   name: string;
   displayName: string;
@@ -710,6 +721,20 @@ const SUITES: SuiteConfig[] = [
     name: "pro_agent",
     displayName: "pro_agent (search_replace + edit_file + write_file)",
     systemPrompt: constructLocalAgentPrompt(undefined),
+    buildTools: (state, c, label) => ({
+      search_replace: searchReplaceHarnessTool(state, c, label),
+      edit_file: editFileHarnessTool(state, c, label),
+      write_file: writeFileHarnessTool(state, c, label),
+    }),
+  },
+  {
+    // Mirrors pro_agent but uses a standalone copy of the prompt
+    // (see helpers/prompts.ts) so prompt variations can be recorded
+    // without modifying the production prompt.
+    name: "pro_agent_experimental",
+    displayName:
+      "pro_agent_experimental (pro_agent with editable prompt copy)",
+    systemPrompt: PRO_AGENT_EXPERIMENTAL_SYSTEM_PROMPT,
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),
       edit_file: editFileHarnessTool(state, c, label),

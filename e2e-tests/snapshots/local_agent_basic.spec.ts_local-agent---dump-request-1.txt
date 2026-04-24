@@ -400,6 +400,27 @@
       {
         "type": "function",
         "function": {
+          "name": "enable_nitro",
+          "description": "Add a Nitro server layer to this Vite app so it can run secure server-side code\n(API routes, database clients, secrets, webhooks).\n\nWHEN TO CALL: Before writing any code under server/, before referencing DATABASE_URL\nor any server-only env var, or when the user asks for an API route, webhook, or\nserver-side compute. Skip for client-side fetch with public/anon keys, for use\ncases fully covered by Supabase (anon key + RLS), or when the user explicitly\nsays \"static only\" / \"no backend\".\n\nThis tool is auto-disabled (via isEnabled) on non-Vite apps and once Nitro is\nalready enabled — if it appears in your toolset, it is safe and appropriate to call.\n\n==== POST-CALL SETUP STEPS (you MUST perform these in the same turn) ====\n\nAfter this tool returns successfully, you MUST update vite.config.ts to register\nthe Nitro plugin. The tool itself does NOT touch vite.config.ts because TS config\nfiles are fragile to edit programmatically.\n\n1. Add the import:\n     import { nitro } from \"nitro/vite\";\n\n2. Add nitro() to the plugins array as the LAST entry (after react()). Nitro\n   must run AFTER Vite's module-transform middleware so it doesn't catch Vite\n   internal URLs like /src/*.tsx, /@vite/client, /@react-refresh, or /@fs/* —\n   otherwise Nitro's SPA fallback returns index.html for those requests and\n   the browser rejects them with a \"text/html MIME type\" error, leaving the\n   preview blank.\n\nExample final vite.config.ts:\n\n     import { defineConfig } from \"vite\";\n     import react from \"@vitejs/plugin-react-swc\";\n     import { nitro } from \"nitro/vite\";\n     import dyadComponentTagger from \"@dyad-sh/react-vite-component-tagger\";\n\n     export default defineConfig(() => ({\n       plugins: [dyadComponentTagger(), react(), nitro()],\n     }));\n\n3. Then write the user-requested API route(s) following the conventions documented\n   in AI_RULES.md — the tool appended a \"Nitro Server Layer\" section with route\n   filesystem conventions, defineHandler usage, useRuntimeConfig patterns, and\n   security rules. That is the source of truth for ongoing code.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "One sentence explaining why server-side code is needed for this prompt."
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "read_logs",
           "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
           "parameters": {

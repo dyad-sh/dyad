@@ -15,6 +15,8 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
+- img
+- text: (1 files changed)
 - button "Copy Request ID":
   - img
   - text: ""
@@ -22,11 +24,12 @@
 - paragraph: Let me first read the current file contents to understand what we're working with.
 - img
 - text: Read src/App.tsx
-- paragraph: Now I'll update the welcome message to say Hello World instead.
-- button "App.tsx src/App.tsx Turbo Edit":
+- paragraph: Now I'll update the welcome message to say UPDATED imported app instead.
+- button "Search & Replace App.tsx src/App.tsx":
   - img
   - text: ""
   - img
+  - text: ""
 - paragraph: Done! I've updated the title from 'Minimal imported app' to 'UPDATED imported app'. The change has been applied successfully.
 - button "Copy":
   - img

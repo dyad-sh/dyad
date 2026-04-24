@@ -1,2 +1,4 @@
 === src/App.tsx ===
-TURBO EDITED filePath
+const App = () => <div>UPDATED imported app</div>;
+
+export default App;

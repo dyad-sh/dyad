@@ -43,7 +43,9 @@
     "autoApprove": "Aprovar alterações automaticamente",
     "autoApproveDescription": "Aprova automaticamente as alterações de código e as executa.",
     "autoFixProblems": "Corrigir problemas automaticamente",
-    "autoFixProblemsDescription": "Corrige automaticamente erros de TypeScript."
+    "autoFixProblemsDescription": "Corrige automaticamente erros de TypeScript.",
+    "chatResponseSound": "Reproduzir som ao receber resposta",
+    "chatResponseSoundDescription": "Reproduz um som quando uma resposta de chat for concluída com sucesso."
   },
   "ai": {
     "title": "Configurações de IA",

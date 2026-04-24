@@ -43,7 +43,9 @@
     "autoApprove": "自动批准更改",
     "autoApproveDescription": "将自动批准代码更改并运行。",
     "autoFixProblems": "自动修复问题",
-    "autoFixProblemsDescription": "将自动修复 TypeScript 错误。"
+    "autoFixProblemsDescription": "将自动修复 TypeScript 错误。",
+    "chatResponseSound": "聊天响应时播放声音",
+    "chatResponseSoundDescription": "聊天响应成功完成时播放声音提示。"
   },
   "ai": {
     "title": "AI 设置",

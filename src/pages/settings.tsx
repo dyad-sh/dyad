@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
+import { ChatResponseSoundSwitch } from "@/components/ChatResponseSoundSwitch";
+import { useTranslation } from "react-i18next";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
@@ -391,6 +393,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 }
 
 export function WorkflowSettings() {
+  const { t } = useTranslation("settings");
   return (
     <div
       id={SECTION_IDS.workflow}
@@ -430,6 +433,13 @@ export function WorkflowSettings() {
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Show native notifications when a chat response completes or a
           questionnaire needs your input while the app is not focused.
+        </div>
+      </div>
+
+      <div id={SETTING_IDS.chatResponseSound} className="space-y-1 mt-4">
+        <ChatResponseSoundSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          {t("workflow.chatResponseSoundDescription")}
         </div>
       </div>
     </div>

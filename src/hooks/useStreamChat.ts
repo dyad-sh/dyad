@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type {
   ComponentSelection,
   FileAttachment,
@@ -37,6 +37,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
+import { playDoneChime } from "@/utils/notificationUtils";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -53,6 +54,9 @@ export function useStreamChat({
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const errorById = useAtomValue(chatErrorByIdAtom);
+  const errorByIdRef = useRef(errorById);
+  // Keep ref synchronized with latest atom value for callback access
+  errorByIdRef.current = errorById;
   const setErrorById = useSetAtom(chatErrorByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -331,6 +335,17 @@ export function useStreamChat({
                   new Notification(appName, {
                     body,
                   });
+                }
+
+                // Play sound only on successful completion (not cancelled, no error)
+                // Use ref to access latest error state (atom updates are async)
+                const hasError = errorByIdRef.current.get(chatId) != null;
+                if (
+                  !response.wasCancelled &&
+                  !hasError &&
+                  settings?.enableChatResponseSound
+                ) {
+                  await playDoneChime();
                 }
 
                 if (response.updatedFiles) {

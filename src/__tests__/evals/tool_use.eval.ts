@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import { generateText, stepCountIs, type Tool } from "ai";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { searchReplaceTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_replace";
 import { writeFileTool } from "@/pro/main/ipc/handlers/local_agent/tools/write_file";
@@ -40,6 +40,15 @@ const FIXTURES_DIR = resolve(__dirname, "fixtures");
 
 function loadFixture(filename: string): string {
   return readFileSync(resolve(FIXTURES_DIR, filename), "utf-8");
+}
+
+// Models sometimes emit paths like `./foo.ts` or `src/foo.ts` instead of the
+// bare fixture filename. Since each case targets a single known file, a
+// basename match is sufficient and avoids penalizing harmless path formatting
+// differences across models.
+function pathMatchesCase(got: string | undefined, expected: string): boolean {
+  if (!got) return false;
+  return basename(got) === basename(expected);
 }
 
 // ── Case type ──────────────────────────────────────────────────
@@ -348,11 +357,13 @@ async function judgeResult(
   originalFile: string,
   prompt: string,
   resultFile: string,
+  abortSignal?: AbortSignal,
 ): Promise<JudgeRecord> {
   const startMs = Date.now();
   const result = await generateText({
     model: getEvalModel(JUDGE_PROVIDER, JUDGE_MODEL),
     temperature: 1,
+    abortSignal,
     system:
       "You are a code-review judge. You will be given an original file, " +
       "an edit instruction, and the resulting file after the edit was applied. " +
@@ -519,7 +530,7 @@ function searchReplaceHarnessTool(
         new_string: args.new_string,
       };
       try {
-        if (args.file_path !== c.fileName) {
+        if (!pathMatchesCase(args.file_path, c.fileName)) {
           throw new Error(
             `${label} / ${c.name} search_replace targeted wrong file: ` +
               `got "${args.file_path}", expected "${c.fileName}"`,
@@ -572,7 +583,7 @@ function writeFileHarnessTool(
         description: args.description ?? "",
       };
       try {
-        if (args.path !== c.fileName) {
+        if (!pathMatchesCase(args.path, c.fileName)) {
           throw new Error(
             `${label} / ${c.name} write_file targeted wrong file: ` +
               `got "${args.path}", expected "${c.fileName}"`,
@@ -625,7 +636,7 @@ function editFileHarnessTool(
         instructions: args.instructions ?? "",
       };
       try {
-        if (args.path !== c.fileName) {
+        if (!pathMatchesCase(args.path, c.fileName)) {
           throw new Error(
             `${label} / ${c.name} edit_file targeted wrong file: ` +
               `got "${args.path}", expected "${c.fileName}"`,
@@ -883,7 +894,12 @@ async function runCase(
     );
 
     console.log(`\n[${suite.name} / ${label}] ${c.name} — calling judge...`);
-    judgeRecord = await judgeResult(c.fileContent, c.prompt, state.content);
+    judgeRecord = await judgeResult(
+      c.fileContent,
+      c.prompt,
+      state.content,
+      abortController.signal,
+    );
     console.log(
       `\n[${suite.name} / ${label}] ${c.name} — judge verdict: ${judgeRecord.pass ? "PASS" : "FAIL"}\n${judgeRecord.explanation}`,
     );
@@ -897,6 +913,21 @@ async function runCase(
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     if (totalDurationMs === 0) totalDurationMs = Date.now() - llmStartMs;
+    // generateText throws before we can read result.totalUsage, but any
+    // already-completed steps were captured in `requests` via onStepFinish.
+    // Sum those so failed runs still report real token consumption instead
+    // of zeros — otherwise cost and per-model comparisons get skewed for
+    // exactly the failure cases we most care about analyzing.
+    if (totalUsage.totalTokens === 0 && requests.length > 0) {
+      totalUsage = requests.reduce(
+        (acc, r) => ({
+          inputTokens: acc.inputTokens + r.usage.inputTokens,
+          outputTokens: acc.outputTokens + r.usage.outputTokens,
+          totalTokens: acc.totalTokens + r.usage.totalTokens,
+        }),
+        { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      );
+    }
     throw err;
   } finally {
     clearTimeout(timeoutHandle);

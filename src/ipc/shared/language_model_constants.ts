@@ -30,7 +30,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: GPT_5_4,
       displayName: "GPT 5.4",
-      description: "OpenAI's latest model",
+      description: "OpenAI's latest flagship model",
       maxOutputTokens: undefined,
       contextWindow: 400_000,
       // Requires temperature to be default value (1)

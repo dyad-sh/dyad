@@ -71,8 +71,9 @@ development.
 
 ### Running a single suite
 
-Set `EVAL_SUITE` to a case-insensitive substring of the suite's `name`
-field (the folder name that shows up under `eval-results/`):
+Set `EVAL_SUITE` to the exact `name` (case-insensitive) of the suite — the
+same name that appears as a folder under `eval-results/`. A comma-separated
+list runs multiple suites:
 
 ```bash
 # Just the original search_replace-only suite

@@ -8,7 +8,6 @@ export default defineConfig({
     globals: true,
     testTimeout: 360_000,
     maxConcurrency: 5,
-    passWithNoTests: true,
   },
   resolve: {
     alias: { "@": resolve(__dirname, "./src") },

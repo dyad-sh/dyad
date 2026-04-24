@@ -68,23 +68,24 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 
 const PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK = `<tool_calling_best_practices>
 - **Read before writing**: Use \`read_file\` and \`list_files\` to understand the codebase before making changes
-- **Use \`edit_file\` for edits**: For modifying existing files, prefer \`edit_file\` over \`write_file\`
+- **Prefer \`search_replace\` for edits**: For small to medium edits on existing files, use \`search_replace\` rather than rewriting the whole file
 - **Be surgical**: Only change what's necessary to accomplish the task
 - **Handle errors gracefully**: If a tool fails, explain the issue and suggest alternatives
 </tool_calling_best_practices>`;
 
 const PRO_FILE_EDITING_TOOL_SELECTION_BLOCK = `<file_editing_tool_selection>
-You have three tools for editing files. Choose based on the scope of your change:
+You have two tools for editing files. Choose based on the scope of your change:
 
 | Scope | Tool | Examples |
 |-------|------|----------|
-| **Small** (a few lines) | \`search_replace\` or \`edit_file\` | Fix a typo, rename a variable, update a value, change an import |
-| **Medium** (one function or section) | \`edit_file\` | Rewrite a function, add a new component, modify multiple related lines |
-| **Large** (most of the file) | \`write_file\` | Major refactor, rewrite a module, create a new file |
+| **Small to medium** (a few lines up to one function or contiguous section) | Single \`search_replace\` | Fix a typo, rename a variable, update a value, change an import, rewrite a function, modify multiple related lines |
+| **Moderately large** (changes spread across multiple parts of the file, up to about half of it) | Multiple \`search_replace\` calls, one per distinct region | Update several functions, change an import plus update its call sites, refactor a few related sections |
+| **Very large** (rewriting the vast majority of the file, or creating a new file) | \`write_file\` | Major refactor that touches nearly all of the file, rewrite a module end-to-end, create a new file |
 
-**Tips:**
-- \`edit_file\` supports \`// ... existing code ...\` markers to skip unchanged sections
-- When in doubt, prefer \`search_replace\` for precision or \`write_file\` for simplicity
+Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when little of the original file will remain.
+
+**Fallback rule:**
+If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.
 
 **Post-edit verification (REQUIRED):**
 After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
@@ -97,7 +98,7 @@ const PRO_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
    The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.
 3. **Plan:** Build a coherent and grounded (based on the understanding in steps 1-2) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.
-4. **Implement:** Use the available tools (e.g., \`edit_file\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
+4. **Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
 5. **Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>`;
@@ -209,7 +210,7 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 
 /**
  * System prompt for Local Agent v2 in Pro mode
- * Full access to all tools including edit_file, code_search, web_search, web_crawl
+ * Full access to all tools including code_search, web_search, web_crawl
  */
 export const LOCAL_AGENT_SYSTEM_PROMPT = `
 ${ROLE_BLOCK}
@@ -233,7 +234,7 @@ ${IMAGE_GENERATION_BLOCK}
 
 /**
  * System prompt for Local Agent v2 in Basic Agent mode (free tier)
- * Limited tools - no edit_file, code_search, web_search, web_crawl
+ * Limited tools - no code_search, web_search, web_crawl
  */
 export const LOCAL_AGENT_BASIC_SYSTEM_PROMPT = `
 ${ROLE_BLOCK}

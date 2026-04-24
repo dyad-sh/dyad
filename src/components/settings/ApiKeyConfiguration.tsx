@@ -1,4 +1,5 @@
-import { Info, KeyRound, Trash2, Clipboard } from "lucide-react";
+import { useState } from "react";
+import { Info, KeyRound, Trash2, Clipboard, Eye, EyeOff } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Accordion,
@@ -18,6 +19,12 @@ const maskEnvApiKey = (key: string | undefined): string => {
   if (!key) return "Not Set";
   if (key.length < 8) return "****";
   return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
+};
+
+const maskUserApiKey = (key: string | undefined): string => {
+  if (!key) return "Not Set";
+  if (key.length < 12) return "••••••••";
+  return key.slice(0, 4) + "••••••••" + key.slice(-4);
 };
 
 interface ApiKeyConfigurationProps {
@@ -51,6 +58,20 @@ export function ApiKeyConfiguration({
   isDyad,
   updateSettings,
 }: ApiKeyConfigurationProps) {
+  const [showUserApiKey, setShowUserApiKey] = useState(false);
+  const [prevProvider, setPrevProvider] = useState(provider);
+
+  // Render-phase state update: synchronously reset key visibility when switching providers.
+  if (provider !== prevProvider) {
+    setPrevProvider(provider);
+    setShowUserApiKey(false);
+  }
+
+  const handleSave = async (value: string) => {
+    await onSaveKey(value);
+    setShowUserApiKey(false);
+  };
+
   // Special handling for Azure OpenAI which requires environment variables
   if (provider === "azure") {
     return (
@@ -120,7 +141,27 @@ export function ApiKeyConfiguration({
                 </Button>
               </AlertTitle>
               <AlertDescription>
-                <p className="font-mono text-sm">{userApiKey}</p>
+                <div className="flex items-center justify-between gap-2 w-full">
+                  <p className="font-mono text-sm break-all mr-2">
+                    {showUserApiKey ? userApiKey : maskUserApiKey(userApiKey)}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={
+                      showUserApiKey ? "Hide API key" : "Show API key"
+                    }
+                    onClick={() => setShowUserApiKey((prev) => !prev)}
+                    className="text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    {showUserApiKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
                 {activeKeySource === "settings" && (
                   <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                     This key is currently active.
@@ -147,14 +188,17 @@ export function ApiKeyConfiguration({
               />
               <Button
                 onClick={async () => {
+                  let text = "";
                   try {
-                    const text = await navigator.clipboard.readText();
-                    if (text) {
-                      onSaveKey(text);
-                    }
+                    text = await navigator.clipboard.readText();
                   } catch (error) {
                     showError("Failed to paste from clipboard");
                     console.error("Failed to paste from clipboard", error);
+                    return;
+                  }
+
+                  if (text) {
+                    await handleSave(text);
                   }
                 }}
                 disabled={isSaving}
@@ -167,7 +211,7 @@ export function ApiKeyConfiguration({
               </Button>
 
               <Button
-                onClick={() => onSaveKey(apiKeyInput)}
+                onClick={() => handleSave(apiKeyInput)}
                 disabled={isSaving || !apiKeyInput}
               >
                 {isSaving ? "Saving..." : "Save Key"}

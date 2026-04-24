@@ -358,6 +358,7 @@ const BaseUserSettingsFields = {
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),
   enableSelectAppFromHomeChatInput: z.boolean().optional(),
+  previewIdleTimeoutPolicy: z.enum(["default", "never"]).optional(),
 };
 
 /**

@@ -166,42 +166,50 @@ async function sseToNonStreamingResponse(
  * response into a single JSON object the SDK expects.
  */
 const evalFetch: typeof fetch = async (input, init) => {
-  if (init?.body && typeof init.body === "string") {
-    try {
-      const parsed = JSON.parse(init.body);
-      const wasNonStreaming = !parsed.stream;
-
-      // Force streaming — the Dyad Engine returns 500 for non-streaming requests
-      parsed.stream = true;
-      // Ask OpenAI-compatible providers to include a final usage chunk so
-      // we can surface token counts in the reassembled non-streaming
-      // response instead of hard-coding zeros.
-      parsed.stream_options = {
-        ...(parsed.stream_options ?? {}),
-        include_usage: true,
-      };
-      init = { ...init, body: JSON.stringify(parsed) };
-
-      const response = await fetch(input, init);
-
-      // Convert the SSE stream back to a single JSON response for the SDK.
-      // Only reassemble when the upstream response is actually an SSE stream —
-      // otherwise (non-OK status, or a non-SSE body like a JSON error payload)
-      // pass the response through unchanged so the SDK's error/retry path
-      // sees the real failure instead of a synthetic empty 200.
-      if (wasNonStreaming) {
-        const contentType = response.headers.get("content-type") ?? "";
-        if (!response.ok || !contentType.includes("text/event-stream")) {
-          return response;
-        }
-        return sseToNonStreamingResponse(response);
-      }
-      return response;
-    } catch {
-      return fetch(input, init);
-    }
+  if (!init?.body || typeof init.body !== "string") {
+    return fetch(input, init);
   }
-  return fetch(input, init);
+
+  // Only the JSON parse is allowed to fail silently — if the body isn't a
+  // JSON request we don't know how to adapt, so fall through to a plain
+  // fetch with the original init. Network and SSE-adaptation errors must
+  // propagate so the SDK can surface them (and so we don't double-spend
+  // tokens by transparently retrying a request the gateway already saw).
+  let parsed: any;
+  let wasNonStreaming: boolean;
+  try {
+    parsed = JSON.parse(init.body);
+    wasNonStreaming = !parsed.stream;
+  } catch {
+    return fetch(input, init);
+  }
+
+  // Force streaming — the Dyad Engine returns 500 for non-streaming requests
+  parsed.stream = true;
+  // Ask OpenAI-compatible providers to include a final usage chunk so
+  // we can surface token counts in the reassembled non-streaming
+  // response instead of hard-coding zeros.
+  parsed.stream_options = {
+    ...(parsed.stream_options ?? {}),
+    include_usage: true,
+  };
+  const modifiedInit = { ...init, body: JSON.stringify(parsed) };
+
+  const response = await fetch(input, modifiedInit);
+
+  // Convert the SSE stream back to a single JSON response for the SDK.
+  // Only reassemble when the upstream response is actually an SSE stream —
+  // otherwise (non-OK status, or a non-SSE body like a JSON error payload)
+  // pass the response through unchanged so the SDK's error/retry path
+  // sees the real failure instead of a synthetic empty 200.
+  if (wasNonStreaming) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!response.ok || !contentType.includes("text/event-stream")) {
+      return response;
+    }
+    return sseToNonStreamingResponse(response);
+  }
+  return response;
 };
 
 function getProvider(): DyadEngineProvider {

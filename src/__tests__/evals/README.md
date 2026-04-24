@@ -1,14 +1,17 @@
 # Evals
 
-LLM eval suite for tool-use quality. Three suites run the same 12 cases and
+LLM eval suite for tool-use quality. Six suites run the same 16 cases and
 the same three models (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) but with
 different tool sets and system prompts:
 
-| Suite name       | Tools available                             | System prompt                                 |
-| ---------------- | ------------------------------------------- | --------------------------------------------- |
-| `search_replace` | `search_replace` only                       | Minimal custom "precise code editor" prompt   |
-| `basic_agent`    | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT`  |
-| `pro_agent`      | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro)  |
+| Suite name                | Tools available                             | System prompt                                 |
+| ------------------------- | ------------------------------------------- | --------------------------------------------- |
+| `search_replace`          | `search_replace` only                       | Minimal custom "precise code editor" prompt   |
+| `search_replace_few`      | `search_replace` only                       | Variant prompt encouraging fewer tool calls   |
+| `edit_file`               | `edit_file` only                            | Minimal custom `edit_file` prompt             |
+| `basic_agent`             | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT`  |
+| `pro_agent`               | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro)  |
+| `pro_agent_experimental`  | `search_replace`, `edit_file`, `write_file` | Editable copy of the Pro prompt for tweaking  |
 
 Each case gives the model a real source file plus an editing instruction,
 runs the model with the suite's tools wired up, applies the produced edits,
@@ -60,9 +63,9 @@ EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 
 **Heads up — this is expensive.** A full `all`/`all` run issues one
 generation per (suite × model × case) triple plus one judge call per case,
-across 3 suites, 3 models, and 12 cases. The `pro_agent` suite also makes
-additional engine calls for each sketched edit the model produces through
-`edit_file`. Expect dozens of LLM requests, some of which run reasoning
+across 6 suites, 3 models, and 16 cases. The `edit_file`, `pro_agent`, and
+`pro_agent_experimental` suites also make additional engine calls for each
+sketched edit the model produces through `edit_file`. Expect dozens of LLM requests, some of which run reasoning
 models on 300+ line fixtures. Use sparingly; prefer narrow filters during
 development.
 
@@ -164,12 +167,15 @@ eval-results/
           ...
 ```
 
-The top-level folder is the suite `name`, so each of the three suites lands
-in its own directory:
+The top-level folder is the suite `name`, so each suite lands in its own
+directory:
 
 - `eval-results/search_replace/`
+- `eval-results/search_replace_few/`
+- `eval-results/edit_file/`
 - `eval-results/basic_agent/`
 - `eval-results/pro_agent/`
+- `eval-results/pro_agent_experimental/`
 
 `<run-start-ts>` is captured once at process start, so every case from the
 same `npm run eval` invocation for a given (suite, model) pair clusters into

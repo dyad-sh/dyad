@@ -266,14 +266,26 @@ export function renderEvalRunAsText(record: EvalRunRecord): string {
   return lines.join("\n");
 }
 
-export function recordEvalRun(record: EvalRunRecord): void {
+export function recordDirFor(
+  suite: string,
+  caseName: string,
+  modelLabel: string,
+): string {
   const runDirName =
-    `${fsTimestamp(RUN_START_TIMESTAMP)}__${sanitize(record.model.label)}`;
-  const recordDir = resolve(
+    `${fsTimestamp(RUN_START_TIMESTAMP)}__${sanitize(modelLabel)}`;
+  return resolve(
     RESULTS_ROOT,
-    sanitize(record.suite),
+    sanitize(suite),
     runDirName,
-    sanitize(record.caseName),
+    sanitize(caseName),
+  );
+}
+
+export function recordEvalRun(record: EvalRunRecord): void {
+  const recordDir = recordDirFor(
+    record.suite,
+    record.caseName,
+    record.model.label,
   );
   mkdirSync(recordDir, { recursive: true });
 

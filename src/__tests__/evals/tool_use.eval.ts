@@ -15,12 +15,14 @@ import {
   GPT_5_4,
 } from "@/ipc/shared/language_model_constants";
 import {
+  DYAD_ENGINE_URL,
   getEvalModel,
   hasDyadProKey,
   type EvalProvider,
 } from "./helpers/get_eval_model";
 import {
   normalizeUsage,
+  recordDirFor,
   recordEvalRun,
   type LLMRequestRecord,
   type ToolCallRecord,
@@ -435,9 +437,9 @@ function applySearchReplaceEdit(
 
 // Stand-in for the production `edit_file` tool's engine call. Mirrors
 // `callTurboFileEdit` in src/pro/main/ipc/handlers/local_agent/tools/edit_file.ts
-// but reaches the engine directly (no AgentContext required).
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+// but reaches the engine directly (no AgentContext required). The base URL is
+// imported from `helpers/get_eval_model` so this and the SDK provider can't
+// drift apart.
 
 async function turboFileEdit(params: {
   path: string;
@@ -897,8 +899,10 @@ async function runCase(
       }
     }
 
+    const recordDir = recordDirFor(suite.name, c.name, label);
     console.log(
-      `\n[${suite.name} / ${label}] ${c.name} — final content (${state.content.length} chars, first 500):\n${state.content.slice(0, 500)}...`,
+      `\n[${suite.name} / ${label}] ${c.name} — final content (${state.content.length} chars, first 500):\n${state.content.slice(0, 500)}...\n` +
+        `  Full record will be written to: ${recordDir}`,
     );
 
     console.log(`\n[${suite.name} / ${label}] ${c.name} — calling judge...`);
@@ -1019,18 +1023,21 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
       ? SUITES
       : SUITES.filter((s) => requestedSuiteNames.has(s.name.toLowerCase()));
 
+  // Surface filter misconfiguration as a clean failing test rather than
+  // crashing module load with an opaque stack trace. The describe block
+  // gives vitest a place to attach the (carefully written) error message.
+  const configErrors: string[] = [];
   if (ACTIVE_SUITES.length === 0) {
-    throw new Error(
+    configErrors.push(
       `EVAL_SUITE="${SUITE_FILTER_RAW}" matched no suites. ` +
         `Available: ${SUITES.map((s) => s.name).join(", ")} (or "all"). ` +
         `Use exact names, comma-separated for multiple.`,
     );
-  }
-  if (requestedSuiteNames !== null) {
+  } else if (requestedSuiteNames !== null) {
     const matched = new Set(ACTIVE_SUITES.map((s) => s.name.toLowerCase()));
     const unknown = [...requestedSuiteNames].filter((n) => !matched.has(n));
     if (unknown.length > 0) {
-      throw new Error(
+      configErrors.push(
         `EVAL_SUITE contains unknown suite name(s): ${unknown.join(", ")}. ` +
           `Available: ${SUITES.map((s) => s.name).join(", ")} (or "all").`,
       );
@@ -1048,38 +1055,48 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
         );
 
   if (MODELS.length === 0) {
-    throw new Error(
+    configErrors.push(
       `EVAL_MODEL="${MODEL_FILTER_RAW}" matched no models. ` +
         `Available labels: ${ALL_MODELS.map((m) => m.label).join(", ")} (or "all")`,
     );
   }
 
-  for (const suite of ACTIVE_SUITES) {
-    for (const { provider, modelName, label, temperature } of MODELS) {
-      describe.skipIf(!hasDyadProKey())(
-        `${suite.displayName} — ${label}`,
-        () => {
-          for (const c of CASES) {
-            it.concurrent(c.name, async () => {
-              try {
-                await runCase(
-                  suite,
-                  c,
-                  provider,
-                  modelName,
-                  label,
-                  temperature,
-                );
-              } catch (err) {
-                console.error(
-                  `\n[${suite.name} / ${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
-                );
-                throw err;
-              }
-            });
-          }
-        },
-      );
+  if (configErrors.length > 0) {
+    describe("eval suite — configuration error", () => {
+      for (const msg of configErrors) {
+        it(msg.split(".")[0], () => {
+          throw new Error(msg);
+        });
+      }
+    });
+  } else {
+    for (const suite of ACTIVE_SUITES) {
+      for (const { provider, modelName, label, temperature } of MODELS) {
+        describe.skipIf(!hasDyadProKey())(
+          `${suite.displayName} — ${label}`,
+          () => {
+            for (const c of CASES) {
+              it.concurrent(c.name, async () => {
+                try {
+                  await runCase(
+                    suite,
+                    c,
+                    provider,
+                    modelName,
+                    label,
+                    temperature,
+                  );
+                } catch (err) {
+                  console.error(
+                    `\n[${suite.name} / ${label}] ${c.name} — ERROR: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                  throw err;
+                }
+              });
+            }
+          },
+        );
+      }
     }
   }
 }

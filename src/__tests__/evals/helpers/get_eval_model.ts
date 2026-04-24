@@ -7,6 +7,11 @@ import type { UserSettings } from "@/lib/schemas";
 
 export type EvalProvider = "anthropic" | "openai" | "google";
 
+// Single source of truth for the Dyad Engine URL across the eval helpers
+// and any out-of-band fetches the harness makes (e.g. turbo-file-edit).
+export const DYAD_ENGINE_URL =
+  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+
 // Gateway prefixes must match CLOUD_PROVIDERS in language_model_constants.ts.
 const GATEWAY_PREFIXES: Record<EvalProvider, string> = {
   openai: "",
@@ -216,7 +221,7 @@ function getProvider(): DyadEngineProvider {
   if (!_provider) {
     _provider = createDyadEngine({
       apiKey: process.env.DYAD_PRO_API_KEY,
-      baseURL: process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1",
+      baseURL: DYAD_ENGINE_URL,
       dyadOptions: {
         enableLazyEdits: false,
         enableSmartFilesContext: false,

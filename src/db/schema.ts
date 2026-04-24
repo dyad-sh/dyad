@@ -2377,6 +2377,18 @@ export * from "./email_schema";
 // ── Autonomous Missions (Background Task Persistence) ─────────
 export * from "./mission_schema";
 
+// ── Agent-to-Agent (A2A) Economy ──────────────────────────────
+export * from "./a2a_schema";
+
+// ── Agent OS — Tier 1 (OS Shell) ──────────────────────────────
+export * from "./agent_os_schema";
+
+// ── Agent Wallet & Policy — Tier 2 ────────────────────────────
+export * from "./agent_wallet_schema";
+
+// ── Agent Provenance & Reputation — Tier 4 ────────────────────
+export * from "./agent_provenance_schema";
+
 // -- Image Studio (AI Image Generation + Canvas Editing) ------
 export const imageStudioImages = sqliteTable("image_studio_images", {
   id: integer("id").primaryKey({ autoIncrement: true }),

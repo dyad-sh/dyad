@@ -348,21 +348,187 @@ export type NATClassification =
 /**
  * Detect NAT type using decentralized STUN servers.
  * Follows a simplified RFC 5780 algorithm.
+ *
+ * Sends a STUN binding request to two different community STUN servers
+ * and compares the mapped addresses. If they differ → symmetric NAT,
+ * otherwise behaves as cone NAT (best-effort classification).
  */
 export async function detectNATType(): Promise<{
   natType: NATClassification;
   publicIp: string | null;
   publicPort: number | null;
 }> {
-  // Full NAT type detection requires sending STUN binding requests
-  // to multiple servers and comparing mapped addresses.
-  // This is a placeholder that returns unknown until full STUN
-  // client is implemented in the renderer process.
+  const probes = await Promise.allSettled([
+    stunBindingRequest("stun.cloudflare.com", 3478),
+    stunBindingRequest("stun.nextcloud.com", 443),
+  ]);
+
+  const results = probes
+    .filter((p): p is PromiseFulfilledResult<StunMappedAddress> => p.status === "fulfilled")
+    .map((p) => p.value);
+
+  if (results.length === 0) {
+    return { natType: "unknown", publicIp: null, publicPort: null };
+  }
+
+  const first = results[0];
+  if (results.length === 1) {
+    return { natType: "unknown", publicIp: first.address, publicPort: first.port };
+  }
+
+  const second = results[1];
+  const symmetric =
+    first.address === second.address && first.port !== second.port;
+
   return {
-    natType: "unknown",
-    publicIp: null,
-    publicPort: null,
+    natType: symmetric ? "symmetric" : "full-cone",
+    publicIp: first.address,
+    publicPort: first.port,
   };
+}
+
+/**
+ * Probe one or more public STUN servers to learn this node's public IP.
+ * Returns the first successful mapped address, or null if all probes fail.
+ */
+export async function probePublicIp(
+  servers: Array<{ host: string; port: number }> = [
+    { host: "stun.cloudflare.com", port: 3478 },
+    { host: "stun.nextcloud.com", port: 443 },
+    { host: "stun.stunprotocol.org", port: 3478 },
+  ],
+): Promise<string | null> {
+  for (const s of servers) {
+    try {
+      const mapped = await stunBindingRequest(s.host, s.port, 2000);
+      if (mapped.address) return mapped.address;
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+// ============================================================================
+// Minimal STUN Binding Request (RFC 5389)
+// ============================================================================
+
+interface StunMappedAddress {
+  address: string;
+  port: number;
+  family: "IPv4" | "IPv6";
+}
+
+const STUN_MAGIC_COOKIE = 0x2112a442;
+
+/**
+ * Send a STUN Binding Request over UDP and parse the XOR-MAPPED-ADDRESS
+ * (or legacy MAPPED-ADDRESS) attribute from the response.
+ */
+async function stunBindingRequest(
+  host: string,
+  port: number,
+  timeoutMs: number = 3000,
+): Promise<StunMappedAddress> {
+  const dgram = await import("dgram");
+  const crypto = await import("crypto");
+
+  return new Promise<StunMappedAddress>((resolve, reject) => {
+    const socket = dgram.createSocket("udp4");
+    let done = false;
+
+    const finish = (err: Error | null, value?: StunMappedAddress) => {
+      if (done) return;
+      done = true;
+      try { socket.close(); } catch {}
+      if (err) reject(err);
+      else if (value) resolve(value);
+    };
+
+    const timer = setTimeout(() => finish(new Error(`STUN timeout: ${host}:${port}`)), timeoutMs);
+
+    socket.on("error", (err) => {
+      clearTimeout(timer);
+      finish(err);
+    });
+
+    socket.on("message", (msg) => {
+      clearTimeout(timer);
+      try {
+        const mapped = parseStunResponse(msg);
+        if (mapped) finish(null, mapped);
+        else finish(new Error("No mapped address in STUN response"));
+      } catch (err) {
+        finish(err as Error);
+      }
+    });
+
+    // Build a Binding Request: 20-byte header + zero attributes
+    const transactionId = crypto.randomBytes(12);
+    const buf = Buffer.alloc(20);
+    buf.writeUInt16BE(0x0001, 0); // Message Type: Binding Request
+    buf.writeUInt16BE(0x0000, 2); // Message Length: 0
+    buf.writeUInt32BE(STUN_MAGIC_COOKIE, 4);
+    transactionId.copy(buf, 8);
+
+    socket.send(buf, 0, buf.length, port, host, (err) => {
+      if (err) {
+        clearTimeout(timer);
+        finish(err);
+      }
+    });
+  });
+}
+
+function parseStunResponse(msg: Buffer): StunMappedAddress | null {
+  if (msg.length < 20) return null;
+  const messageType = msg.readUInt16BE(0);
+  // 0x0101 = Binding Success Response
+  if (messageType !== 0x0101) return null;
+
+  const length = msg.readUInt16BE(2);
+  let offset = 20;
+  const end = 20 + length;
+
+  while (offset + 4 <= end) {
+    const attrType = msg.readUInt16BE(offset);
+    const attrLen = msg.readUInt16BE(offset + 2);
+    const valueStart = offset + 4;
+    const valueEnd = valueStart + attrLen;
+    if (valueEnd > msg.length) break;
+
+    // 0x0020 = XOR-MAPPED-ADDRESS, 0x0001 = MAPPED-ADDRESS
+    if (attrType === 0x0020 || attrType === 0x0001) {
+      const family = msg.readUInt8(valueStart + 1);
+      const xport = msg.readUInt16BE(valueStart + 2);
+      if (family === 0x01) {
+        // IPv4
+        const xaddrBuf = msg.subarray(valueStart + 4, valueStart + 8);
+        if (attrType === 0x0020) {
+          const port = xport ^ ((STUN_MAGIC_COOKIE >>> 16) & 0xffff);
+          const ipBytes = Buffer.from([
+            xaddrBuf[0] ^ 0x21,
+            xaddrBuf[1] ^ 0x12,
+            xaddrBuf[2] ^ 0xa4,
+            xaddrBuf[3] ^ 0x42,
+          ]);
+          return {
+            address: `${ipBytes[0]}.${ipBytes[1]}.${ipBytes[2]}.${ipBytes[3]}`,
+            port,
+            family: "IPv4",
+          };
+        }
+        return {
+          address: `${xaddrBuf[0]}.${xaddrBuf[1]}.${xaddrBuf[2]}.${xaddrBuf[3]}`,
+          port: xport,
+          family: "IPv4",
+        };
+      }
+    }
+    // Attributes are padded to 4-byte boundary
+    offset = valueEnd + ((4 - (attrLen % 4)) % 4);
+  }
+  return null;
 }
 
 // ============================================================================

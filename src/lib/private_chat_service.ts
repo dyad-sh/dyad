@@ -144,6 +144,9 @@ export async function initPrivateChatService(identity: ChatIdentity): Promise<vo
   // Health-check all relays
   await healthCheckAll();
 
+  // Start periodic discovery + health checks
+  startBackgroundLoops();
+
   initialized = true;
 
   emitPrivacyEvent({
@@ -163,6 +166,7 @@ export async function initPrivateChatService(identity: ChatIdentity): Promise<vo
  */
 export async function shutdownPrivateChatService(): Promise<void> {
   stopCoverTraffic();
+  stopBackgroundLoops();
 
   // Destroy all circuits
   for (const [, session] of sessions) {
@@ -504,23 +508,199 @@ export function getPrivateIceServers(): IceServer[] {
 }
 
 // ============================================================================
-// Relay Node Discovery (placeholder — integrates with Helia DHT)
+// Relay Node Discovery via libp2p PubSub + DHT
 // ============================================================================
 
+/** Pubsub topics used for community relay coordination. */
+const ONION_RELAY_TOPIC = "/joycreate/relay-nodes/v1";
+const ICE_RELAY_TOPIC = "/joycreate/ice-relays/v1";
+
+/** Re-announce/re-discover interval. */
+const RELAY_DISCOVERY_INTERVAL_MS = 5 * 60_000;
+/** Health-check interval for ICE relays. */
+const HEALTH_CHECK_INTERVAL_MS = 2 * 60_000;
+
+let discoveryTimer: ReturnType<typeof setInterval> | null = null;
+let healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Bootstrap seed list — well-known community relays that ship with the app.
+ * The DHT/pubsub discovery layer will replace these with live data as the
+ * network grows. Operators can submit additions via PR.
+ */
+const BOOTSTRAP_ICE_RELAYS: DecentralizedRelay[] = [
+  {
+    id: "bootstrap-cloudflare",
+    peerId: "bootstrap-cloudflare",
+    type: "stun",
+    urls: ["stun:stun.cloudflare.com:3478"],
+    publicKey: "",
+    maxBandwidthKbps: 0,
+    currentLoadPercent: 0,
+    maxConcurrentRelays: 0,
+    activeRelays: 0,
+    reputation: 70,
+    uptimePercent: 99,
+    registeredAt: new Date().toISOString(),
+    lastHealthCheck: new Date().toISOString(),
+    region: "global",
+  },
+  {
+    id: "bootstrap-nextcloud",
+    peerId: "bootstrap-nextcloud",
+    type: "stun",
+    urls: ["stun:stun.nextcloud.com:443"],
+    publicKey: "",
+    maxBandwidthKbps: 0,
+    currentLoadPercent: 0,
+    maxConcurrentRelays: 0,
+    activeRelays: 0,
+    reputation: 70,
+    uptimePercent: 99,
+    registeredAt: new Date().toISOString(),
+    lastHealthCheck: new Date().toISOString(),
+    region: "eu",
+  },
+];
+
+/**
+ * Discover onion-relay nodes by subscribing to the libp2p pubsub topic
+ * and announcing this peer if it has volunteered as a relay.
+ */
 async function discoverRelayNodes(): Promise<void> {
-  // In production, this would:
-  // 1. Query Helia DHT for key "/joycreate/relay-nodes"
-  // 2. Verify each node's signature
-  // 3. Add to relay pool via addRelayNode()
-  //
-  // For now, we bootstrap with a few well-known community relays
-  // that will be announced once the network has participants
-  logger.info("Relay node discovery started (DHT)");
+  const libp2p = await getLibp2p();
+  if (!libp2p?.services?.pubsub) {
+    logger.info("Onion-relay discovery: pubsub unavailable, using local cache only");
+    return;
+  }
+
+  try {
+    libp2p.services.pubsub.subscribe(ONION_RELAY_TOPIC);
+    libp2p.services.pubsub.addEventListener("message", (evt: any) => {
+      if (evt.detail?.topic !== ONION_RELAY_TOPIC) return;
+      try {
+        const node = JSON.parse(new TextDecoder().decode(evt.detail.data)) as RelayNode;
+        if (node?.peerId && node?.publicKey) {
+          // Don't add ourselves
+          if (node.peerId === libp2p.peerId.toString()) return;
+          addRelayNode({ ...node, lastSeen: new Date().toISOString() });
+          emitPrivacyEvent({ type: "relay:discovered", relay: node });
+        }
+      } catch (err) {
+        logger.debug(`Bad relay announcement: ${err}`);
+      }
+    });
+    logger.info("Onion-relay discovery subscribed", { topic: ONION_RELAY_TOPIC });
+  } catch (err) {
+    logger.warn(`Failed to subscribe to onion-relay topic: ${err}`);
+  }
 }
 
+/**
+ * Discover ICE (TURN/STUN) relays via the libp2p pubsub topic.
+ * Also seeds the registry with bootstrap relays so a brand-new node has
+ * something to connect through immediately.
+ */
 async function discoverIceRelayNodes(): Promise<void> {
-  // Similarly, query DHT for "/joycreate/ice-relays"
-  logger.info("ICE relay discovery started (DHT)");
+  // Seed registry with bootstrap relays
+  for (const r of BOOTSTRAP_ICE_RELAYS) {
+    registerRelay(r);
+  }
+
+  const libp2p = await getLibp2p();
+  if (!libp2p?.services?.pubsub) {
+    logger.info("ICE-relay discovery: pubsub unavailable, bootstrap seeds only");
+    return;
+  }
+
+  try {
+    libp2p.services.pubsub.subscribe(ICE_RELAY_TOPIC);
+    libp2p.services.pubsub.addEventListener("message", (evt: any) => {
+      if (evt.detail?.topic !== ICE_RELAY_TOPIC) return;
+      try {
+        const relay = JSON.parse(
+          new TextDecoder().decode(evt.detail.data),
+        ) as DecentralizedRelay;
+        if (relay?.id && relay?.urls?.length) {
+          // Don't add ourselves
+          if (relay.peerId === libp2p.peerId.toString()) return;
+          registerRelay({ ...relay, lastHealthCheck: new Date().toISOString() });
+          emitPrivacyEvent({ type: "ice:discovered", relay });
+        }
+      } catch (err) {
+        logger.debug(`Bad ICE-relay announcement: ${err}`);
+      }
+    });
+    logger.info("ICE-relay discovery subscribed", { topic: ICE_RELAY_TOPIC });
+  } catch (err) {
+    logger.warn(`Failed to subscribe to ICE-relay topic: ${err}`);
+  }
+}
+
+/**
+ * Announce a locally-volunteered relay to the pubsub network so other
+ * peers can discover it.
+ */
+export async function announceLocalIceRelay(
+  relay: DecentralizedRelay,
+): Promise<void> {
+  const libp2p = await getLibp2p();
+  if (!libp2p?.services?.pubsub) return;
+  try {
+    const data = new TextEncoder().encode(JSON.stringify(relay));
+    await libp2p.services.pubsub.publish(ICE_RELAY_TOPIC, data);
+    logger.info("Announced local ICE relay", { id: relay.id, urls: relay.urls });
+  } catch (err) {
+    logger.warn(`Failed to announce ICE relay: ${err}`);
+  }
+}
+
+/**
+ * Lazy import to avoid a circular dep with the chat handler module.
+ */
+async function getLibp2p(): Promise<any | null> {
+  try {
+    const mod = await import("@/ipc/handlers/decentralized_chat_handlers");
+    return mod.getChatLibp2p?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Start the periodic discovery + health-check loops.
+ * Idempotent — calling twice is safe.
+ */
+function startBackgroundLoops(): void {
+  if (!discoveryTimer) {
+    discoveryTimer = setInterval(() => {
+      discoverRelayNodes().catch((err) =>
+        logger.warn(`Periodic relay discovery failed: ${err}`),
+      );
+      discoverIceRelayNodes().catch((err) =>
+        logger.warn(`Periodic ICE discovery failed: ${err}`),
+      );
+    }, RELAY_DISCOVERY_INTERVAL_MS);
+  }
+
+  if (!healthCheckTimer) {
+    healthCheckTimer = setInterval(() => {
+      healthCheckAll().catch((err) =>
+        logger.warn(`Periodic ICE health check failed: ${err}`),
+      );
+    }, HEALTH_CHECK_INTERVAL_MS);
+  }
+}
+
+function stopBackgroundLoops(): void {
+  if (discoveryTimer) {
+    clearInterval(discoveryTimer);
+    discoveryTimer = null;
+  }
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer);
+    healthCheckTimer = null;
+  }
 }
 
 // ============================================================================

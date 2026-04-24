@@ -73,20 +73,16 @@ async function initWebRTCDirs(): Promise<void> {
 // ============================================================================
 
 const DECENTRALIZED_ICE_SERVERS: IceServer[] = [
-  // Open STUN servers (free, privacy-respecting)
-  { urls: "stun:stun.l.google.com:19302" }, // Fallback only
+  // Open community STUN servers (privacy-respecting fallback only)
+  // Used when DHT-discovered community relays are unavailable.
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:stun.nextcloud.com:443" },
   { urls: "stun:stun.stunprotocol.org:3478" },
   { urls: "stun:stun.voip.blackberry.com:3478" },
-  { urls: "stun:stun.nextcloud.com:443" },
   { urls: "stun:stun.sipgate.net:3478" },
   { urls: "stun:stun.counterpath.com:3478" },
-  { urls: "stun:stun.sip.us:3478" },
-  { urls: "stun:stun.voiparound.com" },
-  { urls: "stun:stun.voipbuster.com" },
-  { urls: "stun:stun.voipstunt.com" },
-  
-  // Metered TURN servers (freemium, privacy-focused)
-  // Users can self-host these
+  // Note: no Google/Amazon servers — community-operated only.
+  // Self-host TURN via `dchat:ice:register-relay` to add to the network.
 ];
 
 // JoyCreate community ICE servers (announced via DHT)
@@ -257,21 +253,34 @@ async function registerAsIceServer(request: RegisterIceServerRequest): Promise<R
 }
 
 async function detectPublicIP(): Promise<string | null> {
+  // Use the real STUN binding-request probe from the decentralized-ICE module.
+  // This sends actual UDP STUN messages to community servers and parses the
+  // XOR-MAPPED-ADDRESS attribute from the response.
   try {
-    // Use multiple STUN servers to detect public IP
-    // This is a simplified implementation
+    const { probePublicIp } = await import("@/lib/decentralized_ice");
+    const ip = await probePublicIp();
+    if (ip) {
+      publicIP = ip;
+      logger.info("Detected public IP via STUN", { ip });
+    }
+    return ip;
+  } catch (err) {
+    logger.warn(`Public IP detection failed: ${err}`);
     return publicIP;
-  } catch {
-    return null;
   }
 }
 
 async function detectNATType(): Promise<void> {
   try {
-    // NAT type detection using STUN
-    // Simplified - would need full RFC 5780 implementation
-    detectedNATType = "unknown";
-    logger.debug("NAT type detection:", { type: detectedNATType });
+    const { detectNATType: probeNat } = await import("@/lib/decentralized_ice");
+    const result = await probeNat();
+    detectedNATType = (result.natType ?? "unknown") as NATType;
+    if (result.publicIp) publicIP = result.publicIp;
+    logger.debug("NAT type detection:", {
+      type: detectedNATType,
+      publicIp: result.publicIp,
+      publicPort: result.publicPort,
+    });
   } catch (error) {
     logger.warn("NAT type detection failed:", error);
     detectedNATType = "unknown";

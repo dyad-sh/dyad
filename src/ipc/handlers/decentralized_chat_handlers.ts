@@ -99,6 +99,43 @@ async function loadHeliaModules() {
 let chatHelia: any = null;
 let chatJsonCodec: any = null;
 
+/**
+ * Expose the chat libp2p node to other services (privacy layer, ICE discovery).
+ * Returns null until the Helia node has been initialized.
+ */
+export function getChatLibp2p(): any | null {
+  return chatHelia?.libp2p ?? null;
+}
+
+/**
+ * Ensure the chat Helia node is started and return its libp2p instance.
+ */
+export async function ensureChatLibp2p(): Promise<any> {
+  await ensureChatHelia();
+  return chatHelia.libp2p;
+}
+
+/**
+ * Deliver an onion-wrapped packet to its entry relay over libp2p pubsub.
+ * Each relay subscribes to a topic keyed by its peer ID so it can pick up
+ * inbound packets without revealing the destination to bystanders.
+ */
+async function deliverOnionPacket(entryPeerId: string, packet: any): Promise<void> {
+  if (!entryPeerId || !packet) return;
+  try {
+    await ensureChatHelia();
+    if (!chatHelia?.libp2p?.services?.pubsub) {
+      logger.debug("Onion delivery skipped: pubsub unavailable");
+      return;
+    }
+    const topic = `/joycreate/onion/v1/${entryPeerId}`;
+    const data = new TextEncoder().encode(JSON.stringify(packet));
+    await chatHelia.libp2p.services.pubsub.publish(topic, data);
+  } catch (err) {
+    logger.warn(`Failed to deliver onion packet: ${err}`);
+  }
+}
+
 async function ensureChatHelia(): Promise<void> {
   if (chatHelia) return;
   
@@ -1946,20 +1983,19 @@ export function registerDecentralizedChatHandlers(): void {
   // Send WebRTC signaling through onion route
   ipcMain.handle("dchat:signal:send", async (_, recipientWallet: string, signal: any) => {
     const { sendPrivateSignaling } = await import("@/lib/private_chat_service");
-    const deliverFn = async (entryPeerId: string, packet: any) => {
-      logger.debug("Delivering signaling via onion", { entryPeerId });
-    };
-    await sendPrivateSignaling(recipientWallet, signal, deliverFn);
+    await sendPrivateSignaling(recipientWallet, signal, deliverOnionPacket);
     return { success: true };
   });
 
   // Cover traffic control
   ipcMain.handle("dchat:cover-traffic:start", async (_, config?: Partial<import("@/types/private_chat_types").CoverTrafficConfig>) => {
     const { startCoverTraffic } = await import("@/lib/private_relay");
-    const deliverFn = async (packet: any) => {
-      logger.debug("Cover traffic packet sent");
-    };
-    startCoverTraffic(config, deliverFn);
+    startCoverTraffic(config, async (packet: any) => {
+      // Cover packets target a random circuit's entry relay; the packet
+      // already carries the entry peer ID in its envelope.
+      const entry = packet?.entryPeerId ?? packet?.relayPeerIds?.[0];
+      if (entry) await deliverOnionPacket(entry, packet);
+    });
     return { success: true };
   });
 

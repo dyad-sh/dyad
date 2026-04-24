@@ -93,6 +93,10 @@ import { registerModelFactoryHandlers } from "./handlers/model_factory_handlers"
 import { registerHuggingFaceHandlers } from "./handlers/huggingface_handlers";
 import { registerAgentFactoryHandlers } from "./handlers/agent_factory_handlers";
 import { registerSkillHandlers } from "./handlers/skill_handlers";
+import { registerWidgetHandlers } from "./handlers/widget_handlers";
+import { registerSchedulerHandlers } from "./handlers/scheduler_handlers";
+import { registerToolMacroHandlers } from "./handlers/tool_macro_handlers";
+import { registerToolsHandlers } from "./handlers/tools_handlers";
 import { registerPrivacyInferenceHandlers } from "./handlers/privacy_inference_handlers";
 import { registerDeployedContractHandlers } from "./handlers/deployed_contract_handlers";
 import { registerHyperLiquidHandlers } from "./handlers/hyper_liquid_handlers";
@@ -126,6 +130,10 @@ import { registerModelRegistryHandlers } from "./handlers/model_registry_handler
 import { registerSsiHandlers } from "./handlers/ssi_handlers";
 import { registerEmailHandlers } from "./handlers/email_handlers";
 import { registerMissionHandlers } from "./handlers/mission_handlers";
+import { registerA2aHandlers } from "./handlers/a2a_handlers";
+import { registerAgentOsHandlers } from "./handlers/agent_os_handlers";
+import { registerAgentWalletHandlers } from "./handlers/agent_wallet_handlers";
+import { registerAgentProvenanceHandlers } from "./handlers/agent_provenance_handlers";
 import { registerLibraryHandlers } from "./handlers/library_handlers";
 import { registerImageStudioHandlers } from "./handlers/image_studio_handlers";
 import { registerVideoStudioHandlers } from "./handlers/video_studio_handlers";
@@ -291,6 +299,12 @@ export function registerIpcHandlers() {
   
   // Skill System - Reusable, marketplace-sellable skills
   registerSkillHandlers();
+
+  // Extensibility surfaces — widgets, scheduler, tool macros, universal tool catalog
+  registerWidgetHandlers();
+  registerSchedulerHandlers();
+  registerToolMacroHandlers();
+  registerToolsHandlers();
   
   // Privacy-Preserving Inference Bridge - Local-first AI with federated fallback
   registerPrivacyInferenceHandlers();
@@ -407,6 +421,22 @@ export function registerIpcHandlers() {
 
   // Background Missions — Persisted autonomous mission execution
   registerMissionHandlers();
+
+  // Agent-to-Agent (A2A) Economy — principals, listings, quotes, contracts,
+  // escrowed invocations, trustless receipts. See `src/lib/a2a_economy.ts`.
+  registerA2aHandlers();
+
+  // Agent OS — Tier 1 (OS Shell): command palette, intent surface,
+  // "what's running" activity registry. See `src/lib/agent_os.ts`.
+  registerAgentOsHandlers();
+
+  // Agent Wallet & Policy — Tier 2: capability tokens, per-principal policies,
+  // signed intents. See `src/lib/agent_wallet.ts`.
+  registerAgentWalletHandlers();
+
+  // Agent Provenance & Reputation — Tier 4: signed activity feed, derived
+  // reputation scores, slash records. See `src/lib/agent_provenance.ts`.
+  registerAgentProvenanceHandlers();
 
   // Library — Personal file bookshelf with decentralized storage tiers
   registerLibraryHandlers();

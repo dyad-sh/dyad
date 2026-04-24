@@ -159,15 +159,40 @@ export class SwarmExecutor {
     });
 
     try {
-      const { getOpenClawCNS } = await import("@/lib/openclaw_cns");
-      const cns = getOpenClawCNS();
-
       const prompt = this.buildTaskPrompt(agent, task);
+      const systemPrompt =
+        agent.config.systemPrompt ||
+        `You are a ${agent.role} agent named "${agent.name}". Execute the assigned task thoroughly and return your result.`;
 
-      const result = await cns.chat(prompt, {
-        systemPrompt: agent.config.systemPrompt || `You are a ${agent.role} agent named "${agent.name}". Execute the assigned task thoroughly and return your result.`,
-        preferLocal: true,
-      });
+      // Tool-aware path: if the agent has tools (or no explicit restriction),
+      // run via the swarm tool runtime so the agent can actually USE tools
+      // (email, web scraper, think-and-plan, etc.). Falls back to plain chat
+      // on import/runtime failure.
+      let result: string;
+      try {
+        const { runSwarmAgentWithTools } = await import("@/lib/swarm_tool_runtime");
+        const runOutcome = await runSwarmAgentWithTools(agent, prompt, {
+          systemPrompt,
+          maxSteps: 12,
+        });
+        result = runOutcome.text;
+        if (runOutcome.toolCallCount > 0) {
+          logger.info(
+            `Agent ${agent.name} used ${runOutcome.toolCallCount} tool call(s) across ${runOutcome.steps} step(s): ${runOutcome.toolsUsed.join(", ")}`,
+          );
+        }
+      } catch (toolErr) {
+        logger.warn(
+          `Tool runtime failed for ${agent.name}, falling back to text-only chat:`,
+          toolErr,
+        );
+        const { getOpenClawCNS } = await import("@/lib/openclaw_cns");
+        const cns = getOpenClawCNS();
+        result = await cns.chat(prompt, {
+          systemPrompt,
+          preferLocal: true,
+        });
+      }
 
       // Complete the task
       await this.swarm.completeTask(agentId, taskId, result);

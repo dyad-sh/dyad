@@ -26,6 +26,16 @@ import { packageDatasetTool } from "./tools/package_dataset";
 import { runTestsTool } from "./tools/run_tests";
 import { verifyAppTool } from "./tools/verify_app";
 import { sendEmailTool } from "./tools/send_email";
+import { EMAIL_AGENT_TOOLS } from "./tools/email_tools";
+import { SWARM_ORCHESTRATION_TOOLS } from "./tools/swarm_orchestration_tools";
+import { getMcpAgentTools } from "./tools/mcp_tools_adapter";
+import { getPluginAgentTools } from "./tools/plugin_tools_adapter";
+import { A2A_AGENT_TOOLS } from "./tools/a2a_tools_adapter";
+import { AUTONOMOUS_AGENT_TOOLS } from "./tools/autonomous_agent_tools_adapter";
+import { MEMORY_AGENT_TOOLS } from "./tools/memory_tools_adapter";
+import { EXTENSION_SUBSYSTEM_TOOLS } from "./tools/extension_subsystem_tools";
+import { getSkillAgentTools } from "./tools/skill_tools_adapter";
+import { getExternalMcpAgentTools } from "./tools/mcp_external_tools_adapter";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -56,7 +66,45 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   runTestsTool,
   verifyAppTool,
   sendEmailTool,
+  ...EMAIL_AGENT_TOOLS,
+  ...SWARM_ORCHESTRATION_TOOLS,
+  // Every MCP tool (apps, agents, datasets, documents, images, video,
+  // neural models, marketplace, skills, compute, chat, knowledge,
+  // workflows, creator dashboard) auto-exposed to the local agent.
+  ...getMcpAgentTools(),
+  // Decentralized agent network + persistent autonomous workers + memory recall
+  ...A2A_AGENT_TOOLS,
+  ...AUTONOMOUS_AGENT_TOOLS,
+  ...MEMORY_AGENT_TOOLS,
+  // Widgets, scheduling, and tool macros — the extensibility surface
+  ...EXTENSION_SUBSYSTEM_TOOLS,
+  // Plugin-contributed commands (synchronous snapshot of currently registered)
+  ...getPluginAgentTools(),
 ];
+
+/**
+ * Returns ALL agent-callable tools, including async-resolved ones (skills,
+ * external MCP servers). Use this when a fresh full snapshot is required
+ * (e.g. for `tools:list-all` IPC, scheduler dispatch, macro execution).
+ */
+export async function getAllAgentTools(): Promise<readonly ToolDefinition[]> {
+  const [skills, externalMcp] = await Promise.all([
+    getSkillAgentTools().catch(() => [] as ToolDefinition[]),
+    getExternalMcpAgentTools().catch(() => [] as ToolDefinition[]),
+  ]);
+  // Re-evaluate plugin tools each call so newly enabled plugins surface.
+  const plugins = getPluginAgentTools();
+  const combined: ToolDefinition[] = [
+    ...TOOL_DEFINITIONS,
+    ...skills,
+    ...externalMcp,
+    ...plugins,
+  ];
+  // Dedup by name (last-wins) so re-included plugin/MCP tools don't double up.
+  const byName = new Map<string, ToolDefinition>();
+  for (const t of combined) byName.set(t.name, t);
+  return Array.from(byName.values());
+}
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
 // ============================================================================

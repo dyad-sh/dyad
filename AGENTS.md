@@ -24,6 +24,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/chat-message-indicators.md](rules/chat-message-indicators.md) | Using `<dyad-status>` tags in chat messages for system indicators                                |
 | [rules/product-principles.md](rules/product-principles.md)           | Planning new features, especially via `dyad:swarm-to-plan`, to guide design trade-offs           |
 | [rules/jotai-testing.md](rules/jotai-testing.md)                     | Unit-testing Jotai atoms/hooks with `renderHook`, especially across unmount/remount              |
+| [rules/claude-github-workflows.md](rules/claude-github-workflows.md) | Editing `.github/workflows/*.yml` that invoke `anthropics/claude-code-action` (LLM-driven jobs)  |
 
 ## Project setup and lints
 

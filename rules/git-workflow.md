@@ -38,6 +38,14 @@ git rev-list --left-right --count upstream/main...HEAD
 
 If this returns `0	0`, the branch has no commits ahead of `upstream/main`. GitHub cannot open a PR for an empty branch, so do not fabricate an empty commit just to satisfy `gh pr create`; report the branch as pushed but PR-blocked instead.
 
+## `gh pr create` fork-collab permission error
+
+If `gh pr create` from a fork fails with `GraphQL: Fork collab Fork collab can't be granted by someone without permission (createPullRequest)`, add `--no-maintainer-edit`. `gh` defaults to enabling maintainer edits, which requires a permission the fork account does not have for the upstream repo.
+
+```bash
+gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --title "..." --body "..."
+```
+
 ## `gh pr create` body quoting
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.

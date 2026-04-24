@@ -42,13 +42,16 @@ function loadFixture(filename: string): string {
   return readFileSync(resolve(FIXTURES_DIR, filename), "utf-8");
 }
 
-// Models sometimes emit paths like `./foo.ts` or `src/foo.ts` instead of the
-// bare fixture filename. Since each case targets a single known file, a
-// basename match is sufficient and avoids penalizing harmless path formatting
-// differences across models.
+// Models sometimes emit paths like `./foo.ts`, `src/foo.ts`, or even Windows-
+// style `.\foo.ts` / `src\foo.ts` instead of the bare fixture filename. Since
+// each case targets a single known file, a basename match is sufficient and
+// avoids penalizing harmless path formatting differences across models. We
+// normalize backslashes to forward slashes first because node's posix
+// `basename` treats `\` as a regular filename character.
 function pathMatchesCase(got: string | undefined, expected: string): boolean {
   if (!got) return false;
-  return basename(got) === basename(expected);
+  const normalize = (p: string) => basename(p.replace(/\\/g, "/"));
+  return normalize(got) === normalize(expected);
 }
 
 // ── Case type ──────────────────────────────────────────────────
@@ -441,6 +444,7 @@ async function turboFileEdit(params: {
   content: string;
   originalContent: string;
   instructions?: string;
+  signal?: AbortSignal;
 }): Promise<string> {
   const apiKey = process.env.DYAD_PRO_API_KEY;
   if (!apiKey) {
@@ -461,6 +465,7 @@ async function turboFileEdit(params: {
       originalContent: params.originalContent,
       instructions: params.instructions ?? "",
     }),
+    signal: params.signal,
   });
   if (!response.ok) {
     const errorText = await response.text();
@@ -485,6 +490,7 @@ async function turboFileEdit(params: {
 interface ToolRunState {
   content: string;
   toolCalls: ToolCallRecord[];
+  abortSignal?: AbortSignal;
 }
 
 function makeRecord(
@@ -647,6 +653,7 @@ function editFileHarnessTool(
           content: args.content,
           originalContent: state.content,
           instructions: args.instructions,
+          signal: state.abortSignal,
         });
         state.content = newContent;
         state.toolCalls.push(
@@ -806,11 +813,6 @@ async function runCase(
   const systemPrompt = suite.systemPrompt;
   const userPrompt = `File: ${c.fileName}\n\`\`\`\n${c.fileContent}\n\`\`\`\n\n${c.prompt}`;
 
-  const state: ToolRunState = {
-    content: c.fileContent,
-    toolCalls: [],
-  };
-
   // Internal timeout fires slightly before vitest's testTimeout so the
   // finally block still runs and we capture a partial record (tool calls,
   // LLM requests so far, current file state) instead of losing everything
@@ -818,6 +820,12 @@ async function runCase(
   // vitest.eval.config.ts.
   const INTERNAL_TIMEOUT_MS = 330_000;
   const abortController = new AbortController();
+
+  const state: ToolRunState = {
+    content: c.fileContent,
+    toolCalls: [],
+    abortSignal: abortController.signal,
+  };
   const timeoutHandle = setTimeout(() => {
     abortController.abort(
       new Error(

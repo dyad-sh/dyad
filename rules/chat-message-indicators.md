@@ -8,4 +8,4 @@ Content here
 </dyad-status>
 ```
 
-Valid states: `"finished"`, `"in-progress"`, `"aborted"`
+Valid states: `"pending"`, `"finished"`, `"aborted"`

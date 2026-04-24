@@ -12,6 +12,7 @@ import {
 } from "../../prompts/supabase_prompt";
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
+import { detectFrameworkType } from "../utils/framework_utils";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
 import {
@@ -80,6 +81,7 @@ export function registerTokenCountHandlers() {
       // Count system prompt tokens
       // Migration on read converts "agent" to "build", so no need to check for it here
       const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
+      const frameworkType = detectFrameworkType(getDyadAppPath(chat.app.path));
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode:
@@ -87,6 +89,7 @@ export function registerTokenCountHandlers() {
         enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         themePrompt,
         nitroEnabled: chat.app?.nitroEnabled ?? false,
+        frameworkType,
       });
       let supabaseContext = "";
 

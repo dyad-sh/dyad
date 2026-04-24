@@ -4,6 +4,7 @@ import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 import { constructLocalAgentPrompt } from "./local_agent_prompt";
 import { constructPlanModePrompt } from "./plan_mode_prompt";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 const logger = log.scope("system_prompt");
 
@@ -525,6 +526,7 @@ export const constructSystemPrompt = ({
   readOnly,
   basicAgentMode,
   nitroEnabled,
+  frameworkType,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -536,6 +538,8 @@ export const constructSystemPrompt = ({
   basicAgentMode?: boolean;
   /** If true, skip the build-mode Nitro nudge (server layer is already set up) */
   nitroEnabled?: boolean;
+  /** Detected framework of the app; the Nitro nudge only applies to Vite apps. */
+  frameworkType?: AppFrameworkType | null;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -552,6 +556,7 @@ export const constructSystemPrompt = ({
     chatMode,
     enableTurboEditsV2,
     nitroEnabled,
+    frameworkType,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -570,17 +575,23 @@ export const getSystemPromptForChatMode = ({
   chatMode,
   enableTurboEditsV2,
   nitroEnabled,
+  frameworkType,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
   nitroEnabled?: boolean;
+  frameworkType?: AppFrameworkType | null;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
+  // The Nitro server-layer nudge is Vite-specific. Only inject it for Vite
+  // apps that haven't already enabled Nitro; Next.js (and unknown frameworks)
+  // should not carry this Vite-only paragraph in every build-mode prompt.
+  const shouldAppendNitroNudge = frameworkType === "vite" && !nitroEnabled;
   const buildPrompt =
     BUILD_SYSTEM_PROMPT_BASE +
-    (nitroEnabled ? "" : `\n\n${BUILD_SERVER_LAYER_NUDGE}`);
+    (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");
   return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };
 

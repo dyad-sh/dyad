@@ -47,10 +47,6 @@ function getBundledPackageDir(pkg: StagedPackage): string {
   return path.join(process.resourcesPath, pkg);
 }
 
-export function getDrizzleKitPath(): string {
-  return path.join(getBundledPackageDir("drizzle-kit"), "bin.cjs");
-}
-
 /**
  * Writes a temporary drizzle config file (.js) for introspect or push.
  */
@@ -147,7 +143,9 @@ export async function spawnDrizzleKit({
     path.join(stagedDrizzleKitDir, "package.json"),
   );
   // esbuild is bundled under drizzle-kit/node_modules and is needed to
-  // compile the .ts schema during push.
+  // compile the .ts schema during push. EEXIST is harmless — spawnDrizzleKit
+  // is called twice per request (introspect + push) against the same cwd,
+  // so the symlink may already exist from the first call.
   try {
     await fs.symlink(
       path.join(srcDrizzleKitDir, "node_modules"),
@@ -155,12 +153,19 @@ export async function spawnDrizzleKit({
       "junction",
     );
   } catch (symlinkErr) {
-    logger.warn(`Failed to stage drizzle-kit node_modules: ${symlinkErr}`);
+    if ((symlinkErr as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new DyadError(
+        `Failed to stage drizzle-kit node_modules: ${symlinkErr}`,
+        DyadErrorKind.Internal,
+      );
+    }
   }
 
   // @neondatabase/serverless is the Postgres driver drizzle-kit picks for
   // Neon. If it can't be resolved, drizzle-kit's introspect catches the
   // error and still exits 0 — the failure looks like "no schema produced".
+  // Non-EEXIST failures here would recreate that silent-failure mode, so
+  // surface them immediately.
   const peerPackages: StagedPackage[] = [
     "drizzle-orm",
     "@neondatabase/serverless",
@@ -172,7 +177,12 @@ export async function spawnDrizzleKit({
       await fs.mkdir(path.dirname(stagedPath), { recursive: true });
       await fs.symlink(getBundledPackageDir(pkg), stagedPath, "junction");
     } catch (symlinkErr) {
-      logger.warn(`Failed to stage ${pkg} symlink: ${symlinkErr}`);
+      if ((symlinkErr as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw new DyadError(
+          `Failed to stage ${pkg} symlink: ${symlinkErr}`,
+          DyadErrorKind.Internal,
+        );
+      }
     }
   }
 

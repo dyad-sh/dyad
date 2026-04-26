@@ -250,7 +250,9 @@ export class OllamaProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama generation failed: ${response.statusText}`);
+      let errMsg = response.statusText;
+      try { const b = await response.json(); if (b?.error) errMsg = b.error; } catch {}
+      throw new Error(`Ollama generation failed: ${errMsg}`);
     }
 
     const data = await response.json();
@@ -313,7 +315,9 @@ export class OllamaProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama chat failed: ${response.statusText}`);
+      let errMsg = response.statusText;
+      try { const b = await response.json(); if (b?.error) errMsg = b.error; } catch {}
+      throw new Error(`Ollama chat failed: ${errMsg}`);
     }
 
     const data = await response.json();
@@ -367,7 +371,9 @@ export class OllamaProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama stream failed: ${response.statusText}`);
+      let streamErrMsg = response.statusText;
+      try { const b = await response.json(); if (b?.error) streamErrMsg = b.error; } catch {}
+      throw new Error(`Ollama stream failed: ${streamErrMsg}`);
     }
 
     const reader = response.body!.getReader();

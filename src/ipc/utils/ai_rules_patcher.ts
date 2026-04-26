@@ -8,9 +8,21 @@ export const NITRO_RULES_SECTION = `${NITRO_RULES_START}
 
 ## Nitro Server Layer
 
-This project has a Nitro server layer for backend API routes. (Initial setup of \`vite.config.ts\` was performed when the server layer was added.)
+This project has a Nitro server layer for backend API routes. A \`nitro.config.ts\` at the app root sets \`serverDir: "./server"\` — do not move or remove it.
 
-A \`nitro.config.ts\` at the app root sets \`serverDir: "./server"\` — do not move or remove it.
+### vite.config.ts setup
+
+Register the Nitro plugin as the LAST entry in the \`plugins\` array (after \`react()\`). It must run after Vite's module-transform middleware, otherwise Nitro's SPA fallback intercepts Vite internal URLs (\`/src/*.tsx\`, \`/@vite/client\`, \`/@react-refresh\`, \`/@fs/*\`) and returns \`index.html\`, breaking the preview.
+
+\`\`\`ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import { nitro } from "nitro/vite";
+
+export default defineConfig(() => ({
+  plugins: [react(), nitro()],
+}));
+\`\`\`
 
 ### API Route Conventions
 

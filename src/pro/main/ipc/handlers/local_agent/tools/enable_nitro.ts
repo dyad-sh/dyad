@@ -57,37 +57,9 @@ says "static only" / "no backend".
 This tool is auto-disabled (via isEnabled) on non-Vite apps and once Nitro is
 already enabled — if it appears in your toolset, it is safe and appropriate to call.
 
-==== POST-CALL SETUP STEPS (you MUST perform these in the same turn) ====
-
-After this tool returns successfully, you MUST update vite.config.ts to register
-the Nitro plugin. The tool itself does NOT touch vite.config.ts because TS config
-files are fragile to edit programmatically.
-
-1. Add the import:
-     import { nitro } from "nitro/vite";
-
-2. Add nitro() to the plugins array as the LAST entry (after react()). Nitro
-   must run AFTER Vite's module-transform middleware so it doesn't catch Vite
-   internal URLs like /src/*.tsx, /@vite/client, /@react-refresh, or /@fs/* —
-   otherwise Nitro's SPA fallback returns index.html for those requests and
-   the browser rejects them with a "text/html MIME type" error, leaving the
-   preview blank.
-
-Example final vite.config.ts:
-
-     import { defineConfig } from "vite";
-     import react from "@vitejs/plugin-react-swc";
-     import { nitro } from "nitro/vite";
-     import dyadComponentTagger from "@dyad-sh/react-vite-component-tagger";
-
-     export default defineConfig(() => ({
-       plugins: [dyadComponentTagger(), react(), nitro()],
-     }));
-
-3. Then write the user-requested API route(s) following the conventions documented
-   in AI_RULES.md — the tool appended a "Nitro Server Layer" section with route
-   filesystem conventions, defineHandler usage, useRuntimeConfig patterns, and
-   security rules. That is the source of truth for ongoing code.
+After this tool returns, follow the "Nitro Server Layer" section appended to
+AI_RULES.md — it covers the required vite.config.ts changes and the conventions
+for routes under server/routes/api/.
 `.trim();
 
 export const enableNitroTool: ToolDefinition<
@@ -165,6 +137,6 @@ export const enableNitroTool: ToolDefinition<
       throw error;
     }
 
-    return "Nitro server layer added. Now update vite.config.ts per the setup steps in the tool description, then write the requested API route(s) under server/routes/api/.";
+    return "Nitro server layer added. Follow the 'Nitro Server Layer' section in AI_RULES.md to update vite.config.ts and write the requested API route(s) under server/routes/api/.";
   },
 };

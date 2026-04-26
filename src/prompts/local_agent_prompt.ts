@@ -195,7 +195,7 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 // ============================================================================
 
 const SERVER_LAYER_BLOCK = `<server_layer>
-Vite apps in Dyad have NO server layer by default. Call the \`enable_nitro\` tool BEFORE writing any server-side code — see the tool's description for the authoritative WHEN TO CALL rules and the post-call \`vite.config.ts\` setup steps. If the tool is absent from your toolset, a server layer is not applicable (non-Vite app or Nitro already enabled).
+Vite apps in Dyad have NO server layer by default. Call the \`enable_nitro\` tool BEFORE writing any server-side code — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions. If the tool is absent from your toolset, a server layer is not applicable (non-Vite app or Nitro already enabled).
 </server_layer>`;
 
 // ============================================================================

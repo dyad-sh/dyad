@@ -30,9 +30,81 @@ import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 
 import fixPath from "fix-path";
+import { execSync } from "node:child_process";
+import os from "node:os";
 
 import killPort from "kill-port";
 import util from "util";
+
+/**
+ * Resolve a PATH that includes node/npm/pnpm even when the Electron app was
+ * launched from a Windows desktop shortcut (where the inherited PATH is
+ * truncated and may not contain Node.js install dirs). Safe to call repeatedly.
+ */
+function buildEnrichedPath(): string {
+  let basePath = process.env.PATH || "";
+  if (process.platform === "win32") {
+    try {
+      // `cmd /c echo %PATH%` resolves the user+system PATH from the registry,
+      // which is what a normal cmd.exe spawn would see.
+      const cmdPath = execSync("cmd /c echo %PATH%", {
+        encoding: "utf8",
+      }).trim();
+      if (cmdPath && cmdPath !== "%PATH%") {
+        basePath = cmdPath;
+      }
+    } catch {
+      // ignore — fall back to whatever process.env.PATH has
+    }
+  } else {
+    try {
+      fixPath();
+      basePath = process.env.PATH || basePath;
+    } catch {
+      // ignore
+    }
+  }
+
+  const sep = process.platform === "win32" ? ";" : ":";
+  const extras: string[] = [];
+
+  // Common Windows install locations for node/npm/pnpm that are often missing
+  // from a GUI-inherited PATH.
+  if (process.platform === "win32") {
+    const candidates = [
+      "C:\\Program Files\\nodejs",
+      "C:\\Program Files (x86)\\nodejs",
+      path.join(os.homedir(), "AppData", "Roaming", "npm"),
+      path.join(os.homedir(), "AppData", "Local", "pnpm"),
+      path.join(os.homedir(), "AppData", "Local", "Programs", "nodejs"),
+      path.join(os.homedir(), "scoop", "apps", "nodejs", "current"),
+      path.join(os.homedir(), "scoop", "shims"),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) extras.push(c);
+    }
+  }
+
+  // Honor user-configured customNodePath
+  try {
+    const settings = readSettings();
+    if (settings?.customNodePath) {
+      extras.unshift(settings.customNodePath);
+    }
+  } catch {
+    // settings not yet available — ignore
+  }
+
+  const segments = basePath.split(sep).filter(Boolean);
+  const merged = [...extras, ...segments].filter(
+    (v, i, arr) => arr.indexOf(v) === i,
+  );
+  return merged.join(sep);
+}
+
+function refreshProcessPath(): void {
+  process.env.PATH = buildEnrichedPath();
+}
 import log from "electron-log";
 import {
   deploySupabaseFunction,
@@ -92,9 +164,10 @@ const handle = createLoggedHandler(logger);
 
 let proxyWorker: Worker | null = null;
 
-// Needed, otherwise electron in MacOS/Linux will not be able
-// to find node/pnpm.
-fixPath();
+// Needed, otherwise electron will not be able to find node/pnpm/npm —
+// especially on Windows when launched from a desktop shortcut, which
+// inherits a stripped PATH that may omit Node.js install directories.
+refreshProcessPath();
 
 async function executeApp({
   appPath,
@@ -179,7 +252,11 @@ async function executeAppLocalNode({
   }
 
   const command = getCommand({ appId, installCommand, startCommand });
-  
+
+  // Always refresh PATH right before spawning so node/npm/pnpm are findable
+  // even when JoyCreate was launched from a Windows shortcut.
+  refreshProcessPath();
+
   logger.debug(
     `Spawning process for app ${appId}. Command="${command}", CWD="${appPath}"`
   );
@@ -189,6 +266,7 @@ async function executeAppLocalNode({
     shell: true,
     stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
     detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
+    env: { ...process.env, PATH: process.env.PATH },
   });
 
   // Check if process spawned correctly

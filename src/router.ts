@@ -34,6 +34,7 @@ import { offlineDocsRoute } from "./routes/offline-docs";
 import { aiLearningRoute } from "./routes/ai-learning";
 import { benchmarkRoute } from "./routes/benchmark";
 import { codingAgentRoute } from "./routes/coding-agent";
+import { codeStudioRoute } from "./routes/code-studio";
 import { designSystemRoute } from "./routes/design-system";
 import { pluginMarketplaceRoute } from "./routes/plugin-marketplace";
 import { secretsVaultRoute } from "./routes/secrets-vault";
@@ -117,6 +118,7 @@ const routeTree = rootRoute.addChildren([
   aiLearningRoute,
   benchmarkRoute,
   codingAgentRoute,
+  codeStudioRoute,
   designSystemRoute,
   pluginMarketplaceRoute,
   secretsVaultRoute,

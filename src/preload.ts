@@ -194,6 +194,18 @@ const validInvokeChannels = [
   "coding-agent:get-capabilities",
   "coding-agent:subscribe",
   "coding-agent:unsubscribe",
+  // Code Studio (in-app code editor)
+  "code-studio:open-workspace",
+  "code-studio:set-workspace",
+  "code-studio:get-workspace",
+  "code-studio:list-dir",
+  "code-studio:read-file",
+  "code-studio:write-file",
+  "code-studio:delete-file",
+  "code-studio:create-file",
+  "code-studio:preview-patch",
+  "code-studio:apply-patches",
+  "code-studio:search",
   // Design System Generator
   "design-system:initialize",
   "design-system:create",

@@ -9,6 +9,7 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { execSync } from "child_process";
 import path from "path";
+import fs from "fs";
 
 // Path to signtool.exe bundled with electron-winstaller
 // On GitHub Actions, this is the full path to the signtool binary.
@@ -46,6 +47,93 @@ function signWindowsExecutable(filePath: string): void {
 }
 
 // Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
+
+// Runtime-required dependencies that vite externalizes from the main bundle.
+// We use the full production-dependency closure from package.json — that way
+// any package that vite/rollup externalizes (explicitly or implicitly) will be
+// present in node_modules at runtime, avoiding "Cannot find module 'X'"
+// crashes in the packaged main process.
+function getProductionDependencies(): string[] {
+  const pkgJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "package.json"), "utf8"),
+  );
+  return Object.keys(pkgJson.dependencies || {});
+}
+const EXTERNAL_RUNTIME_PACKAGES = getProductionDependencies();
+
+// Resolve the full transitive dependency closure of the externalized packages.
+// Without this, packaging would only include the top-level package and runtime
+// would fail with "Cannot find module 'X'" for any transitive dep.
+function resolvePackageDir(name: string, fromDir: string): string | null {
+  let dir = fromDir;
+  while (true) {
+    const candidate = path.join(dir, "node_modules", name);
+    if (fs.existsSync(path.join(candidate, "package.json"))) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function computeRuntimeDepClosure(roots: string[]): Set<string> {
+  // Collect set of allow-prefixes (relative to project root, with leading "/")
+  // covering every directory in the dep closure, including nested node_modules.
+  const allowPrefixes = new Set<string>();
+  // Set of exact directory paths that must be traversable (parent dirs of any
+  // package in the closure). For these we allow the exact path but do NOT
+  // recursively allow children — children are gated by their own prefix entry.
+  const allowExact = new Set<string>();
+  const visited = new Set<string>(); // paths
+  const projectRoot = __dirname;
+
+  const addAllowPrefix = (rel: string) => {
+    allowPrefixes.add(rel);
+    // Also allow every ancestor directory exactly so packager can traverse to
+    // it (e.g. `/node_modules/@pinojs` for `/node_modules/@pinojs/redact`).
+    let p = rel;
+    while (true) {
+      const idx = p.lastIndexOf("/");
+      if (idx <= 0) break;
+      p = p.substring(0, idx);
+      allowExact.add(p);
+    }
+  };
+
+  const visit = (name: string, fromDir: string) => {
+    const dir = resolvePackageDir(name, fromDir);
+    if (!dir) return;
+    if (visited.has(dir)) return;
+    visited.add(dir);
+    const rel = "/" + path.relative(projectRoot, dir).split(path.sep).join("/");
+    addAllowPrefix(rel);
+    let pkg: {
+      dependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+    };
+    try {
+      pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+    } catch {
+      return;
+    }
+    const deps = {
+      ...(pkg.dependencies || {}),
+      ...(pkg.optionalDependencies || {}),
+    };
+    for (const d of Object.keys(deps)) visit(d, dir);
+  };
+  for (const r of roots) visit(r, projectRoot);
+  // Stash exact set on the prefix set object for the ignore filter to use.
+  (allowPrefixes as Set<string> & { __exact?: Set<string> }).__exact = allowExact;
+  return allowPrefixes;
+}
+
+const EXTERNAL_RUNTIME_DEP_CLOSURE = computeRuntimeDepClosure(
+  EXTERNAL_RUNTIME_PACKAGES,
+);
+console.log(
+  `[forge.config] Including ${EXTERNAL_RUNTIME_DEP_CLOSURE.size} package directories in asar (externalized + transitive deps)`,
+);
+
 const ignore = (file: string) => {
   if (!file) return false;
   // `file` always starts with `/`
@@ -83,6 +171,20 @@ const ignore = (file: string) => {
   }
   if (file.startsWith("/.vite")) {
     return false;
+  }
+  // Packages externalized in vite.main.config.mts must be present in
+  // node_modules at runtime, otherwise the main process throws
+  // "Cannot find module 'X'" before the window can load.
+  const exact = (
+    EXTERNAL_RUNTIME_DEP_CLOSURE as Set<string> & { __exact?: Set<string> }
+  ).__exact;
+  if (exact && exact.has(file)) {
+    return false;
+  }
+  for (const prefix of EXTERNAL_RUNTIME_DEP_CLOSURE) {
+    if (file === prefix || file.startsWith(prefix + "/")) {
+      return false;
+    }
   }
 
   return true;
@@ -213,8 +315,15 @@ const config: ForgeConfig = {
       [FuseV1Options.RunAsNode]: false,
       [FuseV1Options.EnableCookieEncryption]: true,
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: isEndToEndTestBuild,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      [FuseV1Options.EnableNodeCliInspectArguments]:
+        isEndToEndTestBuild || process.env.JOY_DEBUG_BUILD === "1",
+      // Asar integrity validation requires the binary to be signed with
+      // @electron/windows-sign so the integrity blocks are embedded in the
+      // .exe resources. For unsigned local builds this causes loadFile from
+      // asar to fail silently (window opens with title "Error"). Disable for
+      // unsigned local builds; CI/release builds re-enable via env var.
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]:
+        process.env.JOY_SIGN_WINDOWS === "1",
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],

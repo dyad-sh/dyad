@@ -11,6 +11,51 @@ import { readSettings } from "../../main/settings";
 
 const logger = log.scope("node_handlers");
 
+/** Enrich PATH with known Node.js install locations on Windows and custom node path from settings */
+function enrichPath(): void {
+  if (platform() === "win32") {
+    try {
+      const cmdPath = execSync("cmd /c echo %PATH%", { encoding: "utf8" }).trim();
+      if (cmdPath && cmdPath !== "%PATH%") {
+        process.env.PATH = cmdPath;
+      }
+    } catch { /* ignore */ }
+    const { homedir } = require("os") as typeof import("os");
+    const sep = ";";
+    const candidates: string[] = [
+      "C:\\Program Files\\nodejs",
+      "C:\\Program Files (x86)\\nodejs",
+      join(homedir(), "AppData", "Roaming", "npm"),
+      join(homedir(), "AppData", "Local", "pnpm"),
+      join(homedir(), "AppData", "Local", "Programs", "nodejs"),
+      join(homedir(), "scoop", "apps", "nodejs", "current"),
+      join(homedir(), "scoop", "shims"),
+      join(homedir(), "AppData", "Local", "nvm"),
+    ];
+    try {
+      const nvmDir = process.env.NVM_HOME || join(homedir(), "AppData", "Local", "nvm");
+      if (existsSync(nvmDir)) {
+        // add active nvm version dir
+        const dirs = require("fs").readdirSync(nvmDir).filter((d: string) => d.startsWith("v"));
+        for (const d of dirs) candidates.push(join(nvmDir, d));
+      }
+    } catch { /* ignore */ }
+    const settings = readSettings();
+    const extras: string[] = [];
+    if (settings?.customNodePath) extras.push(settings.customNodePath);
+    for (const c of candidates) { if (existsSync(c)) extras.push(c); }
+    const existing = (process.env.PATH || "").split(sep).filter(Boolean);
+    const merged = [...extras, ...existing].filter((v, i, a) => a.indexOf(v) === i);
+    process.env.PATH = merged.join(sep);
+  } else {
+    try { fixPath(); } catch { /* ignore */ }
+    const settings = readSettings();
+    if (settings?.customNodePath) {
+      process.env.PATH = `${settings.customNodePath}:${process.env.PATH}`;
+    }
+  }
+}
+
 export function registerNodeHandlers() {
   ipcMain.handle("nodejs-status", async (): Promise<NodeSystemInfo> => {
     logger.log(
@@ -19,6 +64,8 @@ export function registerNodeHandlers() {
       "and arch:",
       arch(),
     );
+    // Always enrich PATH before checking so packaged builds find node
+    enrichPath();
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
       runShellCommand("node --version"),
@@ -47,23 +94,7 @@ export function registerNodeHandlers() {
 
   ipcMain.handle("reload-env-path", async (): Promise<void> => {
     logger.debug("Reloading env path, previously:", process.env.PATH);
-    if (platform() === "win32") {
-      const newPath = execSync("cmd /c echo %PATH%", {
-        encoding: "utf8",
-      }).trim();
-      process.env.PATH = newPath;
-    } else {
-      fixPath();
-    }
-    const settings = readSettings();
-    if (settings.customNodePath) {
-      const separator = platform() === "win32" ? ";" : ":";
-      process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
-      logger.debug(
-        "Added custom Node.js path to PATH:",
-        settings.customNodePath,
-      );
-    }
+    enrichPath();
     logger.debug("Reloaded env path, now:", process.env.PATH);
   });
   ipcMain.handle("select-node-folder", async () => {

@@ -503,13 +503,59 @@ const createWindow = () => {
     // backgroundColor: "#00000001",
     // frame: false,
   });
+  // Log every renderer load failure so packaged builds don't silently fall
+  // back to Chromium's default "Error" page when something goes wrong.
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      logger.error(
+        "Renderer did-fail-load",
+        JSON.stringify({
+          errorCode,
+          errorDescription,
+          validatedURL,
+          isMainFrame,
+        }),
+      );
+    },
+  );
+  mainWindow.webContents.on(
+    "render-process-gone",
+    (_event, details) => {
+      logger.error(
+        "Renderer render-process-gone",
+        JSON.stringify(details),
+      );
+    },
+  );
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, err) => {
+    logger.error("Renderer preload-error", preloadPath, err);
+  });
+  mainWindow.webContents.on(
+    "console-message",
+    (_event, level, message, line, sourceId) => {
+      const lvl = ["DEBUG", "INFO", "WARNING", "ERROR"][level] || "LOG";
+      logger.info(`Renderer[${lvl}] ${sourceId}:${line} ${message}`);
+    },
+  );
+
+  // Open DevTools on packaged debug builds for easier triage
+  if (process.env.JOY_OPEN_DEVTOOLS === "1") {
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+  }
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
-      path.join(__dirname, "../renderer/main_window/index.html"),
+    const indexPath = path.join(
+      __dirname,
+      "../renderer/main_window/index.html",
     );
+    logger.info("Loading renderer file:", indexPath, "exists=", fs.existsSync(indexPath));
+    mainWindow.loadFile(indexPath).catch((err) => {
+      logger.error("loadFile failed", err);
+    });
   }
 
   // Dynamically extend CSP to allow Tailscale IP if configured, and strip
@@ -572,16 +618,25 @@ const createWindow = () => {
       template.push({ role: "selectAll" });
     }
 
-    if (process.env.NODE_ENV === "development") {
-      template.push(
-        { type: "separator" },
-        {
-          label: "Inspect Element",
-          click: () =>
-            mainWindow?.webContents.inspectElement(params.x, params.y),
-        },
-      );
-    }
+    template.push(
+      { type: "separator" },
+      {
+        label: "Inspect Element",
+        click: () =>
+          mainWindow?.webContents.inspectElement(params.x, params.y),
+      },
+      {
+        label: "Toggle Developer Tools",
+        accelerator:
+          process.platform === "darwin" ? "Alt+Command+I" : "Ctrl+Shift+I",
+        click: () => mainWindow?.webContents.toggleDevTools(),
+      },
+      {
+        label: "Reload",
+        accelerator: "CmdOrCtrl+R",
+        click: () => mainWindow?.webContents.reload(),
+      },
+    );
 
     const menu = Menu.buildFromTemplate(template);
     menu.popup({ window: mainWindow! });
@@ -627,11 +682,17 @@ function setupResponseHeaderOverrides(): void {
           }
         }
 
-        // Rewrite frame-ancestors in CSP from 'none' to allow embedding
+        // Strip any frame-ancestors directive entirely so the file:// renderer
+        // (which doesn't match 'none', specific origins, or even '*' from some
+        // Chromium versions) can embed the gateway portal in an iframe.
         for (const key of Object.keys(headers)) {
           if (key.toLowerCase() === "content-security-policy" && headers[key]?.[0]) {
             headers[key] = [
-              headers[key]![0].replace(/frame-ancestors\s+'none'/g, "frame-ancestors *"),
+              headers[key]![0]
+                .replace(/frame-ancestors[^;]*;?\s*/gi, "")
+                .replace(/;\s*;/g, ";")
+                .replace(/^\s*;\s*/, "")
+                .trim(),
             ];
           }
         }

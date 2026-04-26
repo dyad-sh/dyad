@@ -416,7 +416,17 @@ export const CreateAssetWizard: React.FC = () => {
         setCheckingStoreContract(false);
         return;
       }
-      
+
+      // Skip Supabase store query when running as the local (unauthenticated)
+      // user — `user_id` is a UUID column upstream, so the literal
+      // "local-user" sentinel triggers a 400 (invalid UUID syntax).
+      const UUID_RE =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(user.id)) {
+        setCheckingStoreContract(false);
+        return;
+      }
+
       try {
         // Fetch user's store with collection contract info
         const { data: store, error } = await supabase

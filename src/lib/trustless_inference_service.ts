@@ -176,17 +176,21 @@ class TrustlessInferenceService {
       model: modelId,
     });
 
-    // Get model info for verification
+    // Get model info for verification (best-effort — proof generation is
+    // skipped if the local registry doesn't know about the model, but the
+    // inference itself still runs as long as the provider can serve it).
     const modelInfo = await this.getModelInfo(provider, modelId);
     if (!modelInfo) {
-      throw new Error(`Model not found: ${provider}/${modelId}`);
+      logger.warn(
+        `Model not in local registry: ${provider}/${modelId} — running inference without verification proof`,
+      );
     }
 
     // Run inference using the service
     const response = await localModelService.chat(request);
 
-    // Skip verification if requested or disabled
-    if (options?.skipVerification || !this.config.enableVerification) {
+    // Skip verification if requested, disabled, or model info is unavailable
+    if (options?.skipVerification || !this.config.enableVerification || !modelInfo) {
       logger.info("Inference complete (unverified)", {
         id: requestId,
         tokens: response.totalTokens,

@@ -6,7 +6,7 @@
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DisciplesofLove/JoyCreate.git"
+    "url": "git+https://github.com/DisciplesofLove/JoyCreate.git"
   },
   "engines": {
     "node": ">=20"
@@ -59,10 +59,7 @@
     "postinstall": "node scripts/ensure-capacitor-cli.mjs"
   },
   "keywords": [],
-  "author": {
-    "name": "Will Chen",
-    "email": "willchen90@gmail.com"
-  },
+  "author": "Will Chen <willchen90@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@electron-forge/cli": "^7.10.2",
@@ -149,6 +146,7 @@
     "@helia/unixfs": "^6.0.4",
     "@ipld/dag-cbor": "^9.2.5",
     "@lexical/react": "^0.33.1",
+    "@lexical/utils": "^0.33.1",
     "@libp2p/crypto": "^5.1.13",
     "@libp2p/kad-dht": "^16.1.3",
     "@microsoft/microsoft-graph-client": "^3.0.7",
@@ -189,6 +187,7 @@
     "@tanstack/react-store": "^0.8.0",
     "@tanstack/router-core": "^1.144.0",
     "@tanstack/store": "^0.8.0",
+    "@types/diff": "^7.0.2",
     "@types/form-data": "^2.5.2",
     "@types/uuid": "^10.0.0",
     "@vercel/sdk": "^1.18.0",
@@ -205,6 +204,8 @@
     "date-fns": "^4.1.0",
     "did-jwt": "^8.0.18",
     "did-resolver": "^4.1.0",
+    "diff": "^9.0.0",
+    "discord.js": "^14.26.3",
     "dompurify": "^3.3.2",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.1",
@@ -220,6 +221,7 @@
     "framer-motion": "^12.6.3",
     "geist": "^1.3.1",
     "glob": "^11.0.2",
+    "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",
     "helia": "^6.0.14",
     "html-to-image": "^1.11.13",
@@ -311,5 +313,12 @@
       "sqlite3",
       "ssh2"
     ]
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "bugs": {
+    "url": "https://github.com/DisciplesofLove/JoyCreate/issues"
+  },
+  "homepage": "https://github.com/DisciplesofLove/JoyCreate#readme"
 }

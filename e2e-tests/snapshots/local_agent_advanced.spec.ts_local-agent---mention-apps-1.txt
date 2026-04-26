@@ -10,7 +10,7 @@
       },
       {
         "role": "user",
-        "content": "[dump] @app:minimal-with-ai-rules hi"
+        "content": "[dump] @app:minimal-with-ai-rules hi\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: `minimal-with-ai-rules`. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the `app_name` parameter to read-only tools (`read_file`, `list_files`, `grep`, `code_search`); matching is case-insensitive. Write tools cannot target these apps. Omit `app_name` to operate on the current app.\n</system-reminder>"
       }
     ],
     "tools": [
@@ -247,7 +247,7 @@
         "type": "function",
         "function": {
           "name": "list_files",
-          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
+          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -264,8 +264,8 @@
                 "description": "Whether to list files recursively (default: false)",
                 "type": "boolean"
               },
-              "include_hidden": {
-                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
                 "type": "boolean"
               }
             },
@@ -277,7 +277,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -297,6 +297,10 @@
               "exclude_pattern": {
                 "description": "Glob pattern for files to exclude",
                 "type": "string"
+              },
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
+                "type": "boolean"
               },
               "case_sensitive": {
                 "description": "Whether the search should be case sensitive (default: false)",
@@ -345,7 +349,7 @@
         "type": "function",
         "function": {
           "name": "set_chat_summary",
-          "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
+          "description": "Set the title/summary for this chat message. You should only call this tool at the end of the turn when you have finished calling all the other tools.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -366,22 +370,21 @@
         "type": "function",
         "function": {
           "name": "add_integration",
-          "description": "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+          "description": "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "provider": {
+                "description": "Optional preferred database provider. Use 'none' (or omit) if the user did not explicitly name a provider. Only use 'supabase' or 'neon' if the user specifically mentions that provider name in their prompt.",
                 "type": "string",
                 "enum": [
-                  "supabase"
-                ],
-                "description": "The integration provider to add (e.g., 'supabase')"
+                  "none",
+                  "supabase",
+                  "neon"
+                ]
               }
             },
-            "required": [
-              "provider"
-            ],
             "additionalProperties": false
           }
         }
@@ -584,6 +587,27 @@
                 }
               }
             },
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "read_guide",
+          "description": "Read a detailed instruction guide. Use this when the system prompt tells you to load a guide before implementing a feature.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "guide": {
+                "type": "string",
+                "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
+              }
+            },
+            "required": [
+              "guide"
+            ],
             "additionalProperties": false
           }
         }

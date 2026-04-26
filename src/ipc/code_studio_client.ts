@@ -7,6 +7,7 @@ import type {
   OpenFileResult,
   WriteFilePatch,
   PatchPreview,
+  CodeStudioProject,
 } from "@/ipc/handlers/code_studio_handlers";
 
 interface ElectronIpc {
@@ -111,8 +112,36 @@ class CodeStudioClient {
   ): Promise<SearchHit[]> {
     return ipc().invoke("code-studio:search", query, opts) as Promise<SearchHit[]>;
   }
+
+  // -- Projects (multi-project switcher) -----------------------------------
+
+  async listProjects(): Promise<CodeStudioProject[]> {
+    return ipc().invoke("code-studio:list-projects") as Promise<CodeStudioProject[]>;
+  }
+
+  async addProject(): Promise<CodeStudioProject | null> {
+    return ipc().invoke("code-studio:add-project") as Promise<CodeStudioProject | null>;
+  }
+
+  async removeProject(projectId: string): Promise<void> {
+    await ipc().invoke("code-studio:remove-project", projectId);
+  }
+
+  async switchProject(projectId: string): Promise<WorkspaceInfo> {
+    return ipc().invoke("code-studio:switch-project", projectId) as Promise<WorkspaceInfo>;
+  }
+
+  async cloneRepo(args: {
+    url: string;
+    parentDir?: string;
+    folderName?: string;
+    accessToken?: string;
+    depth?: number;
+  }): Promise<CodeStudioProject> {
+    return ipc().invoke("code-studio:clone-repo", args) as Promise<CodeStudioProject>;
+  }
 }
 
 export const codeStudioClient = CodeStudioClient.getInstance();
 
-export type { FsEntry, OpenFileResult, WriteFilePatch, PatchPreview };
+export type { FsEntry, OpenFileResult, WriteFilePatch, PatchPreview, CodeStudioProject };

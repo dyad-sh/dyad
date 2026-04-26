@@ -75,7 +75,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { CNSWidget } from "@/components/openclaw/CNSWidget";
 
 import {
@@ -910,7 +910,7 @@ export function AppSidebar() {
               </div>
 
               {/* Scrollable Navigation Area */}
-              <ScrollArea className="flex-1">
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 <div className="py-1.5 px-1.5 space-y-3">
                   {menuCategories.map((category, categoryIndex) => (
                     <div key={category.label}>
@@ -974,7 +974,7 @@ export function AppSidebar() {
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
 
               {/* Bottom Navigation - Fixed at bottom */}
               <div className="p-1.5 border-t border-border/30 space-y-0.5">

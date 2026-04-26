@@ -20,10 +20,15 @@ import {
   ChevronUp,
   Eraser,
   Loader2,
+  MessageSquarePlus,
+  MessagesSquare,
+  Pencil,
   Play,
+  RefreshCw,
   Send,
   Sparkles,
   Square,
+  Trash2,
   X,
   Wand2,
   Eye,
@@ -49,8 +54,20 @@ import {
   useAssistantPanel,
   useAssistantMode,
   useAssistantSuggestions,
+  useAssistantSessions,
+  useDeleteAssistantSession,
+  useRenameAssistantSession,
+  useActiveAssistantSession,
 } from "@/hooks/useJoyAssistant";
 import { useAssistantContext } from "./AssistantContextProvider";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   executeAction as execDom,
   guideAction as guideDom,
@@ -58,10 +75,6 @@ import {
   type ActionContext,
 } from "@/lib/joy_assistant_actions";
 import type { AssistantAction, AssistantMode } from "@/types/joy_assistant_types";
-
-// ── Session ID (stable per app lifecycle) ──────────────────────────────────
-
-const SESSION_ID = crypto.randomUUID();
 
 // ── Mode labels ────────────────────────────────────────────────────────────
 
@@ -80,16 +93,31 @@ export function JoyAssistantPanel() {
   const navigate = useNavigate();
   const actionCtx: ActionContext = { navigate: (opts) => navigate({ to: opts.to }) };
 
+  // Active session — falls back to a freshly-generated UUID for first-run.
+  const [activeSessionId, setActiveSessionId] = useActiveAssistantSession();
+  const sessionId =
+    activeSessionId ?? ((): string => {
+      const id = crypto.randomUUID();
+      // Defer the atom write to next tick to avoid setState-during-render warnings.
+      Promise.resolve().then(() => setActiveSessionId(id));
+      return id;
+    })();
+
+  const sessionsQuery = useAssistantSessions();
+  const deleteSession = useDeleteAssistantSession();
+  const renameSession = useRenameAssistantSession();
+
   const {
     messages,
     streaming,
     pendingActions,
     sendMessage,
+    regenerate,
     cancel,
     clearHistory,
     executeAction,
     dismissActions,
-  } = useJoyAssistant(SESSION_ID);
+  } = useJoyAssistant(sessionId);
 
   const { autoTTSEnabled, toggleAutoTTS } = useAutoTTS({ messages, streaming });
 
@@ -171,6 +199,44 @@ export function JoyAssistantPanel() {
     setMode(next);
   }, [mode, setMode]);
 
+  // ── Session management ────────────────────────────────────────────────
+  const newConversation = useCallback(() => {
+    setActiveSessionId(crypto.randomUUID());
+  }, [setActiveSessionId]);
+
+  const switchToSession = useCallback(
+    (id: string) => {
+      if (id !== sessionId) setActiveSessionId(id);
+    },
+    [sessionId, setActiveSessionId],
+  );
+
+  const handleDeleteSession = useCallback(
+    (id: string) => {
+      deleteSession.mutate(id, {
+        onSuccess: () => {
+          if (id === sessionId) setActiveSessionId(crypto.randomUUID());
+        },
+      });
+    },
+    [deleteSession, sessionId, setActiveSessionId],
+  );
+
+  const handleRenameSession = useCallback(
+    (id: string, currentTitle: string) => {
+      const next = window.prompt("Rename conversation", currentTitle);
+      if (next !== null && next.trim()) {
+        renameSession.mutate({ sessionId: id, title: next.trim() });
+      }
+    },
+    [renameSession],
+  );
+
+  const handleRegenerate = useCallback(() => {
+    if (streaming) return;
+    regenerate(pageContext);
+  }, [streaming, regenerate, pageContext]);
+
   // ── Floating trigger button (shown when panel is closed) ───────────────
   if (!open) {
     return (
@@ -236,6 +302,81 @@ export function JoyAssistantPanel() {
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-7 w-7"
+                onClick={newConversation}
+                title="New conversation"
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Conversations"
+                  >
+                    <MessagesSquare className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel>Conversations</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {(sessionsQuery.data ?? []).length === 0 ? (
+                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                      No saved conversations yet
+                    </div>
+                  ) : (
+                    (sessionsQuery.data ?? []).slice(0, 30).map((s) => (
+                      <DropdownMenuItem
+                        key={s.id}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          switchToSession(s.id);
+                        }}
+                        className={cn(
+                          "flex items-center gap-2 group",
+                          s.id === sessionId && "bg-accent",
+                        )}
+                      >
+                        <MessagesSquare className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">
+                            {s.title}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {s.messageCount} msg ·{" "}
+                            {new Date(s.lastActiveAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <button
+                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted rounded"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRenameSession(s.id, s.title);
+                          }}
+                          title="Rename"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-destructive/10 rounded text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSession(s.id);
+                          }}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="icon"
                 className={cn("h-7 w-7", autoTTSEnabled && "text-primary")}
                 onClick={toggleAutoTTS}
                 title={autoTTSEnabled ? "Disable auto-speak" : "Enable auto-speak"}
@@ -250,8 +391,18 @@ export function JoyAssistantPanel() {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
+                onClick={handleRegenerate}
+                disabled={streaming || messages.length === 0}
+                title="Regenerate last response"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
                 onClick={clearHistory}
-                title="Clear conversation"
+                title="Clear this conversation"
               >
                 <Eraser className="h-3.5 w-3.5" />
               </Button>

@@ -240,9 +240,15 @@ export async function startN8n(): Promise<{ success: boolean; error?: string }> 
       }
     }
     
-    // Use npx to run n8n
-    n8nProcess = spawn("npx", ["n8n", "start"], {
-      shell: true,
+    // Use npx to run n8n. On Windows, use npx.cmd directly with windowsHide
+    // so a stray cmd.exe console window does not stay open on screen.
+    const isWin = process.platform === "win32";
+    const npxCmd = isWin ? "npx.cmd" : "npx";
+    n8nProcess = spawn(npxCmd, ["n8n", "start"], {
+      // Avoid `shell: true` on Windows — it spawns an extra cmd.exe that
+      // shows a console window. windowsHide hides any helper console.
+      shell: !isWin,
+      windowsHide: true,
       env: {
         ...process.env,
         ...dbEnv,
@@ -550,9 +556,30 @@ export async function deactivateWorkflow(id: string): Promise<N8nWorkflow | null
 
 export async function executeWorkflow(id: string, data?: Record<string, unknown>): Promise<N8nExecutionResult | null> {
   if (id.startsWith("local-")) {
-    // Local workflows can't actually execute, but we return a descriptive result
     const entry = localWorkflows.get(id);
     if (!entry) return null;
+
+    // If n8n is now reachable, promote the local workflow into n8n so it
+    // can actually run (instead of returning a fake success).
+    if (await checkN8nApiReady()) {
+      try {
+        const { id: _ignored, ...rest } = entry.workflow;
+        const created = await n8nApiRequest<N8nWorkflow>("POST", "/workflows", { settings: {}, ...rest });
+        if (created?.id) {
+          // Replace local entry with a pointer to the new n8n workflow
+          localWorkflows.delete(id);
+          await saveLocalWorkflows();
+          if (entry.active) {
+            try { await n8nApiRequest<N8nWorkflow>("POST", `/workflows/${created.id}/activate`); } catch { /* ignore */ }
+          }
+          return n8nApiRequest<N8nExecutionResult>("POST", `/workflows/${created.id}/execute`, { data });
+        }
+      } catch (err) {
+        logger.warn("Failed to promote local workflow to n8n, returning stub result:", err);
+      }
+    }
+
+    // n8n not available — return a descriptive stub so the UI doesn't break
     return {
       finished: true,
       mode: "manual",

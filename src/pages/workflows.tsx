@@ -35,6 +35,8 @@ import {
   Rocket,
   Pencil,
   Loader2,
+  LayoutDashboard,
+  ExternalLink,
 } from "lucide-react";
 import { PublishWizard } from "@/components/marketplace/PublishWizard";
 import { usePublishWorkflow } from "@/hooks/use_publish_workflow";
@@ -251,6 +253,10 @@ export function WorkflowsPage() {
               <GitBranch className="h-4 w-4 mr-2" />
               Workflows
             </TabsTrigger>
+            <TabsTrigger value="editor" className="data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-600">
+              <LayoutDashboard className="h-4 w-4 mr-2" />
+              n8n Editor
+            </TabsTrigger>
             <TabsTrigger value="generate" className="data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-600">
               <Sparkles className="h-4 w-4 mr-2" />
               AI Generator
@@ -428,6 +434,11 @@ export function WorkflowsPage() {
             <WorkflowGenerator />
           </TabsContent>
 
+          {/* n8n Editor Tab — embed full n8n UI in an iframe */}
+          <TabsContent value="editor" className="flex-1 overflow-hidden">
+            <N8nEditorEmbed running={!!n8nStatus?.running} />
+          </TabsContent>
+
           {/* Collaborations Tab */}
           <TabsContent value="collaborations" className="flex-1 overflow-auto">
             <AgentCollaborations collaborations={collaborations || []} />
@@ -463,6 +474,73 @@ export function WorkflowsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function N8nEditorEmbed({ running }: { running: boolean }) {
+  const [reloadKey, setReloadKey] = useState(0);
+  const startN8nMutation = useMutation({
+    mutationFn: () => n8nClient.startN8n(),
+    onSuccess: () => {
+      toast.success("Starting n8n…");
+      // Give the server a moment to boot before the iframe reloads
+      setTimeout(() => setReloadKey((k) => k + 1), 1500);
+    },
+    onError: (err) => toast.error(`Failed to start n8n: ${String(err)}`),
+  });
+
+  if (!running) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+        <PowerOff className="h-10 w-10 text-muted-foreground" />
+        <div>
+          <h3 className="font-semibold">n8n is not running</h3>
+          <p className="text-sm text-muted-foreground">
+            Start n8n to embed and use the full visual editor here.
+          </p>
+        </div>
+        <Button onClick={() => startN8nMutation.mutate()} disabled={startN8nMutation.isPending}>
+          {startN8nMutation.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Power className="h-4 w-4 mr-2" />
+          )}
+          Start n8n
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full gap-2">
+      <div className="flex items-center justify-between px-1">
+        <p className="text-xs text-muted-foreground">
+          Embedded n8n — http://localhost:5678
+        </p>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1" />
+            Reload
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.open("http://localhost:5678", "_blank", "noopener")}
+          >
+            <ExternalLink className="h-3.5 w-3.5 mr-1" />
+            Open in browser
+          </Button>
+        </div>
+      </div>
+      <iframe
+        key={reloadKey}
+        src="http://localhost:5678"
+        title="n8n Editor"
+        className="flex-1 w-full border border-border/50 rounded-md bg-background"
+        // Allow the embedded n8n UI to use the APIs it expects
+        allow="clipboard-read; clipboard-write"
+      />
     </div>
   );
 }

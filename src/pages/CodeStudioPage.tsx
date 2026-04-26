@@ -8,7 +8,7 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { FolderOpen, Save, X, FileCode2, Search, Loader2 } from "lucide-react";
+import { FolderOpen, Save, X, FileCode2, Search, Loader2, GitBranch, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,17 +17,38 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { FileTree } from "@/components/code-studio/FileTree";
 import { AIComposer } from "@/components/code-studio/AIComposer";
 import {
+  useAddCodeProject,
+  useCloneRepo,
+  useCodeProjects,
   useCodeWorkspace,
-  useFileContent,
-  useOpenWorkspace,
-  useWriteFile,
   useCodeSearch,
+  useOpenWorkspace,
+  useRemoveCodeProject,
+  useSwitchCodeProject,
+  useWriteFile,
 } from "@/hooks/useCodeStudio";
-import { codeStudioClient } from "@/ipc/code_studio_client";
+import { codeStudioClient, type CodeStudioProject } from "@/ipc/code_studio_client";
 import { cn } from "@/lib/utils";
 
 // Lazy-load Monaco so it doesn't block initial app boot.
@@ -46,17 +67,67 @@ export default function CodeStudioPage() {
   const { data: workspace, isLoading: wsLoading } = useCodeWorkspace();
   const openWorkspace = useOpenWorkspace();
   const writeFile = useWriteFile();
+  const { data: projects = [] } = useCodeProjects();
+  const addProject = useAddCodeProject();
+  const removeProject = useRemoveCodeProject();
+  const switchProject = useSwitchCodeProject();
+  const cloneRepo = useCloneRepo();
 
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
 
   const { data: searchHits } = useCodeSearch(searchQuery);
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.relPath === activePath) ?? null,
     [tabs, activePath],
+  );
+
+  // Switch to another registered project — clears open tabs (they are
+  // workspace-relative and would resolve against the wrong root).
+  const handleSwitchProject = useCallback(
+    async (project: CodeStudioProject) => {
+      try {
+        await switchProject.mutateAsync(project.id);
+        setTabs([]);
+        setActivePath(null);
+        setSearchQuery("");
+        toast.success(`Switched to ${project.name}`);
+      } catch (err) {
+        toast.error(`Could not switch project: ${(err as Error).message}`);
+      }
+    },
+    [switchProject],
+  );
+
+  const handleRemoveProject = useCallback(
+    async (project: CodeStudioProject) => {
+      try {
+        await removeProject.mutateAsync(project.id);
+        toast.success(`Removed ${project.name} from list`);
+      } catch (err) {
+        toast.error(`Could not remove project: ${(err as Error).message}`);
+      }
+    },
+    [removeProject],
+  );
+
+  const handleClone = useCallback(
+    async (url: string) => {
+      try {
+        const project = await cloneRepo.mutateAsync({ url });
+        setTabs([]);
+        setActivePath(null);
+        setCloneDialogOpen(false);
+        toast.success(`Cloned ${project.name}`);
+      } catch (err) {
+        toast.error(`Clone failed: ${(err as Error).message}`);
+      }
+    },
+    [cloneRepo],
   );
 
   // Open a file: if already in tabs, just focus it; otherwise load and add a new tab.
@@ -197,18 +268,68 @@ export default function CodeStudioPage() {
           approve before they're applied. Powered by Monaco — same editor as VS Code and Cursor —
           plus JoyCreate's agentic OS for policy, provenance, and activity tracking.
         </p>
-        <Button
-          size="lg"
-          onClick={() => openWorkspace.mutate()}
-          disabled={openWorkspace.isPending}
-        >
-          {openWorkspace.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <FolderOpen className="h-4 w-4 mr-2" />
-          )}
-          Open Folder
-        </Button>
+        <div className="flex gap-2 flex-wrap justify-center">
+          <Button
+            size="lg"
+            onClick={() => openWorkspace.mutate()}
+            disabled={openWorkspace.isPending}
+          >
+            {openWorkspace.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <FolderOpen className="h-4 w-4 mr-2" />
+            )}
+            Open Folder
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => setCloneDialogOpen(true)}
+            disabled={cloneRepo.isPending}
+          >
+            {cloneRepo.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <GitBranch className="h-4 w-4 mr-2" />
+            )}
+            Clone Repository
+          </Button>
+        </div>
+
+        {projects.length > 0 && (
+          <div className="mt-6 w-full max-w-md text-left">
+            <div className="text-xs uppercase text-muted-foreground mb-2 px-1">
+              Recent projects
+            </div>
+            <div className="border rounded-md divide-y divide-border/50 bg-card/40">
+              {projects.slice(0, 8).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleSwitchProject(p)}
+                  className="w-full text-left px-3 py-2 hover:bg-accent/40 flex items-center gap-2"
+                >
+                  {p.kind === "cloned" ? (
+                    <GitBranch className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  ) : (
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{p.name}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{p.root}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <CloneRepoDialog
+          open={cloneDialogOpen}
+          onOpenChange={setCloneDialogOpen}
+          isCloning={cloneRepo.isPending}
+          onClone={handleClone}
+        />
       </div>
     );
   }
@@ -219,8 +340,87 @@ export default function CodeStudioPage() {
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-muted/30">
-        <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium truncate">{workspace.name}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 h-7 px-2 max-w-[40%]"
+              title="Switch project"
+            >
+              <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="text-sm font-medium truncate">{workspace.name}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            <DropdownMenuLabel>Projects</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {projects.length === 0 && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                No saved projects yet.
+              </div>
+            )}
+            {projects.map((p) => {
+              const isActive =
+                workspace?.root && p.root && workspace.root === p.root;
+              return (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    if (!isActive) void handleSwitchProject(p);
+                  }}
+                  className="flex items-start gap-2 py-1.5"
+                >
+                  {p.kind === "cloned" ? (
+                    <GitBranch className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-500" />
+                  ) : (
+                    <FolderOpen className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-500" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={cn(
+                        "text-sm truncate",
+                        isActive && "font-semibold text-primary",
+                      )}
+                    >
+                      {p.name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {p.root}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove from list"
+                    className="opacity-50 hover:opacity-100 hover:text-destructive p-0.5 rounded"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      void handleRemoveProject(p);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </DropdownMenuItem>
+              );
+            })}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => addProject.mutate()}>
+              <FolderOpen className="h-3.5 w-3.5 mr-2" />
+              Add existing folder…
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openWorkspace.mutate()}>
+              <FolderOpen className="h-3.5 w-3.5 mr-2" />
+              Open folder & switch…
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setCloneDialogOpen(true)}>
+              <GitBranch className="h-3.5 w-3.5 mr-2" />
+              Clone repository…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <span className="text-xs text-muted-foreground/60 truncate hidden md:inline">
           {workspace.root}
         </span>
@@ -232,14 +432,6 @@ export default function CodeStudioPage() {
           title="Search (Ctrl+Shift+F)"
         >
           <Search className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => openWorkspace.mutate()}
-          title="Switch workspace"
-        >
-          <FolderOpen className="h-3.5 w-3.5" />
         </Button>
         <Button
           size="sm"
@@ -390,6 +582,96 @@ export default function CodeStudioPage() {
           />
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <CloneRepoDialog
+        open={cloneDialogOpen}
+        onOpenChange={setCloneDialogOpen}
+        isCloning={cloneRepo.isPending}
+        onClone={handleClone}
+      />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Clone repository dialog
+// ---------------------------------------------------------------------------
+
+function CloneRepoDialog({
+  open,
+  onOpenChange,
+  isCloning,
+  onClone,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isCloning: boolean;
+  onClone: (url: string) => void;
+}) {
+  const [url, setUrl] = useState("");
+
+  // Reset the input whenever the dialog is reopened
+  useEffect(() => {
+    if (open) setUrl("");
+  }, [open]);
+
+  const trimmed = url.trim();
+  const isValidUrl =
+    /^https?:\/\/[^\s]+$/i.test(trimmed) || /^git@[^\s:]+:[^\s]+/i.test(trimmed);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Clone repository</DialogTitle>
+          <DialogDescription>
+            Clone a Git repository into a folder you choose. The cloned project
+            is automatically added to your project switcher.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="clone-url" className="text-xs">
+            Repository URL
+          </Label>
+          <Input
+            id="clone-url"
+            placeholder="https://github.com/user/repo.git"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={isCloning}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && isValidUrl && !isCloning) {
+                e.preventDefault();
+                onClone(trimmed);
+              }
+            }}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            HTTPS recommended. You'll be prompted for a folder to clone into.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={isCloning}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onClone(trimmed)}
+            disabled={!isValidUrl || isCloning}
+          >
+            {isCloning ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <GitBranch className="h-4 w-4 mr-2" />
+            )}
+            Clone
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

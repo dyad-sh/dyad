@@ -12,6 +12,11 @@ import { ipcMain, dialog, BrowserWindow, type IpcMainInvokeEvent } from "electro
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { createTwoFilesPatch } from "diff";
+import log from "electron-log";
+import { gitClone } from "../utils/git_utils";
+import { getUserDataPath } from "../../paths/paths";
+
+const logger = log.scope("code-studio");
 
 // ---------------------------------------------------------------------------
 // TYPES
@@ -48,6 +53,19 @@ export interface PatchPreview {
   added: number;
   removed: number;
   isCreate: boolean;
+}
+
+/** A registered project / workspace shown in the project switcher. */
+export interface CodeStudioProject {
+  id: string;
+  name: string;
+  root: string;
+  /** ISO timestamp of last time this project was opened. */
+  lastOpenedAt: string;
+  /** Origin of the project — opened locally or cloned from a git remote. */
+  kind: "local" | "cloned";
+  /** Original clone URL when kind === "cloned". */
+  remoteUrl?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +110,69 @@ function requireWorkspace(): string {
     throw new Error("No workspace open. Call code-studio:open-workspace first.");
   }
   return workspaceRoot;
+}
+
+// -- Projects store (persisted to userData/code-studio/projects.json) ------
+
+function getProjectsFile(): string {
+  return path.join(getUserDataPath(), "code-studio", "projects.json");
+}
+
+async function readProjects(): Promise<CodeStudioProject[]> {
+  try {
+    const raw = await fs.readFile(getProjectsFile(), "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is CodeStudioProject =>
+        !!p &&
+        typeof (p as CodeStudioProject).id === "string" &&
+        typeof (p as CodeStudioProject).root === "string" &&
+        typeof (p as CodeStudioProject).name === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function writeProjects(projects: CodeStudioProject[]): Promise<void> {
+  const file = getProjectsFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(projects, null, 2), "utf-8");
+}
+
+function makeProjectId(): string {
+  return `prj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Insert-or-update a project by `root` and bump its `lastOpenedAt`. */
+async function upsertProject(
+  partial: Omit<CodeStudioProject, "id" | "lastOpenedAt"> & { id?: string },
+): Promise<CodeStudioProject> {
+  const projects = await readProjects();
+  const existing = projects.find(
+    (p) => path.resolve(p.root) === path.resolve(partial.root),
+  );
+  const now = new Date().toISOString();
+  if (existing) {
+    existing.lastOpenedAt = now;
+    existing.name = partial.name || existing.name;
+    if (partial.kind) existing.kind = partial.kind;
+    if (partial.remoteUrl) existing.remoteUrl = partial.remoteUrl;
+    await writeProjects(projects);
+    return existing;
+  }
+  const created: CodeStudioProject = {
+    id: partial.id ?? makeProjectId(),
+    name: partial.name,
+    root: partial.root,
+    kind: partial.kind ?? "local",
+    remoteUrl: partial.remoteUrl,
+    lastOpenedAt: now,
+  };
+  projects.push(created);
+  await writeProjects(projects);
+  return created;
 }
 
 /** Resolves a path relative to the workspace root and ensures it stays inside. */
@@ -167,6 +248,11 @@ export function registerCodeStudioHandlers(): void {
       return null;
     }
     workspaceRoot = path.resolve(result.filePaths[0]);
+    await upsertProject({
+      name: path.basename(workspaceRoot),
+      root: workspaceRoot,
+      kind: "local",
+    });
     return { root: workspaceRoot, name: path.basename(workspaceRoot) };
   });
 
@@ -179,6 +265,11 @@ export function registerCodeStudioHandlers(): void {
         throw new Error(`Not a directory: ${root}`);
       }
       workspaceRoot = resolved;
+      await upsertProject({
+        name: path.basename(workspaceRoot),
+        root: workspaceRoot,
+        kind: "local",
+      });
       return { root: workspaceRoot, name: path.basename(workspaceRoot) };
     },
   );
@@ -370,6 +461,123 @@ export function registerCodeStudioHandlers(): void {
 
       await walk(root);
       return hits;
+    },
+  );
+
+  // -- Projects (multi-project switcher) -------------------------------------
+
+  ipcMain.handle("code-studio:list-projects", async (): Promise<CodeStudioProject[]> => {
+    const projects = await readProjects();
+    // Most-recently-opened first
+    return [...projects].sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt));
+  });
+
+  ipcMain.handle(
+    "code-studio:add-project",
+    async (event: IpcMainInvokeEvent): Promise<CodeStudioProject | null> => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+      const result = await dialog.showOpenDialog(win!, {
+        title: "Add Project to Code Studio",
+        properties: ["openDirectory"],
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      const root = path.resolve(result.filePaths[0]);
+      return upsertProject({ name: path.basename(root), root, kind: "local" });
+    },
+  );
+
+  ipcMain.handle(
+    "code-studio:remove-project",
+    async (_event: IpcMainInvokeEvent, projectId: string): Promise<void> => {
+      const projects = await readProjects();
+      const next = projects.filter((p) => p.id !== projectId);
+      await writeProjects(next);
+    },
+  );
+
+  ipcMain.handle(
+    "code-studio:switch-project",
+    async (_event: IpcMainInvokeEvent, projectId: string): Promise<{ root: string; name: string }> => {
+      const projects = await readProjects();
+      const project = projects.find((p) => p.id === projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      const stat = await fs.stat(project.root).catch(() => null);
+      if (!stat || !stat.isDirectory()) {
+        throw new Error(`Project folder no longer exists: ${project.root}`);
+      }
+      workspaceRoot = path.resolve(project.root);
+      project.lastOpenedAt = new Date().toISOString();
+      await writeProjects(projects);
+      return { root: workspaceRoot, name: project.name };
+    },
+  );
+
+  ipcMain.handle(
+    "code-studio:clone-repo",
+    async (
+      event: IpcMainInvokeEvent,
+      args: { url: string; parentDir?: string; folderName?: string; accessToken?: string; depth?: number },
+    ): Promise<CodeStudioProject> => {
+      if (!args?.url || typeof args.url !== "string") {
+        throw new Error("Repository URL is required");
+      }
+      const url = args.url.trim();
+      // Pick parent directory if not provided
+      let parentDir = args.parentDir;
+      if (!parentDir) {
+        const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+        const result = await dialog.showOpenDialog(win!, {
+          title: "Choose folder to clone into",
+          properties: ["openDirectory", "createDirectory"],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+          throw new Error("Clone cancelled — no parent folder selected");
+        }
+        parentDir = result.filePaths[0];
+      }
+      // Derive folder name from URL if not provided ("https://github.com/foo/bar.git" -> "bar")
+      const derivedName =
+        args.folderName?.trim() ||
+        url.replace(/\.git$/i, "").split(/[\\/]/).filter(Boolean).pop() ||
+        `repo-${Date.now()}`;
+      const targetDir = path.resolve(parentDir, derivedName);
+
+      // Refuse to clone into an existing non-empty directory
+      try {
+        const existing = await fs.readdir(targetDir);
+        if (existing.length > 0) {
+          throw new Error(`Target folder already exists and is not empty: ${targetDir}`);
+        }
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException;
+        if (e.code !== "ENOENT") throw err;
+      }
+      await fs.mkdir(targetDir, { recursive: true });
+
+      logger.info(`Cloning ${url} -> ${targetDir}`);
+      try {
+        await gitClone({
+          path: targetDir,
+          url,
+          accessToken: args.accessToken,
+          singleBranch: true,
+          depth: args.depth,
+        });
+      } catch (err) {
+        // Best-effort cleanup of the empty / partial directory so the user can retry
+        await fs.rm(targetDir, { recursive: true, force: true }).catch(() => {});
+        throw new Error(`Clone failed: ${(err as Error).message}`);
+      }
+
+      workspaceRoot = targetDir;
+      const project = await upsertProject({
+        name: derivedName,
+        root: targetDir,
+        kind: "cloned",
+        remoteUrl: url,
+      });
+      logger.info(`Cloned and registered project ${project.id} at ${targetDir}`);
+      return project;
     },
   );
 }

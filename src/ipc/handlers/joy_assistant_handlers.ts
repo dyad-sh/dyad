@@ -245,5 +245,140 @@ export function registerJoyAssistantHandlers() {
     },
   );
 
+  // ==========================================================================
+  // joy-assistant:list-sessions — List all persisted sessions (for sidebar)
+  // ==========================================================================
+  ipcMain.handle("joy-assistant:list-sessions", async () => {
+    const { listSessions } = await import("@/lib/joy_assistant_service");
+    return listSessions();
+  });
+
+  // ==========================================================================
+  // joy-assistant:delete-session — Permanently delete a session
+  // ==========================================================================
+  ipcMain.handle(
+    "joy-assistant:delete-session",
+    async (_event, sessionId: string) => {
+      if (!sessionId) throw new Error("Missing sessionId");
+      const existing = activeStreams.get(sessionId);
+      if (existing) {
+        existing.abort();
+        activeStreams.delete(sessionId);
+      }
+      const { deleteSession } = await import("@/lib/joy_assistant_service");
+      deleteSession(sessionId);
+      return { ok: true } as const;
+    },
+  );
+
+  // ==========================================================================
+  // joy-assistant:rename-session — Set a custom title for a session
+  // ==========================================================================
+  ipcMain.handle(
+    "joy-assistant:rename-session",
+    async (_event, sessionId: string, title: string) => {
+      if (!sessionId) throw new Error("Missing sessionId");
+      if (typeof title !== "string") throw new Error("Invalid title");
+      const { setSessionTitle } = await import("@/lib/joy_assistant_service");
+      setSessionTitle(sessionId, title);
+      return { ok: true } as const;
+    },
+  );
+
+  // ==========================================================================
+  // joy-assistant:regenerate — Drop the last assistant reply and re-stream
+  // ==========================================================================
+  ipcMain.handle(
+    "joy-assistant:regenerate",
+    async (
+      event,
+      params: {
+        sessionId: string;
+        pageContext: AssistantChatRequest["pageContext"];
+        mode: AssistantMode;
+      },
+    ) => {
+      const { sessionId, pageContext, mode } = params;
+      if (!sessionId) throw new Error("Missing sessionId");
+
+      const { popLastForRegenerate, chat } = await import(
+        "@/lib/joy_assistant_service"
+      );
+      const lastUserPrompt = popLastForRegenerate(sessionId);
+      if (!lastUserPrompt) {
+        throw new Error("No prior assistant message to regenerate");
+      }
+
+      const existing = activeStreams.get(sessionId);
+      if (existing) {
+        existing.abort();
+        activeStreams.delete(sessionId);
+      }
+      const abortController = new AbortController();
+      activeStreams.set(sessionId, abortController);
+
+      // Note: chat() will re-append the user message as a new entry. To avoid a
+      // duplicate, also strip the trailing user message that's now the tail.
+      const { getSession } = await import("@/lib/joy_assistant_service");
+      const sess = getSession(sessionId);
+      if (
+        sess.messages.length > 0 &&
+        sess.messages[sess.messages.length - 1].role === "user"
+      ) {
+        sess.messages.pop();
+      }
+
+      (async () => {
+        try {
+          await chat(
+            sessionId,
+            lastUserPrompt,
+            pageContext,
+            mode,
+            {
+              onDelta: (delta) => {
+                safeSend(event.sender, "joy-assistant:response:chunk", {
+                  sessionId,
+                  delta,
+                  done: false,
+                });
+              },
+              onActions: (actions) => {
+                safeSend(event.sender, "joy-assistant:response:chunk", {
+                  sessionId,
+                  actions,
+                  done: false,
+                });
+              },
+              onEnd: () => {
+                safeSend(event.sender, "joy-assistant:response:end", {
+                  sessionId,
+                });
+              },
+              onError: (error) => {
+                safeSend(event.sender, "joy-assistant:response:error", {
+                  sessionId,
+                  error,
+                });
+              },
+            },
+            abortController.signal,
+          );
+        } catch (err) {
+          if ((err as { name?: string })?.name === "AbortError") return;
+          logger.error("joy-assistant:regenerate stream error", err);
+          safeSend(event.sender, "joy-assistant:response:error", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          activeStreams.delete(sessionId);
+        }
+      })();
+
+      return { ok: true } as const;
+    },
+  );
+
   logger.info("Joy Assistant handlers registered");
 }

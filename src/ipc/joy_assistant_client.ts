@@ -139,6 +139,52 @@ class JoyAssistantClient {
       action,
     );
   }
+
+  // ── Multi-session management ────────────────────────────────────────────
+
+  async listSessions(): Promise<
+    Array<{
+      id: string;
+      title: string;
+      mode: AssistantMode;
+      createdAt: number;
+      lastActiveAt: number;
+      messageCount: number;
+    }>
+  > {
+    return this.ipcRenderer.invoke("joy-assistant:list-sessions");
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.ipcRenderer.invoke("joy-assistant:delete-session", sessionId);
+  }
+
+  async renameSession(sessionId: string, title: string): Promise<void> {
+    await this.ipcRenderer.invoke(
+      "joy-assistant:rename-session",
+      sessionId,
+      title,
+    );
+  }
+
+  // ── Regenerate last assistant reply ─────────────────────────────────────
+
+  regenerate(
+    params: {
+      sessionId: string;
+      pageContext: AssistantPageContext;
+      mode: AssistantMode;
+    },
+    callbacks: AssistantStreamCallbacks,
+  ): void {
+    this.activeStreams.set(params.sessionId, callbacks);
+    this.ipcRenderer
+      .invoke("joy-assistant:regenerate", params)
+      .catch((err) => {
+        this.activeStreams.delete(params.sessionId);
+        callbacks.onError(String(err));
+      });
+  }
 }
 
 export { JoyAssistantClient };

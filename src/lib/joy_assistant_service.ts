@@ -41,6 +41,15 @@ import { createOllamaProvider } from "../ipc/utils/ollama_provider";
 import { getOllamaApiUrl } from "../ipc/handlers/local_model_ollama_handler";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { LM_STUDIO_BASE_URL } from "../ipc/utils/lm_studio_utils";
+import {
+  clearSessionMessages,
+  deleteSessionById,
+  getOrCreateSession,
+  listSessions as listPersistentSessions,
+  popLastAssistantMessage,
+  setSessionTitle as setPersistentSessionTitle,
+  touchSession,
+} from "./joy_assistant_sessions";
 import type {
   AssistantIntent,
   AssistantAction,
@@ -164,31 +173,42 @@ export function planActions(
 }
 
 // ============================================================================
-// Session Management
+// Session Management (disk-backed)
 // ============================================================================
 
-const sessions = new Map<string, AssistantSession>();
-
 export function getSession(sessionId: string): AssistantSession {
-  let session = sessions.get(sessionId);
-  if (!session) {
-    session = { id: sessionId, messages: [], mode: "auto", createdAt: Date.now() };
-    sessions.set(sessionId, session);
-  }
-  return session;
+  return getOrCreateSession(sessionId);
 }
 
 export function clearSession(sessionId: string): void {
-  sessions.delete(sessionId);
+  clearSessionMessages(sessionId);
+}
+
+export function deleteSession(sessionId: string): void {
+  deleteSessionById(sessionId);
 }
 
 export function setSessionMode(sessionId: string, mode: AssistantMode): void {
-  const session = getSession(sessionId);
+  const session = getOrCreateSession(sessionId);
   session.mode = mode;
+  touchSession(sessionId);
 }
 
 export function getSessionHistory(sessionId: string): AssistantMessage[] {
-  return getSession(sessionId).messages;
+  return getOrCreateSession(sessionId).messages;
+}
+
+export function listSessions() {
+  return listPersistentSessions();
+}
+
+export function setSessionTitle(sessionId: string, title: string): void {
+  setPersistentSessionTitle(sessionId, title);
+}
+
+/** Drop the last assistant message and return the prior user prompt for re-streaming. */
+export function popLastForRegenerate(sessionId: string): string | undefined {
+  return popLastAssistantMessage(sessionId);
 }
 
 // ============================================================================
@@ -324,6 +344,7 @@ export async function chat(
     timestamp: Date.now(),
   };
   session.messages.push(userMsg);
+  touchSession(sessionId);
 
   // 4. Build system prompt with knowledge context + system capabilities
   const knowledgePrompt = buildSystemPrompt(pageContext, mode);
@@ -481,6 +502,7 @@ export async function chat(
       },
     };
     session.messages.push(assistantMsg);
+    touchSession(sessionId);
 
     callbacks.onEnd();
   } catch (err) {
@@ -740,9 +762,12 @@ You have access to the user's operating system through these tools. Use them ONL
 - **read_file** — Read file contents from disk.
 - **write_file** — Write or create files on disk.
 - **list_directory** — List files/folders in a directory.
+- **search_workspace** — Recursively search files for a regex/text pattern under a root directory.
 - **open_app** — Launch an application (notepad, vscode, calculator, etc.)
 - **open_url** — Open a URL in the default browser.
-- **system_info** — Get real-time system data (os, hardware, processes, disk, memory, network). Only use when the user asks about their system.
+- **system_info** — Get real-time system data (os, hardware, processes, disk, memory, network).
+- **web_fetch** — Fetch a web page or HTTP(S) endpoint and get readable text.
+- **web_search** — Search the public web for information.
 - **navigate** — Navigate to a JoyCreate page.
 - **search_marketplace** — Search the JoyCreate marketplace.
 - **create_document** — Create documents, spreadsheets, or presentations.
@@ -791,96 +816,307 @@ function buildAssistantTools(intent: AssistantIntent) {
     },
   });
 
-  // Only include system-level tools when the intent requires system interaction.
-  // This prevents small local models from being overwhelmed by tool definitions
-  // and incorrectly calling tools for conversational questions.
-  const systemIntents: AssistantIntent[] = ["system", "fill", "configure"];
-  if (systemIntents.includes(intent)) {
-    tools.run_command = tool({
-      description: "Execute a shell command on the user's system. Use PowerShell on Windows, bash on Linux/macOS.",
-      parameters: z.object({
-        command: z.string().describe("The shell command to execute"),
-        cwd: z.string().optional().describe("Working directory (defaults to user home)"),
-      }),
-      execute: async ({ command, cwd }) => {
-        const safety = isCommandSafe(command);
-        if (!safety.safe) {
-          return { error: safety.reason, executed: false };
+  // ── Web tools — always available so the assistant can research ─────
+  tools.web_fetch = tool({
+    description:
+      "Fetch a web page and return its readable text content. Use for retrieving article text, docs, JSON APIs, etc.",
+    parameters: z.object({
+      url: z.string().describe("Absolute http(s) URL to fetch"),
+      maxChars: z
+        .number()
+        .int()
+        .min(500)
+        .max(50_000)
+        .optional()
+        .describe("Maximum characters to return (default 8000)"),
+    }),
+    execute: async ({ url, maxChars }) => {
+      try {
+        const parsed = new URL(url);
+        if (!/^https?:$/.test(parsed.protocol)) {
+          return { error: `Unsupported protocol: ${parsed.protocol}`, executed: false };
         }
-        const result = await runCommand(command, cwd);
-        return { ...result, executed: true };
-      },
-    });
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12_000);
+        const res = await fetch(url, {
+          signal: ctrl.signal,
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (compatible; JoyCreate-Assistant/1.0; +https://joycreate.app)",
+            accept: "text/html,application/xhtml+xml,application/xml,text/plain,application/json;q=0.9,*/*;q=0.5",
+          },
+          redirect: "follow",
+        });
+        clearTimeout(timer);
+        const ct = res.headers.get("content-type") || "";
+        const raw = await res.text();
+        let text = raw;
+        if (/html/i.test(ct)) {
+          text = raw
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+            .replace(/<style[\s\S]*?<\/style>/gi, " ")
+            .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+            .replace(/<!--[\s\S]*?-->/g, " ")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+        const limit = maxChars ?? 8000;
+        return {
+          status: res.status,
+          contentType: ct,
+          url: res.url,
+          text: text.slice(0, limit),
+          truncated: text.length > limit,
+          executed: true,
+        };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err), executed: false };
+      }
+    },
+  });
 
-    tools.read_file = tool({
-      description: "Read the contents of a file on the user's system",
-      parameters: z.object({
-        filePath: z.string().describe("Absolute path to the file to read"),
-      }),
-      execute: async ({ filePath }) => {
-        const content = await readFileContent(filePath);
-        return { content: content.slice(0, 20_000), executed: true };
-      },
-    });
+  tools.web_search = tool({
+    description:
+      "Search the public web (DuckDuckGo) and return the top results with title, URL, and snippet. Use for general research or finding documentation.",
+    parameters: z.object({
+      query: z.string().describe("Search query"),
+      maxResults: z.number().int().min(1).max(15).optional(),
+    }),
+    execute: async ({ query, maxResults }) => {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 10_000);
+        const res = await fetch(
+          `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+          {
+            signal: ctrl.signal,
+            headers: {
+              "user-agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+            },
+            redirect: "follow",
+          },
+        );
+        clearTimeout(timer);
+        const html = await res.text();
+        const results: Array<{ title: string; url: string; snippet: string }> = [];
+        // Parse DuckDuckGo HTML result blocks
+        const re =
+          /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+        let m: RegExpExecArray | null;
+        const cap = maxResults ?? 8;
+        while ((m = re.exec(html)) !== null && results.length < cap) {
+          const href = m[1];
+          const titleHtml = m[2];
+          const snippetHtml = m[3];
+          // DDG wraps real URL inside /l/?uddg=... — extract it
+          let realUrl = href;
+          const uddg = href.match(/[?&]uddg=([^&]+)/);
+          if (uddg) {
+            try {
+              realUrl = decodeURIComponent(uddg[1]);
+            } catch { /* keep raw */ }
+          }
+          const strip = (s: string) =>
+            s
+              .replace(/<[^>]+>/g, "")
+              .replace(/&nbsp;/g, " ")
+              .replace(/&amp;/g, "&")
+              .replace(/&quot;/g, '"')
+              .replace(/&#x27;/g, "'")
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">")
+              .replace(/\s+/g, " ")
+              .trim();
+          results.push({
+            title: strip(titleHtml),
+            url: realUrl,
+            snippet: strip(snippetHtml),
+          });
+        }
+        return { query, results, executed: true };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err), executed: false };
+      }
+    },
+  });
 
-    tools.write_file = tool({
-      description: "Write content to a file on the user's system",
-      parameters: z.object({
-        filePath: z.string().describe("Absolute path for the file"),
-        content: z.string().describe("Content to write to the file"),
-      }),
-      execute: async ({ filePath, content }) => {
-        await writeFileContent(filePath, content);
-        return { filePath, size: content.length, executed: true };
-      },
-    });
+  tools.search_workspace = tool({
+    description:
+      "Search files in a directory for a regex/text pattern. Returns matching file paths with line numbers and snippets. Use for finding code or text inside the user's workspace.",
+    parameters: z.object({
+      rootDir: z.string().describe("Absolute root directory to search under"),
+      pattern: z.string().describe("Plain text or regex pattern to match"),
+      isRegex: z.boolean().optional().describe("Treat pattern as a regex (default false)"),
+      maxResults: z.number().int().min(1).max(200).optional(),
+      filePattern: z
+        .string()
+        .optional()
+        .describe('Optional filename glob-ish substring filter, e.g. ".ts" or "test"'),
+    }),
+    execute: async ({ rootDir, pattern, isRegex, maxResults, filePattern }) => {
+      try {
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+          return { error: `Not a directory: ${rootDir}`, executed: false };
+        }
+        const cap = maxResults ?? 50;
+        const SKIP = new Set([
+          "node_modules",
+          ".git",
+          "dist",
+          "out",
+          "build",
+          ".next",
+          ".turbo",
+          ".cache",
+          ".vite",
+        ]);
+        const matcher = isRegex
+          ? new RegExp(pattern, "i")
+          : new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        const matches: Array<{ file: string; line: number; text: string }> = [];
 
-    tools.list_directory = tool({
-      description: "List files and directories in a directory",
-      parameters: z.object({
-        dirPath: z.string().describe("Absolute path to the directory"),
-      }),
-      execute: async ({ dirPath }) => {
-        const entries = await listDirectory(dirPath);
-        return { entries, executed: true };
-      },
-    });
+        const walk = (dir: string, depth: number) => {
+          if (matches.length >= cap || depth > 10) return;
+          let entries: import("node:fs").Dirent[];
+          try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const e of entries) {
+            if (matches.length >= cap) return;
+            if (e.name.startsWith(".") && SKIP.has(e.name)) continue;
+            if (SKIP.has(e.name)) continue;
+            const full = path.join(dir, e.name);
+            if (e.isDirectory()) {
+              walk(full, depth + 1);
+            } else if (e.isFile()) {
+              if (filePattern && !full.toLowerCase().includes(filePattern.toLowerCase())) continue;
+              try {
+                const stat = fs.statSync(full);
+                if (stat.size > 1024 * 1024) continue; // skip >1MB
+                const content = fs.readFileSync(full, "utf-8");
+                const lines = content.split(/\r?\n/);
+                for (let i = 0; i < lines.length; i++) {
+                  if (matcher.test(lines[i])) {
+                    matches.push({ file: full, line: i + 1, text: lines[i].slice(0, 300) });
+                    if (matches.length >= cap) return;
+                  }
+                }
+              } catch {
+                /* skip unreadable */
+              }
+            }
+          }
+        };
 
-    tools.open_app = tool({
-      description: "Open an application on the user's system (e.g. notepad, calculator, vscode, file explorer)",
-      parameters: z.object({
-        appName: z.string().describe("Application name or path"),
-        args: z.array(z.string()).optional().describe("Arguments to pass to the app"),
-      }),
-      execute: async ({ appName, args }) => {
-        await openApp(appName, args);
-        return { opened: appName, executed: true };
-      },
-    });
+        walk(rootDir, 0);
+        return { rootDir, pattern, count: matches.length, matches, executed: true };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err), executed: false };
+      }
+    },
+  });
 
-    tools.open_url = tool({
-      description: "Open a URL in the user's default browser",
-      parameters: z.object({
-        url: z.string().describe("The URL to open"),
-      }),
-      execute: async ({ url }) => {
-        await openUrl(url);
-        return { opened: url, executed: true };
-      },
-    });
+  // ── System-level tools — always available so the assistant can act ─
+  // (Previously gated by intent, but a full agent needs them on by default.
+  //  The system prompt + intent classification still steer when to use them.)
+  void intent;
+  tools.run_command = tool({
+    description:
+      "Execute a shell command on the user's system. Uses PowerShell on Windows, bash on Linux/macOS. Use carefully — destructive commands are blocked.",
+    parameters: z.object({
+      command: z.string().describe("The shell command to execute"),
+      cwd: z.string().optional().describe("Working directory (defaults to user home)"),
+    }),
+    execute: async ({ command, cwd }) => {
+      const safety = isCommandSafe(command);
+      if (!safety.safe) {
+        return { error: safety.reason, executed: false };
+      }
+      const result = await runCommand(command, cwd);
+      return { ...result, executed: true };
+    },
+  });
 
-    tools.system_info = tool({
-      description: "Get system information: os, hardware, processes, disk, memory, or network",
-      parameters: z.object({
-        infoType: z.enum(["os", "hardware", "processes", "disk", "memory", "network"])
-          .describe("Type of system information to retrieve"),
-      }),
-      execute: async ({ infoType }) => {
-        const info = await getSystemInfo(infoType);
-        return { info, executed: true };
-      },
-    });
-  }
+  tools.read_file = tool({
+    description: "Read the contents of a file on the user's system",
+    parameters: z.object({
+      filePath: z.string().describe("Absolute path to the file to read"),
+    }),
+    execute: async ({ filePath }) => {
+      const content = await readFileContent(filePath);
+      return { content: content.slice(0, 20_000), executed: true };
+    },
+  });
+
+  tools.write_file = tool({
+    description: "Write content to a file on the user's system. Creates parent directories as needed.",
+    parameters: z.object({
+      filePath: z.string().describe("Absolute path for the file"),
+      content: z.string().describe("Content to write to the file"),
+    }),
+    execute: async ({ filePath, content }) => {
+      await writeFileContent(filePath, content);
+      return { filePath, size: content.length, executed: true };
+    },
+  });
+
+  tools.list_directory = tool({
+    description: "List files and directories in a directory",
+    parameters: z.object({
+      dirPath: z.string().describe("Absolute path to the directory"),
+    }),
+    execute: async ({ dirPath }) => {
+      const entries = await listDirectory(dirPath);
+      return { entries, executed: true };
+    },
+  });
+
+  tools.open_app = tool({
+    description: "Open an application on the user's system (e.g. notepad, calculator, vscode, file explorer)",
+    parameters: z.object({
+      appName: z.string().describe("Application name or path"),
+      args: z.array(z.string()).optional().describe("Arguments to pass to the app"),
+    }),
+    execute: async ({ appName, args }) => {
+      await openApp(appName, args);
+      return { opened: appName, executed: true };
+    },
+  });
+
+  tools.open_url = tool({
+    description: "Open a URL in the user's default browser",
+    parameters: z.object({
+      url: z.string().describe("The URL to open"),
+    }),
+    execute: async ({ url }) => {
+      await openUrl(url);
+      return { opened: url, executed: true };
+    },
+  });
+
+  tools.system_info = tool({
+    description: "Get system information: os, hardware, processes, disk, memory, or network",
+    parameters: z.object({
+      infoType: z
+        .enum(["os", "hardware", "processes", "disk", "memory", "network"])
+        .describe("Type of system information to retrieve"),
+    }),
+    execute: async ({ infoType }) => {
+      const info = await getSystemInfo(infoType);
+      return { info, executed: true };
+    },
+  });
 
   return tools;
 }
@@ -957,6 +1193,16 @@ function toolResultToAction(
         documentType: args.documentType as "document" | "spreadsheet" | "presentation",
         name: args.name as string,
       };
+    case "web_fetch":
+      return {
+        type: "open-url",
+        url: args.url as string,
+        label: `Fetched: ${args.url}`,
+      };
+    case "web_search":
+    case "search_workspace":
+      // Informational tools — no DOM action to surface
+      return null;
     default:
       return null;
   }

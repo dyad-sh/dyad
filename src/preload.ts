@@ -206,6 +206,11 @@ const validInvokeChannels = [
   "code-studio:preview-patch",
   "code-studio:apply-patches",
   "code-studio:search",
+  "code-studio:list-projects",
+  "code-studio:add-project",
+  "code-studio:remove-project",
+  "code-studio:switch-project",
+  "code-studio:clone-repo",
   // Design System Generator
   "design-system:initialize",
   "design-system:create",
@@ -307,6 +312,10 @@ const validInvokeChannels = [
   "joy-assistant:clear",
   "joy-assistant:set-mode",
   "joy-assistant:execute-action",
+  "joy-assistant:list-sessions",
+  "joy-assistant:delete-session",
+  "joy-assistant:rename-session",
+  "joy-assistant:regenerate",
   // Prompts
   "prompts:list",
   "prompts:create",

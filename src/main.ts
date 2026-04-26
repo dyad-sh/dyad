@@ -133,29 +133,72 @@ export async function onReady() {
 
   // ── Start OpenClaw gateway immediately (no delay needed) ──
   const openClawLogger = log.scope("openclaw-init");
+
+  /** Probe the gateway's local HTTP endpoint. Returns true only when reachable. */
+  const probeGatewayHealth = async (port: number): Promise<boolean> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: ctrl.signal });
+      return resp.ok;
+    } catch {
+      try {
+        const resp2 = await fetch(`http://127.0.0.1:${port}/health`, { signal: ctrl.signal });
+        return resp2.ok;
+      } catch {
+        return false;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const ensureOpenClaw = async () => {
     const gw = getOpenClawGateway();
     const state = gw.getGatewayState();
-    // Skip if already connected (server mode or bridge mode)
+
     if (state.status === "connected") {
-      // Even if connected, try to bridge if not already bridged
+      // Verify the connection is actually alive with a health probe.
+      const cfg = gw.getConfig() as unknown as { gateway?: { port?: number; daemonPort?: number } };
+      const port = cfg?.gateway?.port ?? cfg?.gateway?.daemonPort ?? 18790;
+      const alive = await probeGatewayHealth(port as number);
+
+      if (!alive) {
+        openClawLogger.warn("Gateway reports connected but health probe failed — forcing re-init");
+        // Notify renderer using the existing openclaw event channels
+        mainWindow?.webContents.send("openclaw:event", { type: "disconnected", reason: "health-probe-failed" });
+        mainWindow?.webContents.send("openclaw:event:disconnected", { reason: "health-probe-failed" });
+        try {
+          await gw.initialize();
+          openClawLogger.info(`OpenClaw gateway re-initialized after disconnect${gw.isBridged() ? " (bridge mode)" : ""}`);
+          mainWindow?.webContents.send("openclaw:event", { type: "gateway-restarted" });
+          mainWindow?.webContents.send("openclaw:event:gateway-restarted", {});
+          // Invalidate status queries in the renderer
+          mainWindow?.webContents.send("openclaw:event:connected", {});
+        } catch (err) {
+          openClawLogger.warn("OpenClaw gateway re-init after disconnect failed:", err);
+        }
+        return;
+      }
+
+      // Connected and alive — ensure bridged if not already
       if (!gw.isBridged()) {
         try {
           const bridged = await gw.attemptBridge();
           if (!bridged) {
-            // Daemon may have died — try to respawn it
             await gw.respawnDaemon();
           }
         } catch { /* watchdog will retry */ }
       }
       return;
     }
+
     // Skip if actively reconnecting in bridge mode
     if (state.status === "reconnecting") return;
+
     try {
       await gw.initialize();
       openClawLogger.info(`OpenClaw gateway initialized${gw.isBridged() ? " (bridge mode)" : ""}`);
-      // If gateway initialized but daemon is not bridged, try respawning
       if (!gw.isBridged()) {
         gw.respawnDaemon().catch(() => {});
       }
@@ -179,10 +222,10 @@ export async function onReady() {
     .then(({ port }) => openClawLogger.info(`MCP server auto-started on port ${port}`))
     .catch((err) => openClawLogger.warn("MCP server auto-start failed:", err));
 
-  // Watchdog: check every 30s and re-init if not connected
+  // Watchdog: check every 15s and re-init if not connected / health probe fails
   const openClawWatchdog = setInterval(() => {
     ensureOpenClaw().catch(() => {});
-  }, 30_000);
+  }, 15_000);
   app.on("will-quit", () => clearInterval(openClawWatchdog));
   app.on("will-quit", () => {
     import("@/lib/joycreate_api_server")
@@ -671,8 +714,12 @@ function setupResponseHeaderOverrides(): void {
       const headers = { ...details.responseHeaders };
 
       // ── 1. Daemon / internal gateway portal: allow iframe embedding ──
-      // Match any request to 127.0.0.1 or localhost on ports 18790-18799
-      const isGatewayResponse = /^https?:\/\/(127\.0\.0\.1|localhost):1879[0-9]/.test(url);
+      // Match any request to 127.0.0.1 or localhost on:
+      //   - ports 18790-18799 (OpenClaw daemon / gateway portal)
+      //   - port 5678         (embedded n8n UI)
+      const isGatewayResponse =
+        /^https?:\/\/(127\.0\.0\.1|localhost):1879[0-9]/.test(url) ||
+        /^https?:\/\/(127\.0\.0\.1|localhost):5678(\/|$)/.test(url);
 
       if (isGatewayResponse) {
         // Remove X-Frame-Options regardless of casing
@@ -891,6 +938,11 @@ app.on("will-quit", () => {
 
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();
+
+  // Flush any pending Joy Assistant session writes
+  import("@/lib/joy_assistant_sessions")
+    .then(({ flushSessions }) => flushSessions())
+    .catch(() => { /* best-effort */ });
 
   writeSettings({ isRunning: false });
 });

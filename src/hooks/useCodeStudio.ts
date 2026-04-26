@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   codeStudioClient,
+  type CodeStudioProject,
   type FsEntry,
   type OpenFileResult,
   type SearchHit,
@@ -15,6 +16,7 @@ import {
 const KEYS = {
   all: ["code-studio"] as const,
   workspace: () => [...KEYS.all, "workspace"] as const,
+  projects: () => [...KEYS.all, "projects"] as const,
   dir: (relPath: string) => [...KEYS.all, "dir", relPath] as const,
   file: (relPath: string) => [...KEYS.all, "file", relPath] as const,
   search: (query: string) => [...KEYS.all, "search", query] as const,
@@ -125,5 +127,60 @@ export function useCodeSearch(query: string, opts: { caseSensitive?: boolean } =
     queryKey: [...KEYS.search(query), opts.caseSensitive ?? false],
     queryFn: () => codeStudioClient.search(query, opts),
     enabled: query.trim().length >= 2,
+  });
+}
+
+// -- Projects (multi-project switcher) --------------------------------------
+
+export function useCodeProjects() {
+  return useQuery<CodeStudioProject[]>({
+    queryKey: KEYS.projects(),
+    queryFn: () => codeStudioClient.listProjects(),
+  });
+}
+
+export function useAddCodeProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => codeStudioClient.addProject(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.projects() });
+    },
+  });
+}
+
+export function useRemoveCodeProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => codeStudioClient.removeProject(projectId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.projects() });
+    },
+  });
+}
+
+export function useSwitchCodeProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => codeStudioClient.switchProject(projectId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}
+
+export function useCloneRepo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      url: string;
+      parentDir?: string;
+      folderName?: string;
+      accessToken?: string;
+      depth?: number;
+    }) => codeStudioClient.cloneRepo(args),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
   });
 }

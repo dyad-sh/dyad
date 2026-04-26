@@ -97,6 +97,7 @@ typings/
 
 # Electron-Forge
 out/
+out-new/
 
 sqlite.db
 userData/

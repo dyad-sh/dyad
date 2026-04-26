@@ -12,7 +12,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "clean": "rimraf out scaffold/node_modules",
+    "clean": "rimraf out out-new scaffold/node_modules",
     "start": "cross-env NODE_OPTIONS=--max-old-space-size=8192 electron-forge start",
     "dev:engine": "cross-env JOY_ENGINE_URL=http://localhost:8080/v1 npm start",
     "staging:engine": "cross-env JOY_ENGINE_URL=https://staging.engine.joycreate.app/v1 npm start",

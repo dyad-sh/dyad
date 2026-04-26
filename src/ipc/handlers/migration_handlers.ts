@@ -1,6 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { migrationContracts } from "../types/migration";
 import {
@@ -10,11 +11,17 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAppWithNeonBranch } from "../utils/neon_utils";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { db } from "../../db";
+import { apps } from "../../db/schema";
+import { getDyadAppPath } from "../../paths/paths";
+import { gitAddAll, gitCommit } from "../utils/git_utils";
 import {
   logger,
   getProductionBranchId,
   createTempDrizzleConfig,
   spawnDrizzleKit,
+  areMigrationDepsInstalled,
+  installMigrationDeps,
 } from "../utils/migration_utils";
 
 // =============================================================================
@@ -22,6 +29,32 @@ import {
 // =============================================================================
 
 export function registerMigrationHandlers() {
+  // -------------------------------------------------------------------------
+  // migration:dependencies-status
+  // -------------------------------------------------------------------------
+  createTypedHandler(
+    migrationContracts.dependenciesStatus,
+    async (_, params) => {
+      const { appId } = params;
+      if (IS_TEST_BUILD) {
+        return { installed: true };
+      }
+      const rows = await db
+        .select()
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .limit(1);
+      if (rows.length === 0) {
+        throw new DyadError(
+          `App with ID ${appId} not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      const appPath = getDyadAppPath(rows[0].path);
+      return { installed: await areMigrationDepsInstalled(appPath) };
+    },
+  );
+
   // -------------------------------------------------------------------------
   // migration:push
   // -------------------------------------------------------------------------
@@ -91,7 +124,30 @@ export function registerMigrationHandlers() {
       );
     }
 
-    // 5. Create temp directory with restricted permissions
+    // 5. Ensure drizzle-kit + drizzle-orm are installed in the user's app
+    const appPath = getDyadAppPath(appData.path);
+    if (!(await areMigrationDepsInstalled(appPath))) {
+      logger.info(
+        `Migration dependencies not installed in ${appPath}; installing now.`,
+      );
+      await installMigrationDeps(appPath);
+
+      try {
+        await gitAddAll({ path: appPath });
+        await gitCommit({
+          path: appPath,
+          message: "[dyad] install drizzle-kit and drizzle-orm for migrations",
+        });
+        logger.info(`Committed migration dependency install in ${appPath}`);
+      } catch (err) {
+        logger.warn(
+          `Failed to commit migration dependency install. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
+          err,
+        );
+      }
+    }
+
+    // 6. Create temp directory with restricted permissions
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-migration-"));
 
     try {
@@ -109,6 +165,7 @@ export function registerMigrationHandlers() {
       const introspectResult = await spawnDrizzleKit({
         args: ["introspect", `--config=${introspectConfigPath}`],
         cwd: tmpDir,
+        appPath,
         connectionUri: devUri,
       });
 
@@ -156,6 +213,7 @@ export function registerMigrationHandlers() {
       const pushResult = await spawnDrizzleKit({
         args: ["push", "--force", `--config=${pushConfigPath}`],
         cwd: tmpDir,
+        appPath,
         connectionUri: prodUri,
       });
 

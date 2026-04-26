@@ -40,9 +40,6 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/html-to-image")) {
     return false;
   }
-  if (file.startsWith("/node_modules/drizzle-kit")) {
-    return false;
-  }
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }
@@ -127,7 +124,6 @@ const config: ForgeConfig = {
     extraResource: [
       "node_modules/dugite/git",
       "node_modules/@vscode",
-      "node_modules/drizzle-kit",
       "node_modules/drizzle-orm",
     ],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],

@@ -29,10 +29,20 @@ export interface FileOperationResult {
 }
 
 function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
-  const isFinished = progress.phase === "finished";
-  const title = isFinished
-    ? `Supabase functions deployed: ${progress.completed}/${progress.total} complete`
-    : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`;
+  const isComplete =
+    progress.phase === "finished" || progress.phase === "failed";
+  const title =
+    progress.phase === "finished"
+      ? `Supabase functions deployed: ${progress.completed}/${progress.total} complete`
+      : progress.phase === "failed"
+        ? `Supabase functions failed to deploy: ${progress.completed}/${progress.total} complete`
+        : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`;
+  const state =
+    progress.phase === "failed"
+      ? "aborted"
+      : progress.phase === "finished"
+        ? "finished"
+        : "in-progress";
   const content = [
     `${progress.succeeded} succeeded`,
     `${progress.failed} failed`,
@@ -43,7 +53,7 @@ function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
     content.push(`Latest: ${progress.functionName}`);
   }
 
-  return `<dyad-status title="${escapeXmlAttr(title)}">\n${escapeXmlContent(content.join("\n"))}${isFinished ? "\n</dyad-status>" : ""}`;
+  return `<dyad-status title="${escapeXmlAttr(title)}" state="${state}">\n${escapeXmlContent(content.join("\n"))}${isComplete ? "\n</dyad-status>" : ""}`;
 }
 
 /**
@@ -74,7 +84,7 @@ export async function deployAllFunctionsIfNeeded(
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
       onProgress: (progress) => {
         const statusXml = renderSupabaseDeployStatus(progress);
-        if (progress.phase === "finished") {
+        if (progress.phase === "finished" || progress.phase === "failed") {
           ctx.onXmlComplete(statusXml);
         } else {
           ctx.onXmlStream(statusXml);

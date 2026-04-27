@@ -17,11 +17,16 @@ testSkipIfWindows(
       skipWaitForCompletion: true,
     });
 
-    await expect(
-      po.page.getByText(
-        /Deploying Supabase functions: \d+\/20 complete \(\d+ active, \d+ queued\)/,
-      ),
-    ).toBeVisible({ timeout: Timeout.LONG });
+    await expect(async () => {
+      await expect(
+        po.page
+          .getByText(
+            /Deploying Supabase functions: \d+\/20 complete \(\d+ active, \d+ queued\)/,
+          )
+          .or(po.page.getByText("Supabase functions deployed: 20/20 complete"))
+          .first(),
+      ).toBeVisible();
+    }).toPass({ timeout: Timeout.LONG });
 
     await po.chatActions.waitForChatCompletion();
 

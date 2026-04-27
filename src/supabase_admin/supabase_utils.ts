@@ -14,7 +14,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("supabase_utils");
 
 export interface SupabaseDeployProgress {
-  phase: "deploying" | "finished";
+  phase: "deploying" | "finished" | "failed";
   total: number;
   active: number;
   queued: number;
@@ -241,10 +241,7 @@ export async function deployAllSupabaseFunctions({
         } finally {
           activeFunctions--;
           completedFunctions++;
-          emitProgress(
-            completedFunctions === totalFunctions ? "finished" : "deploying",
-            functionName,
-          );
+          emitProgress("deploying", functionName);
         }
       },
     );
@@ -263,6 +260,8 @@ export async function deployAllSupabaseFunctions({
         errors.push(errorMessage);
       }
     }
+
+    const activationSucceeded = successfulDeploys.length > 0;
 
     // Bulk update all successfully bundled functions to activate them
     if (successfulDeploys.length > 0) {
@@ -327,6 +326,10 @@ export async function deployAllSupabaseFunctions({
         errors.push(errorMessage);
       }
     }
+
+    emitProgress(
+      errors.length === 0 && activationSucceeded ? "finished" : "failed",
+    );
   } catch (error: any) {
     const errorMessage = `Error reading functions directory: ${error.message}`;
     logger.error(errorMessage, error);

@@ -635,6 +635,8 @@
       "descriptionWithBranches": "将 {{projectName}} 中 {{sourceBranchName}} 的 schema 复制到 {{targetBranchName}}。",
       "migrateToProduction": "迁移到生产环境",
       "migrating": "迁移中...",
+      "installingDependencies": "正在安装依赖并迁移...",
+      "installDependenciesNote": "首次迁移将安装 drizzle-kit 和 drizzle-orm，可能需要几分钟。",
       "success": "迁移已成功应用。",
       "errorMessage": "无法应用此次迁移。",
       "showDetails": "显示详情",

@@ -233,6 +233,18 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
               <AlertDialogCancel>
                 {t("integrations.migration.cancel")}
               </AlertDialogCancel>
+              {previewMutation.data && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    setPreviewOpen(true);
+                  }}
+                >
+                  {t("integrations.migration.backToReview")}
+                </Button>
+              )}
               <AlertDialogAction
                 className={
                   previewHasDataLoss

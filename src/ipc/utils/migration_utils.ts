@@ -631,6 +631,12 @@ export async function runDrizzleKitPushPreview({
   }
 
   if (result.terminatedReason === "timeout") {
+    if (statements.length === 0) {
+      throw new DyadError(
+        "Migration preview timed out before computing the plan. The database endpoint may be suspended — please try again.",
+        DyadErrorKind.External,
+      );
+    }
     logger.warn(
       `drizzle-kit preview hit max-wait timeout — returning whatever was parsed.`,
     );

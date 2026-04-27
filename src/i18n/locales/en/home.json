@@ -649,6 +649,7 @@
       "confirmDescription": "This will modify your production database schema. Are you sure you want to continue?",
       "confirmDescriptionWithBranches": "This will modify the {{targetBranchName}} schema in {{projectName}} using the schema from {{sourceBranchName}}. Are you sure you want to continue?",
       "cancel": "Cancel",
+      "backToReview": "Back to review",
       "backupWarning": "Make sure you have database backups enabled otherwise you cannot undo this.",
       "computingMigrationPlan": "Computing migration plan...",
       "preview": {

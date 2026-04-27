@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -49,6 +49,7 @@ export const MigrationSqlPreviewDialog = ({
 }: Props) => {
   const { t } = useTranslation("home");
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const errorDetailsId = useId();
 
   const destructiveByIndex = useMemo(() => {
     const map = new Map<number, DestructiveStatement>();
@@ -94,6 +95,7 @@ export const MigrationSqlPreviewDialog = ({
                 <button
                   onClick={() => setShowErrorDetails(!showErrorDetails)}
                   aria-expanded={showErrorDetails}
+                  aria-controls={errorDetailsId}
                   className="flex items-center gap-1 text-xs text-red-600 dark:text-red-300 hover:underline"
                 >
                   <ChevronDown
@@ -104,7 +106,10 @@ export const MigrationSqlPreviewDialog = ({
                     : t("integrations.migration.showDetails")}
                 </button>
                 {showErrorDetails && (
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-red-100 p-2 font-mono text-xs dark:bg-red-900/40">
+                  <pre
+                    id={errorDetailsId}
+                    className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-red-100 p-2 font-mono text-xs dark:bg-red-900/40"
+                  >
                     {errorMessage}
                   </pre>
                 )}

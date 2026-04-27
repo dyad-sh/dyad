@@ -33,12 +33,22 @@ interface Subscription {
 
 interface ReportRange {
   from: string; // ISO date, inclusive
-  to: string;   // ISO date, exclusive
+  to: string; // ISO date, exclusive
 }
 
 const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ];
 
 // ── Sales reports ──────────────────────────────────────────────────────────
@@ -117,7 +127,10 @@ export function salesByRegion(
       s.region,
       (revenueByRegion.get(s.region) ?? 0) + s.unitPrice * s.quantity,
     );
-    unitsByRegion.set(s.region, (unitsByRegion.get(s.region) ?? 0) + s.quantity);
+    unitsByRegion.set(
+      s.region,
+      (unitsByRegion.get(s.region) ?? 0) + s.quantity,
+    );
   }
 
   const rows: Array<{ region: string; revenue: string; units: number }> = [];
@@ -208,7 +221,10 @@ export function refundsByReason(
   const amountByReason = new Map<string, number>();
   const countByReason = new Map<string, number>();
   for (const r of inRange) {
-    amountByReason.set(r.reason, (amountByReason.get(r.reason) ?? 0) + r.amount);
+    amountByReason.set(
+      r.reason,
+      (amountByReason.get(r.reason) ?? 0) + r.amount,
+    );
     countByReason.set(r.reason, (countByReason.get(r.reason) ?? 0) + 1);
   }
 
@@ -307,10 +323,7 @@ export function mrrByPlan(
   return rows;
 }
 
-export function churnRate(
-  subs: Subscription[],
-  range: ReportRange,
-): string {
+export function churnRate(subs: Subscription[], range: ReportRange): string {
   const fromTs = Date.parse(range.from);
   const toTs = Date.parse(range.to);
 
@@ -369,10 +382,7 @@ export function topCustomersByRevenue(
   }));
 }
 
-export function averageSaleValue(
-  sales: Sale[],
-  range: ReportRange,
-): string {
+export function averageSaleValue(sales: Sale[], range: ReportRange): string {
   const fromTs = Date.parse(range.from);
   const toTs = Date.parse(range.to);
   const inRange = sales.filter((s) => {

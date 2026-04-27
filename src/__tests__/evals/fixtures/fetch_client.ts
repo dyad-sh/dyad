@@ -5,7 +5,8 @@ import { getAuthToken } from "./auth";
 
 const logger = createLogger("fetch-client");
 
-const BASE_URL = process.env.SERVICE_BASE_URL ?? "https://api.internal.example.com";
+const BASE_URL =
+  process.env.SERVICE_BASE_URL ?? "https://api.internal.example.com";
 const DEFAULT_TIMEOUT_MS = 8_000;
 
 export interface FetchClientOptions {
@@ -68,7 +69,12 @@ export async function serviceRequest<T>(
   path: string,
   options: FetchClientOptions = {},
 ): Promise<T> {
-  const { method = "GET", body, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const {
+    method = "GET",
+    body,
+    headers = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  } = options;
 
   const token = await getAuthToken();
   const controller = new AbortController();
@@ -100,7 +106,10 @@ export async function serviceRequest<T>(
 
 // ── Verb wrappers ──────────────────────────────────────────────────────────
 
-export async function getResource<T>(path: string, headers?: Record<string, string>): Promise<T> {
+export async function getResource<T>(
+  path: string,
+  headers?: Record<string, string>,
+): Promise<T> {
   const data = await serviceRequest<T>(path, { method: "GET", headers });
   return data;
 }
@@ -115,7 +124,10 @@ export async function putResource<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
-export async function patchResource<T>(path: string, body: unknown): Promise<T> {
+export async function patchResource<T>(
+  path: string,
+  body: unknown,
+): Promise<T> {
   const data = await serviceRequest<T>(path, { method: "PATCH", body });
   return data;
 }
@@ -151,7 +163,9 @@ export async function listUsers(
   );
 }
 
-export async function getUserSubscription(userId: string): Promise<Subscription | null> {
+export async function getUserSubscription(
+  userId: string,
+): Promise<Subscription | null> {
   return getResource<Subscription | null>(`/users/${userId}/subscription`);
 }
 
@@ -189,7 +203,9 @@ export async function deleteProject(projectId: string): Promise<void> {
 
 // ── Project membership ─────────────────────────────────────────────────────
 
-export async function getProjectMembers(projectId: string): Promise<ProjectMember[]> {
+export async function getProjectMembers(
+  projectId: string,
+): Promise<ProjectMember[]> {
   return getResource<ProjectMember[]>(`/projects/${projectId}/members`);
 }
 
@@ -213,12 +229,17 @@ export async function updateProjectMemberRole(
   userId: string,
   role: string,
 ): Promise<ProjectMember> {
-  return patchResource<ProjectMember>(`/projects/${projectId}/members/${userId}`, { role });
+  return patchResource<ProjectMember>(
+    `/projects/${projectId}/members/${userId}`,
+    { role },
+  );
 }
 
 // ── Workspace resources ────────────────────────────────────────────────────
 
-export async function getWorkspace(workspaceId: string): Promise<{ id: string; name: string; plan: string }> {
+export async function getWorkspace(
+  workspaceId: string,
+): Promise<{ id: string; name: string; plan: string }> {
   return getResource(`/workspaces/${workspaceId}`);
 }
 
@@ -262,34 +283,50 @@ export async function downloadInvoicePdf(invoiceId: string): Promise<Blob> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
-  const response = await fetch(`${BASE_URL}/billing/invoices/${invoiceId}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: controller.signal,
-  });
+  const response = await fetch(
+    `${BASE_URL}/billing/invoices/${invoiceId}/pdf`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    },
+  );
   clearTimeout(timer);
 
   if (!response.ok) {
-    throw { code: "DOWNLOAD_FAILED", message: "Failed to download invoice PDF", status: response.status } satisfies ServiceError;
+    throw {
+      code: "DOWNLOAD_FAILED",
+      message: "Failed to download invoice PDF",
+      status: response.status,
+    } satisfies ServiceError;
   }
   return response.blob();
 }
 
-export async function listPaymentMethods(workspaceId: string): Promise<PaymentMethod[]> {
-  return getResource<PaymentMethod[]>(`/workspaces/${workspaceId}/billing/payment-methods`);
+export async function listPaymentMethods(
+  workspaceId: string,
+): Promise<PaymentMethod[]> {
+  return getResource<PaymentMethod[]>(
+    `/workspaces/${workspaceId}/billing/payment-methods`,
+  );
 }
 
 export async function addPaymentMethod(
   workspaceId: string,
   token: string,
 ): Promise<PaymentMethod> {
-  return postResource<PaymentMethod>(`/workspaces/${workspaceId}/billing/payment-methods`, { token });
+  return postResource<PaymentMethod>(
+    `/workspaces/${workspaceId}/billing/payment-methods`,
+    { token },
+  );
 }
 
 export async function removePaymentMethod(
   workspaceId: string,
   paymentMethodId: string,
 ): Promise<void> {
-  return deleteResource(`/workspaces/${workspaceId}/billing/payment-methods/${paymentMethodId}`);
+  return deleteResource(
+    `/workspaces/${workspaceId}/billing/payment-methods/${paymentMethodId}`,
+  );
 }
 
 export async function setDefaultPaymentMethod(

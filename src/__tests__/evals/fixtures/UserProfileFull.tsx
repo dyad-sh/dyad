@@ -1,8 +1,19 @@
 // UserProfileFull.tsx — full-featured user profile page component
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { fetchUser, updateUser, uploadAvatar, fetchUserActivity } from "../services/userService";
+import {
+  fetchUser,
+  updateUser,
+  uploadAvatar,
+  fetchUserActivity,
+} from "../services/userService";
 import type { User, ActivityItem } from "../types";
 
 interface UserProfileFullProps {
@@ -46,7 +57,8 @@ interface ActivityState {
 
 function formatStatValue(value: number | string, unit?: string): string {
   if (typeof value === "number") {
-    const formatted = value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
+    const formatted =
+      value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
     return unit ? `${formatted} ${unit}` : formatted;
   }
   return value;
@@ -133,7 +145,10 @@ export function UserProfile({
       if (!file) return;
 
       if (!file.type.startsWith("image/")) {
-        setAvatar((prev) => ({ ...prev, error: "Please select an image file" }));
+        setAvatar((prev) => ({
+          ...prev,
+          error: "Please select an image file",
+        }));
         return;
       }
 
@@ -143,7 +158,12 @@ export function UserProfile({
       }
 
       const previewUrl = URL.createObjectURL(file);
-      setAvatar((prev) => ({ ...prev, previewUrl, uploading: true, error: null }));
+      setAvatar((prev) => ({
+        ...prev,
+        previewUrl,
+        uploading: true,
+        error: null,
+      }));
 
       try {
         const result = await uploadAvatar(resolvedUserId, file);
@@ -170,7 +190,8 @@ export function UserProfile({
     setAvatar({ url: null, uploading: false, error: null, previewUrl: null });
   }, []);
 
-  const avatarDisplayUrl = avatar.previewUrl ?? avatar.url ?? "/default-avatar.png";
+  const avatarDisplayUrl =
+    avatar.previewUrl ?? avatar.url ?? "/default-avatar.png";
 
   const renderAvatarBadge = useCallback(() => {
     if (avatar.uploading) {
@@ -247,31 +268,49 @@ export function UserProfile({
     period: INITIAL_STATS_PERIOD,
   });
 
-  const loadStats = useCallback(
-    async (period: "week" | "month" | "year") => {
-      setStats((prev) => ({ ...prev, loading: true, error: null, period }));
-      try {
-        // Simulate loading stats — in production this hits the analytics API
-        await new Promise((r) => setTimeout(r, 100));
-        const mockCards: StatCard[] = [
-          { label: "Commits", value: period === "week" ? 23 : period === "month" ? 87 : 1042, change: 12.5 },
-          { label: "PRs Merged", value: period === "week" ? 5 : period === "month" ? 18 : 203, change: -3.2 },
-          { label: "Reviews", value: period === "week" ? 11 : period === "month" ? 42 : 498, change: 8.1 },
-          { label: "Lines Changed", value: period === "week" ? 1250 : period === "month" ? 4800 : 58000, unit: "lines", change: 15.7 },
-          { label: "Issues Closed", value: period === "week" ? 7 : period === "month" ? 25 : 312, change: 0 },
-          { label: "Build Success", value: "98.2%", change: 1.1 },
-        ];
-        setStats({ cards: mockCards, loading: false, error: null, period });
-      } catch (err) {
-        setStats((prev) => ({
-          ...prev,
-          loading: false,
-          error: err instanceof Error ? err.message : "Failed to load stats",
-        }));
-      }
-    },
-    [],
-  );
+  const loadStats = useCallback(async (period: "week" | "month" | "year") => {
+    setStats((prev) => ({ ...prev, loading: true, error: null, period }));
+    try {
+      // Simulate loading stats — in production this hits the analytics API
+      await new Promise((r) => setTimeout(r, 100));
+      const mockCards: StatCard[] = [
+        {
+          label: "Commits",
+          value: period === "week" ? 23 : period === "month" ? 87 : 1042,
+          change: 12.5,
+        },
+        {
+          label: "PRs Merged",
+          value: period === "week" ? 5 : period === "month" ? 18 : 203,
+          change: -3.2,
+        },
+        {
+          label: "Reviews",
+          value: period === "week" ? 11 : period === "month" ? 42 : 498,
+          change: 8.1,
+        },
+        {
+          label: "Lines Changed",
+          value: period === "week" ? 1250 : period === "month" ? 4800 : 58000,
+          unit: "lines",
+          change: 15.7,
+        },
+        {
+          label: "Issues Closed",
+          value: period === "week" ? 7 : period === "month" ? 25 : 312,
+          change: 0,
+        },
+        { label: "Build Success", value: "98.2%", change: 1.1 },
+      ];
+      setStats({ cards: mockCards, loading: false, error: null, period });
+    } catch (err) {
+      setStats((prev) => ({
+        ...prev,
+        loading: false,
+        error: err instanceof Error ? err.message : "Failed to load stats",
+      }));
+    }
+  }, []);
 
   useEffect(() => {
     if (showStats && resolvedUserId) {
@@ -295,20 +334,19 @@ export function UserProfile({
     return typeof commitCard?.value === "number" ? commitCard.value : 0;
   }, [stats.cards]);
 
-  const renderStatCard = useCallback(
-    (card: StatCard, index: number) => {
-      return (
-        <div key={index} className="stat-card">
-          <div className="stat-card__label">{card.label}</div>
-          <div className="stat-card__value">{formatStatValue(card.value, card.unit)}</div>
-          <div className={`stat-card__change ${getChangeClass(card.change)}`}>
-            {formatChangePercent(card.change)}
-          </div>
+  const renderStatCard = useCallback((card: StatCard, index: number) => {
+    return (
+      <div key={index} className="stat-card">
+        <div className="stat-card__label">{card.label}</div>
+        <div className="stat-card__value">
+          {formatStatValue(card.value, card.unit)}
         </div>
-      );
-    },
-    [],
-  );
+        <div className={`stat-card__change ${getChangeClass(card.change)}`}>
+          {formatChangePercent(card.change)}
+        </div>
+      </div>
+    );
+  }, []);
 
   const renderStatsHeader = useCallback(() => {
     const periods: Array<"week" | "month" | "year"> = ["week", "month", "year"];
@@ -335,7 +373,8 @@ export function UserProfile({
     return (
       <div className="stats-summary">
         <p>
-          Total activity: <strong>{totalCommits}</strong> commits this {stats.period}.
+          Total activity: <strong>{totalCommits}</strong> commits this{" "}
+          {stats.period}.
         </p>
       </div>
     );
@@ -393,29 +432,36 @@ export function UserProfile({
     return groups;
   }, [activityState.items]);
 
-  const renderActivityItem = useCallback((item: ActivityItem) => {
-    return (
-      <div key={item.id} className="activity-item">
-        <span className="activity-item__icon">{getActivityIcon(item.type)}</span>
-        <div className="activity-item__content">
-          <p className="activity-item__description">{item.description}</p>
-          <span className="activity-item__time">{formatActivityDate(item.timestamp)}</span>
-          {item.metadata?.pr && (
-            <a
-              className="activity-item__link"
-              href={`/pr/${item.metadata.pr}`}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(`/pr/${item.metadata!.pr}`);
-              }}
-            >
-              PR #{item.metadata.pr}
-            </a>
-          )}
+  const renderActivityItem = useCallback(
+    (item: ActivityItem) => {
+      return (
+        <div key={item.id} className="activity-item">
+          <span className="activity-item__icon">
+            {getActivityIcon(item.type)}
+          </span>
+          <div className="activity-item__content">
+            <p className="activity-item__description">{item.description}</p>
+            <span className="activity-item__time">
+              {formatActivityDate(item.timestamp)}
+            </span>
+            {item.metadata?.pr && (
+              <a
+                className="activity-item__link"
+                href={`/pr/${item.metadata.pr}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/pr/${item.metadata!.pr}`);
+                }}
+              >
+                PR #{item.metadata.pr}
+              </a>
+            )}
+          </div>
         </div>
-      </div>
-    );
-  }, [navigate]);
+      );
+    },
+    [navigate],
+  );
 
   const renderActivityGroup = useCallback(
     (dateKey: string, items: ActivityItem[]) => {
@@ -556,10 +602,19 @@ export function UserProfile({
             </div>
             {saveError && <p className="form-error">{saveError}</p>}
             <div className="form-actions">
-              <button type="submit" disabled={saving} className="btn btn--primary">
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn btn--primary"
+              >
                 {saving ? "Saving…" : "Save Changes"}
               </button>
-              <button type="button" onClick={handleCancel} disabled={saving} className="btn btn--secondary">
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={saving}
+                className="btn btn--secondary"
+              >
                 Cancel
               </button>
             </div>
@@ -648,7 +703,10 @@ export function UserProfile({
 
       {/* ── Footer ────────────────────────────────────────── */}
       <footer className="user-profile__footer">
-        <p>Profile last updated: {user.updatedAt ? new Date(user.updatedAt).toLocaleString() : "Never"}</p>
+        <p>
+          Profile last updated:{" "}
+          {user.updatedAt ? new Date(user.updatedAt).toLocaleString() : "Never"}
+        </p>
       </footer>
     </div>
   );

@@ -19,15 +19,6 @@ interface User {
   isActive: boolean;
 }
 
-interface CreateUserBody {
-  email: string;
-  name: string;
-  age: number;
-  role: UserRole;
-  bio?: string;
-  avatarUrl?: string;
-}
-
 interface UpdateUserBody {
   name?: string;
   age?: number;
@@ -193,7 +184,10 @@ export async function updateUserHandler(
     return;
   }
 
-  if (body.age !== undefined && (typeof body.age !== "number" || body.age < 0)) {
+  if (
+    body.age !== undefined &&
+    (typeof body.age !== "number" || body.age < 0)
+  ) {
     res.status(400).json({ error: "age must be a non-negative number" });
     return;
   }
@@ -255,17 +249,20 @@ export async function changeRoleHandler(
     return;
   }
 
-  const existing = await db.query("SELECT id, role FROM users WHERE id = ?", [id]);
+  const existing = await db.query("SELECT id, role FROM users WHERE id = ?", [
+    id,
+  ]);
   if (existing.length === 0) {
     res.status(404).json({ error: "user not found" });
     return;
   }
 
   const previousRole = (existing[0] as { role: string }).role;
-  await db.query(
-    "UPDATE users SET role = ?, updated_at = ? WHERE id = ?",
-    [role, new Date().toISOString(), id],
-  );
+  await db.query("UPDATE users SET role = ?, updated_at = ? WHERE id = ?", [
+    role,
+    new Date().toISOString(),
+    id,
+  ]);
 
   logger.info(`changed role for user ${id}: ${previousRole} → ${role}`);
   res.json({ id, role });

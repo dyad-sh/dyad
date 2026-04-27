@@ -271,14 +271,8 @@ export function recordDirFor(
   caseName: string,
   modelLabel: string,
 ): string {
-  const runDirName =
-    `${fsTimestamp(RUN_START_TIMESTAMP)}__${sanitize(modelLabel)}`;
-  return resolve(
-    RESULTS_ROOT,
-    sanitize(suite),
-    runDirName,
-    sanitize(caseName),
-  );
+  const runDirName = `${fsTimestamp(RUN_START_TIMESTAMP)}__${sanitize(modelLabel)}`;
+  return resolve(RESULTS_ROOT, sanitize(suite), runDirName, sanitize(caseName));
 }
 
 export async function recordEvalRun(record: EvalRunRecord): Promise<void> {

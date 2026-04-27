@@ -297,6 +297,14 @@ export function useStreamChat({
                   });
                 }
 
+                if (response.pausePromptQueue) {
+                  setQueuePausedById((prev) => {
+                    const next = new Map(prev);
+                    next.set(chatId, true);
+                    return next;
+                  });
+                }
+
                 if (!response.wasCancelled) {
                   setStreamCompletedSuccessfullyById((prev) => {
                     const next = new Map(prev);
@@ -481,6 +489,7 @@ export function useStreamChat({
       setIsStreamingById,
       setIsPreviewOpen,
       setStreamCompletedSuccessfullyById,
+      setQueuePausedById,
       selectedAppId,
       refetchUserBudget,
       settings,

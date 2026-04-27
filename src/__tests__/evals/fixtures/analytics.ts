@@ -56,7 +56,9 @@ export function endSession(): void {
     return;
   }
   const durationMs = Date.now() - currentSession.startedAt;
-  console.log(`analytics session ended: ${currentSession.id} (${durationMs}ms)`);
+  console.log(
+    `analytics session ended: ${currentSession.id} (${durationMs}ms)`,
+  );
   currentSession = null;
 }
 
@@ -90,7 +92,9 @@ export function track(name: string, props: Record<string, unknown> = {}): void {
   queue.push(event);
   console.log(`tracked event: ${name}`);
   if (queue.length >= MAX_BATCH_SIZE) {
-    console.warn(`analytics queue full (${queue.length}), flushing immediately`);
+    console.warn(
+      `analytics queue full (${queue.length}), flushing immediately`,
+    );
     flush();
   }
 }
@@ -100,7 +104,10 @@ export function trackPageView(path: string, title: string): void {
   track("page_view", { path, title });
 }
 
-export function trackError(err: Error, context: Record<string, unknown> = {}): void {
+export function trackError(
+  err: Error,
+  context: Record<string, unknown> = {},
+): void {
   console.error(`analytics error event: ${err.message}`, err);
   track("error", {
     message: err.message,
@@ -130,9 +137,15 @@ export function trackSearch(query: string, resultCount: number): void {
   track("search", { query, resultCount });
 }
 
-export function trackTiming(category: string, variable: string, durationMs: number): void {
+export function trackTiming(
+  category: string,
+  variable: string,
+  durationMs: number,
+): void {
   if (durationMs < 0) {
-    console.error(`trackTiming: negative duration ${durationMs}ms for ${category}/${variable}`);
+    console.error(
+      `trackTiming: negative duration ${durationMs}ms for ${category}/${variable}`,
+    );
     return;
   }
   track("timing", { category, variable, durationMs });
@@ -203,7 +216,10 @@ function sendToBackend(events: Event[]): void {
 
 let _identifiedUserId: string | null = null;
 
-export function identify(userId: string, traits: Record<string, unknown> = {}): void {
+export function identify(
+  userId: string,
+  traits: Record<string, unknown> = {},
+): void {
   if (!userId) {
     console.warn("identify called with empty userId");
     return;
@@ -243,18 +259,25 @@ export function trackAddToCart(
   price: number,
 ): void {
   if (quantity <= 0) {
-    console.error(`trackAddToCart: invalid quantity ${quantity} for product ${productId}`);
+    console.error(
+      `trackAddToCart: invalid quantity ${quantity} for product ${productId}`,
+    );
     return;
   }
   track("add_to_cart", { productId, quantity, price });
 }
 
-export function trackCheckoutStarted(cartValue: number, itemCount: number): void {
+export function trackCheckoutStarted(
+  cartValue: number,
+  itemCount: number,
+): void {
   if (cartValue < 0) {
     console.error(`trackCheckoutStarted: negative cart value ${cartValue}`);
     return;
   }
-  console.log(`checkout started — ${itemCount} items, $${cartValue.toFixed(2)}`);
+  console.log(
+    `checkout started — ${itemCount} items, $${cartValue.toFixed(2)}`,
+  );
   track("checkout_started", { cartValue, itemCount });
 }
 
@@ -263,7 +286,9 @@ export function trackOrderCompleted(
   revenue: number,
   currency: string,
 ): void {
-  console.log(`order completed: ${orderId} — ${currency} ${revenue.toFixed(2)}`);
+  console.log(
+    `order completed: ${orderId} — ${currency} ${revenue.toFixed(2)}`,
+  );
   track("order_completed", { orderId, revenue, currency });
 }
 

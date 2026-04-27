@@ -201,7 +201,7 @@ const evalFetch: typeof fetch = async (input, init) => {
   // we can surface token counts in the reassembled non-streaming
   // response instead of hard-coding zeros.
   parsed.stream_options = {
-    ...(parsed.stream_options ?? {}),
+    ...parsed.stream_options,
     include_usage: true,
   };
   const modifiedInit = { ...init, body: JSON.stringify(parsed) };

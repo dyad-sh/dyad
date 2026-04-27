@@ -228,6 +228,34 @@ function buildChatMessageHistory(
   );
 }
 
+/**
+ * Append a `<system-reminder>` to the latest user message listing referenced
+ * apps so the agent knows which `app_name` values it can pass to read-only
+ * tools (`read_file`, `list_files`, `grep`, `code_search`). Mutates the last
+ * user message in-place to avoid copying unrelated parts of the history.
+ */
+function injectReferencedAppsReminder(
+  messageHistory: ModelMessage[],
+  referencedApps: readonly { appName: string }[],
+): void {
+  const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+
+  for (let i = messageHistory.length - 1; i >= 0; i--) {
+    const msg = messageHistory[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string") {
+      messageHistory[i] = { ...msg, content: msg.content + reminder };
+    } else {
+      messageHistory[i] = {
+        ...msg,
+        content: [...msg.content, { type: "text", text: reminder }],
+      };
+    }
+    return;
+  }
+}
+
 function getMidTurnCompactionSummaryIds(
   chatMessages: Array<{
     id: number;
@@ -272,6 +300,7 @@ export async function handleLocalAgentStream(
     planModeOnly = false,
     messageOverride,
     settingsOverride,
+    referencedApps = [],
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -292,6 +321,14 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
+    /**
+     * Apps referenced via `@app:Name` mentions in the user's prompt.
+     * Read-only tools can target these via an `app_name` parameter.
+     */
+    referencedApps?: {
+      appName: string;
+      appPath: string;
+    }[];
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
@@ -332,10 +369,13 @@ export async function handleLocalAgentStream(
     !isDyadProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
+    const errorMessage =
+      referencedApps.length > 0
+        ? "Referencing other apps (@app:Name) in local-agent mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro."
+        : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error:
-        "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
+      error: errorMessage,
     });
     return false;
   }
@@ -506,10 +546,14 @@ export async function handleLocalAgentStream(
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
+    const referencedAppsMap = new Map(
+      referencedApps.map((ref) => [ref.appName.toLowerCase(), ref.appPath]),
+    );
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
       appPath,
+      referencedApps: referencedAppsMap,
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
@@ -596,6 +640,13 @@ export async function handleLocalAgentStream(
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
       : buildChatMessageHistory(chat.messages);
+
+    // Inject the referenced-apps manifest into the user's latest message as a
+    // `<system-reminder>` block (instead of appending it to the system prompt)
+    // so the system prompt stays static and cacheable.
+    if (referencedApps.length > 0) {
+      injectReferencedAppsReminder(messageHistory, referencedApps);
+    }
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
     let baseMessageHistoryCount = messageHistory.length;
@@ -771,6 +822,16 @@ export async function handleLocalAgentStream(
                       excludeMessageIds: new Set([placeholderMessageId]),
                     },
                   );
+                  // The referenced-apps reminder lives only in-memory on the
+                  // latest user message and is not persisted, so rebuilding
+                  // history from the DB drops it. Re-inject so post-compaction
+                  // tool steps keep the explicit app_name allow-list.
+                  if (referencedApps.length > 0) {
+                    injectReferencedAppsReminder(
+                      compactedMessageHistory,
+                      referencedApps,
+                    );
+                  }
                   baseMessageHistoryCount = compactedMessageHistory.length;
                   // The compacted history includes the compaction summary, but the
                   // AI SDK's initialMessages does not. Track the delta so we can

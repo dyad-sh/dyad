@@ -1,6 +1,7 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { FileText } from "lucide-react";
+import { DyadBadge } from "./DyadCardPrimitives";
 
 interface DyadReadProps {
   children?: ReactNode;
@@ -20,6 +21,7 @@ export const DyadRead: React.FC<DyadReadProps> = ({
   const path = pathProp || node?.properties?.path || "";
   const startLine = startLineProp || node?.properties?.startLine || "";
   const endLine = endLineProp || node?.properties?.endLine || "";
+  const appName = node?.properties?.appName || "";
   const fileName = path ? path.split("/").pop() : "";
   const dirPath = path
     ? path.slice(0, path.length - (fileName?.length || 0))
@@ -43,6 +45,7 @@ export const DyadRead: React.FC<DyadReadProps> = ({
       <div className="flex items-center gap-1 py-1">
         <FileText size={14} className="shrink-0 text-muted-foreground/50" />
         <span className="text-[13px] font-medium text-foreground/70">Read</span>
+        {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         {path && (
           <span
             className="text-[13px] truncate min-w-0"

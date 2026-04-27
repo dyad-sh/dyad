@@ -1322,13 +1322,21 @@ export async function handleLocalAgentStream(
       return false; // Cancelled - don't consume quota
     }
 
+    // Collect XML produced by post-turn side-effects (step-limit notice,
+    // Supabase deploy results) so we can persist them into aiMessagesJson.
+    // parseAiMessagesJson reads from aiMessagesJson when present and ignores
+    // the message's `content` column, so anything appended only to fullResponse
+    // would be invisible to subsequent agent turns.
+    const postTurnXmlParts: string[] = [];
+
     // Check if we hit the step limit and append a notice to the response
     if (totalStepsExecuted >= maxToolCallSteps) {
       logger.info(
         `Chat ${req.chatId} hit step limit of ${maxToolCallSteps} steps`,
       );
-      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${maxToolCallSteps}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
-      fullResponse += stepLimitMessage;
+      const stepLimitXml = `<dyad-step-limit steps="${totalStepsExecuted}" limit="${maxToolCallSteps}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
+      postTurnXmlParts.push(stepLimitXml);
+      fullResponse += `\n\n${stepLimitXml}`;
       await updateResponseInDb(placeholderMessageId, fullResponse);
       sendResponseChunk(
         event,
@@ -1338,6 +1346,33 @@ export async function handleLocalAgentStream(
         placeholderMessageId,
         hiddenMessageIdsForStreaming,
       );
+    }
+
+    // In read-only and plan mode, skip the deploy step (commit follows below)
+    if (!readOnly && !planModeOnly) {
+      // Deploy all Supabase functions if shared modules changed
+      const deployResult = await deployAllFunctionsIfNeeded(ctx);
+      if (deployResult.warning) {
+        const warningXml = `<dyad-output type="warning" message="${escapeXmlAttr("Supabase function deploy warning")}">${escapeXmlContent(deployResult.warning)}</dyad-output>`;
+        postTurnXmlParts.push(warningXml);
+        ctx.onXmlComplete(warningXml);
+      }
+      if (!deployResult.success) {
+        const errorXml = `<dyad-output type="error" message="${escapeXmlAttr("Failed to deploy Supabase functions")}">${escapeXmlContent(deployResult.error ?? "Unknown deploy error")}</dyad-output>`;
+        postTurnXmlParts.push(errorXml);
+        ctx.onXmlComplete(errorXml);
+      }
+    }
+
+    // Persist post-turn side-effects as a trailing assistant message so future
+    // agent turns can see them via aiMessagesJson. Done before the
+    // aiMessagesJson write below so deploy/step-limit info is captured even if
+    // a later step (e.g. commit) throws.
+    if (postTurnXmlParts.length > 0) {
+      accumulatedAiMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: postTurnXmlParts.join("\n") }],
+      });
     }
 
     // Save the AI SDK messages for multi-turn tool call preservation
@@ -1355,21 +1390,8 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // In read-only and plan mode, skip deploys and commits
+    // In read-only and plan mode, skip commits
     if (!readOnly && !planModeOnly) {
-      // Deploy all Supabase functions if shared modules changed
-      const deployResult = await deployAllFunctionsIfNeeded(ctx);
-      if (deployResult.warning) {
-        ctx.onXmlComplete(
-          `<dyad-output type="warning" message="${escapeXmlAttr("Supabase function deploy warning")}">${escapeXmlContent(deployResult.warning)}</dyad-output>`,
-        );
-      }
-      if (!deployResult.success) {
-        ctx.onXmlComplete(
-          `<dyad-output type="error" message="${escapeXmlAttr("Failed to deploy Supabase functions")}">${escapeXmlContent(deployResult.error ?? "Unknown deploy error")}</dyad-output>`,
-        );
-      }
-
       // Commit all changes
       const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 

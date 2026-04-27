@@ -511,6 +511,22 @@ describe("handleLocalAgentStream", () => {
         "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
       );
       expect(commitAllChanges).toHaveBeenCalled();
+
+      // Persist deploy XML into aiMessagesJson so future agent turns can see it.
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain('<dyad-output type=\\"warning\\"');
+      expect(persistedAiMessages).toContain(
+        'message=\\"Supabase function deploy warning\\"',
+      );
     });
 
     it("appends shared-module Supabase deploy failures as dyad-output and still commits", async () => {
@@ -554,6 +570,22 @@ describe("handleLocalAgentStream", () => {
         "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
       );
       expect(commitAllChanges).toHaveBeenCalled();
+
+      // Persist deploy XML into aiMessagesJson so future agent turns can see it.
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain('<dyad-output type=\\"error\\"');
+      expect(persistedAiMessages).toContain(
+        'message=\\"Failed to deploy Supabase functions\\"',
+      );
     });
   });
 

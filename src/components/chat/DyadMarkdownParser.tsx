@@ -43,6 +43,7 @@ import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
+import { DyadMiniPlanCard } from "./DyadMiniPlanCard";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
@@ -93,6 +94,8 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-questionnaire",
   // Step limit notification
   "dyad-step-limit",
+  // Mini plan tags
+  "dyad-mini-plan",
 ];
 
 interface DyadMarkdownParserProps {
@@ -887,6 +890,23 @@ function renderCustomTag(
         >
           {content}
         </DyadStepLimit>
+      );
+
+    case "dyad-mini-plan":
+      return (
+        <DyadMiniPlanCard
+          node={{
+            properties: {
+              "app-name": attributes["app-name"] || "",
+              template: attributes.template || "react",
+              theme: attributes.theme || "default",
+              "design-direction": attributes["design-direction"] || "",
+              "main-color": attributes["main-color"] || "",
+              complete: attributes.complete,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        />
       );
 
     default:

@@ -820,6 +820,7 @@ ${componentSnippet}
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
+          enableMiniPlan: settings.enableMiniPlan !== false,
         });
 
         // Add information about mentioned apps for build mode only.

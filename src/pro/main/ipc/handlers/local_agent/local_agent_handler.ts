@@ -41,6 +41,7 @@ import {
   requireAgentToolConsent,
   clearPendingConsentsForChat,
   clearPendingQuestionnairesForChat,
+  clearPendingMiniPlanApprovalsForChat,
 } from "./tool_definitions";
 import {
   deployAllFunctionsIfNeeded,
@@ -51,6 +52,7 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
+import { deleteMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -628,6 +630,7 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
+      enableMiniPlan: settings.enableMiniPlan !== false,
     });
     const mcpTools =
       readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
@@ -991,6 +994,8 @@ export async function handleLocalAgentStream(
                 // Clean up pending consent/questionnaire requests to prevent stale UI banners
                 clearPendingConsentsForChat(req.chatId);
                 clearPendingQuestionnairesForChat(req.chatId);
+                clearPendingMiniPlanApprovalsForChat(req.chatId);
+                deleteMiniPlanForChat(req.chatId);
                 break;
               }
 
@@ -1425,6 +1430,13 @@ export async function handleLocalAgentStream(
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
     clearPendingQuestionnairesForChat(req.chatId);
+    clearPendingMiniPlanApprovalsForChat(req.chatId);
+    // Only drop the mini plan itself on explicit cancellation — a transient
+    // stream error should leave the plan around so the user can retry from
+    // the same approval state instead of losing their edits.
+    if (abortController.signal.aborted) {
+      deleteMiniPlanForChat(req.chatId);
+    }
 
     if (abortController.signal.aborted) {
       // Handle cancellation

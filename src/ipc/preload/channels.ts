@@ -43,6 +43,7 @@ import { planEvents, planContracts } from "../types/plan";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";
+import { miniPlanContracts, miniPlanEvents } from "../types/mini_plan";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -101,6 +102,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
+  ...getInvokeChannels(miniPlanContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -126,6 +128,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
+  ...getReceiveChannels(miniPlanEvents),
 ] as const;
 
 // =============================================================================

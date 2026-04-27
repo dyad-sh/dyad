@@ -3,9 +3,10 @@
  * Each tool includes a zod schema, description, and execute function
  */
 
-import { IpcMainInvokeEvent } from "electron";
+import { IpcMainInvokeEvent, WebContents } from "electron";
 import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -34,6 +35,9 @@ import { codeSearchTool } from "./tools/code_search";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import { miniPlanQuestionnaireTool } from "./tools/mini_plan_questionnaire";
+import { writeMiniPlanTool } from "./tools/write_mini_plan";
+import { planVisualsTool } from "./tools/plan_visuals";
 import { readGuideTool } from "./tools/read_guide";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
@@ -50,6 +54,7 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import { getMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -98,6 +103,10 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   planningQuestionnaireTool,
   writePlanTool,
   exitPlanTool,
+  // Mini plan tools
+  miniPlanQuestionnaireTool,
+  writeMiniPlanTool,
+  planVisualsTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
@@ -211,6 +220,74 @@ export function clearPendingQuestionnairesForChat(chatId: number): void {
       pendingQuestionnaireResolvers.delete(requestId);
       entry.resolve(null);
     }
+  }
+}
+
+// ============================================================================
+// Mini Plan Approval Management
+// ============================================================================
+
+interface PendingMiniPlanEntry {
+  chatId: number;
+  resolve: (approved: boolean) => void;
+}
+
+const pendingMiniPlanResolvers = new Map<number, PendingMiniPlanEntry>();
+
+const MINI_PLAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+export function waitForMiniPlanApproval(
+  chatId: number,
+  sender?: WebContents,
+): Promise<boolean> {
+  // Cancel any existing pending approval for this chat
+  const existing = pendingMiniPlanResolvers.get(chatId);
+  if (existing) {
+    existing.resolve(false);
+    pendingMiniPlanResolvers.delete(chatId);
+  }
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      const entry = pendingMiniPlanResolvers.get(chatId);
+      if (entry) {
+        pendingMiniPlanResolvers.delete(chatId);
+        if (sender) {
+          // Notify the renderer so the card can disable the approve button
+          // and surface a "plan timed out" message instead of silently no-op.
+          safeSend(sender, "mini-plan:timeout", { chatId });
+        }
+        entry.resolve(false);
+      }
+    }, MINI_PLAN_TIMEOUT_MS);
+
+    pendingMiniPlanResolvers.set(chatId, {
+      chatId,
+      resolve: (approved) => {
+        clearTimeout(timeout);
+        resolve(approved);
+      },
+    });
+  });
+}
+
+export function resolveMiniPlanApproval(chatId: number, approved: boolean) {
+  const entry = pendingMiniPlanResolvers.get(chatId);
+  if (entry) {
+    pendingMiniPlanResolvers.delete(chatId);
+    entry.resolve(approved);
+  }
+}
+
+/**
+ * Clean up all pending mini plan approval requests for a given chat.
+ * Called when a stream is cancelled/aborted to prevent orphaned promises.
+ */
+export function clearPendingMiniPlanApprovalsForChat(chatId: number): void {
+  const entry = pendingMiniPlanResolvers.get(chatId);
+  if (entry) {
+    pendingMiniPlanResolvers.delete(chatId);
+    entry.resolve(false);
   }
 }
 
@@ -398,6 +475,11 @@ export interface BuildAgentToolSetOptions {
    * Used for basic agent mode where some tools may not be available.
    */
   basicAgentMode?: boolean;
+  /**
+   * If false, exclude mini plan tools (mini_plan_questionnaire,
+   * write_mini_plan, plan_visuals).
+   */
+  enableMiniPlan?: boolean;
 }
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
@@ -449,6 +531,16 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
 const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
 /**
+ * Tools that are part of the mini plan flow. Excluded when the feature is
+ * disabled via the Workflow setting.
+ */
+const MINI_PLAN_TOOLS = new Set<string>([
+  "mini_plan_questionnaire",
+  "write_mini_plan",
+  "plan_visuals",
+]);
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
 export function buildAgentToolSet(
@@ -482,6 +574,11 @@ export function buildAgentToolSet(
       continue;
     }
 
+    // Skip mini plan tools when the feature is disabled
+    if (options.enableMiniPlan === false && MINI_PLAN_TOOLS.has(tool.name)) {
+      continue;
+    }
+
     // In read-only mode, skip tools that modify state
     if (options.readOnly && tool.modifiesState) {
       continue;
@@ -496,6 +593,28 @@ export function buildAgentToolSet(
       inputSchema: tool.inputSchema,
       execute: async (args: any) => {
         try {
+          // Guard against state-modifying tools running before mini plan
+          // approval is resolved. `plan_visuals` owns the approval gate, but
+          // if the model skips it the agent would otherwise proceed to build.
+          // Mini plan tools themselves are allowed through so the flow can
+          // progress to approval. Skip entirely when the mini plan feature
+          // is disabled — otherwise a plan left over from before the toggle
+          // would permanently block the agent.
+          if (
+            options.enableMiniPlan !== false &&
+            tool.modifiesState &&
+            !MINI_PLAN_TOOLS.has(tool.name) &&
+            !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+          ) {
+            const plan = getMiniPlanForChat(ctx.chatId);
+            if (plan && !plan.approved) {
+              throw new DyadError(
+                `Mini plan must be approved before running ${tool.name}. Call plan_visuals to present the plan for approval.`,
+                DyadErrorKind.Precondition,
+              );
+            }
+          }
+
           const processedArgs = await processArgPlaceholders(args, ctx);
 
           // Check consent before executing the tool

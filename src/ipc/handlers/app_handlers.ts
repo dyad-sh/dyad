@@ -96,6 +96,7 @@ import {
   uploadCloudSandboxFiles,
 } from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 import {
   gitCommit,
@@ -1255,6 +1256,12 @@ export function registerAppHandlers() {
     await createFromTemplate({
       fullAppPath,
     });
+
+    // Ensure `.dyad/` is gitignored before the initial commit so the agent's
+    // later `ensureDyadGitignored` call is a no-op and the app stays clean.
+    // Otherwise the first template swap (e.g. from mini-plan approval) fails
+    // the clean-working-tree check.
+    await ensureDyadGitignored(fullAppPath);
 
     // Initialize git repo and create first commit
 

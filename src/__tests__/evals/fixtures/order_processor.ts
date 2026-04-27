@@ -16,12 +16,6 @@ interface ProcessResult {
   error?: string;
 }
 
-interface FulfillmentResult {
-  transactionId: string;
-  trackingNumber: string;
-  estimatedDelivery: string;
-}
-
 interface RefundResult {
   refundId: string;
   amount: number;
@@ -30,29 +24,29 @@ interface RefundResult {
 
 // ── External service stubs ─────────────────────────────────────────────────
 
-async function getInventory(productId: string): Promise<InventoryItem | null> {
+async function getInventory(_productId: string): Promise<InventoryItem | null> {
   // Implementation elided — hits the warehouse API
   return null;
 }
 
 async function reserveInventory(
-  productId: string,
-  quantity: number,
+  _productId: string,
+  _quantity: number,
 ): Promise<boolean> {
   // Implementation elided — locks inventory for the order
   return true;
 }
 
 async function releaseInventory(
-  productId: string,
-  quantity: number,
+  _productId: string,
+  _quantity: number,
 ): Promise<void> {
   // Implementation elided — releases a previously-reserved hold
 }
 
 async function chargePayment(
-  method: PaymentMethod,
-  amount: number,
+  _method: PaymentMethod,
+  _amount: number,
 ): Promise<{ transactionId: string }> {
   // Implementation elided — hits the payment gateway
   return { transactionId: "txn_placeholder" };
@@ -67,8 +61,8 @@ async function refundPayment(
 }
 
 async function createShipment(
-  address: ShippingAddress,
-  items: string[],
+  _address: ShippingAddress,
+  _items: string[],
 ): Promise<{ trackingNumber: string; estimatedDelivery: string }> {
   // Implementation elided — hits the shipping API
   return {
@@ -79,25 +73,25 @@ async function createShipment(
   };
 }
 
-async function cancelShipment(trackingNumber: string): Promise<void> {
+async function cancelShipment(_trackingNumber: string): Promise<void> {
   // Implementation elided — cancels a shipment before it ships
 }
 
-async function saveOrder(order: Order): Promise<string> {
+async function saveOrder(_order: Order): Promise<string> {
   // Implementation elided — writes to DB
   return "order_placeholder";
 }
 
 async function updateOrderStatus(
-  orderId: string,
-  status: string,
+  _orderId: string,
+  _status: string,
 ): Promise<void> {
   // Implementation elided — updates DB record
 }
 
 async function notifyOrderConfirmed(
-  orderId: string,
-  email: string,
+  _orderId: string,
+  _email: string,
 ): Promise<void> {
   // Implementation elided — sends confirmation email
 }
@@ -270,7 +264,7 @@ export async function getOrderStatus(orderId: string): Promise<string | null> {
 export async function listOrdersForCustomer(
   customerEmail: string,
   page: number,
-  limit: number,
+  _limit: number,
 ): Promise<Order[]> {
   logger.info(`Listing orders for customer ${customerEmail} (page=${page})`);
   // Implementation elided — queries DB

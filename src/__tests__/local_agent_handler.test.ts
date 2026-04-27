@@ -276,7 +276,7 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
 vi.mock(
   "@/pro/main/ipc/handlers/local_agent/processors/file_operations",
   () => ({
-    deployAllFunctionsIfNeeded: vi.fn(async () => {}),
+    deployAllFunctionsIfNeeded: vi.fn(async () => ({ success: true })),
     commitAllChanges: vi.fn(async () => ({ commitHash: "abc123" })),
   }),
 );
@@ -304,6 +304,10 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import {
+  commitAllChanges,
+  deployAllFunctionsIfNeeded,
+} from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 
 // ============================================================================
 // Tests
@@ -467,6 +471,89 @@ describe("handleLocalAgentStream", () => {
         error: expect.stringContaining("Simulated tool failure"),
         warningMessages: [warningMessage],
       });
+    });
+
+    it("appends shared-module Supabase deploy warnings as dyad-output", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockResolvedValueOnce({
+        success: true,
+        warning:
+          "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain('<dyad-output type="warning"');
+      expect(finalContent).toContain(
+        'message="Supabase function deploy warning"',
+      );
+      expect(finalContent).toContain(
+        "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+    });
+
+    it("appends shared-module Supabase deploy failures as dyad-output and still commits", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockResolvedValueOnce({
+        success: false,
+        error:
+          "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(0);
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain('<dyad-output type="error"');
+      expect(finalContent).toContain(
+        'message="Failed to deploy Supabase functions"',
+      );
+      expect(finalContent).toContain(
+        "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
     });
   });
 

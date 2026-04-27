@@ -19,15 +19,6 @@ interface User {
   isActive: boolean;
 }
 
-interface CreateUserBody {
-  email: string;
-  name: string;
-  age: number;
-  role: UserRole;
-  bio?: string;
-  avatarUrl?: string;
-}
-
 interface UpdateUserBody {
   name?: string;
   age?: number;

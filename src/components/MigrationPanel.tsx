@@ -21,13 +21,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { queryKeys } from "@/lib/queryKeys";
+import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
 
 interface MigrationPanelProps {
   appId: number;
@@ -57,11 +57,20 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
       queryKey: queryKeys.migration.dependenciesStatus({ appId }),
     });
 
+  const previewMutation = useMutation({
+    mutationFn: () => ipc.migration.preview({ appId }),
+    onSuccess: invalidateDepsStatus,
+    onError: invalidateDepsStatus,
+  });
+
   const pushMutation = useMutation({
     mutationFn: () => ipc.migration.push({ appId }),
     onSuccess: invalidateDepsStatus,
     onError: invalidateDepsStatus,
   });
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const productionBranch = branches.find(
     (branch) => branch.type === "production",
@@ -142,29 +151,67 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           </div>
         )}
 
-        <AlertDialog>
-          <AlertDialogTrigger
-            disabled={pushMutation.isPending || isProductionBranchActive}
-            render={
-              <Button
-                disabled={pushMutation.isPending || isProductionBranchActive}
-              />
-            }
-          >
-            {pushMutation.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {installingDepsRef.current
-                  ? t("integrations.migration.installingDependencies")
-                  : t("integrations.migration.migrating")}
-              </>
-            ) : (
-              <>
-                <Database className="w-4 h-4 mr-2" />
-                {t("integrations.migration.migrateToProduction")}
-              </>
-            )}
-          </AlertDialogTrigger>
+        <Button
+          disabled={
+            pushMutation.isPending ||
+            previewMutation.isPending ||
+            isProductionBranchActive
+          }
+          onClick={() => {
+            setShowErrorDetails(false);
+            installingDepsRef.current = depsInstalled === false;
+            previewMutation.reset();
+            previewMutation.mutate();
+            setPreviewOpen(true);
+          }}
+        >
+          {pushMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {installingDepsRef.current
+                ? t("integrations.migration.installingDependencies")
+                : t("integrations.migration.migrating")}
+            </>
+          ) : previewMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {t("integrations.migration.computingMigrationPlan")}
+            </>
+          ) : (
+            <>
+              <Database className="w-4 h-4 mr-2" />
+              {t("integrations.migration.migrateToProduction")}
+            </>
+          )}
+        </Button>
+
+        <MigrationSqlPreviewDialog
+          open={previewOpen}
+          onOpenChange={(open) => {
+            setPreviewOpen(open);
+            if (!open) previewMutation.reset();
+          }}
+          preview={previewMutation.data ?? null}
+          isLoading={previewMutation.isPending}
+          isError={previewMutation.isError}
+          errorMessage={
+            previewMutation.error
+              ? getErrorMessage(previewMutation.error)
+              : undefined
+          }
+          sourceBranchName={sourceBranchName}
+          targetBranchName={targetBranchName}
+          onApprove={() => {
+            setPreviewOpen(false);
+            setConfirmOpen(true);
+          }}
+          onCancel={() => {
+            setPreviewOpen(false);
+            previewMutation.reset();
+          }}
+        />
+
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
@@ -181,8 +228,8 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
               <AlertDialogAction
                 onClick={() => {
                   setShowErrorDetails(false);
-                  installingDepsRef.current = depsInstalled === false;
                   pushMutation.mutate();
+                  setConfirmOpen(false);
                 }}
               >
                 {t("integrations.migration.migrateToProduction")}

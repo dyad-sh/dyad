@@ -649,7 +649,25 @@
       "confirmDescription": "This will modify your production database schema. Are you sure you want to continue?",
       "confirmDescriptionWithBranches": "This will modify the {{targetBranchName}} schema in {{projectName}} using the schema from {{sourceBranchName}}. Are you sure you want to continue?",
       "cancel": "Cancel",
-      "backupWarning": "Make sure you have database backups enabled otherwise you cannot undo this."
+      "backupWarning": "Make sure you have database backups enabled otherwise you cannot undo this.",
+      "computingMigrationPlan": "Computing migration plan...",
+      "preview": {
+        "title": "Review migration SQL",
+        "subtitle": "These statements will run against {{targetBranchName}}.",
+        "subtitleNoTarget": "These statements will run against your production database.",
+        "loading": "Computing migration plan...",
+        "loadingError": "Couldn't compute migration plan.",
+        "noChanges": "Your development and production databases are already in sync. Nothing to migrate.",
+        "continue": "Continue",
+        "continueWithDataLoss": "I understand, continue",
+        "cancel": "Cancel",
+        "close": "Close",
+        "destructive": {
+          "title": "Destructive changes detected",
+          "subtitle_one": "{{count}} statement will permanently remove or alter existing data.",
+          "subtitle_other": "{{count}} statements will permanently remove or alter existing data."
+        }
+      }
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",

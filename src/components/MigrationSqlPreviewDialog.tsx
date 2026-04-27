@@ -32,6 +32,7 @@ interface Props {
   targetBranchName?: string;
   onApprove: () => void;
   onCancel: () => void;
+  onRetry?: () => void;
 }
 
 export const MigrationSqlPreviewDialog = ({
@@ -44,6 +45,7 @@ export const MigrationSqlPreviewDialog = ({
   targetBranchName,
   onApprove,
   onCancel,
+  onRetry,
 }: Props) => {
   const { t } = useTranslation("home");
   const [showErrorDetails, setShowErrorDetails] = useState(false);
@@ -123,7 +125,7 @@ export const MigrationSqlPreviewDialog = ({
 
         {!isLoading && !isError && hasStatements && (
           <>
-            <div className="max-h-[50vh] overflow-auto rounded border border-l-4 border-l-green-500 bg-[#e6ffec] dark:bg-[#033a16] text-slate-900 dark:text-slate-50 font-mono text-xs">
+            <div className="max-h-[50vh] overflow-auto rounded border border-l-4 border-l-green-500 bg-green-50 dark:bg-green-950 text-slate-900 dark:text-slate-50 font-mono text-xs">
               {statements.map((stmt, index) => {
                 const destructive = destructiveByIndex.get(index);
                 return (
@@ -178,6 +180,11 @@ export const MigrationSqlPreviewDialog = ({
               ? t("integrations.migration.preview.cancel")
               : t("integrations.migration.preview.close")}
           </Button>
+          {!isLoading && isError && onRetry && (
+            <Button type="button" onClick={onRetry}>
+              {t("integrations.migration.preview.retry")}
+            </Button>
+          )}
           {hasStatements && (
             <Button
               type="button"

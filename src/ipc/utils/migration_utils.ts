@@ -308,14 +308,18 @@ export async function spawnDrizzleKit({
 
 const ANSI_RE =
   // eslint-disable-next-line no-control-regex
-  /[][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-ntqry=><]/g;
+  /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-ntqry=><]/g;
 
 function stripAnsi(input: string): string {
   return input.replace(ANSI_RE, "");
 }
 
+// `m` flag is required because the cumulative-stdout check in
+// spawnDrizzleKitWithEarlyTermination tests this against a multi-line buffer
+// (`Pulling schema...\n` precedes the first SQL line). Without it, `^` only
+// matches the start of the buffer and the idle-timer fallback never arms.
 const SQL_START_RE =
-  /^\s*(CREATE|ALTER|DROP|TRUNCATE|COMMENT|INSERT|UPDATE|DELETE)\b/i;
+  /^\s*(CREATE|ALTER|DROP|TRUNCATE|COMMENT|INSERT|UPDATE|DELETE)\b/im;
 
 const PROMPT_MARKER_RE = /Are you sure|\(y\/N\)|❯|Yes,\s*I want/i;
 
@@ -329,12 +333,12 @@ const DESTRUCTIVE_PATTERNS: Array<{
   { regex: /\bDROP\s+SCHEMA\b/i, reason: "drop_schema" },
   { regex: /\bTRUNCATE\b/i, reason: "truncate" },
   {
-    regex: /\bALTER\s+TABLE\b[\s\S]*\bDROP\s+COLUMN\b/i,
+    regex: /\bALTER\s+TABLE\b[\s\S]*?\bDROP\s+COLUMN\b/i,
     reason: "drop_column",
   },
   {
     regex:
-      /\bALTER\s+TABLE\b[\s\S]*\bALTER\s+COLUMN\b[\s\S]*\b(SET\s+DATA\s+)?TYPE\b/i,
+      /\bALTER\s+TABLE\b[\s\S]*?\bALTER\s+COLUMN\b[\s\S]*?\b(SET\s+DATA\s+)?TYPE\b/i,
     reason: "alter_column_type",
   },
 ];

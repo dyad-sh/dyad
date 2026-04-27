@@ -22,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -71,6 +72,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const previewHasDataLoss = previewMutation.data?.hasDataLoss ?? false;
 
   const productionBranch = branches.find(
     (branch) => branch.type === "production",
@@ -209,6 +211,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
             setPreviewOpen(false);
             previewMutation.reset();
           }}
+          onRetry={() => previewMutation.mutate()}
         />
 
         <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -219,6 +222,11 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {confirmDescription}
+                {previewHasDataLoss && (
+                  <span className="mt-2 block font-medium text-red-700 dark:text-red-300">
+                    {t("integrations.migration.confirmDestructiveWarning")}
+                  </span>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -226,6 +234,11 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
                 {t("integrations.migration.cancel")}
               </AlertDialogCancel>
               <AlertDialogAction
+                className={
+                  previewHasDataLoss
+                    ? buttonVariants({ variant: "destructive" })
+                    : undefined
+                }
                 onClick={() => {
                   setShowErrorDetails(false);
                   pushMutation.mutate();

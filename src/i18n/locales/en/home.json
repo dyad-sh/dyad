@@ -662,12 +662,14 @@
         "continueWithDataLoss": "I understand, continue",
         "cancel": "Cancel",
         "close": "Close",
+        "retry": "Retry",
         "destructive": {
           "title": "Destructive changes detected",
           "subtitle_one": "{{count}} statement will permanently remove or alter existing data.",
           "subtitle_other": "{{count}} statements will permanently remove or alter existing data."
         }
-      }
+      },
+      "confirmDestructiveWarning": "This migration includes destructive changes that may result in data loss."
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",

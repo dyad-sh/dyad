@@ -18,6 +18,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { pendingScreenshotAppIdAtom } from "@/atoms/previewAtoms";
 import type { ChatResponseEnd, App, Chat } from "@/ipc/types";
 import type { ChatSummary } from "@/lib/schemas";
 import { useChats } from "./useChats";
@@ -30,7 +31,7 @@ import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
-import { useCheckProblems } from "./useCheckProblems";
+
 import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
@@ -62,7 +63,7 @@ export function useStreamChat({
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
-  const { checkProblems } = useCheckProblems(selectedAppId);
+  const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
@@ -88,6 +89,7 @@ export function useStreamChat({
     async ({
       prompt,
       chatId,
+      appId,
       redo,
       attachments,
       selectedComponents,
@@ -96,6 +98,7 @@ export function useStreamChat({
     }: {
       prompt: string;
       chatId: number;
+      appId?: number;
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
@@ -169,6 +172,28 @@ export function useStreamChat({
       }
 
       let hasIncrementedStreamCount = false;
+      // Resolve the target app from the chat itself when the caller didn't
+      // pass one. Falling back to `selectedAppId` is wrong for background
+      // queue processing, where the user may have switched to a different
+      // app while a queued message streams for the original chat.
+      let resolvedAppIdFromChat: number | null = null;
+      if (appId === undefined) {
+        // queryKeys.chats.all matches detail/search caches too (non-array data),
+        // so guard against non-array entries before calling .find.
+        const chatsCaches = queryClient.getQueriesData<ChatSummary[]>({
+          queryKey: queryKeys.chats.all,
+        });
+        for (const [, cachedChats] of chatsCaches) {
+          if (!Array.isArray(cachedChats)) continue;
+          const found = cachedChats.find((c) => c.id === chatId);
+          if (found) {
+            resolvedAppIdFromChat = found.appId;
+            break;
+          }
+        }
+      }
+      const targetAppId =
+        appId ?? resolvedAppIdFromChat ?? selectedAppId ?? null;
       try {
         const cachedChat =
           requestedChatMode === null
@@ -290,10 +315,10 @@ export function useStreamChat({
                   !document.hasFocus()
                 ) {
                   const app = queryClient.getQueryData<App | null>(
-                    queryKeys.apps.detail({ appId: selectedAppId }),
+                    queryKeys.apps.detail({ appId: targetAppId ?? null }),
                   );
                   const chats = queryClient.getQueryData<ChatSummary[]>(
-                    queryKeys.chats.list({ appId: selectedAppId }),
+                    queryKeys.chats.list({ appId: targetAppId ?? null }),
                   );
                   const chat = chats?.find((c) => c.id === chatId);
                   const appName = app?.name ?? "Dyad";
@@ -313,8 +338,15 @@ export function useStreamChat({
                     setIsPreviewOpen(true);
                   }
                   refreshAppIframe();
-                  if (settings?.enableAutoFixProblems) {
-                    checkProblems();
+                  if (targetAppId) {
+                    setPendingScreenshotAppId(targetAppId);
+                  }
+                  if (settings?.enableAutoFixProblems && targetAppId) {
+                    queryClient.invalidateQueries({
+                      queryKey: queryKeys.problems.byApp({
+                        appId: targetAppId,
+                      }),
+                    });
                   }
                 }
                 if (response.extraFiles) {
@@ -449,7 +481,6 @@ export function useStreamChat({
       setIsStreamingById,
       setIsPreviewOpen,
       setStreamCompletedSuccessfullyById,
-      checkProblems,
       selectedAppId,
       refetchUserBudget,
       settings,

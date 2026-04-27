@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { PlusCircle, Search } from "lucide-react";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   SidebarGroup,
@@ -9,15 +9,15 @@ import {
   SidebarMenu,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useOpenApp } from "@/hooks/useOpenApp";
 import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { AppItem } from "./appItem";
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
-  const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const openApp = useOpenApp();
   const { apps, loading, error } = useLoadApps();
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
@@ -49,13 +49,8 @@ export function AppList({ show }: { show?: boolean }) {
   }
 
   const handleAppClick = (id: number) => {
-    setSelectedAppId(id);
-    setSelectedChatId(null);
     setIsSearchDialogOpen(false);
-    navigate({
-      to: "/",
-      search: { appId: id },
-    });
+    openApp(id);
   };
 
   const handleNewApp = () => {

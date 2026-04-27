@@ -14,7 +14,7 @@
       throw error;
     }
   }
-  async function handleScreenshotRequest() {
+  async function handleScreenshotRequest(requestId) {
     try {
       console.debug("[dyad-screenshot] Capturing screenshot...");
 
@@ -26,6 +26,7 @@
       window.parent.postMessage(
         {
           type: "dyad-screenshot-response",
+          requestId,
           success: true,
           dataUrl: dataUrl,
         },
@@ -38,6 +39,7 @@
       window.parent.postMessage(
         {
           type: "dyad-screenshot-response",
+          requestId,
           success: false,
           error: error.message,
         },
@@ -50,7 +52,7 @@
     if (event.source !== window.parent) return;
 
     if (event.data.type === "dyad-take-screenshot") {
-      handleScreenshotRequest();
+      handleScreenshotRequest(event.data.requestId);
     }
   });
 })();

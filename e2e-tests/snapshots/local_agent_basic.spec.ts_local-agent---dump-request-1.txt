@@ -357,7 +357,7 @@
         "type": "function",
         "function": {
           "name": "set_chat_summary",
-          "description": "Set the title/summary for this chat message. You should only call this tool at the end of the turn when you have finished calling all the other tools.",
+          "description": "Set the title/summary for this chat. Call this tool exactly once early in the turn, as soon as you understand the user's request well enough to write a short title. Do not wait until the end of the turn.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",

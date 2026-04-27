@@ -793,6 +793,7 @@ export const SecurityPanel = () => {
       await streamMessage({
         prompt: "/security-review",
         chatId,
+        appId: selectedAppId,
         onSettled: () => {
           refetch();
           setIsRunningReview(false);
@@ -829,6 +830,7 @@ ${finding.description}`;
       await streamMessage({
         prompt,
         chatId,
+        appId: selectedAppId,
         onSettled: () => {
           setFixingFindingKey(null);
         },
@@ -904,6 +906,7 @@ ${issuesList}`;
       await streamMessage({
         prompt,
         chatId,
+        appId: selectedAppId,
         onSettled: () => {
           setIsFixingSelected(false);
           setSelectedFindings(new Set());

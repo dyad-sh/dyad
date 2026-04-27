@@ -350,10 +350,18 @@ function parseCustomTags(content: string): ContentPiece[] {
 function getState({
   isStreaming,
   inProgress,
+  explicitState,
 }: {
   isStreaming?: boolean;
   inProgress?: boolean;
+  explicitState?: string;
 }): CustomTagState {
+  if (explicitState === "aborted" || explicitState === "finished") {
+    return explicitState;
+  }
+  if (explicitState === "in-progress" || explicitState === "pending") {
+    return "pending";
+  }
   if (!inProgress) {
     return "finished";
   }
@@ -822,7 +830,11 @@ function renderCustomTag(
           node={{
             properties: {
               title: attributes.title || "Processing...",
-              state: getState({ isStreaming, inProgress }),
+              state: getState({
+                isStreaming,
+                inProgress,
+                explicitState: attributes.state,
+              }),
             },
           }}
         >

@@ -8,9 +8,16 @@ import {
   gitAddAll,
   getGitUncommittedFiles,
 } from "@/ipc/utils/git_utils";
-import { deployAllSupabaseFunctions } from "../../../../../../supabase_admin/supabase_utils";
+import {
+  deployAllSupabaseFunctions,
+  type SupabaseDeployProgress,
+} from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
-import type { AgentContext } from "../tools/types";
+import {
+  escapeXmlAttr,
+  escapeXmlContent,
+  type AgentContext,
+} from "../tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("file_operations");
@@ -19,6 +26,24 @@ export interface FileOperationResult {
   success: boolean;
   error?: string;
   warning?: string;
+}
+
+function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
+  const isFinished = progress.phase === "finished";
+  const title = isFinished
+    ? `Supabase functions deployed: ${progress.completed}/${progress.total} complete`
+    : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`;
+  const content = [
+    `${progress.succeeded} succeeded`,
+    `${progress.failed} failed`,
+    `${progress.active} active`,
+    `${progress.queued} queued`,
+  ];
+  if (progress.functionName) {
+    content.push(`Latest: ${progress.functionName}`);
+  }
+
+  return `<dyad-status title="${escapeXmlAttr(title)}">\n${escapeXmlContent(content.join("\n"))}${isFinished ? "\n</dyad-status>" : ""}`;
 }
 
 /**
@@ -31,6 +56,8 @@ export async function deployAllFunctionsIfNeeded(
     | "supabaseProjectId"
     | "supabaseOrganizationSlug"
     | "isSharedModulesChanged"
+    | "onXmlStream"
+    | "onXmlComplete"
   >,
 ): Promise<FileOperationResult> {
   if (!ctx.supabaseProjectId || !ctx.isSharedModulesChanged) {
@@ -45,6 +72,14 @@ export async function deployAllFunctionsIfNeeded(
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+      onProgress: (progress) => {
+        const statusXml = renderSupabaseDeployStatus(progress);
+        if (progress.phase === "finished") {
+          ctx.onXmlComplete(statusXml);
+        } else {
+          ctx.onXmlStream(statusXml);
+        }
+      },
     });
 
     if (deployErrors.length > 0) {

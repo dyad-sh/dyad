@@ -3,6 +3,7 @@ import {
   isServerFunction,
   isSharedServerModule,
   extractFunctionNameFromPath,
+  mapSettledWithConcurrency,
 } from "@/supabase_admin/supabase_utils";
 import {
   toPosixPath,
@@ -10,6 +11,11 @@ import {
   buildSignature,
   type FileStatEntry,
 } from "@/supabase_admin/supabase_management_client";
+import {
+  enqueueSupabaseDeploy,
+  resetSupabaseDeployQueuesForTests,
+  SUPABASE_DEPLOY_CONCURRENCY,
+} from "@/supabase_admin/supabase_deploy_queue";
 
 describe("isServerFunction", () => {
   describe("returns true for valid function paths", () => {
@@ -348,5 +354,89 @@ describe("buildSignature", () => {
       },
     ];
     expect(buildSignature(entries1)).not.toBe(buildSignature(entries2));
+  });
+});
+
+describe("mapSettledWithConcurrency", () => {
+  it("limits active tasks and preserves input order", async () => {
+    let activeCount = 0;
+    let maxActiveCount = 0;
+
+    const results = await mapSettledWithConcurrency(
+      [1, 2, 3, 4, 5],
+      2,
+      async (value) => {
+        activeCount++;
+        maxActiveCount = Math.max(maxActiveCount, activeCount);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        activeCount--;
+        if (value === 3) {
+          throw new Error("boom");
+        }
+        return value * 10;
+      },
+    );
+
+    expect(maxActiveCount).toBeLessThanOrEqual(2);
+    expect(results).toEqual([
+      { status: "fulfilled", value: 10 },
+      { status: "fulfilled", value: 20 },
+      {
+        status: "rejected",
+        reason: expect.objectContaining({ message: "boom" }),
+      },
+      { status: "fulfilled", value: 40 },
+      { status: "fulfilled", value: 50 },
+    ]);
+  });
+});
+
+describe("enqueueSupabaseDeploy", () => {
+  it("limits active deploys per project", async () => {
+    resetSupabaseDeployQueuesForTests();
+
+    let activeCount = 0;
+    let maxActiveCount = 0;
+    const startedIndexes: number[] = [];
+    const releaseTasks: Array<() => void> = [];
+
+    const tasks = Array.from(
+      { length: SUPABASE_DEPLOY_CONCURRENCY + 4 },
+      (_, index) =>
+        enqueueSupabaseDeploy("project-1", async () => {
+          startedIndexes.push(index);
+          activeCount++;
+          maxActiveCount = Math.max(maxActiveCount, activeCount);
+          await new Promise<void>((resolve) => {
+            releaseTasks[index] = resolve;
+          });
+          activeCount--;
+          return index;
+        }),
+    );
+
+    expect(startedIndexes).toHaveLength(SUPABASE_DEPLOY_CONCURRENCY);
+    expect(maxActiveCount).toBe(SUPABASE_DEPLOY_CONCURRENCY);
+
+    for (const releaseTask of releaseTasks.slice(
+      0,
+      SUPABASE_DEPLOY_CONCURRENCY,
+    )) {
+      releaseTask();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(startedIndexes).toHaveLength(SUPABASE_DEPLOY_CONCURRENCY + 4);
+
+    for (const releaseTask of releaseTasks.slice(SUPABASE_DEPLOY_CONCURRENCY)) {
+      releaseTask();
+    }
+
+    await expect(Promise.all(tasks)).resolves.toEqual(
+      Array.from(
+        { length: SUPABASE_DEPLOY_CONCURRENCY + 4 },
+        (_, index) => index,
+      ),
+    );
   });
 });

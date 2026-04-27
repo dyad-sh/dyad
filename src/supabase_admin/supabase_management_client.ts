@@ -15,6 +15,7 @@ import {
   retryWithRateLimit,
 } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
 
 const fsPromises = fs.promises;
 
@@ -760,6 +761,30 @@ export async function deploySupabaseFunction({
   bundleOnly?: boolean;
   organizationSlug: string | null;
 }): Promise<DeployedFunctionResponse> {
+  return enqueueSupabaseDeploy(supabaseProjectId, () =>
+    deploySupabaseFunctionUnqueued({
+      supabaseProjectId,
+      functionName,
+      appPath,
+      bundleOnly,
+      organizationSlug,
+    }),
+  );
+}
+
+async function deploySupabaseFunctionUnqueued({
+  supabaseProjectId,
+  functionName,
+  appPath,
+  bundleOnly = false,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  functionName: string;
+  appPath: string;
+  bundleOnly?: boolean;
+  organizationSlug: string | null;
+}): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
@@ -798,6 +823,19 @@ export async function deploySupabaseFunction({
     content: Buffer.from(JSON.stringify(importMapObject, null, 2)),
     date: new Date(),
   });
+
+  if (IS_TEST_BUILD) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return {
+      id: `fake-${functionName}`,
+      slug: functionName,
+      name: functionName,
+      status: "ACTIVE",
+      version: 1,
+      entrypoint_path: entrypointPath,
+      import_map_path: importMapRelPath,
+    };
+  }
 
   // 5) Prepare multipart form-data
   const supabase = await getSupabaseClient({ organizationSlug });
@@ -868,6 +906,13 @@ export async function bulkUpdateFunctions({
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
   );
+
+  if (IS_TEST_BUILD) {
+    logger.info(
+      `Skipped bulk updating ${functions.length} functions for project: ${supabaseProjectId} during test build`,
+    );
+    return;
+  }
 
   const supabase = await getSupabaseClient({ organizationSlug });
 

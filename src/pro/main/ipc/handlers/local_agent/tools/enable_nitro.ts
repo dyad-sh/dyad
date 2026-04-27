@@ -77,6 +77,10 @@ export const enableNitroTool: ToolDefinition<
   buildXml: () => `<dyad-enable-nitro></dyad-enable-nitro>`,
 
   execute: async (_args, ctx: AgentContext) => {
+    // Belt-and-suspenders: `isEnabled` already filters this tool out when
+    // `ctx.nitroEnabled` is true, but we re-check here in case the LLM tries
+    // to call it twice in the same turn (e.g. parallel tool calls or a retry)
+    // since `ctx.nitroEnabled` is updated below after the DB write.
     if (ctx.nitroEnabled) {
       return "Nitro is already enabled for this app. Skipping setup.";
     }
@@ -108,15 +112,22 @@ export const enableNitroTool: ToolDefinition<
       const result = await installPackages({
         packages: ["nitro"],
         appPath: ctx.appPath,
+        dev: true,
       });
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }
 
+      // Keep this as the LAST step — filesystem rollback cannot undo a
+      // committed DB write.
       await db
         .update(apps)
         .set({ nitroEnabled: true })
         .where(eq(apps.id, ctx.appId));
+      // Mirror the DB state on the in-memory ctx so any subsequent
+      // `enable_nitro` call in the same agent turn hits the early-return
+      // guard above instead of re-running install.
+      ctx.nitroEnabled = true;
     } catch (error) {
       try {
         await restoreAiRules(ctx.appPath, rulesBackup.backup);

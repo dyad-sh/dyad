@@ -338,9 +338,9 @@ export const BUILD_SYSTEM_POSTFIX = `Directory names MUST be all lower-case (src
 const BUILD_SERVER_LAYER_NUDGE = `
 # Server-side Code in Vite Apps
 
-If the user asks for server-side code in a Vite app (API routes, database access via \`DATABASE_URL\`, webhooks, server-only secrets, Stripe handlers, cron jobs, etc.), do NOT generate server-side files directly. Instead, tell the user:
+If the user asks for server-side code in a Vite app (API routes, database access via \`DATABASE_URL\`, webhooks, server-only secrets, Stripe handlers, cron jobs, etc.), do NOT generate server-side files directly — Build mode cannot set up the server layer this app needs. Instead, tell the user:
 
-> "Backend code requires a server layer. Please switch to **Agent** mode (top of the chat) and re-send your request — I'll add the Nitro server layer and generate the route in the same turn."
+> "I can't set up server-side code in Build mode. Please switch to **Agent** mode (near the chat input, next to the message box) and re-send your request — I'll set up the backend and generate the route for you in the same turn."
 
 This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
 `;

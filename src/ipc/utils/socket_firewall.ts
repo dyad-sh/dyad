@@ -208,11 +208,18 @@ export function buildAddDependencyCommand(
   packages: string[],
   packageManager: PackageManager,
   useSocketFirewall: boolean,
+  options: { dev?: boolean } = {},
 ): { command: string; args: string[] } {
+  const { dev = false } = options;
   const packageManagerArgs =
     packageManager === "pnpm"
-      ? ["add", ...packages]
-      : ["install", "--legacy-peer-deps", ...packages];
+      ? ["add", ...(dev ? ["-D"] : []), ...packages]
+      : [
+          "install",
+          "--legacy-peer-deps",
+          ...(dev ? ["--save-dev"] : []),
+          ...packages,
+        ];
 
   if (useSocketFirewall) {
     return {

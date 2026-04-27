@@ -158,9 +158,11 @@ async function runAddDependencyCommand(
 export async function installPackages({
   packages,
   appPath,
+  dev = false,
 }: {
   packages: string[];
   appPath: string;
+  dev?: boolean;
 }): Promise<ExecuteAddDependencyResult> {
   const invalidPackage = packages.find(
     (pkg) => !NPM_PACKAGE_NAME_PATTERN.test(pkg),
@@ -192,7 +194,9 @@ export async function installPackages({
   const packageManager = await detectPreferredPackageManager();
   const { succeeded, installResults, lastError } =
     await runAddDependencyCommand(
-      buildAddDependencyCommand(packages, packageManager, useSocketFirewall),
+      buildAddDependencyCommand(packages, packageManager, useSocketFirewall, {
+        dev,
+      }),
       appPath,
     );
 

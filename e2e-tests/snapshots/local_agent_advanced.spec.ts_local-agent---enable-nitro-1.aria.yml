@@ -28,7 +28,6 @@
 - paragraph:
   - text: API routes can now live under
   - code: "`server/routes/api/`"
-  - text: . Secrets and database clients must stay on the server.
 - paragraph: Server layer added. Now update vite.config.ts and write the API route.
 - button "Copy":
   - img

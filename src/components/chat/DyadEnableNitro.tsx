@@ -36,7 +36,6 @@ export const DyadEnableNitro: React.FC<DyadEnableNitroProps> = ({ state }) => {
             <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-muted">
               server/routes/api/
             </code>
-            . Secrets and database clients must stay on the server.
           </p>
         </div>
       )}

@@ -27,13 +27,11 @@ import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface MigrationPanelProps {
   appId: number;
 }
-
-const dependenciesStatusQueryKey = (appId: number) =>
-  ["migration", "dependencies-status", appId] as const;
 
 export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
@@ -44,7 +42,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   const queryClient = useQueryClient();
 
   const dependenciesStatus = useQuery({
-    queryKey: dependenciesStatusQueryKey(appId),
+    queryKey: queryKeys.migration.dependenciesStatus({ appId }),
     queryFn: () => ipc.migration.dependenciesStatus({ appId }),
     staleTime: 0,
     refetchOnMount: "always",
@@ -56,7 +54,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
 
   const invalidateDepsStatus = () =>
     queryClient.invalidateQueries({
-      queryKey: dependenciesStatusQueryKey(appId),
+      queryKey: queryKeys.migration.dependenciesStatus({ appId }),
     });
 
   const pushMutation = useMutation({

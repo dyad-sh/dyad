@@ -14,7 +14,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
-import { gitAddAll, gitCommit } from "../utils/git_utils";
+import { gitAdd, gitCommit } from "../utils/git_utils";
 import {
   logger,
   getProductionBranchId,
@@ -133,7 +133,16 @@ export function registerMigrationHandlers() {
       await installMigrationDeps(appPath);
 
       try {
-        await gitAddAll({ path: appPath });
+        // Stage only the files modified by the dependency install so we don't
+        // sweep unrelated user changes into the commit.
+        await gitAdd({ path: appPath, filepath: "package.json" });
+        for (const lockfile of [
+          "package-lock.json",
+          "pnpm-lock.yaml",
+          "yarn.lock",
+        ]) {
+          await gitAdd({ path: appPath, filepath: lockfile }).catch(() => {});
+        }
         await gitCommit({
           path: appPath,
           message: "[dyad] install drizzle-kit and drizzle-orm for migrations",

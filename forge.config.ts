@@ -121,11 +121,7 @@ const config: ForgeConfig = {
       unpackDir: "node_modules/node-pty",
     },
     ignore,
-    extraResource: [
-      "node_modules/dugite/git",
-      "node_modules/@vscode",
-      "node_modules/drizzle-orm",
-    ],
+    extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {

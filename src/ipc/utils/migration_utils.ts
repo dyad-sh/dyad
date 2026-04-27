@@ -58,6 +58,7 @@ export async function areMigrationDepsInstalled(
 ): Promise<boolean> {
   try {
     await fs.access(getDrizzleKitPath(appPath));
+    await fs.access(path.join(appPath, "node_modules", "drizzle-orm"));
     return true;
   } catch {
     return false;
@@ -65,9 +66,9 @@ export async function areMigrationDepsInstalled(
 }
 
 export async function installMigrationDeps(appPath: string): Promise<void> {
-  /*if (IS_TEST_BUILD) {
+  if (IS_TEST_BUILD) {
     return;
-  }*/
+  }
 
   const settings = await readEffectiveSettings();
   let useSocketFirewall = settings.blockUnsafeNpmPackages !== false;

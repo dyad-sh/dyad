@@ -903,6 +903,24 @@ export async function bulkUpdateFunctions({
   functions: DeployedFunctionResponse[];
   organizationSlug: string | null;
 }): Promise<void> {
+  return enqueueSupabaseDeploy(supabaseProjectId, false, () =>
+    bulkUpdateFunctionsUnqueued({
+      supabaseProjectId,
+      functions,
+      organizationSlug,
+    }),
+  );
+}
+
+async function bulkUpdateFunctionsUnqueued({
+  supabaseProjectId,
+  functions,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  functions: DeployedFunctionResponse[];
+  organizationSlug: string | null;
+}): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
   );

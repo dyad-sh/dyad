@@ -19,6 +19,7 @@ import {
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { withLock } from "@/ipc/utils/lock_utils";
 
 const logger = log.scope("search_replace");
 
@@ -106,40 +107,42 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       ctx.isSharedModulesChanged = true;
     }
 
-    if (!fs.existsSync(fullFilePath)) {
-      throw new DyadError(
-        `File does not exist: ${args.file_path}`,
-        DyadErrorKind.NotFound,
-      );
-    }
+    await withLock(`filewrite:${fullFilePath}`, async () => {
+      if (!fs.existsSync(fullFilePath)) {
+        throw new DyadError(
+          `File does not exist: ${args.file_path}`,
+          DyadErrorKind.NotFound,
+        );
+      }
 
-    const original = await fs.promises.readFile(fullFilePath, "utf8");
+      const original = await fs.promises.readFile(fullFilePath, "utf8");
 
-    // Construct the operations string in the expected format
-    const escapedOld = escapeSearchReplaceMarkers(args.old_string);
-    const escapedNew = escapeSearchReplaceMarkers(args.new_string);
-    const operations = `<<<<<<< SEARCH\n${escapedOld}\n=======\n${escapedNew}\n>>>>>>> REPLACE`;
+      // Construct the operations string in the expected format
+      const escapedOld = escapeSearchReplaceMarkers(args.old_string);
+      const escapedNew = escapeSearchReplaceMarkers(args.new_string);
+      const operations = `<<<<<<< SEARCH\n${escapedOld}\n=======\n${escapedNew}\n>>>>>>> REPLACE`;
 
-    const result = applySearchReplace(original, operations);
+      const result = applySearchReplace(original, operations);
 
-    if (!result.success || typeof result.content !== "string") {
-      sendTelemetryEvent("local_agent:search_replace:failure", {
-        filePath: args.file_path,
-        error: result.error ?? "unknown",
+      if (!result.success || typeof result.content !== "string") {
+        sendTelemetryEvent("local_agent:search_replace:failure", {
+          filePath: args.file_path,
+          error: result.error ?? "unknown",
+        });
+        throw new Error(
+          `Failed to apply search-replace: ${result.error ?? "unknown"}`,
+        );
+      }
+
+      await fs.promises.writeFile(fullFilePath, result.content);
+      logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
+      queueCloudSandboxSnapshotSync({
+        appId: ctx.appId,
+        changedPaths: [args.file_path],
       });
-      throw new Error(
-        `Failed to apply search-replace: ${result.error ?? "unknown"}`,
-      );
-    }
-
-    await fs.promises.writeFile(fullFilePath, result.content);
-    logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
-    queueCloudSandboxSnapshotSync({
-      appId: ctx.appId,
-      changedPaths: [args.file_path],
-    });
-    sendTelemetryEvent("local_agent:search_replace:success", {
-      filePath: args.file_path,
+      sendTelemetryEvent("local_agent:search_replace:success", {
+        filePath: args.file_path,
+      });
     });
 
     // Deploy Supabase function if applicable

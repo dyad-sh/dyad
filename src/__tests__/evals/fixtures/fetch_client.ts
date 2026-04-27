@@ -1,9 +1,6 @@
 // fetch_client.ts — authenticated fetch wrapper used by all service layers
 
-import { createLogger } from "./logger";
 import { getAuthToken } from "./auth";
-
-const logger = createLogger("fetch-client");
 
 const BASE_URL =
   process.env.SERVICE_BASE_URL ?? "https://api.internal.example.com";

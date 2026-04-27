@@ -1358,7 +1358,17 @@ export async function handleLocalAgentStream(
     // In read-only and plan mode, skip deploys and commits
     if (!readOnly && !planModeOnly) {
       // Deploy all Supabase functions if shared modules changed
-      await deployAllFunctionsIfNeeded(ctx);
+      const deployResult = await deployAllFunctionsIfNeeded(ctx);
+      if (deployResult.warning) {
+        ctx.onXmlComplete(
+          `<dyad-output type="warning" message="${escapeXmlAttr("Supabase function deploy warning")}">${escapeXmlContent(deployResult.warning)}</dyad-output>`,
+        );
+      }
+      if (!deployResult.success) {
+        ctx.onXmlComplete(
+          `<dyad-output type="error" message="${escapeXmlAttr("Failed to deploy Supabase functions")}">${escapeXmlContent(deployResult.error ?? "Unknown deploy error")}</dyad-output>`,
+        );
+      }
 
       // Commit all changes
       const commitResult = await commitAllChanges(ctx, ctx.chatSummary);

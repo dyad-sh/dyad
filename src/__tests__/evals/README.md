@@ -4,14 +4,14 @@ LLM eval suite for tool-use quality. Six suites run the same 16 cases and
 the same three models (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) but with
 different tool sets and system prompts:
 
-| Suite name                | Tools available                             | System prompt                                 |
-| ------------------------- | ------------------------------------------- | --------------------------------------------- |
-| `search_replace`          | `search_replace` only                       | Minimal custom "precise code editor" prompt   |
-| `search_replace_few`      | `search_replace` only                       | Variant prompt encouraging fewer tool calls   |
-| `edit_file`               | `edit_file` only                            | Minimal custom `edit_file` prompt             |
-| `basic_agent`             | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT`  |
-| `pro_agent`               | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro)  |
-| `pro_agent_experimental`  | `search_replace`, `edit_file`, `write_file` | Editable copy of the Pro prompt for tweaking  |
+| Suite name               | Tools available                             | System prompt                                |
+| ------------------------ | ------------------------------------------- | -------------------------------------------- |
+| `search_replace`         | `search_replace` only                       | Minimal custom "precise code editor" prompt  |
+| `search_replace_few`     | `search_replace` only                       | Variant prompt encouraging fewer tool calls  |
+| `edit_file`              | `edit_file` only                            | Minimal custom `edit_file` prompt            |
+| `basic_agent`            | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT` |
+| `pro_agent`              | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro) |
+| `pro_agent_experimental` | `search_replace`, `edit_file`, `write_file` | Editable copy of the Pro prompt for tweaking |
 
 Each case gives the model a real source file plus an editing instruction,
 runs the model with the suite's tools wired up, applies the produced edits,
@@ -213,8 +213,8 @@ one folder. Folder names sort chronologically under `ls`.
 - `judge` — the judge's verdict: `label`, `modelName`, `durationMs`,
   `usage`, `pass` (boolean), and `explanation` (the judge's written
   reasoning, with the trailing `PASS`/`FAIL` verdict line stripped).
-- `passed` — the overall test outcome. Requires the judge to say `PASS` *and*
-  all structural checks to pass *and* no exceptions to be thrown.
+- `passed` — the overall test outcome. Requires the judge to say `PASS` _and_
+  all structural checks to pass _and_ no exceptions to be thrown.
 - `errorMessage` — set when the test threw (tool-call failure, structural
   check failure, judge FAIL, etc.); `null` otherwise.
 

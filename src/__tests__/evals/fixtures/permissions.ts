@@ -110,16 +110,27 @@ export function createPolicy(role: string): Policy {
 
 export function hasPermission(policy: Policy, action: string): boolean {
   switch (action) {
-    case "view_content":    return policy.canViewContent();
-    case "create_content":  return policy.canCreateContent();
-    case "edit_content":    return policy.canEditContent();
-    case "delete_content":  return policy.canDeleteContent();
-    case "view_users":      return policy.canViewUsers();
-    case "manage_users":    return policy.canManageUsers();
-    case "view_roles":      return policy.canViewRoles();
-    case "manage_roles":    return policy.canManageRoles();
-    case "view_audit_log":  return policy.canViewAuditLog();
-    case "export_data":     return policy.canExportData();
-    default:                return false;
+    case "view_content":
+      return policy.canViewContent();
+    case "create_content":
+      return policy.canCreateContent();
+    case "edit_content":
+      return policy.canEditContent();
+    case "delete_content":
+      return policy.canDeleteContent();
+    case "view_users":
+      return policy.canViewUsers();
+    case "manage_users":
+      return policy.canManageUsers();
+    case "view_roles":
+      return policy.canViewRoles();
+    case "manage_roles":
+      return policy.canManageRoles();
+    case "view_audit_log":
+      return policy.canViewAuditLog();
+    case "export_data":
+      return policy.canExportData();
+    default:
+      return false;
   }
 }

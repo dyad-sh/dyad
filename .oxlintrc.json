@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["e2e-tests/fixtures/**/*"],
+  "ignorePatterns": [
+    "e2e-tests/fixtures/**/*",
+    "src/__tests__/evals/fixtures/**/*"
+  ],
   "categories": {
     "correctness": "warn"
   },

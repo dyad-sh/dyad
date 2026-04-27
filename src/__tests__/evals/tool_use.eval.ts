@@ -752,8 +752,7 @@ const SUITES: SuiteConfig[] = [
     // (see helpers/prompts.ts) so prompt variations can be recorded
     // without modifying the production prompt.
     name: "pro_agent_experimental",
-    displayName:
-      "pro_agent_experimental (pro_agent with editable prompt copy)",
+    displayName: "pro_agent_experimental (pro_agent with editable prompt copy)",
     systemPrompt: PRO_AGENT_EXPERIMENTAL_SYSTEM_PROMPT,
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),

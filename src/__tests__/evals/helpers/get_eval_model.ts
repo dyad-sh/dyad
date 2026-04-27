@@ -7,6 +7,12 @@ import type { UserSettings } from "@/lib/schemas";
 
 export type EvalProvider = "anthropic" | "openai" | "google";
 
+// Eval-only model identifier. Lives here (not in production constants)
+// because Dyad's production picker does not currently surface GPT 5.4 —
+// it had refusal/routing issues — but the eval harness still uses it as
+// the judge model.
+export const GPT_5_4 = "gpt-5.4";
+
 // Single source of truth for the Dyad Engine URL across the eval helpers
 // and any out-of-band fetches the harness makes (e.g. turbo-file-edit).
 export const DYAD_ENGINE_URL =

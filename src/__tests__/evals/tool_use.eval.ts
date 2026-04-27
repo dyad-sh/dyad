@@ -12,10 +12,10 @@ import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 import {
   SONNET_4_6,
   GEMINI_3_FLASH,
-  GPT_5_4,
 } from "@/ipc/shared/language_model_constants";
 import {
   DYAD_ENGINE_URL,
+  GPT_5_4,
   getEvalModel,
   hasDyadProKey,
   type EvalProvider,
@@ -943,7 +943,7 @@ async function runCase(
     throw err;
   } finally {
     clearTimeout(timeoutHandle);
-    recordEvalRun({
+    await recordEvalRun({
       timestamp: runTimestamp,
       suite: suite.name,
       caseName: c.name,

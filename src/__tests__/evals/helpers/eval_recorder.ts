@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { LanguageModelUsage } from "ai";
 
@@ -281,35 +281,44 @@ export function recordDirFor(
   );
 }
 
-export function recordEvalRun(record: EvalRunRecord): void {
+export async function recordEvalRun(record: EvalRunRecord): Promise<void> {
   const recordDir = recordDirFor(
     record.suite,
     record.caseName,
     record.model.label,
   );
-  mkdirSync(recordDir, { recursive: true });
+  await mkdir(recordDir, { recursive: true });
 
-  writeFileSync(
-    resolve(recordDir, "record.json"),
-    JSON.stringify(record, null, 2) + "\n",
-  );
-
-  writeFileSync(
-    resolve(recordDir, "record.txt"),
-    renderEvalRunAsText(record),
-  );
-
-  writeDetailsFolder(recordDir, record);
+  const writes: Promise<void>[] = [
+    writeFile(
+      resolve(recordDir, "record.json"),
+      JSON.stringify(record, null, 2) + "\n",
+    ),
+    writeFile(resolve(recordDir, "record.txt"), renderEvalRunAsText(record)),
+    writeDetailsFolder(recordDir, record),
+  ];
 
   if (record.toolCalls.length > 0) {
-    const toolCallsDir = resolve(recordDir, "tool_calls");
-    mkdirSync(toolCallsDir, { recursive: true });
-    const padWidth = Math.max(2, String(record.toolCalls.length).length);
-    for (const tc of record.toolCalls) {
+    writes.push(writeToolCallsFolder(recordDir, record));
+  }
+
+  await Promise.all(writes);
+}
+
+async function writeToolCallsFolder(
+  recordDir: string,
+  record: EvalRunRecord,
+): Promise<void> {
+  const toolCallsDir = resolve(recordDir, "tool_calls");
+  await mkdir(toolCallsDir, { recursive: true });
+  const padWidth = Math.max(2, String(record.toolCalls.length).length);
+
+  await Promise.all(
+    record.toolCalls.map(async (tc) => {
       const base = String(tc.index + 1).padStart(padWidth, "0");
 
       // Combined summary (easy to scan in one file).
-      writeFileSync(
+      const summaryWrite = writeFile(
         resolve(toolCallsDir, `${base}.txt`),
         renderToolCallAsText(tc, {
           suite: record.suite,
@@ -322,48 +331,51 @@ export function recordEvalRun(record: EvalRunRecord): void {
       // the raw content — no headers — so it can be opened in an editor
       // with syntax highlighting matching the source file's extension.
       const splitDir = resolve(toolCallsDir, base);
-      mkdirSync(splitDir, { recursive: true });
+      await mkdir(splitDir, { recursive: true });
       const ext = extensionFor(tc.filePath);
-      writeFileSync(resolve(splitDir, `file_before${ext}`), tc.fileBefore);
-      writeFileSync(resolve(splitDir, `file_after${ext}`), tc.fileAfter);
-      writeFileSync(resolve(splitDir, "diff.patch"), tc.diff || "");
+
+      const argLengths: string[] = [];
+      const argWrites: Promise<void>[] = [];
       // One file per argument. Strings use the target file's extension so
       // they open with matching syntax highlighting; non-strings become
       // JSON blobs.
-      const argLengths: string[] = [];
       for (const [key, value] of Object.entries(tc.args)) {
         const { text, length } = stringifyArg(value);
         const argExt = typeof value === "string" ? ext : ".json";
-        writeFileSync(resolve(splitDir, `${key}${argExt}`), text);
+        argWrites.push(writeFile(resolve(splitDir, `${key}${argExt}`), text));
         argLengths.push(`${key}: ${length} chars`);
       }
-      writeFileSync(
-        resolve(splitDir, "meta.txt"),
-        `index:     ${tc.index + 1}\n` +
-          `tool:      ${tc.toolName}\n` +
-          `timestamp: ${tc.timestamp}\n` +
-          `file_path: ${tc.filePath}\n` +
-          `succeeded: ${tc.succeeded}\n` +
-          (tc.succeeded ? "" : `error:     ${tc.error ?? ""}\n`) +
-          argLengths.map((l) => `${l}\n`).join("") +
-          `file_before: ${tc.fileBefore.length} chars\n` +
-          `file_after: ${tc.fileAfter.length} chars\n`,
-      );
-    }
-  }
+
+      await Promise.all([
+        summaryWrite,
+        writeFile(resolve(splitDir, `file_before${ext}`), tc.fileBefore),
+        writeFile(resolve(splitDir, `file_after${ext}`), tc.fileAfter),
+        writeFile(resolve(splitDir, "diff.patch"), tc.diff || ""),
+        ...argWrites,
+        writeFile(
+          resolve(splitDir, "meta.txt"),
+          `index:     ${tc.index + 1}\n` +
+            `tool:      ${tc.toolName}\n` +
+            `timestamp: ${tc.timestamp}\n` +
+            `file_path: ${tc.filePath}\n` +
+            `succeeded: ${tc.succeeded}\n` +
+            (tc.succeeded ? "" : `error:     ${tc.error ?? ""}\n`) +
+            argLengths.map((l) => `${l}\n`).join("") +
+            `file_before: ${tc.fileBefore.length} chars\n` +
+            `file_after: ${tc.fileAfter.length} chars\n`,
+        ),
+      ]);
+    }),
+  );
 }
 
-function writeDetailsFolder(recordDir: string, record: EvalRunRecord): void {
+async function writeDetailsFolder(
+  recordDir: string,
+  record: EvalRunRecord,
+): Promise<void> {
   const detailsDir = resolve(recordDir, "details");
-  mkdirSync(detailsDir, { recursive: true });
+  await mkdir(detailsDir, { recursive: true });
   const ext = extensionFor(record.file.name);
-
-  writeFileSync(resolve(detailsDir, `file_before${ext}`), record.file.before);
-  writeFileSync(resolve(detailsDir, `file_after${ext}`), record.file.after);
-  writeFileSync(resolve(detailsDir, "diff.patch"), record.diff || "");
-  writeFileSync(resolve(detailsDir, "system_prompt.txt"), record.prompt.system);
-  writeFileSync(resolve(detailsDir, "instructions.txt"), record.prompt.instructions);
-  writeFileSync(resolve(detailsDir, "user_prompt.txt"), record.prompt.user);
 
   // Metadata mirrors the main record but drops the large content blobs
   // that already have their own files (file_before, file_after, overall
@@ -381,14 +393,26 @@ function writeDetailsFolder(recordDir: string, record: EvalRunRecord): void {
     passed: record.passed,
     errorMessage: record.errorMessage,
   };
-  writeFileSync(
-    resolve(detailsDir, "metadata.json"),
-    JSON.stringify(metadata, null, 2) + "\n",
-  );
-  writeFileSync(
-    resolve(detailsDir, "metadata.txt"),
-    renderMetadataAsText(metadata),
-  );
+
+  await Promise.all([
+    writeFile(resolve(detailsDir, `file_before${ext}`), record.file.before),
+    writeFile(resolve(detailsDir, `file_after${ext}`), record.file.after),
+    writeFile(resolve(detailsDir, "diff.patch"), record.diff || ""),
+    writeFile(resolve(detailsDir, "system_prompt.txt"), record.prompt.system),
+    writeFile(
+      resolve(detailsDir, "instructions.txt"),
+      record.prompt.instructions,
+    ),
+    writeFile(resolve(detailsDir, "user_prompt.txt"), record.prompt.user),
+    writeFile(
+      resolve(detailsDir, "metadata.json"),
+      JSON.stringify(metadata, null, 2) + "\n",
+    ),
+    writeFile(
+      resolve(detailsDir, "metadata.txt"),
+      renderMetadataAsText(metadata),
+    ),
+  ]);
 }
 
 function renderMetadataAsText(m: {

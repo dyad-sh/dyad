@@ -17,7 +17,6 @@ export interface ModelOption {
   contextWindow?: number;
 }
 
-export const GPT_5_4 = "gpt-5.4";
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
 export const SONNET_4_6 = "claude-sonnet-4-6";
 export const OPUS_4_6 = "claude-opus-4-6";
@@ -27,16 +26,6 @@ export const GPT_5_NANO = "gpt-5-nano";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
-    {
-      name: GPT_5_4,
-      displayName: "GPT 5.4",
-      description: "OpenAI's latest flagship model",
-      maxOutputTokens: undefined,
-      contextWindow: 400_000,
-      // Requires temperature to be default value (1)
-      temperature: 1,
-      dollarSigns: 3,
-    },
     // https://platform.openai.com/docs/models/gpt-5.1
     {
       name: GPT_5_2_MODEL_NAME,

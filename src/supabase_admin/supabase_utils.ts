@@ -8,7 +8,7 @@ import {
   listSupabaseFunctions,
   type DeployedFunctionResponse,
 } from "./supabase_management_client";
-import { SUPABASE_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
+import { SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("supabase_utils");
@@ -190,7 +190,7 @@ export async function deployAllSupabaseFunctions({
     }
 
     logger.info(
-      `Bundling ${validFunctions.length} functions with concurrency ${SUPABASE_DEPLOY_CONCURRENCY}...`,
+      `Bundling ${validFunctions.length} functions with concurrency ${SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY}...`,
     );
 
     const totalFunctions = validFunctions.length;
@@ -219,7 +219,7 @@ export async function deployAllSupabaseFunctions({
 
     const deployResults = await mapSettledWithConcurrency(
       validFunctions,
-      SUPABASE_DEPLOY_CONCURRENCY,
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
       async (functionName) => {
         activeFunctions++;
         emitProgress("deploying", functionName);

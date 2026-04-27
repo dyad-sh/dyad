@@ -761,7 +761,7 @@ export async function deploySupabaseFunction({
   bundleOnly?: boolean;
   organizationSlug: string | null;
 }): Promise<DeployedFunctionResponse> {
-  return enqueueSupabaseDeploy(supabaseProjectId, () =>
+  return enqueueSupabaseDeploy(supabaseProjectId, bundleOnly, () =>
     deploySupabaseFunctionUnqueued({
       supabaseProjectId,
       functionName,

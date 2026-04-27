@@ -14,7 +14,8 @@ import {
 import {
   enqueueSupabaseDeploy,
   resetSupabaseDeployQueuesForTests,
-  SUPABASE_DEPLOY_CONCURRENCY,
+  SUPABASE_ACTIVATING_DEPLOY_CONCURRENCY,
+  SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
 } from "@/supabase_admin/supabase_deploy_queue";
 
 describe("isServerFunction", () => {
@@ -392,7 +393,7 @@ describe("mapSettledWithConcurrency", () => {
 });
 
 describe("enqueueSupabaseDeploy", () => {
-  it("limits active deploys per project", async () => {
+  it("limits active bundle-only deploys per project", async () => {
     resetSupabaseDeployQueuesForTests();
 
     let activeCount = 0;
@@ -401,9 +402,9 @@ describe("enqueueSupabaseDeploy", () => {
     const releaseTasks: Array<() => void> = [];
 
     const tasks = Array.from(
-      { length: SUPABASE_DEPLOY_CONCURRENCY + 4 },
+      { length: SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY + 4 },
       (_, index) =>
-        enqueueSupabaseDeploy("project-1", async () => {
+        enqueueSupabaseDeploy("project-1", true, async () => {
           startedIndexes.push(index);
           activeCount++;
           maxActiveCount = Math.max(maxActiveCount, activeCount);
@@ -415,28 +416,168 @@ describe("enqueueSupabaseDeploy", () => {
         }),
     );
 
-    expect(startedIndexes).toHaveLength(SUPABASE_DEPLOY_CONCURRENCY);
-    expect(maxActiveCount).toBe(SUPABASE_DEPLOY_CONCURRENCY);
+    expect(startedIndexes).toHaveLength(
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
+    );
+    expect(maxActiveCount).toBe(SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY);
 
     for (const releaseTask of releaseTasks.slice(
       0,
-      SUPABASE_DEPLOY_CONCURRENCY,
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
     )) {
       releaseTask();
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(startedIndexes).toHaveLength(SUPABASE_DEPLOY_CONCURRENCY + 4);
+    expect(startedIndexes).toHaveLength(
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY + 4,
+    );
 
-    for (const releaseTask of releaseTasks.slice(SUPABASE_DEPLOY_CONCURRENCY)) {
+    for (const releaseTask of releaseTasks.slice(
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
+    )) {
       releaseTask();
     }
 
     await expect(Promise.all(tasks)).resolves.toEqual(
       Array.from(
-        { length: SUPABASE_DEPLOY_CONCURRENCY + 4 },
+        { length: SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY + 4 },
         (_, index) => index,
       ),
     );
+  });
+
+  it("runs activating deploys exclusively for a project", async () => {
+    resetSupabaseDeployQueuesForTests();
+
+    const startedIndexes: number[] = [];
+    const releaseTasks: Array<() => void> = [];
+
+    const tasks = Array.from(
+      { length: SUPABASE_ACTIVATING_DEPLOY_CONCURRENCY + 2 },
+      (_, index) =>
+        enqueueSupabaseDeploy("project-1", false, async () => {
+          startedIndexes.push(index);
+          await new Promise<void>((resolve) => {
+            releaseTasks[index] = resolve;
+          });
+          return index;
+        }),
+    );
+
+    expect(startedIndexes).toEqual([0]);
+
+    releaseTasks[0]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(startedIndexes).toEqual([0, 1]);
+
+    releaseTasks[1]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(startedIndexes).toEqual([0, 1, 2]);
+
+    releaseTasks[2]();
+    await expect(Promise.all(tasks)).resolves.toEqual([0, 1, 2]);
+  });
+
+  it("does not start same-project bundle-only deploys while an activating deploy is queued", async () => {
+    resetSupabaseDeployQueuesForTests();
+
+    const startedTasks: string[] = [];
+    const releaseTasks: Record<string, () => void> = {};
+
+    const bundleTasks = Array.from(
+      { length: SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY },
+      (_, index) =>
+        enqueueSupabaseDeploy("project-1", true, async () => {
+          const taskName = `bundle-${index}`;
+          startedTasks.push(taskName);
+          await new Promise<void>((resolve) => {
+            releaseTasks[taskName] = resolve;
+          });
+          return taskName;
+        }),
+    );
+    const activatingTask = enqueueSupabaseDeploy(
+      "project-1",
+      false,
+      async () => {
+        startedTasks.push("activate");
+        await new Promise<void>((resolve) => {
+          releaseTasks.activate = resolve;
+        });
+        return "activate";
+      },
+    );
+    const extraBundleTask = enqueueSupabaseDeploy(
+      "project-1",
+      true,
+      async () => {
+        startedTasks.push("extra-bundle");
+        return "extra-bundle";
+      },
+    );
+
+    expect(startedTasks).toEqual(
+      Array.from(
+        { length: SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY },
+        (_, index) => `bundle-${index}`,
+      ),
+    );
+
+    for (
+      let index = 0;
+      index < SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY;
+      index++
+    ) {
+      releaseTasks[`bundle-${index}`]();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(startedTasks).toContain("activate");
+    expect(startedTasks).not.toContain("extra-bundle");
+
+    releaseTasks.activate();
+    await expect(
+      Promise.all([...bundleTasks, activatingTask, extraBundleTask]),
+    ).resolves.toEqual([
+      ...Array.from(
+        { length: SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY },
+        (_, index) => `bundle-${index}`,
+      ),
+      "activate",
+      "extra-bundle",
+    ]);
+  });
+
+  it("allows activating deploys for different projects to run concurrently", async () => {
+    resetSupabaseDeployQueuesForTests();
+
+    let activeCount = 0;
+    let maxActiveCount = 0;
+    const releaseTasks: Array<() => void> = [];
+
+    const tasks = ["project-1", "project-2"].map((projectId, index) =>
+      enqueueSupabaseDeploy(projectId, false, async () => {
+        activeCount++;
+        maxActiveCount = Math.max(maxActiveCount, activeCount);
+        await new Promise<void>((resolve) => {
+          releaseTasks[index] = resolve;
+        });
+        activeCount--;
+        return projectId;
+      }),
+    );
+
+    expect(maxActiveCount).toBe(2);
+
+    releaseTasks[0]();
+    releaseTasks[1]();
+
+    await expect(Promise.all(tasks)).resolves.toEqual([
+      "project-1",
+      "project-2",
+    ]);
   });
 });

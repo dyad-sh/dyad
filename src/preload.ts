@@ -1414,6 +1414,7 @@ const validInvokeChannels = [
   "openclaw:shutdown",
   "openclaw:set-daemon-workspace",
   "openclaw:get-daemon-workspace",
+  "openclaw:pick-workspace-folder",
   "openclaw:gateway:start",
   "openclaw:gateway:stop",
   "openclaw:gateway:status",

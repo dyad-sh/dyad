@@ -74,24 +74,43 @@ export function registerOpenClawHandlers(): void {
     "openclaw:set-daemon-workspace",
     async (_event, args: { path?: string; useJoyCreateRepo?: boolean }) => {
       const { readFileSync, writeFileSync, existsSync, statSync } = await import("node:fs");
-      const { join } = await import("node:path");
+      const { join, resolve, basename } = await import("node:path");
       const { homedir } = await import("node:os");
       const { app } = await import("electron");
 
-      // Resolve target path. When useJoyCreateRepo is true, walk up from the
-      // app path looking for package.json with name === "joycreate" so this
-      // works in both dev (cwd is the repo) and packaged builds (where the
-      // repo is the working directory the user launched from).
+      // Resolve target path. When useJoyCreateRepo is true, search a broad
+      // list of candidate directories for the JoyCreate repo root.
+      // In dev mode: process.cwd() IS the repo root.
+      // In packaged mode: look up from app.getPath('exe') and
+      //   app.getAppPath() until we find a package.json with name "joycreate".
       let targetPath: string | undefined = args.path;
       if (args.useJoyCreateRepo) {
-        const candidates = [process.cwd(), app.getAppPath(), join(app.getAppPath(), "..", "..")];
+        const exeDir = join(app.getPath("exe"), "..");
+        const candidates: string[] = [
+          process.cwd(),
+          app.getAppPath(),
+          join(app.getAppPath(), ".."),
+          join(app.getAppPath(), "..", ".."),
+          join(app.getAppPath(), "..", "..", ".."),
+          exeDir,
+          join(exeDir, ".."),
+          join(exeDir, "..", ".."),
+        ];
+        // De-duplicate and resolve
+        const seen = new Set<string>();
         for (const c of candidates) {
+          const r = resolve(c);
+          if (seen.has(r)) continue;
+          seen.add(r);
           try {
-            const pkg = join(c, "package.json");
+            const pkg = join(r, "package.json");
             if (existsSync(pkg)) {
               const j = JSON.parse(readFileSync(pkg, "utf8"));
-              if (j?.name === "joycreate" || j?.name === "JoyCreate") {
-                targetPath = c;
+              if (
+                typeof j?.name === "string" &&
+                (j.name.toLowerCase() === "joycreate" || j.name.toLowerCase() === "joy-create")
+              ) {
+                targetPath = r;
                 break;
               }
             }
@@ -99,7 +118,9 @@ export function registerOpenClawHandlers(): void {
         }
         if (!targetPath) {
           throw new Error(
-            "Could not locate the JoyCreate repository root. Pass an explicit `path` instead.",
+            "Could not auto-locate the JoyCreate repository root.\n\n" +
+            "Tried: " + [...seen].join(", ") + "\n\n" +
+            "Use the 'Browse…' option to pick the folder manually.",
           );
         }
       }
@@ -118,8 +139,36 @@ export function registerOpenClawHandlers(): void {
       cfg.agents.defaults = cfg.agents.defaults ?? {};
       const previous = cfg.agents.defaults.workspace;
       cfg.agents.defaults.workspace = targetPath;
-      writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), "utf8");
 
+      // Write project context so the daemon understands the JoyCreate codebase
+      // architecture without the user having to explain it every session.
+      // OpenClaw reads `agents.defaults.instructions` as a persistent system
+      // prompt prepended to every agent session.
+      const agentsInstructionsPath = join(targetPath, "AGENTS.md");
+      const claudeInstructionsPath = join(targetPath, "CLAUDE.md");
+      let instructions: string | undefined;
+      if (existsSync(agentsInstructionsPath)) {
+        try { instructions = readFileSync(agentsInstructionsPath, "utf8"); } catch { /* skip */ }
+      } else if (existsSync(claudeInstructionsPath)) {
+        try { instructions = readFileSync(claudeInstructionsPath, "utf8"); } catch { /* skip */ }
+      }
+
+      if (instructions) {
+        cfg.agents.defaults.instructions = instructions;
+      }
+
+      // Tell the daemon which files give codebase context it should read first
+      cfg.agents.defaults.contextFiles = [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "src/ipc/ipc_client.ts",
+        "src/preload.ts",
+        "src/ipc/ipc_host.ts",
+        "src/router.ts",
+        "package.json",
+      ].filter((f) => existsSync(join(targetPath as string, f)));
+
+      writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), "utf8");
       logger.info("Daemon workspace updated", { previous, next: targetPath });
 
       return {
@@ -127,11 +176,26 @@ export function registerOpenClawHandlers(): void {
         workspace: targetPath,
         previous,
         note:
-          "Restart the OpenClaw daemon (Refresh portal) to apply. " +
-          "The portal's file tools will now read and edit files in this directory.",
+          "Portal will reload with workspace → " + basename(targetPath) + ". " +
+          "The daemon's file tools will now read and edit code in this directory.",
       };
     },
   );
+
+  // Open a native folder-picker dialog and return the selected path.
+  // Renderer calls this when auto-detection fails or the user wants to
+  // manually choose a different workspace directory.
+  ipcMain.handle("openclaw:pick-workspace-folder", async (event) => {
+    const { dialog, BrowserWindow } = await import("electron");
+    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const result = await dialog.showOpenDialog(win!, {
+      title: "Select JoyCreate repository folder",
+      buttonLabel: "Use this folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || !result.filePaths.length) return { canceled: true, path: null };
+    return { canceled: false, path: result.filePaths[0] };
+  });
 
   ipcMain.handle("openclaw:get-daemon-workspace", async () => {
     const { readFileSync, existsSync } = await import("node:fs");

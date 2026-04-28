@@ -232,7 +232,27 @@ interface LocalProbeResult {
   modelId: string;
 }
 
-/** Probe Ollama for available models. Prefers the user's configured model if it's an Ollama model. */
+/**
+ * Returns true if the model name indicates a parameter count that makes it
+ * too slow for the assistant side-panel in auto mode (≥14B params).
+ * Explicit user selections are always honoured regardless of size.
+ */
+function isModelTooLargeForAuto(name: string): boolean {
+  // Match patterns like "70b", "34b", "72b", "671b", "8x22b" etc.
+  const m = name.match(/[:\-_\/](\d+(?:\.\d+)?)x?(\d+(?:\.\d+)?)b(?:[:\-_\.]|$)/i);
+  if (m) {
+    // MoE format: "8x22b" → total ≈ 176B (use expert count × param count)
+    return parseFloat(m[1]) * parseFloat(m[2]) >= 14;
+  }
+  const m2 = name.match(/[:\-_\/](\d+(?:\.\d+)?)b(?:[:\-_\.]|$)/i);
+  if (m2) return parseFloat(m2[1]) >= 14;
+  return false; // unknown size → allow
+}
+
+/** Probe Ollama for available models. Prefers the user's configured model if it's an Ollama model.
+ *  When `preferredModel` is omitted (auto mode), skips models ≥14B so the panel
+ *  stays responsive — the caller will fall through to cloud when no small model exists.
+ */
 async function probeOllama(preferredModel?: string): Promise<LocalProbeResult | null> {
   try {
     const baseUrl = getOllamaApiUrl();
@@ -245,34 +265,46 @@ async function probeOllama(preferredModel?: string): Promise<LocalProbeResult | 
     const models = data.models ?? [];
     if (models.length === 0) return null;
 
-    // Prefer the user's configured model if it exists on this Ollama instance.
-    // Otherwise, prefer chat-tuned conversational models over heavy reasoning/code
-    // models — the side panel does short Q&A, and 70B reasoning models like
-    // deepseek-r1 take minutes to first-token and frequently stall on tool calls.
     let modelName: string;
     const preferred = preferredModel
       ? models.find(
           (m) => m.name === preferredModel || m.name.startsWith(`${preferredModel}:`),
         )
       : null;
+
     if (preferred) {
+      // Explicit user pick — use it regardless of size
       modelName = preferred.name;
     } else {
-      // Preference order: small chat models first, reasoning/code last.
+      // Auto mode: prefer small, fast chat models. Skip anything ≥14B so the
+      // side panel stays responsive; caller will fall back to cloud if nothing fits.
       const preferOrder = [
-        // Small chat models first (fast first-token, good for side-panel Q&A)
         /^deepseek-r1:8b/i, /^deepseek-r1:7b/i,
         /^llama3\.2[:\b]/i, /^llama3\.1[:\b]/i, /^llama3[:\b]/i,
         /^qwen2\.5[:\b]/i, /^qwen2[:\b]/i,
-        /^mistral[:\b]/i, /^mixtral[:\b]/i,
+        /^mistral[:\b]/i,
         /^phi3[:\b]/i, /^gemma2?[:\b]/i,
+        /^tinyllama[:\b]/i, /^orca-mini[:\b]/i,
       ];
       let picked: string | null = null;
       for (const re of preferOrder) {
-        const m = models.find((mm) => re.test(mm.name));
+        const m = models.find((mm) => re.test(mm.name) && !isModelTooLargeForAuto(mm.name));
         if (m) { picked = m.name; break; }
       }
-      modelName = picked ?? models[0].name;
+      // If none of the preferred patterns matched, pick ANY model that is ≤13B
+      if (!picked) {
+        const small = models.find((m) => !isModelTooLargeForAuto(m.name));
+        if (small) picked = small.name;
+      }
+      // If ONLY large models are installed, return null → caller uses cloud
+      if (!picked) {
+        logger.info(
+          `Local-first: Ollama has models but all are ≥14B (${models.map((m) => m.name).join(", ")}). ` +
+            "Falling back to cloud for snappy responses.",
+        );
+        return null;
+      }
+      modelName = picked;
     }
 
     const provider = createOllamaProvider({ baseURL: baseUrl });
@@ -470,18 +502,44 @@ export async function chat(
       abortSignal,
     });
 
-    // Stall watchdog: if no token arrives within 60s, surface an error
-    // instead of letting the user stare at a spinner forever (common when a
-    // large local model is loading from disk for the first time).
+    // Stall watchdog — adaptive timeout:
+    //   • Explicit large local model (≥14B): 5 minutes (it may be swapping from disk)
+    //   • Any other local model: 60s
+    //   • Cloud: 60s
+    const isLargeLocalModel = isLocal && isModelTooLargeForAuto(modelId);
+    const stallLimitMs = isLargeLocalModel ? 300_000 : 60_000;
+
+    // For large local models, emit a loading hint after 3s so the user knows
+    // the model is being loaded from disk rather than seeing a blank spinner.
+    let loadingHintSent = false;
+    const loadingHintTimer = isLargeLocalModel
+      ? setTimeout(() => {
+          if (!loadingHintSent && assistantContent === "") {
+            loadingHintSent = true;
+            const hint = `_Loading ${modelId} into memory — this may take a minute…_\n\n`;
+            callbacks.onDelta(hint);
+            assistantContent += hint;
+          }
+        }, 3_000)
+      : null;
+
     let lastChunkAt = Date.now();
     const stallTimer = setInterval(() => {
-      if (Date.now() - lastChunkAt > 60_000) {
+      if (Date.now() - lastChunkAt > stallLimitMs) {
         clearInterval(stallTimer);
+        if (loadingHintTimer) clearTimeout(loadingHintTimer);
+        const limitLabel = stallLimitMs >= 60_000
+          ? `${Math.round(stallLimitMs / 60_000)} min`
+          : `${Math.round(stallLimitMs / 1_000)}s`;
         callbacks.onError(
-          `${isLocal ? "Local model" : "Model"} "${modelId}" did not respond within 60s. ` +
-            (isLocal
-              ? "It may still be loading into memory. Try again, or pick a smaller model in Settings."
-              : "Please try again."),
+          isLargeLocalModel
+            ? `"${modelId}" didn't respond within ${limitLabel}. ` +
+              "This model is very large — try pulling a smaller one like " +
+              "`ollama pull deepseek-r1:8b` or pick a cloud model from the model picker."
+            : isLocal
+              ? `Local model "${modelId}" didn't respond within ${limitLabel}. ` +
+                "It may still be loading. Try again, or switch to a cloud model."
+              : `Model "${modelId}" didn't respond within ${limitLabel}. Please try again.`,
         );
       }
     }, 5_000);
@@ -490,6 +548,10 @@ export async function chat(
       for await (const part of stream.fullStream as AsyncIterable<TextStreamPart<ToolSet>>) {
         if (abortSignal?.aborted) break;
         lastChunkAt = Date.now();
+        // Once tokens arrive, dismiss the "loading" hint so the real reply starts cleanly
+        if (isLargeLocalModel && !loadingHintSent && loadingHintTimer) {
+          clearTimeout(loadingHintTimer);
+        }
         if (part.type === "text-delta") {
           assistantContent += part.text;
           callbacks.onDelta(part.text);
@@ -502,6 +564,7 @@ export async function chat(
       }
     } finally {
       clearInterval(stallTimer);
+      if (loadingHintTimer) clearTimeout(loadingHintTimer);
     }
 
     // Record cost with the smart cost engine

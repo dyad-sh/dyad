@@ -744,7 +744,7 @@ function AssistantModelPicker() {
           <div className="flex-1">
             <div className="text-xs font-medium">Auto (local-first)</div>
             <div className="text-[10px] text-muted-foreground">
-              Use a local model if available, else cloud default
+              Small local model if available, else cloud — always fast
             </div>
           </div>
         </DropdownMenuItem>
@@ -756,6 +756,9 @@ function AssistantModelPicker() {
             {ollamaModels.map((m) => {
               const isSelected =
                 model?.provider === "ollama" && model?.name === m.modelName;
+              // Warn about large models that are slow in the side panel
+              const isLarge = /[:\-_\/](\d+)b(?:[:\-_.]|$)/i.test(m.modelName)
+                && parseFloat((m.modelName.match(/[:\-_\/](\d+)b(?:[:\-_.]|$)/i) ?? [])[1] ?? "0") >= 14;
               return (
                 <DropdownMenuItem
                   key={`ollama-${m.modelName}`}
@@ -766,9 +769,16 @@ function AssistantModelPicker() {
                   }}
                 >
                   <Cpu className="h-3.5 w-3.5 mr-2 text-green-500" />
-                  <span className="text-xs truncate">
-                    {m.displayName || m.modelName}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs truncate block">
+                      {m.displayName || m.modelName}
+                    </span>
+                    {isLarge && (
+                      <span className="text-[10px] text-amber-500">
+                        ⚠ Large model — may be slow
+                      </span>
+                    )}
+                  </div>
                 </DropdownMenuItem>
               );
             })}

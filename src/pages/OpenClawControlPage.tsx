@@ -77,6 +77,7 @@ import {
   Wallet,
   RotateCcw,
   FolderCode,
+  FolderOpen,
 } from "lucide-react";
 
 const integrationClient = OpenClawIntegrationClient.getInstance();
@@ -183,6 +184,12 @@ export function OpenClawControlPage() {
     queryKey: ["openclaw-plugins"],
     queryFn: () => integrationClient.listPlugins(),
   });
+
+  const { data: daemonWorkspaceData, refetch: refetchDaemonWorkspace } = useQuery({
+    queryKey: ["openclaw-daemon-workspace"],
+    queryFn: () => openclawClient.getDaemonWorkspace(),
+  });
+  const daemonWorkspace = daemonWorkspaceData?.workspace ?? null;
 
   // ---------------------------------------------------------------------------
   // Mutations
@@ -493,30 +500,79 @@ export function OpenClawControlPage() {
                 <span className="text-xs text-muted-foreground font-mono">
                   127.0.0.1:{portalPort}
                 </span>
+                {/* "Edit JoyCreate code" — sets daemon workspace to repo root.
+                    Auto-detects in dev mode; falls back to native folder picker. */}
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-6 px-2 text-xs gap-1"
-                  title="Point the daemon's agent workspace at the running JoyCreate repo so the portal can read & edit code, then submit a PR."
+                  title={
+                    daemonWorkspace
+                      ? `Workspace: ${daemonWorkspace}\nClick to refresh / point at a different folder.`
+                      : "Point the daemon's agent workspace at the JoyCreate repo so the portal can read & edit code."
+                  }
                   onClick={async () => {
                     try {
                       const res = await openclawClient.setDaemonWorkspace({ useJoyCreateRepo: true });
-                      toast.success(`Daemon workspace → ${res.workspace}`, {
-                        description: "Refresh the portal to apply.",
-                        duration: 6000,
+                      void refetchDaemonWorkspace();
+                      toast.success(`Workspace → ${res.workspace}`, {
+                        description: "Daemon now knows the JoyCreate codebase. Refreshing portal…",
+                        duration: 5000,
                       });
                       portalRetryRef.current = 0;
                       setPortalLoadError(false);
                       setPortalKey((k) => k + 1);
                     } catch (err) {
-                      toast.error(
-                        `Failed to set workspace: ${err instanceof Error ? err.message : String(err)}`,
-                      );
+                      const msg = err instanceof Error ? err.message : String(err);
+                      toast.error("Auto-detect failed — pick folder manually", {
+                        description: msg,
+                        action: {
+                          label: "Browse…",
+                          onClick: async () => {
+                            const pick = await openclawClient.pickWorkspaceFolder();
+                            if (pick.canceled || !pick.path) return;
+                            try {
+                              const res2 = await openclawClient.setDaemonWorkspace({ path: pick.path });
+                              void refetchDaemonWorkspace();
+                              toast.success(`Workspace → ${res2.workspace}`, { duration: 5000 });
+                              portalRetryRef.current = 0;
+                              setPortalLoadError(false);
+                              setPortalKey((k) => k + 1);
+                            } catch (err2) {
+                              toast.error(`Failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+                            }
+                          },
+                        },
+                        duration: 10000,
+                      });
                     }
                   }}
                 >
                   <FolderCode className="h-3 w-3" />
-                  Edit JoyCreate code
+                  {daemonWorkspace ? "JoyCreate ✓" : "Edit JoyCreate code"}
+                </Button>
+                {/* Browse button — always available so user can point at any folder */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  title="Browse for JoyCreate repo folder…"
+                  onClick={async () => {
+                    const pick = await openclawClient.pickWorkspaceFolder();
+                    if (pick.canceled || !pick.path) return;
+                    try {
+                      const res = await openclawClient.setDaemonWorkspace({ path: pick.path });
+                      void refetchDaemonWorkspace();
+                      toast.success(`Workspace → ${res.workspace}`, { duration: 5000 });
+                      portalRetryRef.current = 0;
+                      setPortalLoadError(false);
+                      setPortalKey((k) => k + 1);
+                    } catch (err) {
+                      toast.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                  }}
+                >
+                  <FolderOpen className="h-3 w-3" />
                 </Button>
                 <Button
                   size="icon"

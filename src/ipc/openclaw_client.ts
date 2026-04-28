@@ -184,6 +184,14 @@ class OpenClawClientImpl {
     return this.ipcRenderer.invoke("openclaw:get-daemon-workspace");
   }
 
+  /**
+   * Open a native OS folder-picker dialog and return the selected path.
+   * Returns `{ canceled: true, path: null }` if the user dismisses it.
+   */
+  async pickWorkspaceFolder(): Promise<{ canceled: boolean; path: string | null }> {
+    return this.ipcRenderer.invoke("openclaw:pick-workspace-folder");
+  }
+
   // ===========================================================================
   // CHAT & COMPLETION
   // ===========================================================================

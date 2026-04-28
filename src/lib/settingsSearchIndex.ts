@@ -24,6 +24,7 @@ export const SETTING_IDS = {
   autoFix: "setting-auto-fix",
   autoExpandPreview: "setting-auto-expand-preview",
   chatEventNotification: "setting-chat-event-notification",
+  chatResponseSound: "setting-chat-response-sound",
   thinkingBudget: "setting-thinking-budget",
   maxChatTurns: "setting-max-chat-turns",
   maxToolCallSteps: "setting-max-tool-call-steps",
@@ -158,6 +159,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "alert",
       "background",
     ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.chatResponseSound,
+    label: "Sound Notification",
+    description:
+      "Play a sound chime when a chat response completes successfully",
+    keywords: ["sound", "chime", "audio", "notification", "chat", "complete"],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },

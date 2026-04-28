@@ -43,7 +43,9 @@
     "autoApprove": "Auto-approve changes",
     "autoApproveDescription": "This will automatically approve code changes and run them.",
     "autoFixProblems": "Auto-fix problems",
-    "autoFixProblemsDescription": "This will automatically fix TypeScript errors."
+    "autoFixProblemsDescription": "This will automatically fix TypeScript errors.",
+    "chatResponseSound": "Play sound on chat response",
+    "chatResponseSoundDescription": "Play a sound chime when a chat response completes successfully."
   },
   "ai": {
     "title": "AI Settings",

@@ -50,6 +50,12 @@ export class Settings {
       .click();
   }
 
+  async toggleChatResponseSound() {
+    await this.page
+      .getByRole("switch", { name: "Play sound on chat response" })
+      .click();
+  }
+
   async toggleAutoUpdate() {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }

@@ -230,6 +230,10 @@
               "type": "string",
               "description": "The file path to read"
             },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to read from instead of the current app. Omit to read from the current app.",
+              "type": "string"
+            },
             "start_line_one_indexed": {
               "description": "The one-indexed line number to start reading from (inclusive).",
               "type": "integer",
@@ -261,6 +265,10 @@
               "description": "Optional subdirectory to list",
               "type": "string"
             },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to list from instead of the current app. Omit to list the current app.",
+              "type": "string"
+            },
             "recursive": {
               "description": "Whether to list files recursively (default: false)",
               "type": "boolean"
@@ -284,6 +292,10 @@
             "query": {
               "type": "string",
               "description": "The regex pattern to search for"
+            },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+              "type": "string"
             },
             "include_pattern": {
               "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
@@ -325,6 +337,10 @@
             "query": {
               "type": "string",
               "description": "Search query to find relevant files"
+            },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+              "type": "string"
             }
           },
           "required": [

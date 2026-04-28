@@ -1,12 +1,23 @@
 import log from "electron-log";
-import { app, utilityProcess } from "electron";
+import { utilityProcess } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { readEffectiveSettings } from "@/main/settings";
+import {
+  ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+  buildAddDependencyCommand,
+  CommandExecutionError,
+  detectPreferredPackageManager,
+  ensureSocketFirewallInstalled,
+  runCommand,
+} from "./socket_firewall";
 
 export const logger = log.scope("migration_handlers");
+
+const MIGRATION_DEPS = ["drizzle-kit", "drizzle-orm"] as const;
 
 /**
  * Finds the production (default) branch for a Neon project.
@@ -36,18 +47,69 @@ export async function getProductionBranchId(
 }
 
 /**
- * Resolves the path to the drizzle-kit bin.cjs file.
+ * Resolves the path to the drizzle-kit bin.cjs inside the user's app.
  */
-export function getDrizzleKitPath(): string {
-  if (!app.isPackaged) {
-    return path.join(
-      app.getAppPath(),
-      "node_modules",
-      "drizzle-kit",
-      "bin.cjs",
+export function getDrizzleKitPath(appPath: string): string {
+  return path.join(appPath, "node_modules", "drizzle-kit", "bin.cjs");
+}
+
+export async function areMigrationDepsInstalled(
+  appPath: string,
+): Promise<boolean> {
+  try {
+    await fs.access(getDrizzleKitPath(appPath));
+    await fs.access(path.join(appPath, "node_modules", "drizzle-orm"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function installMigrationDeps(appPath: string): Promise<void> {
+  if (IS_TEST_BUILD) {
+    return;
+  }
+
+  const settings = await readEffectiveSettings();
+  let useSocketFirewall = settings.blockUnsafeNpmPackages !== false;
+  if (useSocketFirewall) {
+    const sfw = await ensureSocketFirewallInstalled();
+    if (!sfw.available) {
+      useSocketFirewall = false;
+      if (sfw.warningMessage) {
+        logger.warn(sfw.warningMessage);
+      }
+    }
+  }
+
+  const packageManager = await detectPreferredPackageManager();
+  const command = buildAddDependencyCommand(
+    [...MIGRATION_DEPS],
+    packageManager,
+    useSocketFirewall,
+  );
+
+  logger.info(
+    `Installing migration deps in ${appPath}: ${command.command} ${command.args.join(" ")}`,
+  );
+
+  try {
+    await runCommand(command.command, command.args, {
+      cwd: appPath,
+      timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+    });
+  } catch (error) {
+    const detail =
+      error instanceof CommandExecutionError
+        ? error.stderr.trim() || error.stdout.trim() || error.message
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    throw new DyadError(
+      `Failed to install migration dependencies: ${detail}`,
+      DyadErrorKind.External,
     );
   }
-  return path.join(process.resourcesPath, "drizzle-kit", "bin.cjs");
 }
 
 /**
@@ -88,11 +150,14 @@ export async function createTempDrizzleConfig({
 export async function spawnDrizzleKit({
   args,
   cwd,
+  appPath,
   connectionUri,
   timeoutMs = 120_000,
 }: {
   args: string[];
   cwd: string;
+  /** Path to the user's app — drizzle-kit and drizzle-orm resolve from here. */
+  appPath: string;
   /** Passed as DRIZZLE_DATABASE_URL env var so credentials never touch disk. */
   connectionUri: string;
   timeoutMs?: number;
@@ -126,15 +191,13 @@ export async function spawnDrizzleKit({
     );
   }
 
-  const drizzleKitBin = getDrizzleKitPath();
+  const drizzleKitBin = getDrizzleKitPath(appPath);
 
   // Create a node_modules symlink in the working directory so that generated
   // schema files can resolve drizzle-orm and other dependencies through
   // standard Node.js module resolution (walking up to find node_modules),
   // in addition to the NODE_PATH env var set below.
-  const nodeModulesPath = app.isPackaged
-    ? process.resourcesPath
-    : path.join(app.getAppPath(), "node_modules");
+  const nodeModulesPath = path.join(appPath, "node_modules");
   const symlinkTarget = path.join(cwd, "node_modules");
   try {
     await fs.symlink(nodeModulesPath, symlinkTarget, "junction");

@@ -8,4 +8,6 @@ Content here
 </dyad-status>
 ```
 
-Valid states: `"pending"`, `"finished"`, `"aborted"`
+Valid states: `"finished"`, `"in-progress"`, `"aborted"`
+
+- Renderer unit tests that import `DyadMarkdownParser` should mock `../preview_panel/FileEditor`; otherwise the `DyadWrite` import initializes Monaco and Happy DOM may try to fetch `cdn.jsdelivr.net`, causing offline `ENOTFOUND` failures.

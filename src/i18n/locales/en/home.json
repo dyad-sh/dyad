@@ -638,6 +638,8 @@
       "descriptionWithBranches": "Copy the schema in {{projectName}} from {{sourceBranchName}} to {{targetBranchName}}.",
       "migrateToProduction": "Migrate to Production",
       "migrating": "Migrating...",
+      "installingDependencies": "Installing dependencies, then migrating...",
+      "installDependenciesNote": "First migration will install drizzle-kit and drizzle-orm. This may take a few minutes.",
       "success": "Migration applied successfully.",
       "errorMessage": "Migration couldn't be applied.",
       "showDetails": "Show details",

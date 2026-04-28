@@ -41,6 +41,7 @@ describe("deleteFileTool", () => {
     event: {} as any,
     appId: 1,
     appPath: "/test/app",
+    referencedApps: new Map(),
     chatId: 1,
     supabaseProjectId: null,
     supabaseOrganizationSlug: null,

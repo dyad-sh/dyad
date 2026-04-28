@@ -350,10 +350,18 @@ function parseCustomTags(content: string): ContentPiece[] {
 function getState({
   isStreaming,
   inProgress,
+  explicitState,
 }: {
   isStreaming?: boolean;
   inProgress?: boolean;
+  explicitState?: string;
 }): CustomTagState {
+  if (explicitState === "aborted" || explicitState === "finished") {
+    return explicitState;
+  }
+  if (explicitState === "in-progress" || explicitState === "pending") {
+    return "pending";
+  }
   if (!inProgress) {
     return "finished";
   }
@@ -378,6 +386,7 @@ function renderCustomTag(
               path: attributes.path || "",
               startLine: attributes.start_line || "",
               endLine: attributes.end_line || "",
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -426,6 +435,7 @@ function renderCustomTag(
             properties: {
               query: attributes.query || "",
               state: getState({ isStreaming, inProgress }),
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -581,6 +591,7 @@ function renderCustomTag(
               count: attributes.count || "",
               total: attributes.total || "",
               truncated: attributes.truncated || "",
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -713,6 +724,7 @@ function renderCustomTag(
               include_ignored:
                 attributes.include_ignored || attributes.include_hidden || "",
               state: getState({ isStreaming, inProgress }),
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -818,7 +830,11 @@ function renderCustomTag(
           node={{
             properties: {
               title: attributes.title || "Processing...",
-              state: getState({ isStreaming, inProgress }),
+              state: getState({
+                isStreaming,
+                inProgress,
+                explicitState: attributes.state,
+              }),
             },
           }}
         >

@@ -25,6 +25,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/supabase-functions.md](rules/supabase-functions.md)           | Deploying, bundling, or queueing Supabase Edge Functions                                         |
 | [rules/product-principles.md](rules/product-principles.md)           | Planning new features, especially via `dyad:swarm-to-plan`, to guide design trade-offs           |
 | [rules/jotai-testing.md](rules/jotai-testing.md)                     | Unit-testing Jotai atoms/hooks with `renderHook`, especially across unmount/remount              |
+| [rules/claude-github-workflows.md](rules/claude-github-workflows.md) | Editing `.github/workflows/*.yml` that invoke `anthropics/claude-code-action` (LLM-driven jobs)  |
 
 ## Project setup and lints
 

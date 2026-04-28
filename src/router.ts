@@ -76,6 +76,7 @@ import { imageStudioRoute } from "./routes/image-studio";
 import { videoStudioRoute } from "./routes/video-studio";
 import { ssiCredentialsRoute } from "./routes/ssi-credentials";
 import { creatorProfileRoute } from "./routes/creator-profile";
+import { agenticOSRoute } from "./routes/agentic-os";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -159,6 +160,7 @@ const routeTree = rootRoute.addChildren([
   videoStudioRoute,
   ssiCredentialsRoute,
   creatorProfileRoute,
+  agenticOSRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

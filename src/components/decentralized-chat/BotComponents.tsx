@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bot & AI Agent Components
  * First-class bot/agent participation in P2P chat
  * Agents can DM, join groups, respond to commands, process tasks
@@ -294,7 +294,7 @@ export function BotDetailDialog({
               <div className="grid grid-cols-4 gap-3">
                 {[
                   { label: "Installs", value: bot.installCount, icon: <Download className="h-4 w-4" /> },
-                  { label: "Rating", value: `${bot.rating.toFixed(1)} ★`, icon: <Star className="h-4 w-4" /> },
+                  { label: "Rating", value: `${bot.rating.toFixed(1)} â˜…`, icon: <Star className="h-4 w-4" /> },
                   { label: "Uptime", value: `${bot.uptime}%`, icon: <Activity className="h-4 w-4" /> },
                   { label: "Interactions", value: bot.totalInteractions, icon: <MessageSquare className="h-4 w-4" /> },
                 ].map((stat) => (
@@ -590,7 +590,7 @@ export function BotInteractionLog({ interactions, botName }: BotInteractionLogPr
     <div className="space-y-2">
       <h4 className="text-sm font-medium flex items-center gap-2">
         <Activity className="h-4 w-4" />
-        Recent Interactions — {botName}
+        Recent Interactions â€” {botName}
       </h4>
       <ScrollArea className="h-60">
         <div className="space-y-2">
@@ -606,7 +606,7 @@ export function BotInteractionLog({ interactions, botName }: BotInteractionLogPr
                   </Badge>
                   <code className="text-primary">{interaction.type}</code>
                   <span className="text-muted-foreground ml-auto">
-                    {interaction.durationMs ? `${interaction.durationMs}ms` : "—"}
+                    {interaction.durationMs ? `${interaction.durationMs}ms` : "â€”"}
                   </span>
                   <span className="text-muted-foreground">
                     {new Date(interaction.timestamp).toLocaleTimeString()}
@@ -707,7 +707,7 @@ export function CreateBotDialog({ open, onOpenChange, onCreate }: CreateBotDialo
   const [description, setDescription] = useState("");
   const [type, setType] = useState<BotType>("ai-agent");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [model, setModel] = useState("anthropic/claude-sonnet-4-20250514");
+  const [model, setModel] = useState("anthropic/claude-sonnet-4-5");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -769,7 +769,7 @@ export function CreateBotDialog({ open, onOpenChange, onCreate }: CreateBotDialo
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="anthropic/claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+                    <SelectItem value="anthropic/claude-sonnet-4-5">Claude Sonnet 4</SelectItem>
                     <SelectItem value="anthropic/claude-opus-4-6">Claude Opus 4</SelectItem>
                     <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
                     <SelectItem value="deepseek/deepseek-chat">DeepSeek Chat</SelectItem>

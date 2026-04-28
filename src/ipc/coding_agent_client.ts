@@ -48,6 +48,7 @@ class CodingAgentClient {
     try {
       const ipc = getIpcRenderer();
       ipc.on("coding-agent:event", (_evt: unknown, _subId: string, event: AgentEvent) => {
+        if (!event) return;
         this.notifyListeners(event);
       });
     } catch {

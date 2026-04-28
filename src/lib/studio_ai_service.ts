@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Studio AI Service
  * 
  * Unified AI service for all JoyCreate studios that integrates:
@@ -129,7 +129,7 @@ export const DEFAULT_STUDIO_AI_CONFIG: StudioAIConfig = {
   preferredProvider: "auto",
   useClaudeCode: true,
   ollamaModel: "llama3.1:8b",
-  anthropicModel: "claude-sonnet-4-20250514",
+  anthropicModel: "claude-sonnet-4-5",
   maxTokens: 4096,
   temperature: 0.7,
   stream: false,

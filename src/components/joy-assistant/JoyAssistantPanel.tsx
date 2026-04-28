@@ -18,6 +18,8 @@ import {
   Bot,
   ChevronDown,
   ChevronUp,
+  Cpu,
+  Cloud,
   Eraser,
   Loader2,
   MessageSquarePlus,
@@ -58,7 +60,11 @@ import {
   useDeleteAssistantSession,
   useRenameAssistantSession,
   useActiveAssistantSession,
+  useAssistantSelectedModel,
 } from "@/hooks/useJoyAssistant";
+import { useLocalModels } from "@/hooks/useLocalModels";
+import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
+import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 import { useAssistantContext } from "./AssistantContextProvider";
 import {
   DropdownMenu,
@@ -294,6 +300,7 @@ export function JoyAssistantPanel() {
             <Badge variant="secondary" className="text-[10px] px-1.5">
               {MODE_CONFIG[mode].label}
             </Badge>
+            <AssistantModelPicker />
           </>
         )}
         <div className="flex items-center gap-0.5 ml-auto">
@@ -680,4 +687,149 @@ function actionLabel(action: AssistantAction): string {
     default:
       return "Unknown action";
   }
+}
+
+// ── Model picker ───────────────────────────────────────────────────────────
+
+function AssistantModelPicker() {
+  const { model, setModel } = useAssistantSelectedModel();
+  const [open, setOpen] = useState(false);
+  const { models: ollamaModels, loadModels: loadOllama } = useLocalModels();
+  const { models: lmsModels, loadModels: loadLMS } = useLocalLMSModels();
+  const { data: cloudByProvider } = useLanguageModelsByProviders();
+
+  useEffect(() => {
+    if (open) {
+      loadOllama();
+      loadLMS();
+    }
+  }, [open, loadOllama, loadLMS]);
+
+  const label = !model
+    ? "Auto"
+    : model.provider === "ollama" || model.provider === "lmstudio"
+      ? model.name.split(":")[0]
+      : model.name;
+
+  const Icon =
+    !model || model.provider === "auto"
+      ? Sparkles
+      : model.provider === "ollama" || model.provider === "lmstudio"
+        ? Cpu
+        : Cloud;
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 px-1.5 text-[10px] gap-1 max-w-[110px]"
+          title={`Model: ${label}`}
+        >
+          <Icon className="h-3 w-3 shrink-0" />
+          <span className="truncate">{label}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64 max-h-96 overflow-y-auto">
+        <DropdownMenuLabel>Auto</DropdownMenuLabel>
+        <DropdownMenuItem
+          className={!model ? "bg-accent" : ""}
+          onSelect={() => {
+            setModel(null);
+            setOpen(false);
+          }}
+        >
+          <Sparkles className="h-3.5 w-3.5 mr-2" />
+          <div className="flex-1">
+            <div className="text-xs font-medium">Auto (local-first)</div>
+            <div className="text-[10px] text-muted-foreground">
+              Use a local model if available, else cloud default
+            </div>
+          </div>
+        </DropdownMenuItem>
+
+        {ollamaModels.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Local — Ollama</DropdownMenuLabel>
+            {ollamaModels.map((m) => {
+              const isSelected =
+                model?.provider === "ollama" && model?.name === m.modelName;
+              return (
+                <DropdownMenuItem
+                  key={`ollama-${m.modelName}`}
+                  className={isSelected ? "bg-accent" : ""}
+                  onSelect={() => {
+                    setModel({ provider: "ollama", name: m.modelName });
+                    setOpen(false);
+                  }}
+                >
+                  <Cpu className="h-3.5 w-3.5 mr-2 text-green-500" />
+                  <span className="text-xs truncate">
+                    {m.displayName || m.modelName}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+          </>
+        )}
+
+        {lmsModels.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Local — LM Studio</DropdownMenuLabel>
+            {lmsModels.map((m) => {
+              const isSelected =
+                model?.provider === "lmstudio" && model?.name === m.modelName;
+              return (
+                <DropdownMenuItem
+                  key={`lms-${m.modelName}`}
+                  className={isSelected ? "bg-accent" : ""}
+                  onSelect={() => {
+                    setModel({ provider: "lmstudio", name: m.modelName });
+                    setOpen(false);
+                  }}
+                >
+                  <Cpu className="h-3.5 w-3.5 mr-2 text-green-500" />
+                  <span className="text-xs truncate">
+                    {m.displayName || m.modelName}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+          </>
+        )}
+
+        {cloudByProvider &&
+          Object.entries(cloudByProvider)
+            .filter(([pid, models]) => pid !== "auto" && models.length > 0)
+            .map(([providerId, models]) => (
+              <div key={`provider-${providerId}`}>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="capitalize">
+                  Cloud — {providerId}
+                </DropdownMenuLabel>
+                {models.slice(0, 12).map((m) => {
+                  const isSelected =
+                    model?.provider === providerId && model?.name === m.apiName;
+                  return (
+                    <DropdownMenuItem
+                      key={`${providerId}-${m.apiName}`}
+                      className={isSelected ? "bg-accent" : ""}
+                      onSelect={() => {
+                        setModel({ provider: providerId, name: m.apiName });
+                        setOpen(false);
+                      }}
+                    >
+                      <Cloud className="h-3.5 w-3.5 mr-2 text-blue-500" />
+                      <span className="text-xs truncate">{m.displayName}</span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </div>
+            ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

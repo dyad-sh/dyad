@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent Orchestrator Types
  * Complete type definitions for the autonomous meta-agent orchestration system
  *
@@ -6,7 +6,7 @@
  * - Agent Swarm (multi-agent coordination)
  * - Autonomous Agents (self-directed missions)
  * - Agent Factory (custom agent creation)
- * - OpenClaw CNS (AI routing local↔cloud)
+ * - OpenClaw CNS (AI routing localâ†”cloud)
  * - Voice Assistant (speech I/O)
  * - n8n (workflow automation)
  */
@@ -25,7 +25,7 @@ export type PlanId = Brand<string, "PlanId">;
 export type ExecutionTraceId = Brand<string, "ExecutionTraceId">;
 
 // =============================================================================
-// INPUT MODALITY — how the user communicates with the orchestrator
+// INPUT MODALITY â€” how the user communicates with the orchestrator
 // =============================================================================
 
 export type InputModality = "text" | "voice" | "nlp_command" | "api";
@@ -58,7 +58,7 @@ export interface IntentEntity {
 }
 
 // =============================================================================
-// EXECUTION MODE — where agents run
+// EXECUTION MODE â€” where agents run
 // =============================================================================
 
 export type ExecutionMode = "local" | "cloud" | "hybrid";
@@ -86,7 +86,7 @@ export interface ExecutionConfig {
 }
 
 // =============================================================================
-// AGENT CAPABILITY — what an agent can do
+// AGENT CAPABILITY â€” what an agent can do
 // =============================================================================
 
 export type AgentCapabilityType =
@@ -119,7 +119,7 @@ export interface AgentCapability {
 }
 
 // =============================================================================
-// META-AGENT — an agent that creates other agents
+// META-AGENT â€” an agent that creates other agents
 // =============================================================================
 
 export type MetaAgentStatus = "idle" | "analyzing" | "planning" | "creating_agents" | "orchestrating" | "completed" | "failed";
@@ -197,7 +197,7 @@ export interface MetaAgentStats {
 }
 
 // =============================================================================
-// TASK DECOMPOSITION — breaking user intent into sub-tasks
+// TASK DECOMPOSITION â€” breaking user intent into sub-tasks
 // =============================================================================
 
 export type TaskPriority = "critical" | "high" | "medium" | "low";
@@ -223,7 +223,7 @@ export interface TaskNode {
   complexity: TaskComplexity;
   /** Required capabilities to fulfill this task */
   requiredCapabilities: AgentCapabilityType[];
-  /** Dependencies — task IDs that must complete first */
+  /** Dependencies â€” task IDs that must complete first */
   dependencies: TaskNodeId[];
   /** Agent assigned to this task */
   assignedAgentId?: string;
@@ -253,7 +253,7 @@ export interface TaskNode {
 }
 
 // =============================================================================
-// ORCHESTRATION PLAN — the full execution plan for a user request
+// ORCHESTRATION PLAN â€” the full execution plan for a user request
 // =============================================================================
 
 export type PlanStatus =
@@ -274,9 +274,9 @@ export interface OrchestrationPlan {
   userInput: OrchestratorInput;
   /** Parsed high-level objective */
   objective: string;
-  /** Task graph — nodes with dependency edges */
+  /** Task graph â€” nodes with dependency edges */
   tasks: TaskNode[];
-  /** Execution order — topologically sorted task IDs */
+  /** Execution order â€” topologically sorted task IDs */
   executionOrder: TaskNodeId[];
   /** Agents that will be created for this plan */
   agentAssignments: AgentAssignment[];
@@ -304,7 +304,7 @@ export interface AgentAssignment {
 }
 
 // =============================================================================
-// ORCHESTRATION — the top-level entity
+// ORCHESTRATION â€” the top-level entity
 // =============================================================================
 
 export type OrchestrationStatus =
@@ -393,7 +393,7 @@ export interface ExecutionTraceEntry {
 }
 
 // =============================================================================
-// COMMUNICATION CHANNELS — OpenClaw integration
+// COMMUNICATION CHANNELS â€” OpenClaw integration
 // =============================================================================
 
 export type CommunicationChannel = "openclaw_cns" | "ollama" | "n8n" | "mcp" | "api" | "voice";
@@ -548,7 +548,7 @@ export const DEFAULT_EXECUTION_CONFIG: ExecutionConfig = {
   apiEndpoints: {},
   useN8n: true,
   localModel: "llama3.2",
-  cloudModel: "claude-sonnet-4-20250514",
+  cloudModel: "claude-sonnet-4-5",
 };
 
 export const DEFAULT_COMMUNICATION_CONFIG: CommunicationConfig = {
@@ -556,7 +556,7 @@ export const DEFAULT_COMMUNICATION_CONFIG: CommunicationConfig = {
   cns: {
     preferLocal: true,
     localModel: "llama3.2",
-    cloudModel: "claude-sonnet-4-20250514",
+    cloudModel: "claude-sonnet-4-5",
   },
   n8n: {
     enabled: true,

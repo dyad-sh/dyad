@@ -133,25 +133,45 @@ export async function onReady() {
 
   // ── Start OpenClaw gateway immediately (no delay needed) ──
   const openClawLogger = log.scope("openclaw-init");
+  const { Socket: NetSocket } = await import("node:net");
 
-  /** Probe the gateway's local HTTP endpoint. Returns true only when reachable. */
-  const probeGatewayHealth = async (port: number): Promise<boolean> => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
-    try {
-      const resp = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: ctrl.signal });
-      return resp.ok;
-    } catch {
+  /**
+   * TCP-level liveness probe. Resolves true iff the kernel accepts a TCP
+   * connection on the port — i.e. the daemon process is alive and bound.
+   *
+   * We deliberately do NOT use HTTP here. The daemon can be unresponsive
+   * to HTTP for minutes or hours while it streams long completions or runs
+   * long-running tool calls (subagent spawning, multi-step shell jobs).
+   * As long as the process is alive, the OS kernel accepts TCP regardless
+   * of whether the daemon's event loop is free. We only declare it dead
+   * when the port is actually unbound (ECONNREFUSED).
+   */
+  const probeGatewayHealth = (port: number): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      const socket = new NetSocket();
+      let settled = false;
+      const finish = (alive: boolean) => {
+        if (settled) return;
+        settled = true;
+        try { socket.destroy(); } catch { /* ignore */ }
+        resolve(alive);
+      };
+      socket.setTimeout(5000);
+      socket.once("connect", () => finish(true));
+      socket.once("timeout", () => finish(false));
+      socket.once("error", () => finish(false));
       try {
-        const resp2 = await fetch(`http://127.0.0.1:${port}/health`, { signal: ctrl.signal });
-        return resp2.ok;
+        socket.connect(port, "127.0.0.1");
       } catch {
-        return false;
+        finish(false);
       }
-    } finally {
-      clearTimeout(timer);
-    }
-  };
+    });
+
+  // Consecutive failures of the TCP probe. Require 3 in a row (~45s) before
+  // forcing a gateway re-init. Because we use a TCP probe (not HTTP), a
+  // failure here means the daemon process is genuinely gone (port unbound),
+  // not just busy. The 3-strike buffer is for transient network races.
+  let watchdogHealthFailures = 0;
 
   const ensureOpenClaw = async () => {
     const gw = getOpenClawGateway();
@@ -163,8 +183,20 @@ export async function onReady() {
       const port = cfg?.gateway?.port ?? cfg?.gateway?.daemonPort ?? 18790;
       const alive = await probeGatewayHealth(port as number);
 
-      if (!alive) {
-        openClawLogger.warn("Gateway reports connected but health probe failed — forcing re-init");
+      if (alive) {
+        watchdogHealthFailures = 0;
+      } else {
+        watchdogHealthFailures++;
+        openClawLogger.warn(
+          `Gateway health probe failed (${watchdogHealthFailures}/3) — daemon may be busy streaming`,
+        );
+        if (watchdogHealthFailures < 3) {
+          // Don't disconnect or re-init yet — the daemon is probably mid-stream.
+          return;
+        }
+
+        watchdogHealthFailures = 0;
+        openClawLogger.warn("Gateway unresponsive for 3 consecutive probes — forcing re-init");
         // Notify renderer using the existing openclaw event channels
         mainWindow?.webContents.send("openclaw:event", { type: "disconnected", reason: "health-probe-failed" });
         mainWindow?.webContents.send("openclaw:event:disconnected", { reason: "health-probe-failed" });
@@ -350,46 +382,24 @@ export async function onReady() {
         let daemonHandlesTelegram = false;
 
         if (bridged) {
-          // Check if daemon is actually alive AND handling Telegram
-          try {
-            const daemonPort = (gw.getConfig() as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 2000);
-            const resp = await fetch(`http://127.0.0.1:${daemonPort}/health`, { signal: ctrl.signal });
-            clearTimeout(timer);
-            if (resp.ok) {
-              const health = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
-              if (health?.channels || health?.telegram) {
-                daemonHandlesTelegram = true;
-              }
-            }
-          } catch {
-            // Daemon unreachable — it may have crashed
-          }
+          // Check if daemon process is alive (TCP probe — not HTTP, since
+          // the daemon may be busy with a long tool call) and whether its
+          // config says it handles Telegram.
+          const daemonPort = (gw.getConfig() as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
+          const daemonAlive = await probeGatewayHealth(daemonPort);
 
-          if (!daemonHandlesTelegram) {
-            // Fallback: check config file
+          if (daemonAlive) {
+            // Trust the daemon config to decide whether it owns Telegram
             try {
               const { readFileSync } = await import("node:fs");
               const { join } = await import("node:path");
               const { homedir } = await import("node:os");
               const daemonCfg = JSON.parse(readFileSync(join(homedir(), ".openclaw", "openclaw.json"), "utf8"));
               if (daemonCfg?.channels?.telegram?.enabled && daemonCfg?.channels?.telegram?.botToken) {
-                // Config says daemon handles it — but verify daemon is actually reachable
-                try {
-                  const daemonPort = (gw.getConfig() as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
-                  const ctrl = new AbortController();
-                  const timer = setTimeout(() => ctrl.abort(), 2000);
-                  const resp = await fetch(`http://127.0.0.1:${daemonPort}/health`, { signal: ctrl.signal });
-                  clearTimeout(timer);
-                  daemonHandlesTelegram = resp.ok;
-                } catch {
-                  // Daemon is dead — don't trust config alone
-                  daemonHandlesTelegram = false;
-                }
+                daemonHandlesTelegram = true;
               }
             } catch {
-              // Config not readable
+              // Config not readable — leave daemonHandlesTelegram = false
             }
           }
 

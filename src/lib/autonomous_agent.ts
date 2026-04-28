@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Autonomous Agent System
  * A fully autonomous, perpetually growing AI system that can:
  * - Scrape data it needs from the web
@@ -833,7 +833,7 @@ export class AutonomousAgentSystem extends EventEmitter {
     
     const defaultConfig: AgentConfiguration = {
       primaryModel: "gpt-5-mini",
-      fallbackModels: ["gemini-3-flash-preview", "claude-sonnet-4-20250514"],
+      fallbackModels: ["gemini-3-flash-preview", "claude-sonnet-4-5"],
       temperature: 0.7,
       maxTokens: 4096,
       autonomyLevel: "semi-autonomous",

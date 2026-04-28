@@ -1,5 +1,5 @@
-/**
- * NLP AI Studio Panel — Natural language → n8n workflows + agents
+﻿/**
+ * NLP AI Studio Panel â€” Natural language â†’ n8n workflows + agents
  *
  * Embedded as a tab in the OpenClaw Kanban page.
  * Users type what they want, Ollama generates the workflow/agent,
@@ -96,7 +96,7 @@ export function NlpAiStudioPanel() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [routingMode, setRoutingMode] = useState<RoutingMode>("auto");
 
-  // ── Fetch available local models ──
+  // â”€â”€ Fetch available local models â”€â”€
   const { data: ollamaModels } = useQuery({
     queryKey: ["ollama-models"],
     queryFn: () => ipc.listLocalOllamaModels(),
@@ -116,7 +116,7 @@ export function NlpAiStudioPanel() {
 
   const apiModels = [
     { provider: "anthropic" as const, modelName: "claude-opus-4-6", displayName: "Claude Opus 4.6 (Anthropic)" },
-    { provider: "anthropic" as const, modelName: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4 (Anthropic)" },
+    { provider: "anthropic" as const, modelName: "claude-sonnet-4-5", displayName: "Claude Sonnet 4 (Anthropic)" },
     { provider: "openai" as const, modelName: "gpt-5.1", displayName: "GPT 5.1 (OpenAI)" },
     { provider: "openai" as const, modelName: "gpt-5-mini", displayName: "GPT 5 Mini (OpenAI)" },
   ];
@@ -126,17 +126,17 @@ export function NlpAiStudioPanel() {
     if (selectedModel) return selectedModel;
     if (routingMode === "local") return allLocalModels[0]?.modelName;
     if (routingMode === "api") return apiModels[0]?.modelName;
-    return undefined; // auto — let backend decide
+    return undefined; // auto â€” let backend decide
   }, [selectedModel, routingMode, allLocalModels]);
 
-  // ── Fetch existing n8n workflows ──
+  // â”€â”€ Fetch existing n8n workflows â”€â”€
   const { data: existingWorkflows } = useQuery({
     queryKey: ["n8n-workflows"],
     queryFn: () => ipc.listN8nWorkflows(),
     refetchInterval: 30_000,
   });
 
-  // ── Setup Ollama credential in n8n ──
+  // â”€â”€ Setup Ollama credential in n8n â”€â”€
   const setupOllamaMutation = useMutation({
     mutationFn: () => ipc.setupN8nOllama(),
     onSuccess: (result) => {
@@ -153,7 +153,7 @@ export function NlpAiStudioPanel() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // ── Generate workflow from NLP ──
+  // â”€â”€ Generate workflow from NLP â”€â”€
   const generateMutation = useMutation({
     mutationFn: async (input: { prompt: string; model?: string; constraints?: any }) => {
       return ipc.generateN8nWorkflow(input) as Promise<GenerationResult>;
@@ -177,7 +177,7 @@ export function NlpAiStudioPanel() {
     },
   });
 
-  // ── Deploy generated workflow to n8n ──
+  // â”€â”€ Deploy generated workflow to n8n â”€â”€
   const deployWorkflowMutation = useMutation({
     mutationFn: async (workflow: GeneratedWorkflow) => {
       return ipc.createN8nWorkflow(workflow);
@@ -203,7 +203,7 @@ export function NlpAiStudioPanel() {
     },
   });
 
-  // ── Generate agent with n8n workflow ──
+  // â”€â”€ Generate agent with n8n workflow â”€â”€
   const generateAgentMutation = useMutation({
     mutationFn: async (input: {
       prompt: string;
@@ -260,7 +260,7 @@ export function NlpAiStudioPanel() {
     },
   });
 
-  // ── Deploy meta workflow builder ──
+  // â”€â”€ Deploy meta workflow builder â”€â”€
   const deployMetaBuilderMutation = useMutation({
     mutationFn: async () => {
       const metaWorkflow = await ipc.createMetaWorkflowBuilder();
@@ -325,7 +325,7 @@ export function NlpAiStudioPanel() {
             AI Studio
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Describe what you need in plain English — Ollama + n8n handles the
+            Describe what you need in plain English â€” Ollama + n8n handles the
             rest
           </p>
         </div>
@@ -592,7 +592,7 @@ export function NlpAiStudioPanel() {
                 {generationResult.workflow && (
                   <>
                     <div className="text-xs font-medium">
-                      {generationResult.workflow.name} —{" "}
+                      {generationResult.workflow.name} â€”{" "}
                       {generationResult.workflow.nodes?.length || 0} nodes
                     </div>
 
@@ -643,7 +643,7 @@ export function NlpAiStudioPanel() {
                 {generationResult.errors && (
                   <div className="text-xs text-red-400 space-y-1">
                     {generationResult.errors.map((e, i) => (
-                      <p key={i}>• {e}</p>
+                      <p key={i}>â€¢ {e}</p>
                     ))}
                   </div>
                 )}
@@ -785,7 +785,7 @@ export function NlpAiStudioPanel() {
               <div className="space-y-1.5">
                 {[
                   {
-                    label: "Webhook → AI → Slack",
+                    label: "Webhook â†’ AI â†’ Slack",
                     prompt:
                       "Accept webhook data, analyze it with AI using Ollama, and post a summary to Slack",
                   },

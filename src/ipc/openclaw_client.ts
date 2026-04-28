@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenClaw IPC Client
  * Renderer-side client for OpenClaw gateway integration
  */
@@ -160,6 +160,28 @@ class OpenClawClientImpl {
 
   async setProviderApiKey(provider: string, apiKey: string): Promise<{ success: boolean }> {
     return this.ipcRenderer.invoke("openclaw:provider:set-api-key", { provider, apiKey });
+  }
+
+  // ===========================================================================
+  // DAEMON WORKSPACE
+  // ===========================================================================
+
+  /**
+   * Point the OpenClaw daemon's agent workspace at a directory so its
+   * Claude-Code-style file/git tools can read & edit code there. Pass
+   * `useJoyCreateRepo: true` to auto-resolve the running JoyCreate repo root.
+   */
+  async setDaemonWorkspace(args: { path?: string; useJoyCreateRepo?: boolean }): Promise<{
+    success: boolean;
+    workspace: string;
+    previous?: string;
+    note: string;
+  }> {
+    return this.ipcRenderer.invoke("openclaw:set-daemon-workspace", args);
+  }
+
+  async getDaemonWorkspace(): Promise<{ workspace: string | null }> {
+    return this.ipcRenderer.invoke("openclaw:get-daemon-workspace");
   }
 
   // ===========================================================================
@@ -403,7 +425,7 @@ class OpenClawClientImpl {
       name: "anthropic",
       config: {
         apiKey,
-        model: config?.model || "claude-sonnet-4-20250514",
+        model: config?.model || "claude-sonnet-4-5",
         enabled: true,
         priority: 2,
       },

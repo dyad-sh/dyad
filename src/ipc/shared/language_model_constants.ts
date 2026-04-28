@@ -1,4 +1,4 @@
-import { LanguageModel } from "../ipc_types";
+﻿import { LanguageModel } from "../ipc_types";
 
 export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
   "google",
@@ -113,7 +113,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "claude-opus-4-6",
       displayName: "Claude Opus 4.6",
       description:
-        "Anthropic's most capable model — best for complex coding & reasoning (very expensive!)",
+        "Anthropic's most capable model â€” best for complex coding & reasoning (very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
@@ -140,7 +140,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 5,
     },
     {
-      name: "claude-sonnet-4-20250514",
+      name: "claude-sonnet-4-5",
       displayName: "Claude Sonnet 4",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
       maxOutputTokens: 32_000,
@@ -431,7 +431,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "us.anthropic.claude-opus-4-6-v1:0",
       displayName: "Claude Opus 4.6",
       description:
-        "Anthropic's most capable model — best for complex coding & reasoning (very expensive!)",
+        "Anthropic's most capable model â€” best for complex coding & reasoning (very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
@@ -446,7 +446,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
     {
-      name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+      name: "us.anthropic.claude-sonnet-4-5-v1:0",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
       maxOutputTokens: 32_000,

@@ -28,7 +28,7 @@ export function registerJoyAssistantHandlers() {
   ipcMain.handle(
     "joy-assistant:chat",
     async (event, params: AssistantChatRequest) => {
-      const { sessionId, message, pageContext, mode } = params;
+      const { sessionId, message, pageContext, mode, model } = params;
 
       if (!sessionId || !message?.trim()) {
         throw new Error("Missing sessionId or message");
@@ -76,7 +76,7 @@ export function registerJoyAssistantHandlers() {
                 error,
               });
             },
-          }, abortController.signal);
+          }, abortController.signal, model);
         } catch (err) {
           if ((err as any)?.name === "AbortError") return;
           logger.error("joy-assistant:chat stream error", err);

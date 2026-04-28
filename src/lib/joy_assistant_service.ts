@@ -245,15 +245,34 @@ async function probeOllama(preferredModel?: string): Promise<LocalProbeResult | 
     const models = data.models ?? [];
     if (models.length === 0) return null;
 
-    // Prefer the user's configured model if it exists on this Ollama instance
-    let modelName = models[0].name;
-    if (preferredModel) {
-      const found = models.find(
-        (m) => m.name === preferredModel || m.name.startsWith(`${preferredModel}:`),
-      );
-      if (found) {
-        modelName = found.name;
+    // Prefer the user's configured model if it exists on this Ollama instance.
+    // Otherwise, prefer chat-tuned conversational models over heavy reasoning/code
+    // models — the side panel does short Q&A, and 70B reasoning models like
+    // deepseek-r1 take minutes to first-token and frequently stall on tool calls.
+    let modelName: string;
+    const preferred = preferredModel
+      ? models.find(
+          (m) => m.name === preferredModel || m.name.startsWith(`${preferredModel}:`),
+        )
+      : null;
+    if (preferred) {
+      modelName = preferred.name;
+    } else {
+      // Preference order: small chat models first, reasoning/code last.
+      const preferOrder = [
+        // Small chat models first (fast first-token, good for side-panel Q&A)
+        /^deepseek-r1:8b/i, /^deepseek-r1:7b/i,
+        /^llama3\.2[:\b]/i, /^llama3\.1[:\b]/i, /^llama3[:\b]/i,
+        /^qwen2\.5[:\b]/i, /^qwen2[:\b]/i,
+        /^mistral[:\b]/i, /^mixtral[:\b]/i,
+        /^phi3[:\b]/i, /^gemma2?[:\b]/i,
+      ];
+      let picked: string | null = null;
+      for (const re of preferOrder) {
+        const m = models.find((mm) => re.test(mm.name));
+        if (m) { picked = m.name; break; }
       }
+      modelName = picked ?? models[0].name;
     }
 
     const provider = createOllamaProvider({ baseURL: baseUrl });
@@ -325,6 +344,7 @@ export async function chat(
   mode: AssistantMode,
   callbacks: StreamCallbacks,
   abortSignal?: AbortSignal,
+  selectedModelOverride?: { provider: string; name: string },
 ): Promise<void> {
   const session = getSession(sessionId);
   if (mode !== session.mode) session.mode = mode;
@@ -376,49 +396,112 @@ export async function chat(
     let modelId: string;
     let isLocal: boolean;
 
-    const selectedModel = settings.selectedModel ?? { provider: "auto", name: "auto" };
-    const preferredLocal = selectedModel.provider === "ollama" ? selectedModel.name : undefined;
-    const localResult = await tryGetLocalModelClient(preferredLocal);
-    if (localResult) {
+    // Effective selected model:
+    //   1. Explicit override from the panel UI (user clicked a model)
+    //   2. settings.selectedModel (global app default)
+    //   3. "auto" sentinel — triggers local-first auto-detect
+    const effectiveSelected =
+      selectedModelOverride && selectedModelOverride.provider !== "auto"
+        ? selectedModelOverride
+        : (settings.selectedModel ?? { provider: "auto", name: "auto" });
+
+    if (effectiveSelected.provider === "ollama" || effectiveSelected.provider === "lmstudio") {
+      // Explicit local model — honor exactly what the user picked
+      const localResult =
+        effectiveSelected.provider === "ollama"
+          ? await probeOllama(effectiveSelected.name)
+          : await probeLMStudio();
+      if (!localResult) {
+        throw new Error(
+          `Local model "${effectiveSelected.name}" is not available on ${effectiveSelected.provider}. ` +
+            `Make sure the local server is running and the model is pulled.`,
+        );
+      }
       modelClient = localResult.modelClient;
       providerId = localResult.providerId;
       modelId = localResult.modelId;
       isLocal = true;
-      logger.info("Joy assistant using LOCAL model", { providerId, modelId });
+      logger.info("Joy assistant using EXPLICIT LOCAL model", { providerId, modelId });
+    } else if (effectiveSelected.provider === "auto" || effectiveSelected.name === "auto") {
+      // No explicit choice — local-first auto-detect, then cloud fallback
+      const localResult = await tryGetLocalModelClient();
+      if (localResult) {
+        modelClient = localResult.modelClient;
+        providerId = localResult.providerId;
+        modelId = localResult.modelId;
+        isLocal = true;
+        logger.info("Joy assistant using AUTO LOCAL model", { providerId, modelId });
+      } else {
+        const resolved = await getModelClient(effectiveSelected, settings);
+        modelClient = resolved.modelClient;
+        providerId = modelClient.builtinProviderId ?? effectiveSelected.provider;
+        modelId = effectiveSelected.name ?? "unknown";
+        isLocal = false;
+        logger.info("Joy assistant AUTO fell back to CLOUD model", { providerId, modelId });
+      }
     } else {
-      // No local model available — fall back to cloud/auto routing
-      const resolved = await getModelClient(selectedModel, settings);
+      // Explicit cloud model — honor exactly what the user picked, do NOT
+      // silently fall through to local. (This was the Opus-vs-Sonnet bug.)
+      const resolved = await getModelClient(effectiveSelected, settings);
       modelClient = resolved.modelClient;
-      providerId = modelClient.builtinProviderId ?? selectedModel.provider;
-      modelId = selectedModel.name ?? "unknown";
+      providerId = modelClient.builtinProviderId ?? effectiveSelected.provider;
+      modelId = effectiveSelected.name ?? "unknown";
       isLocal = false;
-      logger.info("Joy assistant falling back to CLOUD model", { providerId, modelId });
+      logger.info("Joy assistant using EXPLICIT CLOUD model", { providerId, modelId });
     }
 
-    // Build AI SDK tools for the assistant
-    const assistantTools = buildAssistantTools(intent);
+    // Build AI SDK tools for the assistant.
+    // Local Ollama models (especially reasoning models like deepseek-r1, qwen3-r1)
+    // hang or never emit tokens when given large tool catalogs, because the model
+    // gets stuck deciding whether to call a tool. For conversational intents on
+    // local models we therefore omit tools entirely — the user can still ask
+    // tool-using questions (system, fill, configure, navigate, create) and tools
+    // will be re-enabled for those.
+    const conversationalIntents: AssistantIntent[] = ["explain", "general", "analyze"];
+    const skipToolsForLocal = isLocal && conversationalIntents.includes(intent);
+    const assistantTools = skipToolsForLocal ? undefined : buildAssistantTools(intent);
 
     // Stream the response
     const stream = streamText({
       model: modelClient.model,
       messages: aiMessages as any,
-      tools: assistantTools,
-      maxSteps: 5,
+      ...(assistantTools ? { tools: assistantTools, maxSteps: 5 } : {}),
       maxRetries: 1,
       abortSignal,
     });
 
-    for await (const part of stream.fullStream as AsyncIterable<TextStreamPart<ToolSet>>) {
-      if (abortSignal?.aborted) break;
-      if (part.type === "text-delta") {
-        assistantContent += part.text;
-        callbacks.onDelta(part.text);
-      } else if (part.type === "tool-result") {
-        const toolAction = toolResultToAction(part.toolName, part.input as Record<string, unknown>, part.output);
-        if (toolAction) {
-          allActions.push(toolAction);
+    // Stall watchdog: if no token arrives within 60s, surface an error
+    // instead of letting the user stare at a spinner forever (common when a
+    // large local model is loading from disk for the first time).
+    let lastChunkAt = Date.now();
+    const stallTimer = setInterval(() => {
+      if (Date.now() - lastChunkAt > 60_000) {
+        clearInterval(stallTimer);
+        callbacks.onError(
+          `${isLocal ? "Local model" : "Model"} "${modelId}" did not respond within 60s. ` +
+            (isLocal
+              ? "It may still be loading into memory. Try again, or pick a smaller model in Settings."
+              : "Please try again."),
+        );
+      }
+    }, 5_000);
+
+    try {
+      for await (const part of stream.fullStream as AsyncIterable<TextStreamPart<ToolSet>>) {
+        if (abortSignal?.aborted) break;
+        lastChunkAt = Date.now();
+        if (part.type === "text-delta") {
+          assistantContent += part.text;
+          callbacks.onDelta(part.text);
+        } else if (part.type === "tool-result") {
+          const toolAction = toolResultToAction(part.toolName, part.input as Record<string, unknown>, part.output);
+          if (toolAction) {
+            allActions.push(toolAction);
+          }
         }
       }
+    } finally {
+      clearInterval(stallTimer);
     }
 
     // Record cost with the smart cost engine

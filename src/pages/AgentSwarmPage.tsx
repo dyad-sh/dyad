@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent Swarm Page
  * UI for self-replicating, autonomous agent orchestration with witness capabilities
  */
@@ -520,7 +520,7 @@ function SwarmListItem({
         </div>
       </div>
       <div className="text-xs text-muted-foreground mt-1">
-        {swarm.metrics.totalAgents} agents · {swarm.metrics.completedTasks} tasks
+        {swarm.metrics.totalAgents} agents Â· {swarm.metrics.completedTasks} tasks
       </div>
     </div>
   );
@@ -972,9 +972,9 @@ function AgentListItem({
       </div>
       <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
         <span>Gen {agent.generation}</span>
-        <span>·</span>
+        <span>Â·</span>
         <span>{agent.childIds.length} children</span>
-        <span>·</span>
+        <span>Â·</span>
         <span>{agent.state.completedTasks} tasks</span>
       </div>
     </button>
@@ -1026,7 +1026,7 @@ function AgentDetails({ agent }: { agent: AgentNode }) {
               </Badge>
             </CardTitle>
             <CardDescription>
-              {AGENT_ROLES.find((r) => r.value === agent.role)?.label} · Generation{" "}
+              {AGENT_ROLES.find((r) => r.value === agent.role)?.label} Â· Generation{" "}
               {agent.generation}
             </CardDescription>
           </div>
@@ -1570,7 +1570,7 @@ function SpawnAgentDialog({
                 <SelectItem value="gpt-5-mini">GPT 5 Mini</SelectItem>
                 <SelectItem value="gpt-5.1-codex">GPT 5.1 Codex</SelectItem>
                 <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
-                <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+                <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1773,7 +1773,7 @@ function WitnessesTab({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
-                        {witness.observations.length} observations · {witness.insights.length}{" "}
+                        {witness.observations.length} observations Â· {witness.insights.length}{" "}
                         insights
                       </span>
                       {witness.status === "active" && (
@@ -1950,7 +1950,7 @@ function KnowledgeTab({
                     </div>
                     <div className="text-right text-sm text-muted-foreground">
                       <div>{k.usageCount} uses</div>
-                      <div>★ {k.rating.toFixed(1)}</div>
+                      <div>â˜… {k.rating.toFixed(1)}</div>
                     </div>
                   </div>
                 </CardContent>
@@ -2124,7 +2124,7 @@ function MessagesTab({
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm">
                           <span className="font-medium">{sender?.name ?? "Unknown"}</span>
-                          <span className="text-muted-foreground">→</span>
+                          <span className="text-muted-foreground">â†’</span>
                           <span className="font-medium">{recipient?.name ?? "Unknown"}</span>
                           <Badge variant="outline" className="text-xs">
                             {msg.type.replace(/_/g, " ")}

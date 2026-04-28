@@ -1,4 +1,4 @@
-import { createOpenAI } from "@ai-sdk/openai";
+﻿import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createXai } from "@ai-sdk/xai";
@@ -42,7 +42,7 @@ const AUTO_MODELS = [
   },
   {
     provider: "anthropic",
-    name: "claude-sonnet-4-20250514",
+    name: "claude-sonnet-4-5",
   },
   {
     provider: "openai",
@@ -355,9 +355,9 @@ async function getRegularModelClient(
     }
     case "ollama": {
       // Ensure the model is registered with the Ollama server before
-      // creating the provider. Ollama ≥0.15 can have models on disk
+      // creating the provider. Ollama â‰¥0.15 can have models on disk
       // that aren't in its internal DB, causing "model not found" errors.
-      // ensureOllamaModelReady returns the resolved name (e.g. "llama3.2" → "llama3.2:3b")
+      // ensureOllamaModelReady returns the resolved name (e.g. "llama3.2" â†’ "llama3.2:3b")
       // so the provider uses the exact tag the server recognizes.
       const resolvedModelName = await ensureOllamaModelReady(model.name);
       const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });

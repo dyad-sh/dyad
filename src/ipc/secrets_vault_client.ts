@@ -142,9 +142,12 @@ export const SecretsVaultClient = {
   },
 
   onEvent(callback: (event: VaultEvent) => void): () => void {
-    const handler = (_: any, event: VaultEvent) => callback(event);
+    const handler = (_: any, event: VaultEvent) => {
+      if (!event) return;
+      callback(event);
+    };
     getIpcRenderer()?.on("secrets-vault:event", handler);
-    return () => getIpcRenderer()?.off("secrets-vault:event", handler);
+    return () => getIpcRenderer()?.removeListener("secrets-vault:event", handler);
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

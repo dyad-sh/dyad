@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenClaw Smart Cost Engine
  *
  * Tracks API costs, enforces budgets, and routes to the cheapest model
@@ -14,7 +14,7 @@
 import { EventEmitter } from "events";
 import { v4 as uuidv4 } from "uuid";
 
-// ── Pricing ($ per 1M tokens) ────────────────────────────────────────────
+// â”€â”€ Pricing ($ per 1M tokens) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ModelPricing {
   inputPer1M: number;
@@ -33,7 +33,7 @@ export interface ModelPricing {
  * Ollama models are free (local). Cloud prices are approximate public rates.
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  // ── Ollama / local (free) ──────────────────
+  // â”€â”€ Ollama / local (free) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "llama3.2:3b":         { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 4, provider: "ollama" },
   "llama3.2:7b":         { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 5, provider: "ollama" },
   "llama3.1:8b":         { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 5, provider: "ollama" },
@@ -44,17 +44,17 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "qwen2.5-coder:7b":   { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 6, provider: "ollama" },
   "deepseek-coder-v2:16b": { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 6, provider: "ollama" },
 
-  // ── OpenRouter free ────────────────────────
+  // â”€â”€ OpenRouter free â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "qwen/qwen3-coder:free":         { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 6, provider: "openrouter" },
   "mistralai/devstral-2512:free":  { inputPer1M: 0, outputPer1M: 0, tier: 0, minComplexity: 1, maxComplexity: 5, provider: "openrouter" },
 
-  // ── OpenRouter paid ────────────────────────
+  // â”€â”€ OpenRouter paid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "qwen/qwen3-coder":              { inputPer1M: 0.50, outputPer1M: 2.00, tier: 2, minComplexity: 1, maxComplexity: 7, provider: "openrouter" },
   "deepseek/deepseek-chat-v3.1":   { inputPer1M: 0.27, outputPer1M: 1.10, tier: 2, minComplexity: 1, maxComplexity: 7, provider: "openrouter" },
   "moonshotai/kimi-k2-0905":       { inputPer1M: 0.60, outputPer1M: 2.40, tier: 2, minComplexity: 1, maxComplexity: 7, provider: "openrouter" },
   "z-ai/glm-4.7":                  { inputPer1M: 0.50, outputPer1M: 2.00, tier: 2, minComplexity: 1, maxComplexity: 7, provider: "openrouter" },
 
-  // ── OpenAI ─────────────────────────────────
+  // â”€â”€ OpenAI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "gpt-5-mini":          { inputPer1M:  1.50, outputPer1M:  6.00, tier: 2, minComplexity: 1, maxComplexity: 6, provider: "openai" },
   "gpt-5":               { inputPer1M:  5.00, outputPer1M: 15.00, tier: 3, minComplexity: 3, maxComplexity: 8, provider: "openai" },
   "gpt-5-codex":         { inputPer1M:  5.00, outputPer1M: 15.00, tier: 3, minComplexity: 3, maxComplexity: 9, provider: "openai" },
@@ -63,24 +63,24 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.1-codex-mini":  { inputPer1M:  2.00, outputPer1M:  8.00, tier: 2, minComplexity: 1, maxComplexity: 7, provider: "openai" },
   "gpt-5.2":             { inputPer1M:  5.00, outputPer1M: 15.00, tier: 4, minComplexity: 4, maxComplexity: 10, provider: "openai" },
 
-  // ── Anthropic ──────────────────────────────
-  "claude-sonnet-4-20250514":   { inputPer1M: 3.00, outputPer1M: 15.00, tier: 3, minComplexity: 3, maxComplexity: 9, provider: "anthropic" },
+  // â”€â”€ Anthropic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  "claude-sonnet-4-5":   { inputPer1M: 3.00, outputPer1M: 15.00, tier: 3, minComplexity: 3, maxComplexity: 9, provider: "anthropic" },
   "claude-sonnet-4-5-20250929": { inputPer1M: 3.00, outputPer1M: 15.00, tier: 4, minComplexity: 4, maxComplexity: 10, provider: "anthropic" },
   "claude-opus-4-5":            { inputPer1M: 15.00, outputPer1M: 75.00, tier: 5, minComplexity: 7, maxComplexity: 10, provider: "anthropic" },
   "claude-opus-4-6":            { inputPer1M: 15.00, outputPer1M: 75.00, tier: 5, minComplexity: 7, maxComplexity: 10, provider: "anthropic" },
 
-  // ── Google ─────────────────────────────────
+  // â”€â”€ Google â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "gemini-flash-latest":       { inputPer1M: 0.15, outputPer1M: 0.60, tier: 1, minComplexity: 1, maxComplexity: 6, provider: "google" },
   "gemini-2.5-pro":            { inputPer1M: 1.25, outputPer1M: 5.00, tier: 3, minComplexity: 3, maxComplexity: 8, provider: "google" },
   "gemini-3-flash-preview":    { inputPer1M: 0.20, outputPer1M: 0.80, tier: 2, minComplexity: 1, maxComplexity: 7, provider: "google" },
   "gemini-3-pro-preview":      { inputPer1M: 2.50, outputPer1M: 10.00, tier: 4, minComplexity: 4, maxComplexity: 9, provider: "google" },
 
-  // ── xAI ────────────────────────────────────
+  // â”€â”€ xAI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   "grok-code-fast-1":          { inputPer1M: 0.30, outputPer1M: 1.20, tier: 2, minComplexity: 1, maxComplexity: 6, provider: "xai" },
 };
 
 
-// ── Cost Record & Budget Types ───────────────────────────────────────────
+// â”€â”€ Cost Record & Budget Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface CostRecord {
   id: string;
@@ -131,7 +131,7 @@ const DEFAULT_BUDGET: CostBudget = {
 };
 
 
-// ── Task-to-Model Routing ────────────────────────────────────────────────
+// â”€â”€ Task-to-Model Routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Maps each JoyCreate module/task category to a preferred model.
@@ -156,24 +156,24 @@ export interface TaskModelRoute {
   model: string;
   /** Provider for this model */
   provider: string;
-  /** Why — user-facing explanation */
+  /** Why â€” user-facing explanation */
   reason: string;
 }
 
 export type TaskModelRouting = Record<TaskModule, TaskModelRoute>;
 
 /**
- * Default routing — balance cost vs quality per module.
+ * Default routing â€” balance cost vs quality per module.
  *
- *  - Code / agents → Claude (best for code reasoning)
- *  - Images → Gemini (good vision + cheap)
- *  - Documents / workflows / email / chat → DeepSeek (cheap + competent)
- *  - Planning → Gemini Flash (cheap + fast for JSON planning)
- *  - Data / deploy / marketplace → DeepSeek (simple structured tasks)
+ *  - Code / agents â†’ Claude (best for code reasoning)
+ *  - Images â†’ Gemini (good vision + cheap)
+ *  - Documents / workflows / email / chat â†’ DeepSeek (cheap + competent)
+ *  - Planning â†’ Gemini Flash (cheap + fast for JSON planning)
+ *  - Data / deploy / marketplace â†’ DeepSeek (simple structured tasks)
  */
 export const DEFAULT_TASK_ROUTING: TaskModelRouting = {
-  code:         { model: "claude-sonnet-4-20250514",     provider: "anthropic",   reason: "Best for code generation and reasoning" },
-  agent:        { model: "claude-sonnet-4-20250514",     provider: "anthropic",   reason: "Best for agent logic and tool use" },
+  code:         { model: "claude-sonnet-4-5",     provider: "anthropic",   reason: "Best for code generation and reasoning" },
+  agent:        { model: "claude-sonnet-4-5",     provider: "anthropic",   reason: "Best for agent logic and tool use" },
   image:        { model: "gemini-3-flash-preview",       provider: "google",      reason: "Fast vision + image understanding at low cost" },
   video:        { model: "gemini-3-flash-preview",       provider: "google",      reason: "Multimodal + cost-effective" },
   document:     { model: "deepseek/deepseek-chat-v3.1",  provider: "openrouter",  reason: "Great writing quality at very low cost" },
@@ -226,7 +226,7 @@ export function resolveTaskModule(taskKey: string): TaskModule {
 }
 
 
-// ── Cost Engine ──────────────────────────────────────────────────────────
+// â”€â”€ Cost Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export class OpenClawCostEngine extends EventEmitter {
   private static instance: OpenClawCostEngine;
@@ -246,7 +246,7 @@ export class OpenClawCostEngine extends EventEmitter {
     return OpenClawCostEngine.instance;
   }
 
-  // ── Configuration ──────────────────────────────────────────────────────
+  // â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   setBudget(budget: Partial<CostBudget>): void {
     this.budget = { ...this.budget, ...budget };
@@ -257,14 +257,14 @@ export class OpenClawCostEngine extends EventEmitter {
     return { ...this.budget };
   }
 
-  // ── Task-to-Model Routing ──────────────────────────────────────────────
+  // â”€â”€ Task-to-Model Routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** Get the full task→model routing table */
+  /** Get the full taskâ†’model routing table */
   getTaskRouting(): TaskModelRouting {
     return { ...this.taskRouting };
   }
 
-  /** Update one or more module→model mappings */
+  /** Update one or more moduleâ†’model mappings */
   setTaskRouting(updates: Partial<TaskModelRouting>): void {
     this.taskRouting = { ...this.taskRouting, ...updates };
     this.emit("taskRouting:updated", this.taskRouting);
@@ -281,14 +281,14 @@ export class OpenClawCostEngine extends EventEmitter {
    *
    * @param taskKey AIRequest.type (e.g. "chat"), action category (e.g. "image"),
    *               or channel name (e.g. "telegram")
-   * @returns { model, provider, reason } — the configured preferred model
+   * @returns { model, provider, reason } â€” the configured preferred model
    */
   getModelForTask(taskKey: string): TaskModelRoute {
     const module = resolveTaskModule(taskKey);
     return this.taskRouting[module];
   }
 
-  // ── Cost Calculation ───────────────────────────────────────────────────
+  // â”€â”€ Cost Calculation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Calculate cost for a given model and token usage */
   calculateCost(
@@ -312,7 +312,7 @@ export class OpenClawCostEngine extends EventEmitter {
     return totalCost;
   }
 
-  // ── Recording ──────────────────────────────────────────────────────────
+  // â”€â”€ Recording â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Record a completed request with actual token usage */
   recordUsage(params: {
@@ -367,7 +367,7 @@ export class OpenClawCostEngine extends EventEmitter {
     return record;
   }
 
-  // ── Summary & Reporting ────────────────────────────────────────────────
+  // â”€â”€ Summary & Reporting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   getSummary(): CostSummary {
     const now = new Date();
@@ -408,7 +408,7 @@ export class OpenClawCostEngine extends EventEmitter {
       if (r.totalCost === 0 && r.totalTokens > 0) {
         // If this were processed on a mid-tier cloud model instead
         const hypotheticalCost = this.calculateCost(
-          "claude-sonnet-4-20250514",
+          "claude-sonnet-4-5",
           r.inputTokens,
           r.outputTokens,
         ).totalCost;
@@ -442,7 +442,7 @@ export class OpenClawCostEngine extends EventEmitter {
     return this.records.slice(-limit);
   }
 
-  // ── Smart Model Selection ──────────────────────────────────────────────
+  // â”€â”€ Smart Model Selection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Pick the cheapest model adequate for the given complexity.
@@ -477,8 +477,8 @@ export class OpenClawCostEngine extends EventEmitter {
           provider: "ollama",
           estimatedCostPer1kTokens: 0,
           reason: summary.overBudget
-            ? "Budget exceeded — using free local model"
-            : "Approaching budget limit — downgrading to local",
+            ? "Budget exceeded â€” using free local model"
+            : "Approaching budget limit â€” downgrading to local",
         };
       }
     }
@@ -494,7 +494,7 @@ export class OpenClawCostEngine extends EventEmitter {
       const pricing = MODEL_PRICING[model];
       if (!pricing) continue;
       if (complexity > pricing.maxComplexity) continue; // Too weak
-      // Allow usage below minComplexity — model is overkill but still works
+      // Allow usage below minComplexity â€” model is overkill but still works
 
       const avgCostPer1k =
         (pricing.inputPer1M + pricing.outputPer1M) / 2 / 1000;
@@ -507,7 +507,7 @@ export class OpenClawCostEngine extends EventEmitter {
         model: availableModels[0] ?? "llama3.2:3b",
         provider: "ollama",
         estimatedCostPer1kTokens: 0,
-        reason: "No priced models available — using default",
+        reason: "No priced models available â€” using default",
       };
     }
 
@@ -611,18 +611,18 @@ export class OpenClawCostEngine extends EventEmitter {
     };
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private lookupPricing(model: string): ModelPricing {
     // Direct match
     if (MODEL_PRICING[model]) return MODEL_PRICING[model];
 
-    // Partial match (e.g. "claude-sonnet-4-20250514" from a versioned string)
+    // Partial match (e.g. "claude-sonnet-4-5" from a versioned string)
     for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
       if (model.includes(key) || key.includes(model)) return pricing;
     }
 
-    // Unknown model — assume mid-tier cloud pricing as a safe default
+    // Unknown model â€” assume mid-tier cloud pricing as a safe default
     return {
       inputPer1M: 3.0,
       outputPer1M: 15.0,

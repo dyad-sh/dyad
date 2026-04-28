@@ -1,11 +1,11 @@
-/**
+﻿/**
  * OpenClaw-Ollama Bridge
  * 
  * Connects OpenClaw Personal AI Assistant with local Ollama inference.
  * OpenClaw becomes the intelligent router that decides when to use local
  * Ollama models vs cloud providers, based on task complexity and privacy needs.
  * 
- * 🦞 EXFOLIATE! EXFOLIATE! - Local AI supremacy!
+ * ðŸ¦ž EXFOLIATE! EXFOLIATE! - Local AI supremacy!
  */
 
 import { EventEmitter } from "events";
@@ -197,7 +197,7 @@ export class OpenClawOllamaBridge extends EventEmitter {
       this.config = { ...this.config, ...config };
     }
     
-    logger.info("🦞 Initializing OpenClaw-Ollama bridge...");
+    logger.info("ðŸ¦ž Initializing OpenClaw-Ollama bridge...");
     
     // Check Ollama availability
     await this.checkOllamaHealth();
@@ -213,7 +213,7 @@ export class OpenClawOllamaBridge extends EventEmitter {
       30000
     );
     
-    logger.info("🦞 OpenClaw-Ollama bridge initialized", {
+    logger.info("ðŸ¦ž OpenClaw-Ollama bridge initialized", {
       ollamaAvailable: this.ollamaAvailable,
       modelsCount: this.availableModels.length,
     });
@@ -231,7 +231,7 @@ export class OpenClawOllamaBridge extends EventEmitter {
     }
     
     this.emit("shutdown");
-    logger.info("🦞 OpenClaw-Ollama bridge shut down");
+    logger.info("ðŸ¦ž OpenClaw-Ollama bridge shut down");
   }
   
   // ===========================================================================
@@ -373,7 +373,7 @@ export class OpenClawOllamaBridge extends EventEmitter {
 
   /**
    * Register a model with the Ollama server using the CLI.
-   * Ollama ≥0.15 can have models on disk that aren't in its internal DB.
+   * Ollama â‰¥0.15 can have models on disk that aren't in its internal DB.
    */
   private async registerModelWithServer(modelName: string): Promise<void> {
     const execFileAsync = promisify(execFile);
@@ -452,7 +452,7 @@ export class OpenClawOllamaBridge extends EventEmitter {
     
     if (!useLocal || !this.ollamaAvailable) {
       return {
-        model: "claude-sonnet-4-20250514", // Default cloud model
+        model: "claude-sonnet-4-5", // Default cloud model
         reason: this.ollamaAvailable
           ? "Task complexity exceeds local threshold"
           : "Ollama not available",
@@ -477,7 +477,7 @@ export class OpenClawOllamaBridge extends EventEmitter {
         speed = "slow";
       } else {
         return {
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-5",
           reason: "No local vision model available",
           isLocal: false,
           estimatedSpeed: "medium",

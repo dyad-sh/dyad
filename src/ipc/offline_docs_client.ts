@@ -160,9 +160,12 @@ export const OfflineDocsClient = {
   },
 
   onEvent(callback: (event: DocsEvent) => void): () => void {
-    const handler = (_: any, event: DocsEvent) => callback(event);
+    const handler = (_: any, event: DocsEvent) => {
+      if (!event) return;
+      callback(event);
+    };
     getIpcRenderer()?.on("offline-docs:event", handler);
-    return () => getIpcRenderer()?.off("offline-docs:event", handler);
+    return () => getIpcRenderer()?.removeListener("offline-docs:event", handler);
   },
 };
 

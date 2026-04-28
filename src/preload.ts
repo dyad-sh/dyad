@@ -1412,6 +1412,8 @@ const validInvokeChannels = [
   // OpenClaw Gateway - Local AI Gateway with n8n integration
   "openclaw:initialize",
   "openclaw:shutdown",
+  "openclaw:set-daemon-workspace",
+  "openclaw:get-daemon-workspace",
   "openclaw:gateway:start",
   "openclaw:gateway:stop",
   "openclaw:gateway:status",
@@ -2459,6 +2461,18 @@ contextBridge.exposeInMainWorld("electron", {
       }
     },
     removeListener: (
+      channel: ValidReceiveChannel,
+      listener: (...args: unknown[]) => void,
+    ) => {
+      if (validReceiveChannels.includes(channel)) {
+        ipcRenderer.removeListener(channel, listener);
+      }
+    },
+    // Alias `off` to `removeListener` so client code that calls
+    // `ipcRenderer.off(channel, listener)` (matching Electron's native API
+    // and the pattern used by several IPC clients) does not throw a
+    // "d.off is not a function" error inside route effects.
+    off: (
       channel: ValidReceiveChannel,
       listener: (...args: unknown[]) => void,
     ) => {

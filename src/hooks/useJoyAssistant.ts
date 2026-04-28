@@ -19,6 +19,17 @@ export const assistantPanelOpenAtom = atom(false);
 export const assistantModeAtom = atom<AssistantMode>("auto");
 /** Currently selected session ID. `null` means a freshly-generated UUID is used. */
 export const assistantActiveSessionAtom = atom<string | null>(null);
+/**
+ * Per-panel model override. `null` means "use whatever the global app default is"
+ * (which itself does local-first auto-detection in the service). Persisted via
+ * Jotai so the user's last pick is remembered across panel re-opens.
+ */
+export const assistantSelectedModelAtom = atom<{ provider: string; name: string } | null>(null);
+
+export function useAssistantSelectedModel() {
+  const [model, setModel] = useAtom(assistantSelectedModelAtom);
+  return { model, setModel } as const;
+}
 
 // ── Query keys ─────────────────────────────────────────────────────────────
 
@@ -77,6 +88,7 @@ export function useJoyAssistant(sessionId: string) {
   const [pendingActions, setPendingActions] = useState<AssistantAction[]>([]);
   const contentRef = useRef("");
   const [mode] = useAtom(assistantModeAtom);
+  const [selectedModel] = useAtom(assistantSelectedModelAtom);
 
   // Load persisted history when the session changes
   const { data: persistedHistory } = useQuery({
@@ -165,12 +177,12 @@ export function useJoyAssistant(sessionId: string) {
 
       startStream(assistantId, (cb) =>
         JoyAssistantClient.getInstance().chat(
-          { sessionId, message: text, pageContext, mode },
+          { sessionId, message: text, pageContext, mode, model: selectedModel ?? undefined },
           cb,
         ),
       );
     },
-    [sessionId, streaming, mode, startStream],
+    [sessionId, streaming, mode, selectedModel, startStream],
   );
 
   const regenerate = useCallback(

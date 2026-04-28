@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent Tool Catalog
  * Pre-built tool definitions for the Agent Builder
  * Includes: Knowledge Search, Document editing, Google Docs, Summarize, LLM,
@@ -71,7 +71,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Advanced Knowledge Search",
     description: "Search through knowledge base documents using semantic vector search with relevance scoring",
     category: "knowledge",
-    icon: "🔍",
+    icon: "ðŸ”",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -95,7 +95,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Edit Document",
     description: "Edit and modify document content with find-replace, append, insert, and structured transformations",
     category: "document",
-    icon: "✏️",
+    icon: "âœï¸",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -120,7 +120,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Google Docs",
     description: "Read, create, and edit Google Docs documents via the Google Docs API",
     category: "document",
-    icon: "📄",
+    icon: "ðŸ“„",
     n8nNodeType: "n8n-nodes-base.googleDocs",
     requiresCredentials: true,
     credentialType: "googleDocsOAuth2Api",
@@ -146,7 +146,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Document Extraction & Parsing",
     description: "Extract structured data, tables, and text from documents (PDF, DOCX, images with OCR)",
     category: "document",
-    icon: "📋",
+    icon: "ðŸ“‹",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -179,7 +179,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "LLM (Language Model)",
     description: "Send prompts to a large language model for text generation, analysis, and reasoning",
     category: "ai",
-    icon: "🤖",
+    icon: "ðŸ¤–",
     n8nNodeType: "@n8n/n8n-nodes-langchain.chainLlm",
     requiresCredentials: true,
     credentialType: "openAiApi",
@@ -190,7 +190,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
         model: {
           type: "string",
           description: "Model to use",
-          enum: ["gpt-5.1", "gpt-5-mini", "claude-opus-4-6", "claude-sonnet-4-20250514", "gemini-3-flash-preview", "llama3.2"],
+          enum: ["gpt-5.1", "gpt-5-mini", "claude-opus-4-6", "claude-sonnet-4-5", "gemini-3-flash-preview", "llama3.2"],
           default: "gpt-5-mini",
         },
         temperature: { type: "number", description: "Sampling temperature (0-2)", default: 0.7 },
@@ -207,7 +207,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Summarize",
     description: "Summarize long text, documents, or conversations into concise summaries with key points",
     category: "ai",
-    icon: "📝",
+    icon: "ðŸ“",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -236,7 +236,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Perplexity Search",
     description: "AI-powered web search using Perplexity API with citations and source verification",
     category: "search",
-    icon: "🔎",
+    icon: "ðŸ”Ž",
     requiresCredentials: true,
     credentialType: "perplexityApi",
     inputSchema: {
@@ -261,7 +261,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Google Search",
     description: "Search the web using Google Custom Search API and return structured results",
     category: "search",
-    icon: "🌐",
+    icon: "ðŸŒ",
     requiresCredentials: true,
     credentialType: "googleSearchApi",
     inputSchema: {
@@ -282,7 +282,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Google Scrape & Summarize",
     description: "Scrape web pages from Google search results and summarize their content",
     category: "search",
-    icon: "🕷️",
+    icon: "ðŸ•·ï¸",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -306,7 +306,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "PDF Conversion",
     description: "Convert documents between PDF and other formats (DOCX, HTML, Markdown, images)",
     category: "file-conversion",
-    icon: "📑",
+    icon: "ðŸ“‘",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -332,7 +332,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Markdown Conversion",
     description: "Convert content to/from Markdown format with support for HTML, DOCX, and plain text",
     category: "file-conversion",
-    icon: "📃",
+    icon: "ðŸ“ƒ",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -364,7 +364,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Legal Document Analysis",
     description: "Analyze legal documents, contracts, and agreements to extract clauses, risks, and obligations",
     category: "analysis",
-    icon: "⚖️",
+    icon: "âš–ï¸",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -393,7 +393,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Data Analysis",
     description: "Analyze structured data sets with statistical operations, trends, and insights",
     category: "analysis",
-    icon: "📊",
+    icon: "ðŸ“Š",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -426,7 +426,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Send Email",
     description: "Send emails via SMTP or Gmail API with support for attachments and HTML content",
     category: "communication",
-    icon: "📧",
+    icon: "ðŸ“§",
     n8nNodeType: "n8n-nodes-base.emailSend",
     requiresCredentials: true,
     credentialType: "smtp",
@@ -453,7 +453,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Slack Message",
     description: "Send messages and rich blocks to Slack channels or users",
     category: "communication",
-    icon: "💬",
+    icon: "ðŸ’¬",
     n8nNodeType: "n8n-nodes-base.slack",
     requiresCredentials: true,
     credentialType: "slackApi",
@@ -479,7 +479,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "HTTP Request",
     description: "Make HTTP/REST API requests with customizable method, headers, body, and authentication",
     category: "integration",
-    icon: "🌍",
+    icon: "ðŸŒ",
     n8nNodeType: "n8n-nodes-base.httpRequest",
     requiresCredentials: false,
     inputSchema: {
@@ -511,7 +511,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     name: "Code Execution",
     description: "Execute JavaScript or Python code snippets within the agent workflow",
     category: "integration",
-    icon: "💻",
+    icon: "ðŸ’»",
     n8nNodeType: "n8n-nodes-base.code",
     requiresCredentials: false,
     inputSchema: {
@@ -533,7 +533,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Knowledge — Cache Augmented Generation (CAG)
+  // Knowledge â€” Cache Augmented Generation (CAG)
   // ---------------------------------------------------------------------------
   {
     id: "cag-knowledge",
@@ -541,7 +541,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     description:
       "Load all documents and text into a long LLM context window (up to 2M tokens) to retrieve and generate responses directly via Cache Augmented Generation",
     category: "knowledge",
-    icon: "🧠",
+    icon: "ðŸ§ ",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -567,7 +567,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Document — Form Filling
+  // Document â€” Form Filling
   // ---------------------------------------------------------------------------
   {
     id: "form-fill",
@@ -575,7 +575,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     description:
       "Fill in forms, tables, and checkboxes in documents automatically using AI-powered extraction and structured data mapping",
     category: "document",
-    icon: "📝",
+    icon: "ðŸ“",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -596,7 +596,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Document — Parse / OCR
+  // Document â€” Parse / OCR
   // ---------------------------------------------------------------------------
   {
     id: "document-parse",
@@ -604,7 +604,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
     description:
       "Parse documents (PDFs, images, spreadsheets) into structured text, tables, and figures with high accuracy using AI-powered extraction and OCR",
     category: "document",
-    icon: "📋",
+    icon: "ðŸ“‹",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -627,7 +627,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Search/Scraping — Web Scraper Tool (integrates scraping engine)
+  // Search/Scraping â€” Web Scraper Tool (integrates scraping engine)
   // ---------------------------------------------------------------------------
   {
     id: "web-scraper-tool",
@@ -636,7 +636,7 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
       "Scrape web pages, crawl sites, extract structured data with AI, and store results as knowledge. " +
       "Supports templates for news, e-commerce, jobs, recipes, academic papers, and more. Respects robots.txt.",
     category: "search",
-    icon: "🕷️",
+    icon: "ðŸ•·ï¸",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -658,14 +658,14 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Data — Database Query
+  // Data â€” Database Query
   // ---------------------------------------------------------------------------
   {
     id: "database-query",
     name: "Database Query",
     description: "Execute SQL queries against local SQLite database or connect to external databases for data retrieval",
     category: "data",
-    icon: "🗄️",
+    icon: "ðŸ—„ï¸",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -687,14 +687,14 @@ export const AGENT_TOOL_CATALOG: CatalogTool[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // File — Local File Reader
+  // File â€” Local File Reader
   // ---------------------------------------------------------------------------
   {
     id: "local-file-reader",
     name: "Local File Reader",
     description: "Read and process files from the local filesystem. Supports text, JSON, CSV, and binary files",
     category: "data",
-    icon: "📂",
+    icon: "ðŸ“‚",
     requiresCredentials: false,
     inputSchema: {
       type: "object",
@@ -747,14 +747,14 @@ export function searchCatalog(query: string): CatalogTool[] {
 }
 
 export const TOOL_CATEGORIES: { id: ToolCategory; label: string; icon: string }[] = [
-  { id: "knowledge", label: "Knowledge & RAG", icon: "🔍" },
-  { id: "document", label: "Documents", icon: "📄" },
-  { id: "search", label: "Search", icon: "🌐" },
-  { id: "ai", label: "AI / LLM", icon: "🤖" },
-  { id: "communication", label: "Communication", icon: "📧" },
-  { id: "data", label: "Data", icon: "📊" },
-  { id: "file-conversion", label: "File Conversion", icon: "📑" },
-  { id: "analysis", label: "Analysis", icon: "⚖️" },
-  { id: "integration", label: "Integration", icon: "🌍" },
-  { id: "custom", label: "Custom", icon: "🔧" },
+  { id: "knowledge", label: "Knowledge & RAG", icon: "ðŸ”" },
+  { id: "document", label: "Documents", icon: "ðŸ“„" },
+  { id: "search", label: "Search", icon: "ðŸŒ" },
+  { id: "ai", label: "AI / LLM", icon: "ðŸ¤–" },
+  { id: "communication", label: "Communication", icon: "ðŸ“§" },
+  { id: "data", label: "Data", icon: "ðŸ“Š" },
+  { id: "file-conversion", label: "File Conversion", icon: "ðŸ“‘" },
+  { id: "analysis", label: "Analysis", icon: "âš–ï¸" },
+  { id: "integration", label: "Integration", icon: "ðŸŒ" },
+  { id: "custom", label: "Custom", icon: "ðŸ”§" },
 ];

@@ -64,6 +64,90 @@ export function registerOpenClawHandlers(): void {
   });
 
   // ===========================================================================
+  // DAEMON WORKSPACE — point the daemon's agent workspace at a directory so
+  // its Claude-Code-style tools can read & edit files there. Used to let the
+  // OpenClaw portal operate directly inside the running JoyCreate repo so
+  // users can modify the system and submit PRs back upstream.
+  // ===========================================================================
+
+  ipcMain.handle(
+    "openclaw:set-daemon-workspace",
+    async (_event, args: { path?: string; useJoyCreateRepo?: boolean }) => {
+      const { readFileSync, writeFileSync, existsSync, statSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const { homedir } = await import("node:os");
+      const { app } = await import("electron");
+
+      // Resolve target path. When useJoyCreateRepo is true, walk up from the
+      // app path looking for package.json with name === "joycreate" so this
+      // works in both dev (cwd is the repo) and packaged builds (where the
+      // repo is the working directory the user launched from).
+      let targetPath: string | undefined = args.path;
+      if (args.useJoyCreateRepo) {
+        const candidates = [process.cwd(), app.getAppPath(), join(app.getAppPath(), "..", "..")];
+        for (const c of candidates) {
+          try {
+            const pkg = join(c, "package.json");
+            if (existsSync(pkg)) {
+              const j = JSON.parse(readFileSync(pkg, "utf8"));
+              if (j?.name === "joycreate" || j?.name === "JoyCreate") {
+                targetPath = c;
+                break;
+              }
+            }
+          } catch { /* skip */ }
+        }
+        if (!targetPath) {
+          throw new Error(
+            "Could not locate the JoyCreate repository root. Pass an explicit `path` instead.",
+          );
+        }
+      }
+
+      if (!targetPath || !existsSync(targetPath) || !statSync(targetPath).isDirectory()) {
+        throw new Error(`Workspace path does not exist or is not a directory: ${targetPath}`);
+      }
+
+      const cfgPath = join(homedir(), ".openclaw", "openclaw.json");
+      if (!existsSync(cfgPath)) {
+        throw new Error(`OpenClaw daemon config not found at ${cfgPath}`);
+      }
+
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+      cfg.agents = cfg.agents ?? {};
+      cfg.agents.defaults = cfg.agents.defaults ?? {};
+      const previous = cfg.agents.defaults.workspace;
+      cfg.agents.defaults.workspace = targetPath;
+      writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), "utf8");
+
+      logger.info("Daemon workspace updated", { previous, next: targetPath });
+
+      return {
+        success: true,
+        workspace: targetPath,
+        previous,
+        note:
+          "Restart the OpenClaw daemon (Refresh portal) to apply. " +
+          "The portal's file tools will now read and edit files in this directory.",
+      };
+    },
+  );
+
+  ipcMain.handle("openclaw:get-daemon-workspace", async () => {
+    const { readFileSync, existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const cfgPath = join(homedir(), ".openclaw", "openclaw.json");
+    if (!existsSync(cfgPath)) return { workspace: null };
+    try {
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+      return { workspace: cfg?.agents?.defaults?.workspace ?? null };
+    } catch {
+      return { workspace: null };
+    }
+  });
+
+  // ===========================================================================
   // GATEWAY MANAGEMENT
   // ===========================================================================
 

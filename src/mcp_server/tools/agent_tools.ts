@@ -1,5 +1,5 @@
-/**
- * MCP Tools — AI Agents
+﻿/**
+ * MCP Tools â€” AI Agents
  *
  * List, inspect, and create AI agents stored in the local JoyCreate database.
  */
@@ -12,7 +12,7 @@ import type { AgentStatus } from "@/db/schema";
 import { eq, like, desc } from "drizzle-orm";
 
 export function registerAgentTools(server: McpServer) {
-  // ── List agents ──────────────────────────────────────────────────
+  // â”€â”€ List agents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   server.registerTool(
     "joycreate_list_agents",
     {
@@ -60,7 +60,7 @@ export function registerAgentTools(server: McpServer) {
     },
   );
 
-  // ── Get agent detail + tools ─────────────────────────────────────
+  // â”€â”€ Get agent detail + tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   server.registerTool(
     "joycreate_get_agent",
     {
@@ -113,7 +113,7 @@ export function registerAgentTools(server: McpServer) {
     },
   );
 
-  // ── Create agent ─────────────────────────────────────────────────
+  // â”€â”€ Create agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   server.registerTool(
     "joycreate_create_agent",
     {
@@ -127,7 +127,7 @@ export function registerAgentTools(server: McpServer) {
           .optional()
           .describe("Agent type (default: chatbot)"),
         systemPrompt: z.string().optional().describe("System prompt for the agent"),
-        modelId: z.string().optional().describe("AI model identifier (e.g. gpt-5.1, claude-sonnet-4-20250514)"),
+        modelId: z.string().optional().describe("AI model identifier (e.g. gpt-5.1, claude-sonnet-4-5)"),
       },
     },
     async ({ name, description, type, systemPrompt, modelId }) => {

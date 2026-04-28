@@ -1,9 +1,9 @@
-/**
+﻿/**
  * Email AI Service
  *
  * Uses smart AI routing to select the optimal model for each task:
- * - Light tasks (triage, smart replies) → prefer fast/local models
- * - Heavy tasks (compose, digest, summaries) → prefer capable API models
+ * - Light tasks (triage, smart replies) â†’ prefer fast/local models
+ * - Heavy tasks (compose, digest, summaries) â†’ prefer capable API models
  * Falls back gracefully if preferred route unavailable.
  */
 
@@ -26,13 +26,13 @@ import type {
 
 const logger = log.scope("email/ai");
 
-// ─── Smart AI Routing ────────────────────────────────────────────────────────
+// â”€â”€â”€ Smart AI Routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type TaskComplexity = "light" | "medium" | "heavy";
 
 /**
  * Fast/small models for quick classification tasks.
- * Tried in order — first one with a configured key wins.
+ * Tried in order â€” first one with a configured key wins.
  */
 const FAST_MODEL_PREFERENCES = [
   { provider: "ollama", name: "llama3.2:3b" },
@@ -43,14 +43,14 @@ const FAST_MODEL_PREFERENCES = [
   { provider: "google", name: "gemini-2.5-flash" },
   { provider: "openrouter", name: "qwen/qwen3-coder:free" },
   { provider: "openai", name: "gpt-4.1-mini" },
-  { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+  { provider: "anthropic", name: "claude-sonnet-4-5" },
 ];
 
 /**
  * Capable models for complex generation tasks.
  */
 const CAPABLE_MODEL_PREFERENCES = [
-  { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+  { provider: "anthropic", name: "claude-sonnet-4-5" },
   { provider: "openai", name: "gpt-4.1" },
   { provider: "google", name: "gemini-2.5-flash" },
   { provider: "openrouter", name: "qwen/qwen3-coder:free" },
@@ -87,7 +87,7 @@ async function getModelForTask(complexity: TaskComplexity) {
           settings,
         );
         logger.info(
-          `[smart-route] ${complexity} task → ${pref.provider}/${pref.name}`,
+          `[smart-route] ${complexity} task â†’ ${pref.provider}/${pref.name}`,
         );
         return { model: modelClient.model, modelName: pref.name, provider: pref.provider };
       } catch {
@@ -99,7 +99,7 @@ async function getModelForTask(complexity: TaskComplexity) {
 
   // Fallback: use the user's currently selected model
   logger.info(
-    `[smart-route] ${complexity} task → fallback to selected model: ${settings.selectedModel.provider}/${settings.selectedModel.name}`,
+    `[smart-route] ${complexity} task â†’ fallback to selected model: ${settings.selectedModel.provider}/${settings.selectedModel.name}`,
   );
   const { modelClient } = await getModelClient(
     settings.selectedModel,
@@ -138,7 +138,7 @@ function parseJSON<T>(text: string, fallback: T): T {
   }
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Triage a single message: assign priority, category, suggest actions.
@@ -418,7 +418,7 @@ Return ONLY valid JSON.`,
 }
 
 /**
- * Smart reply — generate a few reply options for a message.
+ * Smart reply â€” generate a few reply options for a message.
  */
 export async function generateSmartReplies(
   msg: EmailMessage,

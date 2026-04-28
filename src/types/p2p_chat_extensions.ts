@@ -1,5 +1,5 @@
-/**
- * P2P Chat Extensions — Exhaustive Feature Set
+﻿/**
+ * P2P Chat Extensions â€” Exhaustive Feature Set
  * 
  * Extends decentralized_chat_types.ts with:
  * - AI Agent & Bot Framework (agents as first-class chat participants)
@@ -41,7 +41,7 @@ import type {
 
 /**
  * Bot/Agent identity within the chat system.
- * Agents are first-class participants — they can DM, join groups,
+ * Agents are first-class participants â€” they can DM, join groups,
  * respond to commands, process tasks, and interact with humans seamlessly.
  */
 export interface ChatBot {
@@ -197,7 +197,7 @@ export interface BotTriggerCondition {
 }
 
 export interface BotAIConfig {
-  modelId: string;                   // e.g., "anthropic/claude-sonnet-4-20250514"
+  modelId: string;                   // e.g., "anthropic/claude-sonnet-4-5"
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
@@ -420,7 +420,7 @@ export interface ChannelPermissions {
 // ============================================================================
 
 /**
- * Thread — a nested conversation branching from a message.
+ * Thread â€” a nested conversation branching from a message.
  * Works in channels, groups, and even DMs.
  */
 export interface ChatThread {
@@ -580,7 +580,7 @@ export interface MessageSearchResult {
   offset: number;
   limit: number;
   took: number;                      // Search duration in ms
-  highlights: Record<string, string[]>; // Message ID → highlighted snippets
+  highlights: Record<string, string[]>; // Message ID â†’ highlighted snippets
 }
 
 export interface SearchResultMessage {
@@ -809,7 +809,7 @@ export interface EmbedField {
 // ============================================================================
 
 /**
- * Community Space — a collection of channels, members, bots, and roles.
+ * Community Space â€” a collection of channels, members, bots, and roles.
  * Like a Discord server or Slack workspace.
  */
 export interface CommunitySpace {

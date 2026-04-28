@@ -1,5 +1,5 @@
-/**
- * MCP Tools — Agent Creator / Builder
+﻿/**
+ * MCP Tools â€” Agent Creator / Builder
  * Create, configure, deploy, and manage AI agents via JoyCreate's Agent Builder system.
  * Extends the existing agent_tools.ts (which lists/reads) with full CRUD + deployment.
  */
@@ -15,7 +15,7 @@ export function registerAgentBuilderTools(server: McpServer) {
         name: z.string().describe("Agent name"),
         description: z.string().describe("What this agent does"),
         system_prompt: z.string().describe("System prompt defining the agent's behavior and persona"),
-        model: z.string().optional().describe("Model to use (e.g. gpt-5.1, claude-sonnet-4-20250514, mistral:7b)"),
+        model: z.string().optional().describe("Model to use (e.g. gpt-5.1, claude-sonnet-4-5, mistral:7b)"),
         tools: z.array(z.string()).optional().describe("Tool names to enable (e.g. ['web_search', 'code_execution', 'file_read'])"),
         memory_enabled: z.boolean().optional().describe("Enable persistent memory across sessions"),
         voice_enabled: z.boolean().optional().describe("Enable voice interface"),
@@ -86,7 +86,7 @@ export function registerAgentBuilderTools(server: McpServer) {
   server.registerTool(
     "joycreate_agent_stack",
     {
-      description: "Build a vertical agent stack — a chain of agents where each processes the previous agent's output (pipeline pattern).",
+      description: "Build a vertical agent stack â€” a chain of agents where each processes the previous agent's output (pipeline pattern).",
       inputSchema: {
         name: z.string().describe("Stack name"),
         stages: z.array(z.object({

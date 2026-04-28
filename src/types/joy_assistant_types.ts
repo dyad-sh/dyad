@@ -261,6 +261,12 @@ export interface AssistantChatRequest {
   message: string;
   pageContext: AssistantPageContext;
   mode: AssistantMode;
+  /**
+   * Optional explicit model override. When provided, the assistant uses this
+   * exact model and skips the local-first auto-resolution. `provider: "auto"`
+   * is treated the same as omitting this field.
+   */
+  model?: { provider: string; name: string };
 }
 
 export interface AssistantSuggestionsRequest {

@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { OpenClawClient } from "@/ipc/openclaw_client";
 import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
 import { VoiceAssistantClient, type SystemCapabilities, type ElevenLabsVoice } from "@/ipc/voice_assistant_client";
 import { Label } from "@/components/ui/label";
@@ -617,15 +618,18 @@ function N8nWorkflowsPanel({ connectionId }: { connectionId?: string }) {
 // =============================================================================
 
 function ChatPanel() {
-  const { chat, isLoading, streamedContent, lastResponse, error } = useCNSChat();
+  const { chat, isLoading: cnsLoading, streamedContent, lastResponse, error } = useCNSChat();
   const { isInitialized, ollamaAvailable } = useCNSStatus();
-  
+
   const [input, setInput] = useState("");
   const [preferLocal, setPreferLocal] = useState(true);
+  const [fallbackBusy, setFallbackBusy] = useState(false);
+  const isLoading = cnsLoading || fallbackBusy;
   const [messages, setMessages] = useState<Array<{
     role: "user" | "assistant";
     content: string;
     isLocal?: boolean;
+    via?: "cns" | "openclaw";
   }>>([]);
 
   const handleSend = async () => {
@@ -635,15 +639,48 @@ function ChatPanel() {
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: userMessage }]);
 
+    // Prefer CNS (in-process Ollama). If CNS isn't initialized or throws,
+    // fall back to the OpenClaw gateway, which handles Anthropic / OpenAI /
+    // Ollama directly and works even when the daemon portal iframe is down.
+    const fallbackToOpenClaw = async () => {
+      setFallbackBusy(true);
+      try {
+        const result = await OpenClawClient.chat({
+          messages: [{ role: "user", content: userMessage }],
+          stream: false,
+          preferLocal,
+        } as any);
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: result.message?.content ?? "(no content)",
+          isLocal: !!result.localProcessed,
+          via: "openclaw",
+        }]);
+      } catch (fallbackErr) {
+        toast.error(
+          `Chat failed: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+        );
+      } finally {
+        setFallbackBusy(false);
+      }
+    };
+
+    if (!isInitialized) {
+      await fallbackToOpenClaw();
+      return;
+    }
+
     try {
       const result = await chat(userMessage, { preferLocal }) as InferenceResult;
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
+      setMessages(prev => [...prev, {
+        role: "assistant",
         content: result.content,
-        isLocal: preferLocal && ollamaAvailable
+        isLocal: preferLocal && ollamaAvailable,
+        via: "cns",
       }]);
     } catch (err) {
-      toast.error("Failed to send message");
+      // CNS failed (e.g. daemon-backed pieces unavailable) — fall back to OpenClaw
+      await fallbackToOpenClaw();
     }
   };
 
@@ -1162,6 +1199,25 @@ export function CNSDashboard({ className, compact = false }: CNSDashboardProps) 
 
       {/* Stats */}
       {isInitialized && <StatsPanel />}
+
+      {/* Fallback chat — works even when CNS / portal isn't running, by routing
+          through the OpenClaw gateway. */}
+      {!isInitialized && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Chat (OpenClaw fallback)
+            </CardTitle>
+            <CardDescription>
+              CNS isn't initialized yet — using the OpenClaw gateway so you can still chat.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ChatPanel />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       {isInitialized && (

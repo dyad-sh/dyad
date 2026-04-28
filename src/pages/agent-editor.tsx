@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent Editor Page
  * Comprehensive single-screen agent configuration
  * - No duplicated sections
@@ -480,7 +480,7 @@ export default function AgentEditorPage() {
           <div className="p-6">
             {/* ============================================================ */}
             {/* OVERVIEW TAB                                                 */}
-            {/* Agent identity + stats — NO model params here               */}
+            {/* Agent identity + stats â€” NO model params here               */}
             {/* ============================================================ */}
             {activeTab === "overview" && (
               <div className="space-y-6">
@@ -970,7 +970,7 @@ export default function AgentEditorPage() {
                           <SelectItem value="claude-opus-4-6">
                             Claude Opus 4.6
                           </SelectItem>
-                          <SelectItem value="claude-sonnet-4-20250514">
+                          <SelectItem value="claude-sonnet-4-5">
                             Claude Sonnet 4
                           </SelectItem>
                           <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro</SelectItem>
@@ -1281,32 +1281,32 @@ export default function AgentEditorPage() {
                         title: "Chat Widget",
                         description:
                           "Export as embeddable web chat widget (works with any AI provider)",
-                        icon: "💬",
+                        icon: "ðŸ’¬",
                       },
                       {
                         id: "local",
                         title: "Local",
                         description:
                           "Run the agent locally on your machine",
-                        icon: "💻",
+                        icon: "ðŸ’»",
                       },
                       {
                         id: "docker",
                         title: "Docker",
                         description: "Export as a Docker container",
-                        icon: "🐳",
+                        icon: "ðŸ³",
                       },
                       {
                         id: "vercel",
                         title: "Vercel",
                         description: "Deploy to Vercel Edge Functions",
-                        icon: "▲",
+                        icon: "â–²",
                       },
                       {
                         id: "aws",
                         title: "AWS Lambda",
                         description: "Deploy to AWS Lambda",
-                        icon: "☁️",
+                        icon: "â˜ï¸",
                       },
                     ].map((option) => (
                       <Card

@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
 import WebSocket, { WebSocketServer } from "ws";
 import http from "node:http";
+import net from "node:net";
 
 import type {
   OpenClawConfig,
@@ -76,6 +77,14 @@ export class OpenClawGatewayService extends EventEmitter {
   private lastDaemonRespawnAt = 0;
   /** Whether a daemon respawn is currently in progress */
   private daemonRespawning = false;
+  /**
+   * Consecutive failed `/health` probes from the bridge timer.
+   * The daemon's HTTP server can briefly stop responding while it streams a
+   * long Anthropic completion. We require multiple consecutive failures
+   * (~45s of unresponsiveness) before declaring it dead and respawning,
+   * so a single slow probe doesn't kill an in-flight stream mid-message.
+   */
+  private bridgeHealthFailures = 0;
   
   private constructor() {
     super();
@@ -235,8 +244,8 @@ export class OpenClawGatewayService extends EventEmitter {
         const pathname = parsedUrl.pathname;
 
         // API endpoints take priority
-        if (pathname === "/health") {
-          res.writeHead(200, { "Content-Type": "application/json" });
+        if (pathname === "/health" || pathname === "/healthz") {
+          res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
           res.end(JSON.stringify(this.getGatewayState()));
         } else if (pathname === "/api/status") {
           res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
@@ -259,9 +268,23 @@ export class OpenClawGatewayService extends EventEmitter {
             status: this.state.status,
             providers: this.getProviderStatus(),
           }));
-        } else if ((pathname.startsWith("/api/") || pathname.startsWith("/__openclaw/")) && this.externalGatewayAlive) {
-          // Proxy API + config requests to the external daemon so the control-ui SPA works
-          this.proxyToDaemon(req, res);
+        } else if (pathname.startsWith("/api/") || pathname.startsWith("/__openclaw/")) {
+          // API request — proxy to daemon if alive, otherwise return JSON 503 immediately
+          // (do NOT fall through to the SPA, or the client will hang waiting for HTML it can't parse)
+          if (this.externalGatewayAlive) {
+            this.proxyToDaemon(req, res);
+          } else {
+            res.writeHead(503, {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+            });
+            res.end(JSON.stringify({
+              error: "daemon_unavailable",
+              message: "External OpenClaw daemon is not running. The control UI requires the daemon for API requests.",
+              path: pathname,
+            }));
+          }
         } else if (!this.serveControlUiFile(req, res)) {
           // Control UI assets not found — show fallback
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -422,22 +445,38 @@ export class OpenClawGatewayService extends EventEmitter {
   
   /** HTTP probe to see if an external gateway is listening */
   private async probeExternalGateway(host: string, port: number): Promise<boolean> {
+    // We deliberately use a TCP-level probe (not HTTP /health) because the
+    // daemon's HTTP server can be unresponsive for minutes or hours while
+    // it streams long Anthropic completions or runs long-running tool calls
+    // (e.g. subagent spawning, multi-step shell commands). A TCP probe only
+    // checks that the daemon process is still bound to the port — which is
+    // a kernel-level check that does not depend on the daemon's event loop
+    // being free. As long as the process is alive, the kernel accepts the
+    // connection. We only declare the daemon dead when the port is unbound
+    // (ECONNREFUSED), which means the process has actually exited.
+    return this.probeTcpPort(host === "0.0.0.0" ? "127.0.0.1" : host, port);
+  }
+
+  /** TCP-level liveness check — returns true iff the port accepts a connection. */
+  private probeTcpPort(host: string, port: number, timeoutMs = 5000): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      const req = http.get({ hostname: host === "0.0.0.0" ? "127.0.0.1" : host, port, path: "/health", timeout: 2000 }, (res) => {
-        let body = "";
-        res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(body);
-            // Accept any valid JSON response from /health as proof of life
-            resolve(data && typeof data === "object");
-          } catch {
-            resolve(false);
-          }
-        });
-      });
-      req.on("error", () => resolve(false));
-      req.on("timeout", () => { req.destroy(); resolve(false); });
+      const socket = new net.Socket();
+      let settled = false;
+      const finish = (alive: boolean) => {
+        if (settled) return;
+        settled = true;
+        try { socket.destroy(); } catch { /* ignore */ }
+        resolve(alive);
+      };
+      socket.setTimeout(timeoutMs);
+      socket.once("connect", () => finish(true));
+      socket.once("timeout", () => finish(false));
+      socket.once("error", () => finish(false));
+      try {
+        socket.connect(port, host);
+      } catch {
+        finish(false);
+      }
     });
   }
   
@@ -474,25 +513,41 @@ export class OpenClawGatewayService extends EventEmitter {
     if (!this.bridgeReconnectTimer) {
       this.bridgeReconnectTimer = setInterval(async () => {
         const alive = await this.probeExternalGateway(wsHost, port);
-        this.externalGatewayAlive = alive;
         if (alive) {
+          // Reset failure counter on any successful probe
+          this.bridgeHealthFailures = 0;
+          this.externalGatewayAlive = true;
           // Try WS bridge reconnect if not connected (throttled)
           if (!this.bridgeClient || this.bridgeClient.readyState !== WebSocket.OPEN) {
             if (this.bridgeConnectFailures < 3) {
               this.attemptBridgeWs(wsHost, port);
             }
           }
-        } else {
-          // External gateway went down — internal server is still running
-          this.externalGatewayAlive = false;
-          this.bridgeClient = null;
-          this.bridgeMode = false;
-          logger.warn("External daemon no longer reachable — attempting auto-respawn");
-          // Auto-respawn the daemon (throttled internally)
-          this.respawnDaemon().catch((err) =>
-            logger.warn("Auto-respawn from bridge health timer failed:", err),
-          );
+          return;
         }
+
+        // Probe failed — but the daemon may just be busy streaming a long
+        // Anthropic response. Require 3 consecutive failures (~45s) before
+        // declaring it dead and forcing a respawn that would interrupt the
+        // in-flight stream.
+        this.bridgeHealthFailures++;
+        logger.warn(
+          `Bridge health probe failed (${this.bridgeHealthFailures}/3) — daemon may be busy streaming`,
+        );
+        if (this.bridgeHealthFailures < 3) {
+          // Keep the bridge marked alive — don't tear down the WS.
+          return;
+        }
+
+        // Three consecutive failures — daemon really is dead.
+        this.externalGatewayAlive = false;
+        this.bridgeClient = null;
+        this.bridgeMode = false;
+        this.bridgeHealthFailures = 0;
+        logger.warn("External daemon unreachable for 3 consecutive probes — attempting auto-respawn");
+        this.respawnDaemon().catch((err) =>
+          logger.warn("Auto-respawn from bridge health timer failed:", err),
+        );
       }, 15_000);
     }
     
@@ -658,16 +713,29 @@ export class OpenClawGatewayService extends EventEmitter {
 
     try {
       logger.info("Respawning external OpenClaw daemon...");
-      const { execFile } = require("node:child_process");
-      const child = execFile(gatewayCmdPath, [], {
+      const { spawn } = require("node:child_process");
+      // Capture daemon stdio to a log file so we can diagnose failures.
+      // Using stdio:"ignore" with detached:true on Windows .cmd files causes
+      // the spawned node.exe to die unexpectedly (likely EPIPE on first write).
+      const daemonLogPath = path.join(homedir, ".openclaw", "daemon-spawn.log");
+      let outFd: number;
+      let errFd: number;
+      try {
+        outFd = nodeFs.openSync(daemonLogPath, "a");
+        errFd = nodeFs.openSync(daemonLogPath, "a");
+      } catch (e) {
+        logger.warn("Could not open daemon log file, falling back to ignore", e);
+        outFd = "ignore" as unknown as number;
+        errFd = "ignore" as unknown as number;
+      }
+      const child = spawn("cmd.exe", ["/c", gatewayCmdPath], {
         cwd: homedir,
         detached: true,
-        stdio: "ignore",
+        stdio: ["ignore", outFd, errFd],
         windowsHide: true,
-        shell: true,
       });
       child.unref();
-      logger.info("Daemon process spawned (PID: " + child.pid + ")");
+      logger.info("Daemon process spawned (PID: " + child.pid + "), log: " + daemonLogPath);
 
       // Wait for daemon to bind (up to 120 seconds — daemon loads many plugins)
       const daemonPort = this.config.gateway.daemonPort ?? 18790;
@@ -1619,7 +1687,7 @@ Think through this step by step and provide a structured response with your reas
           ...req.headers,
           host: `${daemonHost}:${daemonPort}`,
         },
-        timeout: 15_000,
+        timeout: 5_000,
       },
       (proxyRes) => {
         // Copy status and headers from daemon response

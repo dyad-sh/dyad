@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenClaw Integration Types
  * Types for OpenClaw AI Gateway integration with JoyCreate
  * 
@@ -404,7 +404,7 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
     anthropic: {
       name: "Anthropic Claude",
       type: "anthropic",
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       enabled: true,
       priority: 2,
       capabilities: ["chat", "code", "vision", "function-calling", "reasoning", "agentic", "creative", "analysis"],
@@ -413,7 +413,7 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
     "claude-code": {
       name: "Claude Code (Agentic)",
       type: "claude-code",
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       enabled: false,
       priority: 3,
       capabilities: ["code", "agentic", "function-calling", "reasoning"],

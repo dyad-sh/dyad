@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Autonomous Agent System - Production Features
  * 
  * This module extends the core autonomous agent system with production-ready features:
@@ -425,7 +425,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
       autonomyLevel: "semi-autonomous",
       capabilities: ["scraping", "web_browsing", "data_analysis", "model_usage", "file_operations"],
       primaryModel: "gpt-5-mini",
-      fallbackModels: ["gemini-3-flash-preview", "claude-sonnet-4-20250514"],
+      fallbackModels: ["gemini-3-flash-preview", "claude-sonnet-4-5"],
       temperature: 0.3,
       maxActionsPerHour: 100,
       maxTokensPerMission: 50000,
@@ -442,7 +442,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "research_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸ”",
+    icon: "Ã°Å¸â€Â",
   },
   {
     name: "Code Builder",
@@ -454,7 +454,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
       autonomyLevel: "semi-autonomous",
       capabilities: ["code_generation", "file_operations", "terminal", "model_usage", "data_analysis"],
       primaryModel: "gpt-5-mini",
-      fallbackModels: ["claude-sonnet-4-20250514", "deepseek-coder"],
+      fallbackModels: ["claude-sonnet-4-5", "deepseek-coder"],
       temperature: 0.2,
       maxActionsPerHour: 200,
       maxTokensPerMission: 100000,
@@ -471,7 +471,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "developer_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸ’»",
+    icon: "Ã°Å¸â€™Â»",
   },
   {
     name: "UI Designer",
@@ -483,7 +483,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
       autonomyLevel: "supervised",
       capabilities: ["ui_generation", "code_generation", "file_operations", "model_usage"],
       primaryModel: "gpt-5.1",
-      fallbackModels: ["gpt-5-mini", "claude-sonnet-4-20250514"],
+      fallbackModels: ["gpt-5-mini", "claude-sonnet-4-5"],
       temperature: 0.7,
       maxActionsPerHour: 50,
       maxTokensPerMission: 75000,
@@ -500,7 +500,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "designer_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸŽ¨",
+    icon: "Ã°Å¸Å½Â¨",
   },
   {
     name: "Data Analyst",
@@ -512,7 +512,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
       autonomyLevel: "semi-autonomous",
       capabilities: ["data_analysis", "code_generation", "file_operations", "model_usage", "database"],
       primaryModel: "gpt-5-mini",
-      fallbackModels: ["claude-sonnet-4-20250514"],
+      fallbackModels: ["claude-sonnet-4-5"],
       temperature: 0.1,
       maxActionsPerHour: 150,
       maxTokensPerMission: 80000,
@@ -529,7 +529,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "analyst_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸ“Š",
+    icon: "Ã°Å¸â€œÅ ",
   },
   {
     name: "Voice Assistant",
@@ -553,7 +553,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "assistant_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸŽ¤",
+    icon: "Ã°Å¸Å½Â¤",
   },
   {
     name: "Automation Bot",
@@ -582,7 +582,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "automation_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸ¤–",
+    icon: "Ã°Å¸Â¤â€“",
   },
   {
     name: "Security Sentinel",
@@ -594,7 +594,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
       autonomyLevel: "supervised",
       capabilities: ["data_analysis", "file_operations", "terminal", "model_usage", "api_calls"],
       primaryModel: "gpt-5-mini",
-      fallbackModels: ["claude-sonnet-4-20250514"],
+      fallbackModels: ["claude-sonnet-4-5"],
       temperature: 0.1,
       maxActionsPerHour: 100,
       maxTokensPerMission: 40000,
@@ -611,7 +611,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "security_sentinel_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸ›¡ï¸",
+    icon: "Ã°Å¸â€ºÂ¡Ã¯Â¸Â",
   },
   {
     name: "Knowledge Curator",
@@ -623,7 +623,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
       autonomyLevel: "semi-autonomous",
       capabilities: ["scraping", "web_browsing", "file_operations", "model_usage", "learning"],
       primaryModel: "gpt-5-mini",
-      fallbackModels: ["claude-sonnet-4-20250514"],
+      fallbackModels: ["claude-sonnet-4-5"],
       temperature: 0.3,
       maxActionsPerHour: 80,
       maxTokensPerMission: 60000,
@@ -640,7 +640,7 @@ export const BUILT_IN_TEMPLATES: Omit<AgentTemplate, "id" | "createdAt" | "updat
     securityPolicy: "curator_policy",
     author: "JoyCreate",
     version: "1.0.0",
-    icon: "ðŸ“š",
+    icon: "Ã°Å¸â€œÅ¡",
   },
 ];
 

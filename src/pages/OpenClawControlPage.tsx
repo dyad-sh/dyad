@@ -76,6 +76,7 @@ import {
   TrendingDown,
   Wallet,
   RotateCcw,
+  FolderCode,
 } from "lucide-react";
 
 const integrationClient = OpenClawIntegrationClient.getInstance();
@@ -91,6 +92,12 @@ export function OpenClawControlPage() {
   const [portalKey, setPortalKey] = useState(0);
   const [portalLoadError, setPortalLoadError] = useState(false);
   const [isPortalFullscreen, setIsPortalFullscreen] = useState(false);
+  // Tracks whether we have observed an actual disconnect since last remount.
+  // We only bump portalKey on a true disconnect→reconnect transition, NOT on
+  // every "gateway:connected" pulse (those fire repeatedly from the bridge
+  // health timer and would otherwise kill in-flight streaming responses
+  // mid-message — causing the daemon's chat UI to appear truncated).
+  const sawDisconnectRef = useRef(false);
 
   // ---------------------------------------------------------------------------
   // Real-time event subscription — daemon events invalidate queries instantly
@@ -104,6 +111,16 @@ export function OpenClawControlPage() {
       queryClient.invalidateQueries({ queryKey: ["openclaw-activity-stats"] });
       queryClient.invalidateQueries({ queryKey: ["openclaw-channel-messages"] });
     };
+
+    // NOTE: We deliberately do NOT auto-remount the iframe in response to ANY
+    // gateway event. The daemon's chat UI lives inside the iframe and runs its
+    // own long-lived WebSocket directly to the daemon. Remounting the iframe
+    // discards the in-flight streaming response and any partial UI state — even
+    // a single remount mid-stream truncates the assistant's reply. The iframe
+    // can be refreshed manually via the toolbar refresh button if the user
+    // actually needs it. We only invalidate cached query data here so badges,
+    // status pills, and activity counters update in real time.
+    void sawDisconnectRef; // kept for compatibility with the ref declaration
 
     openclawClient.addEventListener("message:received", handler);
     openclawClient.addEventListener("message:sent", handler);
@@ -149,11 +166,13 @@ export function OpenClawControlPage() {
     queryFn: () => openclawClient.getConfig(),
   });
 
-  // Determine which port serves the portal:
-  // • Daemon port (18790) when bridged — full control-ui with daemon WS protocol
-  // • Internal gateway port (18792) as fallback for static UI
+  // Portal ALWAYS points to the external daemon (18790). The internal
+  // gateway (18792) is no longer used as a fallback — switching between
+  // the two ports caused the iframe to reload mid-stream and wipe the
+  // chat. If the daemon is down, the portal will show an error rather
+  // than swap to a different UI; the user can use the refresh button
+  // once the daemon is back up.
   const daemonPort = (config as unknown as Record<string, unknown> & { gateway?: { daemonPort?: number } })?.gateway?.daemonPort ?? 18790;
-  const internalPort = (config as unknown as Record<string, unknown> & { gateway?: { port?: number } })?.gateway?.port ?? 18792;
 
   const { data: channels } = useQuery({
     queryKey: ["openclaw-channels"],
@@ -223,10 +242,67 @@ export function OpenClawControlPage() {
   // We rely on gatewayStatus.bridged (from IPC) rather than a renderer-side fetch
   // because cross-origin requests from the renderer to 127.0.0.1:18790 are
   // blocked by CORS in the daemon.
-  const portalPort = isBridged ? daemonPort : internalPort;
-  const portalUrl = gatewayToken
-    ? `http://127.0.0.1:${portalPort}/?token=${encodeURIComponent(gatewayToken)}`
+  // Portal port is ALWAYS the daemon port — no fallback, no switching.
+  // Switching to a different port mid-session was the root cause of the
+  // chat resetting at the end of long responses.
+  const portalPort = daemonPort;
+  // Pass auth token in URL fragment (#token=) instead of query (?token=).
+  // The OpenClaw control-ui SPA explicitly requires fragment form — query
+  // form is rejected with a warning and auth is never established, leaving
+  // the portal in a blank/loading state.
+  const computedPortalUrl = gatewayToken
+    ? `http://127.0.0.1:${portalPort}/#token=${encodeURIComponent(gatewayToken)}`
     : `http://127.0.0.1:${portalPort}`;
+
+  // ── PIN the iframe URL once it's set ──
+  // The bridge state (`isBridged`) is polled every 5s and can flap during long
+  // streams when the daemon's WS bridge briefly drops. If we let `portalUrl`
+  // follow `portalPort` live, the iframe's `src` changes mid-stream → the
+  // iframe reloads → the user's chat (and the streaming response) is wiped
+  // right as the assistant is finishing its reply. We snapshot the first
+  // valid URL into state and never change it again unless the user manually
+  // refreshes (the refresh button bumps `portalKey` and resets this).
+  const [pinnedPortalUrl, setPinnedPortalUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pinnedPortalUrl && gatewayToken) {
+      setPinnedPortalUrl(computedPortalUrl);
+    }
+  }, [pinnedPortalUrl, gatewayToken, computedPortalUrl]);
+  // Reset the pin when the user manually remounts the iframe (refresh button).
+  useEffect(() => {
+    setPinnedPortalUrl(null);
+  }, [portalKey]);
+  const portalUrl = pinnedPortalUrl ?? computedPortalUrl;
+
+  // Iframe load watchdog: if the iframe doesn't fire `load` in time, surface
+  // an error UI instead of letting the user stare at a blank "thinking" frame.
+  // The daemon takes 14s+ to come up cold (loading plugins), so we wait 30s
+  // and auto-retry once before showing the error to the user.
+  // Reset whenever the iframe is remounted (portalKey) or the URL changes.
+  const portalLoadedRef = useRef(false);
+  const portalRetryRef = useRef(0);
+  useEffect(() => {
+    if (portalView !== "iframe" || !portalUrl) return;
+    portalLoadedRef.current = false;
+    setPortalLoadError(false);
+    const timer = setTimeout(() => {
+      if (portalLoadedRef.current) return;
+      if (portalRetryRef.current < 1) {
+        // Auto-retry once: bumping portalKey remounts the iframe.
+        portalRetryRef.current += 1;
+        setPortalKey((k) => k + 1);
+      } else {
+        setPortalLoadError(true);
+      }
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [portalKey, portalUrl, portalView]);
+
+  // Reset retry counter when user manually refreshes (refresh button bumps
+  // portalKey too — but we only want to reset retries when the user does it,
+  // not when our own auto-retry bumps the key). The two manual refresh sites
+  // call `portalRetryRef.current = 0` before bumping; auto-retry above does
+  // not, so it stays bounded at 1.
 
   // ---------------------------------------------------------------------------
   // Render
@@ -418,11 +494,37 @@ export function OpenClawControlPage() {
                   127.0.0.1:{portalPort}
                 </span>
                 <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-xs gap-1"
+                  title="Point the daemon's agent workspace at the running JoyCreate repo so the portal can read & edit code, then submit a PR."
+                  onClick={async () => {
+                    try {
+                      const res = await openclawClient.setDaemonWorkspace({ useJoyCreateRepo: true });
+                      toast.success(`Daemon workspace → ${res.workspace}`, {
+                        description: "Refresh the portal to apply.",
+                        duration: 6000,
+                      });
+                      portalRetryRef.current = 0;
+                      setPortalLoadError(false);
+                      setPortalKey((k) => k + 1);
+                    } catch (err) {
+                      toast.error(
+                        `Failed to set workspace: ${err instanceof Error ? err.message : String(err)}`,
+                      );
+                    }
+                  }}
+                >
+                  <FolderCode className="h-3 w-3" />
+                  Edit JoyCreate code
+                </Button>
+                <Button
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6"
                   title="Reload"
                   onClick={() => {
+                    portalRetryRef.current = 0;
                     setPortalLoadError(false);
                     setPortalKey((k) => k + 1);
                   }}
@@ -506,6 +608,7 @@ export function OpenClawControlPage() {
                     <CardContent className="space-y-2">
                       <Button
                         onClick={() => {
+                          portalRetryRef.current = 0;
                           setPortalLoadError(false);
                           setPortalKey((k) => k + 1);
                         }}
@@ -544,6 +647,10 @@ export function OpenClawControlPage() {
                   title="OpenClaw Portal"
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
                   allow="clipboard-read; clipboard-write"
+                  onLoad={() => {
+                    portalLoadedRef.current = true;
+                    setPortalLoadError(false);
+                  }}
                   onError={() => setPortalLoadError(true)}
                 />
               )}

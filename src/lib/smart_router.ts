@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Smart Router - Intelligent AI Request Routing System
  * 
  * Automatically routes requests between local models and cloud APIs based on:
@@ -208,7 +208,7 @@ export interface ProviderStats {
 class ComplexityAnalyzer {
   private tokenPatterns = {
     code: /```[\s\S]*?```|`[^`]+`|function\s+\w+|class\s+\w+|const\s+\w+|let\s+\w+|import\s+|export\s+/gi,
-    math: /\$[\s\S]*?\$|\\\[[\s\S]*?\\\]|∑|∫|∂|√|∞|\d+[\+\-\*\/\^]\d+/gi,
+    math: /\$[\s\S]*?\$|\\\[[\s\S]*?\\\]|âˆ‘|âˆ«|âˆ‚|âˆš|âˆž|\d+[\+\-\*\/\^]\d+/gi,
     reasoning: /explain|why|how|analyze|compare|contrast|evaluate|assess|reason|think through/gi,
     creative: /write|create|compose|generate|imagine|story|poem|narrative|fiction/gi,
     factual: /what is|who is|when did|where is|define|list|name|identify/gi,
@@ -532,7 +532,7 @@ export class SmartRouter extends EventEmitter {
           pricing: { inputPer1kTokens: 0.3, outputPer1kTokens: 1.5 },
         },
         {
-          id: "claude-sonnet-4-20250514",
+          id: "claude-sonnet-4-5",
           name: "Claude Sonnet 4",
           contextLength: 1000000,
           capabilities: { reasoning: 94, coding: 94, creativity: 92, math: 88, multilingual: 93, factuality: 94, instruction_following: 95 },
@@ -1048,7 +1048,7 @@ export class SmartRouter extends EventEmitter {
 
     this.emit("result:recorded", result);
 
-    // Bridge to MAB learning — feed routing outcomes as rewards
+    // Bridge to MAB learning â€” feed routing outcomes as rewards
     try {
       const mab = MABEngine.getInstance();
       const taskType = result.decision.reason.includes("Vision")
@@ -1067,7 +1067,7 @@ export class SmartRouter extends EventEmitter {
       reward += Math.max(0, Math.min(0.2, 0.2 * (1 - result.costCents / 1)));
       reward = Math.max(0, Math.min(1, reward));
 
-      // Fire-and-forget — routing should never block on MAB
+      // Fire-and-forget â€” routing should never block on MAB
       mab.recordRewardByName("model_selection", contextKey, armName, reward, {
         context: {
           taskType,

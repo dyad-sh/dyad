@@ -202,9 +202,12 @@ export const AILearningClient = {
   },
 
   onEvent(callback: (event: LearningEvent) => void): () => void {
-    const handler = (_: any, event: LearningEvent) => callback(event);
+    const handler = (_: any, event: LearningEvent) => {
+      if (!event) return;
+      callback(event);
+    };
     getIpcRenderer()?.on("ai-learning:event", handler);
-    return () => getIpcRenderer()?.off("ai-learning:event", handler);
+    return () => getIpcRenderer()?.removeListener("ai-learning:event", handler);
   },
 };
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenClaw Central Nervous System
  * 
  * The unified control center for JoyCreate's AI operations.
@@ -6,23 +6,23 @@
  * 
  * Architecture:
  * 
- *   ┌─────────────────────────────────────────────────────────────┐
- *   │                    OpenClaw Gateway                         │
- *   │  (Personal AI Assistant - WhatsApp, Telegram, Discord...)  │
- *   └────────────────────────────┬────────────────────────────────┘
- *                                │
- *                                ▼
- *   ┌─────────────────────────────────────────────────────────────┐
- *   │              OpenClaw Central Nervous System                │
- *   │                                                             │
- *   │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
- *   │  │    Ollama    │  │     N8n      │  │   JoyCreate  │      │
- *   │  │   Bridge     │  │   Bridge     │  │    Agents    │      │
- *   │  │ (Local LLMs) │  │ (Automation) │  │  (Autonomy)  │      │
- *   │  └──────────────┘  └──────────────┘  └──────────────┘      │
- *   └─────────────────────────────────────────────────────────────┘
+ *   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+ *   â”‚                    OpenClaw Gateway                         â”‚
+ *   â”‚  (Personal AI Assistant - WhatsApp, Telegram, Discord...)  â”‚
+ *   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+ *                                â”‚
+ *                                â–¼
+ *   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+ *   â”‚              OpenClaw Central Nervous System                â”‚
+ *   â”‚                                                             â”‚
+ *   â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      â”‚
+ *   â”‚  â”‚    Ollama    â”‚  â”‚     N8n      â”‚  â”‚   JoyCreate  â”‚      â”‚
+ *   â”‚  â”‚   Bridge     â”‚  â”‚   Bridge     â”‚  â”‚    Agents    â”‚      â”‚
+ *   â”‚  â”‚ (Local LLMs) â”‚  â”‚ (Automation) â”‚  â”‚  (Autonomy)  â”‚      â”‚
+ *   â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜      â”‚
+ *   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
  * 
- * 🦞 EXFOLIATE! EXFOLIATE!
+ * ðŸ¦ž EXFOLIATE! EXFOLIATE!
  */
 
 import { EventEmitter } from "events";
@@ -178,7 +178,7 @@ export class OpenClawCNS extends EventEmitter {
       this.config = this.mergeConfig(config);
     }
     
-    logger.info("🦞 Initializing OpenClaw Central Nervous System...");
+    logger.info("ðŸ¦ž Initializing OpenClaw Central Nervous System...");
     
     // Initialize Ollama bridge
     const ollamaBridge = getOpenClawOllamaBridge();
@@ -195,7 +195,7 @@ export class OpenClawCNS extends EventEmitter {
     
     this.initialized = true;
     
-    logger.info("🦞 OpenClaw CNS initialized", {
+    logger.info("ðŸ¦ž OpenClaw CNS initialized", {
       ollamaAvailable: ollamaBridge.isOllamaAvailable(),
       n8nConnections: n8nBridge.getAllConnections().length,
     });
@@ -224,7 +224,7 @@ export class OpenClawCNS extends EventEmitter {
     this.initialized = false;
     this.emit("shutdown");
     
-    logger.info("🦞 OpenClaw CNS shut down");
+    logger.info("ðŸ¦ž OpenClaw CNS shut down");
   }
   
   // ===========================================================================
@@ -243,12 +243,12 @@ export class OpenClawCNS extends EventEmitter {
     
     bridge.on("ollama:connected", () => {
       this.emit("ollama:connected");
-      logger.info("🦞 Ollama connected");
+      logger.info("ðŸ¦ž Ollama connected");
     });
     
     bridge.on("ollama:disconnected", () => {
       this.emit("ollama:disconnected");
-      logger.warn("🦞 Ollama disconnected");
+      logger.warn("ðŸ¦ž Ollama disconnected");
     });
   }
   
@@ -331,7 +331,7 @@ export class OpenClawCNS extends EventEmitter {
     this.activeOperations.set(request.id, request);
     
     if (this.config.routing.logOperations) {
-      logger.info("🦞 Processing AI request", {
+      logger.info("ðŸ¦ž Processing AI request", {
         id: request.id,
         type: request.type,
       });
@@ -361,7 +361,7 @@ export class OpenClawCNS extends EventEmitter {
         tokensPerSecond: response.timing?.tokensPerSecond,
       };
       
-      // ── Record cost ──
+      // â”€â”€ Record cost â”€â”€
       if (response.usage) {
         try {
           const costEngine = getOpenClawCostEngine();
@@ -404,7 +404,7 @@ export class OpenClawCNS extends EventEmitter {
   }> {
     const ollamaBridge = getOpenClawOllamaBridge();
     
-    // ── Try registry-aware MAB selection first ──
+    // â”€â”€ Try registry-aware MAB selection first â”€â”€
     try {
       const taskType = request.type === "chat" ? "chat"
         : request.type === "vision" ? "vision"
@@ -414,7 +414,7 @@ export class OpenClawCNS extends EventEmitter {
       
       const complexity = this.estimateComplexity(request);
 
-      // ── Cost-aware routing: check if budget pressure forces cheaper model ──
+      // â”€â”€ Cost-aware routing: check if budget pressure forces cheaper model â”€â”€
       try {
         const costEngine = getOpenClawCostEngine();
         const budget = costEngine.getBudget();
@@ -426,7 +426,7 @@ export class OpenClawCNS extends EventEmitter {
           if (ollamaBridge.isOllamaAvailable()) {
             const localModel = this.getLocalModel(request);
             logger.info(
-              `🦞 Cost engine: ${summary.overBudget ? "budget exceeded" : "approaching limit"} — routing to local model ${localModel}`,
+              `ðŸ¦ž Cost engine: ${summary.overBudget ? "budget exceeded" : "approaching limit"} â€” routing to local model ${localModel}`,
             );
             return {
               useLocal: true,
@@ -439,7 +439,7 @@ export class OpenClawCNS extends EventEmitter {
         // Cost engine check is best-effort
       }
 
-      // ── Task-to-model routing: use configured model per module ──
+      // â”€â”€ Task-to-model routing: use configured model per module â”€â”€
       // Skip if user explicitly set a model in options (user override wins)
       if (!request.options?.model) {
         try {
@@ -450,7 +450,7 @@ export class OpenClawCNS extends EventEmitter {
           if (taskRoute) {
             const isLocal = taskRoute.provider === "ollama";
             logger.info(
-              `🦞 Task routing: ${routeKey} → ${resolveTaskModule(routeKey)} → ${taskRoute.model} (${taskRoute.reason})`,
+              `ðŸ¦ž Task routing: ${routeKey} â†’ ${resolveTaskModule(routeKey)} â†’ ${taskRoute.model} (${taskRoute.reason})`,
             );
             return {
               useLocal: isLocal,
@@ -469,7 +469,7 @@ export class OpenClawCNS extends EventEmitter {
         request.options?.model || null,
       );
 
-      // User requested local preference — override peer routing
+      // User requested local preference â€” override peer routing
       if (request.options?.preferLocal && selection.provider === "peer") {
         return {
           useLocal: true,
@@ -490,11 +490,11 @@ export class OpenClawCNS extends EventEmitter {
       logger.debug("Registry bridge unavailable, using legacy routing:", err);
     }
 
-    // ── Legacy routing fallback ──
+    // â”€â”€ Legacy routing fallback â”€â”€
     
     // Check if local is available
     if (!ollamaBridge.isOllamaAvailable()) {
-      return { useLocal: false, model: "claude-sonnet-4-20250514", provider: "cloud" };
+      return { useLocal: false, model: "claude-sonnet-4-5", provider: "cloud" };
     }
     
     // Check channel routing
@@ -504,7 +504,7 @@ export class OpenClawCNS extends EventEmitter {
         return { useLocal: true, model: this.getLocalModel(request), provider: "ollama" };
       }
       if (channelRoute === "cloud") {
-        return { useLocal: false, model: "claude-sonnet-4-20250514", provider: "cloud" };
+        return { useLocal: false, model: "claude-sonnet-4-5", provider: "cloud" };
       }
     }
     
@@ -514,7 +514,7 @@ export class OpenClawCNS extends EventEmitter {
         useLocal: request.options.preferLocal,
         model: request.options.preferLocal
           ? this.getLocalModel(request)
-          : "claude-sonnet-4-20250514",
+          : "claude-sonnet-4-5",
         provider: request.options.preferLocal ? "ollama" : "cloud",
       };
     }

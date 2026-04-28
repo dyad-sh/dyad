@@ -1,6 +1,6 @@
-/**
+﻿/**
  * Agent Knowledge Panel
- * Manage knowledge sources for an agent — scraping engine, AI queries, local vault,
+ * Manage knowledge sources for an agent â€” scraping engine, AI queries, local vault,
  * file uploads, APIs, web search, RSS feeds, and manual entries.
  * Query knowledge across all sources via unified search.
  */
@@ -199,7 +199,7 @@ function AIQueryConfigForm({
           <SelectContent>
             <SelectItem value="default">Default (Local)</SelectItem>
             <SelectItem value="gpt-5.1">GPT 5.1</SelectItem>
-            <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+            <SelectItem value="claude-sonnet-4-5">Claude Sonnet 4</SelectItem>
             <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash</SelectItem>
             <SelectItem value="llama3.2:8b">Llama 3.2 (Local)</SelectItem>
           </SelectContent>
@@ -736,7 +736,7 @@ export default function AgentKnowledgePanel({ agentId }: AgentKnowledgePanelProp
             Connect data sources to give this agent contextual knowledge.{" "}
             {sourceList.length > 0 && (
               <span>
-                {sourceList.length} sources · {totalDocs} documents · {formatBytes(totalBytes)}
+                {sourceList.length} sources Â· {totalDocs} documents Â· {formatBytes(totalBytes)}
               </span>
             )}
           </p>
@@ -794,7 +794,7 @@ export default function AgentKnowledgePanel({ agentId }: AgentKnowledgePanelProp
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">{tmpl?.icon || "📦"}</span>
+                      <span className="text-xl">{tmpl?.icon || "ðŸ“¦"}</span>
                       <div>
                         <CardTitle className="text-sm">{source.name}</CardTitle>
                         <CardDescription className="text-xs">

@@ -193,7 +193,7 @@ const ignore = (file: string) => {
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 
 const config: ForgeConfig = {
-  outDir: "out-new",
+  outDir: "out-final",
   packagerConfig: {
     protocols: [
       {
@@ -331,3 +331,7 @@ const config: ForgeConfig = {
 };
 
 export default config;
+
+
+
+

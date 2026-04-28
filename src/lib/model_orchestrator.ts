@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Multi-Model Orchestrator
  * 
  * JoyCreate's secret weapon - orchestrate multiple AI models together for
@@ -106,7 +106,7 @@ export const ORCHESTRATION_PRESETS: Record<string, OrchestrationConfig> = {
     models: [
       { id: "local-code", provider: "ollama", modelId: "deepseek-coder:6.7b", specialization: ["code"] },
       { id: "local-qwen", provider: "ollama", modelId: "qwen2.5-coder:7b", specialization: ["code"] },
-      { id: "cloud-claude", provider: "anthropic", modelId: "claude-sonnet-4-20250514", specialization: ["code", "reasoning"] },
+      { id: "cloud-claude", provider: "anthropic", modelId: "claude-sonnet-4-5", specialization: ["code", "reasoning"] },
     ],
     options: { qualityThreshold: 0.8 },
   },

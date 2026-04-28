@@ -36,12 +36,6 @@ testSkipIfWindows("local-agent - step limit pause", async ({ po }) => {
       .getByText("tc=local-agent/simple-response"),
   ).not.toBeVisible();
 
-  const queuedRow = po.page.locator("li", {
-    hasText: "tc=local-agent/simple-response",
-  });
-  await queuedRow.hover();
-  await queuedRow.getByTitle("Delete").click();
-
   // Verify the "Continue" button is shown
   await expect(po.page.getByRole("button", { name: "Continue" })).toBeVisible({
     timeout: Timeout.MEDIUM,
@@ -49,6 +43,21 @@ testSkipIfWindows("local-agent - step limit pause", async ({ po }) => {
 
   // Click the "Continue" button
   await po.page.getByRole("button", { name: "Continue" }).click();
+
+  const messagesList = po.page.locator('[data-testid="messages-list"]');
+  await expect(
+    messagesList.getByText("tc=local-agent/simple-response"),
+  ).toBeVisible({
+    timeout: Timeout.EXTRA_LONG,
+  });
+  await expect(po.page.getByText(/\d+ Queued/)).not.toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(
+    messagesList.getByText(
+      "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
+    ),
+  ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
 
   await po.snapshotMessages();
 });

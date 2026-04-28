@@ -177,6 +177,15 @@ const menuCategories = [
         activeText: "text-rose-600 dark:text-rose-400",
       },
       {
+        title: "Automation Orchestrator",
+        to: "/automation-orchestrator",
+        icon: Zap,
+        gradient: "from-amber-500 to-orange-500",
+        hoverBg: "hover:bg-amber-500/10",
+        activeBg: "bg-amber-500/15",
+        activeText: "text-amber-600 dark:text-amber-400",
+      },
+      {
         title: "Autonomous Agent",
         to: "/autonomous-agent",
         icon: BrainCircuit,

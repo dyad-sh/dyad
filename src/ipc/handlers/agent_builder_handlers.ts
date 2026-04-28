@@ -642,5 +642,147 @@ export function registerAgentBuilderHandlers(): void {
   ipcMain.handle("agent:ui:create", handleCreateUIComponent);
   ipcMain.handle("agent:ui:list", handleGetUIComponents);
 
+  // Agent Content Creation Tools (bridges to document/image/video studios)
+  ipcMain.handle("agent:create-document", handleAgentCreateDocument);
+  ipcMain.handle("agent:create-presentation", handleAgentCreatePresentation);
+  ipcMain.handle("agent:create-image", handleAgentCreateImage);
+  ipcMain.handle("agent:create-video", handleAgentCreateVideo);
+
   logger.info("Agent builder IPC handlers registered");
+}
+
+// ============================================================================
+// Agent Content Creation Tools
+// These bridge agent output to the document/image/video studio handlers.
+// ============================================================================
+
+export interface AgentCreateDocumentRequest {
+  agentId: number;
+  title: string;
+  content: string;          // agent-generated text content
+  format?: "docx" | "pdf"; // default: docx
+}
+
+export interface AgentCreatePresentationRequest {
+  agentId: number;
+  title: string;
+  outline: string;          // agent-generated outline / slide content
+  format?: "pptx";          // default: pptx
+}
+
+export interface AgentCreateImageRequest {
+  agentId: number;
+  prompt: string;           // agent-generated image prompt
+  provider?: string;        // default: openai
+  width?: number;           // default: 1024
+  height?: number;          // default: 1024
+}
+
+export interface AgentCreateVideoRequest {
+  agentId: number;
+  script: string;           // agent-generated video script / prompt
+  provider?: string;        // default: runway
+  duration?: number;        // seconds, default: 5
+}
+
+export async function handleAgentCreateDocument(
+  event: IpcMainInvokeEvent,
+  request: AgentCreateDocumentRequest
+): Promise<{ success: boolean; documentId?: number; path?: string; error?: string }> {
+  logger.info("agent:create-document for agent", request.agentId);
+  try {
+    // Delegate to libreoffice:create via ipcMain (internal invoke)
+    const result = await ipcMain.emit(
+      "libreoffice:create",
+      event,
+      {
+        name: request.title,
+        type: "document",
+        content: request.content,
+        format: request.format ?? "docx",
+        aiGenerate: false,
+      }
+    );
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("agent:create-document failed:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function handleAgentCreatePresentation(
+  event: IpcMainInvokeEvent,
+  request: AgentCreatePresentationRequest
+): Promise<{ success: boolean; documentId?: number; error?: string }> {
+  logger.info("agent:create-presentation for agent", request.agentId);
+  try {
+    await ipcMain.emit(
+      "libreoffice:create",
+      event,
+      {
+        name: request.title,
+        type: "presentation",
+        content: request.outline,
+        format: "pptx",
+        aiGenerate: false,
+      }
+    );
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("agent:create-presentation failed:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function handleAgentCreateImage(
+  event: IpcMainInvokeEvent,
+  request: AgentCreateImageRequest
+): Promise<{ success: boolean; imageId?: number; error?: string }> {
+  logger.info("agent:create-image for agent", request.agentId, "prompt:", request.prompt.slice(0, 60));
+  try {
+    await ipcMain.emit(
+      "image-studio:generate",
+      event,
+      {
+        provider: request.provider ?? "openai",
+        model: "dall-e-3",
+        prompt: request.prompt,
+        width: request.width ?? 1024,
+        height: request.height ?? 1024,
+      }
+    );
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("agent:create-image failed:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function handleAgentCreateVideo(
+  event: IpcMainInvokeEvent,
+  request: AgentCreateVideoRequest
+): Promise<{ success: boolean; videoId?: number; error?: string }> {
+  logger.info("agent:create-video for agent", request.agentId);
+  try {
+    await ipcMain.emit(
+      "video-studio:generate",
+      event,
+      {
+        provider: request.provider ?? "runway",
+        model: "gen-3",
+        prompt: request.script,
+        width: 1280,
+        height: 720,
+        duration: request.duration ?? 5,
+      }
+    );
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("agent:create-video failed:", message);
+    return { success: false, error: message };
+  }
 }

@@ -483,15 +483,14 @@ export async function chat(
     }
 
     // Build AI SDK tools for the assistant.
-    // Local Ollama models (especially reasoning models like deepseek-r1, qwen3-r1)
-    // hang or never emit tokens when given large tool catalogs, because the model
-    // gets stuck deciding whether to call a tool. For conversational intents on
-    // local models we therefore omit tools entirely — the user can still ask
-    // tool-using questions (system, fill, configure, navigate, create) and tools
-    // will be re-enabled for those.
-    const conversationalIntents: AssistantIntent[] = ["explain", "general", "analyze"];
-    const skipToolsForLocal = isLocal && conversationalIntents.includes(intent);
-    const assistantTools = skipToolsForLocal ? undefined : buildAssistantTools(intent);
+    // Local Ollama / LM Studio models — including small instruction-tuned models
+    // like llama3.2:3b and reasoning models like deepseek-r1 / qwen3-r1 — hang
+    // or never emit tokens when given a large tool catalog, because the model
+    // gets stuck deciding whether to call a tool (or emits malformed tool calls
+    // the AI SDK can't parse). We therefore omit tools entirely for any local
+    // model. Tool-using intents (system, fill, configure, navigate, create) will
+    // still work when the user picks a cloud model from the model picker.
+    const assistantTools = isLocal ? undefined : buildAssistantTools(intent);
 
     // Stream the response
     const stream = streamText({

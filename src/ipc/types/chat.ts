@@ -138,6 +138,8 @@ export const ChatResponseEndSchema = z.object({
   chatSummary: z.string().optional(),
   /** Indicates the stream was cancelled by the user, not completed successfully */
   wasCancelled: z.boolean().optional(),
+  /** Indicates queued prompts should be paused after this stream completes */
+  pausePromptQueue: z.boolean().optional(),
 });
 
 export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;

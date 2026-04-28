@@ -12,4 +12,4 @@ OpenAI's Responses API requires reasoning items to always be followed by an outp
 - The stream is interrupted after reasoning but before output
 - Only reasoning was generated in a turn
 
-The fix in `src/ipc/utils/ai_messages_utils.ts` filters orphaned reasoning parts via `filterOrphanedReasoningParts()` before sending conversation history back to OpenAI.
+The fix in `src/ipc/utils/ai_messages_utils.ts` filters orphaned reasoning parts within `cleanMessage()` before sending conversation history back to OpenAI.

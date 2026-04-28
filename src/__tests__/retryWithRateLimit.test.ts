@@ -262,7 +262,7 @@ describe("retryWithRateLimit", () => {
       expect(operation).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
     });
 
-    it("should throw after default max retries (6)", async () => {
+    it("should throw after default max retries (10)", async () => {
       const rateLimitError = { response: { status: 429 } };
       const operation = vi.fn().mockRejectedValue(rateLimitError);
 
@@ -277,7 +277,7 @@ describe("retryWithRateLimit", () => {
       await vi.runAllTimersAsync();
 
       await expectation;
-      expect(operation).toHaveBeenCalledTimes(9); // 1 initial + 8 retries
+      expect(operation).toHaveBeenCalledTimes(11); // 1 initial + 10 retries
     });
   });
 

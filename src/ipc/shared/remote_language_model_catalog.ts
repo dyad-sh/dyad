@@ -54,14 +54,26 @@ const CatalogProviderSchema = z.object({
 
 const CatalogModelSchema = z.object({
   apiName: z.string(),
+  variantId: z.string().optional(),
   displayName: z.string(),
   description: z.string(),
+  variantGroup: z.string().optional(),
+  variantGroupDisplayName: z.string().optional(),
+  variantLabel: z.string().optional(),
   tag: z.string().optional(),
   tagColor: z.string().optional(),
   dollarSigns: z.number().optional(),
   temperature: z.number().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  resolvedApiName: z.string().optional(),
+  requestHeaders: z.record(z.string(), z.string()).optional(),
+  compactionThreshold: z
+    .object({
+      maxUsageFraction: z.number().positive().lte(1),
+      minTokensRemaining: z.number().int().nonnegative(),
+    })
+    .optional(),
   lifecycle: z
     .object({
       stage: z.enum(["stable", "preview", "deprecated"]).optional(),
@@ -153,12 +165,19 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
   for (const [providerId, models] of Object.entries(MODEL_OPTIONS)) {
     modelsByProvider[providerId] = models.map((model) => ({
       apiName: model.name,
+      variantId: model.variantId,
       displayName: model.displayName,
       description: model.description,
+      variantGroup: model.variantGroup,
+      variantGroupDisplayName: model.variantGroupDisplayName,
+      variantLabel: model.variantLabel,
       tag: model.tag,
       tagColor: model.tagColor,
       maxOutputTokens: model.maxOutputTokens,
       contextWindow: model.contextWindow,
+      resolvedApiName: model.resolvedApiName,
+      requestHeaders: model.requestHeaders,
+      compactionThreshold: model.compactionThreshold,
       temperature: model.temperature,
       dollarSigns: model.dollarSigns,
       type: "cloud",
@@ -266,12 +285,19 @@ function convertRemoteCatalog(
         providerId,
         models.map((model) => ({
           apiName: model.apiName,
+          variantId: model.variantId,
           displayName: model.displayName,
           description: model.description,
+          variantGroup: model.variantGroup,
+          variantGroupDisplayName: model.variantGroupDisplayName,
+          variantLabel: model.variantLabel,
           tag: model.tag,
           tagColor: model.tagColor,
           maxOutputTokens: model.maxOutputTokens,
           contextWindow: model.contextWindow,
+          resolvedApiName: model.resolvedApiName,
+          requestHeaders: model.requestHeaders,
+          compactionThreshold: model.compactionThreshold,
           temperature: model.temperature,
           dollarSigns: model.dollarSigns,
           type: "cloud" as const,

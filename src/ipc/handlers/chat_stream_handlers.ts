@@ -1112,7 +1112,8 @@ This conversation includes one or more image attachments. When the user uploads 
           });
 
           const streamResult = streamText({
-            headers: getAiHeaders({
+            headers: await getAiHeaders({
+              model: settings.selectedModel,
               builtinProviderId: modelClient.builtinProviderId,
             }),
             maxOutputTokens: await getMaxTokens(settings.selectedModel),

@@ -20,15 +20,27 @@ export const LanguageModelProviderSchema = z.object({
 
 export type LanguageModelProvider = z.infer<typeof LanguageModelProviderSchema>;
 
+export const CompactionThresholdSchema = z.object({
+  maxUsageFraction: z.number().positive().lte(1),
+  minTokensRemaining: z.number().int().nonnegative(),
+});
+
 export const LanguageModelSchema = z.object({
   id: z.number().optional(),
   apiName: z.string(),
+  variantId: z.string().optional(),
   displayName: z.string(),
   description: z.string().optional(),
+  variantGroup: z.string().optional(),
+  variantGroupDisplayName: z.string().optional(),
+  variantLabel: z.string().optional(),
   tag: z.string().optional(),
   tagColor: z.string().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  resolvedApiName: z.string().optional(),
+  requestHeaders: z.record(z.string(), z.string()).optional(),
+  compactionThreshold: CompactionThresholdSchema.optional(),
   temperature: z.number().optional(),
   dollarSigns: z.number().optional(),
   type: z.enum(["custom", "local", "cloud"]).optional(),

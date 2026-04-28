@@ -29,6 +29,7 @@ import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { findLanguageModel } from "./findLanguageModel";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -182,7 +183,14 @@ export async function getModelClient(
       "No API keys available for any model supported by the 'auto' provider.",
     );
   }
-  return getRegularModelClient(model, settings, providerConfig);
+  const resolvedApiName =
+    (await findLanguageModel(model))?.resolvedApiName ?? model.name;
+  return getRegularModelClient(
+    model,
+    settings,
+    providerConfig,
+    resolvedApiName,
+  );
 }
 
 async function getProModelClient({
@@ -269,6 +277,7 @@ function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
+  resolvedModelName = model.name,
 ): {
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
@@ -279,7 +288,6 @@ function getRegularModelClient(
     (providerConfig.envVarName
       ? getEnvVar(providerConfig.envVarName)
       : undefined);
-
   const providerId = providerConfig.id;
   // Create client based on provider ID or type
   switch (providerId) {
@@ -287,7 +295,7 @@ function getRegularModelClient(
       const provider = createOpenAI({ apiKey });
       return {
         modelClient: {
-          model: provider.responses(model.name),
+          model: provider.responses(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -297,7 +305,7 @@ function getRegularModelClient(
       const provider = createAnthropic({ apiKey });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -307,7 +315,7 @@ function getRegularModelClient(
       const provider = createXai({ apiKey });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -317,7 +325,7 @@ function getRegularModelClient(
       const provider = createGoogle({ apiKey });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -353,9 +361,9 @@ function getRegularModelClient(
           // publishers/google/models/<model>. For partner MaaS models the
           // full publisher path is already included.
           model: provider(
-            model.name.includes("/")
-              ? model.name
-              : `publishers/google/models/${model.name}`,
+            resolvedModelName.includes("/")
+              ? resolvedModelName
+              : `publishers/google/models/${resolvedModelName}`,
           ),
           builtinProviderId: providerId,
         },
@@ -370,7 +378,7 @@ function getRegularModelClient(
       });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -390,7 +398,7 @@ function getRegularModelClient(
         });
         return {
           modelClient: {
-            model: provider(model.name),
+            model: provider(resolvedModelName),
             builtinProviderId: providerId,
           },
           backupModelClients: [],
@@ -431,7 +439,7 @@ function getRegularModelClient(
 
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -441,7 +449,7 @@ function getRegularModelClient(
       const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -456,7 +464,7 @@ function getRegularModelClient(
       });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
         },
         backupModelClients: [],
       };
@@ -470,7 +478,7 @@ function getRegularModelClient(
       });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -484,7 +492,7 @@ function getRegularModelClient(
       });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(resolvedModelName),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -506,7 +514,7 @@ function getRegularModelClient(
         });
         return {
           modelClient: {
-            model: provider(model.name),
+            model: provider(resolvedModelName),
           },
           backupModelClients: [],
         };

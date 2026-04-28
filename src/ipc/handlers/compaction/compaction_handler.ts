@@ -13,7 +13,7 @@ import { chats, messages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import {
-  getContextWindow,
+  getCompactionThresholdForModel,
   shouldTriggerCompaction,
 } from "@/ipc/utils/token_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
@@ -90,13 +90,18 @@ export async function checkAndMarkForCompaction(
     return false;
   }
 
-  const contextWindow = await getContextWindow();
-  const shouldCompact = shouldTriggerCompaction(totalTokens, contextWindow);
+  const shouldCompact = await shouldTriggerCompaction(
+    totalTokens,
+    settings.selectedModel,
+  );
 
   if (shouldCompact) {
+    const threshold = await getCompactionThresholdForModel(
+      settings.selectedModel,
+    );
     await markChatForCompaction(chatId);
     logger.info(
-      `Compaction triggered for chat ${chatId}: ${totalTokens} tokens (threshold: ${Math.min(Math.floor(contextWindow * 0.8), 180_000)})`,
+      `Compaction triggered for chat ${chatId}: ${totalTokens} tokens (threshold: ${threshold})`,
     );
     return true;
   }
@@ -179,9 +184,10 @@ export async function performCompaction(
     const summaryResult = streamText({
       model: modelClient.model,
       headers: {
-        ...getAiHeaders({
+        ...(await getAiHeaders({
+          model: settings.selectedModel,
           builtinProviderId: modelClient.builtinProviderId,
-        }),
+        })),
         [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
       },
       providerOptions: getProviderOptions({

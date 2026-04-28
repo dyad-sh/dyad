@@ -85,6 +85,7 @@ export const cloudProviders = providers.filter(
 export const LargeLanguageModelSchema = z.object({
   name: z.string(),
   provider: z.string(),
+  variantId: z.string().optional(),
   customModelId: z.number().optional(),
 });
 

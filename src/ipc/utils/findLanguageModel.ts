@@ -18,5 +18,19 @@ export async function findLanguageModel(
     }
   }
 
-  return models.find((m) => m.apiName === model.name);
+  if (model.variantId) {
+    const variantModel = models.find(
+      (m) => m.apiName === model.name && m.variantId === model.variantId,
+    );
+    if (variantModel) {
+      return variantModel;
+    }
+  }
+
+  return models.find(
+    (m) =>
+      m.apiName === model.name &&
+      (m.variantId === model.variantId ||
+        (!model.variantId && (m.variantId === "default" || !m.variantId))),
+  );
 }

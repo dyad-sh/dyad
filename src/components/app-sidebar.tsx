@@ -64,6 +64,7 @@ import {
   Stamp,
   UserCheck,
   Fingerprint,
+  MessagesSquare,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -184,6 +185,24 @@ const menuCategories = [
         hoverBg: "hover:bg-amber-500/10",
         activeBg: "bg-amber-500/15",
         activeText: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        title: "Collaboration Hub",
+        to: "/collaboration",
+        icon: MessagesSquare,
+        gradient: "from-cyan-500 to-blue-500",
+        hoverBg: "hover:bg-cyan-500/10",
+        activeBg: "bg-cyan-500/15",
+        activeText: "text-cyan-600 dark:text-cyan-400",
+      },
+      {
+        title: "Collab Activity",
+        to: "/collaboration/activity",
+        icon: Activity,
+        gradient: "from-teal-500 to-emerald-500",
+        hoverBg: "hover:bg-teal-500/10",
+        activeBg: "bg-teal-500/15",
+        activeText: "text-teal-600 dark:text-teal-400",
       },
       {
         title: "Autonomous Agent",

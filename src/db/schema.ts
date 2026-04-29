@@ -1,4 +1,4 @@
-﻿import { sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { integer, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
@@ -655,10 +655,10 @@ export const agentShareConfigs = sqliteTable("agent_share_configs", {
     .default(sql`1`),
   // Share display name (defaults to agent name)
   title: text("title"),
-  // Backend configuration â€” API keys, endpoints, auth
+  // Backend configuration — API keys, endpoints, auth
   backendConfigJson: text("backend_config_json", { mode: "json" })
     .$type<AgentShareBackendConfig | null>(),
-  // Widget customization â€” colors, position, branding
+  // Widget customization — colors, position, branding
   widgetConfigJson: text("widget_config_json", { mode: "json" })
     .$type<AgentShareWidgetConfig | null>(),
   // Allowed domains for embed/iframe (empty = all)
@@ -729,7 +729,7 @@ export const agentShareConfigsRelations = relations(
 // Agent Workspace Tables (Tasks, Knowledge Sources, Executions)
 // ============================================================================
 
-/** Agent workspace tasks â€” persistent task definitions */
+/** Agent workspace tasks — persistent task definitions */
 export const agentWorkspaceTasks = sqliteTable("agent_workspace_tasks", {
   id: text("id").primaryKey(), // UUID
   agentId: integer("agent_id")
@@ -759,7 +759,7 @@ export const agentWorkspaceTasks = sqliteTable("agent_workspace_tasks", {
   updatedAt: text("updated_at").notNull(),
 });
 
-/** Agent workspace task executions â€” execution history */
+/** Agent workspace task executions — execution history */
 export const agentWorkspaceExecutions = sqliteTable("agent_workspace_executions", {
   id: text("id").primaryKey(), // UUID
   taskId: text("task_id")
@@ -784,7 +784,7 @@ export const agentWorkspaceExecutions = sqliteTable("agent_workspace_executions"
   metricsJson: text("metrics_json", { mode: "json" }).$type<Record<string, unknown>>().default({}),
 });
 
-/** Agent workspace knowledge sources â€” persistent knowledge connector configs */
+/** Agent workspace knowledge sources — persistent knowledge connector configs */
 export const agentWorkspaceKnowledgeSources = sqliteTable("agent_workspace_knowledge_sources", {
   id: text("id").primaryKey(), // UUID
   agentId: integer("agent_id")
@@ -848,7 +848,7 @@ export type SkillImplType = "prompt" | "function" | "tool" | "workflow";
 /** Skill type */
 export type SkillKind = "builtin" | "custom" | "trained" | "generated";
 
-/** Standalone skills table â€” reusable across agents, publishable to marketplace */
+/** Standalone skills table — reusable across agents, publishable to marketplace */
 export const skills = sqliteTable("skills", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -892,7 +892,7 @@ export const skills = sqliteTable("skills", {
     .default(sql`(unixepoch())`),
 });
 
-/** Junction table â€” many-to-many agents â†” skills */
+/** Junction table — many-to-many agents ↔ skills */
 export const agentSkillLinks = sqliteTable("agent_skill_links", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   agentId: integer("agent_id")
@@ -1841,7 +1841,7 @@ export const jcnRateLimits = sqliteTable("jcn_rate_limits", {
 
 // =============================================================================
 // CREATOR LIFECYCLE
-// Create â†’ Verify â†’ Use â†’ Receipts â†’ Rewards â†’ Reputation â†’ Better Create
+// Create → Verify → Use → Receipts → Rewards → Reputation → Better Create
 // =============================================================================
 
 /**
@@ -1903,7 +1903,7 @@ export const usageEvents = sqliteTable("usage_events", {
 
 /**
  * Verification Records
- * Tracks every verification action on an asset â€” quality gates, peer reviews, automated checks.
+ * Tracks every verification action on an asset — quality gates, peer reviews, automated checks.
  */
 export const verificationRecords = sqliteTable("verification_records", {
   id: text("id").primaryKey(), // UUID v4
@@ -2052,7 +2052,7 @@ export const reputationScores = sqliteTable("reputation_scores", {
 
 /**
  * Lifecycle Events
- * Audit log of every stage transition in the Createâ†’...â†’Better Create loop.
+ * Audit log of every stage transition in the Create→...→Better Create loop.
  */
 export const lifecycleEvents = sqliteTable("lifecycle_events", {
   id: text("id").primaryKey(), // UUID v4
@@ -2088,7 +2088,7 @@ export const lifecycleEvents = sqliteTable("lifecycle_events", {
 
 /**
  * Creator Feedback
- * Feedback entries that close the loop â€” "Better Create" stage.
+ * Feedback entries that close the loop — "Better Create" stage.
  */
 export const creatorFeedback = sqliteTable("creator_feedback", {
   id: text("id").primaryKey(), // UUID v4
@@ -2144,7 +2144,7 @@ export const creatorFeedback = sqliteTable("creator_feedback", {
     .default(sql`(unixepoch())`),
 });
 
-// â”€â”€ OpenClaw Kanban â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── OpenClaw Kanban ──────────────────────────────────────────
 // Track what OpenClaw is working on, what's queued, completed, failed, etc.
 
 export const openclawKanbanTasks = sqliteTable("openclaw_kanban_tasks", {
@@ -2250,11 +2250,11 @@ export const openclawKanbanActivityRelations = relations(openclawKanbanActivity,
   }),
 }));
 
-// â”€â”€ Web Scraping System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Web Scraping System ──────────────────────────────────────
 
 /**
- * Scraping Jobs â€” Persistent job state replacing JSON file storage.
- * Tracks lifecycle: queued â†’ running â†’ paused â†’ done/failed/cancelled.
+ * Scraping Jobs — Persistent job state replacing JSON file storage.
+ * Tracks lifecycle: queued → running → paused → done/failed/cancelled.
  */
 export const scrapingJobs = sqliteTable("scraping_jobs", {
   id: text("id").primaryKey(), // UUID v4
@@ -2282,7 +2282,7 @@ export const scrapingJobs = sqliteTable("scraping_jobs", {
 });
 
 /**
- * Scraping Results â€” Per-URL extraction results tied to a job.
+ * Scraping Results — Per-URL extraction results tied to a job.
  */
 export const scrapingResults = sqliteTable("scraping_results", {
   id: text("id").primaryKey(), // UUID v4
@@ -2301,7 +2301,7 @@ export const scrapingResults = sqliteTable("scraping_results", {
 });
 
 /**
- * Scraping Schedules â€” Cron-based recurring scrape jobs.
+ * Scraping Schedules — Cron-based recurring scrape jobs.
  */
 export const scrapingSchedules = sqliteTable("scraping_schedules", {
   id: text("id").primaryKey(), // UUID v4
@@ -2319,7 +2319,7 @@ export const scrapingSchedules = sqliteTable("scraping_schedules", {
 });
 
 /**
- * Scraping Templates â€” User-saved and marketplace-published templates.
+ * Scraping Templates — User-saved and marketplace-published templates.
  * Built-in templates are stored in code; this table is for user-created ones.
  */
 export const scrapingTemplates = sqliteTable("scraping_templates", {
@@ -2336,7 +2336,7 @@ export const scrapingTemplates = sqliteTable("scraping_templates", {
     .default(sql`(unixepoch())`),
 });
 
-// â”€â”€ Scraping Relations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Scraping Relations ──────────────────────────────────────
 
 export const scrapingJobsRelations = relations(scrapingJobs, ({ one, many }) => ({
   dataset: one(studioDatasets, {
@@ -2353,40 +2353,40 @@ export const scrapingResultsRelations = relations(scrapingResults, ({ one }) => 
   }),
 }));
 
-// â”€â”€ Local Vault (Sovereign Data Vault) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Local Vault (Sovereign Data Vault) ────────────────────────
 export * from "./vault_schema";
 
-// â”€â”€ Multi-Armed Bandit Learning (Continuous Improvement Memory) â”€â”€â”€â”€
+// ── Multi-Armed Bandit Learning (Continuous Improvement Memory) ────
 export * from "./mab_schema";
 
-// â”€â”€ Agent Memory (Long-Term + Short-Term) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent Memory (Long-Term + Short-Term) ────────────────────
 export * from "./agent_memory_schema";
 
-// â”€â”€ Data Flywheel (Self-Reinforcing Training Loop) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Data Flywheel (Self-Reinforcing Training Loop) ────────────
 export * from "./flywheel_schema";
 
-// â”€â”€ Decentralized Model Registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Decentralized Model Registry ──────────────────────────────
 export * from "./model_registry_schema";
 
-// â”€â”€ Self-Sovereign Identity (SSI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Self-Sovereign Identity (SSI) ─────────────────────────────
 export * from "./ssi_schema";
 
-// â”€â”€ AI Email Agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── AI Email Agent ────────────────────────────────────────────
 export * from "./email_schema";
 
-// â”€â”€ Autonomous Missions (Background Task Persistence) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Autonomous Missions (Background Task Persistence) ─────────
 export * from "./mission_schema";
 
-// â”€â”€ Agent-to-Agent (A2A) Economy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent-to-Agent (A2A) Economy ──────────────────────────────
 export * from "./a2a_schema";
 
-// â”€â”€ Agent OS â€” Tier 1 (OS Shell) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent OS — Tier 1 (OS Shell) ──────────────────────────────
 export * from "./agent_os_schema";
 
-// â”€â”€ Agent Wallet & Policy â€” Tier 2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent Wallet & Policy — Tier 2 ────────────────────────────
 export * from "./agent_wallet_schema";
 
-// â”€â”€ Agent Provenance & Reputation â€” Tier 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent Provenance & Reputation — Tier 4 ────────────────────
 export * from "./agent_provenance_schema";
 
 // -- Image Studio (AI Image Generation + Canvas Editing) ------
@@ -2431,7 +2431,7 @@ export const videoStudioVideos = sqliteTable("video_studio_videos", {
     .default(sql`(unixepoch())`),
 });
 
-// â”€â”€ OpenClaw Bot Activity Log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── OpenClaw Bot Activity Log ────────────────────────────────
 // Persists ALL gateway events so activity is available even when
 // JoyCreate was closed while the bot was running.
 
@@ -2540,10 +2540,10 @@ export const openclawChannelMessages = sqliteTable("openclaw_channel_messages", 
     .default(sql`(unixepoch())`),
 });
 
-// â”€â”€â”€ Calendar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Calendar ─────────────────────────────────────────────────────────────────
 
 /**
- * Calendar Sources â€” Connected calendar accounts and feeds.
+ * Calendar Sources — Connected calendar accounts and feeds.
  * Each source is a Google, Outlook, iCal URL, CalDAV, or agent-activity provider.
  */
 export const calendarSources = sqliteTable("calendar_sources", {
@@ -2571,7 +2571,7 @@ export const calendarSources = sqliteTable("calendar_sources", {
 });
 
 /**
- * Calendar Events â€” Local cache of all events from every connected source.
+ * Calendar Events — Local cache of all events from every connected source.
  * External events are synced periodically; local events are created directly.
  */
 export const calendarEvents = sqliteTable("calendar_events", {
@@ -2601,6 +2601,116 @@ export const calendarEvents = sqliteTable("calendar_events", {
   metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
   icsData: text("ics_data"), // Raw iCal data if available
   isReadOnly: integer("is_read_only", { mode: "boolean" }).notNull().default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// ============================================================================
+// Multi-Agent Collaboration Hub
+// ============================================================================
+// Operational collaboration substrate: shared channels, DMs, subscriptions,
+// and structured handoff tasks between agents. Distinct from the commercial
+// a2a_* tables (quotes/contracts/payments) and from agent_workspace_tasks
+// (single-agent personal task list). Polled by the renderer via TanStack
+// Query at ~4s; real-time websockets are out of scope for v1.
+
+export const agentCollabChannels = sqliteTable("agent_collab_channels", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  topic: text("topic"),
+  visibility: text("visibility", { enum: ["public", "private"] })
+    .notNull()
+    .default("public"),
+  createdByAgentId: integer("created_by_agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  archived: integer("archived", { mode: "boolean" }).notNull().default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const agentCollabMessages = sqliteTable("agent_collab_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  channelId: integer("channel_id").references(() => agentCollabChannels.id, {
+    onDelete: "cascade",
+  }),
+  fromAgentId: integer("from_agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  toAgentId: integer("to_agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  kind: text("kind", {
+    enum: ["chat", "handoff", "result", "system", "mention"],
+  })
+    .notNull()
+    .default("chat"),
+  content: text("content").notNull(),
+  metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  replyToId: integer("reply_to_id"),
+  taskId: integer("task_id"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const agentCollabSubscriptions = sqliteTable(
+  "agent_collab_subscriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    agentId: integer("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => agentCollabChannels.id, { onDelete: "cascade" }),
+    muted: integer("muted", { mode: "boolean" }).notNull().default(sql`0`),
+    joinedAt: integer("joined_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => ({
+    uniqueSubscription: unique().on(t.agentId, t.channelId),
+  }),
+);
+
+export const agentCollabTasks = sqliteTable("agent_collab_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fromAgentId: integer("from_agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  toAgentId: integer("to_agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  channelId: integer("channel_id").references(() => agentCollabChannels.id, {
+    onDelete: "set null",
+  }),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status", {
+    enum: ["pending", "accepted", "in_progress", "done", "rejected", "cancelled"],
+  })
+    .notNull()
+    .default("pending"),
+  priority: text("priority", {
+    enum: ["low", "normal", "high", "urgent"],
+  })
+    .notNull()
+    .default("normal"),
+  inputJson: text("input_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  outputJson: text("output_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  dueAt: integer("due_at", { mode: "timestamp" }),
+  acceptedAt: integer("accepted_at", { mode: "timestamp" }),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

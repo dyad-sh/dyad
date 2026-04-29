@@ -164,6 +164,7 @@ export async function getLanguageModels({
         tagColor: model.tagColor,
         maxOutputTokens: model.maxOutputTokens,
         contextWindow: model.contextWindow,
+        compactionWindow: model.compactionWindow,
         temperature: model.temperature,
         dollarSigns: model.dollarSigns,
         type: "cloud" as const,

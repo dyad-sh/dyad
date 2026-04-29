@@ -259,6 +259,7 @@ app.get("/api/language-model-catalog", (req, res) => {
           apiName: "gpt-5.2",
           displayName: "GPT 5.2",
           description: "Remote catalog OpenAI model",
+          compaction_window: 40_000,
         },
         {
           apiName: "gpt-5",
@@ -288,6 +289,7 @@ app.get("/api/language-model-catalog", (req, res) => {
           displayName: "Claude Opus 4.5",
           description: "Remote catalog Anthropic model",
           maxOutputTokens: 32_000,
+          compaction_window: 40_000,
         },
         {
           apiName: "claude-sonnet-4-20250514",

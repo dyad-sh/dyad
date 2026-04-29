@@ -62,6 +62,7 @@ const CatalogModelSchema = z.object({
   temperature: z.number().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  compaction_window: z.number().optional(),
   lifecycle: z
     .object({
       stage: z.enum(["stable", "preview", "deprecated"]).optional(),
@@ -159,6 +160,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
       tagColor: model.tagColor,
       maxOutputTokens: model.maxOutputTokens,
       contextWindow: model.contextWindow,
+      compactionWindow: model.compactionWindow,
       temperature: model.temperature,
       dollarSigns: model.dollarSigns,
       type: "cloud",
@@ -272,6 +274,7 @@ function convertRemoteCatalog(
           tagColor: model.tagColor,
           maxOutputTokens: model.maxOutputTokens,
           contextWindow: model.contextWindow,
+          compactionWindow: model.compaction_window,
           temperature: model.temperature,
           dollarSigns: model.dollarSigns,
           type: "cloud" as const,

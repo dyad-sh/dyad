@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
+import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
@@ -422,6 +423,14 @@ export function WorkflowSettings() {
         <AutoExpandPreviewSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Automatically expand the preview panel when code changes are made.
+        </div>
+      </div>
+
+      <div id={SETTING_IDS.keepPreviewsRunning} className="space-y-1 mt-4">
+        <KeepPreviewsRunningSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Note: this may take more memory but allows faster preview loads when
+          switching apps.
         </div>
       </div>
 

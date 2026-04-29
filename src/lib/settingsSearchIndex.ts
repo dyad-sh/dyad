@@ -23,6 +23,7 @@ export const SETTING_IDS = {
   autoApprove: "setting-auto-approve",
   autoFix: "setting-auto-fix",
   autoExpandPreview: "setting-auto-expand-preview",
+  keepPreviewsRunning: "setting-keep-previews-running",
   chatEventNotification: "setting-chat-event-notification",
   thinkingBudget: "setting-thinking-budget",
   maxChatTurns: "setting-max-chat-turns",
@@ -142,6 +143,25 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Automatically expand the preview panel when code changes are made",
     keywords: ["preview", "expand", "panel", "automatic", "auto"],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.keepPreviewsRunning,
+    label: "Keep app previews running forever",
+    description:
+      "Prevent idle app previews from being stopped after 10 minutes; uses more memory but enables faster preview loads when switching apps",
+    keywords: [
+      "preview",
+      "idle",
+      "timeout",
+      "gc",
+      "garbage collect",
+      "memory",
+      "forever",
+      "keep",
+      "running",
+    ],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },

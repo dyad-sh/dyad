@@ -24,6 +24,10 @@ import { computeNetworkRoute } from "./routes/compute-network";
 import { agentSwarmRoute } from "./routes/agent-swarm";
 import { autonomousAgentRoute } from "./routes/autonomous-agent";
 import { agentOrchestratorRoute } from "./routes/agent-orchestrator";
+import {
+  collaborationRoute,
+  collaborationActivityRoute,
+} from "./routes/collaboration";
 import { autonomousAgentProductionRoute } from "./routes/autonomous-agent-production";
 import { cnsRoute } from "./routes/cns";
 import { localVaultRoute } from "./routes/local-vault";
@@ -109,6 +113,8 @@ const routeTree = rootRoute.addChildren([
   agentSwarmRoute,
   autonomousAgentRoute,
   agentOrchestratorRoute,
+  collaborationRoute,
+  collaborationActivityRoute,
   autonomousAgentProductionRoute,
   cnsRoute,
   localVaultRoute,

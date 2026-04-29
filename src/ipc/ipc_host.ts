@@ -35,6 +35,7 @@ import { registerSecurityHandlers } from "./handlers/security_handlers";
 import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_editing_handlers";
 import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
 import { registerAgentBuilderHandlers } from "./handlers/agent_builder_handlers";
+import { registerCollaborationHubHandlers } from "./handlers/collaboration_hub_handlers";
 import { registerAgentExportHandlers } from "./handlers/agent_export_handlers";
 import { registerAgentSharingHandlers } from "./handlers/agent_sharing_handlers";
 import { registerN8nHandlers } from "./handlers/n8n_handlers";
@@ -201,6 +202,9 @@ export function registerIpcHandlers() {
   registerAgentToolHandlers();
   registerAgentBuilderHandlers();
   registerAgentExportHandlers();
+
+  // Multi-Agent Collaboration Hub — channels, DMs, subscriptions, handoff tasks
+  registerCollaborationHubHandlers();
   registerAgentSharingHandlers();
   registerN8nHandlers();
   registerTrustlessInferenceHandlers();

@@ -1,17 +1,16 @@
 # Evals
 
-LLM eval suite for tool-use quality. Six suites run the same 16 cases and
+LLM eval suite for tool-use quality. Five suites run the same 16 cases and
 the same three models (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) but with
 different tool sets and system prompts:
 
-| Suite name               | Tools available                             | System prompt                                |
-| ------------------------ | ------------------------------------------- | -------------------------------------------- |
-| `search_replace`         | `search_replace` only                       | Minimal custom "precise code editor" prompt  |
-| `search_replace_few`     | `search_replace` only                       | Variant prompt encouraging fewer tool calls  |
-| `edit_file`              | `edit_file` only                            | Minimal custom `edit_file` prompt            |
-| `basic_agent`            | `search_replace`, `write_file`              | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT` |
-| `pro_agent`              | `search_replace`, `edit_file`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro) |
-| `pro_agent_experimental` | `search_replace`, `edit_file`, `write_file` | Editable copy of the Pro prompt for tweaking |
+| Suite name               | Tools available                | System prompt                                |
+| ------------------------ | ------------------------------ | -------------------------------------------- |
+| `search_replace`         | `search_replace` only          | Minimal custom "precise code editor" prompt  |
+| `search_replace_few`     | `search_replace` only          | Variant prompt encouraging fewer tool calls  |
+| `basic_agent`            | `search_replace`, `write_file` | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT` |
+| `pro_agent`              | `search_replace`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro) |
+| `pro_agent_experimental` | `search_replace`, `write_file` | Editable copy of the Pro prompt for tweaking |
 
 Each case gives the model a real source file plus an editing instruction,
 runs the model with the suite's tools wired up, applies the produced edits,
@@ -21,9 +20,7 @@ instruction.
 ## Prerequisites
 
 All models are routed through the Dyad Engine gateway, so you only need one
-credential: a Dyad Pro API key, exposed as `DYAD_PRO_API_KEY`. The
-`edit_file` tool additionally calls the engine's `/tools/turbo-file-edit`
-endpoint to apply sketched edits — that uses the same key.
+credential: a Dyad Pro API key, exposed as `DYAD_PRO_API_KEY`.
 
 The suite is skipped entirely when `DYAD_PRO_API_KEY` is unset — no tests will
 fail, they just won't run. This keeps regular `vitest run` safe for contributors
@@ -63,11 +60,9 @@ EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 
 **Heads up — this is expensive.** A full `all`/`all` run issues one
 generation per (suite × model × case) triple plus one judge call per case,
-across 6 suites, 3 models, and 16 cases. The `edit_file`, `pro_agent`, and
-`pro_agent_experimental` suites also make additional engine calls for each
-sketched edit the model produces through `edit_file`. Expect dozens of LLM requests, some of which run reasoning
-models on 300+ line fixtures. Use sparingly; prefer narrow filters during
-development.
+across 5 suites, 3 models, and 16 cases. Expect dozens of LLM requests,
+some of which run reasoning models on 300+ line fixtures. Use sparingly;
+prefer narrow filters during development.
 
 ### Running a single suite
 
@@ -82,13 +77,13 @@ EVAL_SUITE=search_replace EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 # The basic_agent suite (Basic agent prompt, search_replace + write_file)
 EVAL_SUITE=basic_agent EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 
-# The pro_agent suite (Pro agent prompt, search_replace + edit_file + write_file)
+# The pro_agent suite (Pro agent prompt, search_replace + write_file)
 EVAL_SUITE=pro_agent EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 ```
 
 Note: `EVAL_SUITE` matches suite `name`s exactly (case-insensitive), and
 accepts a comma-separated list for multiple suites (e.g.
-`EVAL_SUITE=search_replace,edit_file`). Unknown names error out with the
+`EVAL_SUITE=search_replace,basic_agent`). Unknown names error out with the
 available list.
 
 ### Running a single case
@@ -173,7 +168,6 @@ directory:
 
 - `eval-results/search_replace/`
 - `eval-results/search_replace_few/`
-- `eval-results/edit_file/`
 - `eval-results/basic_agent/`
 - `eval-results/pro_agent/`
 - `eval-results/pro_agent_experimental/`
@@ -206,8 +200,8 @@ one folder. Folder names sort chronologically under `ls`.
 - `toolCalls` — every tool call the model made. Each entry records
   `toolName`, `filePath`, an `args` map (keyed by the tool's parameter names,
   so `old_string`/`new_string` for `search_replace`, `content` for
-  `write_file`, `content`/`instructions` for `edit_file`), the file before
-  and after the call, and a unified diff of just that call.
+  `write_file`), the file before and after the call, and a unified diff of
+  just that call.
 - `diff` — unified diff from the original fixture to the final file
   (i.e. the cumulative effect of all tool calls).
 - `judge` — the judge's verdict: `label`, `modelName`, `durationMs`,
@@ -251,5 +245,4 @@ call. The split view contains the raw pieces as standalone files:
   target file's extension (for syntax highlighting); non-string args become
   JSON blobs. So a `search_replace` call produces `old_string.ts` and
   `new_string.ts`; a `write_file` call produces `content.ts` and
-  `description.ts`; an `edit_file` call produces `content.ts` and
-  `instructions.ts`.
+  `description.ts`.

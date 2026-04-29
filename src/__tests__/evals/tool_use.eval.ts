@@ -2,10 +2,8 @@ import { describe, it } from "vitest";
 import { generateText, stepCountIs, type Tool } from "ai";
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import { searchReplaceTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_replace";
 import { writeFileTool } from "@/pro/main/ipc/handlers/local_agent/tools/write_file";
-import { editFileTool } from "@/pro/main/ipc/handlers/local_agent/tools/edit_file";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
 import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
@@ -14,7 +12,6 @@ import {
   GEMINI_3_FLASH,
 } from "@/ipc/shared/language_model_constants";
 import {
-  DYAD_ENGINE_URL,
   GPT_5_4,
   getEvalModel,
   hasDyadProKey,
@@ -31,7 +28,6 @@ import {
 import { createUnifiedDiff } from "./helpers/unified_diff";
 import {
   SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT,
-  SIMPLE_EDIT_FILE_SYSTEM_PROMPT,
   SEARCH_REPLACE_FEW_SYSTEM_PROMPT,
   PRO_AGENT_EXPERIMENTAL_SYSTEM_PROMPT,
 } from "./helpers/prompts";
@@ -435,53 +431,6 @@ function applySearchReplaceEdit(
   return applied.content!;
 }
 
-// Stand-in for the production `edit_file` tool's engine call. Mirrors
-// `callTurboFileEdit` in src/pro/main/ipc/handlers/local_agent/tools/edit_file.ts
-// but reaches the engine directly (no AgentContext required). The base URL is
-// imported from `helpers/get_eval_model` so this and the SDK provider can't
-// drift apart.
-
-async function turboFileEdit(params: {
-  path: string;
-  content: string;
-  originalContent: string;
-  instructions?: string;
-  signal?: AbortSignal;
-}): Promise<string> {
-  const apiKey = process.env.DYAD_PRO_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "DYAD_PRO_API_KEY is required to run eval suites that use edit_file",
-    );
-  }
-  const response = await fetch(`${DYAD_ENGINE_URL}/tools/turbo-file-edit`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "X-Dyad-Request-Id": randomUUID(),
-    },
-    body: JSON.stringify({
-      path: params.path,
-      content: params.content,
-      originalContent: params.originalContent,
-      instructions: params.instructions ?? "",
-    }),
-    signal: params.signal,
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `turbo-file-edit failed: ${response.status} ${response.statusText} - ${errorText}`,
-    );
-  }
-  const data = (await response.json()) as { result?: unknown };
-  if (typeof data.result !== "string") {
-    throw new Error("turbo-file-edit returned unexpected payload (no result)");
-  }
-  return data.result;
-}
-
 // ── Tool factories ─────────────────────────────────────────────
 //
 // Each factory returns an AI-SDK tool whose `execute` mutates the
@@ -628,66 +577,6 @@ function writeFileHarnessTool(
   };
 }
 
-function editFileHarnessTool(
-  state: ToolRunState,
-  c: EvalCase,
-  label: string,
-): Tool {
-  return {
-    description: editFileTool.description,
-    inputSchema: editFileTool.inputSchema,
-    execute: async (args) => {
-      const fileBefore = state.content;
-      const recordArgs = {
-        path: args.path,
-        content: args.content,
-        instructions: args.instructions ?? "",
-      };
-      try {
-        if (!pathMatchesCase(args.path, c.fileName)) {
-          throw new Error(
-            `${label} / ${c.name} edit_file targeted wrong file: ` +
-              `got "${args.path}", expected "${c.fileName}"`,
-          );
-        }
-        const newContent = await turboFileEdit({
-          path: args.path,
-          content: args.content,
-          originalContent: state.content,
-          instructions: args.instructions,
-          signal: state.abortSignal,
-        });
-        state.content = newContent;
-        state.toolCalls.push(
-          makeRecord(
-            "edit_file",
-            args.path,
-            recordArgs,
-            fileBefore,
-            state.content,
-            state.toolCalls.length,
-          ),
-        );
-        return `Successfully edited ${args.path}`;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        state.toolCalls.push(
-          makeRecord(
-            "edit_file",
-            args.path ?? c.fileName,
-            recordArgs,
-            fileBefore,
-            fileBefore,
-            state.toolCalls.length,
-            { succeeded: false, error: message },
-          ),
-        );
-        throw err;
-      }
-    },
-  };
-}
-
 // ── Suite configs ──────────────────────────────────────────────
 
 interface SuiteConfig {
@@ -719,14 +608,6 @@ const SUITES: SuiteConfig[] = [
     }),
   },
   {
-    name: "edit_file",
-    displayName: "edit_file",
-    systemPrompt: SIMPLE_EDIT_FILE_SYSTEM_PROMPT,
-    buildTools: (state, c, label) => ({
-      edit_file: editFileHarnessTool(state, c, label),
-    }),
-  },
-  {
     name: "basic_agent",
     displayName: "basic_agent (search_replace + write_file)",
     systemPrompt: constructLocalAgentPrompt(undefined, undefined, {
@@ -739,11 +620,10 @@ const SUITES: SuiteConfig[] = [
   },
   {
     name: "pro_agent",
-    displayName: "pro_agent (search_replace + edit_file + write_file)",
+    displayName: "pro_agent (search_replace + write_file)",
     systemPrompt: constructLocalAgentPrompt(undefined),
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),
-      edit_file: editFileHarnessTool(state, c, label),
       write_file: writeFileHarnessTool(state, c, label),
     }),
   },
@@ -756,7 +636,6 @@ const SUITES: SuiteConfig[] = [
     systemPrompt: PRO_AGENT_EXPERIMENTAL_SYSTEM_PROMPT,
     buildTools: (state, c, label) => ({
       search_replace: searchReplaceHarnessTool(state, c, label),
-      edit_file: editFileHarnessTool(state, c, label),
       write_file: writeFileHarnessTool(state, c, label),
     }),
   },
@@ -981,7 +860,7 @@ async function runCase(
 // against every model by accident is expensive, so the caller must opt
 // in explicitly. Use `all` to mean "run everything". `EVAL_SUITE` matches
 // suite names exactly (comma-separated for multiple, e.g.
-// `EVAL_SUITE=search_replace,edit_file`) so that `search_replace` does
+// `EVAL_SUITE=search_replace,basic_agent`) so that `search_replace` does
 // not also pick up `search_replace_few`. `EVAL_MODEL` is a
 // case-insensitive substring match against model label or id.
 

@@ -13,8 +13,7 @@ export type EvalProvider = "anthropic" | "openai" | "google";
 // the judge model.
 export const GPT_5_4 = "gpt-5.4";
 
-// Single source of truth for the Dyad Engine URL across the eval helpers
-// and any out-of-band fetches the harness makes (e.g. turbo-file-edit).
+// Single source of truth for the Dyad Engine URL across the eval helpers.
 export const DYAD_ENGINE_URL =
   process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 

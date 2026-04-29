@@ -48,7 +48,7 @@ export interface ToolCallRecord {
   filePath: string;
   // Raw tool input arguments, keyed by the tool's parameter names
   // (e.g. `old_string`/`new_string` for search_replace, `content` for
-  // write_file, `content`/`instructions` for edit_file).
+  // write_file).
   args: Record<string, unknown>;
   fileBefore: string;
   fileAfter: string;

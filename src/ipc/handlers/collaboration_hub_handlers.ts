@@ -15,7 +15,8 @@
 
 import { ipcMain } from "electron";
 import log from "electron-log";
-import { and, asc, desc, eq, lt, or, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agentCollabChannels,
@@ -25,6 +26,52 @@ import {
 } from "@/db/schema";
 
 const logger = log.scope("collab_hub_handlers");
+
+// =============================================================================
+// Runtime validators (SQLite has no CHECK constraints for our drizzle enums)
+// =============================================================================
+
+const CHANNEL_VISIBILITIES = ["public", "private"] as const;
+const MESSAGE_KINDS = ["chat", "handoff", "result", "system", "mention"] as const;
+const TASK_STATUSES = [
+  "pending",
+  "accepted",
+  "in_progress",
+  "done",
+  "rejected",
+  "cancelled",
+] as const;
+const TASK_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+
+/**
+ * Allowed task lifecycle transitions. `done`, `rejected`, and `cancelled`
+ * are terminal — no further transitions permitted.
+ */
+const TASK_TRANSITIONS: Record<
+  (typeof TASK_STATUSES)[number],
+  ReadonlyArray<(typeof TASK_STATUSES)[number]>
+> = {
+  pending: ["accepted", "rejected", "cancelled"],
+  accepted: ["in_progress", "done", "rejected", "cancelled"],
+  in_progress: ["done", "rejected", "cancelled"],
+  done: [],
+  rejected: [],
+  cancelled: [],
+};
+
+function assertOneOf<T extends string>(
+  value: unknown,
+  allowed: ReadonlyArray<T>,
+  field: string,
+): asserts value is T {
+  if (typeof value !== "string" || !(allowed as ReadonlyArray<string>).includes(value)) {
+    throw new Error(
+      `invalid ${field}: expected one of ${allowed.join(", ")}, got ${JSON.stringify(value)}`,
+    );
+  }
+}
+
+type WhereCondition = SQL<unknown>;
 
 // =============================================================================
 // Types (renderer/handler shared shapes)
@@ -240,13 +287,15 @@ export function registerCollaborationHubHandlers(): void {
       },
     ): Promise<CollabChannel> => {
       if (!params?.name?.trim()) throw new Error("channel name required");
+      const visibility = params.visibility ?? "public";
+      assertOneOf(visibility, CHANNEL_VISIBILITIES, "visibility");
       const [row] = await db
         .insert(agentCollabChannels)
         .values({
           name: params.name.trim(),
           description: params.description ?? null,
           topic: params.topic ?? null,
-          visibility: params.visibility ?? "public",
+          visibility,
           createdByAgentId: params.createdByAgentId ?? null,
         })
         .returning();
@@ -269,10 +318,17 @@ export function registerCollaborationHubHandlers(): void {
     ): Promise<CollabChannel | null> => {
       if (!params?.id) throw new Error("channel id required");
       const patch: Record<string, unknown> = { updatedAt: new Date() };
-      if (typeof params.name === "string") patch.name = params.name.trim();
+      if (typeof params.name === "string") {
+        const trimmed = params.name.trim();
+        if (trimmed.length === 0) throw new Error("channel name required");
+        patch.name = trimmed;
+      }
       if (params.description !== undefined) patch.description = params.description;
       if (params.topic !== undefined) patch.topic = params.topic;
-      if (params.visibility !== undefined) patch.visibility = params.visibility;
+      if (params.visibility !== undefined) {
+        assertOneOf(params.visibility, CHANNEL_VISIBILITIES, "visibility");
+        patch.visibility = params.visibility;
+      }
       const [row] = await db
         .update(agentCollabChannels)
         .set(patch)
@@ -309,8 +365,21 @@ export function registerCollaborationHubHandlers(): void {
       if (!params?.agentId || !params?.channelId) {
         throw new Error("agentId and channelId required");
       }
-      // Idempotent: return existing if present
-      const existing = await db
+      // Idempotent + race-safe: rely on the unique(agentId, channelId) index.
+      // INSERT … ON CONFLICT DO NOTHING gives us atomic upsert; if the row
+      // already exists (or was created concurrently), we read it back.
+      const inserted = await db
+        .insert(agentCollabSubscriptions)
+        .values({
+          agentId: params.agentId,
+          channelId: params.channelId,
+        })
+        .onConflictDoNothing({
+          target: [agentCollabSubscriptions.agentId, agentCollabSubscriptions.channelId],
+        })
+        .returning();
+      if (inserted[0]) return mapSubscription(inserted[0]);
+      const [existing] = await db
         .select()
         .from(agentCollabSubscriptions)
         .where(
@@ -320,15 +389,13 @@ export function registerCollaborationHubHandlers(): void {
           ),
         )
         .limit(1);
-      if (existing[0]) return mapSubscription(existing[0]);
-      const [row] = await db
-        .insert(agentCollabSubscriptions)
-        .values({
-          agentId: params.agentId,
-          channelId: params.channelId,
-        })
-        .returning();
-      return mapSubscription(row);
+      if (!existing) {
+        // Extremely unlikely: another transaction deleted the row between
+        // our insert (which conflicted) and our select. Surface as an error
+        // rather than returning a fabricated row.
+        throw new Error("failed to upsert subscription");
+      }
+      return mapSubscription(existing);
     },
   );
 
@@ -400,16 +467,25 @@ export function registerCollaborationHubHandlers(): void {
       if (!params || typeof params.content !== "string" || !params.content.trim()) {
         throw new Error("message content required");
       }
-      if (params.channelId == null && params.toAgentId == null) {
-        throw new Error("at least one of channelId or toAgentId is required");
+      const hasChannelId = params.channelId != null;
+      const hasToAgentId = params.toAgentId != null;
+      if (!hasChannelId && !hasToAgentId) {
+        throw new Error("exactly one of channelId or toAgentId is required");
       }
+      if (hasChannelId && hasToAgentId) {
+        throw new Error(
+          "message must target exactly one destination: channelId or toAgentId, not both",
+        );
+      }
+      const kind = params.kind ?? "chat";
+      assertOneOf(kind, MESSAGE_KINDS, "kind");
       const [row] = await db
         .insert(agentCollabMessages)
         .values({
           channelId: params.channelId ?? null,
           fromAgentId: params.fromAgentId ?? null,
           toAgentId: params.toAgentId ?? null,
-          kind: params.kind ?? "chat",
+          kind,
           content: params.content,
           metadataJson: params.metadata ?? null,
           replyToId: params.replyToId ?? null,
@@ -444,31 +520,32 @@ export function registerCollaborationHubHandlers(): void {
       },
     ): Promise<CollabMessage[]> => {
       const limit = Math.min(Math.max(params?.limit ?? 50, 1), 500);
-      const conds = [] as any[];
+      const conds: WhereCondition[] = [];
       if (params?.channelId != null) {
         conds.push(eq(agentCollabMessages.channelId, params.channelId));
       } else if (params?.agentId != null && params?.peerAgentId != null) {
-        // DM thread between two agents
-        conds.push(
-          or(
-            and(
-              eq(agentCollabMessages.fromAgentId, params.agentId),
-              eq(agentCollabMessages.toAgentId, params.peerAgentId),
-            ),
-            and(
-              eq(agentCollabMessages.fromAgentId, params.peerAgentId),
-              eq(agentCollabMessages.toAgentId, params.agentId),
-            ),
-          ),
-        );
-      } else if (params?.agentId != null) {
-        // All DMs involving this agent
-        conds.push(
-          or(
+        // DM thread between two agents — explicitly exclude channel posts
+        // so a channel message between the same pair doesn't leak in.
+        conds.push(isNull(agentCollabMessages.channelId));
+        const dmPair = or(
+          and(
             eq(agentCollabMessages.fromAgentId, params.agentId),
+            eq(agentCollabMessages.toAgentId, params.peerAgentId),
+          ),
+          and(
+            eq(agentCollabMessages.fromAgentId, params.peerAgentId),
             eq(agentCollabMessages.toAgentId, params.agentId),
           ),
         );
+        if (dmPair) conds.push(dmPair);
+      } else if (params?.agentId != null) {
+        // All DMs involving this agent (DMs only, not channel posts)
+        conds.push(isNull(agentCollabMessages.channelId));
+        const dmEither = or(
+          eq(agentCollabMessages.fromAgentId, params.agentId),
+          eq(agentCollabMessages.toAgentId, params.agentId),
+        );
+        if (dmEither) conds.push(dmEither);
       }
       if (params?.before != null) {
         conds.push(lt(agentCollabMessages.createdAt, new Date(params.before * 1000)));
@@ -517,6 +594,8 @@ export function registerCollaborationHubHandlers(): void {
         throw new Error("fromAgentId and toAgentId must be different");
       }
       if (!params.title?.trim()) throw new Error("title required");
+      const priority = params.priority ?? "normal";
+      assertOneOf(priority, TASK_PRIORITIES, "priority");
       const [row] = await db
         .insert(agentCollabTasks)
         .values({
@@ -525,7 +604,7 @@ export function registerCollaborationHubHandlers(): void {
           channelId: params.channelId ?? null,
           title: params.title.trim(),
           description: params.description ?? null,
-          priority: params.priority ?? "normal",
+          priority,
           inputJson: params.input ?? null,
           dueAt: params.dueAt != null ? new Date(params.dueAt * 1000) : null,
         })
@@ -564,6 +643,7 @@ export function registerCollaborationHubHandlers(): void {
       },
     ): Promise<CollabTask | null> => {
       if (!params?.id || !params?.status) throw new Error("id and status required");
+      assertOneOf(params.status, TASK_STATUSES, "status");
 
       const [existingRow] = await db
         .select()
@@ -573,18 +653,32 @@ export function registerCollaborationHubHandlers(): void {
 
       if (!existingRow) return null;
 
+      // Enforce lifecycle transition graph. No-op (same status) is allowed
+      // so callers can re-emit `output` without changing status.
+      const fromStatus = (existingRow.status ?? "pending") as CollabTaskStatus;
+      const toStatus = params.status;
+      if (toStatus !== fromStatus) {
+        const allowed = TASK_TRANSITIONS[fromStatus] ?? [];
+        if (!allowed.includes(toStatus)) {
+          throw new Error(
+            `invalid task transition: ${fromStatus} → ${toStatus} (allowed: ${
+              allowed.length ? allowed.join(", ") : "<terminal>"
+            })`,
+          );
+        }
+      }
+
       const patch: Record<string, unknown> = {
-        status: params.status,
+        status: toStatus,
         updatedAt: new Date(),
       };
       if (params.output !== undefined) patch.outputJson = params.output;
-      if (params.status === "accepted" && existingRow.acceptedAt == null) {
+      if (toStatus === "accepted" && existingRow.acceptedAt == null) {
         patch.acceptedAt = new Date();
       }
       if (
-        params.status === "done" ||
-        params.status === "rejected" ||
-        params.status === "cancelled"
+        (toStatus === "done" || toStatus === "rejected" || toStatus === "cancelled") &&
+        existingRow.completedAt == null
       ) {
         patch.completedAt = new Date();
       }
@@ -594,8 +688,12 @@ export function registerCollaborationHubHandlers(): void {
         .where(eq(agentCollabTasks.id, params.id))
         .returning();
       if (!row) return null;
-      // Mirror the status transition into the channel as a `result` message when terminal
-      if (row.channelId != null && (params.status === "done" || params.status === "rejected")) {
+      // Mirror the status transition into the channel as a `result` message
+      // when terminal — only on the actual transition (skip no-op same-status
+      // calls so we don't duplicate `result` posts).
+      const becameTerminal =
+        toStatus !== fromStatus && (toStatus === "done" || toStatus === "rejected");
+      if (row.channelId != null && becameTerminal) {
         try {
           await db.insert(agentCollabMessages).values({
             channelId: row.channelId,
@@ -603,7 +701,7 @@ export function registerCollaborationHubHandlers(): void {
             toAgentId: row.fromAgentId,
             kind: "result",
             content:
-              params.status === "done"
+              toStatus === "done"
                 ? `Task complete: ${row.title}`
                 : `Task rejected: ${row.title}`,
             metadataJson: { taskId: row.id, status: row.status },
@@ -630,22 +728,24 @@ export function registerCollaborationHubHandlers(): void {
       },
     ): Promise<CollabTask[]> => {
       const limit = Math.min(Math.max(params?.limit ?? 100, 1), 500);
-      const conds = [] as any[];
+      const conds: WhereCondition[] = [];
       if (params?.agentId != null) {
         if (params.role === "mine_created") {
           conds.push(eq(agentCollabTasks.fromAgentId, params.agentId));
         } else if (params.role === "mine_assigned") {
           conds.push(eq(agentCollabTasks.toAgentId, params.agentId));
         } else {
-          conds.push(
-            or(
-              eq(agentCollabTasks.fromAgentId, params.agentId),
-              eq(agentCollabTasks.toAgentId, params.agentId),
-            ),
+          const eitherSide = or(
+            eq(agentCollabTasks.fromAgentId, params.agentId),
+            eq(agentCollabTasks.toAgentId, params.agentId),
           );
+          if (eitherSide) conds.push(eitherSide);
         }
       }
-      if (params?.status) conds.push(eq(agentCollabTasks.status, params.status));
+      if (params?.status) {
+        assertOneOf(params.status, TASK_STATUSES, "status");
+        conds.push(eq(agentCollabTasks.status, params.status));
+      }
       if (params?.channelId != null) conds.push(eq(agentCollabTasks.channelId, params.channelId));
       const where = conds.length ? and(...conds) : undefined;
       const rows = where
@@ -702,10 +802,38 @@ export function registerCollaborationHubHandlers(): void {
     },
   );
 
-  // Quiet the unused-import linter for `sql` (kept available for future ad-hoc fragments)
-  void sql;
-
   logger.info("Collaboration Hub IPC handlers registered");
 }
 
 export default registerCollaborationHubHandlers;
+
+// =============================================================================
+// Test surface
+//
+// These pure helpers/constants are exported under a sentinel name so the unit
+// tests can exercise the validation + transition rules without spinning up the
+// Electron + SQLite stack. Do not import this from production code.
+// =============================================================================
+
+export const __test__ = {
+  CHANNEL_VISIBILITIES,
+  MESSAGE_KINDS,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+  TASK_TRANSITIONS,
+  assertOneOf,
+  /**
+   * Mirrors the transition guard used inside `collab:task:update-status`.
+   * Returns `true` if the transition is allowed, `false` otherwise. Same-status
+   * (no-op) transitions are allowed so callers can re-emit `output` without
+   * changing status.
+   */
+  isAllowedTaskTransition(
+    from: (typeof TASK_STATUSES)[number],
+    to: (typeof TASK_STATUSES)[number],
+  ): boolean {
+    if (from === to) return true;
+    return (TASK_TRANSITIONS[from] ?? []).includes(to);
+  },
+};
+

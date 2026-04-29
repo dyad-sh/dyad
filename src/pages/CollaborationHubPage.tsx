@@ -147,11 +147,15 @@ export function CollaborationHubPage() {
   const postingAgentId = Number.parseInt(postingAgentIdInput, 10) || 1;
 
   // ---- channels ----
+  // NOTE: use `placeholderData` (not `initialData`) so the query still goes
+  // through a real loading phase on first mount. With `initialData: []` the
+  // query is in `success` immediately and `isLoading` is false, which makes
+  // the empty-state branch flash before the fetch resolves.
   const channelsQuery = useQuery<CollabChannel[]>({
     queryKey: ["collab", "channels"],
     queryFn: () => CollaborationHubClient.listChannels({ includeArchived: false }),
     refetchInterval: POLL_INTERVAL_MS,
-    initialData: [],
+    placeholderData: [],
   });
   const channels = channelsQuery.data ?? [];
 
@@ -173,7 +177,7 @@ export function CollaborationHubPage() {
         : CollaborationHubClient.listMessages({ channelId: selectedChannelId, limit: 100 }),
     refetchInterval: POLL_INTERVAL_MS,
     enabled: selectedChannelId != null,
-    initialData: [],
+    placeholderData: [],
   });
   const messages = messagesQuery.data ?? [];
 
@@ -186,7 +190,7 @@ export function CollaborationHubPage() {
         : CollaborationHubClient.listSubscriptionsForChannel(selectedChannelId),
     refetchInterval: POLL_INTERVAL_MS,
     enabled: selectedChannelId != null,
-    initialData: [],
+    placeholderData: [],
   });
   const subscriptions = subsQuery.data ?? [];
 
@@ -199,7 +203,7 @@ export function CollaborationHubPage() {
         : CollaborationHubClient.listTasks({ channelId: selectedChannelId, limit: 50 }),
     refetchInterval: POLL_INTERVAL_MS,
     enabled: selectedChannelId != null,
-    initialData: [],
+    placeholderData: [],
   });
   const tasks = tasksQuery.data ?? [];
 
@@ -325,7 +329,11 @@ export function CollaborationHubPage() {
   });
 
   // ---- empty state ----
-  if (!channelsQuery.isLoading && channels.length === 0) {
+  // Only render the empty state once the channels query has actually settled
+  // (status === 'success'). isLoading alone can be false during background
+  // refetches, and isFetching alone is true on every poll — we want the
+  // first successful fetch with zero rows.
+  if (channelsQuery.status === "success" && channels.length === 0) {
     return <EmptyState onSeed={() => seedDefaults.mutate()} seeding={seedDefaults.isPending} />;
   }
 
@@ -399,7 +407,7 @@ export function CollaborationHubPage() {
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              {channelsQuery.isLoading ? (
+              {channelsQuery.isPending || channelsQuery.isFetching ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading channels…

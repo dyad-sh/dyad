@@ -14,6 +14,8 @@ git push --force-with-lease -u origin HEAD
 
 This overrides the branch's tracking remote. Always check which remote `origin` points to (`git remote -v`) — for bot workspaces, `origin` is typically the bot's fork, not the upstream repo.
 
+If a PR's head branch is on another user's fork and `gh pr view --json maintainerCanModify` returns `false`, bot accounts cannot push fixes to that PR head even if review threads can be resolved. A fallback push to the base repo publishes the commit but does **not** update the original fork PR; call this out in the PR summary and ask the PR author or a maintainer to apply the published commit.
+
 ## `gh pr create` branch detection
 
 If `gh pr create` says `you must first push the current branch to a remote` even though `git push -u` succeeded, create the PR with an explicit head ref:

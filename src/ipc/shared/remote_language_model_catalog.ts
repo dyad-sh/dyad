@@ -11,6 +11,7 @@ import {
 } from "@/ipc/types/templates";
 import {
   CLOUD_PROVIDERS,
+  AUTO_MODEL_ALIASES,
   GEMINI_3_1_PRO_PREVIEW,
   GPT_5_2_MODEL_NAME,
   GPT_5_NANO,
@@ -62,6 +63,7 @@ const CatalogModelSchema = z.object({
   temperature: z.number().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  compaction_window: z.number().optional(),
   lifecycle: z
     .object({
       stage: z.enum(["stable", "preview", "deprecated"]).optional(),
@@ -73,9 +75,7 @@ const KNOWN_BUILTIN_MODEL_ALIASES = [
   "dyad/theme-generator/google",
   "dyad/theme-generator/anthropic",
   "dyad/theme-generator/openai",
-  "dyad/auto/openai",
-  "dyad/auto/anthropic",
-  "dyad/auto/google",
+  ...AUTO_MODEL_ALIASES,
   "dyad/help-bot/default",
 ] as const;
 
@@ -159,6 +159,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
       tagColor: model.tagColor,
       maxOutputTokens: model.maxOutputTokens,
       contextWindow: model.contextWindow,
+      compactionWindow: model.compactionWindow,
       temperature: model.temperature,
       dollarSigns: model.dollarSigns,
       type: "cloud",
@@ -272,6 +273,7 @@ function convertRemoteCatalog(
           tagColor: model.tagColor,
           maxOutputTokens: model.maxOutputTokens,
           contextWindow: model.contextWindow,
+          compactionWindow: model.compaction_window,
           temperature: model.temperature,
           dollarSigns: model.dollarSigns,
           type: "cloud" as const,

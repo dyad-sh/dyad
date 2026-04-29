@@ -1,8 +1,9 @@
 import { LargeLanguageModel } from "@/lib/schemas";
-import { readSettings } from "../../main/settings";
+import { readSettings } from "@/main/settings";
 import { Message } from "@/ipc/types";
 
 import { findLanguageModel } from "./findLanguageModel";
+import { resolveAutoModelForSettings } from "./auto_model_utils";
 
 // Estimate tokens (4 characters per token)
 export const estimateTokens = (text: string): number => {
@@ -24,6 +25,33 @@ export async function getContextWindow() {
   return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }
 
+export async function getCompactionThresholdForSelectedModel() {
+  const settings = readSettings();
+
+  if (
+    settings.selectedModel.provider === "auto" &&
+    settings.selectedModel.name === "auto"
+  ) {
+    const resolvedAutoModel = await resolveAutoModelForSettings(settings);
+    if (resolvedAutoModel) {
+      const modelOption = await findLanguageModel(resolvedAutoModel);
+      const contextWindow =
+        modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+      return getCompactionThreshold({
+        contextWindow,
+        compactionWindow: modelOption?.compactionWindow,
+      });
+    }
+  }
+
+  const modelOption = await findLanguageModel(settings.selectedModel);
+  const contextWindow = modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+  return getCompactionThreshold({
+    contextWindow,
+    compactionWindow: modelOption?.compactionWindow,
+  });
+}
+
 export async function getMaxTokens(
   model: LargeLanguageModel,
 ): Promise<number | undefined> {
@@ -40,18 +68,18 @@ export async function getTemperature(
 
 /**
  * Calculate the token threshold for triggering context compaction.
- * Returns the minimum of 80% of context window or 180k tokens.
+ * Uses the model's explicit compaction window when present. Otherwise returns
+ * the minimum of 80% of context window or 180k tokens.
  */
-export function getCompactionThreshold(contextWindow: number): number {
+export function getCompactionThreshold({
+  contextWindow,
+  compactionWindow,
+}: {
+  contextWindow: number;
+  compactionWindow?: number;
+}): number {
+  if (compactionWindow !== undefined) {
+    return compactionWindow;
+  }
   return Math.min(Math.floor(contextWindow * 0.8), 180_000);
-}
-
-/**
- * Check if compaction should be triggered based on total tokens used.
- */
-export function shouldTriggerCompaction(
-  totalTokens: number,
-  contextWindow: number,
-): boolean {
-  return totalTokens >= getCompactionThreshold(contextWindow);
 }

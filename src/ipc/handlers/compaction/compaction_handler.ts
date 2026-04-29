@@ -12,10 +12,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
 import { getModelClient } from "@/ipc/utils/get_model_client";
-import {
-  getContextWindow,
-  shouldTriggerCompaction,
-} from "@/ipc/utils/token_utils";
+import { getCompactionThresholdForSelectedModel } from "@/ipc/utils/token_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {
@@ -90,13 +87,13 @@ export async function checkAndMarkForCompaction(
     return false;
   }
 
-  const contextWindow = await getContextWindow();
-  const shouldCompact = shouldTriggerCompaction(totalTokens, contextWindow);
+  const compactionThreshold = await getCompactionThresholdForSelectedModel();
+  const shouldCompact = totalTokens >= compactionThreshold;
 
   if (shouldCompact) {
     await markChatForCompaction(chatId);
     logger.info(
-      `Compaction triggered for chat ${chatId}: ${totalTokens} tokens (threshold: ${Math.min(Math.floor(contextWindow * 0.8), 180_000)})`,
+      `Compaction triggered for chat ${chatId}: ${totalTokens} tokens (threshold: ${compactionThreshold})`,
     );
     return true;
   }

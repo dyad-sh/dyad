@@ -15,7 +15,10 @@ import type {
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
-import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
+import {
+  AUTO_MODEL_ALIASES,
+  FREE_OPENROUTER_MODEL_NAMES,
+} from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
 import { LanguageModelProvider } from "@/ipc/types";
@@ -29,14 +32,9 @@ import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolveAutoModelForSettings } from "./auto_model_utils";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
-
-const AUTO_MODEL_ALIASES = [
-  "dyad/auto/openai",
-  "dyad/auto/anthropic",
-  "dyad/auto/google",
-] as const;
 
 export interface ModelClient {
   model: LanguageModel;
@@ -148,34 +146,13 @@ export async function getModelClient(
         isEngineEnabled: false,
       };
     }
-    for (const autoModelAlias of AUTO_MODEL_ALIASES) {
-      const resolvedModel = await resolveBuiltinModelAlias(autoModelAlias);
-      if (!resolvedModel) {
-        continue;
-      }
-
-      const providerInfo = allProviders.find(
-        (p) => p.id === resolvedModel.providerId,
+    const resolvedAutoModel = await resolveAutoModelForSettings(settings);
+    if (resolvedAutoModel) {
+      logger.log(
+        `Using provider: ${resolvedAutoModel.provider} model: ${resolvedAutoModel.name}`,
       );
-      const envVarName = providerInfo?.envVarName;
-
-      const apiKey =
-        settings.providerSettings?.[resolvedModel.providerId]?.apiKey?.value ||
-        (envVarName ? getEnvVar(envVarName) : undefined);
-
-      if (apiKey) {
-        logger.log(
-          `Using provider: ${resolvedModel.providerId} model: ${resolvedModel.apiName}`,
-        );
-        // Recursively call with the specific model found
-        return await getModelClient(
-          {
-            provider: resolvedModel.providerId,
-            name: resolvedModel.apiName,
-          },
-          settings,
-        );
-      }
+      // Recursively call with the specific model found
+      return await getModelClient(resolvedAutoModel, settings);
     }
     // If no models have API keys, throw an error
     throw new Error(

@@ -1,5 +1,18 @@
-import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import {
+  testSkipIfWindows,
+  testWithConfigSkipIfWindows,
+  Timeout,
+} from "./helpers/test_helper";
 import { expect } from "@playwright/test";
+
+const testWithRemoteCatalog = testWithConfigSkipIfWindows({
+  preLaunchHook: async ({ fakeLlmPort }) => {
+    process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `http://localhost:${fakeLlmPort}/api/language-model-catalog`;
+  },
+  postLaunchHook: async () => {
+    delete process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL;
+  },
+});
 
 /**
  * E2E tests for context compaction feature.
@@ -87,5 +100,23 @@ testSkipIfWindows(
       po.page.getByRole("heading", { name: "Key Decisions Made" }).first(),
     ).toBeVisible();
     await expect(po.page.getByText("END OF COMPACTED TURN.")).toBeVisible();
+  },
+);
+
+testWithRemoteCatalog(
+  "local-agent - context compaction uses remote catalog compaction window",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
+
+    await po.sendPrompt("tc=local-agent/compaction-window-trigger");
+    await po.sendPrompt("tc=local-agent/simple-response");
+
+    await expect(
+      po.page.getByText("Conversation compacted").first(),
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
   },
 );

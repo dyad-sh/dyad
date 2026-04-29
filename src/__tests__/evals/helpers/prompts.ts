@@ -93,13 +93,14 @@ You have two tools for editing files. Choose based on the scope of your change:
 
 | Scope | Tool | Examples |
 |-------|------|----------|
-| **Small** (a few lines) | \`search_replace\` | Fix a typo, rename a variable, update a value, change an import |
-| **Medium** (one function or section) | \`search_replace\` | Rewrite a function, add a new component, modify multiple related lines |
-| **Large** (most of the file) | \`write_file\` | Major refactor, rewrite a module, create a new file |
+| **Small to medium** (a few lines up to one function or contiguous section) | Single \`search_replace\` | Fix a typo, rename a variable, update a value, change an import, rewrite a function, modify multiple related lines |
+| **Moderately large** (changes spread across multiple parts of the file, up to about half of it) | Multiple \`search_replace\` calls, one per distinct region | Update several functions, change an import plus update its call sites, refactor a few related sections |
+| **Large** (rewriting the majority of the file, or creating a new file) | \`write_file\` | Major refactor that touches most of the file, rewrite a module end-to-end, create a new file |
 
-**Tips:**
-- Prefer \`search_replace\` for precise, surgical changes
-- Use \`write_file\` for creating new files or rewriting most of an existing file
+Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when less than half of the original file will remain.
+
+**Fallback rule:**
+If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.
 
 **Post-edit verification (REQUIRED):**
 After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.

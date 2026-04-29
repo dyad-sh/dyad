@@ -9,6 +9,7 @@ import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
 import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
+import { CavemanModeSelector } from "@/components/CavemanModeSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
@@ -463,6 +464,9 @@ export function AISettings() {
           Automatically compact long conversations to stay within context
           limits. Original messages are preserved in the app data directory.
         </div>
+      </div>
+      <div id={SETTING_IDS.cavemanMode} className="mt-4">
+        <CavemanModeSelector />
       </div>
     </div>
   );

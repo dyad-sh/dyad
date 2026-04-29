@@ -48,6 +48,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableNativeGit: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
+  cavemanMode: "off",
 };
 
 const SETTINGS_FILE = "user-settings.json";

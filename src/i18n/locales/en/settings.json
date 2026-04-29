@@ -89,7 +89,17 @@
     "apiKeyEmpty": "API Key cannot be empty.",
     "errorTogglingPro": "Error toggling Dyad Pro: {{error}}",
     "failedSaveApiKey": "Failed to save API key.",
-    "failedDeleteApiKey": "Failed to delete API key."
+    "failedDeleteApiKey": "Failed to delete API key.",
+    "cavemanMode": "Caveman Mode",
+    "selectCavemanMode": "Select caveman mode",
+    "cavemanOff": "Off",
+    "cavemanOffDescription": "Default, standard responses with full context and detail.",
+    "cavemanLite": "Lite",
+    "cavemanLiteDescription": "Professional & Concise. Cuts the fluff while keeping the response clear and respectful.",
+    "cavemanFull": "Full",
+    "cavemanFullDescription": "Direct & Fast. No pleasantries. Just the facts and code you need, delivered instantly.",
+    "cavemanUltra": "Ultra",
+    "cavemanUltraDescription": "Maximum token savings. Extreme brevity using keywords and short phrases."
   },
   "telemetry": {
     "title": "Telemetry",

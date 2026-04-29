@@ -40,6 +40,7 @@ export const SETTING_IDS = {
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
+  cavemanMode: "setting-caveman-mode",
 } as const;
 
 type SearchableSettingItem = {
@@ -210,6 +211,14 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "window",
       "memory",
     ],
+    sectionId: SECTION_IDS.ai,
+    sectionLabel: "AI",
+  },
+  {
+    id: SETTING_IDS.cavemanMode,
+    label: "Caveman Mode",
+    description: "Compresses AI responses to be more terse and concise",
+    keywords: ["caveman", "mode", "terse", "concise", "ai"],
     sectionId: SECTION_IDS.ai,
     sectionLabel: "AI",
   },

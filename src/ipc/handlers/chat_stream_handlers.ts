@@ -21,6 +21,7 @@ import type { SmartContextMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
+  injectCavemanPrompt,
 } from "../../prompts/system_prompt";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
@@ -820,6 +821,7 @@ ${componentSnippet}
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
+          cavemanMode: settings.cavemanMode,
         });
 
         // Add information about mentioned apps for build mode only.
@@ -840,7 +842,10 @@ ${componentSnippet}
         const isSecurityReviewIntent =
           req.prompt.startsWith("/security-review");
         if (isSecurityReviewIntent) {
-          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
+          systemPrompt = injectCavemanPrompt(
+            SECURITY_REVIEW_SYSTEM_PROMPT,
+            settings.cavemanMode,
+          );
           try {
             const appPath = getDyadAppPath(updatedChat.app.path);
             const rulesPath = path.join(appPath, "SECURITY_RULES.md");
@@ -903,7 +908,10 @@ ${componentSnippet}
           "Summarize from chat-id=",
         );
         if (isSummarizeIntent) {
-          systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
+          systemPrompt = injectCavemanPrompt(
+            SUMMARIZE_CHAT_SYSTEM_PROMPT,
+            settings.cavemanMode,
+          );
         }
 
         // Update the system prompt for images if there are image attachments
@@ -1221,6 +1229,7 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             readOnly: true,
+            cavemanMode: settings.cavemanMode,
           });
 
           // Return value indicates success/failure for quota tracking.
@@ -1263,6 +1272,7 @@ This conversation includes one or more image attachments. When the user uploads 
             chatMode: "plan",
             enableTurboEditsV2: false,
             themePrompt,
+            cavemanMode: settings.cavemanMode,
           });
 
           await handleLocalAgentStream(event, req, abortController, {
@@ -1362,6 +1372,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
+                cavemanMode: settings.cavemanMode,
               }),
               files: files,
               dyadDisableFiles: true,

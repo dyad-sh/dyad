@@ -292,6 +292,9 @@ export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
+export const CavemanModeSchema = z.enum(["off", "lite", "full", "ultra"]);
+export type CavemanMode = z.infer<typeof CavemanModeSchema>;
+
 /**
  * Base fields shared between StoredUserSettings and UserSettings
  */
@@ -369,6 +372,7 @@ const BaseUserSettingsFields = {
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),
   enableSelectAppFromHomeChatInput: z.boolean().optional(),
+  cavemanMode: CavemanModeSchema.optional(),
 };
 
 /**

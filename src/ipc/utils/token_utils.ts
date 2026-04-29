@@ -1,15 +1,9 @@
 import { LargeLanguageModel } from "@/lib/schemas";
-import { readSettings } from "../../main/settings";
+import { readSettings } from "@/main/settings";
 import { Message } from "@/ipc/types";
 
 import { findLanguageModel } from "./findLanguageModel";
-import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
-
-const AUTO_MODEL_ALIASES = [
-  "dyad/auto/openai",
-  "dyad/auto/anthropic",
-  "dyad/auto/google",
-] as const;
+import { resolveAutoModelForSettings } from "./auto_model_utils";
 
 // Estimate tokens (4 characters per token)
 export const estimateTokens = (text: string): number => {
@@ -38,26 +32,24 @@ export async function getCompactionThresholdForSelectedModel() {
     settings.selectedModel.provider === "auto" &&
     settings.selectedModel.name === "auto"
   ) {
-    for (const aliasId of AUTO_MODEL_ALIASES) {
-      const resolvedModel = await resolveBuiltinModelAlias(aliasId);
-      if (!resolvedModel) {
-        continue;
-      }
-
-      const modelOption = await findLanguageModel({
-        provider: resolvedModel.providerId,
-        name: resolvedModel.apiName,
+    const resolvedAutoModel = await resolveAutoModelForSettings(settings);
+    if (resolvedAutoModel) {
+      const modelOption = await findLanguageModel(resolvedAutoModel);
+      const contextWindow =
+        modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+      return getCompactionThreshold({
+        contextWindow,
+        compactionWindow: modelOption?.compactionWindow,
       });
-
-      if (modelOption?.compactionWindow !== undefined) {
-        return modelOption.compactionWindow;
-      }
     }
   }
 
   const modelOption = await findLanguageModel(settings.selectedModel);
   const contextWindow = modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
-  return getCompactionThreshold(contextWindow, modelOption?.compactionWindow);
+  return getCompactionThreshold({
+    contextWindow,
+    compactionWindow: modelOption?.compactionWindow,
+  });
 }
 
 export async function getMaxTokens(
@@ -79,23 +71,15 @@ export async function getTemperature(
  * Uses the model's explicit compaction window when present. Otherwise returns
  * the minimum of 80% of context window or 180k tokens.
  */
-export function getCompactionThreshold(
-  contextWindow: number,
-  compactionWindow?: number,
-): number {
+export function getCompactionThreshold({
+  contextWindow,
+  compactionWindow,
+}: {
+  contextWindow: number;
+  compactionWindow?: number;
+}): number {
   if (compactionWindow !== undefined) {
     return compactionWindow;
   }
   return Math.min(Math.floor(contextWindow * 0.8), 180_000);
-}
-
-/**
- * Check if compaction should be triggered based on total tokens used.
- */
-export function shouldTriggerCompaction(
-  totalTokens: number,
-  contextWindow: number,
-  compactionWindow?: number,
-): boolean {
-  return totalTokens >= getCompactionThreshold(contextWindow, compactionWindow);
 }

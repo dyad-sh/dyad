@@ -25,6 +25,12 @@ export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
 export const GPT_5_NANO = "gpt-5-nano";
 
+export const AUTO_MODEL_ALIASES = [
+  "dyad/auto/openai",
+  "dyad/auto/anthropic",
+  "dyad/auto/google",
+] as const;
+
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-5.1

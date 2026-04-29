@@ -513,6 +513,9 @@ export function registerCollaborationHubHandlers(): void {
       if (!params?.fromAgentId || !params?.toAgentId) {
         throw new Error("fromAgentId and toAgentId required");
       }
+      if (params.fromAgentId === params.toAgentId) {
+        throw new Error("fromAgentId and toAgentId must be different");
+      }
       if (!params.title?.trim()) throw new Error("title required");
       const [row] = await db
         .insert(agentCollabTasks)

@@ -39,6 +39,10 @@ async function replaceEditorContent(page: Page, content: string) {
   await page.keyboard.type(content);
 }
 
+function normalizeLineEndings(value: string) {
+  return value.replace(/\r\n/g, "\n");
+}
+
 test("edit code", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
@@ -107,13 +111,22 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
 
   await expect
     .poll(
-      () => fs.readFileSync(path.join(appPath, firstOpenedFilePath), "utf8"),
+      () =>
+        normalizeLineEndings(
+          fs.readFileSync(path.join(appPath, firstOpenedFilePath), "utf8"),
+        ),
       { timeout: Timeout.MEDIUM },
     )
     .toEqual(firstFileEdit);
   await expect
-    .poll(() => fs.readFileSync(path.join(appPath, robotsFilePath), "utf8"), {
-      timeout: Timeout.MEDIUM,
-    })
+    .poll(
+      () =>
+        normalizeLineEndings(
+          fs.readFileSync(path.join(appPath, robotsFilePath), "utf8"),
+        ),
+      {
+        timeout: Timeout.MEDIUM,
+      },
+    )
     .toEqual(updatedRobotsFile);
 });

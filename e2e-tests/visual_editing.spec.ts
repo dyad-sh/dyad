@@ -1,7 +1,16 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 const fs = require("fs");
 const path = require("path");
+
+async function saveVisualChanges(page: Page) {
+  await expect(async () => {
+    const saveButton = page.getByRole("button", { name: "Save Changes" });
+    await expect(saveButton).toBeVisible({ timeout: 1_000 });
+    await expect(saveButton).toBeEnabled({ timeout: 1_000 });
+    await saveButton.click();
+  }).toPass({ timeout: Timeout.MEDIUM });
+}
 
 testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   await po.setUpDyadPro();
@@ -57,7 +66,7 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   });
 
   // Save the changes
-  await po.page.getByRole("button", { name: "Save Changes" }).click();
+  await saveVisualChanges(po.page);
 
   // Wait for the success toast
   await po.toastNotifications.waitForToastWithText(
@@ -126,7 +135,7 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   });
 
   // Save the changes
-  await po.page.getByRole("button", { name: "Save Changes" }).click();
+  await saveVisualChanges(po.page);
 
   // Wait for the success toast
   await po.toastNotifications.waitForToastWithText(
@@ -200,7 +209,7 @@ testSkipIfWindows("swap image via URL", async ({ po }) => {
   });
 
   // Save the changes
-  await po.page.getByRole("button", { name: "Save Changes" }).click();
+  await saveVisualChanges(po.page);
 
   // Wait for the success toast
   await po.toastNotifications.waitForToastWithText(

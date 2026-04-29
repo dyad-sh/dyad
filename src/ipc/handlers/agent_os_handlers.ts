@@ -51,11 +51,26 @@ const handle = createLoggedHandler(logger);
 
 let didSeed = false;
 
+/** Wait until the DB is available, then seed. Retries every 500 ms for up to 30 s. */
+async function seedWhenReady(): Promise<void> {
+  const { getDb } = await import("@/db");
+  for (let i = 0; i < 60; i++) {
+    try {
+      getDb(); // throws if not yet initialized
+      await seedBuiltinCommands();
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  logger.warn("seedBuiltinCommands: DB never became ready after 30s");
+}
+
 export function registerAgentOsHandlers(): void {
-  // Built-in command seeding — fire-and-forget at startup.
+  // Built-in command seeding — deferred until DB is ready.
   if (!didSeed) {
     didSeed = true;
-    seedBuiltinCommands().catch((err) =>
+    seedWhenReady().catch((err) =>
       logger.warn("seedBuiltinCommands failed", err),
     );
   }

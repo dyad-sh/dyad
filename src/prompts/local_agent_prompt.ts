@@ -3,6 +3,8 @@
  * Tool-based agent with parallel execution support
  */
 
+import type { AppFrameworkType } from "@/lib/framework_constants";
+
 // ============================================================================
 // Shared Prompt Blocks (used by both Pro and Basic Agent modes)
 // ============================================================================
@@ -191,6 +193,14 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 `;
 
 // ============================================================================
+// Server Layer Block (Vite-only; injected when frameworkType === "vite")
+// ============================================================================
+
+const SERVER_LAYER_BLOCK = `<server_layer>
+This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
+</server_layer>`;
+
+// ============================================================================
 // Image Generation Block (Pro mode only)
 // ============================================================================
 
@@ -225,7 +235,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
-
+[[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
 
 [[AI_RULES]]
@@ -249,7 +259,7 @@ ${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${BASIC_DEVELOPMENT_WORKFLOW_BLOCK}
-
+[[SERVER_LAYER]]
 [[AI_RULES]]
 `;
 
@@ -283,7 +293,12 @@ Available packages and libraries:
 export function constructLocalAgentPrompt(
   aiRules: string | undefined,
   themePrompt?: string,
-  options?: { readOnly?: boolean; basicAgentMode?: boolean },
+  options?: {
+    readOnly?: boolean;
+    basicAgentMode?: boolean;
+    frameworkType?: AppFrameworkType | null;
+    hasSupabaseProject?: boolean;
+  },
 ): string {
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -295,7 +310,19 @@ export function constructLocalAgentPrompt(
     basePrompt = LOCAL_AGENT_SYSTEM_PROMPT;
   }
 
-  let prompt = basePrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
+  // The Nitro nudge only applies to Vite apps without Nitro yet. `vite-nitro`
+  // already has the server layer (covered by AI_RULES.md); other frameworks
+  // have their own server conventions. Apps with a Supabase project skip the
+  // nudge too — Supabase Edge Functions cover server-side code, and offering
+  // both layers confuses the model about which one to use.
+  const serverLayer =
+    options?.frameworkType === "vite" && !options?.hasSupabaseProject
+      ? `\n${SERVER_LAYER_BLOCK}\n`
+      : "";
+
+  let prompt = basePrompt
+    .replace("[[SERVER_LAYER]]", serverLayer)
+    .replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
 
   // Append theme prompt if provided
   if (themePrompt) {

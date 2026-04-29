@@ -7,6 +7,11 @@ import {
 
 /**
  * Detect the framework type for an app by checking config files and package.json.
+ *
+ * Vite apps with a Nitro server layer (added via `enable_nitro`) are reported
+ * as `"vite-nitro"`. Detection looks for `nitro.config.{ts,js,mjs}` first, then
+ * falls back to `nitro` in package.json deps — either is sufficient since the
+ * tool writes the config file and installs the package together.
  */
 export function detectFrameworkType(appPath: string): AppFrameworkType | null {
   try {
@@ -17,28 +22,50 @@ export function detectFrameworkType(appPath: string): AppFrameworkType | null {
     }
 
     const viteConfigs = ["vite.config.js", "vite.config.ts", "vite.config.mjs"];
+    let isVite = false;
     for (const config of viteConfigs) {
       if (fs.existsSync(path.join(appPath, config))) {
-        return "vite";
+        isVite = true;
+        break;
       }
     }
 
-    // Fallback: check package.json dependencies
+    let packageJsonDeps: Record<string, string> | null = null;
     const packageJsonPath = path.join(appPath, "package.json");
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-      const deps = {
+      const deps: Record<string, string> = {
         ...packageJson.dependencies,
         ...packageJson.devDependencies,
       };
-      if (deps.next) return "nextjs";
-      if (deps.vite) return "vite";
+      packageJsonDeps = deps;
+      if (!isVite && deps.next) return "nextjs";
+      if (!isVite && deps.vite) isVite = true;
+    }
+
+    if (isVite) {
+      return hasNitro(appPath, packageJsonDeps) ? "vite-nitro" : "vite";
     }
 
     return "other";
   } catch {
     return null;
   }
+}
+
+function hasNitro(
+  appPath: string,
+  deps: Record<string, string> | null,
+): boolean {
+  const nitroConfigs = [
+    "nitro.config.ts",
+    "nitro.config.js",
+    "nitro.config.mjs",
+  ];
+  for (const config of nitroConfigs) {
+    if (fs.existsSync(path.join(appPath, config))) return true;
+  }
+  return Boolean(deps?.nitro);
 }
 
 /**

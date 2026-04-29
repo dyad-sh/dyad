@@ -24,6 +24,17 @@ self.addEventListener("fetch", (event) => {
   // ---- Guardrails: avoid breaking things we shouldn't touch ----
   // Skip navigations (HTML document loads) to reduce dev-time weirdness.
   if (request.mode === "navigate") return;
+  // Re-fetching script/worker requests from a service worker can change
+  // browser metadata like Sec-Fetch-Dest and break Nitro+Vite dev module
+  // serving (the dev server returns the wrong MIME type for an unexpected
+  // destination). Other destinations (`style`, `image`, `font`, etc.) are
+  // intentionally NOT filtered out — they don't trigger the same Vite/Nitro
+  // dev-server quirk, and the network panel relies on these events to
+  // surface CSS/image/font loads. If a future framework hits a similar
+  // MIME-type issue with another destination, narrow the filter here rather
+  // than dropping all observability for that resource type.
+  if (request.destination === "script" || request.destination === "worker")
+    return;
 
   // Only handle http(s)
   let urlObj;

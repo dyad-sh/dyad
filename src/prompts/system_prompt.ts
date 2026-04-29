@@ -4,6 +4,7 @@ import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 import { constructLocalAgentPrompt } from "./local_agent_prompt";
 import { constructPlanModePrompt } from "./plan_mode_prompt";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 const logger = log.scope("system_prompt");
 
@@ -334,7 +335,17 @@ export const BUILD_SYSTEM_POSTFIX = `Directory names MUST be all lower-case (src
 > Do NOT use <dyad-file> tags in the output. ALWAYS use <dyad-write> to generate code.
 `;
 
-export const BUILD_SYSTEM_PROMPT = `${BUILD_SYSTEM_PREFIX}
+const BUILD_SERVER_LAYER_NUDGE = `
+# Server-side Code in Vite Apps
+
+If the user asks for server-side code in a Vite app (API routes, database access via \`DATABASE_URL\`, webhooks, server-only secrets, Stripe handlers, cron jobs, etc.), do NOT generate server-side files directly — Build mode cannot set up the server layer this app needs. Instead, tell the user:
+
+> "I can't set up server-side code in Build mode. Please switch to **Agent** mode (near the chat input, next to the message box) and re-send your request — I'll set up the backend and generate the route for you in the same turn."
+
+This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
+`;
+
+const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
 
@@ -514,6 +525,8 @@ export const constructSystemPrompt = ({
   themePrompt,
   readOnly,
   basicAgentMode,
+  frameworkType,
+  hasSupabaseProject,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -523,6 +536,18 @@ export const constructSystemPrompt = ({
   readOnly?: boolean;
   /** If true, use basic agent mode (free tier with limited tools) */
   basicAgentMode?: boolean;
+  /**
+   * Detected framework of the app. The Nitro nudge only fires for `"vite"`
+   * (i.e. Vite without Nitro yet); `"vite-nitro"` apps already have the server
+   * layer and skip the nudge.
+   */
+  frameworkType?: AppFrameworkType | null;
+  /**
+   * If true, the app is connected to a Supabase project. Suppresses the Nitro
+   * nudge so the model isn't pushed toward two competing server layers
+   * (Supabase Edge Functions vs. Nitro routes).
+   */
+  hasSupabaseProject?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -532,12 +557,16 @@ export const constructSystemPrompt = ({
     return constructLocalAgentPrompt(aiRules, themePrompt, {
       readOnly,
       basicAgentMode,
+      frameworkType,
+      hasSupabaseProject,
     });
   }
 
   let systemPrompt = getSystemPromptForChatMode({
     chatMode,
     enableTurboEditsV2,
+    frameworkType,
+    hasSupabaseProject,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -555,17 +584,29 @@ export const constructSystemPrompt = ({
 export const getSystemPromptForChatMode = ({
   chatMode,
   enableTurboEditsV2,
+  frameworkType,
+  hasSupabaseProject,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
+  frameworkType?: AppFrameworkType | null;
+  hasSupabaseProject?: boolean;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
-  return (
-    BUILD_SYSTEM_PROMPT +
-    (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "")
-  );
+  // The Nitro server-layer nudge is Vite-specific. Only inject it for Vite
+  // apps that haven't already enabled Nitro (`"vite-nitro"` apps already have
+  // the server layer); Next.js and unknown frameworks should not carry this
+  // Vite-only paragraph in every build-mode prompt. Supabase-connected apps
+  // also skip the nudge — Edge Functions cover the same use case and offering
+  // both layers confuses the model.
+  const shouldAppendNitroNudge =
+    frameworkType === "vite" && !hasSupabaseProject;
+  const buildPrompt =
+    BUILD_SYSTEM_PROMPT_BASE +
+    (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");
+  return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };
 
 export const readAiRules = async (dyadAppPath: string) => {

@@ -148,6 +148,23 @@ export function registerChatHandlers() {
     await db.delete(messages).where(eq(messages.chatId, chatId));
   });
 
+  createTypedHandler(chatContracts.updateMessageContent, async (_, params) => {
+    const { chatId, messageId, content, approvalState } = params;
+    await db
+      .update(messages)
+      .set({
+        content,
+        ...(approvalState ? { approvalState } : {}),
+      })
+      .where(
+        and(
+          eq(messages.id, messageId),
+          eq(messages.chatId, chatId),
+          eq(messages.role, "assistant"),
+        ),
+      );
+  });
+
   createTypedHandler(chatContracts.searchChats, async (_, params) => {
     const { appId, query } = params;
     // 1) Find chats by title and map to ChatSearchResult with no matched message

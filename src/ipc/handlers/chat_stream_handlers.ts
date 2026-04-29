@@ -82,6 +82,11 @@ import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
+import {
+  clearAbortDiscardForChat,
+  consumeAbortDiscardForChat,
+  setAbortDiscardForChat,
+} from "@/shared/abort_discard";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
@@ -1641,12 +1646,15 @@ ${problemReport.problems
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
             const partialResponse = partialResponses.get(req.chatId) ?? "";
+            const discard = consumeAbortDiscardForChat(req.chatId);
             try {
               // Update the placeholder assistant message with the partial content and cancellation note
               await db
                 .update(messages)
                 .set({
-                  content: appendCancelledResponseNotice(partialResponse),
+                  content: discard
+                    ? appendCancelledResponseNotice(partialResponse)
+                    : partialResponse,
                 })
                 .where(eq(messages.id, placeholderAssistantMessage.id));
 
@@ -1670,11 +1678,14 @@ ${problemReport.problems
       // save the cancellation notice to the placeholder message.
       if (abortController.signal.aborted) {
         const partialResponse = partialResponses.get(req.chatId) ?? "";
+        const discard = consumeAbortDiscardForChat(req.chatId);
         try {
           await db
             .update(messages)
             .set({
-              content: appendCancelledResponseNotice(partialResponse),
+              content: discard
+                ? appendCancelledResponseNotice(partialResponse)
+                : partialResponse,
             })
             .where(eq(messages.id, placeholderAssistantMessage.id));
           partialResponses.delete(req.chatId);
@@ -1776,7 +1787,14 @@ ${problemReport.problems
   });
 
   // Handler to cancel an ongoing stream
-  createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
+  createTypedHandler(chatContracts.cancelStream, async (event, input) => {
+    const { chatId, discard } =
+      typeof input === "number"
+        ? { chatId: input, discard: true }
+        : { chatId: input.chatId, discard: input.discard ?? true };
+
+    setAbortDiscardForChat(chatId, discard);
+
     const abortController = activeStreams.get(chatId);
 
     if (abortController) {
@@ -1786,13 +1804,14 @@ ${problemReport.problems
       logger.log(`Aborted stream for chat ${chatId}`);
     } else {
       logger.warn(`No active stream found for chat ${chatId}`);
+      clearAbortDiscardForChat(chatId);
     }
 
     // Send the end event to the renderer with wasCancelled flag
     safeSend(event.sender, "chat:response:end", {
       chatId,
       updatedFiles: false,
-      wasCancelled: true,
+      wasCancelled: discard,
     } satisfies ChatResponseEnd);
 
     // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire

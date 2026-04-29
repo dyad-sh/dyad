@@ -273,8 +273,19 @@ export const chatContracts = {
 
   cancelStream: defineContract({
     channel: "chat:cancel",
-    input: z.number(), // chatId
+    input: z.union([z.number(), z.object({ chatId: z.number(), discard: z.boolean().optional() })]), // chatId or { chatId, discard? }
     output: z.boolean(),
+  }),
+
+  updateMessageContent: defineContract({
+    channel: "update-message-content",
+    input: z.object({
+      chatId: z.number(),
+      messageId: z.number(),
+      content: z.string(),
+      approvalState: z.enum(["approved", "rejected"]).optional(),
+    }),
+    output: z.void(),
   }),
 } as const;
 

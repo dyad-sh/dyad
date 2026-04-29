@@ -58,7 +58,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
+import { showExtraFilesToast, showInfo, showWarning, showSuccess } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -84,6 +84,14 @@ import {
   dismissedImageGenerationJobIdsAtom,
 } from "@/atoms/imageGenerationAtoms";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -106,6 +114,8 @@ import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { useChatMode } from "@/hooks/useChatMode";
+import { formatDyadContentForEditing } from "@/lib/formatDyadContent";
+import { stripCancelledResponseNotice } from "@/shared/chatCancellation";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 const showTokenBarAtom = atom(false);
@@ -147,6 +157,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
     string | null
   >(null);
+
+  // State for Stop & Write edit dialog
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [partialContent, setPartialContent] = useState("");
+  const [stopAndWriteOriginalAssistantContent, setStopAndWriteOriginalAssistantContent] =
+    useState<string>("");
+
+
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -623,6 +641,174 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setIsStreaming(false);
   };
 
+  const USER_EDITED_STEPS_MARKER_START = "<<USER_EDITED_STEPS>>";
+  const USER_EDITED_STEPS_MARKER_END = "<<END_USER_EDITED_STEPS>>";
+
+  const buildUserEditedStepsMarker = (editedSteps: string) => {
+    return `${USER_EDITED_STEPS_MARKER_START}
+User edited the steps to follow in order. When continuing/repairing, you must generate the file-change dyad blocks (<dyad-write> / <dyad-edit>) in the exact same order as the steps below, and apply changes consistently with the edits.
+
+Edited steps:
+${editedSteps}
+${USER_EDITED_STEPS_MARKER_END}`;
+  };
+
+  const stripUserEditedStepsMarker = (content: string) => {
+    const startIndex = content.indexOf(USER_EDITED_STEPS_MARKER_START);
+    if (startIndex === -1) return content;
+    const endIndex = content.indexOf(
+      USER_EDITED_STEPS_MARKER_END,
+      startIndex,
+    );
+    if (endIndex === -1) return content;
+    const afterEndIndex = endIndex + USER_EDITED_STEPS_MARKER_END.length;
+    return content.slice(afterEndIndex).trimStart();
+  };
+
+  // Handle "Stop & Write" - preserves partial content and opens edit dialog
+  const handleStopAndWrite = useCallback(() => {
+    if (!chatId) return;
+    // Get the last assistant message (the partial response)
+    const messages = messagesById.get(chatId) ?? [];
+    let lastAssistantMessage:
+      | (typeof messages)[number]
+      | undefined = undefined;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg.role === "assistant" && msg.content) {
+        lastAssistantMessage = msg;
+        break;
+      }
+    }
+    if (lastAssistantMessage?.content) {
+      const withoutUserEditedMarker = stripUserEditedStepsMarker(
+        lastAssistantMessage.content,
+      );
+      const withoutCancelledNotice = stripCancelledResponseNotice(
+        withoutUserEditedMarker,
+      );
+      setStopAndWriteOriginalAssistantContent(withoutCancelledNotice);
+      setPartialContent(
+        formatDyadContentForEditing(withoutCancelledNotice),
+      );
+      setShowEditDialog(true);
+    }
+    // Cancel the stream with discard=false (preserve the partial)
+    if (chatId) {
+      clearCompletionFlag();
+      ipc.chat.cancelStream({ chatId, discard: false });
+    }
+    setIsStreaming(false);
+  }, [
+    chatId,
+    messagesById,
+    clearCompletionFlag,
+    setIsStreaming,
+    setStopAndWriteOriginalAssistantContent,
+    stripUserEditedStepsMarker,
+  ]);
+
+  // Handle saving the edited partial content
+  const handleSavePartialContent = useCallback(async () => {
+    if (!chatId) return;
+    if (!partialContent.trim()) return;
+    const messages = messagesById.get(chatId) ?? [];
+    let messageIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg.role === "assistant" && msg.content) {
+        messageIndex = i;
+        break;
+      }
+    }
+    if (messageIndex === -1) return;
+
+    const lastAssistantMessage = messages[messageIndex];
+
+    const originalAssistantContent =
+      stopAndWriteOriginalAssistantContent.trim() ||
+      stripCancelledResponseNotice(
+        stripUserEditedStepsMarker(lastAssistantMessage.content ?? ""),
+      );
+
+    const marker = buildUserEditedStepsMarker(partialContent.trim());
+    const newContent = `${marker}\n\n${originalAssistantContent}`;
+
+    await ipc.chat.updateMessageContent({
+      chatId,
+      messageId: lastAssistantMessage.id,
+      content: newContent,
+      approvalState: "approved",
+    });
+
+    const updatedMessages = [...messages];
+    updatedMessages[messageIndex] = {
+      ...updatedMessages[messageIndex],
+      content: newContent,
+      approvalState: "approved",
+    };
+
+    setMessagesById((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, updatedMessages);
+      return next;
+    });
+
+    showSuccess("Stop & Write steps saved");
+    setShowEditDialog(false);
+    setPartialContent("");
+    setStopAndWriteOriginalAssistantContent("");
+
+    // Automatically continue generating code
+    streamMessage({
+      prompt: "Keep going",
+      chatId,
+    });
+  }, [
+    chatId,
+    messagesById,
+    partialContent,
+    setMessagesById,
+    stopAndWriteOriginalAssistantContent,
+    buildUserEditedStepsMarker,
+    stripUserEditedStepsMarker,
+    streamMessage,
+  ]);
+
+  // Handle discarding the partial content
+  const handleDiscardPartial = useCallback(() => {
+    if (!chatId) return;
+
+    // Remove the last assistant message entirely
+    const messages = messagesById.get(chatId) ?? [];
+    let messageIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg.role === "assistant" && msg.content) {
+        messageIndex = i;
+        break;
+      }
+    }
+
+    if (messageIndex !== -1) {
+      const updatedMessages = messages.filter((_, idx) => idx !== messageIndex);
+      setMessagesById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, updatedMessages);
+        return next;
+      });
+    }
+
+    setShowEditDialog(false);
+    setPartialContent("");
+    setStopAndWriteOriginalAssistantContent("");
+  }, [
+    chatId,
+    messagesById,
+    setMessagesById,
+    setStopAndWriteOriginalAssistantContent,
+  ]);
+
   const dismissError = () => {
     setShowError(false);
   };
@@ -999,20 +1185,36 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             )}
 
             {isStreaming ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={handleCancel}
-                      aria-label={t("cancelGeneration")}
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
-                    />
-                  }
-                >
-                  <StopCircleIcon size={20} />
-                </TooltipTrigger>
-                <TooltipContent>{t("cancelGeneration")}</TooltipContent>
-              </Tooltip>
+              <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={handleCancel}
+                        aria-label={t("cancelGeneration")}
+                        className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
+                      />
+                    }
+                  >
+                    <StopCircleIcon size={20} />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("cancelGeneration")}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={handleStopAndWrite}
+                        aria-label={t("stopAndWrite", "Stop and write")}
+                        className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer"
+                      />
+                    }
+                  >
+                    <FileText size={20} />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("stopAndWrite", "Stop & Write - preserve partial response")}</TooltipContent>
+                </Tooltip>
+              </>
             ) : (
               <Tooltip>
                 <TooltipTrigger
@@ -1061,6 +1263,39 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         defaultAppId={appId ?? undefined}
         source="chat"
       />
+
+      {/* Stop & Write Edit Dialog - Simple textarea for editing partial response */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="w-[95vw] max-w-[1400px] h-[90vh] max-h-[95vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl">
+              Edit Response
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Edit the response below, then save or discard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto py-4">
+            <textarea
+              value={partialContent}
+              onChange={(e) => setPartialContent(e.target.value)}
+              className="w-full h-full min-h-[300px] resize-none overflow-auto rounded-lg border border-border bg-muted/30 p-6 font-mono text-sm leading-relaxed text-foreground shadow-inner focus:outline-none focus:ring-2 focus:ring-primary/50"
+              placeholder="Edit the response here..."
+              spellCheck={false}
+            />
+          </div>
+          <DialogFooter className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={handleDiscardPartial}
+              className="text-destructive hover:text-destructive"
+            >
+              Discard
+            </Button>
+            <Button onClick={handleSavePartialContent}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

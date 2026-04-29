@@ -85,6 +85,7 @@ import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
+import { consumeAbortDiscardForChat } from "@/shared/abort_discard";
 import {
   isChatPendingCompaction,
   performCompaction,
@@ -1252,10 +1253,13 @@ export async function handleLocalAgentStream(
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
+      const discard = consumeAbortDiscardForChat(req.chatId);
       await db
         .update(messages)
         .set({
-          content: appendCancelledResponseNotice(fullResponse ?? ""),
+          content: discard
+            ? appendCancelledResponseNotice(fullResponse ?? "")
+            : fullResponse ?? "",
         })
         .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
@@ -1356,11 +1360,14 @@ export async function handleLocalAgentStream(
     clearPendingQuestionnairesForChat(req.chatId);
 
     if (abortController.signal.aborted) {
+      const discard = consumeAbortDiscardForChat(req.chatId);
       // Handle cancellation
       await db
         .update(messages)
         .set({
-          content: appendCancelledResponseNotice(fullResponse ?? ""),
+          content: discard
+            ? appendCancelledResponseNotice(fullResponse ?? "")
+            : fullResponse ?? "",
         })
         .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota

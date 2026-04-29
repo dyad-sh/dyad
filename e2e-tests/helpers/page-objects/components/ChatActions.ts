@@ -103,8 +103,8 @@ export class ChatActions {
       await chatInput.fill(prompt);
       const visiblePrompt = prompt.replace(/@app:/g, "@");
       expect(await chatInput.textContent()).toContain(visiblePrompt);
-      await expect(sendButton).toBeEnabled();
-      await sendButton.click();
+      await expect(sendButton).toBeEnabled({ timeout: 1_000 });
+      await sendButton.click({ timeout: 1_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
 
     if (!skipWaitForCompletion) {

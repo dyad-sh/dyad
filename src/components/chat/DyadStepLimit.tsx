@@ -36,9 +36,9 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
     streamMessage({
       prompt: "Continue",
       chatId,
-      onSettled: ({ success }) => {
+      onSettled: ({ success, pausedByStepLimit }) => {
         setIsLoading(false);
-        if (success) {
+        if (success && !pausedByStepLimit) {
           clearPauseOnly();
         }
       },

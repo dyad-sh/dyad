@@ -26,7 +26,7 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import {
-  chatInputValueAtom,
+  chatInputValuesByIdAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
@@ -113,7 +113,23 @@ const showTokenBarAtom = atom(false);
 export function ChatInput({ chatId }: { chatId?: number }) {
   const { t } = useTranslation("chat");
   const posthog = usePostHog();
-  const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
+  const inputValuesById = useAtomValue(chatInputValuesByIdAtom);
+  const setInputValuesById = useSetAtom(chatInputValuesByIdAtom);
+  const inputValue = chatId ? (inputValuesById.get(chatId) ?? "") : "";
+  const setInputValue = useCallback(
+    (newValue: string | ((prev: string) => string)) => {
+      if (!chatId) return;
+
+      setInputValuesById((currentMap) => {
+        const prev = currentMap.get(chatId) ?? "";
+        const next = typeof newValue === "function" ? newValue(prev) : newValue;
+        const newMap = new Map(currentMap);
+        newMap.set(chatId, next);
+        return newMap;
+      });
+    },
+    [chatId, setInputValuesById],
+  );
   const { settings } = useSettings();
   const {
     selectedMode: chatMode,

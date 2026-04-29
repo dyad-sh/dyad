@@ -561,12 +561,21 @@ export function registerCollaborationHubHandlers(): void {
       },
     ): Promise<CollabTask | null> => {
       if (!params?.id || !params?.status) throw new Error("id and status required");
+
+      const [existingRow] = await db
+        .select()
+        .from(agentCollabTasks)
+        .where(eq(agentCollabTasks.id, params.id))
+        .limit(1);
+
+      if (!existingRow) return null;
+
       const patch: Record<string, unknown> = {
         status: params.status,
         updatedAt: new Date(),
       };
       if (params.output !== undefined) patch.outputJson = params.output;
-      if (params.status === "accepted" || params.status === "in_progress") {
+      if (params.status === "accepted" && existingRow.acceptedAt == null) {
         patch.acceptedAt = new Date();
       }
       if (

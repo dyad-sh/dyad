@@ -1,0 +1,187 @@
+name: Codex PR Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, ready_for_review, reopened, closed]
+
+# Restrict default permissions; each job declares only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  codex-review:
+    environment: ai-bots
+    # Only review code from regular contributors since Codex review has non-trivial costs.
+    # This also keeps privileged pull_request_target tokens away from untrusted PRs.
+    if: >-
+      github.event.action != 'closed' &&
+      contains(
+        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
+        github.event.pull_request.user.login
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      REVIEW_CONTEXT_PATH: tmp/pr-review/codex-context.json
+      REVIEW_PROMPT_PATH: tmp/pr-review/codex-prompt.txt
+      REVIEW_OUTPUT_PATH: tmp/pr-review/codex-review.md
+      REVIEW_FINDINGS_PATH: tmp/pr-review/codex-findings.json
+      CODEX_HOME: tmp/pr-review/codex-home
+    steps:
+      - name: Create read-only agent token
+        id: agent-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-pull-requests: read
+
+      - name: Checkout trusted workflow repo
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build PR review context
+        id: context
+        env:
+          GITHUB_TOKEN: ${{ steps.agent-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTPUT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+        run: node scripts/pr-review/build-context.mjs
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex@latest
+
+      - name: Write Codex auth file
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          CODEX_AUTH_JSON_1: ${{ secrets.CODEX_AUTH_JSON_1 }}
+          CODEX_AUTH_JSON_2: ${{ secrets.CODEX_AUTH_JSON_2 }}
+        run: bash scripts/codex-commit-review/write-codex-auth.sh
+
+      - name: Render Codex review prompt
+        env:
+          TEMPLATE_PATH: .github/prompts/codex-pr-review.txt
+          OUTPUT_PATH: ${{ env.REVIEW_PROMPT_PATH }}
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          OUTPUT_MD_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+          OUTPUT_FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
+        run: node scripts/issue-agent/render-template.mjs
+
+      - name: Run Codex PR review
+        env:
+          PROMPT_PATH: ${{ env.REVIEW_PROMPT_PATH }}
+        run: bash scripts/codex-commit-review/run-codex.sh
+
+      - name: Refresh trusted post-agent helpers
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: tmp/pr-review/trusted-post-agent
+
+      - name: Validate Codex review summary
+        env:
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+          EXPECTED_CONTEXT_SHA: ${{ steps.context.outputs.context_sha }}
+        run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/validate-review-summary.mjs
+
+      - name: Validate Codex findings
+        id: validate-findings
+        continue-on-error: true
+        env:
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+          FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
+          EXPECTED_CONTEXT_SHA: ${{ steps.context.outputs.context_sha }}
+        run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/validate-review.mjs
+
+      - name: Warn when Codex findings validation fails
+        if: ${{ steps.validate-findings.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codex findings validation failed; skipped inline comments."
+          echo "Codex findings validation failed; skipped inline comments." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create fresh post-review token
+        id: post-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Post Codex inline review comments
+        id: post-inline
+        if: ${{ steps.validate-findings.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.post-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
+        run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/post-inline-review.mjs
+
+      - name: Warn when Codex inline posting fails
+        if: ${{ steps.post-inline.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codex inline comment posting failed; summary comment still posted."
+          echo "Codex inline comment posting failed; summary comment still posted." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post Codex review comment
+        if: ${{ always() && steps.post-token.outcome == 'success' }}
+        uses: actions/github-script@v7
+        env:
+          REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+        with:
+          github-token: ${{ steps.post-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+
+            const reviewPath = process.env.REVIEW_PATH;
+            if (!reviewPath) {
+              throw new Error('REVIEW_PATH is required');
+            }
+
+            const summary = fs.readFileSync(reviewPath, 'utf8').trim();
+            if (!summary) {
+              throw new Error('Validated Codex review is missing summary text');
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+            const body = [
+              '<!-- pr-review:codex -->',
+              '## :mag: Code Review Summary (Codex)',
+              '',
+              summary,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+            core.info('Created Codex review comment');

@@ -418,7 +418,6 @@ function trackFileEditTool(
   if (!ctx.fileEditTracker[filePath]) {
     ctx.fileEditTracker[filePath] = {
       write_file: 0,
-      edit_file: 0,
       search_replace: 0,
     };
   }

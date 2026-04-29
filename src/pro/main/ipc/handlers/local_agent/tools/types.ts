@@ -27,16 +27,11 @@ export {
 export type Todo = AgentTodo;
 
 /** Tracks which file-editing tools were used on each file path */
-export const FILE_EDIT_TOOL_NAMES = [
-  "write_file",
-  "edit_file",
-  "search_replace",
-] as const;
+export const FILE_EDIT_TOOL_NAMES = ["write_file", "search_replace"] as const;
 export type FileEditToolName = (typeof FILE_EDIT_TOOL_NAMES)[number];
 export interface FileEditTracker {
   [filePath: string]: {
     write_file: number;
-    edit_file: number;
     search_replace: number;
   };
 }

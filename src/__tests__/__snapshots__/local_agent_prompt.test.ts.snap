@@ -68,9 +68,9 @@ You have two tools for editing files. Choose based on the scope of your change:
 |-------|------|----------|
 | **Small to medium** (a few lines up to one function or contiguous section) | Single \`search_replace\` | Fix a typo, rename a variable, update a value, change an import, rewrite a function, modify multiple related lines |
 | **Moderately large** (changes spread across multiple parts of the file, up to about half of it) | Multiple \`search_replace\` calls, one per distinct region | Update several functions, change an import plus update its call sites, refactor a few related sections |
-| **Very large** (rewriting the vast majority of the file, or creating a new file) | \`write_file\` | Major refactor that touches nearly all of the file, rewrite a module end-to-end, create a new file |
+| **Large** (rewriting the majority of the file, or creating a new file) | \`write_file\` | Major refactor that touches most of the file, rewrite a module end-to-end, create a new file |
 
-Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when little of the original file will remain.
+Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when less than half of the original file will remain.
 
 **Fallback rule:**
 If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.

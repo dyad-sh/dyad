@@ -34,6 +34,44 @@ export type MigrationDependenciesStatusResponse = z.infer<
   typeof MigrationDependenciesStatusResponseSchema
 >;
 
+export const DestructiveStatementReasonSchema = z.enum([
+  "drop_table",
+  "drop_column",
+  "alter_column_type",
+  "truncate",
+  "drop_schema",
+]);
+
+export type DestructiveStatementReason = z.infer<
+  typeof DestructiveStatementReasonSchema
+>;
+
+export const DestructiveStatementSchema = z.object({
+  index: z.number(),
+  reason: DestructiveStatementReasonSchema,
+});
+
+export type DestructiveStatement = z.infer<typeof DestructiveStatementSchema>;
+
+export const MigrationPreviewParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export type MigrationPreviewParams = z.infer<
+  typeof MigrationPreviewParamsSchema
+>;
+
+export const MigrationPreviewResponseSchema = z.object({
+  statements: z.array(z.string()),
+  hasDataLoss: z.boolean(),
+  warnings: z.array(z.string()),
+  destructiveStatements: z.array(DestructiveStatementSchema),
+});
+
+export type MigrationPreviewResponse = z.infer<
+  typeof MigrationPreviewResponseSchema
+>;
+
 // =============================================================================
 // Migration Contracts
 // =============================================================================
@@ -43,6 +81,11 @@ export const migrationContracts = {
     channel: "migration:push",
     input: MigrationPushParamsSchema,
     output: MigrationPushResponseSchema,
+  }),
+  preview: defineContract({
+    channel: "migration:preview",
+    input: MigrationPreviewParamsSchema,
+    output: MigrationPreviewResponseSchema,
   }),
   dependenciesStatus: defineContract({
     channel: "migration:dependencies-status",

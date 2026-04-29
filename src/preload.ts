@@ -2254,6 +2254,23 @@ const validInvokeChannels = [
   "provenance:slash:activate",
   "provenance:slash:reverse",
   "provenance:slash:list",
+
+  // Collaboration Hub — multi-agent channels, DMs, handoffs, activity
+  "collab:channel:list",
+  "collab:channel:get",
+  "collab:channel:create",
+  "collab:channel:update",
+  "collab:channel:archive",
+  "collab:subscription:join",
+  "collab:subscription:leave",
+  "collab:subscription:list-for-agent",
+  "collab:subscription:list-for-channel",
+  "collab:message:post",
+  "collab:message:list",
+  "collab:task:create",
+  "collab:task:update-status",
+  "collab:task:list",
+  "collab:activity:recent",
 ];
 
 // Add valid receive channels

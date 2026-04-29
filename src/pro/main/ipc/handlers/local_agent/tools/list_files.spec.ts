@@ -90,7 +90,6 @@ describe("listFilesTool", () => {
       neonProjectId: null,
       neonActiveBranchId: null,
       frameworkType: null,
-      nitroEnabled: false,
       messageId: 1,
       isSharedModulesChanged: false,
       isDyadPro: false,

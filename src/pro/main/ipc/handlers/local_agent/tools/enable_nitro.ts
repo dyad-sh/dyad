@@ -1,12 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
 import log from "electron-log";
 
 import { ToolDefinition, AgentContext } from "./types";
-import { db } from "../../../../../../db";
-import { apps } from "../../../../../../db/schema";
 import {
   installPackages,
   ExecuteAddDependencyError,
@@ -54,8 +51,9 @@ server-side compute. Skip for client-side fetch with public/anon keys, for use
 cases fully covered by Supabase (anon key + RLS), or when the user explicitly
 says "static only" / "no backend".
 
-This tool is auto-disabled (via isEnabled) on non-Vite apps and once Nitro is
-already enabled — if it appears in your toolset, it is safe and appropriate to call.
+This tool is auto-disabled (via isEnabled) on non-Vite apps, once Nitro is
+already enabled, and on apps connected to Supabase (Edge Functions cover the
+same use case) — if it appears in your toolset, it is safe and appropriate to call.
 
 After this tool returns, follow the "Nitro Server Layer" section appended to
 AI_RULES.md — it covers the required vite.config.ts changes and the conventions
@@ -70,7 +68,8 @@ export const enableNitroTool: ToolDefinition<
   inputSchema: enableNitroSchema,
   defaultConsent: "always",
   modifiesState: true,
-  isEnabled: (ctx) => ctx.frameworkType === "vite" && !ctx.nitroEnabled,
+  isEnabled: (ctx) =>
+    ctx.frameworkType === "vite" && ctx.supabaseProjectId === null,
 
   getConsentPreview: (args) => `Add Nitro server layer (${args.reason})`,
 
@@ -78,10 +77,10 @@ export const enableNitroTool: ToolDefinition<
 
   execute: async (_args, ctx: AgentContext) => {
     // Belt-and-suspenders: `isEnabled` already filters this tool out when
-    // `ctx.nitroEnabled` is true, but we re-check here in case the LLM tries
-    // to call it twice in the same turn (e.g. parallel tool calls or a retry)
-    // since `ctx.nitroEnabled` is updated below after the DB write.
-    if (ctx.nitroEnabled) {
+    // the framework is already "vite-nitro", but we re-check here in case the
+    // LLM tries to call it twice in the same turn (e.g. parallel tool calls or
+    // a retry) since `ctx.frameworkType` is updated below after install.
+    if (ctx.frameworkType === "vite-nitro") {
       return "Nitro is already enabled for this app. Skipping setup.";
     }
 
@@ -112,22 +111,12 @@ export const enableNitroTool: ToolDefinition<
       const result = await installPackages({
         packages: ["nitro"],
         appPath: ctx.appPath,
-        dev: true,
       });
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }
 
-      // Keep this as the LAST step — filesystem rollback cannot undo a
-      // committed DB write.
-      await db
-        .update(apps)
-        .set({ nitroEnabled: true })
-        .where(eq(apps.id, ctx.appId));
-      // Mirror the DB state on the in-memory ctx so any subsequent
-      // `enable_nitro` call in the same agent turn hits the early-return
-      // guard above instead of re-running install.
-      ctx.nitroEnabled = true;
+      ctx.frameworkType = "vite-nitro";
     } catch (error) {
       try {
         await restoreAiRules(ctx.appPath, rulesBackup.backup);

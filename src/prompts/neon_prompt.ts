@@ -1,10 +1,11 @@
 import addAuthenticationGuide from "./guides/add-authentication.md?raw";
 import addEmailVerificationGuide from "./guides/add-email-verification.md?raw";
 import addPasswordResetGuide from "./guides/add-password-reset.md?raw";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,
-  frameworkType: "nextjs" | "vite" | "other" | null,
+  frameworkType: AppFrameworkType | null,
   options?: {
     emailVerificationEnabled?: boolean;
     nextjsMajorVersion?: number | null;

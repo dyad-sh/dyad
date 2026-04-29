@@ -525,8 +525,8 @@ export const constructSystemPrompt = ({
   themePrompt,
   readOnly,
   basicAgentMode,
-  nitroEnabled,
   frameworkType,
+  hasSupabaseProject,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -536,10 +536,18 @@ export const constructSystemPrompt = ({
   readOnly?: boolean;
   /** If true, use basic agent mode (free tier with limited tools) */
   basicAgentMode?: boolean;
-  /** If true, skip the build-mode Nitro nudge (server layer is already set up) */
-  nitroEnabled?: boolean;
-  /** Detected framework of the app; the Nitro nudge only applies to Vite apps. */
+  /**
+   * Detected framework of the app. The Nitro nudge only fires for `"vite"`
+   * (i.e. Vite without Nitro yet); `"vite-nitro"` apps already have the server
+   * layer and skip the nudge.
+   */
   frameworkType?: AppFrameworkType | null;
+  /**
+   * If true, the app is connected to a Supabase project. Suppresses the Nitro
+   * nudge so the model isn't pushed toward two competing server layers
+   * (Supabase Edge Functions vs. Nitro routes).
+   */
+  hasSupabaseProject?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -549,14 +557,16 @@ export const constructSystemPrompt = ({
     return constructLocalAgentPrompt(aiRules, themePrompt, {
       readOnly,
       basicAgentMode,
+      frameworkType,
+      hasSupabaseProject,
     });
   }
 
   let systemPrompt = getSystemPromptForChatMode({
     chatMode,
     enableTurboEditsV2,
-    nitroEnabled,
     frameworkType,
+    hasSupabaseProject,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -574,21 +584,25 @@ export const constructSystemPrompt = ({
 export const getSystemPromptForChatMode = ({
   chatMode,
   enableTurboEditsV2,
-  nitroEnabled,
   frameworkType,
+  hasSupabaseProject,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
-  nitroEnabled?: boolean;
   frameworkType?: AppFrameworkType | null;
+  hasSupabaseProject?: boolean;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
   // The Nitro server-layer nudge is Vite-specific. Only inject it for Vite
-  // apps that haven't already enabled Nitro; Next.js (and unknown frameworks)
-  // should not carry this Vite-only paragraph in every build-mode prompt.
-  const shouldAppendNitroNudge = frameworkType === "vite" && !nitroEnabled;
+  // apps that haven't already enabled Nitro (`"vite-nitro"` apps already have
+  // the server layer); Next.js and unknown frameworks should not carry this
+  // Vite-only paragraph in every build-mode prompt. Supabase-connected apps
+  // also skip the nudge — Edge Functions cover the same use case and offering
+  // both layers confuses the model.
+  const shouldAppendNitroNudge =
+    frameworkType === "vite" && !hasSupabaseProject;
   const buildPrompt =
     BUILD_SYSTEM_PROMPT_BASE +
     (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");

@@ -1,4 +1,9 @@
-export const APP_FRAMEWORK_TYPES = ["nextjs", "vite", "other"] as const;
+export const APP_FRAMEWORK_TYPES = [
+  "nextjs",
+  "vite",
+  "vite-nitro",
+  "other",
+] as const;
 export type AppFrameworkType = (typeof APP_FRAMEWORK_TYPES)[number];
 
 export const NEXTJS_CONFIG_FILES = [

@@ -825,8 +825,8 @@ ${componentSnippet}
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
-          nitroEnabled: updatedChat.app.nitroEnabled ?? false,
           frameworkType,
+          hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
         });
 
         // Add information about mentioned apps for build mode only.
@@ -1369,8 +1369,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
-                nitroEnabled: updatedChat.app.nitroEnabled ?? false,
                 frameworkType,
+                hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
               }),
               files: files,
               dyadDisableFiles: true,

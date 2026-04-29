@@ -1,1 +1,0 @@
-ALTER TABLE `apps` ADD `nitro_enabled` integer DEFAULT 0 NOT NULL;

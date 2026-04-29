@@ -7,6 +7,7 @@ import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 // ============================================================================
 // XML Escape Helpers
@@ -58,8 +59,7 @@ export interface AgentContext {
   supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;
   neonActiveBranchId: string | null;
-  frameworkType: "nextjs" | "vite" | "other" | null;
-  nitroEnabled: boolean;
+  frameworkType: AppFrameworkType | null;
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;

@@ -67,7 +67,6 @@ describe("codeSearchTool", () => {
       messageId: 1,
       isSharedModulesChanged: false,
       isDyadPro: true,
-      nitroEnabled: false,
       todos: [],
       dyadRequestId: "test-request",
       fileEditTracker: {},

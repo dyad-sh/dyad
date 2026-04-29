@@ -52,9 +52,25 @@ export class ChatActions {
     }).toPass({ timeout: Timeout.SHORT });
   }
 
-  clickNewChat({ index = 0 }: { index?: number } = {}) {
-    // There is two new chat buttons...
-    return this.page.getByTestId("new-chat-button").nth(index).click();
+  async clickNewChat({ index = 0 }: { index?: number } = {}) {
+    // There are two new chat buttons.
+    const previousChatId = new URL(this.page.url()).searchParams.get("id");
+
+    await this.page.getByTestId("new-chat-button").nth(index).click();
+
+    await expect(async () => {
+      const currentChatId = new URL(this.page.url()).searchParams.get("id");
+      if (previousChatId === null) {
+        expect(currentChatId).not.toBeNull();
+      } else {
+        expect(currentChatId).not.toBe(previousChatId);
+      }
+
+      const chatInput = this.getChatInput();
+      await expect(chatInput).toBeVisible({ timeout: 1_000 });
+      const text = await chatInput.textContent({ timeout: 1_000 });
+      expect(text?.trim() ?? "").toBe("");
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   private getRetryButton() {

@@ -57,6 +57,32 @@ class N8nClient {
   }
 
   // ============================================================================
+  // Authentication
+  // ============================================================================
+
+  async setApiKey(apiKey: string): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("n8n:set-api-key", apiKey);
+  }
+
+  async refreshAuth(): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("n8n:refresh-auth");
+  }
+
+  async getAuthStatus(): Promise<{
+    running: boolean;
+    authenticated: boolean;
+    hasApiKey: boolean;
+    baseUrl: string;
+    message: string;
+  }> {
+    return this.ipcRenderer.invoke("n8n:auth-status");
+  }
+
+  async syncLocalToServer(): Promise<{ pushed: number; failed: number; errors: string[] }> {
+    return this.ipcRenderer.invoke("n8n:sync-local-to-server");
+  }
+
+  // ============================================================================
   // Database Configuration
   // ============================================================================
 

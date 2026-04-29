@@ -37,6 +37,10 @@ import {
   Loader2,
   LayoutDashboard,
   ExternalLink,
+  KeyRound,
+  Upload,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { PublishWizard } from "@/components/marketplace/PublishWizard";
 import { usePublishWorkflow } from "@/hooks/use_publish_workflow";
@@ -244,6 +248,8 @@ export function WorkflowsPage() {
           </div>
         </div>
       </div>
+
+      <N8nAuthBanner onOpenSettings={() => setActiveTab("settings")} />
 
       {/* Main Content */}
       <div className="flex-1 p-4 overflow-hidden">
@@ -979,6 +985,7 @@ function N8nSettings() {
 
   return (
     <div className="max-w-5xl mx-auto p-4 space-y-6">
+      <N8nAuthCard />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1145,6 +1152,171 @@ function N8nSettings() {
           </p>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ============================================================================
+// n8n Authentication Card — paste API key + push local workflows to n8n
+// ============================================================================
+
+function N8nAuthCard() {
+  const queryClient = useQueryClient();
+  const [apiKey, setApiKey] = useState("");
+
+  const authStatusQuery = useQuery({
+    queryKey: ["n8n-auth-status"],
+    queryFn: () => n8nClient.getAuthStatus(),
+    refetchInterval: 15_000,
+  });
+
+  const saveKeyMutation = useMutation({
+    mutationFn: async (key: string) => {
+      await n8nClient.setApiKey(key);
+      await n8nClient.refreshAuth();
+    },
+    onSuccess: () => {
+      toast.success("n8n API key saved");
+      setApiKey("");
+      queryClient.invalidateQueries({ queryKey: ["n8n-auth-status"] });
+      queryClient.invalidateQueries({ queryKey: ["n8n-workflows"] });
+      queryClient.invalidateQueries({ queryKey: ["workflows"] });
+    },
+    onError: (err) => toast.error(`Failed to save key: ${String(err)}`),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => n8nClient.syncLocalToServer(),
+    onSuccess: (result) => {
+      if (result.pushed > 0) {
+        toast.success(`Pushed ${result.pushed} local workflow${result.pushed === 1 ? "" : "s"} to n8n`);
+      }
+      if (result.failed > 0) {
+        toast.error(`Failed to push ${result.failed} workflow${result.failed === 1 ? "" : "s"}: ${result.errors.join("; ")}`);
+      }
+      if (result.pushed === 0 && result.failed === 0) {
+        toast.info("No local workflows to push");
+      }
+      queryClient.invalidateQueries({ queryKey: ["n8n-workflows"] });
+      queryClient.invalidateQueries({ queryKey: ["workflows"] });
+    },
+    onError: (err) => toast.error(`Sync failed: ${String(err)}`),
+  });
+
+  const status = authStatusQuery.data;
+  const statusBadge = !status ? (
+    <Badge variant="secondary">Checking…</Badge>
+  ) : !status.running ? (
+    <Badge variant="destructive">n8n offline</Badge>
+  ) : status.authenticated ? (
+    <Badge className="bg-green-600 hover:bg-green-600/90"><CheckCircle2 className="h-3 w-3 mr-1" /> Connected</Badge>
+  ) : (
+    <Badge variant="destructive"><AlertTriangle className="h-3 w-3 mr-1" /> Unauthenticated</Badge>
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              n8n API Authentication
+            </CardTitle>
+            <CardDescription>
+              {status?.message || "Paste your n8n Personal API Key so JoyCreate can deploy and list workflows."}
+            </CardDescription>
+          </div>
+          {statusBadge}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="n8n-api-key">n8n Personal API Key</Label>
+          <div className="flex gap-2">
+            <Input
+              id="n8n-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="n8n_api_..."
+              autoComplete="off"
+            />
+            <Button
+              onClick={() => saveKeyMutation.mutate(apiKey.trim())}
+              disabled={!apiKey.trim() || saveKeyMutation.isPending}
+            >
+              {saveKeyMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <KeyRound className="h-4 w-4 mr-2" />}
+              Save key
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+            <span>How to get a key:</span>
+            <Button
+              variant="link"
+              className="h-auto p-0 text-xs"
+              onClick={() =>
+                window.open(
+                  `${status?.baseUrl || "http://localhost:5678"}/settings/api`,
+                  "_blank",
+                  "noopener"
+                )
+              }
+            >
+              Open n8n → Settings → n8n API <ExternalLink className="h-3 w-3 ml-1" />
+            </Button>
+            <span>then click <em>Create an API key</em> and paste here.</span>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label className="text-sm">Push local-only workflows to n8n</Label>
+              <p className="text-xs text-muted-foreground">
+                Workflows generated while n8n was offline/unauthenticated are stored locally with id <code>local-*</code>.
+                Once authenticated, push them to your live n8n instance.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending || !status?.running}
+            >
+              {syncMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              Sync local → n8n
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
+// Top-of-page banner shown when n8n is running but unauthenticated
+// ============================================================================
+
+export function N8nAuthBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const { data: status } = useQuery({
+    queryKey: ["n8n-auth-status"],
+    queryFn: () => n8nClient.getAuthStatus(),
+    refetchInterval: 15_000,
+  });
+  if (!status || !status.running || status.authenticated) return null;
+  return (
+    <div className="mx-4 mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 flex items-center gap-3">
+      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+      <div className="text-sm flex-1">
+        <span className="font-medium">n8n is running but unauthenticated.</span>{" "}
+        <span className="text-muted-foreground">
+          {status.message} Workflows you generate will be saved locally until a key is set.
+        </span>
+      </div>
+      <Button size="sm" variant="outline" onClick={onOpenSettings}>
+        <KeyRound className="h-3.5 w-3.5 mr-1" />
+        Set API key
+      </Button>
     </div>
   );
 }

@@ -1425,6 +1425,123 @@ export function registerN8nHandlers(): void {
     await refreshN8nApiKey();
     return { success: true };
   });
+  ipcMain.handle("n8n:auth-status", async () => {
+    // 1. Check process / port
+    const reachable = await isN8nReachable();
+    if (!reachable) {
+      return {
+        running: false,
+        authenticated: false,
+        hasApiKey: !!n8nConfig.apiKey,
+        baseUrl: n8nConfig.baseUrl,
+        message: "n8n is not running",
+      };
+    }
+    // 2. Probe API
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (n8nConfig.apiKey) headers["X-N8N-API-KEY"] = n8nConfig.apiKey;
+      const probe = await fetch(`${n8nConfig.baseUrl}/api/v1/workflows?limit=1`, {
+        headers,
+        signal: AbortSignal.timeout(3000),
+      });
+      if (probe.ok) {
+        return {
+          running: true,
+          authenticated: true,
+          hasApiKey: !!n8nConfig.apiKey,
+          baseUrl: n8nConfig.baseUrl,
+          message: "Connected",
+        };
+      }
+      if (probe.status === 401) {
+        // Try one auto-refresh
+        await refreshN8nApiKey();
+        if (n8nConfig.apiKey) {
+          const retry = await fetch(`${n8nConfig.baseUrl}/api/v1/workflows?limit=1`, {
+            headers: { "Content-Type": "application/json", "X-N8N-API-KEY": n8nConfig.apiKey },
+            signal: AbortSignal.timeout(3000),
+          });
+          if (retry.ok) {
+            return {
+              running: true,
+              authenticated: true,
+              hasApiKey: true,
+              baseUrl: n8nConfig.baseUrl,
+              message: "Connected",
+            };
+          }
+        }
+        return {
+          running: true,
+          authenticated: false,
+          hasApiKey: !!n8nConfig.apiKey,
+          baseUrl: n8nConfig.baseUrl,
+          message: "n8n requires an API key. Open n8n → Settings → n8n API → Create API key, paste it below.",
+        };
+      }
+      return {
+        running: true,
+        authenticated: false,
+        hasApiKey: !!n8nConfig.apiKey,
+        baseUrl: n8nConfig.baseUrl,
+        message: `Unexpected status from n8n API: ${probe.status}`,
+      };
+    } catch (err) {
+      return {
+        running: true,
+        authenticated: false,
+        hasApiKey: !!n8nConfig.apiKey,
+        baseUrl: n8nConfig.baseUrl,
+        message: `n8n API probe failed: ${String(err)}`,
+      };
+    }
+  });
+  ipcMain.handle("n8n:sync-local-to-server", async () => {
+    // Push every local-only workflow to the live n8n instance, then drop it locally.
+    const ready = await checkN8nAvailable();
+    if (!ready) {
+      throw new Error("n8n is not running");
+    }
+    const entries = Array.from(localWorkflows.entries());
+    if (entries.length === 0) {
+      return { pushed: 0, failed: 0, errors: [] as string[] };
+    }
+    let pushed = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    for (const [localId, entry] of entries) {
+      try {
+        // Strip local id + active flag — n8n assigns its own
+        const { id: _id, active: _active, ...payload } = entry.workflow as N8nWorkflow & { active?: boolean };
+        const created = await n8nApiRequest<N8nWorkflow>("POST", "/workflows", { settings: {}, ...payload });
+        if (created?.id) {
+          localWorkflows.delete(localId);
+          pushed++;
+          // Optionally re-activate
+          if (entry.active) {
+            try {
+              await n8nApiRequest("POST", `/workflows/${created.id}/activate`);
+            } catch (actErr) {
+              logger.warn(`Failed to reactivate pushed workflow ${created.id}:`, actErr);
+            }
+          }
+        } else {
+          failed++;
+          errors.push(`${entry.workflow.name}: no id returned`);
+        }
+      } catch (err) {
+        failed++;
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${entry.workflow.name}: ${msg}`);
+        logger.warn(`Failed to push local workflow ${localId} to n8n:`, err);
+      }
+    }
+    if (pushed > 0) {
+      await saveLocalWorkflows();
+    }
+    return { pushed, failed, errors };
+  });
 
   // Database Configuration
   ipcMain.handle("n8n:db:configure", async (_event, config: Partial<N8nDatabaseConfig>) => {

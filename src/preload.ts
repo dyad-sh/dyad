@@ -506,6 +506,8 @@ const validInvokeChannels = [
   "n8n:status",
   "n8n:set-api-key",
   "n8n:refresh-auth",
+  "n8n:auth-status",
+  "n8n:sync-local-to-server",
   "n8n:db:configure",
   "n8n:db:get-config",
   "n8n:workflow:create",

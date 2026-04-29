@@ -65,7 +65,7 @@ export const PROVIDER_REGISTRY: ProviderTemplate[] = [
     label: "Google AI (Gemini)",
     description: "Gemini models and Google AI Studio",
     helpUrl: "https://aistudio.google.com/app/apikey",
-    envVar: "GOOGLE_GENERATIVE_AI_API_KEY",
+    envVar: "GOOGLE_AI_API_KEY",
     category: "ai",
     icon: "💎",
     placeholder: "AIza...",
@@ -303,6 +303,20 @@ export async function resolveApiKey(providerId: string): Promise<ResolvedKey | n
     const envVal = process.env[template.envVar];
     if (envVal) {
       return { value: envVal, source: "env", providerId };
+    }
+  }
+
+  // ── 4. Google-specific fallback aliases ────────────────────────────────
+  if (providerId === "google") {
+    const googleAliases = [
+      "GOOGLE_AI_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "GEMINI_API_KEY",
+      "GOOGLE_API_KEY",
+    ];
+    for (const alias of googleAliases) {
+      const v = process.env[alias];
+      if (v) return { value: v, source: "env", providerId };
     }
   }
 

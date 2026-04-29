@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});require("electron");require("node:path");const e=require("./main-eYDIIfii.js");require("fs");exports.onFirstRunMaybe=e.onFirstRunMaybe;exports.onReady=e.onReady;

@@ -135,8 +135,45 @@ async function generateWithOpenAI(params: GenerateImageParams): Promise<string> 
 
 async function generateWithGoogle(params: GenerateImageParams): Promise<string> {
   const apiKey = await getApiKeyAsync("google");
-  const model = params.model || "imagen-3.0-generate-002";
+  const model = params.model || "imagen-4.0-generate-001";
 
+  // Gemini native image generation models use generateContent (multimodal) — different shape than Imagen.
+  if (model.startsWith("gemini-")) {
+    const parts: Array<Record<string, unknown>> = [{ text: params.prompt }];
+    if (params.referenceImageBase64) {
+      const b64 = params.referenceImageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const mime = params.referenceImageBase64.match(/^data:(image\/\w+);base64,/)?.[1] || "image/png";
+      parts.push({ inlineData: { mimeType: mime, data: b64 } });
+    }
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Gemini image error: ${err}`);
+    }
+
+    const data = await res.json();
+    const candidateParts = data?.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = candidateParts.find(
+      (p: { inlineData?: { data?: string } }) => p?.inlineData?.data,
+    );
+    const b64 = imagePart?.inlineData?.data;
+    if (!b64) throw new Error("Gemini returned no image data");
+    return saveBase64Image(b64, uniqueFilename("google"));
+  }
+
+  // Imagen 3/4 — predict endpoint. Imagen accepts aspectRatio, NOT raw width/height.
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
     {
@@ -146,9 +183,9 @@ async function generateWithGoogle(params: GenerateImageParams): Promise<string> 
         instances: [{ prompt: params.prompt }],
         parameters: {
           sampleCount: 1,
-          width: params.width,
-          height: params.height,
+          aspectRatio: aspectRatioFor(params.width, params.height),
           ...(params.negativePrompt ? { negativePrompt: params.negativePrompt } : {}),
+          personGeneration: "allow_adult",
         },
       }),
     },
@@ -163,6 +200,16 @@ async function generateWithGoogle(params: GenerateImageParams): Promise<string> 
   const b64 = data.predictions?.[0]?.bytesBase64Encoded;
   if (!b64) throw new Error("Google Imagen returned no image data");
   return saveBase64Image(b64, uniqueFilename("google"));
+}
+
+function aspectRatioFor(width?: number, height?: number): string {
+  if (!width || !height) return "1:1";
+  const ratio = width / height;
+  if (ratio >= 1.7) return "16:9";
+  if (ratio >= 1.25) return "4:3";
+  if (ratio >= 0.85) return "1:1";
+  if (ratio >= 0.6) return "3:4";
+  return "9:16";
 }
 
 async function generateWithStabilityAI(params: GenerateImageParams): Promise<string> {
@@ -669,10 +716,15 @@ export function registerImageStudioHandlers() {
         ],
       },
       google: {
-        label: "Imagen (Google)",
+        label: "Imagen / Gemini (Google)",
         models: [
+          { id: "imagen-4.0-generate-001", label: "Imagen 4" },
+          { id: "imagen-4.0-fast-generate-001", label: "Imagen 4 Fast" },
+          { id: "imagen-4.0-ultra-generate-001", label: "Imagen 4 Ultra" },
           { id: "imagen-3.0-generate-002", label: "Imagen 3" },
           { id: "imagen-3.0-fast-generate-001", label: "Imagen 3 Fast" },
+          { id: "gemini-2.5-flash-image-preview", label: "Gemini 2.5 Flash Image (Nano-Banana)", supportsImg2Img: true },
+          { id: "gemini-2.0-flash-preview-image-generation", label: "Gemini 2.0 Flash Image", supportsImg2Img: true },
         ],
       },
       stabilityai: {

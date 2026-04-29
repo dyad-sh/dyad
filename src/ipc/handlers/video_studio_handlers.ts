@@ -427,7 +427,7 @@ async function generateWithStabilityAI(params: GenerateVideoParams): Promise<{ f
 
 async function generateWithGoogleVeo(params: GenerateVideoParams): Promise<{ filePath: string; thumbnailPath: string | null }> {
   const apiKey = await getApiKey("google");
-  const model = params.model || "veo-002";
+  const model = params.model || "veo-3.0-generate-001";
 
   const instance: Record<string, unknown> = {
     prompt: params.prompt,
@@ -435,8 +435,13 @@ async function generateWithGoogleVeo(params: GenerateVideoParams): Promise<{ fil
 
   if (params.referenceImageBase64) {
     const base64Data = params.referenceImageBase64.replace(/^data:image\/\w+;base64,/, "");
-    instance.image = { bytesBase64Encoded: base64Data };
+    const mime = params.referenceImageBase64.match(/^data:(image\/\w+);base64,/)?.[1] || "image/png";
+    instance.image = { bytesBase64Encoded: base64Data, mimeType: mime };
   }
+
+  // Veo accepts a fixed list of aspect ratios — derive from width/height.
+  const ratio = params.width && params.height ? params.width / params.height : 16 / 9;
+  const aspectRatio = ratio >= 1.5 ? "16:9" : ratio <= 0.7 ? "9:16" : "1:1";
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:predictLongRunning?key=${apiKey}`,
@@ -446,9 +451,10 @@ async function generateWithGoogleVeo(params: GenerateVideoParams): Promise<{ fil
       body: JSON.stringify({
         instances: [instance],
         parameters: {
-          aspectRatio: `${params.width}:${params.height}`,
+          aspectRatio,
           durationSeconds: params.duration ?? 5,
           personGeneration: "allow_adult",
+          ...(params.negativePrompt ? { negativePrompt: params.negativePrompt } : {}),
         },
       }),
     },
@@ -627,8 +633,10 @@ function getProviderCatalog(): Record<string, { label: string; models: ProviderM
     google: {
       label: "Google Veo",
       models: [
-        { id: "veo-002", label: "Veo 2", supportsImg2Video: true, maxDurationSeconds: 8, defaultFps: 24 },
-        { id: "veo-003", label: "Veo 3", supportsImg2Video: true, maxDurationSeconds: 8, defaultFps: 24 },
+        { id: "veo-3.0-generate-001", label: "Veo 3", supportsImg2Video: true, maxDurationSeconds: 8, defaultFps: 24 },
+        { id: "veo-3.0-fast-generate-001", label: "Veo 3 Fast", supportsImg2Video: true, maxDurationSeconds: 8, defaultFps: 24 },
+        { id: "veo-2.0-generate-001", label: "Veo 2", supportsImg2Video: true, maxDurationSeconds: 8, defaultFps: 24 },
+        { id: "veo-002", label: "Veo 2 (legacy alias)", supportsImg2Video: true, maxDurationSeconds: 8, defaultFps: 24 },
       ],
     },
     openai: {

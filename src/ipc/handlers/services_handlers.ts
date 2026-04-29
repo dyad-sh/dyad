@@ -28,6 +28,84 @@ function getUserDataPath(): string {
   return path.join(process.cwd(), "userData");
 }
 
+/**
+ * Resolve a Node-shipped CLI binary (`npx`, `npm`, `node`) to an absolute path
+ * suitable for invocation from a freshly spawned `cmd.exe` window. Detached
+ * cmd shells inherit only the system PATH, which on nvm-windows machines does
+ * NOT include the active Node version's `bin` folder — so a bare `npx` call
+ * fails with "'npx' is not recognized as an internal or external command".
+ *
+ * Strategy (Windows, in order):
+ *   1. Same dir as `process.execPath` — works only in dev when Node spawned
+ *      Electron. Skipped for packaged builds (execPath is the app exe).
+ *   2. `where.exe <name>` — uses the parent process PATH.
+ *   3. nvm-windows installs under `%LOCALAPPDATA%\nvm\<version>`.
+ *   4. `%ProgramFiles%\nodejs` (default Node installer).
+ *   5. Fall back to the bare name and hope PATH is fine.
+ */
+function resolveNodeCli(name: "npx" | "npm" | "node"): string {
+  const isWin = process.platform === "win32";
+  const ext = isWin ? (name === "node" ? ".exe" : ".cmd") : "";
+  const candidates: string[] = [];
+
+  // 1. Beside Electron/Node executable (only meaningful in dev)
+  if (!app.isPackaged) {
+    candidates.push(path.join(path.dirname(process.execPath), `${name}${ext}`));
+  }
+
+  // 2. `where` lookup (Windows) — uses the spawning shell's PATH
+  if (isWin) {
+    try {
+      const out = execSync(`where ${name}${ext}`, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      const first = out.split(/\r?\n/)[0]?.trim();
+      if (first) candidates.push(first);
+    } catch {
+      /* not on PATH — fall through */
+    }
+  }
+
+  // 3. nvm-windows installs (newest version first)
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const nvmRoot = path.join(localAppData, "nvm");
+      if (fs.existsSync(nvmRoot)) {
+        try {
+          const versions = fs
+            .readdirSync(nvmRoot)
+            .filter((d) => /^v\d+/.test(d))
+            .sort()
+            .reverse();
+          for (const v of versions) {
+            candidates.push(path.join(nvmRoot, v, `${name}${ext}`));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  // 4. Default Windows Node installer location
+  if (isWin && process.env.ProgramFiles) {
+    candidates.push(
+      path.join(process.env.ProgramFiles, "nodejs", `${name}${ext}`),
+    );
+  }
+
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {
+      /* ignore */
+    }
+  }
+  return name + ext; // last-resort bare name
+}
+
 // =============================================================================
 // SERVICE TYPES
 // =============================================================================
@@ -277,7 +355,7 @@ async function startN8nService(): Promise<ServiceStatus> {
         `set "DB_POSTGRESDB_CONNECTION_TIMEOUT=60000"`,
         `set "N8N_PORT=${config.port}"`,
         `set "N8N_SECURE_COOKIE=false"`,
-        `npx n8n start`,
+        `"${resolveNodeCli("npx")}" n8n start`,
       ].join(" && ");
     } else {
       logger.info("PostgreSQL not available — using SQLite backend");
@@ -289,7 +367,7 @@ async function startN8nService(): Promise<ServiceStatus> {
         `set "N8N_PORT=${config.port}"`,
         `set "N8N_SECURE_COOKIE=false"`,
         `set "N8N_USER_FOLDER=${path.join(getUserDataPath(), "n8n")}"`,
-        `npx n8n start`,
+        `"${resolveNodeCli("npx")}" n8n start`,
       ].join(" && ");
     }
     

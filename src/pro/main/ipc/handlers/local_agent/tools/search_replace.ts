@@ -19,7 +19,7 @@ import {
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
-import { withLock } from "@/ipc/utils/lock_utils";
+import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
 
 const logger = log.scope("search_replace");
 
@@ -107,7 +107,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       ctx.isSharedModulesChanged = true;
     }
 
-    await withLock(`filewrite:${fullFilePath}`, async () => {
+    await withLock(getFileWriteKey(fullFilePath), async () => {
       if (!fs.existsSync(fullFilePath)) {
         throw new DyadError(
           `File does not exist: ${args.file_path}`,

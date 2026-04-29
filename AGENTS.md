@@ -37,6 +37,10 @@ npm run init-precommit
 
 **Note:** Running `npm install` may update `package-lock.json` with version changes or peer dependency flag removals. If rebasing or performing git operations, commit these changes first to avoid "unstaged changes" errors.
 
+## Git worktrees
+
+When you create a new git worktree for this repository, run `npm install` inside the new worktree before starting development. Each worktree has its own working directory and needs its dependencies installed there.
+
 ## Pre-commit checks
 
 RUN THE FOLLOWING CHECKS before you do a commit.

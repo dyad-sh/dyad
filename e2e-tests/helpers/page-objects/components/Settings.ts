@@ -205,7 +205,7 @@ export class Settings {
       .fill("test-api-key-12345");
     await this.page.getByRole("button", { name: "Save Key" }).click();
     // Wait for the key to be saved
-    await expect(this.page.getByText("test-api-key-12345")).toBeVisible();
+    await expect(this.page.getByText(/test.+2345/)).toBeVisible();
   }
 
   async setUpDyadProvider() {

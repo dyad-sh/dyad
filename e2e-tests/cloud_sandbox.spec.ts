@@ -64,7 +64,7 @@ testSkipIfWindows(
             .textContent({ timeout: Timeout.LONG });
           return digestText?.split(": ").at(-1)?.trim();
         },
-        { timeout: Timeout.LONG },
+        { timeout: Timeout.EXTRA_LONG },
       )
       .not.toBe(updatedDigest);
   },

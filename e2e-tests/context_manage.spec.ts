@@ -286,6 +286,9 @@ test("manage context - smart context", async ({ po }) => {
   // the auto-includes.
   const proModesDialog = await po.openProModesDialog();
   await proModesDialog.setSmartContextMode("off");
+  await expect
+    .poll(() => po.settings.recordSettings().enableProSmartFilesContextMode)
+    .toBe(false);
   await proModesDialog.close();
 
   await po.sendPrompt("[dump]");

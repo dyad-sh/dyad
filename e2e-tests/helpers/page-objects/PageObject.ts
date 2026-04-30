@@ -231,18 +231,7 @@ export class PageObject {
   // ================================
 
   async approveProposal() {
-    const approveButton = this.page.getByTestId("approve-proposal-button");
-    const uncommittedBanner = this.page.getByTestId("uncommitted-files-banner");
-
-    await expect(async () => {
-      if (await approveButton.isVisible()) {
-        await expect(approveButton).toBeEnabled({ timeout: 1_000 });
-        await approveButton.click();
-        return;
-      }
-
-      await expect(uncommittedBanner).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 10_000 });
+    await this.page.getByTestId("approve-proposal-button").click();
   }
 
   async rejectProposal() {

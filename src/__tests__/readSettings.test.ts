@@ -7,6 +7,7 @@ import {
   resolveEffectiveSettings,
   readEffectiveSettings,
   getSettingsFilePath,
+  writeSettings,
   encrypt,
   decrypt,
 } from "@/main/settings";
@@ -15,10 +16,24 @@ import { UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
 
+const mockSend = vi.fn();
+
 // Mock dependencies
 vi.mock("node:fs");
 vi.mock("node:path");
 vi.mock("electron", () => ({
+  app: {
+    on: vi.fn(),
+  },
+  BrowserWindow: {
+    getAllWindows: vi.fn(() => [
+      {
+        webContents: {
+          send: mockSend,
+        },
+      },
+    ]),
+  },
   safeStorage: {
     isEncryptionAvailable: vi.fn(),
     decryptString: vi.fn(),
@@ -600,6 +615,85 @@ describe("readSettings", () => {
       );
       expect(result).toBe(mockSettingsPath);
     });
+  });
+});
+
+describe("writeSettings", () => {
+  const mockUserDataPath = "/mock/user/data";
+  const mockSettingsPath = "/mock/user/data/user-settings.json";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUserDataPath.mockReturnValue(mockUserDataPath);
+    mockPath.join.mockReturnValue(mockSettingsPath);
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to defaults and shows a restore-docs toast when the existing settings file cannot be read", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue("invalid json");
+
+    writeSettings({ enableAutoUpdate: false });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      "toast:error",
+      expect.objectContaining({
+        action: {
+          label: "Read restore docs",
+          url: "https://www.dyad.sh/docs/guides/migrate-restore#restoring-settings-from-backup",
+        },
+        message: expect.not.stringContaining("https://"),
+      }),
+    );
+    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\/mock\/user\/data\/user-settings\.json\.tmp-\d+-\d+$/,
+      ),
+      expect.stringContaining('"enableAutoUpdate": false'),
+    );
+    expect(mockFs.copyFileSync).toHaveBeenCalledWith(
+      mockSettingsPath,
+      `${mockSettingsPath}.bak`,
+    );
+    expect(mockFs.renameSync).toHaveBeenCalled();
+  });
+
+  it("writes through a temporary file and backs up the previous settings file", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        providerSettings: {},
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedTemplateId: "react",
+        enableAutoUpdate: true,
+        releaseChannel: "stable",
+      }),
+    );
+
+    writeSettings({ enableAutoUpdate: false });
+
+    const tempFilePath = expect.stringMatching(
+      /^\/mock\/user\/data\/user-settings\.json\.tmp-\d+-\d+$/,
+    );
+    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+      tempFilePath,
+      expect.stringContaining('"enableAutoUpdate": false'),
+    );
+    expect(mockFs.copyFileSync).toHaveBeenCalledWith(
+      mockSettingsPath,
+      `${mockSettingsPath}.bak`,
+    );
+    expect(mockFs.renameSync).toHaveBeenCalledWith(
+      tempFilePath,
+      mockSettingsPath,
+    );
   });
 });
 

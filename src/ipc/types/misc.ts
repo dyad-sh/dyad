@@ -410,6 +410,19 @@ export const miscEvents = {
     channel: "chat:stream:end",
     payload: z.object({ chatId: z.number() }),
   }),
+
+  errorToast: defineEvent({
+    channel: "toast:error",
+    payload: z.object({
+      message: z.string(),
+      action: z
+        .object({
+          label: z.string(),
+          url: z.string(),
+        })
+        .optional(),
+    }),
+  }),
 } as const;
 
 // =============================================================================

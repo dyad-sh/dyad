@@ -309,6 +309,15 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Migration
+  // ─────────────────────────────────────────────────────────────────────────────
+  migration: {
+    all: ["migration"] as const,
+    dependenciesStatus: ({ appId }: { appId: number }) =>
+      ["migration", "dependencies-status", appId] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Neon
   // ─────────────────────────────────────────────────────────────────────────────
   neon: {
@@ -401,6 +410,7 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.mcp)[keyof typeof queryKeys.mcp]>
   | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>
   | QueryKeyOf<(typeof queryKeys.github)[keyof typeof queryKeys.github]>
+  | QueryKeyOf<(typeof queryKeys.migration)[keyof typeof queryKeys.migration]>
   | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
   | QueryKeyOf<(typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]>
   | QueryKeyOf<(typeof queryKeys.media)[keyof typeof queryKeys.media]>;

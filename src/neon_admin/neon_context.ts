@@ -3,6 +3,7 @@ import log from "electron-log";
 import { getNeonClient } from "./neon_management_client";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 const logger = log.scope("neon_context");
 
@@ -390,7 +391,7 @@ export async function getNeonTableSchema({
  * Generate framework-specific client code for connecting to Neon.
  */
 export function getNeonClientCode(
-  frameworkType: "nextjs" | "vite" | "other" | null,
+  frameworkType: AppFrameworkType | null,
 ): string {
   if (frameworkType === "nextjs") {
     return `// Neon Database Client (server-side only)

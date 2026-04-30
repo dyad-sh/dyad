@@ -25,6 +25,7 @@ interface DyadGrepProps {
       count?: string;
       total?: string;
       truncated?: string;
+      appName?: string;
     };
   };
 }
@@ -43,6 +44,7 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
   const count = node?.properties?.count || "";
   const total = node?.properties?.total || "";
   const truncated = node?.properties?.truncated === "true";
+  const appName = node?.properties?.appName || "";
 
   let description = `"${query}"`;
   if (includePattern) {
@@ -71,6 +73,7 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
     >
       <DyadCardHeader icon={<Search size={15} />} accentColor="violet">
         <DyadBadge color="violet">GREP</DyadBadge>
+        {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         <span className="font-medium text-sm text-foreground truncate">
           {description}
         </span>

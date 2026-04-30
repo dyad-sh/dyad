@@ -10,11 +10,22 @@ import {
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { resolveDirectoryWithinAppPath } from "./path_safety";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  DYAD_INTERNAL_GLOB,
+  filterDyadInternalFiles,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 
 const MAX_PATHS_TO_RETURN = 1_000;
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),
+  app_name: z
+    .string()
+    .optional()
+    .describe(
+      "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to list from instead of the current app. Omit to list the current app.",
+    ),
   recursive: z
     .boolean()
     .optional()
@@ -51,6 +62,9 @@ function getXmlAttributes(args: ListFilesArgs, count?: number, total?: number) {
   const dirAttr = args.directory
     ? ` directory="${escapeXmlAttr(args.directory)}"`
     : "";
+  const appNameAttr = args.app_name
+    ? ` app_name="${escapeXmlAttr(args.app_name)}"`
+    : "";
   const recursiveAttr =
     args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
   const includeIgnoredAttr =
@@ -61,7 +75,7 @@ function getXmlAttributes(args: ListFilesArgs, count?: number, total?: number) {
   const totalAttr =
     total !== undefined && total > (count ?? 0) ? ` total="${total}"` : "";
   const truncatedAttr = totalAttr ? ` truncated="true"` : "";
-  return `${dirAttr}${recursiveAttr}${includeIgnoredAttr}${countAttr}${totalAttr}${truncatedAttr}`;
+  return `${dirAttr}${appNameAttr}${recursiveAttr}${includeIgnoredAttr}${countAttr}${totalAttr}${truncatedAttr}`;
 }
 
 export const listFilesTool: ToolDefinition<ListFilesArgs> = {
@@ -74,9 +88,9 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   getConsentPreview: (args) => {
     const recursiveText = args.recursive ? " (recursive)" : "";
     const ignoredText = args.include_ignored ? " (include ignored)" : "";
-    return args.directory
-      ? `List ${args.directory}${recursiveText}${ignoredText}`
-      : `List all files${recursiveText}${ignoredText}`;
+    const appSuffix = args.app_name ? ` (app: ${args.app_name})` : "";
+    const target = args.directory ?? "all files";
+    return `List ${target}${recursiveText}${ignoredText}${appSuffix}`;
   },
 
   buildXml: (args, isComplete) => {
@@ -87,11 +101,13 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
+
     // Validate directory path to prevent path traversal attacks
     let sanitizedDirectory: string | undefined;
     if (args.directory) {
       const relativePathFromApp = resolveDirectoryWithinAppPath({
-        appPath: ctx.appPath,
+        appPath: targetAppPath,
         directory: args.directory,
       });
 
@@ -121,18 +137,21 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     let allPaths: ListedPath[];
 
     if (args.include_ignored) {
-      const normalizedAppPath = ctx.appPath.replace(/\\/g, "/");
+      const normalizedAppPath = targetAppPath.replace(/\\/g, "/");
       const globPattern = `${normalizedAppPath}/${globPath}`;
+      const ignoredGlobs = args.app_name
+        ? ["**/.git", "**/.git/**", DYAD_INTERNAL_GLOB]
+        : ["**/.git", "**/.git/**"];
       const ignoredPaths = await glob(globPattern, {
         withFileTypes: true,
         dot: true,
-        ignore: ["**/.git", "**/.git/**"],
+        ignore: ignoredGlobs,
       });
 
       allPaths = sortListedPaths(
         ignoredPaths.map((entry) => ({
           path: path
-            .relative(ctx.appPath, entry.fullpath())
+            .relative(targetAppPath, entry.fullpath())
             .split(path.sep)
             .join("/"),
           isDirectory: entry.isDirectory(),
@@ -140,7 +159,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       );
     } else {
       const { files } = await extractCodebase({
-        appPath: ctx.appPath,
+        appPath: targetAppPath,
         chatContext: {
           contextPaths: [{ globPath }],
           smartContextAutoIncludes: [],
@@ -148,9 +167,11 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
         },
       });
 
+      const filteredFiles = filterDyadInternalFiles(files, args.app_name);
+
       // Build the list of file paths
       allPaths = sortListedPaths(
-        files.map((file) => ({
+        filteredFiles.map((file) => ({
           path: file.path,
           isDirectory: false,
         })),

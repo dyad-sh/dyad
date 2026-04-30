@@ -22,6 +22,7 @@ import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
+import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
@@ -105,6 +106,7 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isBasicAgentMode,
+  isLocalAgentBackedMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
@@ -669,26 +671,48 @@ ${componentSnippet}
         // Parse app mentions from the prompt
         const mentionedAppNames = parseAppMentions(req.prompt);
 
-        // Extract codebases for mentioned apps
-        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-          mentionedAppNames,
-          updatedChat.app.id, // Exclude current app
-        );
+        const isLocalAgentMode = selectedChatMode === "local-agent";
+        const isAskMode = selectedChatMode === "ask";
+        const isPlanMode = selectedChatMode === "plan";
         const willUseLocalAgentStream =
-          (selectedChatMode === "local-agent" || selectedChatMode === "ask") &&
-          !mentionedAppsCodebases.length;
+          isLocalAgentBackedMode(selectedChatMode);
+
+        // Agent/ask/plan modes reach referenced apps via tool calls (`app_name`
+        // on read-only tools), so we only need name/path pairs — skip the heavy
+        // codebase extraction entirely. Build mode still injects full codebases.
+        let mentionedAppsCodebases: MentionedAppCodebaseEntry[] = [];
+        let referencedAppsForAgent: MentionedAppReference[] = [];
+        if (willUseLocalAgentStream) {
+          referencedAppsForAgent = await extractMentionedAppsReferences(
+            mentionedAppNames,
+            updatedChat.app.id, // Exclude current app
+          );
+        } else {
+          mentionedAppsCodebases = await extractMentionedAppsCodebases(
+            mentionedAppNames,
+            updatedChat.app.id, // Exclude current app
+          );
+          referencedAppsForAgent = mentionedAppsCodebases.map(
+            ({ appName, appPath }) => ({ appName, appPath }),
+          );
+        }
+        const useReferencedAppManifest =
+          willUseLocalAgentStream && referencedAppsForAgent.length > 0;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&
           // Anything besides balanced will use deep context.
           settings.proSmartContextOption !== "balanced" &&
-          mentionedAppsCodebases.length === 0;
+          referencedAppsForAgent.length === 0;
         logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
 
-        // Combine current app codebase with mentioned apps' codebases
+        // Combine current app codebase with mentioned apps' codebases.
+        // In agent/ask/plan modes we skip the full codebase injection — the
+        // model can read referenced apps on-demand via tool calls with `app_name`
+        // instead of carrying their full contents in the system prompt.
         let otherAppsCodebaseInfo = "";
-        if (mentionedAppsCodebases.length > 0) {
+        if (mentionedAppsCodebases.length > 0 && !useReferencedAppManifest) {
           const mentionedAppsSection = mentionedAppsCodebases
             .map(
               ({ appName, codebaseInfo }) =>
@@ -790,6 +814,10 @@ ${componentSnippet}
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
+        const frameworkType = detectFrameworkType(
+          getDyadAppPath(updatedChat.app.path),
+        );
+
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
           aiRules,
@@ -797,9 +825,17 @@ ${componentSnippet}
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
+          frameworkType,
+          hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
         });
 
-        // Add information about mentioned apps if any
+        // Add information about mentioned apps for build mode only.
+        // Full codebase injection (build mode): full file contents already
+        // concatenated into `otherAppsCodebaseInfo`.
+        //
+        // Agent/ask/plan modes don't need anything in the system prompt —
+        // handleLocalAgentStream injects a `<system-reminder>` into the
+        // user's latest message so the system prompt stays static.
         if (otherAppsCodebaseInfo) {
           const mentionedAppsList = mentionedAppsCodebases
             .map(({ appName }) => appName)
@@ -894,9 +930,8 @@ ${componentSnippet}
         // print out the dyad-write tags.
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
-        const isAskMode = selectedChatMode === "ask";
         if (hasUploadedAttachments) {
-          if (willUseLocalAgentStream && !isAskMode) {
+          if (isLocalAgentMode) {
             systemPrompt += `
 
 When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
@@ -908,7 +943,7 @@ copy_file(from=".dyad/media/abc123.png", to="src/assets/logo.png", description="
 
 The file paths are provided in the attachment information above.
 `;
-          } else if (!isAskMode) {
+          } else if (!isAskMode && !isPlanMode) {
             systemPrompt += `
 
 When files are attached for upload to the codebase, copy them into the project using this format:
@@ -1185,7 +1220,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle ask mode: use local-agent in read-only mode
         // This gives users access to code reading tools while in ask mode
         // Ask mode does not consume free agent quota
-        if (selectedChatMode === "ask" && !mentionedAppsCodebases.length) {
+        if (isAskMode) {
           // Reconstruct system prompt for local-agent read-only mode
           const readOnlySystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1215,6 +1250,7 @@ This conversation includes one or more image attachments. When the user uploads 
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
+              referencedApps: referencedAppsForAgent,
             },
           );
           if (!streamSuccess) {
@@ -1227,7 +1263,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle plan mode: use local-agent with plan tools only
         // Plan mode is for requirements gathering and creating implementation plans
-        if (selectedChatMode === "plan" && !mentionedAppsCodebases.length) {
+        if (isPlanMode) {
           // Reconstruct system prompt for plan mode
           const planModeSystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1243,17 +1279,18 @@ This conversation includes one or more image attachments. When the user uploads 
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
+            referencedApps: referencedAppsForAgent,
           });
           return;
         }
 
-        // Handle local-agent mode (Agent v2)
-        // Mentioned apps can't be handled by the local agent (defer to balanced smart context
-        // in build mode)
-        if (
-          selectedChatMode === "local-agent" &&
-          !mentionedAppsCodebases.length
-        ) {
+        // Handle local-agent mode (Agent v2).
+        // Referenced apps (from `@app:Name` mentions) are accessed by the
+        // agent via tool calls with an `app_name` parameter — see
+        // resolveTargetAppPath in the local agent tools. handleLocalAgentStream
+        // injects a `<system-reminder>` into the user's latest message telling
+        // the agent which `app_name` values are valid.
+        if (isLocalAgentMode) {
           // Check quota for Basic Agent mode (non-Pro users)
           const isBasicAgentModeRequest = isBasicAgentMode(settings);
           if (isBasicAgentModeRequest) {
@@ -1289,6 +1326,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
+                referencedApps: referencedAppsForAgent,
               },
             );
           } finally {
@@ -1331,6 +1369,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
+                frameworkType,
+                hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
               }),
               files: files,
               dyadDisableFiles: true,
@@ -1373,7 +1413,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           fullResponse = result.fullResponse;
 
-          if (selectedChatMode !== "ask" && isTurboEditsV2Enabled(settings)) {
+          if (isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
@@ -1472,7 +1512,6 @@ ${formattedSearchReplaceIssues}`,
 
           if (
             !abortController.signal.aborted &&
-            selectedChatMode !== "ask" &&
             hasUnclosedDyadWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
@@ -1525,8 +1564,7 @@ ${formattedSearchReplaceIssues}`,
             // because there's going to be type errors since the packages aren't
             // installed yet.
             addDependencies.length === 0 &&
-            settings.enableAutoFixProblems &&
-            selectedChatMode !== "ask"
+            settings.enableAutoFixProblems
           ) {
             try {
               // IF auto-fix is enabled

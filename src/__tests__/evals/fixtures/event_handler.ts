@@ -33,78 +33,120 @@ export interface AppEvent {
 
 // ── Individual handlers ────────────────────────────────────────────────────
 
-async function notifyUserCreated(payload: Record<string, unknown>): Promise<void> {
+async function notifyUserCreated(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Sending welcome email to ${payload.email}`);
   // implementation elided
 }
 
-async function syncUserToSearchIndex(payload: Record<string, unknown>): Promise<void> {
+async function syncUserToSearchIndex(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Syncing user ${payload.id} to search index`);
   // implementation elided
 }
 
-async function revokeUserSessions(payload: Record<string, unknown>): Promise<void> {
+async function revokeUserSessions(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Revoking all sessions for user ${payload.id}`);
   // implementation elided
 }
 
-async function notifyUserRoleChanged(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Notifying user ${payload.id} of role change: ${payload.oldRole} → ${payload.newRole}`);
+async function notifyUserRoleChanged(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  logger.info(
+    `Notifying user ${payload.id} of role change: ${payload.oldRole} → ${payload.newRole}`,
+  );
   // implementation elided
 }
 
-async function notifyProjectCreated(payload: Record<string, unknown>): Promise<void> {
+async function notifyProjectCreated(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Notifying team about new project ${payload.id}`);
   // implementation elided
 }
 
-async function archiveProjectAssets(payload: Record<string, unknown>): Promise<void> {
+async function archiveProjectAssets(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Archiving assets for project ${payload.id}`);
   // implementation elided
 }
 
-async function cleanupProjectResources(payload: Record<string, unknown>): Promise<void> {
+async function cleanupProjectResources(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Cleaning up resources for deleted project ${payload.id}`);
   // implementation elided
 }
 
-async function notifyProjectMemberAdded(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Notifying user ${payload.memberId} they were added to project ${payload.projectId}`);
+async function notifyProjectMemberAdded(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  logger.info(
+    `Notifying user ${payload.memberId} they were added to project ${payload.projectId}`,
+  );
   // implementation elided
 }
 
-async function notifyProjectMemberRemoved(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Notifying user ${payload.memberId} they were removed from project ${payload.projectId}`);
+async function notifyProjectMemberRemoved(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  logger.info(
+    `Notifying user ${payload.memberId} they were removed from project ${payload.projectId}`,
+  );
   // implementation elided
 }
 
-async function recordPaymentSuccess(payload: Record<string, unknown>): Promise<void> {
+async function recordPaymentSuccess(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.info(`Recording payment ${payload.transactionId}`);
   // implementation elided
 }
 
-async function handlePaymentFailure(payload: Record<string, unknown>): Promise<void> {
+async function handlePaymentFailure(
+  payload: Record<string, unknown>,
+): Promise<void> {
   logger.warn(`Payment failed for order ${payload.orderId}`);
   // implementation elided
 }
 
 async function processRefund(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Processing refund ${payload.refundId} for transaction ${payload.transactionId}`);
+  logger.info(
+    `Processing refund ${payload.refundId} for transaction ${payload.transactionId}`,
+  );
   // implementation elided
 }
 
-async function provisionSubscriptionFeatures(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Provisioning features for subscription ${payload.subscriptionId}`);
+async function provisionSubscriptionFeatures(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  logger.info(
+    `Provisioning features for subscription ${payload.subscriptionId}`,
+  );
   // implementation elided
 }
 
-async function deprovisionSubscriptionFeatures(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Deprovisioning features for cancelled subscription ${payload.subscriptionId}`);
+async function deprovisionSubscriptionFeatures(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  logger.info(
+    `Deprovisioning features for cancelled subscription ${payload.subscriptionId}`,
+  );
   // implementation elided
 }
 
-async function extendSubscriptionAccess(payload: Record<string, unknown>): Promise<void> {
-  logger.info(`Extending access for renewed subscription ${payload.subscriptionId}`);
+async function extendSubscriptionAccess(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  logger.info(
+    `Extending access for renewed subscription ${payload.subscriptionId}`,
+  );
   // implementation elided
 }
 
@@ -113,7 +155,9 @@ async function extendSubscriptionAccess(payload: Record<string, unknown>): Promi
  * TODO: Refactor this switch into a Record<EventType, handler> map + dispatch function.
  */
 export async function handleEvent(event: AppEvent): Promise<void> {
-  logger.info(`Handling event ${event.type} (correlation: ${event.correlationId}, source: ${event.sourceService})`);
+  logger.info(
+    `Handling event ${event.type} (correlation: ${event.correlationId}, source: ${event.sourceService})`,
+  );
 
   switch (event.type) {
     case "user.created":
@@ -214,7 +258,9 @@ export interface BatchResult {
  * Processes a batch of events sequentially. Failures are recorded but
  * do not abort the remaining events in the batch.
  */
-export async function handleEventBatch(batch: EventBatch): Promise<BatchResult> {
+export async function handleEventBatch(
+  batch: EventBatch,
+): Promise<BatchResult> {
   logger.info(
     `Processing batch ${batch.batchId} with ${batch.events.length} event(s)`,
   );
@@ -277,7 +323,9 @@ export async function retryDeadLetter(
     try {
       await handleEvent(entry.event);
       retried++;
-      logger.info(`Retried dead-letter event ${entry.event.correlationId} successfully`);
+      logger.info(
+        `Retried dead-letter event ${entry.event.correlationId} successfully`,
+      );
     } catch (err) {
       logger.error(
         `Retry failed for dead-letter event ${entry.event.correlationId}`,

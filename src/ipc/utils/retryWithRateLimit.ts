@@ -60,7 +60,7 @@ export function isRateLimitError(error: any): boolean {
 
 // Retry configuration
 const RETRY_CONFIG = {
-  maxRetries: 8,
+  maxRetries: 10,
   baseDelay: 2_000, // 2 seconds
   maxDelay: 30_000, // 30 seconds
   jitterFactor: 0.1, // 10% jitter

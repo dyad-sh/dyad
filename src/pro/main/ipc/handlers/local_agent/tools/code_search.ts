@@ -9,11 +9,21 @@ import {
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  filterDyadInternalFiles,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 
 const logger = log.scope("code_search");
 
 const codeSearchSchema = z.object({
   query: z.string().describe("Search query to find relevant files"),
+  app_name: z
+    .string()
+    .optional()
+    .describe(
+      "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+    ),
 });
 
 const FileContextSchema = z.object({
@@ -25,15 +35,31 @@ const codeSearchResponseSchema = z.object({
   relevantFiles: z.array(z.string()).describe("Paths of relevant files"),
 });
 
+type CodeSearchArgs = z.infer<typeof codeSearchSchema>;
+
+function buildCodeSearchAttributes(args: Partial<CodeSearchArgs>) {
+  const queryAttr = args.query ? ` query="${escapeXmlAttr(args.query)}"` : "";
+  const appNameAttr = args.app_name
+    ? ` app_name="${escapeXmlAttr(args.app_name)}"`
+    : "";
+  return `${queryAttr}${appNameAttr}`;
+}
+
 async function callCodeSearch(
   params: {
     query: string;
+    app_name?: string;
     filesContext: z.infer<typeof FileContextSchema>[];
   },
   ctx: AgentContext,
 ): Promise<string[]> {
   // Stream initial state to UI
-  ctx.onXmlStream(`<dyad-code-search query="${escapeXmlAttr(params.query)}">`);
+  ctx.onXmlStream(
+    `<dyad-code-search${buildCodeSearchAttributes({
+      query: params.query,
+      app_name: params.app_name,
+    })}>`,
+  );
 
   const response = await engineFetch(ctx, "/tools/code-search", {
     method: "POST",
@@ -71,73 +97,79 @@ Skip this tool for:
 3. Simple symbol lookups (use \`grep\`)
 `;
 
-export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
-  {
-    name: "code_search",
-    description: DESCRIPTION,
-    inputSchema: codeSearchSchema,
-    defaultConsent: "always",
+export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
+  name: "code_search",
+  description: DESCRIPTION,
+  inputSchema: codeSearchSchema,
+  defaultConsent: "always",
 
-    // Requires Dyad Pro engine API
-    isEnabled: (ctx) => ctx.isDyadPro,
+  // Requires Dyad Pro engine API
+  isEnabled: (ctx) => ctx.isDyadPro,
 
-    getConsentPreview: (args) => `Search for "${args.query}"`,
+  getConsentPreview: (args) =>
+    args.app_name
+      ? `Search for "${args.query}" (app: ${args.app_name})`
+      : `Search for "${args.query}"`,
 
-    buildXml: (args, isComplete) => {
-      if (!args.query) return undefined;
-      if (isComplete) return undefined;
-      return `<dyad-code-search query="${escapeXmlAttr(args.query)}">Searching...`;
-    },
+  buildXml: (args, isComplete) => {
+    if (!args.query) return undefined;
+    if (isComplete) return undefined;
+    return `<dyad-code-search${buildCodeSearchAttributes(args)}>Searching...`;
+  },
 
-    execute: async (args, ctx: AgentContext) => {
-      logger.log(`Executing code search: ${args.query}`);
+  execute: async (args, ctx: AgentContext) => {
+    logger.log(`Executing code search: ${args.query}`);
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
 
-      // Gather all files from the project
-      const { files } = await extractCodebase({
-        appPath: ctx.appPath,
-        chatContext: {
-          contextPaths: [],
-          smartContextAutoIncludes: [],
-          excludePaths: [],
-        },
-      });
+    // Gather all files from the project
+    const { files } = await extractCodebase({
+      appPath: targetAppPath,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+        excludePaths: [],
+      },
+    });
 
-      // Map files to FileContext format
-      const filesContext = files.map((file) => ({
-        path: file.path,
-        content: file.content,
-      }));
+    const filteredFiles = filterDyadInternalFiles(files, args.app_name);
 
-      logger.log(
-        `Searching ${filesContext.length} files for query: "${args.query}"`,
-      );
+    // Map files to FileContext format
+    const filesContext = filteredFiles.map((file) => ({
+      path: file.path,
+      content: file.content,
+    }));
 
-      // Call the code-search endpoint
-      const relevantFiles = await callCodeSearch(
-        {
-          query: args.query,
-          filesContext,
-        },
-        ctx,
-      );
+    logger.log(
+      `Searching ${filesContext.length} files for query: "${args.query}"`,
+    );
 
-      // Format results
-      const resultText =
-        relevantFiles.length === 0
-          ? "No relevant files found."
-          : relevantFiles.map((f) => ` - ${f}`).join("\n");
+    // Call the code-search endpoint
+    const relevantFiles = await callCodeSearch(
+      {
+        query: args.query,
+        app_name: args.app_name,
+        filesContext,
+      },
+      ctx,
+    );
 
-      // Write final result to UI and DB with dyad-code-search wrapper
-      ctx.onXmlComplete(
-        `<dyad-code-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(resultText)}</dyad-code-search>`,
-      );
+    // Format results
+    const resultText =
+      relevantFiles.length === 0
+        ? "No relevant files found."
+        : relevantFiles.map((f) => ` - ${f}`).join("\n");
 
-      logger.log(`Code search completed for query: ${args.query}`);
+    // Write final result to UI and DB with dyad-code-search wrapper
+    ctx.onXmlComplete(
+      `<dyad-code-search${buildCodeSearchAttributes(args)}>${escapeXmlContent(resultText)}</dyad-code-search>`,
+    );
 
-      if (relevantFiles.length === 0) {
-        return "No relevant files found for the given query.";
-      }
+    logger.log(`Code search completed for query: ${args.query}`);
 
-      return `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
-    },
-  };
+    if (relevantFiles.length === 0) {
+      return "No relevant files found for the given query.";
+    }
+
+    return `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
+  },
+};

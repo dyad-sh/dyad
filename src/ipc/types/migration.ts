@@ -18,6 +18,22 @@ export const MigrationPushResponseSchema = z.object({
 
 export type MigrationPushResponse = z.infer<typeof MigrationPushResponseSchema>;
 
+export const MigrationDependenciesStatusParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export type MigrationDependenciesStatusParams = z.infer<
+  typeof MigrationDependenciesStatusParamsSchema
+>;
+
+export const MigrationDependenciesStatusResponseSchema = z.object({
+  installed: z.boolean(),
+});
+
+export type MigrationDependenciesStatusResponse = z.infer<
+  typeof MigrationDependenciesStatusResponseSchema
+>;
+
 // =============================================================================
 // Migration Contracts
 // =============================================================================
@@ -27,6 +43,11 @@ export const migrationContracts = {
     channel: "migration:push",
     input: MigrationPushParamsSchema,
     output: MigrationPushResponseSchema,
+  }),
+  dependenciesStatus: defineContract({
+    channel: "migration:dependencies-status",
+    input: MigrationDependenciesStatusParamsSchema,
+    output: MigrationDependenciesStatusResponseSchema,
   }),
 } as const;
 

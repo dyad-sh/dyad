@@ -39,7 +39,7 @@ function computeLcsTable(
   const m = oldLines.length;
   const n = newLines.length;
   const dp: number[][] = Array.from({ length: m + 1 }, () =>
-    new Array<number>(n + 1).fill(0),
+    Array.from<number>({ length: n + 1 }).fill(0),
   );
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
@@ -99,7 +99,9 @@ function buildHunks(
   positioned: readonly PositionedOp[],
   context: number,
 ): Hunk[] {
-  const include = new Array<boolean>(positioned.length).fill(false);
+  const include = Array.from<boolean>({ length: positioned.length }).fill(
+    false,
+  );
   for (let i = 0; i < positioned.length; i++) {
     if (positioned[i].op.type !== "keep") {
       const lo = Math.max(0, i - context);

@@ -3,6 +3,8 @@
  * Tool-based agent with parallel execution support
  */
 
+import type { AppFrameworkType } from "@/lib/framework_constants";
+
 // ============================================================================
 // Shared Prompt Blocks (used by both Pro and Basic Agent modes)
 // ============================================================================
@@ -68,23 +70,24 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 
 const PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK = `<tool_calling_best_practices>
 - **Read before writing**: Use \`read_file\` and \`list_files\` to understand the codebase before making changes
-- **Use \`edit_file\` for edits**: For modifying existing files, prefer \`edit_file\` over \`write_file\`
+- **Prefer \`search_replace\` for edits**: For small to medium edits on existing files, use \`search_replace\` rather than rewriting the whole file
 - **Be surgical**: Only change what's necessary to accomplish the task
 - **Handle errors gracefully**: If a tool fails, explain the issue and suggest alternatives
 </tool_calling_best_practices>`;
 
 const PRO_FILE_EDITING_TOOL_SELECTION_BLOCK = `<file_editing_tool_selection>
-You have three tools for editing files. Choose based on the scope of your change:
+You have two tools for editing files. Choose based on the scope of your change:
 
 | Scope | Tool | Examples |
 |-------|------|----------|
-| **Small** (a few lines) | \`search_replace\` or \`edit_file\` | Fix a typo, rename a variable, update a value, change an import |
-| **Medium** (one function or section) | \`edit_file\` | Rewrite a function, add a new component, modify multiple related lines |
-| **Large** (most of the file) | \`write_file\` | Major refactor, rewrite a module, create a new file |
+| **Small to medium** (a few lines up to one function or contiguous section) | Single \`search_replace\` | Fix a typo, rename a variable, update a value, change an import, rewrite a function, modify multiple related lines |
+| **Moderately large** (changes spread across multiple parts of the file, up to about half of it) | Multiple \`search_replace\` calls, one per distinct region | Update several functions, change an import plus update its call sites, refactor a few related sections |
+| **Large** (rewriting the majority of the file, or creating a new file) | \`write_file\` | Major refactor that touches most of the file, rewrite a module end-to-end, create a new file |
 
-**Tips:**
-- \`edit_file\` supports \`// ... existing code ...\` markers to skip unchanged sections
-- When in doubt, prefer \`search_replace\` for precision or \`write_file\` for simplicity
+Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when less than half of the original file will remain.
+
+**Fallback rule:**
+If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.
 
 **Post-edit verification (REQUIRED):**
 After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
@@ -97,7 +100,7 @@ const PRO_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
    The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.
 3. **Plan:** Build a coherent and grounded (based on the understanding in steps 1-2) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.
-4. **Implement:** Use the available tools (e.g., \`edit_file\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
+4. **Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
 5. **Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>`;
@@ -191,6 +194,14 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 `;
 
 // ============================================================================
+// Server Layer Block (Vite-only; injected when frameworkType === "vite")
+// ============================================================================
+
+const SERVER_LAYER_BLOCK = `<server_layer>
+This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
+</server_layer>`;
+
+// ============================================================================
 // Image Generation Block (Pro mode only)
 // ============================================================================
 
@@ -209,7 +220,7 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 
 /**
  * System prompt for Local Agent v2 in Pro mode
- * Full access to all tools including edit_file, code_search, web_search, web_crawl
+ * Full access to all tools including code_search, web_search, web_crawl
  */
 export const LOCAL_AGENT_SYSTEM_PROMPT = `
 ${ROLE_BLOCK}
@@ -225,7 +236,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
-
+[[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
 
 [[AI_RULES]]
@@ -233,7 +244,7 @@ ${IMAGE_GENERATION_BLOCK}
 
 /**
  * System prompt for Local Agent v2 in Basic Agent mode (free tier)
- * Limited tools - no edit_file, code_search, web_search, web_crawl
+ * Limited tools - no code_search, web_search, web_crawl
  */
 export const LOCAL_AGENT_BASIC_SYSTEM_PROMPT = `
 ${ROLE_BLOCK}
@@ -249,7 +260,7 @@ ${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${BASIC_DEVELOPMENT_WORKFLOW_BLOCK}
-
+[[SERVER_LAYER]]
 [[AI_RULES]]
 `;
 
@@ -283,7 +294,12 @@ Available packages and libraries:
 export function constructLocalAgentPrompt(
   aiRules: string | undefined,
   themePrompt?: string,
-  options?: { readOnly?: boolean; basicAgentMode?: boolean },
+  options?: {
+    readOnly?: boolean;
+    basicAgentMode?: boolean;
+    frameworkType?: AppFrameworkType | null;
+    hasSupabaseProject?: boolean;
+  },
 ): string {
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -295,7 +311,19 @@ export function constructLocalAgentPrompt(
     basePrompt = LOCAL_AGENT_SYSTEM_PROMPT;
   }
 
-  let prompt = basePrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
+  // The Nitro nudge only applies to Vite apps without Nitro yet. `vite-nitro`
+  // already has the server layer (covered by AI_RULES.md); other frameworks
+  // have their own server conventions. Apps with a Supabase project skip the
+  // nudge too — Supabase Edge Functions cover server-side code, and offering
+  // both layers confuses the model about which one to use.
+  const serverLayer =
+    options?.frameworkType === "vite" && !options?.hasSupabaseProject
+      ? `\n${SERVER_LAYER_BLOCK}\n`
+      : "";
+
+  let prompt = basePrompt
+    .replace("[[SERVER_LAYER]]", serverLayer)
+    .replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
 
   // Append theme prompt if provided
   if (themePrompt) {

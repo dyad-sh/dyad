@@ -260,7 +260,12 @@ export function createNamespace(prefix: string) {
     set<T>(key: string, value: T, sizeBytes: number): void {
       set(ns(key), value, sizeBytes);
     },
-    setWithTtl<T>(key: string, value: T, sizeBytes: number, ttlMs: number): void {
+    setWithTtl<T>(
+      key: string,
+      value: T,
+      sizeBytes: number,
+      ttlMs: number,
+    ): void {
       setWithTtl(ns(key), value, sizeBytes, ttlMs);
     },
     get<T>(key: string): T | null {

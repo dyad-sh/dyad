@@ -8,9 +8,54 @@ import {
   listSupabaseFunctions,
   type DeployedFunctionResponse,
 } from "./supabase_management_client";
+import { SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("supabase_utils");
+
+export interface SupabaseDeployProgress {
+  phase: "deploying" | "finished" | "failed";
+  total: number;
+  active: number;
+  queued: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  functionName?: string;
+}
+
+export async function mapSettledWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: Array<PromiseSettledResult<R> | undefined> = Array.from({
+    length: items.length,
+  });
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      try {
+        results[currentIndex] = {
+          status: "fulfilled",
+          value: await mapper(items[currentIndex], currentIndex),
+        };
+      } catch (reason) {
+        results[currentIndex] = {
+          status: "rejected",
+          reason,
+        };
+      }
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  return results.map((result) => result!);
+}
 
 /**
  * Extracts function name from Supabase edge function log event_message
@@ -90,11 +135,13 @@ export async function deployAllSupabaseFunctions({
   supabaseProjectId,
   supabaseOrganizationSlug,
   skipPruneEdgeFunctions,
+  onProgress,
 }: {
   appPath: string;
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
+  onProgress?: (progress: SupabaseDeployProgress) => void;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
 
@@ -142,22 +189,61 @@ export async function deployAllSupabaseFunctions({
       return [];
     }
 
-    // Deploy all functions in parallel with bundleOnly=true
-    logger.info(`Bundling ${validFunctions.length} functions in parallel...`);
+    logger.info(
+      `Bundling ${validFunctions.length} functions with concurrency ${SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY}...`,
+    );
 
-    const deployResults = await Promise.allSettled(
-      validFunctions.map(async (functionName) => {
+    const totalFunctions = validFunctions.length;
+    let activeFunctions = 0;
+    let completedFunctions = 0;
+    let succeededFunctions = 0;
+    let failedFunctions = 0;
+
+    function emitProgress(
+      phase: SupabaseDeployProgress["phase"],
+      functionName?: string,
+    ) {
+      onProgress?.({
+        phase,
+        total: totalFunctions,
+        active: activeFunctions,
+        queued: totalFunctions - activeFunctions - completedFunctions,
+        completed: completedFunctions,
+        succeeded: succeededFunctions,
+        failed: failedFunctions,
+        functionName,
+      });
+    }
+
+    emitProgress("deploying");
+
+    const deployResults = await mapSettledWithConcurrency(
+      validFunctions,
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
+      async (functionName) => {
+        activeFunctions++;
+        emitProgress("deploying", functionName);
         logger.info(`Bundling function: ${functionName}`);
-        const result = await deploySupabaseFunction({
-          supabaseProjectId,
-          organizationSlug: supabaseOrganizationSlug,
-          functionName,
-          appPath,
-          bundleOnly: true,
-        });
-        logger.info(`Successfully bundled function: ${functionName}`);
-        return result;
-      }),
+        try {
+          const result = await deploySupabaseFunction({
+            supabaseProjectId,
+            organizationSlug: supabaseOrganizationSlug,
+            functionName,
+            appPath,
+            bundleOnly: true,
+          });
+          succeededFunctions++;
+          logger.info(`Successfully bundled function: ${functionName}`);
+          return result;
+        } catch (error) {
+          failedFunctions++;
+          throw error;
+        } finally {
+          activeFunctions--;
+          completedFunctions++;
+          emitProgress("deploying", functionName);
+        }
+      },
     );
 
     // Collect successful results and errors
@@ -174,6 +260,8 @@ export async function deployAllSupabaseFunctions({
         errors.push(errorMessage);
       }
     }
+
+    const activationSucceeded = successfulDeploys.length > 0;
 
     // Bulk update all successfully bundled functions to activate them
     if (successfulDeploys.length > 0) {
@@ -238,6 +326,10 @@ export async function deployAllSupabaseFunctions({
         errors.push(errorMessage);
       }
     }
+
+    emitProgress(
+      errors.length === 0 && activationSucceeded ? "finished" : "failed",
+    );
   } catch (error: any) {
     const errorMessage = `Error reading functions directory: ${error.message}`;
     logger.error(errorMessage, error);

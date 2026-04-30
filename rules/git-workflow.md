@@ -38,6 +38,14 @@ git rev-list --left-right --count upstream/main...HEAD
 
 If this returns `0	0`, the branch has no commits ahead of `upstream/main`. GitHub cannot open a PR for an empty branch, so do not fabricate an empty commit just to satisfy `gh pr create`; report the branch as pushed but PR-blocked instead.
 
+## `gh pr create` fork-collab permission error
+
+If `gh pr create` from a fork fails with `GraphQL: Fork collab Fork collab can't be granted by someone without permission (createPullRequest)`, add `--no-maintainer-edit`. `gh` defaults to enabling maintainer edits, which requires a permission the fork account does not have for the upstream repo.
+
+```bash
+gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --title "..." --body "..."
+```
+
 ## `gh pr create` body quoting
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
@@ -135,6 +143,7 @@ The stashed changes will be automatically merged back after the rebase completes
 ### Conflict resolution tips
 
 - **Modify/delete conflicts**: When a rebase shows `CONFLICT (modify/delete): <file> deleted in <commit> and modified in HEAD`, use `git rm <file>` (not `git add`) to resolve by confirming the deletion. Use `git add <file>` only when you want to keep the modified version instead.
+- **Non-interactive rebase continue**: After resolving conflicts, prefer `GIT_EDITOR=true git rebase --continue` in agent shells. Plain `git rebase --continue` can open `vi` for `COMMIT_EDITMSG` and fail with `error: vi died of signal 15` when stdin is not interactive.
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
@@ -144,6 +153,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Preserve variable declarations used in common code**: When one side of a conflict declares a variable (e.g., `const iframe = po.previewPanel.getPreviewIframeElement()`) that is referenced in non-conflicting code between or after conflict markers, keep the declaration even when adopting the other side's verification approach — the variable is needed regardless of which style you choose
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version
+- **Snapshot file conflicts (e.g., `e2e-tests/snapshots/*.txt`, `*.snap`)**: When a rebase conflicts on a snapshot, neither side may match what the rebased code actually produces (e.g., upstream changed the system prompt, your branch added new tools). Resolve quickly with `git checkout --theirs <file>` to unblock the rebase, then **regenerate snapshots after the rebase completes**: `npm test -- -u` for vitest snapshots, and re-run the affected E2E spec with `--update-snapshots` for E2E `.txt`/`.yml` snapshots. The system-prompt snapshot in `src/__tests__/__snapshots__/local_agent_prompt.test.ts.snap` and the matching E2E snapshots often drift together — after rebasing, expect to update both.
 
 ## Rebasing with uncommitted changes
 

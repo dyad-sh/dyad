@@ -2,12 +2,12 @@
 
 export interface Contact {
   id: string;
-  name: string;          // e.g. "Ada Lovelace"
+  name: string; // e.g. "Ada Lovelace"
   email: string;
   phone: string;
   tags: string[];
   starred: boolean;
-  createdAt: string;     // ISO timestamp
+  createdAt: string; // ISO timestamp
 }
 
 export interface ContactBook {

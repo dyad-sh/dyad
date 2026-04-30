@@ -48,7 +48,7 @@ export interface ToolCallRecord {
   filePath: string;
   // Raw tool input arguments, keyed by the tool's parameter names
   // (e.g. `old_string`/`new_string` for search_replace, `content` for
-  // write_file, `content`/`instructions` for edit_file).
+  // write_file).
   args: Record<string, unknown>;
   fileBefore: string;
   fileAfter: string;
@@ -271,14 +271,8 @@ export function recordDirFor(
   caseName: string,
   modelLabel: string,
 ): string {
-  const runDirName =
-    `${fsTimestamp(RUN_START_TIMESTAMP)}__${sanitize(modelLabel)}`;
-  return resolve(
-    RESULTS_ROOT,
-    sanitize(suite),
-    runDirName,
-    sanitize(caseName),
-  );
+  const runDirName = `${fsTimestamp(RUN_START_TIMESTAMP)}__${sanitize(modelLabel)}`;
+  return resolve(RESULTS_ROOT, sanitize(suite), runDirName, sanitize(caseName));
 }
 
 export async function recordEvalRun(record: EvalRunRecord): Promise<void> {

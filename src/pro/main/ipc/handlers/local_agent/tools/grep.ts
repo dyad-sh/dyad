@@ -11,6 +11,10 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "@/ipc/utils/ripgrep_utils";
+import {
+  DYAD_INTERNAL_RIPGREP_EXCLUDE,
+  resolveTargetAppPath,
+} from "./resolve_app_context";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -21,6 +25,12 @@ const MAX_LINE_LENGTH = 500;
 
 const grepSchema = z.object({
   query: z.string().describe("The regex pattern to search for"),
+  app_name: z
+    .string()
+    .optional()
+    .describe(
+      "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+    ),
   include_pattern: z
     .string()
     .optional()
@@ -66,6 +76,9 @@ function buildGrepAttributes(
   if (args.query) {
     attrs.push(`query="${escapeXmlAttr(args.query)}"`);
   }
+  if (args.app_name) {
+    attrs.push(`app_name="${escapeXmlAttr(args.app_name)}"`);
+  }
   if (args.include_pattern) {
     attrs.push(`include="${escapeXmlAttr(args.include_pattern)}"`);
   }
@@ -103,6 +116,7 @@ async function runRipgrep({
   includeIgnored,
   caseSensitive,
   maxMatches,
+  excludeDyadFolder,
 }: {
   appPath: string;
   query: string;
@@ -111,6 +125,7 @@ async function runRipgrep({
   includeIgnored?: boolean;
   caseSensitive?: boolean;
   maxMatches?: number;
+  excludeDyadFolder?: boolean;
 }): Promise<{ matches: RipgrepMatch[]; stoppedEarly: boolean }> {
   return new Promise((resolve, reject) => {
     const results: RipgrepMatch[] = [];
@@ -148,6 +163,10 @@ async function runRipgrep({
       ? RIPGREP_EXCLUDED_GLOBS.filter((glob) => glob === "!.git/**")
       : RIPGREP_EXCLUDED_GLOBS;
     args.push(...exclusionGlobs.flatMap((glob) => ["--glob", glob]));
+
+    if (excludeDyadFolder) {
+      args.push("--glob", DYAD_INTERNAL_RIPGREP_EXCLUDE);
+    }
 
     args.push("--", query, ".");
 
@@ -252,6 +271,9 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     if (args.include_ignored) {
       preview += " including ignored files";
     }
+    if (args.app_name) {
+      preview += ` (app: ${args.app_name})`;
+    }
     return preview;
   },
 
@@ -267,17 +289,19 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
     const includePatWasWildcard = args.include_pattern === "*";
     const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
     const { matches: allMatches, stoppedEarly } = await runRipgrep({
-      appPath: ctx.appPath,
+      appPath: targetAppPath,
       query: args.query,
       includePat: args.include_pattern,
       excludePat: args.exclude_pattern,
       includeIgnored: args.include_ignored,
       caseSensitive: args.case_sensitive,
       maxMatches: args.include_ignored ? limit + 1 : undefined,
+      excludeDyadFolder: Boolean(args.app_name),
     });
 
     const totalCount = allMatches.length;

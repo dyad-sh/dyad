@@ -9,6 +9,7 @@ import {
   stopCloudSandboxFileSync,
   unregisterRunningCloudSandbox,
 } from "./cloud_sandbox_provider";
+import { readSettings } from "../../main/settings";
 
 const logger = log.scope("process_manager");
 
@@ -244,6 +245,10 @@ export function getCurrentlySelectedAppId(): number | null {
  * and are not the currently selected app.
  */
 export async function garbageCollectIdleApps(): Promise<void> {
+  if (readSettings().previewIdleTimeoutPolicy === "never") {
+    return;
+  }
+
   const now = Date.now();
   const appsToStop: number[] = [];
 

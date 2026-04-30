@@ -155,14 +155,14 @@ async function runAddDependencyCommand(
   }
 }
 
-export async function executeAddDependency({
+export async function installPackages({
   packages,
-  message,
   appPath,
+  dev = false,
 }: {
   packages: string[];
-  message: Message;
   appPath: string;
+  dev?: boolean;
 }): Promise<ExecuteAddDependencyResult> {
   const invalidPackage = packages.find(
     (pkg) => !NPM_PACKAGE_NAME_PATTERN.test(pkg),
@@ -192,10 +192,13 @@ export async function executeAddDependency({
   }
 
   const packageManager = await detectPreferredPackageManager();
-  let { succeeded, installResults, lastError } = await runAddDependencyCommand(
-    buildAddDependencyCommand(packages, packageManager, useSocketFirewall),
-    appPath,
-  );
+  const { succeeded, installResults, lastError } =
+    await runAddDependencyCommand(
+      buildAddDependencyCommand(packages, packageManager, useSocketFirewall, {
+        dev,
+      }),
+      appPath,
+    );
 
   if (!succeeded && lastError) {
     throw new ExecuteAddDependencyError({
@@ -203,6 +206,26 @@ export async function executeAddDependency({
       warningMessages,
     });
   }
+
+  return {
+    installResults,
+    warningMessages,
+  };
+}
+
+export async function executeAddDependency({
+  packages,
+  message,
+  appPath,
+}: {
+  packages: string[];
+  message: Message;
+  appPath: string;
+}): Promise<ExecuteAddDependencyResult> {
+  const { installResults, warningMessages } = await installPackages({
+    packages,
+    appPath,
+  });
 
   // Update the message content with the installation results
   const escapedPackages = escapeXmlAttr(packages.join(" "));

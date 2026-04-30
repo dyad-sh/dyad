@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   XCircle,
   ChevronDown,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -26,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface MigrationPanelProps {
   appId: number;
@@ -37,8 +39,28 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   const { projectInfo, branches } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
+  const queryClient = useQueryClient();
+
+  const dependenciesStatus = useQuery({
+    queryKey: queryKeys.migration.dependenciesStatus({ appId }),
+    queryFn: () => ipc.migration.dependenciesStatus({ appId }),
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+  const depsInstalled = dependenciesStatus.data?.installed;
+  // Capture the install state at click time so the in-flight label doesn't
+  // flicker if the status query refetches mid-mutation.
+  const installingDepsRef = useRef(false);
+
+  const invalidateDepsStatus = () =>
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.migration.dependenciesStatus({ appId }),
+    });
+
   const pushMutation = useMutation({
     mutationFn: () => ipc.migration.push({ appId }),
+    onSuccess: invalidateDepsStatus,
+    onError: invalidateDepsStatus,
   });
 
   const productionBranch = branches.find(
@@ -110,6 +132,16 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           <span>{t("integrations.migration.backupWarning")}</span>
         </div>
 
+        {depsInstalled === false && !pushMutation.isPending && (
+          <div
+            role="note"
+            className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3"
+          >
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{t("integrations.migration.installDependenciesNote")}</span>
+          </div>
+        )}
+
         <AlertDialog>
           <AlertDialogTrigger
             disabled={pushMutation.isPending || isProductionBranchActive}
@@ -122,7 +154,9 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
             {pushMutation.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {t("integrations.migration.migrating")}
+                {installingDepsRef.current
+                  ? t("integrations.migration.installingDependencies")
+                  : t("integrations.migration.migrating")}
               </>
             ) : (
               <>
@@ -147,6 +181,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
               <AlertDialogAction
                 onClick={() => {
                   setShowErrorDetails(false);
+                  installingDepsRef.current = depsInstalled === false;
                   pushMutation.mutate();
                 }}
               >

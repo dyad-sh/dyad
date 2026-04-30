@@ -130,6 +130,41 @@ describe("buildAddDependencyCommand", () => {
       ).toEqual(expected);
     },
   );
+
+  it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
+    ["pnpm", false, { command: "pnpm", args: ["add", "-D", "nitro"] }],
+    [
+      "npm",
+      false,
+      {
+        command: "npm",
+        args: ["install", "--legacy-peer-deps", "--save-dev", "nitro"],
+      },
+    ],
+    [
+      "pnpm",
+      true,
+      {
+        command: "npx",
+        args: [
+          "--prefer-offline",
+          "--yes",
+          "sfw@2.0.4",
+          "pnpm",
+          "add",
+          "-D",
+          "nitro",
+        ],
+      },
+    ],
+  ])(
+    "installs as a devDependency for %s with sfw=%s when dev:true",
+    (manager, useSfw, expected) => {
+      expect(
+        buildAddDependencyCommand(["nitro"], manager, useSfw, { dev: true }),
+      ).toEqual(expected);
+    },
+  );
 });
 
 describe("ensureSocketFirewallInstalled", () => {

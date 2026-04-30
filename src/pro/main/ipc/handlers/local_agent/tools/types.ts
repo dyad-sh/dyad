@@ -7,6 +7,7 @@ import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 // ============================================================================
 // XML Escape Helpers
@@ -27,16 +28,11 @@ export {
 export type Todo = AgentTodo;
 
 /** Tracks which file-editing tools were used on each file path */
-export const FILE_EDIT_TOOL_NAMES = [
-  "write_file",
-  "edit_file",
-  "search_replace",
-] as const;
+export const FILE_EDIT_TOOL_NAMES = ["write_file", "search_replace"] as const;
 export type FileEditToolName = (typeof FILE_EDIT_TOOL_NAMES)[number];
 export interface FileEditTracker {
   [filePath: string]: {
     write_file: number;
-    edit_file: number;
     search_replace: number;
   };
 }
@@ -45,12 +41,20 @@ export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
   appPath: string;
+  /**
+   * Apps referenced via `@app:Name` in the current turn. Read-only tools
+   * can target these via an `app_name` parameter; write tools cannot reach them.
+   * Keyed by lowercased app name so lookups are case-insensitive (matching
+   * the mention-extraction pipeline in `mention_apps.ts`). Value is the
+   * absolute app path.
+   */
+  referencedApps: Map<string, string>;
   chatId: number;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;
   neonActiveBranchId: string | null;
-  frameworkType: "nextjs" | "vite" | "other" | null;
+  frameworkType: AppFrameworkType | null;
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;

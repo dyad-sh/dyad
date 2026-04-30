@@ -6,11 +6,12 @@ import {
   detectFrameworkType,
   detectNextJsMajorVersion,
 } from "../ipc/utils/framework_utils";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 
 interface BuildNeonPromptAdditionsParams {
   projectId: string;
   branchId?: string | null;
-  frameworkType: "nextjs" | "vite" | "other" | null;
+  frameworkType: AppFrameworkType | null;
   nextjsMajorVersion?: number | null;
   includeContext: boolean;
   isLocalAgentMode: boolean;

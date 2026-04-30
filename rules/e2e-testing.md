@@ -103,6 +103,8 @@ For app features that fetch `api.dyad.sh` directly, add a test-only env override
 
 Packaged Electron E2E runs may fail inside the Codex sandbox before any test logic executes, with Playwright reporting `electron.launch: Process failed to launch!` and the Electron process exiting with `SIGABRT`.
 
+The same sandbox issue can appear earlier as a Playwright `config.webServer` startup failure, for example `Error: listen EPERM: operation not permitted 0.0.0.0:3500` from the fake LLM server. Re-run the same E2E command outside the sandbox before treating it as a product regression.
+
 If this happens:
 
 1. Verify whether the failure reproduces on an existing known-good E2E spec.
@@ -155,6 +157,8 @@ This pattern provides a more reliable signal that the async operation has comple
 1. It confirms the operation actually started (loading state appeared)
 2. It confirms the operation finished (loading state disappeared)
 3. It avoids race conditions where the button might briefly be in the DOM but not yet updated
+
+For streamed progress indicators that may complete quickly, allow the assertion to match either the transient in-progress text or the final completed text, then assert the final state after the operation completes.
 
 ## E2E test fixtures with .dyad directories
 

@@ -276,7 +276,7 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
 vi.mock(
   "@/pro/main/ipc/handlers/local_agent/processors/file_operations",
   () => ({
-    deployAllFunctionsIfNeeded: vi.fn(async () => {}),
+    deployAllFunctionsIfNeeded: vi.fn(async () => ({ success: true })),
     commitAllChanges: vi.fn(async () => ({ commitHash: "abc123" })),
   }),
 );
@@ -304,6 +304,10 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import {
+  commitAllChanges,
+  deployAllFunctionsIfNeeded,
+} from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 
 // ============================================================================
 // Tests
@@ -467,6 +471,176 @@ describe("handleLocalAgentStream", () => {
         error: expect.stringContaining("Simulated tool failure"),
         warningMessages: [warningMessage],
       });
+    });
+
+    it("persists successful shared-module Supabase deploy status into aiMessagesJson", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockImplementationOnce(
+        async (ctx) => {
+          ctx.onXmlComplete(
+            '<dyad-status title="Supabase functions deployed: 2/2 complete" state="finished">\n2 succeeded\n0 failed\n</dyad-status>',
+          );
+          return { success: true };
+        },
+      );
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain("<dyad-status");
+      expect(finalContent).toContain(
+        'title="Supabase functions deployed: 2/2 complete"',
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain("<dyad-status");
+      expect(persistedAiMessages).toContain(
+        'title=\\"Supabase functions deployed: 2/2 complete\\"',
+      );
+    });
+
+    it("appends shared-module Supabase deploy warnings as dyad-output", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockResolvedValueOnce({
+        success: true,
+        warning:
+          "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain('<dyad-output type="warning"');
+      expect(finalContent).toContain(
+        'message="Supabase function deploy warning"',
+      );
+      expect(finalContent).toContain(
+        "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+
+      // Persist deploy XML into aiMessagesJson so future agent turns can see it.
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain('<dyad-output type=\\"warning\\"');
+      expect(persistedAiMessages).toContain(
+        'message=\\"Supabase function deploy warning\\"',
+      );
+    });
+
+    it("appends shared-module Supabase deploy failures as dyad-output and still commits", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockResolvedValueOnce({
+        success: false,
+        error:
+          "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(0);
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain('<dyad-output type="error"');
+      expect(finalContent).toContain(
+        'message="Failed to deploy Supabase functions"',
+      );
+      expect(finalContent).toContain(
+        "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+
+      // Persist deploy XML into aiMessagesJson so future agent turns can see it.
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain('<dyad-output type=\\"error\\"');
+      expect(persistedAiMessages).toContain(
+        'message=\\"Failed to deploy Supabase functions\\"',
+      );
     });
   });
 

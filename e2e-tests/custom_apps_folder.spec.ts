@@ -1,8 +1,19 @@
 import fs from "fs";
 import path from "path";
 import { expect } from "@playwright/test";
-import { test, Timeout } from "./helpers/test_helper";
+import { PageObject, test, Timeout } from "./helpers/test_helper";
 import * as eph from "electron-playwright-helpers";
+
+async function expectCustomAppsFolderSetting(
+  po: PageObject,
+  expectedPath: string | null,
+) {
+  await expect
+    .poll(() => po.settings.recordSettings().customAppsFolder ?? null, {
+      timeout: Timeout.LONG,
+    })
+    .toBe(expectedPath);
+}
 
 test("new apps are stored in the user's custom folder", async ({ po }) => {
   await po.setUp({ autoApprove: true });
@@ -22,6 +33,7 @@ test("new apps are stored in the user's custom folder", async ({ po }) => {
     filePaths: [newBasePath],
   });
   await browseButton.click();
+  await expectCustomAppsFolderSetting(po, newBasePath);
 
   // Create new app after customizing directory path
   await po.navigation.goToAppsTab();
@@ -54,6 +66,7 @@ test("store apps in default folder after resetting path", async ({ po }) => {
     filePaths: [newBasePath],
   });
   await browseButton.click();
+  await expectCustomAppsFolderSetting(po, newBasePath);
 
   // Immediately reset directory path to default
   const resetButton = po.page.getByRole("button", {
@@ -62,6 +75,7 @@ test("store apps in default folder after resetting path", async ({ po }) => {
 
   await expect(resetButton).toBeVisible();
   await resetButton.click();
+  await expectCustomAppsFolderSetting(po, null);
 
   // Create an app under the default path
   await po.navigation.goToAppsTab();
@@ -94,6 +108,7 @@ test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
     filePaths: [newBasePath],
   });
   await browseButton.click();
+  await expectCustomAppsFolderSetting(po, newBasePath);
 
   // Create an app under the custom path
   await po.navigation.goToAppsTab();
@@ -108,6 +123,7 @@ test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
     name: /Reset to Default/i,
   });
   await resetButton.click();
+  await expectCustomAppsFolderSetting(po, null);
 
   await po.navigation.goToAppsTab();
   await po.appManagement.clickAppListItem({ appName: appName! });

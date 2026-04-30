@@ -577,6 +577,7 @@
       "failedSetBranch": "Falha ao mudar de branch: {{error}}",
       "failedUpdateEmailVerification": "Falha ao atualizar verificação de e-mail: {{error}}",
       "nextjsOnly": "A integração com Neon está disponível apenas para projetos Next.js.",
+      "unsupportedFramework": "A integração com Neon está disponível para projetos Next.js e Vite.",
       "noProjectsFound": "Nenhum projeto encontrado. Crie um novo projeto para começar.",
       "noBranchesFound": "Ainda não foram encontradas branches para este projeto Neon.",
       "preview": "Pré-visualização",

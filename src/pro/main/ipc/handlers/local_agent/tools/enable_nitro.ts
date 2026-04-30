@@ -1,42 +1,8 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
-import log from "electron-log";
 
 import { ToolDefinition, AgentContext } from "./types";
-import {
-  installPackages,
-  ExecuteAddDependencyError,
-} from "@/ipc/processors/executeAddDependency";
-import { appendNitroRules, restoreAiRules } from "@/ipc/utils/ai_rules_patcher";
-import {
-  addNitroToViteConfig,
-  restoreViteConfig,
-  ViteConfigBackup,
-} from "@/ipc/utils/vite_config_patcher";
-
-const logger = log.scope("enable_nitro");
-
-const NITRO_CONFIG_CONTENTS = `import { defineConfig } from "nitro";
-
-export default defineConfig({
-  serverDir: "./server",
-});
-`;
-
-async function writeNitroConfigIfMissing(
-  appPath: string,
-): Promise<{ filePath: string; wasCreated: boolean }> {
-  const filePath = path.join(appPath, "nitro.config.ts");
-  try {
-    await fs.access(filePath);
-    return { filePath, wasCreated: false };
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
-  await fs.writeFile(filePath, NITRO_CONFIG_CONTENTS, "utf8");
-  return { filePath, wasCreated: true };
-}
+import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import { ensureNitroOnViteApp } from "@/ipc/utils/nitro_setup";
 
 const enableNitroSchema = z.object({
   reason: z
@@ -81,57 +47,13 @@ export const enableNitroTool: ToolDefinition<
       return "Nitro is already enabled for this app. Skipping setup.";
     }
 
-    const rulesBackup = await appendNitroRules(ctx.appPath);
-    let nitroConfigResult: { filePath: string; wasCreated: boolean } | null =
-      null;
-    let serverDirCreated = false;
-    let viteConfigBackup: ViteConfigBackup | null = null;
-    const serverDirPath = path.join(ctx.appPath, "server");
-
     try {
-      nitroConfigResult = await writeNitroConfigIfMissing(ctx.appPath);
-
-      try {
-        await fs.access(serverDirPath);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-        serverDirCreated = true;
-      }
-      await fs.mkdir(path.join(serverDirPath, "routes", "api"), {
-        recursive: true,
-      });
-      await fs.writeFile(
-        path.join(serverDirPath, "routes", "api", ".gitkeep"),
-        "",
-        "utf8",
-      );
-
-      viteConfigBackup = await addNitroToViteConfig(ctx.appPath);
-
-      const result = await installPackages({
-        packages: ["nitro"],
-        appPath: ctx.appPath,
-      });
+      const result = await ensureNitroOnViteApp(ctx.appPath);
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }
-
       ctx.frameworkType = "vite-nitro";
     } catch (error) {
-      try {
-        await restoreAiRules(ctx.appPath, rulesBackup.backup);
-        if (nitroConfigResult?.wasCreated) {
-          await fs.rm(nitroConfigResult.filePath, { force: true });
-        }
-        if (serverDirCreated) {
-          await fs.rm(serverDirPath, { recursive: true, force: true });
-        }
-        if (viteConfigBackup) {
-          await restoreViteConfig(viteConfigBackup);
-        }
-      } catch (rollbackError) {
-        logger.error("Rollback failed during enable_nitro:", rollbackError);
-      }
       if (error instanceof ExecuteAddDependencyError) {
         for (const warningMessage of error.warningMessages) {
           ctx.onWarningMessage?.(warningMessage);

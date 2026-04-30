@@ -19,6 +19,8 @@ Email verification is **enabled** on this Neon Auth branch. When users sign up, 
 
 **The sign-up page MUST be a custom form — do NOT use `AuthView` for sign-up.** `AuthView` does not provide a post-sign-up callback, so it is impossible to redirect to the verification page. Build a custom sign-up form that calls `authClient.signUp.email()` directly, checks `emailVerified`, and redirects.
 
+<nextjs-only>
+
 <code-template label="custom-signup-page" file="app/auth/sign-up/page.tsx" language="tsx">
 'use client';
 
@@ -169,6 +171,165 @@ Resend verification code
 );
 }
 </code-template>
+
+</nextjs-only>
+
+<vite-nitro-only>
+
+### Vite + Nitro: Custom Sign-Up + OTP Verification
+
+In a Vite + React Router project, the sign-up and verify-email pages live under `src/pages/auth/` and use `useNavigate` / `useSearchParams` from `react-router-dom`. Both pages call `authClient` from `@/lib/auth-client` (same client used everywhere — talks to the Nitro proxy at `/api/auth/*`).
+
+<critical-rules>
+- **must-not-use-nextjs-routing**: Do NOT use `next/navigation`, `'use client'`, `app/auth/...`, or Next.js Server Components in a Vite + Nitro project. Use `react-router-dom` and `src/pages/auth/...`.
+- **must-register-public-routes**: The sign-up and verify-email routes MUST be reachable WITHOUT auth. The auth-middleware's public-prefix list (covering `/auth/*`) already handles this — don't tighten it.
+</critical-rules>
+
+<code-template label="custom-signup-page" file="src/pages/auth/SignUpPage.tsx" language="tsx">
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { authClient } from '@/lib/auth-client';
+
+export default function SignUpPage() {
+const [name, setName] = useState('');
+const [email, setEmail] = useState('');
+const [password, setPassword] = useState('');
+const [error, setError] = useState('');
+const [isLoading, setIsLoading] = useState(false);
+const navigate = useNavigate();
+
+const handleSignUp = async (e: React.FormEvent) => {
+e.preventDefault();
+setIsLoading(true);
+setError('');
+
+    try {
+      const { data, error } = await authClient.signUp.email({ email, password, name });
+
+      if (error) {
+        setError(error.message ?? 'Sign-up failed.');
+        return;
+      }
+
+      if (data?.user && !data.user.emailVerified) {
+        // MUST redirect to verification page
+        navigate(`/auth/verify-email?email=${encodeURIComponent(email)}`);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'An unexpected error occurred.');
+    } finally {
+      setIsLoading(false);
+    }
+
+};
+
+return (
+
+<div>
+<h1>Create an account</h1>
+<form onSubmit={handleSignUp}>
+<input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
+<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required />
+<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required />
+{error && <p>{error}</p>}
+<button type="submit" disabled={isLoading}>
+{isLoading ? 'Signing up...' : 'Sign Up'}
+</button>
+</form>
+<p>Already have an account? <a href="/auth/sign-in">Sign in</a></p>
+</div>
+);
+}
+</code-template>
+
+<code-template label="verify-email-page" file="src/pages/auth/VerifyEmailPage.tsx" language="tsx">
+import { useState } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { authClient } from '@/lib/auth-client';
+
+export default function VerifyEmailPage() {
+const [otp, setOtp] = useState('');
+const [message, setMessage] = useState('');
+const [isVerifying, setIsVerifying] = useState(false);
+const navigate = useNavigate();
+const location = useLocation();
+const [searchParams] = useSearchParams();
+const email = searchParams.get('email') ?? '';
+
+const handleVerify = async (e: React.FormEvent) => {
+e.preventDefault();
+setIsVerifying(true);
+setMessage('');
+
+    try {
+      const { data, error } = await authClient.emailOtp.verifyEmail({ email, otp });
+      if (error) throw error;
+
+      if (data?.session) {
+        navigate('/dashboard');
+      } else {
+        setMessage('Email verified! You can now sign in.');
+        navigate('/auth/sign-in');
+      }
+    } catch (err: any) {
+      setMessage(err?.message || 'Invalid or expired verification code.');
+    } finally {
+      setIsVerifying(false);
+    }
+
+};
+
+const handleResend = async () => {
+try {
+const { error } = await authClient.sendVerificationEmail({
+email,
+callbackURL: `${location.pathname}?email=${encodeURIComponent(email)}`,
+});
+if (error) throw error;
+setMessage('Verification email resent! Check your inbox.');
+} catch (err: any) {
+setMessage(err?.message || 'Failed to resend verification email.');
+}
+};
+
+return (
+
+<div>
+<h1>Verify your email</h1>
+<p>Enter the verification code sent to {email}</p>
+<form onSubmit={handleVerify}>
+<input
+type="text"
+value={otp}
+onChange={(e) => setOtp(e.target.value)}
+placeholder="Enter verification code"
+required
+/>
+{message && <p>{message}</p>}
+<button type="submit" disabled={isVerifying}>
+{isVerifying ? 'Verifying...' : 'Verify Email'}
+</button>
+</form>
+<button onClick={handleResend}>Resend verification code</button>
+<p>Verification codes expire after 15 minutes.</p>
+</div>
+);
+}
+</code-template>
+
+Register the routes in React Router (both must be reachable without auth):
+
+<code-template label="signup-verify-routes" file="src/App.tsx" language="tsx">
+import { Routes, Route } from 'react-router-dom';
+import SignUpPage from '@/pages/auth/SignUpPage';
+import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
+
+// Inside <Routes>:
+<Route path="/auth/sign-up" element={<SignUpPage />} />
+<Route path="/auth/verify-email" element={<VerifyEmailPage />} />
+</code-template>
+
+</vite-nitro-only>
 
 ### Key APIs
 

@@ -31,6 +31,9 @@ import {
   assertNoSupabaseProject,
   assertNoNeonProject,
 } from "../utils/neon_utils";
+import { detectFrameworkType } from "../utils/framework_utils";
+import { ensureNitroOnViteApp } from "../utils/nitro_setup";
+import { getDyadAppPath } from "@/paths/paths";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
@@ -78,6 +81,14 @@ export function registerNeonHandlers() {
       );
     }
     const appPath = appRecord[0].path;
+    const resolvedAppPath = getDyadAppPath(appPath);
+
+    // Vite apps need a Nitro server layer to safely host server-only Neon code
+    // (DATABASE_URL, neon client, auth secrets). Add it before any Neon API
+    // calls so a Nitro failure won't orphan a Neon project.
+    if (detectFrameworkType(resolvedAppPath) === "vite") {
+      await ensureNitroOnViteApp(resolvedAppPath);
+    }
 
     try {
       // Get the organization ID
@@ -455,6 +466,14 @@ export function registerNeonHandlers() {
       );
     }
     const appPath = appRecord[0].path;
+    const resolvedAppPath = getDyadAppPath(appPath);
+
+    // Vite apps need a Nitro server layer to safely host server-only Neon code.
+    // Run this before linking so a Nitro failure leaves the app unlinked.
+    if (detectFrameworkType(resolvedAppPath) === "vite") {
+      await ensureNitroOnViteApp(resolvedAppPath);
+    }
+
     const envFileSnapshot = await readEnvFileIfExists({ appPath });
 
     try {

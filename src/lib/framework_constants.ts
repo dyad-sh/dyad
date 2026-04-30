@@ -27,3 +27,35 @@ export function isNextJsProject({
   if (!files) return false;
   return files.some((file) => NEXTJS_CONFIG_FILES.includes(file));
 }
+
+export const VITE_CONFIG_FILES = [
+  "vite.config.js",
+  "vite.config.ts",
+  "vite.config.mjs",
+];
+
+/**
+ * Whether Neon can be connected to this app. Neon supports Next.js and Vite
+ * apps (Vite apps automatically get a Nitro server layer added on connect).
+ */
+export function isNeonSupportedFramework({
+  files,
+  frameworkType,
+}: {
+  files?: string[];
+  frameworkType?: AppFrameworkType | null;
+}): boolean {
+  if (frameworkType) {
+    return (
+      frameworkType === "nextjs" ||
+      frameworkType === "vite" ||
+      frameworkType === "vite-nitro"
+    );
+  }
+
+  if (!files) return false;
+  return files.some(
+    (file) =>
+      NEXTJS_CONFIG_FILES.includes(file) || VITE_CONFIG_FILES.includes(file),
+  );
+}

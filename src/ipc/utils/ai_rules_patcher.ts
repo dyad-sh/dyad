@@ -16,15 +16,43 @@ This project has a Nitro server layer for backend API routes. A \`nitro.config.t
 
 ### API Route Conventions
 
-- Write routes in \`server/routes/api/\` (NEVER top-level \`/api/\`)
-- Use \`defineHandler\` from \`"nitro"\` for handlers
-- Dynamic routes: \`[param].ts\`
-- Method-specific: \`hello.get.ts\`, \`hello.post.ts\`
-- Runtime config: \`useRuntimeConfig()\` (env vars prefixed with \`NITRO_\`)
+- Write routes in \`server/routes/api/\` (NEVER top-level \`/api/\`).
+- Dynamic routes: \`[param].ts\`. Method-specific: \`hello.get.ts\`, \`hello.post.ts\`.
+- Runtime config: \`useRuntimeConfig()\` (env vars prefixed with \`NITRO_\`).
 
-### Security Rules
+### Imports — read carefully
 
-NEVER import server-side code (database clients, secrets, env vars) in client-side React components. Server code lives in \`server/\` only.
+Imports come from two different sources:
+
+- \`defineHandler\` is imported from **\`"nitro"\`**.
+- **Every other request/response helper comes from \`"nitro/h3"\`** — Nitro v3 re-exports h3 utilities through that subpath. Common ones: \`readBody\`, \`readValidatedBody\`, \`getQuery\`, \`getRouterParam\`, \`getRouterParams\`, \`createError\`, \`sendError\`, \`setResponseStatus\`, \`getRequestHeaders\`, \`getRequestURL\`, \`setCookie\`, \`getCookie\`, \`deleteCookie\`, \`useRuntimeConfig\`.
+
+Worked example — \`server/routes/api/todos.post.ts\`:
+
+\`\`\`ts
+import { defineHandler } from "nitro";
+import { readBody, createError } from "nitro/h3";
+
+export default defineHandler(async (event) => {
+  const body = await readBody<{ title?: string }>(event);
+  if (!body?.title) {
+    throw createError({ statusCode: 400, statusMessage: "title is required" });
+  }
+  return { ok: true, title: body.title };
+});
+\`\`\`
+
+### Server-side packages
+
+Any package used inside \`server/\` (database drivers like \`@neondatabase/serverless\`, auth SDKs, third-party API clients) must be in \`package.json\`. Add it before writing the first server file that imports it. NEVER import these from \`src/\` — code under \`src/\` ships to the browser, so importing server packages there leaks them and usually breaks the build.
+
+### Common mistakes
+
+- \`import { readBody } from "nitro"\` → wrong. h3 utilities are not exported from \`"nitro"\`. Use \`"nitro/h3"\`.
+- \`import { readBody } from "h3"\` → wrong. Even though Nitro is built on h3, you import through \`"nitro/h3"\` (the version Nitro re-exports), not \`"h3"\` directly.
+- \`nitro()\` placed before \`react()\` in \`plugins\` → wrong. Must be the LAST entry, otherwise the SPA fallback intercepts Vite internals.
+- Omitting \`nitro()\` from \`vite.config.ts\` entirely → \`/api/*\` returns \`index.html\` instead of JSON.
+- Importing server-only packages or referencing server-only env vars (\`process.env.DATABASE_URL\`, secrets) from \`src/\` → wrong. The Vite client bundle is public; this leaks them. Server code lives in \`server/\` only.
 
 ${NITRO_RULES_END}`;
 

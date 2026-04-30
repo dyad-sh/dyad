@@ -590,6 +590,7 @@
       "emailVerificationDisabled": "Email verification disabled",
       "failedUpdateEmailVerification": "Failed to update email verification: {{error}}",
       "nextjsOnly": "Neon integration is currently available for Next.js projects.",
+      "unsupportedFramework": "Neon integration is currently available for Next.js and Vite projects.",
       "disconnectConfirmation": "Are you sure you want to disconnect this Neon project? This may break your app's database connection.",
       "errorLoadingBranches": "Failed to load branches: {{message}}",
       "noBranchesFound": "No branches were found for this Neon project yet.",

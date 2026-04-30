@@ -75,6 +75,29 @@ describe("buildNeonPromptAdditions", () => {
     expect(additions).not.toContain(addAuthenticationGuide);
   });
 
+  it("emits Vite + Nitro instructions when frameworkType is vite-nitro", async () => {
+    getCachedEmailPasswordConfig.mockResolvedValue({
+      require_email_verification: false,
+    });
+    getNeonContext.mockResolvedValue("# Neon Project Info");
+
+    const { buildNeonPromptAdditions } = await import("./neon_prompt_context");
+
+    const additions = await buildNeonPromptAdditions({
+      projectId: "project-123",
+      branchId: "branch-123",
+      frameworkType: "vite-nitro",
+      includeContext: true,
+      isLocalAgentMode: false,
+    });
+
+    expect(additions).toContain("<vite-nitro-instructions>");
+    expect(additions).toContain("server/routes/api/");
+    expect(additions).toContain("server/utils/db.ts");
+    expect(additions).toContain("NEON_AUTH_BASE_URL");
+    expect(additions).not.toContain("<nextjs-instructions>");
+  });
+
   it("skips branch-specific fetches when no branch is available", async () => {
     const { buildNeonPromptAdditions } = await import("./neon_prompt_context");
 

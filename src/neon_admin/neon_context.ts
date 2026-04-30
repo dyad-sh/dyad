@@ -463,7 +463,21 @@ export const sql = neon(process.env.DATABASE_URL!);
 // Prefer sql\`...\` tagged queries or Drizzle over string-built SQL.`;
   }
 
-  // Fallback for "vite", "other", or null
+  if (frameworkType === "vite-nitro") {
+    return `// Neon Database Client (server-side only)
+// File: server/utils/db.ts
+// Nitro auto-imports utilities from server/utils/, so handlers can call sql\`...\`
+// directly without importing.
+import { neon } from '@neondatabase/serverless';
+
+export const sql = neon(process.env.DATABASE_URL!);
+
+// IMPORTANT: Only use this from server/ (Nitro routes, middleware, utils).
+// NEVER import @neondatabase/serverless from src/ — that bundle ships to the browser.
+// Prefer sql\`...\` tagged queries or Drizzle over string-built SQL.`;
+  }
+
+  // Fallback for "vite" (without Nitro yet), "other", or null
   return `// Neon Database Connection
 import { neon } from '@neondatabase/serverless';
 

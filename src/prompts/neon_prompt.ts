@@ -33,6 +33,14 @@ export function getNeonAvailableSystemPrompt(
     );
   }
 
+  if (frameworkType === "vite-nitro") {
+    return (
+      sharedPrompt +
+      getViteNitroNeonPrompt() +
+      (emailVerification ? getEmailVerificationNote(isLocalAgentMode) : "")
+    );
+  }
+
   return sharedPrompt + getGenericNeonPrompt();
 }
 
@@ -217,6 +225,134 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here
 </code-template>
 
 </nextjs-instructions>
+`;
+}
+
+function getViteNitroNeonPrompt(): string {
+  return `
+<vite-nitro-instructions>
+
+## Vite + Nitro + Neon Integration
+
+This project is a Vite app with a Nitro server layer. Nitro mechanics (plugin
+order, route file conventions, \`defineHandler\` usage, the "no server imports
+in client code" rule) are documented in \`AI_RULES.md\` — follow them. The
+guidance below is the Neon-specific layer on top.
+
+<critical-rules>
+Vite-Nitro-specific rules that supplement the global critical rules:
+
+- **no-dburl-in-src**: NEVER reference \`process.env.DATABASE_URL\` or
+  \`NEON_AUTH_BASE_URL\` from any file under \`src/\`. The Vite client bundle is
+  public — leaking these gives anyone full database access or lets them
+  bypass the proxy and call Neon Auth directly.
+- **no-neon-import-in-src**: NEVER import \`@neondatabase/serverless\` or
+  \`@neondatabase/auth\` from \`src/\`. Those packages belong in \`server/\`.
+- **no-vite-prefix-on-secrets**: NEVER expose Neon vars as \`VITE_*\` — that
+  inlines them into the client bundle.
+</critical-rules>
+
+### Decision Tree
+
+Follow this strictly, in order:
+
+<decision-tree>
+1. Inspect the project for an existing \`server/utils/db.ts\` (or equivalent),
+   auth modules under \`server/\`, and an existing auth middleware in
+   \`server/middleware/\`.
+2. Reuse those modules and conventions if they exist. Do NOT create duplicate
+   database clients, auth clients, or middleware files.
+3. **If** user only needs server-side database access → use the DB-only path.
+4. **If** user needs auth APIs or sessions → follow the Auth guide above
+   (Vite + Nitro section), then wire it through the Vite-Nitro Auth path
+   below. The guide has full code for \`server/utils/auth.ts\`,
+   \`server/routes/api/auth/[...all].ts\`, \`server/middleware/auth.ts\`, and
+   \`src/lib/auth-client.ts\`.
+5. **If** user wants prebuilt auth or account pages → follow the Auth guide
+   above (Vite + Nitro section). Wrap the app with \`NeonAuthUIProvider\`,
+   register a \`/auth/:path\` React Router route that renders \`<AuthView>\`,
+   and rely on the catch-all Nitro proxy for \`/api/auth/*\`.
+6. **If** user wants password reset or forgot-password → follow the Password
+   Reset guide (Vite + Nitro section). The same \`[...all]\` proxy handles
+   reset traffic; UI lives in \`src/pages/auth/\`.
+</decision-tree>
+
+### DATABASE_URL Allowed Locations
+
+\`DATABASE_URL\` MUST stay exclusively in \`server/**\` and \`.env.local\` — never
+in \`src/\`. Nitro reads \`.env.local\` automatically and exposes it via
+\`process.env\` inside any \`server/\` file.
+
+### Path: DB-Only (No Auth)
+
+Use when the request is about database access without auth UI.
+
+- Reuse the server-side Neon client at \`server/utils/db.ts\` when no
+  equivalent already exists. (Nitro auto-imports utilities from
+  \`server/utils/\`, so handlers can call \`sql\` directly.)
+- See \`AI_RULES.md\` for route file conventions and \`defineHandler\` usage.
+
+<code-template label="db-only-route-handler" file="server/routes/api/todos.get.ts" language="typescript">
+// sql is auto-imported from server/utils/db.ts
+export default defineHandler(async () => {
+  return sql\`SELECT * FROM todos ORDER BY created_at DESC\`;
+});
+</code-template>
+
+### Vite-Nitro Auth Path
+
+Neon Auth's REST surface lives at \`process.env.NEON_AUTH_BASE_URL\` (server-only).
+\`@neondatabase/auth/next/server\` does NOT work outside Next.js — it eagerly
+imports \`next/headers\` and crashes Nitro at boot. The integration is therefore
+a hand-rolled reverse proxy. The full code lives in the Auth guide; this is
+the summary you must keep in mind:
+
+- Call Neon Auth ONLY from \`server/\` code. Never from React.
+- Mount a SINGLE catch-all proxy at \`server/routes/api/auth/[...all].ts\` that
+  forwards every request to \`\${process.env.NEON_AUTH_BASE_URL}/<path>\`. Do NOT
+  hand-write per-endpoint files (\`sign-in.post.ts\`, \`session.get.ts\`, etc.) —
+  Better Auth dispatches internally based on the \`[...all]\` segment. Do NOT
+  import \`createNeonAuth\`, \`auth.handler()\`, or anything from
+  \`@neondatabase/auth/next/*\` here.
+- The proxy MUST rewrite \`__Secure-\` / \`__Host-\` cookies for HTTP dev (rename
+  on the way down, restore on the way up, strip \`Secure\`/\`Partitioned\`/\`Domain\`,
+  rewrite \`SameSite=None\` to \`SameSite=Lax\`). Without this, sign-in is
+  silently broken in every HTTP preview because the browser drops the cookie.
+- The React app talks to the proxy via an absolute same-origin URL — Better
+  Auth's URL validator rejects bare paths. Build the base URL as
+  \`window.location.origin + "/api/auth"\` (with a server-side fallback like
+  \`"http://localhost/api/auth"\`) and pass it to \`createAuthClient\` along with
+  \`{ adapter: BetterAuthReactAdapter() }\`. Import \`createAuthClient\` from
+  \`@neondatabase/auth\` and \`BetterAuthReactAdapter\` from
+  \`@neondatabase/auth/react/adapters\` (NOT from \`@neondatabase/auth\` — it
+  isn't re-exported there). Never pass \`import.meta.env.VITE_NEON_AUTH_URL\` —
+  that exposes the auth URL to the browser bundle.
+- Place the request boundary in \`server/middleware/auth.ts\`. Read the session
+  by fetching \`\${process.env.NEON_AUTH_BASE_URL}/get-session\` directly with the
+  user's \`Cookie\` header (after restoring renamed cookies). There is no
+  \`auth\` instance to call — \`createNeonAuth\` would crash on import.
+- Wire React Router into \`NeonAuthUIProvider\` (\`navigate\`, \`replace\`, \`Link\`)
+  AND pass \`redirectTo="/"\` (or your home route) on \`<AuthView>\`. Without
+  this, sign-in/sign-up triggers a full reload that races the session cookie
+  and strands the user on the auth page.
+- \`NEON_AUTH_COOKIE_SECRET\` is NOT used in this path. It only matters for the
+  Next.js \`createNeonAuth\` integration's optional \`session_data\` cache cookie.
+  Don't reference it.
+- See the Auth guide for full code (\`server/routes/api/auth/[...all].ts\`,
+  \`server/utils/session.ts\`, \`server/middleware/auth.ts\`,
+  \`src/lib/auth-client.ts\`, React Router wiring, cookie-rewrite proxy).
+
+### Environment Variables (\`.env.local\`)
+
+<code-template label="env-vars" file=".env.local" language="bash">
+# Neon Database (injected by Dyad)
+DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
+
+# Neon Auth (managed by Neon, value from Neon Console > Auth settings) — server-only
+NEON_AUTH_BASE_URL=https://ep-xxx.neonauth.us-east-1.aws.neon.tech/neondb/auth
+</code-template>
+
+</vite-nitro-instructions>
 `;
 }
 

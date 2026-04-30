@@ -37,7 +37,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { isNextJsProject } from "@/lib/framework_constants";
+import { isNeonSupportedFramework } from "@/lib/framework_constants";
 import { getErrorMessage } from "@/lib/errors";
 import {
   AlertDialog,
@@ -333,7 +333,8 @@ export function NeonConnector({ appId }: { appId: number }) {
     }
   };
 
-  // Neon is only available for Next.js projects
+  // Neon is available for Next.js and Vite projects (Vite apps automatically
+  // get a Nitro server layer added on connect).
   if (isLoadingApp) {
     return (
       <Card className="mt-1">
@@ -348,7 +349,7 @@ export function NeonConnector({ appId }: { appId: number }) {
     );
   }
   if (
-    !isNextJsProject({
+    !isNeonSupportedFramework({
       files: app?.files,
       frameworkType: app?.frameworkType ?? null,
     })
@@ -357,7 +358,9 @@ export function NeonConnector({ appId }: { appId: number }) {
       <Card className="mt-1">
         <CardHeader>
           <CardTitle>{t("integrations.neon.database")}</CardTitle>
-          <CardDescription>{t("integrations.neon.nextjsOnly")}</CardDescription>
+          <CardDescription>
+            {t("integrations.neon.unsupportedFramework")}
+          </CardDescription>
         </CardHeader>
       </Card>
     );

@@ -578,6 +578,7 @@
       "failedSetBranch": "切换分支失败：{{error}}",
       "failedUpdateEmailVerification": "更新邮箱验证失败：{{error}}",
       "nextjsOnly": "Neon 集成目前仅适用于 Next.js 项目。",
+      "unsupportedFramework": "Neon 集成目前适用于 Next.js 和 Vite 项目。",
       "noProjectsFound": "未找到项目。创建一个新项目以开始使用。",
       "noBranchesFound": "这个 Neon 项目暂时还没有可用分支。",
       "preview": "预览",

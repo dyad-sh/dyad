@@ -37,6 +37,46 @@ describe("ai_rules_patcher", () => {
     expect(contents).toContain(NITRO_RULES_END);
   });
 
+  it("documents nitro/h3 as the import source for h3 utilities", async () => {
+    await appendNitroRules(appPath);
+    const contents = await readFile();
+
+    expect(contents).toContain('"nitro/h3"');
+    expect(contents).toContain("readBody");
+    expect(contents).toContain("getRouterParam");
+    expect(contents).toContain("createError");
+    expect(contents).toMatch(/defineHandler[\s\S]*?"nitro"/);
+  });
+
+  it("includes a worked POST example using both nitro and nitro/h3", async () => {
+    await appendNitroRules(appPath);
+    const contents = await readFile();
+
+    expect(contents).toContain('import { defineHandler } from "nitro"');
+    expect(contents).toContain('from "nitro/h3"');
+    expect(contents).toContain("todos.post.ts");
+  });
+
+  it("warns about installing server-side packages like @neondatabase/serverless", async () => {
+    await appendNitroRules(appPath);
+    const contents = await readFile();
+
+    expect(contents).toContain("Server-side packages");
+    expect(contents).toContain("@neondatabase/serverless");
+    expect(contents).toContain("package.json");
+  });
+
+  it("lists the common mistakes the agent has been making", async () => {
+    await appendNitroRules(appPath);
+    const contents = await readFile();
+
+    expect(contents).toContain("Common mistakes");
+    expect(contents).toContain('readBody } from "nitro"');
+    expect(contents).toContain('readBody } from "h3"');
+    expect(contents).toMatch(/nitro\(\).*before.*react\(\)/i);
+    expect(contents).toMatch(/Omitting `nitro\(\)` from `vite\.config\.ts`/);
+  });
+
   it("preserves existing content above the Nitro markers", async () => {
     const original = "# My Project Rules\n\nUse TypeScript.\n";
     await fs.writeFile(path.join(appPath, "AI_RULES.md"), original, "utf8");

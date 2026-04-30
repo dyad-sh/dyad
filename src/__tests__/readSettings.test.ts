@@ -10,6 +10,7 @@ import {
   writeSettings,
   encrypt,
   decrypt,
+  notifyRendererErrorToastListenerReady,
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
@@ -17,6 +18,12 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
 
 const mockSend = vi.fn();
+const mockWebContents = {
+  send: mockSend,
+} as unknown as Parameters<typeof notifyRendererErrorToastListenerReady>[0];
+const mockWindow = {
+  webContents: mockWebContents,
+};
 
 // Mock dependencies
 vi.mock("node:fs");
@@ -26,13 +33,8 @@ vi.mock("electron", () => ({
     on: vi.fn(),
   },
   BrowserWindow: {
-    getAllWindows: vi.fn(() => [
-      {
-        webContents: {
-          send: mockSend,
-        },
-      },
-    ]),
+    fromWebContents: vi.fn(() => mockWindow),
+    getAllWindows: vi.fn(() => [mockWindow]),
   },
   safeStorage: {
     isEncryptionAvailable: vi.fn(),
@@ -634,6 +636,7 @@ describe("writeSettings", () => {
   });
 
   it("falls back to defaults and shows a restore-docs toast when the existing settings file cannot be read", () => {
+    notifyRendererErrorToastListenerReady(mockWebContents);
     mockFs.existsSync.mockReturnValue(true);
     mockFs.readFileSync.mockReturnValue("invalid json");
 
@@ -657,7 +660,9 @@ describe("writeSettings", () => {
     );
     expect(mockFs.copyFileSync).toHaveBeenCalledWith(
       mockSettingsPath,
-      `${mockSettingsPath}.bak`,
+      expect.stringMatching(
+        /^\/mock\/user\/data\/user-settings\.json\.recovery-\d+\.bak$/,
+      ),
     );
     expect(mockFs.renameSync).toHaveBeenCalled();
   });

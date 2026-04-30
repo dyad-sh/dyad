@@ -184,6 +184,7 @@ function App() {
           : undefined,
       });
     });
+    void ipc.misc.rendererErrorToastReady(undefined);
     return () => unsubscribe();
   }, []);
 

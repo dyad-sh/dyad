@@ -77,7 +77,7 @@ export const showError = (
         action={options?.action}
       />
     ),
-    { duration: 8_000 },
+    { duration: options?.action ? Infinity : 8_000 },
   );
 
   return toastId;

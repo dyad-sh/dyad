@@ -10,9 +10,9 @@ import {
   migrateStoredSettings,
 } from "../lib/schemas";
 import {
-  app,
   BrowserWindow,
   safeStorage,
+  type WebContents,
   type BrowserWindow as BrowserWindowInstance,
 } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -68,13 +68,7 @@ interface RendererErrorToast {
 }
 
 const pendingRendererErrors: RendererErrorToast[] = [];
-
-app?.on?.("browser-window-created", (_event, window) => {
-  window.webContents.once("did-finish-load", () => {
-    // Give React a moment to mount the renderer-side event subscription.
-    setTimeout(() => flushPendingRendererErrors([window]), 1_000);
-  });
-});
+const rendererErrorToastReadyWebContents = new WeakSet<WebContents>();
 
 export function getSettingsFilePath(): string {
   return path.join(getUserDataPath(), SETTINGS_FILE);
@@ -118,8 +112,8 @@ export async function readEffectiveSettings(): Promise<UserSettings> {
 export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();
-    const currentSettings = readSettingsForWrite(filePath);
-    const newSettings = { ...currentSettings, ...settings };
+    const settingsForWrite = readSettingsForWrite(filePath);
+    const newSettings = { ...settingsForWrite.settings, ...settings };
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -184,6 +178,9 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     writeSettingsFileAtomically(
       filePath,
       JSON.stringify(validatedSettings, null, 2),
+      {
+        preserveUnreadableBackup: settingsForWrite.wasUnreadable,
+      },
     );
   } catch (error) {
     logger.error("Error writing settings:", error);
@@ -311,13 +308,19 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   return UserSettingsSchema.parse(migratedSettings);
 }
 
-function readSettingsForWrite(filePath: string): UserSettings {
+function readSettingsForWrite(filePath: string): {
+  settings: UserSettings;
+  wasUnreadable: boolean;
+} {
   if (!fs.existsSync(filePath)) {
-    return DEFAULT_SETTINGS;
+    return { settings: DEFAULT_SETTINGS, wasUnreadable: false };
   }
 
   try {
-    return readExistingSettingsFile(filePath);
+    return {
+      settings: readExistingSettingsFile(filePath),
+      wasUnreadable: false,
+    };
   } catch (error) {
     logger.error("Existing settings file is unreadable:", error);
     notifyRendererError({
@@ -328,17 +331,29 @@ function readSettingsForWrite(filePath: string): UserSettings {
         url: RESTORE_SETTINGS_DOCS_URL,
       },
     });
-    return DEFAULT_SETTINGS;
+    return { settings: DEFAULT_SETTINGS, wasUnreadable: true };
   }
 }
 
 function notifyRendererError(payload: RendererErrorToast): void {
-  const windows = BrowserWindow.getAllWindows();
+  const windows = BrowserWindow.getAllWindows().filter((window) =>
+    rendererErrorToastReadyWebContents.has(window.webContents),
+  );
   if (windows.length === 0) {
     pendingRendererErrors.push(payload);
     return;
   }
   sendRendererErrorToast(windows, payload);
+}
+
+export function notifyRendererErrorToastListenerReady(
+  webContents: WebContents,
+): void {
+  rendererErrorToastReadyWebContents.add(webContents);
+  const window = BrowserWindow.fromWebContents(webContents);
+  if (window) {
+    flushPendingRendererErrors([window]);
+  }
 }
 
 function flushPendingRendererErrors(windows: BrowserWindowInstance[]): void {
@@ -361,14 +376,24 @@ function sendRendererErrorToast(
   }
 }
 
-function writeSettingsFileAtomically(filePath: string, contents: string): void {
+function writeSettingsFileAtomically(
+  filePath: string,
+  contents: string,
+  options: { preserveUnreadableBackup?: boolean } = {},
+): void {
   const tempFilePath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   const backupFilePath = `${filePath}.bak`;
+  const recoveryBackupFilePath = `${filePath}.recovery-${Date.now()}.bak`;
 
   try {
     fs.writeFileSync(tempFilePath, contents);
     if (fs.existsSync(filePath)) {
-      fs.copyFileSync(filePath, backupFilePath);
+      fs.copyFileSync(
+        filePath,
+        options.preserveUnreadableBackup
+          ? recoveryBackupFilePath
+          : backupFilePath,
+      );
     }
     fs.renameSync(tempFilePath, filePath);
   } catch (error) {

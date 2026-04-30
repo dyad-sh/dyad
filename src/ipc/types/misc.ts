@@ -363,6 +363,12 @@ export const miscContracts = {
     output: z.void(),
   }),
 
+  rendererErrorToastReady: defineContract({
+    channel: "renderer:error-toast-ready",
+    input: z.void(),
+    output: z.void(),
+  }),
+
   // Problems
   checkProblems: defineContract({
     channel: "check-problems",

@@ -42,6 +42,7 @@ import { registerFreeAgentQuotaHandlers } from "./handlers/free_agent_quota_hand
 import { registerPlanHandlers } from "./handlers/plan_handlers";
 import { registerMediaHandlers } from "./handlers/media_handlers";
 import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
+import { registerMiscHandlers } from "./handlers/misc_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -89,4 +90,5 @@ export function registerIpcHandlers() {
   registerPlanHandlers();
   registerMediaHandlers();
   registerImageGenerationHandlers();
+  registerMiscHandlers();
 }

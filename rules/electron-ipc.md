@@ -73,6 +73,7 @@ writeSettings({
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.
 - For **non-bug** failures (validation, not found, auth, user refusal, etc.), prefer `DyadError` with the right `DyadErrorKind` so PostHog does not flood with `$exception` events — see [rules/dyad-errors.md](dyad-errors.md).
 - Use `createTypedHandler(contract, handler)` which validates inputs at runtime via Zod.
+- Avoid unguarded top-level `app.on(...)` or similar Electron API calls in modules that are imported broadly by tests. Many unit tests mock only the Electron APIs they touch, so prefer guarded calls like `app?.on?.(...)` or move event registration behind an explicit initialization function.
 
 ## React Query key factory
 

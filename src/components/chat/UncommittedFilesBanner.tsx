@@ -163,15 +163,18 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
           setIsDialogOpen(open);
         }}
       >
-        <DialogContent className="sm:max-w-lg" data-testid="commit-dialog">
-          <DialogHeader>
+        <DialogContent
+          className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden p-0"
+          data-testid="commit-dialog"
+        >
+          <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle>Review & Commit Changes</DialogTitle>
             <DialogDescription>
               Review your changes and enter a commit message.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 px-6 pb-4 overflow-y-auto flex-1 min-h-0">
             <div>
               <label
                 htmlFor="commit-message"
@@ -193,7 +196,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                 Changed files ({uncommittedFiles.length})
               </p>
               <div
-                className="max-h-60 overflow-y-auto rounded-md border p-2 space-y-1"
+                className="rounded-md border p-2 space-y-1"
                 data-testid="changed-files-list"
               >
                 {uncommittedFiles.map((file) => (
@@ -237,7 +240,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               role="alertdialog"
               aria-labelledby="discard-confirm-title"
               aria-describedby="discard-confirm-desc"
-              className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3"
+              className="mx-6 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3"
             >
               <TriangleAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1 space-y-2">
@@ -272,7 +275,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="px-6 pb-6 pt-2">
             <Button
               variant="outline"
               className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"

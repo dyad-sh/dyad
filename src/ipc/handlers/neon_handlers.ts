@@ -85,11 +85,22 @@ export function registerNeonHandlers() {
 
     // Vite apps need a Nitro server layer to safely host server-only Neon code
     // (DATABASE_URL, neon client, auth secrets). Add it before any Neon API
-    // calls so a Nitro failure won't orphan a Neon project.
+    // calls so a Nitro failure won't orphan a Neon project. Wrap in DyadError
+    // so install failures surface as a clear "Nitro setup" error rather than
+    // a generic Neon failure.
     const nitroWarnings: string[] = [];
     if (detectFrameworkType(resolvedAppPath) === "vite") {
-      const nitroResult = await ensureNitroOnViteApp(resolvedAppPath);
-      nitroWarnings.push(...nitroResult.warningMessages);
+      try {
+        const nitroResult = await ensureNitroOnViteApp(resolvedAppPath);
+        nitroWarnings.push(...nitroResult.warningMessages);
+      } catch (nitroError: any) {
+        const message =
+          nitroError instanceof Error ? nitroError.message : String(nitroError);
+        throw new DyadError(
+          `Failed to set up Nitro server layer: ${message}`,
+          DyadErrorKind.External,
+        );
+      }
     }
 
     try {
@@ -471,23 +482,38 @@ export function registerNeonHandlers() {
     const appPath = appRecord[0].path;
     const resolvedAppPath = getDyadAppPath(appPath);
 
-    // Vite apps need a Nitro server layer to safely host server-only Neon code.
-    // Run this before linking so a Nitro failure leaves the app unlinked.
-    const nitroWarnings: string[] = [];
-    if (detectFrameworkType(resolvedAppPath) === "vite") {
-      const nitroResult = await ensureNitroOnViteApp(resolvedAppPath);
-      nitroWarnings.push(...nitroResult.warningMessages);
-    }
-
     const envFileSnapshot = await readEnvFileIfExists({ appPath });
 
     try {
+      // Validate the Neon project exists and is accessible BEFORE installing
+      // Nitro, so an auth/project-id failure doesn't leave the app with a
+      // half-installed Nitro server layer.
       const neonClient = await getNeonClient();
-
-      // Get branches to find the development branch
       const branchesResponse = await neonClient.listProjectBranches({
         projectId,
       });
+
+      // Vite apps need a Nitro server layer to safely host server-only Neon
+      // code. Run this after Neon validation but before linking so a Nitro
+      // failure leaves the app unlinked. Wrap in DyadError so install
+      // failures surface as a clear "Nitro setup" error rather than a generic
+      // Neon failure.
+      const nitroWarnings: string[] = [];
+      if (detectFrameworkType(resolvedAppPath) === "vite") {
+        try {
+          const nitroResult = await ensureNitroOnViteApp(resolvedAppPath);
+          nitroWarnings.push(...nitroResult.warningMessages);
+        } catch (nitroError: any) {
+          const message =
+            nitroError instanceof Error
+              ? nitroError.message
+              : String(nitroError);
+          throw new DyadError(
+            `Failed to set up Nitro server layer: ${message}`,
+            DyadErrorKind.External,
+          );
+        }
+      }
 
       if (!branchesResponse.data.branches) {
         throw new DyadError(

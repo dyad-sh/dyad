@@ -171,7 +171,7 @@ children,
 children: React.ReactNode;
 }) {
 return (
-/_ Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching _/
+{/* Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching */}
 <NeonAuthUIProvider authClient={authClient} defaultTheme="light">
 <header>
 <UserButton />
@@ -438,7 +438,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 const navigate = useNavigate();
 
 return (
-/_ Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching _/
+{/* Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching */}
 <NeonAuthUIProvider
 authClient={authClient}
 defaultTheme="light"

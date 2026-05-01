@@ -2,6 +2,7 @@ import fs from "node:fs";
 import * as path from "path";
 import {
   NEXTJS_CONFIG_FILES,
+  VITE_CONFIG_FILES,
   type AppFrameworkType,
 } from "@/lib/framework_constants";
 
@@ -21,9 +22,8 @@ export function detectFrameworkType(appPath: string): AppFrameworkType | null {
       }
     }
 
-    const viteConfigs = ["vite.config.js", "vite.config.ts", "vite.config.mjs"];
     let isVite = false;
-    for (const config of viteConfigs) {
+    for (const config of VITE_CONFIG_FILES) {
       if (fs.existsSync(path.join(appPath, config))) {
         isVite = true;
         break;

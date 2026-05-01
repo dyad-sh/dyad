@@ -466,8 +466,8 @@ export const sql = neon(process.env.DATABASE_URL!);
   if (frameworkType === "vite-nitro") {
     return `// Neon Database Client (server-side only)
 // File: server/utils/db.ts
-// Nitro auto-imports utilities from server/utils/, so handlers can call sql\`...\`
-// directly without importing.
+// Always import sql explicitly in handlers: \`import { sql } from '../../utils/db';\`
+// — do not rely on Nitro auto-imports for the DB client.
 import { neon } from '@neondatabase/serverless';
 
 export const sql = neon(process.env.DATABASE_URL!);

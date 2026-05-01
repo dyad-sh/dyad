@@ -263,15 +263,14 @@ Follow this strictly, in order:
 2. Reuse those modules and conventions if they exist. Do NOT create duplicate
    database clients, auth clients, or middleware files.
 3. **If** user only needs server-side database access → use the DB-only path.
-4. **If** user needs auth APIs or sessions → follow the Auth guide above
-   (Vite + Nitro section), then wire it through the Vite-Nitro Auth path
-   below. The guide has full code for \`server/utils/auth.ts\`,
-   \`server/routes/api/auth/[...all].ts\`, \`server/middleware/auth.ts\`, and
-   \`src/lib/auth-client.ts\`.
+4. **If** user needs auth APIs or sessions → follow the Auth guide
+   (Vite + Nitro section). It has full code for the catch-all proxy at
+   \`server/routes/api/auth/[...all].ts\`, \`server/utils/session.ts\`,
+   \`server/middleware/auth.ts\`, and \`src/lib/auth-client.ts\`.
 5. **If** user wants prebuilt auth or account pages → follow the Auth guide
-   above (Vite + Nitro section). Wrap the app with \`NeonAuthUIProvider\`,
-   register a \`/auth/:path\` React Router route that renders \`<AuthView>\`,
-   and rely on the catch-all Nitro proxy for \`/api/auth/*\`.
+   (Vite + Nitro section). Wrap the app with \`NeonAuthUIProvider\`, register
+   a \`/auth/:path\` React Router route that renders \`<AuthView>\`, and rely
+   on the catch-all Nitro proxy for \`/api/auth/*\`.
 6. **If** user wants password reset or forgot-password → follow the Password
    Reset guide (Vite + Nitro section). The same \`[...all]\` proxy handles
    reset traffic; UI lives in \`src/pages/auth/\`.
@@ -301,49 +300,6 @@ export default defineHandler(async () => {
   return sql\`SELECT * FROM todos ORDER BY created_at DESC\`;
 });
 </code-template>
-
-### Vite-Nitro Auth Path
-
-Neon Auth's REST surface lives at \`process.env.NEON_AUTH_BASE_URL\` (server-only).
-\`@neondatabase/auth/next/server\` does NOT work outside Next.js — it eagerly
-imports \`next/headers\` and crashes Nitro at boot. The integration is therefore
-a hand-rolled reverse proxy. The full code lives in the Auth guide; this is
-the summary you must keep in mind:
-
-- Call Neon Auth ONLY from \`server/\` code. Never from React.
-- Mount a SINGLE catch-all proxy at \`server/routes/api/auth/[...all].ts\` that
-  forwards every request to \`\${process.env.NEON_AUTH_BASE_URL}/<path>\`. Do NOT
-  hand-write per-endpoint files (\`sign-in.post.ts\`, \`session.get.ts\`, etc.) —
-  Better Auth dispatches internally based on the \`[...all]\` segment. Do NOT
-  import \`createNeonAuth\`, \`auth.handler()\`, or anything from
-  \`@neondatabase/auth/next/*\` here.
-- The proxy MUST rewrite \`__Secure-\` / \`__Host-\` cookies for HTTP dev (rename
-  on the way down, restore on the way up, strip \`Secure\`/\`Partitioned\`/\`Domain\`,
-  rewrite \`SameSite=None\` to \`SameSite=Lax\`). Without this, sign-in is
-  silently broken in every HTTP preview because the browser drops the cookie.
-- The React app talks to the proxy via an absolute same-origin URL — Better
-  Auth's URL validator rejects bare paths. Build the base URL as
-  \`window.location.origin + "/api/auth"\` (with a server-side fallback like
-  \`"http://localhost/api/auth"\`) and pass it to \`createAuthClient\` along with
-  \`{ adapter: BetterAuthReactAdapter() }\`. Import \`createAuthClient\` from
-  \`@neondatabase/auth\` and \`BetterAuthReactAdapter\` from
-  \`@neondatabase/auth/react/adapters\` (NOT from \`@neondatabase/auth\` — it
-  isn't re-exported there). Never pass \`import.meta.env.VITE_NEON_AUTH_URL\` —
-  that exposes the auth URL to the browser bundle.
-- Place the request boundary in \`server/middleware/auth.ts\`. Read the session
-  by fetching \`\${process.env.NEON_AUTH_BASE_URL}/get-session\` directly with the
-  user's \`Cookie\` header (after restoring renamed cookies). There is no
-  \`auth\` instance to call — \`createNeonAuth\` would crash on import.
-- Wire React Router into \`NeonAuthUIProvider\` (\`navigate\`, \`replace\`, \`Link\`)
-  AND pass \`redirectTo="/"\` (or your home route) on \`<AuthView>\`. Without
-  this, sign-in/sign-up triggers a full reload that races the session cookie
-  and strands the user on the auth page.
-- \`NEON_AUTH_COOKIE_SECRET\` is NOT used in this path. It only matters for the
-  Next.js \`createNeonAuth\` integration's optional \`session_data\` cache cookie.
-  Don't reference it.
-- See the Auth guide for full code (\`server/routes/api/auth/[...all].ts\`,
-  \`server/utils/session.ts\`, \`server/middleware/auth.ts\`,
-  \`src/lib/auth-client.ts\`, React Router wiring, cookie-rewrite proxy).
 
 ### Environment Variables (\`.env.local\`)
 

@@ -58,7 +58,7 @@ export function getCompactionThreshold(
   provider: string,
 ): number {
   const cap = provider === "google" ? 190_000 : 250_000;
-  return Math.min(cap, contextWindow - 25_000);
+  return Math.min(cap, Math.max(0, contextWindow - 25_000));
 }
 
 /**

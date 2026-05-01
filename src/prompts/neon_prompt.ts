@@ -288,12 +288,15 @@ in \`src/\`. Nitro reads \`.env.local\` automatically and exposes it via
 Use when the request is about database access without auth UI.
 
 - Reuse the server-side Neon client at \`server/utils/db.ts\` when no
-  equivalent already exists. (Nitro auto-imports utilities from
-  \`server/utils/\`, so handlers can call \`sql\` directly.)
-- See \`AI_RULES.md\` for route file conventions and \`defineHandler\` usage.
+  equivalent already exists. Always import \`sql\` explicitly from there —
+  do not rely on Nitro auto-imports for the DB client.
+- \`defineHandler\` is imported from \`"nitro"\` (see \`AI_RULES.md\` for route
+  file conventions).
 
 <code-template label="db-only-route-handler" file="server/routes/api/todos.get.ts" language="typescript">
-// sql is auto-imported from server/utils/db.ts
+import { defineHandler } from 'nitro';
+import { sql } from '../../utils/db';
+
 export default defineHandler(async () => {
   return sql\`SELECT * FROM todos ORDER BY created_at DESC\`;
 });

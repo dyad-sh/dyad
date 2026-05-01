@@ -234,7 +234,7 @@ import { defineHandler } from 'nitro';
 
 const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL!;
 
-// Cookies whose names start with **Secure- / **Host- are rejected by the
+// Cookies whose names start with __Secure- / __Host- are rejected by the
 // browser unless served over HTTPS. In dev the preview runs over HTTP, so we
 // rename them on the way to the browser and undo the rename on the way back.
 function isHttpDev(req: Request): boolean {
@@ -244,14 +244,14 @@ return new URL(req.url).protocol === 'http:';
 function restoreUpstreamCookieNames(cookieHeader: string | null): string | null {
 if (!cookieHeader) return null;
 return cookieHeader
-.replace(/(^|;\s*)**Secure\_/g, '$1**Secure-')
-.replace(/(^|;\s*)**Host\_/g, '$1**Host-');
+.replace(/(^|;\s*)__Secure_/g, '$1__Secure-')
+.replace(/(^|;\s*)__Host_/g, '$1__Host-');
 }
 
 function rewriteSetCookieForHttpDev(setCookie: string): string {
 return setCookie
-.replace(/^**Secure-/, '**Secure*')
-.replace(/^**Host-/, '**Host*')
+.replace(/^__Secure-/, '__Secure_')
+.replace(/^__Host-/, '__Host_')
 .replace(/;\s*Secure/gi, '')
 .replace(/;\s*Partitioned/gi, '')
 .replace(/;\s*Domain=[^;]+/gi, '')
@@ -259,14 +259,14 @@ return setCookie
 }
 
 export default defineHandler(async (event) => {
-const req = event.req;
+const req = event.request;
 const url = new URL(req.url);
 
 // Strip the /api/auth prefix; everything after is the upstream path.
 const upstreamPath = url.pathname.replace(/^\/api\/auth/, '') || '/';
 const upstreamUrl = `${NEON_AUTH_BASE_URL}${upstreamPath}${url.search}`;
 
-// Forward headers, restoring upstream cookie names so Neon sees \_\_Secure-\*.
+// Forward headers, restoring upstream cookie names so Neon sees __Secure-*.
 const forwardedHeaders = new Headers(req.headers);
 forwardedHeaders.delete('host');
 forwardedHeaders.delete('content-length');
@@ -323,8 +323,8 @@ user: { id: string; name: string; email: string; emailVerified: boolean };
 function restoreUpstreamCookieNames(cookieHeader: string | null): string | null {
 if (!cookieHeader) return null;
 return cookieHeader
-.replace(/(^|;\s*)**Secure\_/g, '$1**Secure-')
-.replace(/(^|;\s*)**Host\_/g, '$1**Host-');
+.replace(/(^|;\s*)__Secure_/g, '$1__Secure-')
+.replace(/(^|;\s*)__Host_/g, '$1__Host-');
 }
 
 export async function getSessionFromCookie(cookieHeader: string | null): Promise<Session> {
@@ -345,13 +345,13 @@ Place this in `server/middleware/` so Nitro auto-loads it. Public-prefix matchin
 
 <code-template label="auth-middleware" file="server/middleware/auth.ts" language="typescript">
 import { defineHandler } from 'nitro';
-import { createError, getRequestHeader } from 'nitro/h3';
+import { createError, getRequestHeader, getRequestURL } from 'nitro/h3';
 import { getSessionFromCookie } from '../utils/session';
 
 const PUBLIC_PREFIXES = ['/api/auth/', '/auth/'];
 
 export default defineHandler(async (event) => {
-const { pathname } = new URL(event.req.url);
+const { pathname } = getRequestURL(event);
 if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return;
 if (!pathname.startsWith('/api/')) return; // SPA routes are gated client-side
 

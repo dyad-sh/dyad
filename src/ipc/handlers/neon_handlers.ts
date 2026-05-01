@@ -86,8 +86,10 @@ export function registerNeonHandlers() {
     // Vite apps need a Nitro server layer to safely host server-only Neon code
     // (DATABASE_URL, neon client, auth secrets). Add it before any Neon API
     // calls so a Nitro failure won't orphan a Neon project.
+    const nitroWarnings: string[] = [];
     if (detectFrameworkType(resolvedAppPath) === "vite") {
-      await ensureNitroOnViteApp(resolvedAppPath);
+      const nitroResult = await ensureNitroOnViteApp(resolvedAppPath);
+      nitroWarnings.push(...nitroResult.warningMessages);
     }
 
     try {
@@ -228,6 +230,7 @@ export function registerNeonHandlers() {
 
         // Auto-inject env vars into the app's .env.local
         const warning = combineWarnings(
+          ...nitroWarnings,
           ...authWarnings,
           await autoInjectNeonEnvVars({
             appPath,
@@ -470,8 +473,10 @@ export function registerNeonHandlers() {
 
     // Vite apps need a Nitro server layer to safely host server-only Neon code.
     // Run this before linking so a Nitro failure leaves the app unlinked.
+    const nitroWarnings: string[] = [];
     if (detectFrameworkType(resolvedAppPath) === "vite") {
-      await ensureNitroOnViteApp(resolvedAppPath);
+      const nitroResult = await ensureNitroOnViteApp(resolvedAppPath);
+      nitroWarnings.push(...nitroResult.warningMessages);
     }
 
     const envFileSnapshot = await readEnvFileIfExists({ appPath });
@@ -567,7 +572,10 @@ export function registerNeonHandlers() {
       logger.info(
         `Successfully linked Neon project ${projectId} to app ${appId}`,
       );
-      return { success: true, warning };
+      return {
+        success: true,
+        warning: combineWarnings(...nitroWarnings, warning),
+      };
     } catch (error: any) {
       if (error instanceof DyadError) throw error;
       const errorMessage = getNeonErrorMessage(error);

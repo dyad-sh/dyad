@@ -3,8 +3,9 @@
  * Handles document creation, editing, and export via LibreOffice
  */
 
-import { ipcMain, app, shell } from "electron";
+import { ipcMain, app, shell, BrowserWindow } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
+import { buildMcpToolSet } from "@/lib/mcp_ai_bridge";
 import { spawn, exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -2135,6 +2136,12 @@ ${bulletParagraphs}    </draw:text-box>
    * Stream an AI-powered editing command on document text.
    * Sends libreoffice:ai-assist-chunk events to the renderer.
    * Commands: improve | grammar | summarize | continue | tone | explain | custom
+   *
+   * If `params.mcpToolsAllow` is a non-empty array, the call is upgraded
+   * from a plain `streamText` to a tool-using session: every qualified
+   * MCP tool name in the allow-list is exposed to the model via
+   * `buildMcpToolSet`, with consent prompts surfaced on the document
+   * editor's window.
    */
   async streamAiAssist(
     event: IpcMainInvokeEvent,
@@ -2148,6 +2155,7 @@ ${bulletParagraphs}    </draw:text-box>
       customPrompt?: string;
       provider?: string;
       model?: string;
+      mcpToolsAllow?: string[];
     }
   ): Promise<void> {
     const settings = readSettings();
@@ -2171,7 +2179,35 @@ ${bulletParagraphs}    </draw:text-box>
 
     try {
       const { modelClient } = await getModelClient(selectedModel, settings);
-      const stream = streamText({ model: modelClient.model, system: systemPrompt, prompt: userPrompt });
+
+      // Optionally fold in MCP tools the user explicitly allowed for this
+      // document. The `mcp:get-tool-catalog` channel gives us qualified
+      // names like `mcp__<server>__<tool>`; the bridge maps those back to
+      // the underlying server.toolName pair internally. Keep the per-step
+      // budget bounded so we never burn cycles on runaway tool calls.
+      const allow =
+        Array.isArray(params.mcpToolsAllow) && params.mcpToolsAllow.length > 0
+          ? params.mcpToolsAllow
+          : undefined;
+      const consentWindow = allow
+        ? BrowserWindow.fromWebContents(event.sender) ?? undefined
+        : undefined;
+      const mcpResult = allow
+        ? await buildMcpToolSet({
+            toolAllowList: allow,
+            consentWindow,
+          }).catch(() => undefined)
+        : undefined;
+
+      const streamArgs = {
+        model: modelClient.model,
+        system: systemPrompt,
+        prompt: userPrompt,
+        ...(mcpResult && Object.keys(mcpResult.tools).length > 0
+          ? { tools: mcpResult.tools, maxSteps: 4 }
+          : {}),
+      } as const;
+      const stream = streamText(streamArgs);
 
       for await (const chunk of stream.textStream) {
         safeSend(event.sender, "libreoffice:ai-assist-chunk", {
@@ -2511,6 +2547,7 @@ export function registerLibreOfficeHandlers() {
         customPrompt?: string;
         provider?: string;
         model?: string;
+        mcpToolsAllow?: string[];
       }
     ) => {
       manager

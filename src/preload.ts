@@ -29,6 +29,9 @@ const validInvokeChannels = [
   "search-chats",
   "get-chat-logs",
   "list-apps",
+  // Lightweight `{id,name}[]` listing exposed by the neural builder handlers,
+  // used by the Joy Apps picker / agent registry UIs.
+  "app:list",
   "get-app",
   "get-app-env-vars",
   "set-app-env-vars",
@@ -400,6 +403,11 @@ const validInvokeChannels = [
   "agent:export:docker",
   "agent:export:web-chat",
   "agent:export:embed-snippet",
+  // Agent content creation (delegating to Joy Pages / Image / Video / Slides)
+  "agent:create-document",
+  "agent:create-presentation",
+  "agent:create-image",
+  "agent:create-video",
   // Agent Sharing
   "agent:share:create",
   "agent:share:get",
@@ -619,6 +627,9 @@ const validInvokeChannels = [
   "marketplace:deployment-status",
   "marketplace:open",
   "marketplace:get-url",
+  // Marketplace inbound (incoming purchases / receipts pushed by remote stores)
+  "marketplace-inbound:process",
+  "marketplace-inbound:test",
   // JoyMarketplace.io Sync (Local → Online)
   "marketplace-sync:get-config",
   "marketplace-sync:connect",

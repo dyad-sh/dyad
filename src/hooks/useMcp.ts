@@ -356,10 +356,18 @@ export function useMcp() {
           IpcClient.getInstance().reconnectMcpServer(id),
         ),
       );
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["mcp", "tools-by-server"],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["mcp", "tools-by-server"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["mcp", "resources-by-server"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["mcp", "prompts-by-server"],
+        }),
+      ]);
     },
 
     // Status flags

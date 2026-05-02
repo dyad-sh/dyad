@@ -12,6 +12,7 @@ import {
   mcpHubManager,
   type McpServerStatusInfo,
 } from "../utils/mcp_hub_manager";
+import { buildMcpToolSet } from "../../lib/mcp_ai_bridge";
 import { CreateMcpServer, McpServerUpdate, McpTool } from "../ipc_types";
 
 const logger = log.scope("mcp_handlers");
@@ -217,7 +218,13 @@ export function registerMcpHandlers() {
       event: IpcMainInvokeEvent,
       params: { serverId: number; name: string; args?: unknown },
     ) => {
-      const { serverId, name, args } = params;
+      const { serverId, name, args } = params ?? {};
+      if (!Number.isFinite(serverId) || !Number.isInteger(serverId) || (serverId as number) <= 0) {
+        throw new Error("mcp:call-tool: 'serverId' must be a positive integer");
+      }
+      if (typeof name !== "string" || name.trim().length === 0) {
+        throw new Error("mcp:call-tool: 'name' must be a non-empty string");
+      }
       const stored = await getStoredConsent(serverId, name);
       if (stored === "denied") {
         throw new Error(`Tool '${name}' is denied by user consent`);
@@ -345,61 +352,72 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
     enabled: false,
   },
   // ── Official reference servers (free, no API key) ───────────────
+  // NOTE: stdio transport spawns `command` directly with `args` — never
+  // bake a full shell line into `command`, or the spawn will look for an
+  // executable literally named e.g. "npx -y @upstash/context7-mcp@latest".
   {
     name: "Context7",
     transport: "stdio",
-    command: "npx -y @upstash/context7-mcp@latest",
+    command: "npx",
+    args: ["-y", "@upstash/context7-mcp@latest"],
     enabled: false,
   },
   {
     name: "Memory",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-memory",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-memory"],
     enabled: false,
   },
   {
     name: "Fetch",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-fetch",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-fetch"],
     enabled: false,
   },
   {
     name: "Time",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-time",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-time"],
     enabled: false,
   },
   {
     name: "Sequential Thinking",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-sequential-thinking",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
     enabled: false,
   },
   {
     name: "Filesystem",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-filesystem",
-    args: ["~"],
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "~"],
     enabled: false,
   },
   {
     name: "Git",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-git",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-git"],
     enabled: false,
   },
   // ── Code & dev platforms ────────────────────────────────────────
   {
     name: "GitHub",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-github",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-github"],
     envJson: { GITHUB_PERSONAL_ACCESS_TOKEN: "" },
     enabled: false,
   },
   {
     name: "GitLab",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-gitlab",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-gitlab"],
     envJson: { GITLAB_PERSONAL_ACCESS_TOKEN: "", GITLAB_API_URL: "https://gitlab.com/api/v4" },
     enabled: false,
   },
@@ -407,21 +425,23 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
   {
     name: "PostgreSQL",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-postgres",
-    args: ["postgresql://localhost/postgres"],
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/postgres"],
     enabled: false,
   },
   {
     name: "SQLite",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-sqlite",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-sqlite"],
     enabled: false,
   },
   // ── Web search ──────────────────────────────────────────────────
   {
     name: "Brave Search",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-brave-search",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-brave-search"],
     envJson: { BRAVE_API_KEY: "" },
     enabled: false,
   },
@@ -429,7 +449,8 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
   {
     name: "Slack",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-slack",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-slack"],
     envJson: { SLACK_BOT_TOKEN: "", SLACK_TEAM_ID: "" },
     enabled: false,
   },
@@ -437,14 +458,16 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
   {
     name: "Notion",
     transport: "stdio",
-    command: "npx -y @notionhq/notion-mcp-server",
+    command: "npx",
+    args: ["-y", "@notionhq/notion-mcp-server"],
     envJson: { NOTION_API_KEY: "" },
     enabled: false,
   },
   {
     name: "Linear",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-linear",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-linear"],
     envJson: { LINEAR_API_KEY: "" },
     enabled: false,
   },
@@ -452,22 +475,24 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
   {
     name: "Puppeteer",
     transport: "stdio",
-    command: "npx -y @modelcontextprotocol/server-puppeteer",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-puppeteer"],
     enabled: false,
   },
   // ── Cloud / payments / observability ────────────────────────────
   {
     name: "Stripe",
     transport: "stdio",
-    command: "npx -y @stripe/mcp",
-    args: ["--tools=all"],
+    command: "npx",
+    args: ["-y", "@stripe/mcp", "--tools=all"],
     envJson: { STRIPE_SECRET_KEY: "" },
     enabled: false,
   },
   {
     name: "Sentry",
     transport: "stdio",
-    command: "npx -y @sentry/mcp-server",
+    command: "npx",
+    args: ["-y", "@sentry/mcp-server"],
     envJson: { SENTRY_AUTH_TOKEN: "" },
     enabled: false,
   },

@@ -1136,6 +1136,21 @@ export class IpcClient {
     return this.ipcRenderer.invoke("mcp:ensure-essentials");
   }
 
+  public async getMcpToolCatalog(): Promise<{
+    catalog: Array<{
+      serverId: number;
+      serverName: string;
+      toolName: string;
+      qualifiedName: string;
+      description: string;
+    }>;
+    serversIncluded: { id: number; name: string; toolCount: number }[];
+    serversFailed: { id: number; name: string; error: string }[];
+    totalTools: number;
+  }> {
+    return this.ipcRenderer.invoke("mcp:get-tool-catalog");
+  }
+
   public onMcpStatusChange(
     handler: (info: McpServerStatusInfo) => void,
   ): () => void {

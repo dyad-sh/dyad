@@ -135,14 +135,33 @@ export class McpHubManager extends EventEmitter {
         status: "error",
         error: err?.message ?? String(err),
       });
-      // Drop the cached client so a future getClient() rebuilds it.
-      this.clients.delete(serverId);
+      // Best-effort: close the broken transport/client so we don't leak
+      // child processes (stdio) or open sockets (HTTP/SSE) before the
+      // reconnect timer spawns a fresh one.
+      void this.disconnect(serverId).catch((closeErr) => {
+        logger.warn(
+          `Failed to clean up after transport error for ${serverId}:`,
+          closeErr,
+        );
+      });
       this.scheduleReconnect(serverId);
     };
 
     try {
       await client.connect(transport);
     } catch (err) {
+      // Close the transport so we don't leak resources on a failed connect.
+      try {
+        const closable = transport as unknown as { close?: () => unknown };
+        if (typeof closable.close === "function") {
+          await Promise.resolve(closable.close());
+        }
+      } catch (closeErr) {
+        logger.warn(
+          `Failed to close transport after connect failure for ${serverId}:`,
+          closeErr,
+        );
+      }
       const msg = err instanceof Error ? err.message : String(err);
       this.setStatus({ serverId, status: "error", error: msg });
       throw err;
@@ -264,8 +283,19 @@ export class McpHubManager extends EventEmitter {
   }
 
   async disposeAll(): Promise<void> {
-    const ids = Array.from(this.clients.keys());
-    await Promise.allSettled(ids.map((id) => this.disconnect(id)));
+    // Cancel every pending reconnect first so timers cannot fire and
+    // re-spawn clients while we're tearing everything down.
+    for (const [id, timer] of this.reconnectTimers) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(id);
+    }
+    const ids = new Set<number>([
+      ...this.clients.keys(),
+      ...this.statuses.keys(),
+    ]);
+    await Promise.allSettled(
+      Array.from(ids).map((id) => this.disconnect(id)),
+    );
   }
 }
 

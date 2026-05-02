@@ -33,6 +33,28 @@ import type {
 
 const logger = log.scope("n8n_integration");
 
+// Per-key serial mutex used so concurrent callers of `n8n:ensure-mcp-trigger`
+// for the same `path` don't race and create duplicate workflows.
+const ensureMcpTriggerLocks = new Map<string, Promise<unknown>>();
+async function withEnsureMcpTriggerLock<T>(
+  key: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = ensureMcpTriggerLocks.get(key) ?? Promise.resolve();
+  const next = prev.catch(() => undefined).then(fn);
+  ensureMcpTriggerLocks.set(
+    key,
+    next.catch(() => undefined),
+  );
+  try {
+    return await next;
+  } finally {
+    if (ensureMcpTriggerLocks.get(key) === next.catch(() => undefined)) {
+      ensureMcpTriggerLocks.delete(key);
+    }
+  }
+}
+
 // ============================================================================
 // n8n Configuration Types
 // ============================================================================
@@ -1593,54 +1615,56 @@ export function registerN8nHandlers(): void {
         );
       }
 
-      // Look for an existing MCP Server Trigger workflow at the requested path.
-      const list = await listWorkflows();
-      const existing = (list.data || []).find((wf) =>
-        (wf.nodes || []).some(
-          (n: any) =>
-            n?.type === "@n8n/n8n-nodes-langchain.mcpTrigger" &&
-            (n?.parameters?.path || "") === triggerPath,
-        ),
-      );
+      return await withEnsureMcpTriggerLock(`n8n-mcp-${triggerPath}`, async () => {
+        // Look for an existing MCP Server Trigger workflow at the requested path.
+        const list = await listWorkflows();
+        const existing = (list.data || []).find((wf) =>
+          (wf.nodes || []).some(
+            (n: any) =>
+              n?.type === "@n8n/n8n-nodes-langchain.mcpTrigger" &&
+              (n?.parameters?.path || "") === triggerPath,
+          ),
+        );
 
-      let workflowId: string;
-      let created = false;
-      if (existing && existing.id) {
-        workflowId = String(existing.id);
-        if (!existing.active) {
+        let workflowId: string;
+        let created = false;
+        if (existing && existing.id) {
+          workflowId = String(existing.id);
+          if (!existing.active) {
+            await activateWorkflow(workflowId);
+          }
+        } else {
+          const newWf = await createWorkflow({
+            name: workflowName,
+            nodes: [
+              {
+                parameters: { path: triggerPath },
+                id: crypto.randomUUID(),
+                name: "MCP Server Trigger",
+                type: "@n8n/n8n-nodes-langchain.mcpTrigger",
+                typeVersion: 1,
+                position: [240, 300],
+                webhookId: crypto.randomUUID(),
+              } as any,
+            ],
+            connections: {},
+            settings: { executionOrder: "v1" } as any,
+          } as any);
+          if (!newWf?.id) {
+            throw new Error("Failed to create n8n MCP Server Trigger workflow.");
+          }
+          workflowId = String(newWf.id);
+          created = true;
           await activateWorkflow(workflowId);
         }
-      } else {
-        const newWf = await createWorkflow({
-          name: workflowName,
-          nodes: [
-            {
-              parameters: { path: triggerPath },
-              id: crypto.randomUUID(),
-              name: "MCP Server Trigger",
-              type: "@n8n/n8n-nodes-langchain.mcpTrigger",
-              typeVersion: 1,
-              position: [240, 300],
-              webhookId: crypto.randomUUID(),
-            } as any,
-          ],
-          connections: {},
-          settings: { executionOrder: "v1" } as any,
-        } as any);
-        if (!newWf?.id) {
-          throw new Error("Failed to create n8n MCP Server Trigger workflow.");
-        }
-        workflowId = String(newWf.id);
-        created = true;
-        await activateWorkflow(workflowId);
-      }
 
-      return {
-        url: `${n8nConfig.baseUrl.replace(/\/+$/, "")}/mcp/${triggerPath}/sse`,
-        workflowId,
-        workflowName,
-        created,
-      };
+        return {
+          url: `${n8nConfig.baseUrl.replace(/\/+$/, "")}/mcp/${triggerPath}/sse`,
+          workflowId,
+          workflowName,
+          created,
+        };
+      });
     },
   );
   

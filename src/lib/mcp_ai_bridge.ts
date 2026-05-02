@@ -110,7 +110,17 @@ function jsonSchemaToZod(schema: unknown): ZodTypeAny {
       : z.any();
   }
   if (Array.isArray(s.enum) && s.enum.length > 0) {
-    return z.enum(s.enum.map(String) as [string, ...string[]]);
+    // Preserve original literal types (numbers, booleans, etc.).
+    const allStrings = s.enum.every((v: unknown) => typeof v === "string");
+    if (allStrings) {
+      return z.enum(s.enum as [string, ...string[]]);
+    }
+    const literals = s.enum.map((v: unknown) =>
+      z.literal(v as string | number | boolean),
+    );
+    return literals.length === 1
+      ? literals[0]
+      : z.union(literals as [ZodTypeAny, ZodTypeAny, ...ZodTypeAny[]]);
   }
 
   const type = s.type;
@@ -141,8 +151,11 @@ function jsonSchemaToZod(schema: unknown): ZodTypeAny {
       const z0 = jsonSchemaToZod(sub);
       shape[key] = required.has(key) ? z0 : z0.optional();
     }
-    let obj: ZodTypeAny = z.object(shape);
-    if (s.additionalProperties === true) obj = z.object(shape).passthrough();
+    // JSON Schema default is permissive — only enforce strict shape when
+    // the server explicitly sets additionalProperties=false.
+    const base = z.object(shape);
+    let obj: ZodTypeAny =
+      s.additionalProperties === false ? base.strict() : base.passthrough();
     if (s.description) obj = obj.describe(String(s.description));
     return obj;
   }
@@ -195,9 +208,31 @@ export async function buildMcpToolSet(
       let serverToolCount = 0;
 
       for (const remote of remoteTools) {
-        const fqName = namespaceToolName(server.name, remote.name);
+        let fqName = namespaceToolName(server.name, remote.name);
         if (allow && !allow.has(fqName)) continue;
         if (deny.has(fqName)) continue;
+
+        // Guard against silent overwrites — slugify+truncate can collide
+        // (e.g. two long tool names that share the first 48 chars).
+        if (Object.prototype.hasOwnProperty.call(tools, fqName)) {
+          const disambiguated = `${fqName}__${server.id}_${remote.name}`
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, "_")
+            .slice(0, 64);
+          logger.warn(
+            `MCP tool name collision for '${fqName}' (server=${server.name}); ` +
+              `renaming new entry to '${disambiguated}'.`,
+          );
+          fqName = disambiguated;
+          // If the disambiguated name STILL collides, skip rather than overwrite.
+          if (Object.prototype.hasOwnProperty.call(tools, fqName)) {
+            logger.error(
+              `Skipping MCP tool '${remote.name}' on '${server.name}': ` +
+                `disambiguated name '${fqName}' still collides.`,
+            );
+            continue;
+          }
+        }
 
         const params = jsonSchemaToZod(remote.inputSchema ?? {});
         const desc = `[${server.name}] ${remote.description ?? remote.name}`;

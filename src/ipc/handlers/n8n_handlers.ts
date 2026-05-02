@@ -7,6 +7,7 @@ import { IpcMainInvokeEvent, ipcMain } from "electron";
 import { spawn, ChildProcess } from "child_process";
 import net from "node:net";
 import path from "node:path";
+import crypto from "node:crypto";
 import fs from "fs-extra";
 import log from "electron-log";
 import { db } from "@/db";
@@ -1559,6 +1560,89 @@ export function registerN8nHandlers(): void {
   ipcMain.handle("n8n:workflow:activate", async (_event, id: string) => activateWorkflow(id));
   ipcMain.handle("n8n:workflow:deactivate", async (_event, id: string) => deactivateWorkflow(id));
   ipcMain.handle("n8n:workflow:execute", async (_event, id: string, data?: Record<string, unknown>) => executeWorkflow(id, data));
+
+  // One-shot helper used by the MCP Hub install flow: ensures an
+  // "MCP Server Trigger" workflow exists at a given path and is active,
+  // returning the SSE URL clients should connect to.
+  ipcMain.handle(
+    "n8n:ensure-mcp-trigger",
+    async (
+      _event,
+      params?: { path?: string; name?: string; apiKey?: string },
+    ): Promise<{ url: string; workflowId: string; workflowName: string; created: boolean }> => {
+      const triggerPath = (params?.path || "joycreate").replace(/^\/+|\/+$/g, "");
+      const workflowName = params?.name || "JoyCreate MCP Server";
+
+      // Allow caller to push an API key if one wasn't already configured.
+      if (params?.apiKey && !n8nConfig.apiKey) {
+        n8nConfig.apiKey = params.apiKey;
+        try {
+          const keyFile = path.join(getUserDataPath(), "n8n", "api_key.txt");
+          await fs.ensureDir(path.dirname(keyFile));
+          await fs.writeFile(keyFile, params.apiKey, "utf-8");
+        } catch (err) {
+          logger.warn("Failed to persist n8n API key during MCP trigger setup:", err);
+        }
+      }
+
+      if (!(await checkN8nApiReady())) {
+        throw new Error(
+          "n8n is not reachable or not authenticated. Start n8n at " +
+            n8nConfig.baseUrl +
+            " and provide a valid API key.",
+        );
+      }
+
+      // Look for an existing MCP Server Trigger workflow at the requested path.
+      const list = await listWorkflows();
+      const existing = (list.data || []).find((wf) =>
+        (wf.nodes || []).some(
+          (n: any) =>
+            n?.type === "@n8n/n8n-nodes-langchain.mcpTrigger" &&
+            (n?.parameters?.path || "") === triggerPath,
+        ),
+      );
+
+      let workflowId: string;
+      let created = false;
+      if (existing && existing.id) {
+        workflowId = String(existing.id);
+        if (!existing.active) {
+          await activateWorkflow(workflowId);
+        }
+      } else {
+        const newWf = await createWorkflow({
+          name: workflowName,
+          nodes: [
+            {
+              parameters: { path: triggerPath },
+              id: crypto.randomUUID(),
+              name: "MCP Server Trigger",
+              type: "@n8n/n8n-nodes-langchain.mcpTrigger",
+              typeVersion: 1,
+              position: [240, 300],
+              webhookId: crypto.randomUUID(),
+            } as any,
+          ],
+          connections: {},
+          settings: { executionOrder: "v1" } as any,
+        } as any);
+        if (!newWf?.id) {
+          throw new Error("Failed to create n8n MCP Server Trigger workflow.");
+        }
+        workflowId = String(newWf.id);
+        created = true;
+        await activateWorkflow(workflowId);
+      }
+
+      return {
+        url: `${n8nConfig.baseUrl.replace(/\/+$/, "")}/mcp/${triggerPath}/sse`,
+        workflowId,
+        workflowName,
+        created,
+      };
+    },
+  );
   
   // AI Workflow Generation
   ipcMain.handle("n8n:workflow:generate", async (_event, request: WorkflowGenerationRequest) => generateWorkflow(request));

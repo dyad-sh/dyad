@@ -1,10 +1,21 @@
+// Legacy MCP manager. Wraps the @ai-sdk/mcp `experimental_createMCPClient` so
+// that existing chat / local-agent code paths can keep calling
+// `client.tools()` (an AI-SDK ToolSet shape, not the raw MCP SDK shape).
+//
+// New code should prefer `mcpHubManager` from `./mcp_hub_manager`, which uses
+// the official `@modelcontextprotocol/sdk` Client directly and exposes
+// resources, prompts, status, and reconnect features.
+
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
 import { experimental_createMCPClient } from "@ai-sdk/mcp";
 import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+import { mcpHubManager } from "./mcp_hub_manager";
 
 type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 
@@ -26,7 +37,10 @@ class McpManager {
       .where(eq(mcpServers.id, serverId));
     const s = server.find((x) => x.id === serverId);
     if (!s) throw new Error(`MCP server not found: ${serverId}`);
-    let transport: StdioClientTransport | StreamableHTTPClientTransport;
+    let transport:
+      | StdioClientTransport
+      | StreamableHTTPClientTransport
+      | SSEClientTransport;
     if (s.transport === "stdio") {
       const args = s.args ?? [];
       const env = s.envJson ?? undefined;
@@ -38,7 +52,32 @@ class McpManager {
       });
     } else if (s.transport === "http") {
       if (!s.url) throw new Error("HTTP MCP requires url");
-      transport = new StreamableHTTPClientTransport(new URL(s.url as string));
+      // For HTTP transports, treat envJson as HTTP headers so callers can
+      // inject auth tokens (e.g., X-N8N-API-KEY, Authorization).
+      const headers = (s.envJson ?? undefined) as
+        | Record<string, string>
+        | undefined;
+      const url = new URL(s.url as string);
+      // n8n exposes MCP via legacy SSE endpoints (path ending in /sse).
+      // Use SSEClientTransport for those, StreamableHTTP otherwise.
+      if (url.pathname.endsWith("/sse")) {
+        transport = new SSEClientTransport(url, {
+          requestInit: headers ? { headers } : undefined,
+          eventSourceInit: headers
+            ? ({
+                fetch: (input: any, init: any) =>
+                  fetch(input, {
+                    ...(init || {}),
+                    headers: { ...(init?.headers || {}), ...headers },
+                  }),
+              } as any)
+            : undefined,
+        });
+      } else {
+        transport = new StreamableHTTPClientTransport(url, {
+          requestInit: headers ? { headers } : undefined,
+        });
+      }
     } else {
       throw new Error(`Unsupported MCP transport: ${s.transport}`);
     }
@@ -52,10 +91,21 @@ class McpManager {
   dispose(serverId: number) {
     const c = this.clients.get(serverId);
     if (c) {
-      c.close();
+      try {
+        c.close();
+      } catch {
+        // best-effort
+      }
       this.clients.delete(serverId);
+    }
+    // Also drop the new-manager cached client so both stay in sync.
+    try {
+      mcpHubManager.dispose(serverId);
+    } catch {
+      // best-effort
     }
   }
 }
 
 export const mcpManager = McpManager.instance;
+export { mcpHubManager } from "./mcp_hub_manager";

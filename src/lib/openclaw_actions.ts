@@ -32,6 +32,18 @@ export const ACTION_CATALOG: ActionDefinition[] = [
     channel: "create-app",
   },
   {
+    id: "landing_page.create",
+    category: "app",
+    name: "Create Landing Page",
+    description: "Generate a complete marketing landing page (hero, features, social proof, CTA, FAQ) using local AI. Stored as a JoyCreate document so the user can preview, edit, and export.",
+    parameters: [
+      { name: "name", type: "string", required: true, description: "Landing page title (also the document name)" },
+      { name: "prompt", type: "string", required: true, description: "What the page is for. Include: product/service, target audience, value proposition, primary CTA. Example: 'Landing page for ProAccountant Dashboard, an AI-powered bookkeeping tool for small business owners. CTA: start a 14-day free trial.'" },
+      { name: "tone", type: "string", required: false, description: "professional | casual | technical | creative (default professional)" },
+    ],
+    channel: "libreoffice:create",
+  },
+  {
     id: "app.get",
     category: "app",
     name: "Get App",
@@ -249,10 +261,11 @@ export const ACTION_CATALOG: ActionDefinition[] = [
     id: "workflow.generate",
     category: "workflow",
     name: "AI Generate Workflow",
-    description: "Use AI to generate an n8n workflow from a natural language description",
+    description: "Generate AND save an n8n workflow from a plain-English description in one call. Uses local Ollama. Returns the saved workflow ID.",
     parameters: [
-      { name: "description", type: "string", required: true, description: "What the workflow should do" },
+      { name: "description", type: "string", required: true, description: "What the workflow should do (e.g. 'every morning at 8am, fetch new GitHub issues and post a summary to Slack')" },
       { name: "triggerType", type: "string", required: false, description: "Trigger type: manual, schedule, webhook" },
+      { name: "model", type: "string", required: false, description: "Optional Ollama model id" },
     ],
     channel: "n8n:workflow:generate",
   },
@@ -1156,15 +1169,41 @@ export const ACTION_CATALOG: ActionDefinition[] = [
     id: "document.create",
     category: "document",
     name: "Create Document",
-    description: "Create a new document (Word, PDF, presentation) using AI",
+    description: "Create a new document (Word/PDF/spreadsheet/presentation). IMPORTANT: pass a detailed `prompt` describing what to write — the local AI will generate the body. Without `prompt` you will get an EMPTY 'Untitled Document'. Prefer `document.write` for a stricter wrapper.",
     parameters: [
       { name: "type", type: "string", required: true, description: "Document type: document, spreadsheet, presentation, pdf" },
-      { name: "name", type: "string", required: true, description: "Document name" },
-      { name: "prompt", type: "string", required: false, description: "AI prompt describing the document content to generate" },
+      { name: "name", type: "string", required: true, description: "Document name (this becomes the title)" },
+      { name: "prompt", type: "string", required: false, description: "REQUIRED for content. Detailed AI prompt describing what the document body should contain." },
       { name: "tone", type: "string", required: false, description: "Writing tone: professional, casual, academic, creative, technical" },
       { name: "length", type: "string", required: false, description: "Document length: short, medium, long, detailed" },
     ],
     channel: "libreoffice:create",
+  },
+  {
+    id: "document.write",
+    category: "document",
+    name: "Write Document (AI)",
+    description: "One-shot: create a document AND fill its body using local AI. ALWAYS use this instead of document.create when the user wants real content. Both `name` and `prompt` are required.",
+    parameters: [
+      { name: "name", type: "string", required: true, description: "Document title" },
+      { name: "prompt", type: "string", required: true, description: "Detailed description of what the document should contain. Be specific (audience, sections, key points)." },
+      { name: "type", type: "string", required: false, description: "Document type: document (default), spreadsheet, presentation" },
+      { name: "tone", type: "string", required: false, description: "Writing tone: professional, casual, academic, creative, technical (default professional)" },
+      { name: "length", type: "string", required: false, description: "short | medium | long | detailed (default detailed)" },
+    ],
+    channel: "libreoffice:create",
+  },
+  {
+    id: "document.update_content",
+    category: "document",
+    name: "Update Document Content",
+    description: "Overwrite an existing document's body. Use this to fix an empty doc or rewrite content. For text docs use `text`; for spreadsheets `rows`; for presentations `slides`.",
+    parameters: [
+      { name: "id", type: "number", required: true, description: "Document ID returned by document.create / document.list" },
+      { name: "payload", type: "object", required: true, description: "{ text?: string, rows?: string[][], slides?: Array<{title, content, notes?}> }" },
+    ],
+    channel: "libreoffice:update-content",
+    positional: true,
   },
   {
     id: "document.list",
@@ -2209,10 +2248,63 @@ export async function dispatchAction(
     }
   }
 
+  // ── Action-ID-specific parameter reshaping ──
+  // Several bot-friendly actions wrap the same channel with stricter / clearer
+  // semantics. We rewrite the params here so the underlying handler gets the
+  // exact shape it expects.
+  let dispatchParams: Record<string, unknown> = params;
+
+  if (actionId === "document.write") {
+    dispatchParams = {
+      ...params,
+      type: (params.type as string) || "document",
+      tone: (params.tone as string) || "professional",
+      length: (params.length as string) || "detailed",
+    };
+  } else if (actionId === "landing_page.create") {
+    const userPrompt = String(params.prompt ?? "").trim();
+    const tone = (params.tone as string) || "professional";
+    // Inject a structured landing-page system instruction so the AI produces
+    // a real marketing page (hero / features / social proof / CTA / FAQ),
+    // not a generic essay.
+    const landingPrompt = [
+      "Write a high-converting marketing landing page with the following sections, in order:",
+      "1. HERO — one-line headline (≤12 words), supporting subheadline (≤25 words), and primary CTA button text.",
+      "2. PROBLEM — 2-3 sentences naming the pain the visitor feels today.",
+      "3. SOLUTION — 2-3 sentences describing how this product/service solves it.",
+      "4. KEY FEATURES — 3-6 bullet points, each starting with a bold benefit and a short explanation.",
+      "5. SOCIAL PROOF — 2 short testimonial-style quotes (you may invent realistic personas).",
+      "6. PRICING / OFFER — concise call-out of the offer (free trial, price, guarantee).",
+      "7. FAQ — 4 likely visitor questions with brief answers.",
+      "8. FINAL CTA — repeat the primary call-to-action with urgency.",
+      "Keep copy benefit-driven, second-person ('you'), and scannable.",
+      "",
+      "Landing page brief:",
+      userPrompt,
+    ].join("\n");
+    dispatchParams = {
+      name: params.name,
+      type: "document",
+      prompt: landingPrompt,
+      tone,
+      length: "detailed",
+    };
+  } else if (action.channel === "n8n:workflow:generate") {
+    // Handler reads `request.prompt` but bot-facing param is `description`.
+    dispatchParams = {
+      prompt: params.description ?? params.prompt,
+      model: params.model,
+      // n8n WorkflowGenerationRequest doesn't have triggerType — surface it as a hint inside the prompt.
+      ...(params.triggerType
+        ? { prompt: `${params.description ?? params.prompt}\n\nTrigger type: ${params.triggerType}` }
+        : {}),
+    };
+  }
+
   logger.info(`Dispatching action: ${actionId}`, { channel: action.channel });
 
   // Call the registered IPC handler directly from main process.
-  const result = await invokeHandler(action.channel, params, action.parameters);
+  const result = await invokeHandler(action.channel, dispatchParams, action.parameters);
 
   logger.info(`Action ${actionId} completed`, {
     channel: action.channel,

@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type {
   McpServer,
+  McpServerStatusInfo,
   McpServerUpdate,
   McpTool,
   McpToolConsent,
@@ -10,6 +11,7 @@ import type {
 } from "@/ipc/ipc_types";
 
 export type Transport = "stdio" | "http";
+export type { McpServerStatusInfo };
 
 export function useMcp() {
   const queryClient = useQueryClient();
@@ -117,6 +119,165 @@ export function useMcp() {
     meta: { showErrorToast: true },
   });
 
+  // ─── Status ────────────────────────────────────────────────────────
+  const statusByServerQuery = useQuery<
+    Record<number, McpServerStatusInfo>,
+    Error
+  >({
+    queryKey: ["mcp", "statuses"],
+    queryFn: async () => {
+      const ipc = IpcClient.getInstance();
+      const list = await ipc.getAllMcpStatuses();
+      const map: Record<number, McpServerStatusInfo> = {};
+      for (const s of list ?? []) map[s.serverId] = s;
+      return map;
+    },
+    meta: { showErrorToast: true },
+  });
+
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onMcpStatusChange((info) => {
+      queryClient.setQueryData<Record<number, McpServerStatusInfo>>(
+        ["mcp", "statuses"],
+        (prev) => ({ ...(prev ?? {}), [info.serverId]: info }),
+      );
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [queryClient]);
+
+  // ─── Resources ─────────────────────────────────────────────────────
+  const connectedServerIds = useMemo(
+    () =>
+      serverIds.filter(
+        (id) => statusByServerQuery.data?.[id]?.status === "connected",
+      ),
+    [serverIds, statusByServerQuery.data],
+  );
+
+  const resourcesByServerQuery = useQuery<
+    Record<number, { resources: any[]; templates: any[] }>,
+    Error
+  >({
+    queryKey: ["mcp", "resources-by-server", connectedServerIds],
+    enabled: connectedServerIds.length > 0,
+    queryFn: async () => {
+      const ipc = IpcClient.getInstance();
+      const settled = await Promise.allSettled(
+        connectedServerIds.map(async (id) => {
+          const [resources, templates] = await Promise.all([
+            ipc
+              .listMcpResources(id)
+              .catch(() => [] as unknown[]),
+            ipc
+              .listMcpResourceTemplates(id)
+              .catch(() => [] as unknown[]),
+          ]);
+          return [id, { resources, templates }] as const;
+        }),
+      );
+      const out: Record<number, { resources: any[]; templates: any[] }> = {};
+      for (const r of settled) {
+        if (r.status === "fulfilled") {
+          const [id, val] = r.value;
+          out[id] = val as { resources: any[]; templates: any[] };
+        }
+      }
+      return out;
+    },
+    meta: { showErrorToast: true },
+  });
+
+  // ─── Prompts ───────────────────────────────────────────────────────
+  const promptsByServerQuery = useQuery<Record<number, any[]>, Error>({
+    queryKey: ["mcp", "prompts-by-server", connectedServerIds],
+    enabled: connectedServerIds.length > 0,
+    queryFn: async () => {
+      const ipc = IpcClient.getInstance();
+      const settled = await Promise.allSettled(
+        connectedServerIds.map(async (id) => {
+          const prompts = await ipc.listMcpPrompts(id).catch(() => []);
+          return [id, prompts] as const;
+        }),
+      );
+      const out: Record<number, any[]> = {};
+      for (const r of settled) {
+        if (r.status === "fulfilled") {
+          const [id, val] = r.value;
+          out[id] = val as any[];
+        }
+      }
+      return out;
+    },
+    meta: { showErrorToast: true },
+  });
+
+  // ─── Action mutations ──────────────────────────────────────────────
+  const callToolMutation = useMutation({
+    mutationFn: async (params: {
+      serverId: number;
+      name: string;
+      args?: unknown;
+    }) => IpcClient.getInstance().callMcpTool(params),
+    meta: { showErrorToast: true },
+  });
+
+  const readResourceMutation = useMutation({
+    mutationFn: async (params: { serverId: number; uri: string }) =>
+      IpcClient.getInstance().readMcpResource(params),
+    meta: { showErrorToast: true },
+  });
+
+  const getPromptMutation = useMutation({
+    mutationFn: async (params: {
+      serverId: number;
+      name: string;
+      args?: Record<string, string>;
+    }) => IpcClient.getInstance().getMcpPrompt(params),
+    meta: { showErrorToast: true },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async (serverId: number) =>
+      IpcClient.getInstance().connectMcpServer(serverId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tools-by-server"],
+      });
+    },
+    meta: { showErrorToast: true },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async (serverId: number) =>
+      IpcClient.getInstance().disconnectMcpServer(serverId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
+    },
+    meta: { showErrorToast: true },
+  });
+
+  const reconnectMutation = useMutation({
+    mutationFn: async (serverId: number) =>
+      IpcClient.getInstance().reconnectMcpServer(serverId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tools-by-server"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "resources-by-server"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "prompts-by-server"],
+      });
+    },
+    meta: { showErrorToast: true },
+  });
+
   const createServer = async (params: CreateMcpServer) =>
     createServerMutation.mutateAsync(params);
 
@@ -140,6 +301,13 @@ export function useMcp() {
       queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] }),
       queryClient.invalidateQueries({ queryKey: ["mcp", "tools-by-server"] }),
       queryClient.invalidateQueries({ queryKey: ["mcp", "consents"] }),
+      queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "resources-by-server"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "prompts-by-server"],
+      }),
     ]);
   };
 
@@ -148,6 +316,9 @@ export function useMcp() {
     toolsByServer: toolsByServerQuery.data || {},
     consentsList: consentsQuery.data || [],
     consentsMap,
+    statusByServer: statusByServerQuery.data || {},
+    resourcesByServer: resourcesByServerQuery.data || {},
+    promptsByServer: promptsByServerQuery.data || {},
     isLoading:
       serversQuery.isLoading ||
       toolsByServerQuery.isLoading ||
@@ -163,11 +334,73 @@ export function useMcp() {
     deleteServer,
     setToolConsent,
 
+    // Action mutations
+    callTool: (params: { serverId: number; name: string; args?: unknown }) =>
+      callToolMutation.mutateAsync(params),
+    readResource: (params: { serverId: number; uri: string }) =>
+      readResourceMutation.mutateAsync(params),
+    getPrompt: (params: {
+      serverId: number;
+      name: string;
+      args?: Record<string, string>;
+    }) => getPromptMutation.mutateAsync(params),
+    connectServer: (serverId: number) =>
+      connectMutation.mutateAsync(serverId),
+    disconnectServer: (serverId: number) =>
+      disconnectMutation.mutateAsync(serverId),
+    reconnectServer: (serverId: number) =>
+      reconnectMutation.mutateAsync(serverId),
+    reconnectAll: async (ids: number[]) => {
+      await Promise.allSettled(
+        ids.map((id) =>
+          IpcClient.getInstance().reconnectMcpServer(id),
+        ),
+      );
+      await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tools-by-server"],
+      });
+    },
+
     // Status flags
     isCreating: createServerMutation.isPending,
     isToggling: updateServerMutation.isPending,
     isUpdatingServer: updateServerMutation.isPending,
     isDeleting: deleteServerMutation.isPending,
     isSettingConsent: setConsentMutation.isPending,
+    isCallingTool: callToolMutation.isPending,
+    isReadingResource: readResourceMutation.isPending,
+    isGettingPrompt: getPromptMutation.isPending,
+    isConnecting: connectMutation.isPending,
+    isReconnecting: reconnectMutation.isPending,
+    isDisconnecting: disconnectMutation.isPending,
+  } as const;
+}
+
+export function useMcpServer(serverId: number) {
+  const mcp = useMcp();
+  const server = mcp.servers.find((s) => s.id === serverId);
+  const status: McpServerStatusInfo = mcp.statusByServer[serverId] ?? {
+    serverId,
+    status: "disconnected",
+  };
+  return {
+    server,
+    status,
+    tools: mcp.toolsByServer[serverId] ?? [],
+    resources: mcp.resourcesByServer[serverId]?.resources ?? [],
+    resourceTemplates:
+      mcp.resourcesByServer[serverId]?.templates ?? [],
+    prompts: mcp.promptsByServer[serverId] ?? [],
+    callTool: (name: string, args?: unknown) =>
+      mcp.callTool({ serverId, name, args }),
+    readResource: (uri: string) => mcp.readResource({ serverId, uri }),
+    getPrompt: (name: string, args?: Record<string, string>) =>
+      mcp.getPrompt({ serverId, name, args }),
+    connect: () => mcp.connectServer(serverId),
+    disconnect: () => mcp.disconnectServer(serverId),
+    reconnect: () => mcp.reconnectServer(serverId),
+    setConsent: (toolName: string, consent: McpToolConsent["consent"]) =>
+      mcp.setToolConsent(serverId, toolName, consent),
   } as const;
 }

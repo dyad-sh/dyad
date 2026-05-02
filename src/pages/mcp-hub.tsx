@@ -67,7 +67,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { useMcp, type Transport } from "@/hooks/useMcp";
+import type { McpServerStatusInfo } from "@/ipc/ipc_types";
 import { showError, showSuccess } from "@/lib/toast";
+import { IpcClient } from "@/ipc/ipc_client";
 import {
   MCP_CATEGORIES,
   type McpServerRegistryEntry,
@@ -112,6 +114,9 @@ const McpHubPage: React.FC = () => {
     servers: installedServers,
     toolsByServer,
     consentsMap,
+    statusByServer,
+    resourcesByServer,
+    promptsByServer,
     isLoading,
     createServer,
     toggleEnabled,
@@ -119,12 +124,47 @@ const McpHubPage: React.FC = () => {
     updateServer,
     setToolConsent,
     refetchAll,
+    connectServer,
+    disconnectServer,
+    reconnectServer,
+    reconnectAll,
+    readResource,
+    getPrompt,
     isCreating,
     isUpdatingServer,
     isDeleting,
+    isReadingResource,
+    isGettingPrompt,
   } = useMcp();
 
-  const [topTab, setTopTab] = useState<"my-servers" | "registry" | "custom">("my-servers");
+  const [topTab, setTopTab] = useState<
+    "my-servers" | "registry" | "custom" | "resources" | "prompts"
+  >("my-servers");
+  const [otherSettingsOpen, setOtherSettingsOpen] = useState(false);
+  // Resource viewer dialog
+  const [resourceViewer, setResourceViewer] = useState<{
+    open: boolean;
+    serverId?: number;
+    uri?: string;
+    name?: string;
+    content?: string;
+    error?: string;
+  }>({ open: false });
+  // Prompt runner dialog
+  const [promptRunner, setPromptRunner] = useState<{
+    open: boolean;
+    serverId?: number;
+    name?: string;
+    description?: string;
+    arguments?: Array<{
+      name: string;
+      description?: string;
+      required?: boolean;
+    }>;
+    values: Record<string, string>;
+    result?: unknown;
+    error?: string;
+  }>({ open: false, values: {} });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<McpServerCategory>("featured");
 
@@ -193,6 +233,35 @@ const McpHubPage: React.FC = () => {
         Object.keys(envValues).length > 0
           ? { ...config.env, ...envValues }
           : config.env || null;
+
+      // Special-case: n8n entries need a live MCP Server Trigger workflow
+      // before the URL will respond. Auto-provision it via n8n's API so the
+      // user never has to leave the MCP Hub.
+      if (server.id === "n8n-local") {
+        try {
+          const ipc = IpcClient.getInstance();
+          const apiKey = envValues["X-N8N-API-KEY"]?.trim();
+          const result = await ipc.ensureN8nMcpTrigger({
+            path: "joycreate",
+            name: "JoyCreate MCP Server",
+            apiKey,
+          });
+          url = result.url;
+          showSuccess(
+            result.created
+              ? `Created n8n MCP trigger workflow → ${result.url}`
+              : `Reusing existing n8n MCP trigger → ${result.url}`,
+          );
+        } catch (err) {
+          showError(
+            `Could not provision n8n MCP workflow: ${
+              err instanceof Error ? err.message : "Unknown error"
+            }`,
+          );
+          setInstallDialog((prev) => ({ ...prev, isInstalling: false }));
+          return;
+        }
+      }
 
       await createServer({
         name: server.name,
@@ -305,8 +374,21 @@ const McpHubPage: React.FC = () => {
                 <Wrench className="h-3.5 w-3.5" />
                 {totalTools} tool{totalTools !== 1 ? "s" : ""}
               </Badge>
-              <Button variant="outline" size="icon" onClick={() => refetchAll()} disabled={isLoading}>
-                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await refetchAll();
+                  if (installedServers.length > 0) {
+                    await reconnectAll(installedServers.map((s) => s.id));
+                  }
+                }}
+                disabled={isLoading}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+                />
+                Refresh All
               </Button>
             </div>
           </div>
@@ -315,6 +397,92 @@ const McpHubPage: React.FC = () => {
 
       {/* ── Top-level Tabs ────────────────────────────────────────── */}
       <div className="mx-auto px-6 py-6">
+        {/* Other Settings deep-link cards */}
+        <Collapsible
+          open={otherSettingsOpen}
+          onOpenChange={setOtherSettingsOpen}
+          className="mb-6"
+        >
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-md border px-4 py-2 text-sm hover:bg-muted/50 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Other Settings
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${otherSettingsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[
+                {
+                  hash: "provider-settings",
+                  title: "AI Providers",
+                  desc: "Configure model API keys and providers",
+                  icon: <Sparkles className="h-4 w-4" />,
+                },
+                {
+                  hash: "integrations",
+                  title: "Integrations",
+                  desc: "GitHub, Vercel, Supabase, Neon",
+                  icon: <Github className="h-4 w-4" />,
+                },
+                {
+                  hash: "external-services",
+                  title: "External Services",
+                  desc: "Third-party service connections",
+                  icon: <Cloud className="h-4 w-4" />,
+                },
+                {
+                  hash: "agent-permissions",
+                  title: "Agent Permissions",
+                  desc: "Control local agent tool access",
+                  icon: <Shield className="h-4 w-4" />,
+                },
+                {
+                  hash: "cns-settings",
+                  title: "CNS",
+                  desc: "Decentralized chat settings",
+                  icon: <MessageSquare className="h-4 w-4" />,
+                },
+                {
+                  hash: "joy-identity",
+                  title: "Joy Identity",
+                  desc: "Wallet and identity",
+                  icon: <Database className="h-4 w-4" />,
+                },
+              ].map((card) => (
+                <button
+                  key={card.hash}
+                  type="button"
+                  onClick={() =>
+                    router.navigate({
+                      to: "/settings",
+                      hash: card.hash,
+                    } as any)
+                  }
+                  className="flex items-start gap-3 rounded-lg border p-3 text-left hover:border-primary/50 hover:bg-primary/5 transition-all"
+                >
+                  <div className="mt-0.5 text-muted-foreground">
+                    {card.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{card.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {card.desc}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
         <Tabs value={topTab} onValueChange={(v) => setTopTab(v as typeof topTab)}>
           <TabsList className="mb-6">
             <TabsTrigger value="my-servers" className="gap-2">
@@ -331,6 +499,14 @@ const McpHubPage: React.FC = () => {
             <TabsTrigger value="custom" className="gap-2">
               <Plus className="h-4 w-4" />
               Add Custom
+            </TabsTrigger>
+            <TabsTrigger value="resources" className="gap-2">
+              <FileText className="h-4 w-4" />
+              Resources
+            </TabsTrigger>
+            <TabsTrigger value="prompts" className="gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Prompts
             </TabsTrigger>
           </TabsList>
 
@@ -363,6 +539,15 @@ const McpHubPage: React.FC = () => {
                   server={server}
                   tools={toolsByServer[server.id] || []}
                   consentsMap={consentsMap}
+                  status={
+                    statusByServer[server.id] ?? {
+                      serverId: server.id,
+                      status: "disconnected",
+                    }
+                  }
+                  onConnect={() => connectServer(server.id)}
+                  onDisconnect={() => disconnectServer(server.id)}
+                  onReconnect={() => reconnectServer(server.id)}
                   onToggleEnabled={() => toggleEnabled(server.id, !!server.enabled)}
                   onDelete={() => deleteServer(server.id)}
                   onSetConsent={(toolName, consent) => setToolConsent(server.id, toolName, consent)}
@@ -638,6 +823,264 @@ const McpHubPage: React.FC = () => {
               </div>
             </div>
           </TabsContent>
+
+          {/* ═══════════ RESOURCES ═══════════ */}
+          <TabsContent value="resources" className="mt-0 space-y-4">
+            {installedServers.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                Add an MCP server to browse its resources.
+              </div>
+            ) : (
+              installedServers.map((server) => {
+                const status = statusByServer[server.id]?.status;
+                const bundle = resourcesByServer[server.id];
+                return (
+                  <Card key={server.id}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        {server.name}
+                        <StatusBadge
+                          status={
+                            statusByServer[server.id] ?? {
+                              serverId: server.id,
+                              status: "disconnected",
+                            }
+                          }
+                        />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {status !== "connected" ? (
+                        <p className="text-sm text-muted-foreground">
+                          Connect this server to discover resources.
+                        </p>
+                      ) : !bundle ||
+                        (bundle.resources.length === 0 &&
+                          bundle.templates.length === 0) ? (
+                        <p className="text-sm text-muted-foreground">
+                          No resources exposed by this server.
+                        </p>
+                      ) : (
+                        <>
+                          {bundle.resources.map((res: any) => (
+                            <div
+                              key={res.uri}
+                              className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="font-mono text-xs truncate">
+                                  {res.uri}
+                                </div>
+                                {res.name && (
+                                  <div className="text-sm">{res.name}</div>
+                                )}
+                                {res.description && (
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {res.description}
+                                  </div>
+                                )}
+                                {res.mimeType && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] mt-1"
+                                  >
+                                    {res.mimeType}
+                                  </Badge>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isReadingResource}
+                                onClick={async () => {
+                                  setResourceViewer({
+                                    open: true,
+                                    serverId: server.id,
+                                    uri: res.uri,
+                                    name: res.name,
+                                  });
+                                  try {
+                                    const result: any = await readResource({
+                                      serverId: server.id,
+                                      uri: res.uri,
+                                    });
+                                    const text =
+                                      result?.contents
+                                        ?.map((c: any) =>
+                                          c.text ?? c.blob ?? JSON.stringify(c),
+                                        )
+                                        .join("\n\n") ??
+                                      JSON.stringify(result, null, 2);
+                                    setResourceViewer((prev) => ({
+                                      ...prev,
+                                      content: text,
+                                    }));
+                                  } catch (err) {
+                                    setResourceViewer((prev) => ({
+                                      ...prev,
+                                      error:
+                                        err instanceof Error
+                                          ? err.message
+                                          : String(err),
+                                    }));
+                                  }
+                                }}
+                              >
+                                Read
+                              </Button>
+                            </div>
+                          ))}
+                          {bundle.templates.length > 0 && (
+                            <div className="pt-2">
+                              <div className="text-xs font-medium text-muted-foreground mb-1">
+                                Resource Templates
+                              </div>
+                              {bundle.templates.map((tpl: any) => (
+                                <div
+                                  key={tpl.uriTemplate}
+                                  className="rounded-md border px-3 py-2 mb-1"
+                                >
+                                  <div className="font-mono text-xs truncate">
+                                    {tpl.uriTemplate}
+                                  </div>
+                                  {tpl.name && (
+                                    <div className="text-sm">{tpl.name}</div>
+                                  )}
+                                  {tpl.description && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {tpl.description}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </TabsContent>
+
+          {/* ═══════════ PROMPTS ═══════════ */}
+          <TabsContent value="prompts" className="mt-0 space-y-4">
+            {installedServers.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                Add an MCP server to browse its prompts.
+              </div>
+            ) : (
+              installedServers.map((server) => {
+                const status = statusByServer[server.id]?.status;
+                const prompts = promptsByServer[server.id] ?? [];
+                return (
+                  <Card key={server.id}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        {server.name}
+                        <StatusBadge
+                          status={
+                            statusByServer[server.id] ?? {
+                              serverId: server.id,
+                              status: "disconnected",
+                            }
+                          }
+                        />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {status !== "connected" ? (
+                        <p className="text-sm text-muted-foreground">
+                          Connect this server to discover prompts.
+                        </p>
+                      ) : prompts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          No prompts exposed by this server.
+                        </p>
+                      ) : (
+                        prompts.map((p: any) => (
+                          <div
+                            key={p.name}
+                            className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="font-mono text-sm truncate">
+                                {p.name}
+                              </div>
+                              {p.description && (
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {p.description}
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const argDefs: Array<{
+                                  name: string;
+                                  description?: string;
+                                  required?: boolean;
+                                }> = (p.arguments ?? []).map((a: any) => ({
+                                  name: a.name,
+                                  description: a.description,
+                                  required: !!a.required,
+                                }));
+                                if (argDefs.length === 0) {
+                                  // No args — invoke immediately and show result
+                                  setPromptRunner({
+                                    open: true,
+                                    serverId: server.id,
+                                    name: p.name,
+                                    description: p.description,
+                                    arguments: argDefs,
+                                    values: {},
+                                  });
+                                  getPrompt({
+                                    serverId: server.id,
+                                    name: p.name,
+                                  })
+                                    .then((result) =>
+                                      setPromptRunner((prev) => ({
+                                        ...prev,
+                                        result,
+                                      })),
+                                    )
+                                    .catch((err) =>
+                                      setPromptRunner((prev) => ({
+                                        ...prev,
+                                        error:
+                                          err instanceof Error
+                                            ? err.message
+                                            : String(err),
+                                      })),
+                                    );
+                                } else {
+                                  setPromptRunner({
+                                    open: true,
+                                    serverId: server.id,
+                                    name: p.name,
+                                    description: p.description,
+                                    arguments: argDefs,
+                                    values: {},
+                                  });
+                                }
+                              }}
+                            >
+                              Run
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -726,7 +1169,200 @@ const McpHubPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Resource Viewer Dialog ───────────────────────────────── */}
+      <Dialog
+        open={resourceViewer.open}
+        onOpenChange={(open) =>
+          setResourceViewer((prev) =>
+            open ? prev : { open: false },
+          )
+        }
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              {resourceViewer.name || resourceViewer.uri || "Resource"}
+            </DialogTitle>
+            {resourceViewer.uri && (
+              <DialogDescription className="font-mono text-xs">
+                {resourceViewer.uri}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto rounded border bg-muted/30 p-3">
+            {resourceViewer.error ? (
+              <div className="text-sm text-destructive">
+                {resourceViewer.error}
+              </div>
+            ) : resourceViewer.content === undefined ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            ) : (
+              <pre className="text-xs whitespace-pre-wrap break-all font-mono">
+                {resourceViewer.content}
+              </pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Prompt Runner Dialog ─────────────────────────────────── */}
+      <Dialog
+        open={promptRunner.open}
+        onOpenChange={(open) =>
+          setPromptRunner((prev) =>
+            open ? prev : { open: false, values: {} },
+          )
+        }
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              {promptRunner.name}
+            </DialogTitle>
+            {promptRunner.description && (
+              <DialogDescription>
+                {promptRunner.description}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+
+          {promptRunner.result === undefined && !promptRunner.error && (
+            <div className="space-y-3 py-2">
+              {(promptRunner.arguments ?? []).map((arg) => (
+                <div key={arg.name} className="space-y-1">
+                  <Label className="flex items-center gap-1">
+                    {arg.name}
+                    {arg.required && <span className="text-red-500">*</span>}
+                  </Label>
+                  {arg.description && (
+                    <p className="text-xs text-muted-foreground">
+                      {arg.description}
+                    </p>
+                  )}
+                  <Input
+                    value={promptRunner.values[arg.name] ?? ""}
+                    onChange={(e) =>
+                      setPromptRunner((prev) => ({
+                        ...prev,
+                        values: { ...prev.values, [arg.name]: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+              {(promptRunner.arguments ?? []).length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Running prompt…
+                </div>
+              )}
+            </div>
+          )}
+
+          {promptRunner.error && (
+            <div className="text-sm text-destructive py-2">
+              {promptRunner.error}
+            </div>
+          )}
+
+          {promptRunner.result !== undefined && (
+            <div className="max-h-[50vh] overflow-auto rounded border bg-muted/30 p-3">
+              <pre className="text-xs whitespace-pre-wrap break-all font-mono">
+                {JSON.stringify(promptRunner.result, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          <DialogFooter>
+            {(promptRunner.arguments ?? []).length > 0 &&
+              promptRunner.result === undefined && (
+                <Button
+                  onClick={async () => {
+                    if (!promptRunner.serverId || !promptRunner.name) return;
+                    try {
+                      const result = await getPrompt({
+                        serverId: promptRunner.serverId,
+                        name: promptRunner.name,
+                        args: promptRunner.values,
+                      });
+                      setPromptRunner((prev) => ({ ...prev, result }));
+                    } catch (err) {
+                      setPromptRunner((prev) => ({
+                        ...prev,
+                        error:
+                          err instanceof Error ? err.message : String(err),
+                      }));
+                    }
+                  }}
+                  disabled={isGettingPrompt}
+                >
+                  {isGettingPrompt ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Running…
+                    </>
+                  ) : (
+                    "Run Prompt"
+                  )}
+                </Button>
+              )}
+            <Button
+              variant="outline"
+              onClick={() => setPromptRunner({ open: false, values: {} })}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Status badge
+// ---------------------------------------------------------------------------
+const StatusBadge: React.FC<{ status: McpServerStatusInfo }> = ({ status }) => {
+  if (status.status === "connected") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-green-500/40 text-green-600"
+      >
+        <CheckCircle2 className="h-3 w-3" />
+        Connected
+      </Badge>
+    );
+  }
+  if (status.status === "connecting") {
+    return (
+      <Badge variant="outline" className="gap-1 border-blue-500/40 text-blue-600">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Connecting
+      </Badge>
+    );
+  }
+  if (status.status === "error") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-red-500/40 text-red-600"
+        title={status.error}
+      >
+        <AlertCircle className="h-3 w-3" />
+        Error
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="gap-1 text-muted-foreground">
+      <PowerOff className="h-3 w-3" />
+      Disconnected
+    </Badge>
   );
 };
 
@@ -737,6 +1373,10 @@ interface InstalledServerCardProps {
   server: McpServer;
   tools: McpTool[];
   consentsMap: Record<string, string>;
+  status: McpServerStatusInfo;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onReconnect: () => void;
   onToggleEnabled: () => void;
   onDelete: () => void;
   onSetConsent: (toolName: string, consent: "ask" | "always" | "denied") => void;
@@ -749,6 +1389,10 @@ const InstalledServerCard: React.FC<InstalledServerCardProps> = ({
   server,
   tools,
   consentsMap,
+  status,
+  onConnect,
+  onDisconnect,
+  onReconnect,
   onToggleEnabled,
   onDelete,
   onSetConsent,
@@ -804,6 +1448,7 @@ const InstalledServerCard: React.FC<InstalledServerCardProps> = ({
                 <Badge variant={server.enabled ? "default" : "secondary"} className="text-xs">
                   {server.enabled ? "Active" : "Disabled"}
                 </Badge>
+                <StatusBadge status={status} />
               </div>
               <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
@@ -815,6 +1460,40 @@ const InstalledServerCard: React.FC<InstalledServerCardProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {status.status === "connected" ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onReconnect}
+                  title="Reconnect"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onDisconnect}
+                  title="Disconnect"
+                >
+                  <PowerOff className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onConnect}
+                disabled={status.status === "connecting"}
+                title="Connect"
+              >
+                {status.status === "connecting" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Power className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            )}
             <Switch checked={!!server.enabled} onCheckedChange={onToggleEnabled} />
             {confirmDelete ? (
               <div className="flex items-center gap-1">

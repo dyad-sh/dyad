@@ -173,7 +173,7 @@ async function generateWithGoogle(params: GenerateImageParams): Promise<string> 
     return saveBase64Image(b64, uniqueFilename("google"));
   }
 
-  // Imagen 3/4 — predict endpoint. Imagen accepts aspectRatio, NOT raw width/height.
+  // Imagen 3/4 — predict endpoint
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
     {
@@ -205,6 +205,7 @@ async function generateWithGoogle(params: GenerateImageParams): Promise<string> 
 function aspectRatioFor(width?: number, height?: number): string {
   if (!width || !height) return "1:1";
   const ratio = width / height;
+  // Imagen supports a fixed list of aspect ratios.
   if (ratio >= 1.7) return "16:9";
   if (ratio >= 1.25) return "4:3";
   if (ratio >= 0.85) return "1:1";

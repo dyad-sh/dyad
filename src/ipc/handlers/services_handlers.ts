@@ -35,75 +35,15 @@ function getUserDataPath(): string {
  * NOT include the active Node version's `bin` folder — so a bare `npx` call
  * fails with "'npx' is not recognized as an internal or external command".
  *
- * Strategy (Windows, in order):
- *   1. Same dir as `process.execPath` — works only in dev when Node spawned
- *      Electron. Skipped for packaged builds (execPath is the app exe).
- *   2. `where.exe <name>` — uses the parent process PATH.
- *   3. nvm-windows installs under `%LOCALAPPDATA%\nvm\<version>`.
- *   4. `%ProgramFiles%\nodejs` (default Node installer).
- *   5. Fall back to the bare name and hope PATH is fine.
+ * Strategy: locate the binary in the same directory as `process.execPath`
+ * (`node.exe`), which is where nvm/Volta install the shims on Windows. Falls
+ * back to the bare name if not found, so PATH-resolved environments still work.
  */
 function resolveNodeCli(name: "npx" | "npm" | "node"): string {
-  const isWin = process.platform === "win32";
-  const ext = isWin ? (name === "node" ? ".exe" : ".cmd") : "";
-  const candidates: string[] = [];
-
-  // 1. Beside Electron/Node executable (only meaningful in dev)
-  if (!app.isPackaged) {
-    candidates.push(path.join(path.dirname(process.execPath), `${name}${ext}`));
-  }
-
-  // 2. `where` lookup (Windows) — uses the spawning shell's PATH
-  if (isWin) {
-    try {
-      const out = execSync(`where ${name}${ext}`, {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
-      const first = out.split(/\r?\n/)[0]?.trim();
-      if (first) candidates.push(first);
-    } catch {
-      /* not on PATH — fall through */
-    }
-  }
-
-  // 3. nvm-windows installs (newest version first)
-  if (isWin) {
-    const localAppData = process.env.LOCALAPPDATA;
-    if (localAppData) {
-      const nvmRoot = path.join(localAppData, "nvm");
-      if (fs.existsSync(nvmRoot)) {
-        try {
-          const versions = fs
-            .readdirSync(nvmRoot)
-            .filter((d) => /^v\d+/.test(d))
-            .sort()
-            .reverse();
-          for (const v of versions) {
-            candidates.push(path.join(nvmRoot, v, `${name}${ext}`));
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-  }
-
-  // 4. Default Windows Node installer location
-  if (isWin && process.env.ProgramFiles) {
-    candidates.push(
-      path.join(process.env.ProgramFiles, "nodejs", `${name}${ext}`),
-    );
-  }
-
-  for (const c of candidates) {
-    try {
-      if (fs.existsSync(c)) return c;
-    } catch {
-      /* ignore */
-    }
-  }
-  return name + ext; // last-resort bare name
+  const ext = process.platform === "win32" ? (name === "node" ? ".exe" : ".cmd") : "";
+  const candidate = path.join(path.dirname(process.execPath), `${name}${ext}`);
+  if (fs.existsSync(candidate)) return candidate;
+  return name + ext;
 }
 
 // =============================================================================

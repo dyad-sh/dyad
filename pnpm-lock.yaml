@@ -15,8 +15,8 @@ importers:
         specifier: ^3.0.15
         version: 3.0.73(zod@3.25.76)
       '@ai-sdk/anthropic':
-        specifier: ^2.0.4
-        version: 2.0.57(zod@3.25.76)
+        specifier: ^2.0.77
+        version: 2.0.77(zod@3.25.76)
       '@ai-sdk/azure':
         specifier: ^2.0.17
         version: 2.0.91(zod@3.25.76)
@@ -125,6 +125,9 @@ importers:
       '@lexical/react':
         specifier: ^0.33.1
         version: 0.33.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(yjs@13.6.28)
+      '@lexical/utils':
+        specifier: ^0.33.1
+        version: 0.33.1
       '@libp2p/crypto':
         specifier: ^5.1.13
         version: 5.1.13
@@ -245,6 +248,9 @@ importers:
       '@tanstack/store':
         specifier: ^0.8.0
         version: 0.8.0
+      '@types/diff':
+        specifier: ^7.0.2
+        version: 7.0.2
       '@types/form-data':
         specifier: ^2.5.2
         version: 2.5.2
@@ -293,6 +299,12 @@ importers:
       did-resolver:
         specifier: ^4.1.0
         version: 4.1.0
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
+      discord.js:
+        specifier: ^14.26.3
+        version: 14.26.3(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       dompurify:
         specifier: ^3.3.2
         version: 3.3.2
@@ -338,6 +350,9 @@ importers:
       glob:
         specifier: ^11.0.2
         version: 11.1.0
+      google-auth-library:
+        specifier: ^10.6.2
+        version: 10.6.2
       googleapis:
         specifier: ^171.4.0
         version: 171.4.0
@@ -605,7 +620,7 @@ importers:
         version: 15.5.2
       n8n:
         specifier: ^2.1.4
-        version: 2.1.4(57bd44c05a1f8bc7bea8ecb654d7a840)
+        version: 2.1.4(f793c13bc3436da5020360ad5c503c15)
       oxlint:
         specifier: ^1.8.0
         version: 1.36.0
@@ -662,6 +677,12 @@ packages:
 
   '@ai-sdk/anthropic@2.0.57':
     resolution: {integrity: sha512-DREpYqW2pylgaj69gZ+K8u92bo9DaMgFdictYnY+IwYeY3bawQ4zI7l/o1VkDsBDljAx8iYz5lPURwVZNu+Xpg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/anthropic@2.0.77':
+    resolution: {integrity: sha512-8n7ApEzFOxqVvT3HyqLrEQlgUx/2nUmPFLTGY3fNKwUA8KVNU3Ovd2C66Qh1Y93Iq5NkHsOWuLiTyAZpRKQhgw==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -728,6 +749,12 @@ packages:
 
   '@ai-sdk/provider-utils@3.0.20':
     resolution: {integrity: sha512-iXHVe0apM2zUEzauqJwqmpC37A5rihrStAih5Ks+JE32iTe4LZ58y17UGBjpQQTCRw9YxMeo2UFLxLpBluyvLQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@3.0.23':
+    resolution: {integrity: sha512-60GYsRj5wIJQRcq5YwYJq4KhwLeStceXEJiZdecP1miiH+6FMmrnc7lZDOJoQ6m9lrudEb+uI4LEwddLz5+rPQ==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -7251,6 +7278,9 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
+  '@types/diff@7.0.2':
+    resolution: {integrity: sha512-JSWRMozjFKsGlEjiiKajUjIJVKuKdE3oVy2DNtK+fUo8q82nhFZ2CPQwicAIkXrofahDXrWJ7mjelvZphMS98Q==}
+
   '@types/dns-packet@5.6.5':
     resolution: {integrity: sha512-qXOC7XLOEe43ehtWJCMnQXvgcIpv6rPmQ1jXT98Ad8A3TB1Ue50jsCbSSSyuazScEuZ/Q026vHbrOTVkmwA+7Q==}
 
@@ -9395,6 +9425,10 @@ packages:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
   dijkstrajs@1.0.3:
     resolution: {integrity: sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==}
 
@@ -9411,8 +9445,8 @@ packages:
   discord-api-types@0.38.45:
     resolution: {integrity: sha512-DiI01i00FPv6n+hXcFkFxK8Y/rFRpKs6U6aP32N4T73nTbj37Eua3H/95TBpLktLWB6xnLXhYDGvyLq6zzYY2w==}
 
-  discord.js@14.26.2:
-    resolution: {integrity: sha512-feShi+gULJ6R2MAA4/KkCFnkJcuVrROJrKk4czplzq8gE1oqhqgOy9K0Scu44B8oGeWKe04egquzf+ia6VtXAw==}
+  discord.js@14.26.3:
+    resolution: {integrity: sha512-XEKtYn28YFsiJ5l4fLRyikdbo6RD5oFyqfVHQlvXz2104JhH/E8slN28dbky05w3DCrJcNVWvhVvcJCTSl/KIg==}
     engines: {node: '>=18'}
 
   dns-packet@5.6.1:
@@ -16685,6 +16719,12 @@ snapshots:
       '@ai-sdk/provider-utils': 3.0.20(zod@3.25.76)
       zod: 3.25.76
 
+  '@ai-sdk/anthropic@2.0.77(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.1
+      '@ai-sdk/provider-utils': 3.0.23(zod@3.25.76)
+      zod: 3.25.76
+
   '@ai-sdk/anthropic@2.0.9(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
@@ -16755,6 +16795,13 @@ snapshots:
       zod: 3.25.76
 
   '@ai-sdk/provider-utils@3.0.20(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.1
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@3.0.23(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 2.0.1
       '@standard-schema/spec': 1.1.0
@@ -19365,18 +19412,14 @@ snapshots:
       fast-deep-equal: 3.1.3
       ts-mixer: 6.0.4
       tslib: 2.8.1
-    optional: true
 
-  '@discordjs/collection@1.5.3':
-    optional: true
+  '@discordjs/collection@1.5.3': {}
 
-  '@discordjs/collection@2.1.1':
-    optional: true
+  '@discordjs/collection@2.1.1': {}
 
   '@discordjs/formatters@0.6.2':
     dependencies:
       discord-api-types: 0.38.45
-    optional: true
 
   '@discordjs/rest@2.6.1':
     dependencies:
@@ -19389,12 +19432,10 @@ snapshots:
       magic-bytes.js: 1.13.0
       tslib: 2.8.1
       undici: 6.24.1
-    optional: true
 
   '@discordjs/util@1.2.0':
     dependencies:
       discord-api-types: 0.38.45
-    optional: true
 
   '@discordjs/voice@0.19.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
     dependencies:
@@ -19429,7 +19470,6 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
-    optional: true
 
   '@drizzle-team/brocli@0.10.2': {}
 
@@ -21103,7 +21143,7 @@ snapshots:
       - aws-crt
       - encoding
 
-  '@langchain/community@1.0.5(3ed4128f996392b3e533cb5f32f5f186)':
+  '@langchain/community@1.0.5(a18429618f9d28db9bfb9182ba15fb47)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.57.0)(bufferutil@4.1.0)(deepmerge@4.3.1)(dotenv@16.6.1)(encoding@0.1.13)(openai@4.104.0(encoding@0.1.13)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.76))(utf-8-validate@5.0.10)(zod@3.25.76)
       '@ibm-cloud/watsonx-ai': 1.7.5
@@ -21143,7 +21183,7 @@ snapshots:
       cohere-ai: 7.14.0(encoding@0.1.13)
       crypto-js: 4.2.0
       d3-dsv: 2.0.0
-      discord.js: 14.26.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      discord.js: 14.26.3(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       epub2: 3.0.2(ts-toolbelt@9.6.0)
       fast-xml-parser: 5.5.8
       google-auth-library: 10.6.2
@@ -22683,7 +22723,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@n8n/n8n-nodes-langchain@2.1.3(d39ebaf3d5d36ba59e850ef682c54bd9)':
+  '@n8n/n8n-nodes-langchain@2.1.3(09ddb29a3b4d716dc8f49358ce6ddd9b)':
     dependencies:
       '@aws-sdk/client-sso-oidc': 3.808.0
       '@azure/identity': 4.13.0
@@ -22698,7 +22738,7 @@ snapshots:
       '@langchain/aws': 1.0.3(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.26.0(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.67)))
       '@langchain/classic': 1.0.5(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.26.0(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(cheerio@1.0.0)(openai@6.26.0(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.67))(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/cohere': 1.0.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.26.0(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.67)))(encoding@0.1.13)
-      '@langchain/community': 1.0.5(3ed4128f996392b3e533cb5f32f5f186)
+      '@langchain/community': 1.0.5(a18429618f9d28db9bfb9182ba15fb47)
       '@langchain/core': 1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@4.104.0(encoding@0.1.13)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.76))
       '@langchain/google-genai': 2.0.0(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.26.0(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.67)))
       '@langchain/google-vertexai': 2.0.0(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.26.0(ws@8.17.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.67)))
@@ -24886,20 +24926,16 @@ snapshots:
 
   '@safe-global/safe-gateway-typescript-sdk@3.23.1': {}
 
-  '@sapphire/async-queue@1.5.5':
-    optional: true
+  '@sapphire/async-queue@1.5.5': {}
 
   '@sapphire/shapeshift@4.0.0':
     dependencies:
       fast-deep-equal: 3.1.3
       lodash: 4.17.21
-    optional: true
 
-  '@sapphire/snowflake@3.5.3':
-    optional: true
+  '@sapphire/snowflake@3.5.3': {}
 
-  '@sapphire/snowflake@3.5.5':
-    optional: true
+  '@sapphire/snowflake@3.5.5': {}
 
   '@scarf/scarf@1.4.0': {}
 
@@ -26689,6 +26725,8 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
+  '@types/diff@7.0.2': {}
+
   '@types/dns-packet@5.6.5':
     dependencies:
       '@types/node': 22.19.17
@@ -27167,8 +27205,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@vladfrangu/async_event_emitter@2.4.7':
-    optional: true
+  '@vladfrangu/async_event_emitter@2.4.7': {}
 
   '@vscode/sudo-prompt@9.3.1': {}
 
@@ -29738,6 +29775,8 @@ snapshots:
 
   diff@8.0.4: {}
 
+  diff@9.0.0: {}
+
   dijkstrajs@1.0.3: {}
 
   dingbat-to-unicode@1.0.1: {}
@@ -29753,7 +29792,7 @@ snapshots:
 
   discord-api-types@0.38.45: {}
 
-  discord.js@14.26.2(bufferutil@4.1.0)(utf-8-validate@5.0.10):
+  discord.js@14.26.3(bufferutil@4.1.0)(utf-8-validate@5.0.10):
     dependencies:
       '@discordjs/builders': 1.14.1
       '@discordjs/collection': 1.5.3
@@ -29771,7 +29810,6 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
-    optional: true
 
   dns-packet@5.6.1:
     dependencies:
@@ -33042,8 +33080,7 @@ snapshots:
 
   lodash.once@4.1.1: {}
 
-  lodash.snakecase@4.1.1:
-    optional: true
+  lodash.snakecase@4.1.1: {}
 
   lodash.throttle@4.1.1: {}
 
@@ -33138,8 +33175,7 @@ snapshots:
 
   lz-string@1.5.0: {}
 
-  magic-bytes.js@1.13.0:
-    optional: true
+  magic-bytes.js@1.13.0: {}
 
   magic-string@0.30.21:
     dependencies:
@@ -34311,7 +34347,7 @@ snapshots:
       xml2js: 0.6.2
       zod: 3.25.67
 
-  n8n@2.1.4(57bd44c05a1f8bc7bea8ecb654d7a840):
+  n8n@2.1.4(f793c13bc3436da5020360ad5c503c15):
     dependencies:
       '@aws-sdk/client-secrets-manager': 3.808.0
       '@azure/identity': 4.13.0
@@ -34328,7 +34364,7 @@ snapshots:
       '@n8n/di': 0.10.0
       '@n8n/errors': 0.5.0
       '@n8n/localtunnel': 3.0.0
-      '@n8n/n8n-nodes-langchain': 2.1.3(d39ebaf3d5d36ba59e850ef682c54bd9)
+      '@n8n/n8n-nodes-langchain': 2.1.3(09ddb29a3b4d716dc8f49358ce6ddd9b)
       '@n8n/permissions': 0.44.0
       '@n8n/task-runner': 2.1.3(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(bufferutil@4.1.0)(openai@4.104.0(encoding@0.1.13)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.76))(utf-8-validate@5.0.10)
       '@n8n/typeorm': 0.3.20-15(@sentry/node@9.47.1)(mysql2@3.15.0)(pg@8.12.0)(sqlite3@5.1.7)
@@ -37817,8 +37853,7 @@ snapshots:
       lodash: 4.17.21
       zod: 3.25.67
 
-  ts-mixer@6.0.4:
-    optional: true
+  ts-mixer@6.0.4: {}
 
   ts-toolbelt@9.6.0: {}
 

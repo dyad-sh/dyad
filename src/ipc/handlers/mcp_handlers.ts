@@ -1,4 +1,5 @@
 import { BrowserWindow, IpcMainInvokeEvent } from "electron";
+import os from "node:os";
 import log from "electron-log";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
@@ -394,7 +395,10 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
     name: "Filesystem",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "~"],
+    // Stdio child processes don't get shell expansion, so passing "~"
+    // literally would point the server at a directory called "~". Resolve
+    // it to the user's home up front.
+    args: ["-y", "@modelcontextprotocol/server-filesystem", os.homedir()],
     enabled: false,
   },
   {

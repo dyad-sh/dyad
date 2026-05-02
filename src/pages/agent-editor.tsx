@@ -158,9 +158,17 @@ export default function AgentEditorPage() {
   // ---- MCP tool picker state ----
   // Persisted on the agent record under `config.mcpToolsAllow`. The runtime
   // reads this list and only exposes those MCP tools to the model.
+  //
+  // We also track whether the user has actively interacted with the picker.
+  // This is critical: for pre-existing agents, `config.mcpToolsAllow` is
+  // undefined (which the runtime treats as "all enabled MCP tools"). If
+  // we always wrote `Array.from(mcpToolsAllow)` on save, simply opening
+  // an existing agent and clicking Save would silently flip that default
+  // into `[]` (= no MCP tools), which is a user-impacting regression.
   const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
     () => new Set<string>(),
   );
+  const [mcpToolsAllowTouched, setMcpToolsAllowTouched] = useState(false);
   const [mcpPickerOpen, setMcpPickerOpen] = useState(false);
 
   // ---- AI Prompt generation state ----
@@ -233,6 +241,9 @@ export default function AgentEditorPage() {
       setMcpToolsAllow(
         new Set<string>(Array.isArray(saved) ? saved : []),
       );
+      // The user hasn't touched the picker yet for this load; preserve
+      // whatever was (or wasn't) in config when they save without editing.
+      setMcpToolsAllowTouched(false);
     }
   }, [agent]);
 
@@ -288,10 +299,23 @@ export default function AgentEditorPage() {
     // Merge MCP allow-list into the agent's config blob so it survives the
     // round-trip through `agents.config_json`. Existing config keys (memory,
     // retry, flywheel, custom…) are preserved.
-    const mergedConfig = {
-      ...(agent?.config ?? {}),
-      mcpToolsAllow: Array.from(mcpToolsAllow),
-    };
+    //
+    // Only overwrite `mcpToolsAllow` when the user actually touched the
+    // picker, OR when there was already an explicit array on the agent's
+    // config (i.e. the field is being managed). This preserves the
+    // "undefined = unrestricted default" semantics for legacy agents that
+    // never had MCP scoping configured.
+    const previousAllow = agent?.config?.mcpToolsAllow;
+    const previousAllowIsArray = Array.isArray(previousAllow);
+    const baseConfig = { ...(agent?.config ?? {}) } as Record<string, unknown>;
+    if (mcpToolsAllowTouched || previousAllowIsArray) {
+      baseConfig.mcpToolsAllow = Array.from(mcpToolsAllow);
+    } else {
+      // Make absolutely sure we don't accidentally introduce the field
+      // when the user hasn't asked for MCP scoping on this agent.
+      delete baseConfig.mcpToolsAllow;
+    }
+    const mergedConfig = baseConfig;
     updateAgentMutation.mutate({
       id: Number(agentId),
       name,
@@ -1113,6 +1137,10 @@ export default function AgentEditorPage() {
                   selected={mcpToolsAllow}
                   onChange={(next) => {
                     setMcpToolsAllow(next);
+                    // Mark the picker as user-touched so handleSave will
+                    // explicitly persist the (possibly empty) selection
+                    // instead of preserving the legacy "undefined" default.
+                    setMcpToolsAllowTouched(true);
                     handleFieldChange();
                   }}
                   scopeLabel={`agent “${name || "untitled"}”`}

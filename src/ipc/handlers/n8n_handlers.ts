@@ -42,14 +42,16 @@ async function withEnsureMcpTriggerLock<T>(
 ): Promise<T> {
   const prev = ensureMcpTriggerLocks.get(key) ?? Promise.resolve();
   const next = prev.catch(() => undefined).then(fn);
-  ensureMcpTriggerLocks.set(
-    key,
-    next.catch(() => undefined),
-  );
+  // Track the *swallowed* promise once so we can both store it in the map
+  // and reference-compare against the same value in `finally`. Creating
+  // `next.catch(...)` twice produced two distinct promises and the map
+  // entry was never deleted (leak).
+  const tracked = next.catch(() => undefined);
+  ensureMcpTriggerLocks.set(key, tracked);
   try {
     return await next;
   } finally {
-    if (ensureMcpTriggerLocks.get(key) === next.catch(() => undefined)) {
+    if (ensureMcpTriggerLocks.get(key) === tracked) {
       ensureMcpTriggerLocks.delete(key);
     }
   }

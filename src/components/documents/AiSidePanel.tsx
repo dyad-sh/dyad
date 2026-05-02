@@ -147,9 +147,13 @@ export function AiSidePanel({
         ...(!provider && settingsModel
           ? { provider: (settingsModel as Record<string, string>).provider, model: (settingsModel as Record<string, string>).name }
           : {}),
-        // Pass the user's MCP allow-list (if any) so the main process can
-        // attach those tools to the streamText call.
-        ...(mcpToolsAllow && mcpToolsAllow.size > 0
+        // Pass the user's MCP allow-list whenever the parent has supplied
+        // one (even if it's empty). This preserves the distinction between
+        // "no MCP scoping for this run" (mcpToolsAllow prop undefined) and
+        // "the user explicitly cleared every tool" (Set with size 0). The
+        // latter MUST disable MCP for this run rather than silently falling
+        // back to the backend default.
+        ...(mcpToolsAllow !== undefined
           ? { mcpToolsAllow: Array.from(mcpToolsAllow) }
           : {}),
       },

@@ -41,7 +41,7 @@ import { createOllamaProvider } from "../ipc/utils/ollama_provider";
 import { getOllamaApiUrl } from "../ipc/handlers/local_model_ollama_handler";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { LM_STUDIO_BASE_URL } from "../ipc/utils/lm_studio_utils";
-import { buildMcpToolSet } from "./mcp_ai_bridge";
+import { buildMcpToolSet, planMcpAllowList } from "./mcp_ai_bridge";
 import { voiceAssistant } from "./voice_assistant";
 import { BrowserWindow } from "electron";
 import {
@@ -511,8 +511,11 @@ export async function chat(
           BrowserWindow.getFocusedWindow() ??
           BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
         // Voice-originated turns honor the user's per-voice MCP allow-list.
-        // `undefined` => all enabled MCP tools (back-compat with text turns).
-        // `[]`        => skip MCP entirely for voice.
+        // Text turns are always unrestricted (back-compat). The shared
+        // `planMcpAllowList` helper centralizes the
+        // "undefined → unrestricted, [] → skip, [...] → toolAllowList"
+        // semantics so this surface stays in sync with the agent runtime
+        // and other callers.
         let voiceAllow: string[] | undefined;
         if (origin === "voice") {
           try {
@@ -521,15 +524,17 @@ export async function chat(
             voiceAllow = undefined;
           }
         }
-        if (origin === "voice" && Array.isArray(voiceAllow) && voiceAllow.length === 0) {
+        const plan =
+          origin === "voice"
+            ? planMcpAllowList(voiceAllow)
+            : ({ skip: false, options: {} } as const);
+        if (plan.skip) {
           // Explicit "no MCP for voice" — skip the bridge entirely.
           logger.info("Joy Assistant: voice origin with empty MCP allow-list — skipping MCP tools");
         } else {
         const mcpResult = await buildMcpToolSet({
           consentWindow: focusedWin,
-          ...(origin === "voice" && Array.isArray(voiceAllow)
-            ? { toolAllowList: voiceAllow }
-            : {}),
+          ...plan.options,
         });
         if (mcpResult.summary.totalTools > 0) {
           assistantTools = { ...assistantTools, ...mcpResult.tools };

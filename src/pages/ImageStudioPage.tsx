@@ -35,6 +35,13 @@ function GenerateTab() {
   // MCP picker state — these tools are exposed to the planning step that
   // helps the user refine prompts (reference-image lookup, palette search,
   // moodboard fetches, etc.). Persisted in renderer memory only.
+  //
+  // NOTE: The Image Studio Generate flow is currently a UI preview
+  // (`toast.info(...)` below). The real backend pipeline that consumes
+  // `Array.from(mcpToolsAllow)` lands in a follow-up PR alongside the
+  // image-generation IPC handlers. Until then we surface the picker so
+  // the cross-surface UX is consistent and capture user intent for the
+  // moment that pipeline goes live. See: TODO(image-studio-mcp).
   const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
     () => new Set<string>(),
   );

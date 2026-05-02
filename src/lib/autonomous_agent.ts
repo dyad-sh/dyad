@@ -21,7 +21,7 @@ import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { getOpenClawSystemIntegration } from "@/lib/openclaw_system_integration";
 import { generateText } from "ai";
-import { buildMcpToolSet } from "./mcp_ai_bridge";
+import { buildMcpToolSet, planMcpAllowList } from "./mcp_ai_bridge";
 import type { ToolSet } from "ai";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { readSettings } from "@/main/settings";
@@ -2543,14 +2543,14 @@ Output as tailwind.config.js:
     // `undefined` means "all enabled servers' tools" (back-compat).
     let mcpTools: ToolSet | undefined;
     try {
-      const allow = agent.config.mcpToolsAllow;
-      if (Array.isArray(allow) && allow.length === 0) {
+      const plan = planMcpAllowList(agent.config.mcpToolsAllow);
+      if (plan.skip) {
         // Explicit opt-out — skip MCP entirely.
         mcpTools = undefined;
       } else {
         const result = await buildMcpToolSet({
           allowHeadless: true,
-          ...(Array.isArray(allow) ? { toolAllowList: allow } : {}),
+          ...plan.options,
         });
         mcpTools = result.tools;
         if (result.summary.totalTools > 0) {

@@ -1700,11 +1700,48 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({
           )}
         </div>
       </CardContent>
+      {server.requiresManualInstall && !isInstalled && (
+        <CardContent className="pt-0 pb-2">
+          <div className="rounded border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-muted-foreground">
+            <div className="font-medium text-amber-600 dark:text-amber-400 mb-1">
+              Manual setup required
+            </div>
+            {server.notes && (
+              <div className="whitespace-pre-wrap leading-relaxed">
+                {server.notes}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      )}
       <CardFooter className="pt-2 gap-2">
         {isInstalled ? (
           <Button variant="secondary" className="flex-1" disabled>
             <CheckCircle2 className="h-4 w-4 mr-2" />
             Installed
+          </Button>
+        ) : server.requiresManualInstall ? (
+          // Servers flagged as `requiresManualInstall` cannot be one-click
+          // installed today (e.g. Linear's official MCP, which is a remote
+          // OAuth-gated SSE endpoint). Surface that explicitly instead of
+          // running the broken auto-install path.
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={!server.website}
+            asChild={!!server.website}
+          >
+            {server.website ? (
+              <a href={server.website} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Setup instructions
+              </a>
+            ) : (
+              <>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Manual setup required
+              </>
+            )}
           </Button>
         ) : (
           <Button onClick={onInstall} className="flex-1">

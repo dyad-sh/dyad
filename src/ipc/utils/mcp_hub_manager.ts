@@ -138,12 +138,19 @@ export class McpHubManager extends EventEmitter {
       // Best-effort: close the broken transport/client so we don't leak
       // child processes (stdio) or open sockets (HTTP/SSE) before the
       // reconnect timer spawns a fresh one.
-      void this.disconnect(serverId).catch((closeErr) => {
-        logger.warn(
-          `Failed to clean up after transport error for ${serverId}:`,
-          closeErr,
-        );
-      });
+      //
+      // Pass `preserveStatus: true` so the cleanup doesn't immediately
+      // overwrite the freshly-set "error" state with "disconnected".
+      // Otherwise observers querying status right after the event would
+      // miss the actual transport failure.
+      void this.disconnect(serverId, { preserveStatus: true }).catch(
+        (closeErr) => {
+          logger.warn(
+            `Failed to clean up after transport error for ${serverId}:`,
+            closeErr,
+          );
+        },
+      );
       this.scheduleReconnect(serverId);
     };
 
@@ -194,11 +201,22 @@ export class McpHubManager extends EventEmitter {
     }
   }
 
-  async disconnect(serverId: number): Promise<void> {
+  /**
+   * Tear down the client + transport for `serverId`. Pass
+   * `preserveStatus: true` from internal failure paths that have already
+   * called `setStatus({ status: "error" })` so we don't immediately
+   * overwrite that state with "disconnected" during cleanup.
+   */
+  async disconnect(
+    serverId: number,
+    opts: { preserveStatus?: boolean } = {},
+  ): Promise<void> {
     this.cancelReconnect(serverId);
     const entry = this.clients.get(serverId);
     if (!entry) {
-      this.setStatus({ serverId, status: "disconnected" });
+      if (!opts.preserveStatus) {
+        this.setStatus({ serverId, status: "disconnected" });
+      }
       return;
     }
     try {
@@ -207,7 +225,9 @@ export class McpHubManager extends EventEmitter {
       logger.warn(`Error closing MCP client ${serverId}:`, err);
     }
     this.clients.delete(serverId);
-    this.setStatus({ serverId, status: "disconnected" });
+    if (!opts.preserveStatus) {
+      this.setStatus({ serverId, status: "disconnected" });
+    }
   }
 
   async reconnect(serverId: number): Promise<void> {

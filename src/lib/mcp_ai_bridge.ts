@@ -88,6 +88,37 @@ export function namespaceToolName(serverName: string, toolName: string): string 
 }
 
 /**
+ * Decide how a per-agent / per-surface `mcpToolsAllow` allow-list maps onto
+ * `BuildMcpToolSetOptions`. Centralizing this here means callers (the
+ * autonomous agent runtime, document AI, voice assistant, etc.) can share
+ * exactly one definition of "undefined = unrestricted, [] = none, [...]
+ * = explicit allow-list" — and tests can drive the real helper instead of
+ * reimplementing it.
+ *
+ *   undefined  → { skip: false, options: {} }       ("unrestricted")
+ *   []         → { skip: true }                     ("explicit opt-out")
+ *   [...names] → { skip: false, options: { toolAllowList } }
+ */
+export type McpAllowListPlan =
+  | { skip: true }
+  | { skip: false; options: Pick<BuildMcpToolSetOptions, "toolAllowList"> };
+
+export function planMcpAllowList(
+  mcpToolsAllow: readonly string[] | undefined,
+): McpAllowListPlan {
+  if (mcpToolsAllow === undefined) {
+    return { skip: false, options: {} };
+  }
+  if (Array.isArray(mcpToolsAllow) && mcpToolsAllow.length === 0) {
+    return { skip: true };
+  }
+  return {
+    skip: false,
+    options: { toolAllowList: [...mcpToolsAllow] },
+  };
+}
+
+/**
  * Best-effort JSON-Schema → Zod converter. We don't need full fidelity —
  * the AI SDK only uses the schema to (a) describe parameters to the model
  * and (b) validate tool-call arguments. A permissive `z.any()` fallback
@@ -208,9 +239,10 @@ export async function buildMcpToolSet(
       let serverToolCount = 0;
 
       for (const remote of remoteTools) {
+        // 1) Compute the *final* fully-qualified name first — including
+        //    collision disambiguation — so persisted allow/deny entries
+        //    from the picker/catalog can target the disambiguated name.
         let fqName = namespaceToolName(server.name, remote.name);
-        if (allow && !allow.has(fqName)) continue;
-        if (deny.has(fqName)) continue;
 
         // Guard against silent overwrites — slugify+truncate can collide
         // (e.g. two long tool names that share the first 48 chars).
@@ -233,6 +265,12 @@ export async function buildMcpToolSet(
             continue;
           }
         }
+
+        // 2) Now apply allow/deny against the final name. Doing this AFTER
+        //    disambiguation means catalog clients (the McpToolPicker) will
+        //    see the same identifier that allow-lists are keyed against.
+        if (allow && !allow.has(fqName)) continue;
+        if (deny.has(fqName)) continue;
 
         const params = jsonSchemaToZod(remote.inputSchema ?? {});
         const desc = `[${server.name}] ${remote.description ?? remote.name}`;

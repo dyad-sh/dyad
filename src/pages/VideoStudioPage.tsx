@@ -35,6 +35,13 @@ function VideoGenerateTab() {
   // MCP picker state — same pattern as Image Studio. Allowed tools are
   // exposed to the planning step (script polishing, reference clip
   // lookups, music search, etc.).
+  //
+  // NOTE: The Video Studio Generate flow is currently a UI preview
+  // (`toast.info(...)` below). The real backend pipeline that consumes
+  // `Array.from(mcpToolsAllow)` lands in a follow-up PR alongside the
+  // video-generation IPC handlers. We expose the picker now so the
+  // cross-surface UX is consistent and the selection is captured for
+  // when the real pipeline ships. See: TODO(video-studio-mcp).
   const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
     () => new Set<string>(),
   );

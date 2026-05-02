@@ -15,6 +15,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import { showError } from "@/lib/toast";
 
 export interface EnsureN8nMcpTriggerParams {
   path?: string;
@@ -40,6 +41,13 @@ export function useEnsureN8nMcpTrigger() {
       // so the just-provisioned trigger is reflected in the UI.
       queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] });
       queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
+    },
+    onError: (err) => {
+      // n8n provisioning can fail for lots of reasons (n8n not running,
+      // wrong API key, network). Surface the error so the user knows the
+      // trigger wasn't actually created instead of failing silently.
+      const msg = err instanceof Error ? err.message : String(err);
+      showError(`Failed to provision n8n MCP trigger: ${msg}`);
     },
   });
 }

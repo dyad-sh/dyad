@@ -4,7 +4,8 @@
  * The agent editor saves `mcpToolsAllow` on the agent's `config` blob,
  * which goes through `handleUpdateAgent` -> `agents.config_json`. The
  * runtime in `autonomous_agent.ts` then reads that allow-list and
- * passes it as `toolAllowList` to `buildMcpToolSet`.
+ * passes it as `toolAllowList` to `buildMcpToolSet` via the shared
+ * `planMcpAllowList` helper.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -126,34 +127,51 @@ describe("Agent Builder — MCP allow-list persistence", () => {
 
 // ─── Runtime path forwards the allow-list ──────────────────────────────
 
-describe("autonomous_agent runtime — MCP allow-list forwarding", () => {
-  it("forwards mcpToolsAllow as toolAllowList to buildMcpToolSet", async () => {
-    // We don't import the heavy runtime here. Instead, we exercise the
-    // *contract*: given an AgentConfiguration with mcpToolsAllow, the
-    // call to buildMcpToolSet should include `toolAllowList`.
-    //
-    // This mirrors the in-source logic exactly (see autonomous_agent.ts
-    // ~line 2530). Keeping the assertion here makes a future refactor
-    // that drops the filter immediately fail this test.
-    function pickBuildOpts(
-      mcpToolsAllow: string[] | undefined,
-    ): Record<string, unknown> | "skip" {
-      if (Array.isArray(mcpToolsAllow) && mcpToolsAllow.length === 0) {
-        return "skip";
-      }
-      return {
-        allowHeadless: true,
-        ...(Array.isArray(mcpToolsAllow)
-          ? { toolAllowList: mcpToolsAllow }
-          : {}),
-      };
-    }
+// `planMcpAllowList` is the SHARED helper that the agent runtime
+// (`autonomous_agent.ts`) uses to translate `mcpToolsAllow` into
+// `BuildMcpToolSetOptions`. By driving it directly (rather than
+// reimplementing the logic in the test), this test will genuinely fail
+// if a future refactor stops forwarding the allow-list.
+import { planMcpAllowList } from "../lib/mcp_ai_bridge";
 
-    expect(pickBuildOpts(undefined)).toEqual({ allowHeadless: true });
-    expect(pickBuildOpts([])).toBe("skip");
-    expect(pickBuildOpts(["mcp__a__b"])).toEqual({
-      allowHeadless: true,
-      toolAllowList: ["mcp__a__b"],
-    });
+describe("autonomous_agent runtime — MCP allow-list forwarding", () => {
+  it("undefined → unrestricted (no toolAllowList in options)", () => {
+    const plan = planMcpAllowList(undefined);
+    expect(plan.skip).toBe(false);
+    if (!plan.skip) {
+      expect(plan.options).toEqual({});
+    }
+  });
+
+  it("empty array → explicit opt-out (skip MCP entirely)", () => {
+    const plan = planMcpAllowList([]);
+    expect(plan.skip).toBe(true);
+  });
+
+  it("non-empty array → forwarded as toolAllowList", () => {
+    const plan = planMcpAllowList([
+      "mcp__github__create_issue",
+      "mcp__slack__post_message",
+    ]);
+    expect(plan.skip).toBe(false);
+    if (!plan.skip) {
+      expect(plan.options).toEqual({
+        toolAllowList: [
+          "mcp__github__create_issue",
+          "mcp__slack__post_message",
+        ],
+      });
+    }
+  });
+
+  it("defensive: returns a fresh array (caller can't mutate the original)", () => {
+    const original = ["mcp__a__b"];
+    const plan = planMcpAllowList(original);
+    expect(plan.skip).toBe(false);
+    if (!plan.skip) {
+      // Mutating the returned options must not bleed back into the input.
+      (plan.options.toolAllowList as string[]).push("mcp__hacked");
+      expect(original).toEqual(["mcp__a__b"]);
+    }
   });
 });

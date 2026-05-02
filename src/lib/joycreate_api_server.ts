@@ -260,20 +260,25 @@ async function handleMcpCallTool(body: Record<string, unknown>) {
   if (typeof name !== "string" || name.length === 0) {
     throw new Error("mcp/call-tool: 'name' must be a non-empty string");
   }
-  // The IPC handler signature is (event, serverId, name, args).
+  // The IPC handler expects a single params object: { serverId, name, args }.
   // `args` is whatever JSON-serialisable value the tool expects.
-  return invokeIpcHandler(
-    "mcp:call-tool",
+  return invokeIpcHandler("mcp:call-tool", {
     serverId,
     name,
-    body.args ?? body.arguments ?? {},
-  );
+    args: body.args ?? body.arguments ?? {},
+  });
 }
 
 async function handleMcpListResources(body: Record<string, unknown>) {
   const serverId = body.serverId;
-  if (typeof serverId !== "number") {
-    throw new Error("mcp/list-resources: 'serverId' must be a number");
+  if (
+    typeof serverId !== "number" ||
+    !Number.isInteger(serverId) ||
+    serverId <= 0
+  ) {
+    throw new Error(
+      "mcp/list-resources: 'serverId' must be a positive integer",
+    );
   }
   return invokeIpcHandler("mcp:list-resources", serverId);
 }

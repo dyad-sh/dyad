@@ -510,10 +510,14 @@ export interface AgentConfig {
   };
   /**
    * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`)
-   * the user has explicitly granted this agent access to. When this
-   * field is `undefined`, the agent gets no MCP tools. An empty array
-   * also means "none". This is the source of truth for per-agent MCP
-   * scoping at runtime.
+   * the user has explicitly granted this agent access to. This is the
+   * source of truth for per-agent MCP scoping at runtime.
+   *
+   * Semantics (matches `planMcpAllowList` in `lib/mcp_ai_bridge.ts`,
+   * and is identical to `VoiceConfig.mcpToolsAllow`):
+   *   `undefined` → unrestricted (all enabled servers' tools available)
+   *   `[]`        → explicit opt-out (no MCP tools for this agent)
+   *   `[...]`     → explicit allow-list of FQ tool names
    */
   mcpToolsAllow?: string[];
   // Custom settings

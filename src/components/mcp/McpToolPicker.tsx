@@ -270,6 +270,16 @@ export function McpToolPicker({
           )}
 
           {data &&
+            data.totalTools > 0 &&
+            grouped.length === 0 &&
+            search.trim().length > 0 && (
+              <div className="rounded border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No MCP tools match “{search.trim()}”. Try a different keyword
+                or clear the search.
+              </div>
+            )}
+
+          {data &&
             grouped.map((g) => {
               const isExpanded = expanded[g.serverId] ?? true;
               const allSelected = g.tools.every((t) =>

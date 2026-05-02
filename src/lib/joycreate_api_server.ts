@@ -230,6 +230,54 @@ async function handleMarketplaceStatus(_body: Record<string, unknown>) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// MCP Hub HTTP bridge
+// These routes wrap the existing `mcp:*` IPC handlers so external
+// integrations (notably the n8n community node) can invoke MCP tools
+// over HTTP. Auth is the same bearer-token pattern the rest of the API
+// uses (`~/.openclaw/joycreate-api-token`).
+// ---------------------------------------------------------------------------
+
+async function handleMcpListServers(_body: Record<string, unknown>) {
+  return invokeIpcHandler("mcp:list-servers");
+}
+
+async function handleMcpListTools(body: Record<string, unknown>) {
+  // If `serverId` is supplied, return only that server's tools; otherwise
+  // return the full cross-server catalog (same shape the renderer uses).
+  if (typeof body.serverId === "number") {
+    return invokeIpcHandler("mcp:list-tools", body.serverId);
+  }
+  return invokeIpcHandler("mcp:get-tool-catalog");
+}
+
+async function handleMcpCallTool(body: Record<string, unknown>) {
+  const serverId = body.serverId;
+  const name = body.name;
+  if (typeof serverId !== "number" || !Number.isInteger(serverId) || serverId <= 0) {
+    throw new Error("mcp/call-tool: 'serverId' must be a positive integer");
+  }
+  if (typeof name !== "string" || name.length === 0) {
+    throw new Error("mcp/call-tool: 'name' must be a non-empty string");
+  }
+  // The IPC handler signature is (event, serverId, name, args).
+  // `args` is whatever JSON-serialisable value the tool expects.
+  return invokeIpcHandler(
+    "mcp:call-tool",
+    serverId,
+    name,
+    body.args ?? body.arguments ?? {},
+  );
+}
+
+async function handleMcpListResources(body: Record<string, unknown>) {
+  const serverId = body.serverId;
+  if (typeof serverId !== "number") {
+    throw new Error("mcp/list-resources: 'serverId' must be a number");
+  }
+  return invokeIpcHandler("mcp:list-resources", serverId);
+}
+
 async function handlePublishAgent(body: Record<string, unknown>) {
   const agentId = Number(body.agentId);
   if (!agentId) throw new Error("agentId is required");
@@ -2416,6 +2464,11 @@ const ROUTES: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   "POST /api/apps/run": handleRunApp,
   "POST /api/apps/stop": handleStopApp,
   "POST /api/marketplace/status": handleMarketplaceStatus,
+  // MCP Hub bridge — external integrations (n8n community node, scripts, …)
+  "POST /api/mcp/list-servers": handleMcpListServers,
+  "POST /api/mcp/list-tools": handleMcpListTools,
+  "POST /api/mcp/call-tool": handleMcpCallTool,
+  "POST /api/mcp/list-resources": handleMcpListResources,
   // Email
   "POST /api/email/accounts": handleEmailAccountList,
   "POST /api/email/folders": handleEmailFoldersList,

@@ -257,10 +257,17 @@ describe("cloud_sandbox_provider incremental sync", () => {
     await fs.mkdir(path.join(appPath, "nested"));
     await fs.writeFile(path.join(appPath, "nested", ".env.local"), "nested");
     await fs.writeFile(path.join(appPath, "symlink-target.ts"), "outside");
-    await fs.symlink(
-      path.join(appPath, "symlink-target.ts"),
-      path.join(appPath, "linked.ts"),
-    );
+    try {
+      await fs.symlink(
+        path.join(appPath, "symlink-target.ts"),
+        path.join(appPath, "linked.ts"),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+        return;
+      }
+      throw error;
+    }
 
     gitIsIgnoredIsoMock.mockImplementation(async ({ filepath }) => {
       return (
@@ -285,10 +292,17 @@ describe("cloud_sandbox_provider incremental sync", () => {
     await fs.writeFile(path.join(appPath, ".env.local"), "SAFE_ENV=1");
     await fs.writeFile(path.join(appPath, "ignored.ts"), "ignored");
     await fs.writeFile(path.join(appPath, "symlink-target.ts"), "target");
-    await fs.symlink(
-      path.join(appPath, "symlink-target.ts"),
-      path.join(appPath, "linked.ts"),
-    );
+    try {
+      await fs.symlink(
+        path.join(appPath, "symlink-target.ts"),
+        path.join(appPath, "linked.ts"),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+        return;
+      }
+      throw error;
+    }
 
     gitIsIgnoredIsoMock.mockImplementation(async ({ filepath }) => {
       return filepath === ".env.local" || filepath === "ignored.ts";

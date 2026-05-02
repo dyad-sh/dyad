@@ -10,36 +10,32 @@ describe("safeJoin", () => {
   describe("safe paths", () => {
     it("should join simple relative paths", () => {
       const result = safeJoin(testBaseDir, "src", "components", "Button.tsx");
-      expect(result).toBe(
-        path.join(testBaseDir, "src", "components", "Button.tsx"),
-      );
+      expect(result).toBe("/app/workspace/src/components/Button.tsx");
     });
 
     it("should handle single file names", () => {
       const result = safeJoin(testBaseDir, "package.json");
-      expect(result).toBe(path.join(testBaseDir, "package.json"));
+      expect(result).toBe("/app/workspace/package.json");
     });
 
     it("should handle nested directories", () => {
       const result = safeJoin(testBaseDir, "src/pages/home/index.tsx");
-      expect(result).toBe(path.join(testBaseDir, "src/pages/home/index.tsx"));
+      expect(result).toBe("/app/workspace/src/pages/home/index.tsx");
     });
 
     it("should handle paths with dots in filename", () => {
       const result = safeJoin(testBaseDir, "config.test.js");
-      expect(result).toBe(path.join(testBaseDir, "config.test.js"));
+      expect(result).toBe("/app/workspace/config.test.js");
     });
 
     it("should handle empty path segments", () => {
       const result = safeJoin(testBaseDir, "", "src", "", "file.ts");
-      expect(result).toBe(path.join(testBaseDir, "", "src", "", "file.ts"));
+      expect(result).toBe("/app/workspace/src/file.ts");
     });
 
     it("should handle multiple path segments", () => {
       const result = safeJoin(testBaseDir, "a", "b", "c", "d", "file.txt");
-      expect(result).toBe(
-        path.join(testBaseDir, "a", "b", "c", "d", "file.txt"),
-      );
+      expect(result).toBe("/app/workspace/a/b/c/d/file.txt");
     });
 
     it("should work with actual temp directory", () => {
@@ -148,14 +144,12 @@ describe("safeJoin", () => {
 
     it("should handle current directory references safely", () => {
       const result = safeJoin(testBaseDir, "./src/file.txt");
-      expect(result).toBe(path.join(testBaseDir, "./src/file.txt"));
+      expect(result).toBe("/app/workspace/src/file.txt");
     });
 
     it("should handle nested current directory references", () => {
       const result = safeJoin(testBaseDir, "src/./components/./Button.tsx");
-      expect(result).toBe(
-        path.join(testBaseDir, "src/./components/./Button.tsx"),
-      );
+      expect(result).toBe("/app/workspace/src/components/Button.tsx");
     });
 
     it("should throw when current dir plus traversal escapes", () => {
@@ -167,7 +161,7 @@ describe("safeJoin", () => {
     it("should handle very long paths safely", () => {
       const longPath = Array(50).fill("subdir").join("/") + "/file.txt";
       const result = safeJoin(testBaseDir, longPath);
-      expect(result).toBe(path.join(testBaseDir, longPath));
+      expect(result).toBe(`/app/workspace/${longPath}`);
     });
 
     it("should allow Windows-style paths that look like drive letters but aren't", () => {
@@ -203,17 +197,17 @@ describe("safeJoin", () => {
   describe("boundary conditions", () => {
     it("should allow paths at the exact boundary", () => {
       const result = safeJoin(testBaseDir, ".");
-      expect(result).toBe(path.join(testBaseDir, "."));
+      expect(result).toBe("/app/workspace");
     });
 
     it("should handle paths that approach but don't cross boundary", () => {
       const result = safeJoin(testBaseDir, "deep/nested/../file.txt");
-      expect(result).toBe(path.join(testBaseDir, "deep/nested/../file.txt"));
+      expect(result).toBe("/app/workspace/deep/file.txt");
     });
 
     it("should handle root directory as base", () => {
       const result = safeJoin("/", "tmp/file.txt");
-      expect(result).toBe(path.join("/", "tmp/file.txt"));
+      expect(result).toBe("/tmp/file.txt");
     });
 
     it("should throw when trying to escape root", () => {

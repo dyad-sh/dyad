@@ -66,6 +66,7 @@ import type {
   UpdatePromptParamsDto,
   McpServerUpdate,
   CreateMcpServer,
+  McpServerStatusInfo,
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
@@ -169,6 +170,7 @@ export class IpcClient {
     }
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
+  private mcpStatusHandlers: Set<(info: McpServerStatusInfo) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
@@ -196,6 +198,7 @@ export class IpcClient {
     this.appStreams = new Map();
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
+    this.mcpStatusHandlers = new Set();
     this.agentConsentHandlers = new Map();
     this.telemetryEventHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
@@ -362,6 +365,15 @@ export class IpcClient {
       if (!payload || typeof payload !== "object") return;
       const handler = this.mcpConsentHandlers.get("consent");
       if (handler) handler(payload);
+    });
+
+    // MCP server status changes from main
+    this.ipcRenderer.on("mcp:status-change", (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const info = payload as unknown as McpServerStatusInfo;
+      for (const handler of this.mcpStatusHandlers) {
+        handler(info);
+      }
     });
 
     // Agent tool consent request from main
@@ -1054,6 +1066,83 @@ export class IpcClient {
       requestId,
       decision,
     });
+  }
+
+  // --- MCP Hub: status & connection management ---
+  public async getMcpStatus(serverId: number): Promise<McpServerStatusInfo> {
+    return this.ipcRenderer.invoke("mcp:get-status", serverId);
+  }
+
+  public async getAllMcpStatuses(): Promise<McpServerStatusInfo[]> {
+    return this.ipcRenderer.invoke("mcp:get-all-statuses");
+  }
+
+  public async connectMcpServer(serverId: number): Promise<void> {
+    return this.ipcRenderer.invoke("mcp:connect", serverId);
+  }
+
+  public async disconnectMcpServer(serverId: number): Promise<void> {
+    return this.ipcRenderer.invoke("mcp:disconnect", serverId);
+  }
+
+  public async reconnectMcpServer(serverId: number): Promise<void> {
+    return this.ipcRenderer.invoke("mcp:reconnect", serverId);
+  }
+
+  public async pingMcpServer(serverId: number): Promise<{ ok: true }> {
+    return this.ipcRenderer.invoke("mcp:ping", serverId);
+  }
+
+  // --- MCP Hub: tool execution / resources / prompts ---
+  public async callMcpTool(params: {
+    serverId: number;
+    name: string;
+    args?: unknown;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("mcp:call-tool", params);
+  }
+
+  public async listMcpResources(serverId: number): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("mcp:list-resources", serverId);
+  }
+
+  public async listMcpResourceTemplates(serverId: number): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("mcp:list-resource-templates", serverId);
+  }
+
+  public async readMcpResource(params: {
+    serverId: number;
+    uri: string;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("mcp:read-resource", params);
+  }
+
+  public async listMcpPrompts(serverId: number): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("mcp:list-prompts", serverId);
+  }
+
+  public async getMcpPrompt(params: {
+    serverId: number;
+    name: string;
+    args?: Record<string, string>;
+  }): Promise<unknown> {
+    return this.ipcRenderer.invoke("mcp:get-prompt", params);
+  }
+
+  public async ensureMcpEssentials(): Promise<{
+    inserted: string[];
+    skipped: number;
+  }> {
+    return this.ipcRenderer.invoke("mcp:ensure-essentials");
+  }
+
+  public onMcpStatusChange(
+    handler: (info: McpServerStatusInfo) => void,
+  ): () => void {
+    this.mcpStatusHandlers.add(handler);
+    return () => {
+      this.mcpStatusHandlers.delete(handler);
+    };
   }
 
   // --- Agent Tool Methods ---
@@ -4087,6 +4176,14 @@ export class IpcClient {
 
   public async createMetaWorkflowBuilder(): Promise<any> {
     return this.ipcRenderer.invoke("n8n:meta-builder:create");
+  }
+
+  public async ensureN8nMcpTrigger(params?: {
+    path?: string;
+    name?: string;
+    apiKey?: string;
+  }): Promise<{ url: string; workflowId: string; workflowName: string; created: boolean }> {
+    return this.ipcRenderer.invoke("n8n:ensure-mcp-trigger", params);
   }
 
   // ── Background Missions ──────────────────────────────────────

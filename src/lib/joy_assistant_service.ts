@@ -41,6 +41,8 @@ import { createOllamaProvider } from "../ipc/utils/ollama_provider";
 import { getOllamaApiUrl } from "../ipc/handlers/local_model_ollama_handler";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { LM_STUDIO_BASE_URL } from "../ipc/utils/lm_studio_utils";
+import { buildMcpToolSet } from "./mcp_ai_bridge";
+import { BrowserWindow } from "electron";
 import {
   clearSessionMessages,
   deleteSessionById,
@@ -490,7 +492,36 @@ export async function chat(
     // the AI SDK can't parse). We therefore omit tools entirely for any local
     // model. Tool-using intents (system, fill, configure, navigate, create) will
     // still work when the user picks a cloud model from the model picker.
-    const assistantTools = isLocal ? undefined : buildAssistantTools(intent);
+    let assistantTools = isLocal ? undefined : buildAssistantTools(intent);
+
+    // ── Merge in MCP tools (cloud models only) ─────────────────────
+    // Every enabled MCP server contributes its tools as `mcp__<server>__<tool>`.
+    // Local models are intentionally skipped — small/quantized local models
+    // hang or hallucinate calls when handed a large tool catalog.
+    if (assistantTools && !isLocal) {
+      try {
+        const focusedWin =
+          BrowserWindow.getFocusedWindow() ??
+          BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+        const mcpResult = await buildMcpToolSet({
+          consentWindow: focusedWin,
+        });
+        if (mcpResult.summary.totalTools > 0) {
+          assistantTools = { ...assistantTools, ...mcpResult.tools };
+          logger.info(
+            `Joy Assistant: merged ${mcpResult.summary.totalTools} MCP tools from ${mcpResult.summary.serversIncluded.length} server(s)`,
+          );
+        }
+        if (mcpResult.summary.serversFailed.length > 0) {
+          logger.warn(
+            `Joy Assistant: ${mcpResult.summary.serversFailed.length} MCP server(s) unavailable`,
+            mcpResult.summary.serversFailed,
+          );
+        }
+      } catch (err) {
+        logger.warn("Failed to load MCP tools for Joy Assistant", err);
+      }
+    }
 
     // Stream the response
     const stream = streamText({

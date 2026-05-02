@@ -291,6 +291,26 @@ const validInvokeChannels = [
   "mcp:set-tool-consent",
   // MCP consent response from renderer to main
   "mcp:tool-consent-response",
+  // MCP Hub: status / connection management
+  "mcp:get-status",
+  "mcp:get-all-statuses",
+  "mcp:connect",
+  "mcp:disconnect",
+  "mcp:reconnect",
+  "mcp:ping",
+  // MCP Hub: tool execution
+  "mcp:call-tool",
+  // MCP Hub: resources
+  "mcp:list-resources",
+  "mcp:list-resource-templates",
+  "mcp:read-resource",
+  // MCP Hub: prompts
+  "mcp:list-prompts",
+  "mcp:get-prompt",
+  // MCP Hub: seeding
+  "mcp:ensure-essentials",
+  // MCP Hub: live tool catalog (used by orchestrator / studios / n8n)
+  "mcp:get-tool-catalog",
   // Agent Tools (Local Agent v2)
   "agent-tool:get-tools",
   "agent-tool:set-consent",
@@ -519,6 +539,7 @@ const validInvokeChannels = [
   "n8n:workflow:deactivate",
   "n8n:workflow:execute",
   "n8n:workflow:generate",
+  "n8n:ensure-mcp-trigger",
   "n8n:meta-builder:create",
   "n8n:setup-ollama",
   "n8n:agent:send-message",
@@ -2299,6 +2320,8 @@ const validReceiveChannels = [
   "joy-assistant:response:error",
   // MCP consent request from main to renderer
   "mcp:tool-consent-request",
+  // MCP server connection status from main to renderer
+  "mcp:status-change",
   // Agent tool consent request from main to renderer
   "agent-tool:consent-request",
   // Telemetry events from main to renderer

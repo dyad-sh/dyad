@@ -515,6 +515,19 @@ export interface McpToolConsent {
   consent: McpToolConsentType;
   updatedAt: number;
 }
+
+export type McpServerStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
+
+export interface McpServerStatusInfo {
+  serverId: number;
+  status: McpServerStatus;
+  error?: string;
+  lastConnectedAt?: number;
+}
 export interface CloneRepoParams {
   url: string;
   installCommand?: string;

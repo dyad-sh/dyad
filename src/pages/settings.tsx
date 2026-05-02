@@ -26,7 +26,6 @@ import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
-import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
 import { CNSSettings } from "@/components/settings/CNSSettings";
@@ -192,15 +191,24 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Tools (MCP) */}
+          {/* Tools (MCP) — moved to dedicated MCP Hub page */}
           <div
             id="tools-mcp"
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
           >
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
               Tools (MCP)
             </h2>
-            <ToolsMcpSettings />
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+              MCP servers, tool consents, and resources are now managed in the
+              dedicated MCP Hub.
+            </p>
+            <Button
+              onClick={() => router.navigate({ to: "/mcp-hub" })}
+              variant="outline"
+            >
+              Open MCP Hub
+            </Button>
           </div>
 
           {/* Experiments Section */}

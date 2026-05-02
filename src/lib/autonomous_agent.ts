@@ -21,6 +21,7 @@ import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { getOpenClawSystemIntegration } from "@/lib/openclaw_system_integration";
 import { generateText } from "ai";
+import { buildMcpToolSet } from "./mcp_ai_bridge";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { readSettings } from "@/main/settings";
 import {
@@ -2522,12 +2523,36 @@ Output as tailwind.config.js:
 
     const systemPrompt = `You are an autonomous AI agent named "${agent.name}". Your purpose is: ${agent.purpose}. Respond concisely and precisely.`;
 
+    // Merge in MCP tools so autonomous agents can call any enabled MCP
+    // server (GitHub, Slack, Notion, Postgres, Brave, n8n, etc.).
+    // Headless mode is allowed because this is a trusted internal caller;
+    // tools the user has explicitly denied are still blocked by the
+    // consent layer inside the bridge.
+    let mcpTools = {} as Record<string, unknown>;
+    try {
+      const result = await buildMcpToolSet({ allowHeadless: true });
+      mcpTools = result.tools as Record<string, unknown>;
+      if (result.summary.totalTools > 0) {
+        this.emit("agent:mcp-tools-loaded", {
+          agentId: agent.id,
+          totalTools: result.summary.totalTools,
+          servers: result.summary.serversIncluded.map((s) => s.name),
+        });
+      }
+    } catch (err) {
+      // Never fail an agent because MCP wasn't available.
+      this.emit("agent:mcp-tools-unavailable", { agentId: agent.id, error: String(err) });
+    }
+
     const result = await generateText({
       model: modelClient.model,
       system: systemPrompt,
       prompt,
       maxOutputTokens: 4096,
       temperature: agent.config.temperature || 0.7,
+      ...(Object.keys(mcpTools).length > 0
+        ? { tools: mcpTools as any, maxSteps: 8 }
+        : {}),
     });
 
     this.emit("model:inference:completed", {

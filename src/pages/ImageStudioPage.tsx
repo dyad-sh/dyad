@@ -26,11 +26,19 @@ import {
   ImageIcon, Wand2, Sparkles, Download, Upload, Search,
   Grid3X3, Layers, Palette, Maximize, Paintbrush,
   RefreshCw, Trash2, Heart, Tag, FolderOpen, Zap,
-  Settings, ArrowUpRight, Copy,
+  Settings, ArrowUpRight, Copy, Plug,
 } from "lucide-react";
+import { McpToolPicker } from "@/components/mcp/McpToolPicker";
 
 function GenerateTab() {
   const [prompt, setPrompt] = useState("");
+  // MCP picker state — these tools are exposed to the planning step that
+  // helps the user refine prompts (reference-image lookup, palette search,
+  // moodboard fetches, etc.). Persisted in renderer memory only.
+  const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
+  const [mcpPickerOpen, setMcpPickerOpen] = useState(false);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -96,9 +104,37 @@ function GenerateTab() {
           <Label className="text-xs">Seed (optional)</Label>
           <Input placeholder="Random" className="mt-1" />
         </div>
-        <Button className="w-full" onClick={() => toast.info("Generating image...")}>
+        <Button
+          variant="outline"
+          className="w-full justify-start gap-1.5"
+          onClick={() => setMcpPickerOpen(true)}
+        >
+          <Plug className="w-4 h-4" /> MCP Tools
+          {mcpToolsAllow.size > 0 && (
+            <Badge variant="secondary" className="ml-auto h-5">
+              {mcpToolsAllow.size}
+            </Badge>
+          )}
+        </Button>
+        <Button
+          className="w-full"
+          onClick={() =>
+            toast.info(
+              mcpToolsAllow.size > 0
+                ? `Generating image with ${mcpToolsAllow.size} MCP planning tool${mcpToolsAllow.size === 1 ? "" : "s"} enabled...`
+                : "Generating image...",
+            )
+          }
+        >
           <Wand2 className="w-4 h-4 mr-1.5" /> Generate
         </Button>
+        <McpToolPicker
+          open={mcpPickerOpen}
+          onOpenChange={setMcpPickerOpen}
+          selected={mcpToolsAllow}
+          onChange={setMcpToolsAllow}
+          scopeLabel="image generation planning"
+        />
       </div>
 
       {/* Preview */}

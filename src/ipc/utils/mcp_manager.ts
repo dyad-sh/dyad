@@ -61,17 +61,27 @@ class McpManager {
       // n8n exposes MCP via legacy SSE endpoints (path ending in /sse).
       // Use SSEClientTransport for those, StreamableHTTP otherwise.
       if (url.pathname.endsWith("/sse")) {
+        // The MCP SDK's SSEClientTransport accepts an `eventSourceInit`
+        // (mirrored after the WHATWG EventSource init dict) but uses an
+        // older `fetch` shape with a 2-arg signature. We declare exactly
+        // that shape locally so we can avoid `as any`.
+        type SseFetch = (
+          input: RequestInfo | URL,
+          init?: RequestInit,
+        ) => Promise<Response>;
+        type SseEventSourceInit = EventSourceInit & { fetch?: SseFetch };
+
+        const customFetch: SseFetch = (input, init) =>
+          fetch(input, {
+            ...(init ?? {}),
+            headers: { ...(init?.headers ?? {}), ...headers },
+          });
+        const eventSourceInit: SseEventSourceInit | undefined = headers
+          ? { fetch: customFetch }
+          : undefined;
         transport = new SSEClientTransport(url, {
           requestInit: headers ? { headers } : undefined,
-          eventSourceInit: headers
-            ? ({
-                fetch: (input: any, init: any) =>
-                  fetch(input, {
-                    ...(init || {}),
-                    headers: { ...(init?.headers || {}), ...headers },
-                  }),
-              } as any)
-            : undefined,
+          eventSourceInit,
         });
       } else {
         transport = new StreamableHTTPClientTransport(url, {

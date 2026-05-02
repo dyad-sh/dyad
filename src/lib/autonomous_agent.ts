@@ -21,7 +21,8 @@ import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { getOpenClawSystemIntegration } from "@/lib/openclaw_system_integration";
 import { generateText } from "ai";
-import { buildMcpToolSet } from "./mcp_ai_bridge";
+import { buildMcpToolSet, planMcpAllowList } from "./mcp_ai_bridge";
+import type { ToolSet } from "ai";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { readSettings } from "@/main/settings";
 import {
@@ -167,6 +168,14 @@ export interface AgentConfiguration {
   learningEnabled: boolean;
   learningRate: number;
   knowledgeRetention: number;
+
+  /**
+   * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`) the
+   * agent is allowed to invoke. When undefined, the agent inherits the
+   * default behaviour (all enabled MCP servers' tools). When defined,
+   * only listed tools are exposed.
+   */
+  mcpToolsAllow?: string[];
 }
 
 export interface AgentCapability {
@@ -2528,16 +2537,29 @@ Output as tailwind.config.js:
     // Headless mode is allowed because this is a trusted internal caller;
     // tools the user has explicitly denied are still blocked by the
     // consent layer inside the bridge.
-    let mcpTools = {} as Record<string, unknown>;
+    //
+    // Per-agent scoping: when the agent's config defines `mcpToolsAllow`,
+    // only those tools are exposed. An empty array means "no MCP tools".
+    // `undefined` means "all enabled servers' tools" (back-compat).
+    let mcpTools: ToolSet | undefined;
     try {
-      const result = await buildMcpToolSet({ allowHeadless: true });
-      mcpTools = result.tools as Record<string, unknown>;
-      if (result.summary.totalTools > 0) {
-        this.emit("agent:mcp-tools-loaded", {
-          agentId: agent.id,
-          totalTools: result.summary.totalTools,
-          servers: result.summary.serversIncluded.map((s) => s.name),
+      const plan = planMcpAllowList(agent.config.mcpToolsAllow);
+      if (plan.skip) {
+        // Explicit opt-out — skip MCP entirely.
+        mcpTools = undefined;
+      } else {
+        const result = await buildMcpToolSet({
+          allowHeadless: true,
+          ...plan.options,
         });
+        mcpTools = result.tools;
+        if (result.summary.totalTools > 0) {
+          this.emit("agent:mcp-tools-loaded", {
+            agentId: agent.id,
+            totalTools: result.summary.totalTools,
+            servers: result.summary.serversIncluded.map((s) => s.name),
+          });
+        }
       }
     } catch (err) {
       // Never fail an agent because MCP wasn't available.
@@ -2550,8 +2572,8 @@ Output as tailwind.config.js:
       prompt,
       maxOutputTokens: 4096,
       temperature: agent.config.temperature || 0.7,
-      ...(Object.keys(mcpTools).length > 0
-        ? { tools: mcpTools as any, maxSteps: 8 }
+      ...(mcpTools && Object.keys(mcpTools).length > 0
+        ? { tools: mcpTools, maxSteps: 8 }
         : {}),
     });
 

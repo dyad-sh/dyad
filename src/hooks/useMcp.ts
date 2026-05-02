@@ -72,6 +72,12 @@ export function useMcp() {
       await queryClient.invalidateQueries({
         queryKey: ["mcp", "tools-by-server"],
       });
+      // Shared picker (McpToolPicker) caches the cross-server catalog
+      // separately. Invalidate it so newly-installed servers show up
+      // immediately instead of after the 60s staleTime.
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
+      });
     },
     meta: { showErrorToast: true },
   });
@@ -86,6 +92,11 @@ export function useMcp() {
       await queryClient.invalidateQueries({
         queryKey: ["mcp", "tools-by-server"],
       });
+      // Toggling enabled / renaming a server changes which tools the
+      // catalog should expose, so refresh the picker cache too.
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
+      });
     },
     meta: { showErrorToast: true },
   });
@@ -99,6 +110,9 @@ export function useMcp() {
       await queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] });
       await queryClient.invalidateQueries({
         queryKey: ["mcp", "tools-by-server"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
       });
     },
     meta: { showErrorToast: true },
@@ -247,6 +261,9 @@ export function useMcp() {
       await queryClient.invalidateQueries({
         queryKey: ["mcp", "tools-by-server"],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
+      });
     },
     meta: { showErrorToast: true },
   });
@@ -256,6 +273,9 @@ export function useMcp() {
       IpcClient.getInstance().disconnectMcpServer(serverId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
+      });
     },
     meta: { showErrorToast: true },
   });
@@ -273,6 +293,9 @@ export function useMcp() {
       });
       await queryClient.invalidateQueries({
         queryKey: ["mcp", "prompts-by-server"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
       });
     },
     meta: { showErrorToast: true },
@@ -307,6 +330,9 @@ export function useMcp() {
       }),
       queryClient.invalidateQueries({
         queryKey: ["mcp", "prompts-by-server"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "tool-catalog"],
       }),
     ]);
   };
@@ -356,10 +382,18 @@ export function useMcp() {
           IpcClient.getInstance().reconnectMcpServer(id),
         ),
       );
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["mcp", "tools-by-server"],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mcp", "statuses"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["mcp", "tools-by-server"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["mcp", "resources-by-server"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["mcp", "prompts-by-server"],
+        }),
+      ]);
     },
 
     // Status flags

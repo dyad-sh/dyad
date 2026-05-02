@@ -1,0 +1,55 @@
+{
+  "name": "n8n-nodes-joycreate-mcp",
+  "version": "0.1.0",
+  "description": "n8n community node that exposes JoyCreate's MCP Hub (call any tool from any connected MCP server) over HTTP.",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "n8n-node",
+    "mcp",
+    "model-context-protocol",
+    "joycreate"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/DisciplesofLove/JoyCreate",
+  "author": {
+    "name": "DisciplesofLove",
+    "url": "https://github.com/DisciplesofLove"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DisciplesofLove/JoyCreate.git",
+    "directory": "packages/n8n-nodes-joycreate-mcp"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.js",
+    "dev": "tsc --watch",
+    "lint": "echo 'lint via repo root'",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/JoyCreateApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/JoyCreateMcp/JoyCreateMcp.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "n8n-workflow": "^1.66.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -98,10 +98,11 @@ import { McpHubManager } from "../ipc/utils/mcp_hub_manager";
 import { createMockMcpServer } from "./mock_mcp_server";
 
 function freshManager() {
-  // Reset the singleton state for isolation by constructing via the class directly.
-  // McpHubManager has a private constructor; use Reflect to bypass.
-  const Ctor: any = McpHubManager;
-  return Reflect.construct(Ctor, []) as McpHubManager;
+  // Reset the singleton state for isolation by constructing via the class
+  // directly. McpHubManager has a private constructor; we narrow it to a
+  // 0-arg constructor signature instead of casting through `any`.
+  const Ctor = McpHubManager as unknown as { new (): McpHubManager };
+  return Reflect.construct(Ctor, []);
 }
 
 describe("McpHubManager", () => {
@@ -176,9 +177,10 @@ describe("McpHubManager", () => {
       tools: [
         {
           name: "sum",
-          handler: (args) => ({
-            total: (args as any).a + (args as any).b,
-          }),
+          handler: (args) => {
+            const { a, b } = args as { a: number; b: number };
+            return { total: a + b };
+          },
         },
       ],
     });

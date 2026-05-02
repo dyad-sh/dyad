@@ -344,6 +344,11 @@ export const UserSettingsSchema = z.object({
   ////////////////////////////////
   elevenlabsApiKey: z.string().optional(),
   elevenlabsVoiceId: z.string().optional(),
+  // Persisted MCP tool allow-list for the Voice Assistant. Stored as the
+  // fully-qualified tool names (`mcp__<server>__<tool>`) the user has
+  // explicitly granted voice access to. `undefined` = unrestricted (all
+  // enabled servers' tools); `[]` = no MCP tools.
+  voiceMcpToolsAllow: z.array(z.string()).optional(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

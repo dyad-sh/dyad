@@ -33,7 +33,7 @@
 import { tool, type ToolSet } from "ai";
 import { z, type ZodTypeAny } from "zod";
 import log from "electron-log";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import { db } from "../db";
 import { mcpServers } from "../db/schema";
 import { mcpHubManager } from "../ipc/utils/mcp_hub_manager";
@@ -88,6 +88,37 @@ export function namespaceToolName(serverName: string, toolName: string): string 
 }
 
 /**
+ * Decide how a per-agent / per-surface `mcpToolsAllow` allow-list maps onto
+ * `BuildMcpToolSetOptions`. Centralizing this here means callers (the
+ * autonomous agent runtime, document AI, voice assistant, etc.) can share
+ * exactly one definition of "undefined = unrestricted, [] = none, [...]
+ * = explicit allow-list" — and tests can drive the real helper instead of
+ * reimplementing it.
+ *
+ *   undefined  → { skip: false, options: {} }       ("unrestricted")
+ *   []         → { skip: true }                     ("explicit opt-out")
+ *   [...names] → { skip: false, options: { toolAllowList } }
+ */
+export type McpAllowListPlan =
+  | { skip: true }
+  | { skip: false; options: Pick<BuildMcpToolSetOptions, "toolAllowList"> };
+
+export function planMcpAllowList(
+  mcpToolsAllow: readonly string[] | undefined,
+): McpAllowListPlan {
+  if (mcpToolsAllow === undefined) {
+    return { skip: false, options: {} };
+  }
+  if (Array.isArray(mcpToolsAllow) && mcpToolsAllow.length === 0) {
+    return { skip: true };
+  }
+  return {
+    skip: false,
+    options: { toolAllowList: [...mcpToolsAllow] },
+  };
+}
+
+/**
  * Best-effort JSON-Schema → Zod converter. We don't need full fidelity —
  * the AI SDK only uses the schema to (a) describe parameters to the model
  * and (b) validate tool-call arguments. A permissive `z.any()` fallback
@@ -110,7 +141,17 @@ function jsonSchemaToZod(schema: unknown): ZodTypeAny {
       : z.any();
   }
   if (Array.isArray(s.enum) && s.enum.length > 0) {
-    return z.enum(s.enum.map(String) as [string, ...string[]]);
+    // Preserve original literal types (numbers, booleans, etc.).
+    const allStrings = s.enum.every((v: unknown) => typeof v === "string");
+    if (allStrings) {
+      return z.enum(s.enum as [string, ...string[]]);
+    }
+    const literals = s.enum.map((v: unknown) =>
+      z.literal(v as string | number | boolean),
+    );
+    return literals.length === 1
+      ? literals[0]
+      : z.union(literals as [ZodTypeAny, ZodTypeAny, ...ZodTypeAny[]]);
   }
 
   const type = s.type;
@@ -141,8 +182,11 @@ function jsonSchemaToZod(schema: unknown): ZodTypeAny {
       const z0 = jsonSchemaToZod(sub);
       shape[key] = required.has(key) ? z0 : z0.optional();
     }
-    let obj: ZodTypeAny = z.object(shape);
-    if (s.additionalProperties === true) obj = z.object(shape).passthrough();
+    // JSON Schema default is permissive — only enforce strict shape when
+    // the server explicitly sets additionalProperties=false.
+    const base = z.object(shape);
+    let obj: ZodTypeAny =
+      s.additionalProperties === false ? base.strict() : base.passthrough();
     if (s.description) obj = obj.describe(String(s.description));
     return obj;
   }
@@ -195,17 +239,60 @@ export async function buildMcpToolSet(
       let serverToolCount = 0;
 
       for (const remote of remoteTools) {
-        const fqName = namespaceToolName(server.name, remote.name);
+        // 1) Compute the *final* fully-qualified name first — including
+        //    collision disambiguation — so persisted allow/deny entries
+        //    from the picker/catalog can target the disambiguated name.
+        let fqName = namespaceToolName(server.name, remote.name);
+
+        // Guard against silent overwrites — slugify+truncate can collide
+        // (e.g. two long tool names that share the first 48 chars).
+        if (Object.prototype.hasOwnProperty.call(tools, fqName)) {
+          const disambiguated = `${fqName}__${server.id}_${remote.name}`
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, "_")
+            .slice(0, 64);
+          logger.warn(
+            `MCP tool name collision for '${fqName}' (server=${server.name}); ` +
+              `renaming new entry to '${disambiguated}'.`,
+          );
+          fqName = disambiguated;
+          // If the disambiguated name STILL collides, skip rather than overwrite.
+          if (Object.prototype.hasOwnProperty.call(tools, fqName)) {
+            logger.error(
+              `Skipping MCP tool '${remote.name}' on '${server.name}': ` +
+                `disambiguated name '${fqName}' still collides.`,
+            );
+            continue;
+          }
+        }
+
+        // 2) Now apply allow/deny against the final name. Doing this AFTER
+        //    disambiguation means catalog clients (the McpToolPicker) will
+        //    see the same identifier that allow-lists are keyed against.
         if (allow && !allow.has(fqName)) continue;
         if (deny.has(fqName)) continue;
 
         const params = jsonSchemaToZod(remote.inputSchema ?? {});
         const desc = `[${server.name}] ${remote.description ?? remote.name}`;
 
+        // Narrow shape of an MCP CallToolResult so we don't sprinkle
+        // `as any` over the response handler. Mirrors @modelcontextprotocol/sdk.
+        type McpContentItem = { type?: string; text?: string } & Record<
+          string,
+          unknown
+        >;
+        type McpCallToolResult = {
+          isError?: boolean;
+          content?: McpContentItem[];
+        } & Record<string, unknown>;
+
+        // The Vercel AI SDK accepts a Zod schema as `inputSchema`. We get
+        // back a `ZodTypeAny` from `jsonSchemaToZod` — hand it through
+        // without an `as any` shim.
         tools[fqName] = tool({
           description: desc,
-          parameters: params as any,
-          execute: async (args: unknown) => {
+          inputSchema: params,
+          execute: async (args: unknown): Promise<McpCallToolResult> => {
             // Consent gate.
             const stored = await getStoredConsent(server.id, remote.name);
             if (stored === "denied") {
@@ -215,21 +302,25 @@ export async function buildMcpToolSet(
             }
             if (stored !== "always") {
               if (opts.consentWindow) {
-                // Manufacture a fake IpcMainInvokeEvent-shaped object — only
-                // `sender` is used by `requireMcpToolConsent`.
-                const fakeEvent = {
+                // Manufacture an IpcMainInvokeEvent-shaped object — only
+                // `sender` is used by `requireMcpToolConsent`. Picking the
+                // exact field keeps us TypeScript-honest.
+                const fakeEvent: Pick<IpcMainInvokeEvent, "sender"> = {
                   sender: opts.consentWindow.webContents,
-                } as any;
+                };
                 const inputPreview =
                   typeof args === "string"
                     ? args
                     : JSON.stringify(args ?? {}).slice(0, 500);
-                const ok = await requireMcpToolConsent(fakeEvent, {
-                  serverId: server.id,
-                  serverName: server.name,
-                  toolName: remote.name,
-                  inputPreview,
-                });
+                const ok = await requireMcpToolConsent(
+                  fakeEvent as IpcMainInvokeEvent,
+                  {
+                    serverId: server.id,
+                    serverName: server.name,
+                    toolName: remote.name,
+                    inputPreview,
+                  },
+                );
                 if (!ok) {
                   throw new Error(
                     `MCP tool '${remote.name}' on '${server.name}' was denied by the user.`,
@@ -245,17 +336,23 @@ export async function buildMcpToolSet(
               // headless + allowHeadless=true: proceed without prompting.
             }
 
-            const result = await mcpHubManager.callTool(
+            const raw = await mcpHubManager.callTool(
               server.id,
               remote.name,
               args,
             );
+            const result =
+              raw && typeof raw === "object"
+                ? (raw as McpCallToolResult)
+                : ({} as McpCallToolResult);
             // The MCP CallToolResult shape is `{ content: [...], isError? }`.
             // Surface errors so the model can recover.
-            if ((result as any)?.isError) {
+            if (result.isError) {
               const text =
-                (result as any)?.content
-                  ?.map((c: any) => c?.text ?? JSON.stringify(c))
+                result.content
+                  ?.map((c) =>
+                    typeof c?.text === "string" ? c.text : JSON.stringify(c),
+                  )
                   .join("\n") ?? "MCP tool returned an error";
               throw new Error(`MCP tool error: ${text}`);
             }

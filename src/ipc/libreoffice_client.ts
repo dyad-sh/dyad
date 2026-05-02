@@ -342,6 +342,13 @@ class LibreOfficeClient {
       customPrompt?: string;
       provider?: string;
       model?: string;
+      /**
+       * Qualified MCP tool names (`mcp__<server>__<tool>`) the user has
+       * explicitly allowed for this AI assist call. When non-empty the
+       * main-process handler upgrades the streaming call to use those
+       * tools via `buildMcpToolSet`.
+       */
+      mcpToolsAllow?: string[];
     },
     onChunk: (text: string) => void,
     onDone: (result: { text?: string; error?: string }) => void

@@ -35,6 +35,12 @@ export default function DocumentEditorPage() {
   // ─── Local state ───────────────────────────────────────────────────────────
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [selectedText, setSelectedText] = useState("");
+  // Per-document MCP allow-list (qualified tool names). Lives in renderer
+  // memory only — if Terry wants to persist this we can add a column to the
+  // documents table. For now "per-session" is plenty for the studios use case.
+  const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
   /** For text docs: current plain text. For sheets/presentations managed internally */
   const [textContent, setTextContent] = useState<string | null>(null);
   const [spreadsheetRows, setSpreadsheetRows] = useState<string[][] | null>(null);
@@ -231,6 +237,8 @@ export default function DocumentEditorPage() {
               selectedText={selectedText}
               onInsert={handleAiInsert}
               onReplace={handleAiReplace}
+              mcpToolsAllow={mcpToolsAllow}
+              onMcpToolsAllowChange={setMcpToolsAllow}
               className="h-full"
             />
           </div>

@@ -67,9 +67,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { useMcp, type Transport } from "@/hooks/useMcp";
+import { useEnsureN8nMcpTrigger } from "@/hooks/useEnsureN8nMcpTrigger";
 import type { McpServerStatusInfo } from "@/ipc/ipc_types";
 import { showError, showSuccess } from "@/lib/toast";
-import { IpcClient } from "@/ipc/ipc_client";
 import {
   MCP_CATEGORIES,
   type McpServerRegistryEntry,
@@ -136,6 +136,9 @@ const McpHubPage: React.FC = () => {
     isReadingResource,
     isGettingPrompt,
   } = useMcp();
+  // Mutation hook — invalidates ["mcp", "servers"] / ["mcp", "statuses"]
+  // on success so the just-provisioned trigger immediately shows up.
+  const ensureN8nTrigger = useEnsureN8nMcpTrigger();
 
   const [topTab, setTopTab] = useState<
     "my-servers" | "registry" | "custom" | "resources" | "prompts"
@@ -239,9 +242,8 @@ const McpHubPage: React.FC = () => {
       // user never has to leave the MCP Hub.
       if (server.id === "n8n-local") {
         try {
-          const ipc = IpcClient.getInstance();
           const apiKey = envValues["X-N8N-API-KEY"]?.trim();
-          const result = await ipc.ensureN8nMcpTrigger({
+          const result = await ensureN8nTrigger.mutateAsync({
             path: "joycreate",
             name: "JoyCreate MCP Server",
             apiKey,
@@ -461,10 +463,13 @@ const McpHubPage: React.FC = () => {
                   key={card.hash}
                   type="button"
                   onClick={() =>
+                    // Narrow the literal `to` so the typed router accepts
+                    // the call; `hash` is documented to be a free-form
+                    // string. No outer-call cast is necessary.
                     router.navigate({
-                      to: "/settings",
+                      to: "/settings" as const,
                       hash: card.hash,
-                    } as any)
+                    })
                   }
                   className="flex items-start gap-3 rounded-lg border p-3 text-left hover:border-primary/50 hover:bg-primary/5 transition-all"
                 >
@@ -1283,6 +1288,13 @@ const McpHubPage: React.FC = () => {
                 <Button
                   onClick={async () => {
                     if (!promptRunner.serverId || !promptRunner.name) return;
+                    // Clear any prior error/result before retrying so the
+                    // user doesn't see stale state while the new request runs.
+                    setPromptRunner((prev) => ({
+                      ...prev,
+                      error: undefined,
+                      result: undefined,
+                    }));
                     try {
                       const result = await getPrompt({
                         serverId: promptRunner.serverId,
@@ -1688,11 +1700,48 @@ const RegistryServerCard: React.FC<RegistryServerCardProps> = ({
           )}
         </div>
       </CardContent>
+      {server.requiresManualInstall && !isInstalled && (
+        <CardContent className="pt-0 pb-2">
+          <div className="rounded border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-muted-foreground">
+            <div className="font-medium text-amber-600 dark:text-amber-400 mb-1">
+              Manual setup required
+            </div>
+            {server.notes && (
+              <div className="whitespace-pre-wrap leading-relaxed">
+                {server.notes}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      )}
       <CardFooter className="pt-2 gap-2">
         {isInstalled ? (
           <Button variant="secondary" className="flex-1" disabled>
             <CheckCircle2 className="h-4 w-4 mr-2" />
             Installed
+          </Button>
+        ) : server.requiresManualInstall ? (
+          // Servers flagged as `requiresManualInstall` cannot be one-click
+          // installed today (e.g. Linear's official MCP, which is a remote
+          // OAuth-gated SSE endpoint). Surface that explicitly instead of
+          // running the broken auto-install path.
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={!server.website}
+            asChild={!!server.website}
+          >
+            {server.website ? (
+              <a href={server.website} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Setup instructions
+              </a>
+            ) : (
+              <>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Manual setup required
+              </>
+            )}
           </Button>
         ) : (
           <Button onClick={onInstall} className="flex-1">

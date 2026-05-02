@@ -45,6 +45,15 @@ export interface VoiceConfig {
   autoSubmit: boolean;       // Auto-submit after transcription
   soundEffects: boolean;     // Play beeps
   continuousMode: boolean;   // Keep listening after response
+  /**
+   * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`)
+   * the voice assistant is allowed to invoke when the LLM step runs
+   * a voice-originated turn. `undefined` (the default) means "all
+   * enabled MCP servers’ tools". An empty array disables MCP for
+   * voice. Wired by `joy_assistant_service` when the request flags
+   * `origin === "voice"`.
+   */
+  mcpToolsAllow?: string[];
 }
 
 export interface SystemCapabilities {
@@ -202,7 +211,8 @@ export class VoiceAssistant extends EventEmitter {
     this.capabilities = await this.detectSystemCapabilities();
     logger.info("System capabilities detected", this.capabilities);
     
-    // Load ElevenLabs API key from user settings if available
+    // Load ElevenLabs API key + persisted MCP tool allow-list from
+    // user settings if available.
     try {
       const settings = readSettings();
       if (settings?.elevenlabsApiKey) {
@@ -212,8 +222,14 @@ export class VoiceAssistant extends EventEmitter {
       if (settings?.elevenlabsVoiceId) {
         this.config.elevenlabsVoiceId = settings.elevenlabsVoiceId;
       }
+      // Hydrate the voice MCP allow-list from persisted settings so the
+      // user's selection survives app restarts. `undefined` (field absent)
+      // means "unrestricted", consistent with the in-memory semantics.
+      if (Array.isArray(settings?.voiceMcpToolsAllow)) {
+        this.config.mcpToolsAllow = settings.voiceMcpToolsAllow;
+      }
     } catch {
-      logger.warn("Could not read settings for ElevenLabs key");
+      logger.warn("Could not read settings for voice config");
     }
     
     // Initialize wake word detector if needed
@@ -254,6 +270,22 @@ export class VoiceAssistant extends EventEmitter {
     
     if (updates.wakeWord && this.wakeWordDetector) {
       this.wakeWordDetector.setWakeWord(updates.wakeWord);
+    }
+
+    // Persist any settings-managed fields so they survive a restart.
+    // The MCP allow-list is the only one routed through this method that
+    // also needs to land in user-settings.json today; the existing
+    // ElevenLabs fields are written by their own dedicated handlers.
+    if (Object.prototype.hasOwnProperty.call(updates, "mcpToolsAllow")) {
+      try {
+        writeSettings({ voiceMcpToolsAllow: updates.mcpToolsAllow });
+      } catch (err) {
+        logger.warn(
+          `Failed to persist voiceMcpToolsAllow to settings: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
     
     this.emit("config:updated", this.config);

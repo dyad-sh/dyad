@@ -33,6 +33,7 @@ import { ExternalServicesSettings } from "@/components/settings/ExternalServices
 import { CelestiaBlobExplorer } from "@/components/settings/CelestiaBlobExplorer";
 import { CreatorLifecycleDashboard } from "@/components/settings/CreatorLifecycleDashboard";
 import { DocumentAiSettings } from "@/components/settings/DocumentAiSettings";
+import { VoiceMcpSettings } from "@/components/settings/VoiceMcpSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -190,6 +191,11 @@ export default function SettingsPage() {
               <AgentToolsSettings />
             </div>
           )}
+
+          {/* Voice Assistant MCP allow-list */}
+          <div id="voice-mcp">
+            <VoiceMcpSettings />
+          </div>
 
           {/* Tools (MCP) — moved to dedicated MCP Hub page */}
           <div

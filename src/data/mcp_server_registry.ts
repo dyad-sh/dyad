@@ -25,6 +25,19 @@ export interface McpServerRegistryEntry {
   author?: string;
   version?: string;
   requiresAuth?: boolean;
+  /**
+   * If true, the server cannot be installed via plain `npx -y <pkg>`. The UI
+   * should show the `notes` text instead of the one-click install button.
+   * Common reasons: package isn't published to npm (Python-based, GitHub-only,
+   * private), or the published name differs from what people expect.
+   */
+  requiresManualInstall?: boolean;
+  /**
+   * Free-form install / setup notes shown in the MCP Hub UI when
+   * `requiresManualInstall` is true. Should include the actual install
+   * command (uvx, pip, git+, etc.).
+   */
+  notes?: string;
   envVars?: {
     key: string;
     description: string;
@@ -554,12 +567,13 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     description: "Chrome automation for web scraping, testing, and PDF generation.",
     longDescription: "Puppeteer MCP provides Chrome DevTools Protocol control. Automate browser tasks, generate PDFs, capture screenshots, and scrape dynamic content.",
     category: "browser-automation",
+    // Published under the official @modelcontextprotocol scope, not @anthropic.
     config: {
       type: "stdio",
-      command: "npx -y @anthropic/mcp-server-puppeteer",
+      command: "npx -y @modelcontextprotocol/server-puppeteer",
     },
     tags: ["chrome", "automation", "pdf"],
-    author: "Anthropic",
+    author: "Model Context Protocol",
   },
 
   // ===== CLOUD SERVICES =====
@@ -871,12 +885,17 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     id: "linear",
     name: "Linear",
     description: "Manage Linear issues, projects, and team workflows.",
-    longDescription: "Linear MCP for issue tracking, project management, sprint planning, and team workflow automation through natural language.",
+    longDescription: "Linear MCP for issue tracking, project management, sprint planning, and team workflow automation through natural language. Linear's official MCP is hosted (remote SSE) at https://mcp.linear.app/sse — prefer that over community npm packages.",
     category: "productivity",
+    // Linear ships an OFFICIAL hosted MCP at https://mcp.linear.app/sse.
+    // There is no `@linear/mcp-server` package on npm; if a stdio install
+    // is desired, the community package `mcp-linear` is the closest match.
     config: {
-      type: "stdio",
-      command: "npx -y @linear/mcp-server",
+      type: "http",
+      url: "https://mcp.linear.app/sse",
     },
+    requiresManualInstall: true,
+    notes: "Linear's official MCP is the remote SSE endpoint at https://mcp.linear.app/sse — authenticate by following the OAuth flow Linear surfaces on first connect. For a local stdio install, use `npx -y mcp-linear` (community package) and supply LINEAR_API_KEY via env.",
     website: "https://linear.app",
     tags: ["issues", "projects", "agile"],
     author: "Linear",
@@ -884,8 +903,8 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     envVars: [
       {
         key: "LINEAR_API_KEY",
-        description: "Linear API key",
-        required: true,
+        description: "Linear API key (only needed for the local `mcp-linear` stdio fallback; remote SSE uses OAuth)",
+        required: false,
         placeholder: "lin_api_...",
       },
     ],
@@ -1218,10 +1237,14 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     description: "Query and manage local SQLite databases.",
     longDescription: "SQLite MCP for local database operations. Run queries, manage schemas, import/export data, and handle migrations.",
     category: "databases",
+    // The reference SQLite server is Python-based and ships as
+    // `mcp-server-sqlite` on PyPI — not under @anthropic on npm.
     config: {
       type: "stdio",
-      command: "npx -y @anthropic/mcp-server-sqlite",
+      command: "uvx mcp-server-sqlite --db-path ./mcp.db",
     },
+    requiresManualInstall: true,
+    notes: "Requires uv (https://github.com/astral-sh/uv). Install once with: uv tool install mcp-server-sqlite. Replace `./mcp.db` with the path to your SQLite database.",
     tags: ["database", "sql", "local"],
     author: "Anthropic",
   },
@@ -1249,10 +1272,14 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     longDescription: "Official MCP fetch server. Lets the assistant retrieve any HTTP(S) URL and receive simplified, LLM-friendly Markdown content.",
     category: "data-processing",
     featured: true,
+    // The Python-based reference server is published to PyPI as
+    // `mcp-server-fetch` and is launched via `uvx`, not npm.
     config: {
       type: "stdio",
-      command: "npx -y @modelcontextprotocol/server-fetch",
+      command: "uvx mcp-server-fetch",
     },
+    requiresManualInstall: true,
+    notes: "Requires uv (https://github.com/astral-sh/uv). Install once with: uv tool install mcp-server-fetch — or rely on the `uvx mcp-server-fetch` command, which downloads it on first run.",
     github: "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
     tags: ["http", "web", "markdown", "reference"],
     author: "Model Context Protocol",
@@ -1263,10 +1290,13 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     description: "Current time, timezone conversions, and date math.",
     longDescription: "Official MCP time server. Provides accurate current time, timezone-aware conversions, and date arithmetic helpers.",
     category: "productivity",
+    // Python-based reference server, published as `mcp-server-time` on PyPI.
     config: {
       type: "stdio",
-      command: "npx -y @modelcontextprotocol/server-time",
+      command: "uvx mcp-server-time",
     },
+    requiresManualInstall: true,
+    notes: "Requires uv (https://github.com/astral-sh/uv). Install once with: uv tool install mcp-server-time. Pass `--local-timezone <IANA>` if your local TZ differs from the system default.",
     github: "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
     tags: ["time", "timezone", "reference"],
     author: "Model Context Protocol",
@@ -1292,10 +1322,13 @@ export const MCP_SERVER_REGISTRY: McpServerRegistryEntry[] = [
     description: "Inspect and operate on local Git repositories (status, log, diff, blame).",
     longDescription: "Official MCP git server. Provides read tools (status, log, diff, blame, show) and basic write tools (add, commit) for any local repository path.",
     category: "development",
+    // Python-based reference server, published as `mcp-server-git` on PyPI.
     config: {
       type: "stdio",
-      command: "npx -y @modelcontextprotocol/server-git",
+      command: "uvx mcp-server-git",
     },
+    requiresManualInstall: true,
+    notes: "Requires uv (https://github.com/astral-sh/uv). Install once with: uv tool install mcp-server-git. Pass `--repository <path>` to scope to a specific repo.",
     github: "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
     tags: ["git", "repository", "reference"],
     author: "Model Context Protocol",

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { ipcMain, IpcMainInvokeEvent, BrowserWindow } from "electron";
 import {
   ModelMessage,
   TextPart,
@@ -55,8 +55,6 @@ import { getMaxTokens, getTemperature, estimateRequestTokens, trimMessagesToFitB
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
-import { mcpServers } from "../../db/schema";
-import { requireMcpToolConsent } from "../utils/mcp_consent";
 import { tokenRateLimiter } from "../utils/token_rate_limiter";
 import { recordAICost } from "../utils/cost_tracking";
 
@@ -82,7 +80,7 @@ import { embeddingPipeline } from "../../lib/embedding_pipeline";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
-import { mcpManager } from "../utils/mcp_manager";
+import { buildMcpToolSet } from "../../lib/mcp_ai_bridge";
 import { buildMemoryContext, autoExtractMemories, flushShortTermToLongTerm, setShortTermMemory } from "../../lib/agent_memory_engine";
 import { captureTrainingPair, isAutoCaptureEnabled } from "../../lib/data_flywheel";
 import { agents as agentsTable } from "../../db/schema";
@@ -2359,46 +2357,22 @@ ${otherAppsCodebaseInfo}
 }
 
 async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
-  const mcpToolSet: ToolSet = {};
+  // Resolve the renderer window so MCP consent prompts can be surfaced.
+  // Falls back to skipping the prompt (will throw on first un-consented
+  // tool call) if the sender's window can no longer be located.
+  const consentWindow =
+    BrowserWindow.fromWebContents(event.sender) ?? undefined;
   try {
-    const servers = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.enabled, true as any));
-    for (const s of servers) {
-      const client = await mcpManager.getClient(s.id);
-      const toolSet = await client.tools();
-      for (const [name, tool] of Object.entries(toolSet)) {
-        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "-")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-        const original = tool;
-        mcpToolSet[key] = {
-          description: original?.description,
-          inputSchema: original?.inputSchema,
-          execute: async (args: any, execCtx: any) => {
-            const inputPreview =
-              typeof args === "string"
-                ? args
-                : Array.isArray(args)
-                  ? args.join(" ")
-                  : JSON.stringify(args).slice(0, 500);
-            const ok = await requireMcpToolConsent(event, {
-              serverId: s.id,
-              serverName: s.name,
-              toolName: name,
-              toolDescription: original?.description,
-              inputPreview,
-            });
-
-            if (!ok) throw new Error(`User declined running tool ${key}`);
-            const res = await original.execute?.(args, execCtx);
-
-            return typeof res === "string" ? res : JSON.stringify(res);
-          },
-        };
-      }
+    const { tools, summary } = await buildMcpToolSet({ consentWindow });
+    if (summary.serversFailed.length > 0) {
+      logger.warn(
+        `MCP toolset built with ${summary.serversFailed.length} server failure(s):`,
+        summary.serversFailed,
+      );
     }
+    return tools;
   } catch (e) {
     logger.warn("Failed building MCP toolset", e);
+    return {};
   }
-  return mcpToolSet;
 }

@@ -35,8 +35,12 @@ vi.mock("../db", () => ({
   },
 }));
 
+// `mcpServers` is only used as a Drizzle table reference inside
+// `db.select().from(mcpServers)`, and our `from()` mock above ignores the
+// argument entirely. An empty object satisfies the runtime contract; we
+// type it as `Record<string, never>` to avoid an explicit `any`.
 vi.mock("../db/schema", () => ({
-  mcpServers: {} as any,
+  mcpServers: {} as Record<string, never>,
 }));
 
 const hubMock = vi.hoisted(() => ({

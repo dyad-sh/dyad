@@ -26,11 +26,26 @@ import {
   Video, Wand2, Play, Pause, Scissors, Download, Upload,
   Search, Film, Clapperboard, Timer, Zap, Image as ImageLucide,
   Type, Music, Sparkles, RotateCcw, Layers, Settings,
-  FastForward, Rewind, Volume2, Grid3X3,
+  FastForward, Rewind, Volume2, Grid3X3, Plug,
 } from "lucide-react";
+import { McpToolPicker } from "@/components/mcp/McpToolPicker";
 
 function VideoGenerateTab() {
   const [prompt, setPrompt] = useState("");
+  // MCP picker state — same pattern as Image Studio. Allowed tools are
+  // exposed to the planning step (script polishing, reference clip
+  // lookups, music search, etc.).
+  //
+  // NOTE: The Video Studio Generate flow is currently a UI preview
+  // (`toast.info(...)` below). The real backend pipeline that consumes
+  // `Array.from(mcpToolsAllow)` lands in a follow-up PR alongside the
+  // video-generation IPC handlers. We expose the picker now so the
+  // cross-surface UX is consistent and the selection is captured for
+  // when the real pipeline ships. See: TODO(video-studio-mcp).
+  const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
+  const [mcpPickerOpen, setMcpPickerOpen] = useState(false);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -118,7 +133,35 @@ function VideoGenerateTab() {
             <p className="text-[10px] text-muted-foreground/40">Drop image for img2vid</p>
           </div>
         </div>
-        <Button className="w-full" onClick={() => toast.info("Generating video...")}>
+        <Button
+          variant="outline"
+          className="w-full justify-start gap-1.5"
+          onClick={() => setMcpPickerOpen(true)}
+        >
+          <Plug className="w-4 h-4" /> MCP Tools
+          {mcpToolsAllow.size > 0 && (
+            <Badge variant="secondary" className="ml-auto h-5">
+              {mcpToolsAllow.size}
+            </Badge>
+          )}
+        </Button>
+        <McpToolPicker
+          open={mcpPickerOpen}
+          onOpenChange={setMcpPickerOpen}
+          selected={mcpToolsAllow}
+          onChange={setMcpToolsAllow}
+          scopeLabel="video generation planning"
+        />
+        <Button
+          className="w-full"
+          onClick={() =>
+            toast.info(
+              mcpToolsAllow.size > 0
+                ? `Generating video with ${mcpToolsAllow.size} MCP planning tool${mcpToolsAllow.size === 1 ? "" : "s"} enabled...`
+                : "Generating video...",
+            )
+          }
+        >
           <Wand2 className="w-4 h-4 mr-1.5" /> Generate Video
         </Button>
       </div>

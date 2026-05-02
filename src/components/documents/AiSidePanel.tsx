@@ -23,7 +23,10 @@ import {
   Loader2,
   Copy,
   Check,
+  Plug,
 } from "lucide-react";
+import { McpToolPicker } from "@/components/mcp/McpToolPicker";
+import { Badge } from "@/components/ui/badge";
 import { libreOfficeClient } from "@/ipc/libreoffice_client";
 import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
@@ -54,14 +57,28 @@ interface AiSidePanelProps {
   onInsert?: (text: string) => void;
   onReplace?: (text: string) => void;
   className?: string;
+  /** Persisted MCP allow-list for this document (qualified names). */
+  mcpToolsAllow?: ReadonlySet<string>;
+  /** Setter for the MCP allow-list. */
+  onMcpToolsAllowChange?: (next: Set<string>) => void;
 }
 
-export function AiSidePanel({ docId, docText, selectedText, onInsert, onReplace, className }: AiSidePanelProps) {
+export function AiSidePanel({
+  docId,
+  docText,
+  selectedText,
+  onInsert,
+  onReplace,
+  className,
+  mcpToolsAllow,
+  onMcpToolsAllowChange,
+}: AiSidePanelProps) {
   const { settings } = useSettings();
   const { models: localModels } = useLocalModels();
   const { models: lmStudioModels } = useLocalLMSModels();
   const { data: cloudModelsByProvider = {} } = useLanguageModelsByProviders();
 
+  const [mcpPickerOpen, setMcpPickerOpen] = useState(false);
   const [command, setCommand] = useState<AiCommand>("improve");
   const [toneValue, setToneValue] = useState("professional");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -130,6 +147,15 @@ export function AiSidePanel({ docId, docText, selectedText, onInsert, onReplace,
         ...(!provider && settingsModel
           ? { provider: (settingsModel as Record<string, string>).provider, model: (settingsModel as Record<string, string>).name }
           : {}),
+        // Pass the user's MCP allow-list whenever the parent has supplied
+        // one (even if it's empty). This preserves the distinction between
+        // "no MCP scoping for this run" (mcpToolsAllow prop undefined) and
+        // "the user explicitly cleared every tool" (Set with size 0). The
+        // latter MUST disable MCP for this run rather than silently falling
+        // back to the backend default.
+        ...(mcpToolsAllow !== undefined
+          ? { mcpToolsAllow: Array.from(mcpToolsAllow) }
+          : {}),
       },
       (chunk) => {
         resultRef.current += chunk;
@@ -141,7 +167,7 @@ export function AiSidePanel({ docId, docText, selectedText, onInsert, onReplace,
       }
     );
     cleanupRef.current = cleanup;
-  }, [command, customPrompt, docId, docText, selectedText, selectedModel, toneValue, settings]);
+  }, [command, customPrompt, docId, docText, selectedText, selectedModel, toneValue, settings, mcpToolsAllow]);
 
   useEffect(() => () => cleanupRef.current?.(), []);
 
@@ -160,7 +186,34 @@ export function AiSidePanel({ docId, docText, selectedText, onInsert, onReplace,
       <div className="px-4 py-3 border-b flex items-center gap-2 shrink-0">
         <Wand2 className="size-4 text-primary" />
         <span className="text-sm font-semibold">AI Assist</span>
+        {onMcpToolsAllowChange && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 gap-1 text-xs"
+            onClick={() => setMcpPickerOpen(true)}
+            title="Pick MCP tools available to the assistant"
+          >
+            <Plug className="size-3" />
+            MCP Tools
+            {mcpToolsAllow && mcpToolsAllow.size > 0 && (
+              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                {mcpToolsAllow.size}
+              </Badge>
+            )}
+          </Button>
+        )}
       </div>
+
+      {onMcpToolsAllowChange && (
+        <McpToolPicker
+          open={mcpPickerOpen}
+          onOpenChange={setMcpPickerOpen}
+          selected={mcpToolsAllow ?? new Set()}
+          onChange={onMcpToolsAllowChange}
+          scopeLabel="this document"
+        />
+      )}
 
       <ScrollArea className="flex-1">
         <div className="p-4 flex flex-col gap-4">

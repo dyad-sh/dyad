@@ -44,6 +44,15 @@ vi.mock("../ipc/utils/test_utils", () => ({
   IS_TEST_BUILD: false,
 }));
 
+// Mock buildMcpToolSet so we can drive the get-tool-catalog handler
+// without touching the real bridge.
+const { buildMcpToolSetMock } = vi.hoisted(() => ({
+  buildMcpToolSetMock: vi.fn(),
+}));
+vi.mock("../lib/mcp_ai_bridge", () => ({
+  buildMcpToolSet: (...args: any[]) => buildMcpToolSetMock(...args),
+}));
+
 // Mock the mcpHubManager so handlers can be exercised in isolation.
 // Use vi.hoisted so the object exists when the vi.mock factory runs.
 const { hubMock } = vi.hoisted(() => ({
@@ -138,6 +147,7 @@ beforeEach(() => {
   hubMock.getPrompt.mockClear();
   getStoredConsentMock.mockReset().mockResolvedValue("ask");
   requireMcpToolConsentMock.mockReset().mockResolvedValue(true);
+  buildMcpToolSetMock.mockReset();
   dbResult = [];
   registerMcpHandlers();
 });
@@ -256,6 +266,102 @@ describe("mcp_handlers", () => {
     });
     expect(hubMock.getPrompt).toHaveBeenCalledWith(1, "greet", {
       who: "world",
+    });
+  });
+
+  describe("mcp:get-tool-catalog", () => {
+    it("flattens enabled servers into a qualified-name catalog", async () => {
+      buildMcpToolSetMock.mockResolvedValueOnce({
+        tools: {
+          "mock-server__alpha": { description: "A" },
+          "mock-server__beta": { description: "B" },
+        },
+        summary: {
+          serversIncluded: [
+            { id: 1, name: "Mock Server", toolCount: 2 },
+          ],
+          serversFailed: [],
+          totalTools: 2,
+        },
+      });
+      hubMock.listTools.mockResolvedValueOnce([
+        { name: "alpha", description: "A" },
+        { name: "beta", description: "B" },
+      ]);
+
+      const result = await call("mcp:get-tool-catalog");
+
+      expect(buildMcpToolSetMock).toHaveBeenCalledTimes(1);
+      expect(hubMock.listTools).toHaveBeenCalledWith(1);
+      expect(result.totalTools).toBe(2);
+      expect(result.serversIncluded).toEqual([
+        { id: 1, name: "Mock Server", toolCount: 2 },
+      ]);
+      expect(result.serversFailed).toEqual([]);
+      expect(result.catalog).toHaveLength(2);
+      expect(result.catalog[0]).toMatchObject({
+        qualifiedName: "mcp__mock_server__alpha",
+        serverId: 1,
+        serverName: "Mock Server",
+        toolName: "alpha",
+        description: "A",
+      });
+      expect(result.catalog[1].qualifiedName).toBe(
+        "mcp__mock_server__beta",
+      );
+    });
+
+    it("surfaces serversFailed alongside any successful entries", async () => {
+      buildMcpToolSetMock.mockResolvedValueOnce({
+        tools: {
+          "good__one": { description: "good" },
+        },
+        summary: {
+          serversIncluded: [
+            { id: 10, name: "Good Server", toolCount: 1 },
+          ],
+          serversFailed: [
+            { id: 11, name: "Broken Server", error: "connect ECONNREFUSED" },
+          ],
+          totalTools: 1,
+        },
+      });
+      hubMock.listTools.mockResolvedValueOnce([
+        { name: "one", description: "only tool" },
+      ]);
+
+      const result = await call("mcp:get-tool-catalog");
+
+      expect(result.totalTools).toBe(1);
+      expect(result.serversFailed).toEqual([
+        { id: 11, name: "Broken Server", error: "connect ECONNREFUSED" },
+      ]);
+      expect(result.catalog).toHaveLength(1);
+      expect(result.catalog[0].qualifiedName).toBe("mcp__good_server__one");
+    });
+
+    it("swallows per-server listTools errors but still returns successful catalogs", async () => {
+      buildMcpToolSetMock.mockResolvedValueOnce({
+        tools: {},
+        summary: {
+          serversIncluded: [
+            { id: 1, name: "Working", toolCount: 1 },
+            { id: 2, name: "Flaky", toolCount: 0 },
+          ],
+          serversFailed: [],
+          totalTools: 1,
+        },
+      });
+      hubMock.listTools.mockImplementationOnce(async () => [
+        { name: "ok", description: "" },
+      ]);
+      hubMock.listTools.mockImplementationOnce(async () => {
+        throw new Error("transport closed");
+      });
+
+      const result = await call("mcp:get-tool-catalog");
+      expect(result.catalog).toHaveLength(1);
+      expect(result.catalog[0].serverName).toBe("Working");
     });
   });
 });

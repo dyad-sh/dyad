@@ -508,6 +508,14 @@ export interface AgentConfig {
   rateLimit?: {
     requestsPerMinute: number;
   };
+  /**
+   * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`)
+   * the user has explicitly granted this agent access to. When this
+   * field is `undefined`, the agent gets no MCP tools. An empty array
+   * also means "none". This is the source of truth for per-agent MCP
+   * scoping at runtime.
+   */
+  mcpToolsAllow?: string[];
   // Custom settings
   custom?: Record<string, unknown>;
 }

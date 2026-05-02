@@ -62,6 +62,13 @@ export interface AgentConfig {
     customTools: string[];
     mcpServers: string[];
   };
+  /**
+   * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`) the
+   * agent is allowed to invoke at runtime. Persisted via the `agents`
+   * table's `config_json` column. Source of truth for per-agent MCP
+   * scoping; consumed by the agent runtime in `runModelInferenceViaSettings`.
+   */
+  mcpToolsAllow?: string[];
   // Data Flywheel — per-agent self-reinforcing training loop
   flywheel?: FlywheelConfig;
   // Custom settings

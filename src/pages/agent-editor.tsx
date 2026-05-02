@@ -41,6 +41,7 @@ import {
   SlidersHorizontal,
   Share2,
   Smartphone,
+  Plug,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,7 @@ import AgentTasksPanel from "@/components/agent/AgentTasksPanel";
 import AgentKnowledgePanel from "@/components/agent/AgentKnowledgePanel";
 import { AgentFlywheelTab } from "@/components/agent/AgentFlywheelTab";
 import AgentSharePanel from "@/components/agent/AgentSharePanel";
+import { McpToolPicker } from "@/components/mcp/McpToolPicker";
 import {
   useDecentralizedPlatforms,
   useDecentralizedDeploy,
@@ -152,6 +154,14 @@ export default function AgentEditorPage() {
   const [newToolName, setNewToolName] = useState("");
   const [newToolDescription, setNewToolDescription] = useState("");
   const [newToolCode, setNewToolCode] = useState("");
+
+  // ---- MCP tool picker state ----
+  // Persisted on the agent record under `config.mcpToolsAllow`. The runtime
+  // reads this list and only exposes those MCP tools to the model.
+  const [mcpToolsAllow, setMcpToolsAllow] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
+  const [mcpPickerOpen, setMcpPickerOpen] = useState(false);
 
   // ---- AI Prompt generation state ----
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
@@ -218,6 +228,11 @@ export default function AgentEditorPage() {
       setTemperature(agent.temperature ?? 0.7);
       setMaxTokens(agent.maxTokens ?? 4096);
       setSelectedAppId(agent.appId ?? null);
+      // Hydrate MCP allow-list from saved config.
+      const saved = agent.config?.mcpToolsAllow;
+      setMcpToolsAllow(
+        new Set<string>(Array.isArray(saved) ? saved : []),
+      );
     }
   }, [agent]);
 
@@ -270,6 +285,13 @@ export default function AgentEditorPage() {
   // ===========================================================================
 
   const handleSave = () => {
+    // Merge MCP allow-list into the agent's config blob so it survives the
+    // round-trip through `agents.config_json`. Existing config keys (memory,
+    // retry, flywheel, custom…) are preserved.
+    const mergedConfig = {
+      ...(agent?.config ?? {}),
+      mcpToolsAllow: Array.from(mcpToolsAllow),
+    };
     updateAgentMutation.mutate({
       id: Number(agentId),
       name,
@@ -279,6 +301,7 @@ export default function AgentEditorPage() {
       temperature,
       maxTokens,
       appId: selectedAppId,
+      config: mergedConfig,
     });
   };
 
@@ -1050,6 +1073,51 @@ export default function AgentEditorPage() {
             {/* ============================================================ */}
             {activeTab === "tools" && (
               <div className="space-y-4">
+                {/* ---------- MCP Hub tools ---------- */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Plug className="h-4 w-4" /> MCP Tools
+                          {mcpToolsAllow.size > 0 && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-1 h-5"
+                            >
+                              {mcpToolsAllow.size}
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription>
+                          Pick which Model Context Protocol tools this agent
+                          may invoke at runtime. Selections are persisted on
+                          the agent record and enforced by the runtime.
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setMcpPickerOpen(true)}
+                      >
+                        <Plug className="h-4 w-4 mr-2" />
+                        {mcpToolsAllow.size > 0
+                          ? "Manage MCP Tools"
+                          : "Choose MCP Tools"}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                </Card>
+                <McpToolPicker
+                  open={mcpPickerOpen}
+                  onOpenChange={setMcpPickerOpen}
+                  selected={mcpToolsAllow}
+                  onChange={(next) => {
+                    setMcpToolsAllow(next);
+                    handleFieldChange();
+                  }}
+                  scopeLabel={`agent “${name || "untitled"}”`}
+                />
+
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-lg font-semibold">Tools</h2>

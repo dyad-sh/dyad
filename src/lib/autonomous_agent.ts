@@ -168,6 +168,14 @@ export interface AgentConfiguration {
   learningEnabled: boolean;
   learningRate: number;
   knowledgeRetention: number;
+
+  /**
+   * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`) the
+   * agent is allowed to invoke. When undefined, the agent inherits the
+   * default behaviour (all enabled MCP servers' tools). When defined,
+   * only listed tools are exposed.
+   */
+  mcpToolsAllow?: string[];
 }
 
 export interface AgentCapability {
@@ -2529,16 +2537,29 @@ Output as tailwind.config.js:
     // Headless mode is allowed because this is a trusted internal caller;
     // tools the user has explicitly denied are still blocked by the
     // consent layer inside the bridge.
+    //
+    // Per-agent scoping: when the agent's config defines `mcpToolsAllow`,
+    // only those tools are exposed. An empty array means "no MCP tools".
+    // `undefined` means "all enabled servers' tools" (back-compat).
     let mcpTools: ToolSet | undefined;
     try {
-      const result = await buildMcpToolSet({ allowHeadless: true });
-      mcpTools = result.tools;
-      if (result.summary.totalTools > 0) {
-        this.emit("agent:mcp-tools-loaded", {
-          agentId: agent.id,
-          totalTools: result.summary.totalTools,
-          servers: result.summary.serversIncluded.map((s) => s.name),
+      const allow = agent.config.mcpToolsAllow;
+      if (Array.isArray(allow) && allow.length === 0) {
+        // Explicit opt-out — skip MCP entirely.
+        mcpTools = undefined;
+      } else {
+        const result = await buildMcpToolSet({
+          allowHeadless: true,
+          ...(Array.isArray(allow) ? { toolAllowList: allow } : {}),
         });
+        mcpTools = result.tools;
+        if (result.summary.totalTools > 0) {
+          this.emit("agent:mcp-tools-loaded", {
+            agentId: agent.id,
+            totalTools: result.summary.totalTools,
+            servers: result.summary.serversIncluded.map((s) => s.name),
+          });
+        }
       }
     } catch (err) {
       // Never fail an agent because MCP wasn't available.

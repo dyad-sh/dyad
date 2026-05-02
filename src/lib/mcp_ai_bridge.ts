@@ -33,7 +33,7 @@
 import { tool, type ToolSet } from "ai";
 import { z, type ZodTypeAny } from "zod";
 import log from "electron-log";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import { db } from "../db";
 import { mcpServers } from "../db/schema";
 import { mcpHubManager } from "../ipc/utils/mcp_hub_manager";
@@ -237,10 +237,24 @@ export async function buildMcpToolSet(
         const params = jsonSchemaToZod(remote.inputSchema ?? {});
         const desc = `[${server.name}] ${remote.description ?? remote.name}`;
 
+        // Narrow shape of an MCP CallToolResult so we don't sprinkle
+        // `as any` over the response handler. Mirrors @modelcontextprotocol/sdk.
+        type McpContentItem = { type?: string; text?: string } & Record<
+          string,
+          unknown
+        >;
+        type McpCallToolResult = {
+          isError?: boolean;
+          content?: McpContentItem[];
+        } & Record<string, unknown>;
+
+        // The Vercel AI SDK accepts a Zod schema as `inputSchema`. We get
+        // back a `ZodTypeAny` from `jsonSchemaToZod` — hand it through
+        // without an `as any` shim.
         tools[fqName] = tool({
           description: desc,
-          parameters: params as any,
-          execute: async (args: unknown) => {
+          inputSchema: params,
+          execute: async (args: unknown): Promise<McpCallToolResult> => {
             // Consent gate.
             const stored = await getStoredConsent(server.id, remote.name);
             if (stored === "denied") {
@@ -250,21 +264,25 @@ export async function buildMcpToolSet(
             }
             if (stored !== "always") {
               if (opts.consentWindow) {
-                // Manufacture a fake IpcMainInvokeEvent-shaped object — only
-                // `sender` is used by `requireMcpToolConsent`.
-                const fakeEvent = {
+                // Manufacture an IpcMainInvokeEvent-shaped object — only
+                // `sender` is used by `requireMcpToolConsent`. Picking the
+                // exact field keeps us TypeScript-honest.
+                const fakeEvent: Pick<IpcMainInvokeEvent, "sender"> = {
                   sender: opts.consentWindow.webContents,
-                } as any;
+                };
                 const inputPreview =
                   typeof args === "string"
                     ? args
                     : JSON.stringify(args ?? {}).slice(0, 500);
-                const ok = await requireMcpToolConsent(fakeEvent, {
-                  serverId: server.id,
-                  serverName: server.name,
-                  toolName: remote.name,
-                  inputPreview,
-                });
+                const ok = await requireMcpToolConsent(
+                  fakeEvent as IpcMainInvokeEvent,
+                  {
+                    serverId: server.id,
+                    serverName: server.name,
+                    toolName: remote.name,
+                    inputPreview,
+                  },
+                );
                 if (!ok) {
                   throw new Error(
                     `MCP tool '${remote.name}' on '${server.name}' was denied by the user.`,
@@ -280,17 +298,23 @@ export async function buildMcpToolSet(
               // headless + allowHeadless=true: proceed without prompting.
             }
 
-            const result = await mcpHubManager.callTool(
+            const raw = await mcpHubManager.callTool(
               server.id,
               remote.name,
               args,
             );
+            const result =
+              raw && typeof raw === "object"
+                ? (raw as McpCallToolResult)
+                : ({} as McpCallToolResult);
             // The MCP CallToolResult shape is `{ content: [...], isError? }`.
             // Surface errors so the model can recover.
-            if ((result as any)?.isError) {
+            if (result.isError) {
               const text =
-                (result as any)?.content
-                  ?.map((c: any) => c?.text ?? JSON.stringify(c))
+                result.content
+                  ?.map((c) =>
+                    typeof c?.text === "string" ? c.text : JSON.stringify(c),
+                  )
                   .join("\n") ?? "MCP tool returned an error";
               throw new Error(`MCP tool error: ${text}`);
             }

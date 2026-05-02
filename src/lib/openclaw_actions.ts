@@ -9,9 +9,32 @@
  * but from the main process directly (no round-trip through preload).
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
 import type { ActionDefinition } from "@/types/openclaw_autonomous_types";
+
+// Electron's `ipcMain` exposes a private `_invokeHandlers` Map keyed by
+// channel name. We type-narrow it here instead of casting to `any` at every
+// call site.
+//
+// NOTE: Electron private API — verify this still exists when upgrading
+// beyond electron@v38.x.
+type IpcInvokeHandler = (
+  event: IpcMainInvokeEvent,
+  ...args: unknown[]
+) => unknown;
+
+interface IpcMainWithInternals {
+  _invokeHandlers?: Map<string, IpcInvokeHandler>;
+  _events?: Record<string, unknown>;
+}
+
+function getInvokeHandler(channel: string): IpcInvokeHandler | undefined {
+  const internals = ipcMain as unknown as IpcMainWithInternals;
+  const map = internals._invokeHandlers;
+  if (!(map instanceof Map)) return undefined;
+  return map.get(channel);
+}
 
 const logger = log.scope("openclaw_dispatch");
 
@@ -2241,10 +2264,18 @@ export async function dispatchAction(
     throw new Error(`Unknown action: ${actionId}`);
   }
 
-  // Validate required parameters
+  // Validate required parameters — reject missing, null, undefined, or
+  // string values that are blank after trimming. Trim string values so
+  // downstream handlers don't have to defend against `" "`.
   for (const p of action.parameters) {
-    if (p.required && !(p.name in params)) {
+    const raw = params[p.name];
+    const isMissing = raw === undefined || raw === null;
+    const isBlankString = typeof raw === "string" && raw.trim() === "";
+    if (p.required && (isMissing || isBlankString)) {
       throw new Error(`Missing required parameter '${p.name}' for action '${actionId}'`);
+    }
+    if (typeof raw === "string") {
+      params[p.name] = raw.trim();
     }
   }
 
@@ -2291,12 +2322,17 @@ export async function dispatchAction(
     };
   } else if (action.channel === "n8n:workflow:generate") {
     // Handler reads `request.prompt` but bot-facing param is `description`.
+    // Surface `triggerType` via constraints.requiredTrigger so the workflow
+    // generator can honor it without us polluting the natural-language prompt.
     dispatchParams = {
       prompt: params.description ?? params.prompt,
       model: params.model,
-      // n8n WorkflowGenerationRequest doesn't have triggerType — surface it as a hint inside the prompt.
       ...(params.triggerType
-        ? { prompt: `${params.description ?? params.prompt}\n\nTrigger type: ${params.triggerType}` }
+        ? {
+            constraints: {
+              requiredTrigger: params.triggerType,
+            },
+          }
         : {}),
     };
   }
@@ -2461,14 +2497,14 @@ async function invokeHandler(
       };
     }
 
-    const handler = (ipcMain as any)._invokeHandlers?.get(channel);
+    const handler = getInvokeHandler(channel);
     if (handler) {
-      return handler({} as Electron.IpcMainInvokeEvent, request);
+      return handler({} as IpcMainInvokeEvent, request);
     }
     const handlers = getHandlerMap();
     const fn = handlers?.get(channel);
     if (fn) {
-      return fn({} as Electron.IpcMainInvokeEvent, request);
+      return fn({} as IpcMainInvokeEvent, request);
     }
     throw new Error(`No handler registered for channel: ${channel}`);
   }
@@ -2483,9 +2519,9 @@ async function invokeHandler(
     ? paramDefs.map((p) => params[p.name])
     : [params]; // Default: pass entire object
 
-  const handler = (ipcMain as any)._invokeHandlers?.get(channel);
+  const handler = getInvokeHandler(channel);
   if (handler) {
-    return handler({} as Electron.IpcMainInvokeEvent, ...spreadArgs);
+    return handler({} as IpcMainInvokeEvent, ...spreadArgs);
   }
 
   // Fallback: try the internal Map (Electron >=28)
@@ -2493,7 +2529,7 @@ async function invokeHandler(
     const handlers = getHandlerMap();
     const fn = handlers?.get(channel);
     if (fn) {
-      return fn({} as Electron.IpcMainInvokeEvent, ...spreadArgs);
+      return fn({} as IpcMainInvokeEvent, ...spreadArgs);
     }
   } catch {
     // Ignore
@@ -2506,9 +2542,9 @@ async function invokeHandler(
  * Get Electron's internal IPC handler map.
  * This is an implementation detail but stable across Electron versions.
  */
-function getHandlerMap(): Map<string, Function> | null {
-  // Try known internal properties
-  const target = ipcMain as any;
+function getHandlerMap(): Map<string, IpcInvokeHandler> | null {
+  // Try known internal properties via a typed view of ipcMain.
+  const target = ipcMain as unknown as IpcMainWithInternals;
 
   // Electron stores handlers in _invokeHandlers (most versions)
   if (target._invokeHandlers instanceof Map) {

@@ -369,10 +369,32 @@ export class IpcClient {
 
     // MCP server status changes from main
     this.ipcRenderer.on("mcp:status-change", (payload) => {
-      if (!payload || typeof payload !== "object") return;
-      const info = payload as unknown as McpServerStatusInfo;
-      for (const handler of this.mcpStatusHandlers) {
-        handler(info);
+      // Validate payload shape before dispatching: must be an object with
+      // a numeric `serverId` and a string `status`. Drop & warn otherwise.
+      if (!payload || typeof payload !== "object") {
+        console.warn("mcp:status-change: dropped non-object payload");
+        return;
+      }
+      const candidate = payload as Record<string, unknown>;
+      if (
+        typeof candidate.serverId !== "number" ||
+        typeof candidate.status !== "string"
+      ) {
+        console.warn(
+          "mcp:status-change: dropped payload with invalid shape",
+          candidate,
+        );
+        return;
+      }
+      const info = candidate as unknown as McpServerStatusInfo;
+      // Snapshot the handler set so a handler that adds/removes others
+      // mid-iteration can't corrupt the loop, and isolate exceptions.
+      for (const handler of Array.from(this.mcpStatusHandlers)) {
+        try {
+          handler(info);
+        } catch (err) {
+          console.error("mcp:status-change handler threw:", err);
+        }
       }
     });
 

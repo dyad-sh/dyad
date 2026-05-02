@@ -1618,12 +1618,19 @@ export function registerN8nHandlers(): void {
       return await withEnsureMcpTriggerLock(`n8n-mcp-${triggerPath}`, async () => {
         // Look for an existing MCP Server Trigger workflow at the requested path.
         const list = await listWorkflows();
+        // Narrow shape we need for the predicate without leaning on `any`.
+        type N8nWorkflowSearchNode = {
+          type?: string;
+          parameters?: { path?: string };
+        };
         const existing = (list.data || []).find((wf) =>
-          (wf.nodes || []).some(
-            (n: any) =>
+          (wf.nodes || []).some((n: N8nWorkflowSearchNode) => {
+            const path = (n?.parameters?.path ?? "");
+            return (
               n?.type === "@n8n/n8n-nodes-langchain.mcpTrigger" &&
-              (n?.parameters?.path || "") === triggerPath,
-          ),
+              path === triggerPath
+            );
+          }),
         );
 
         let workflowId: string;
@@ -1634,22 +1641,33 @@ export function registerN8nHandlers(): void {
             await activateWorkflow(workflowId);
           }
         } else {
+          // Local node literal type — matches the subset of N8nNode we set
+          // here without forcing every optional field. Avoids `as any`.
+          type N8nWorkflowNode = {
+            parameters: Record<string, unknown>;
+            id: string;
+            name: string;
+            type: string;
+            typeVersion: number;
+            position: [number, number];
+            webhookId?: string;
+          };
+          const triggerNode: N8nWorkflowNode = {
+            parameters: { path: triggerPath },
+            id: crypto.randomUUID(),
+            name: "MCP Server Trigger",
+            type: "@n8n/n8n-nodes-langchain.mcpTrigger",
+            typeVersion: 1,
+            position: [240, 300],
+            webhookId: crypto.randomUUID(),
+          };
           const newWf = await createWorkflow({
             name: workflowName,
-            nodes: [
-              {
-                parameters: { path: triggerPath },
-                id: crypto.randomUUID(),
-                name: "MCP Server Trigger",
-                type: "@n8n/n8n-nodes-langchain.mcpTrigger",
-                typeVersion: 1,
-                position: [240, 300],
-                webhookId: crypto.randomUUID(),
-              } as any,
-            ],
+            active: false,
+            nodes: [triggerNode as N8nNode],
             connections: {},
-            settings: { executionOrder: "v1" } as any,
-          } as any);
+            settings: { executionOrder: "v1" },
+          });
           if (!newWf?.id) {
             throw new Error("Failed to create n8n MCP Server Trigger workflow.");
           }

@@ -67,9 +67,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { useMcp, type Transport } from "@/hooks/useMcp";
+import { useEnsureN8nMcpTrigger } from "@/hooks/useEnsureN8nMcpTrigger";
 import type { McpServerStatusInfo } from "@/ipc/ipc_types";
 import { showError, showSuccess } from "@/lib/toast";
-import { IpcClient } from "@/ipc/ipc_client";
 import {
   MCP_CATEGORIES,
   type McpServerRegistryEntry,
@@ -136,6 +136,9 @@ const McpHubPage: React.FC = () => {
     isReadingResource,
     isGettingPrompt,
   } = useMcp();
+  // Mutation hook — invalidates ["mcp", "servers"] / ["mcp", "statuses"]
+  // on success so the just-provisioned trigger immediately shows up.
+  const ensureN8nTrigger = useEnsureN8nMcpTrigger();
 
   const [topTab, setTopTab] = useState<
     "my-servers" | "registry" | "custom" | "resources" | "prompts"
@@ -239,9 +242,8 @@ const McpHubPage: React.FC = () => {
       // user never has to leave the MCP Hub.
       if (server.id === "n8n-local") {
         try {
-          const ipc = IpcClient.getInstance();
           const apiKey = envValues["X-N8N-API-KEY"]?.trim();
-          const result = await ipc.ensureN8nMcpTrigger({
+          const result = await ensureN8nTrigger.mutateAsync({
             path: "joycreate",
             name: "JoyCreate MCP Server",
             apiKey,
@@ -461,10 +463,13 @@ const McpHubPage: React.FC = () => {
                   key={card.hash}
                   type="button"
                   onClick={() =>
+                    // Narrow the literal `to` so the typed router accepts
+                    // the call; `hash` is documented to be a free-form
+                    // string. No outer-call cast is necessary.
                     router.navigate({
-                      to: "/settings",
+                      to: "/settings" as const,
                       hash: card.hash,
-                    } as any)
+                    })
                   }
                   className="flex items-start gap-3 rounded-lg border p-3 text-left hover:border-primary/50 hover:bg-primary/5 transition-all"
                 >
@@ -1283,6 +1288,13 @@ const McpHubPage: React.FC = () => {
                 <Button
                   onClick={async () => {
                     if (!promptRunner.serverId || !promptRunner.name) return;
+                    // Clear any prior error/result before retrying so the
+                    // user doesn't see stale state while the new request runs.
+                    setPromptRunner((prev) => ({
+                      ...prev,
+                      error: undefined,
+                      result: undefined,
+                    }));
                     try {
                       const result = await getPrompt({
                         serverId: promptRunner.serverId,

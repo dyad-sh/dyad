@@ -42,6 +42,7 @@ import { getOllamaApiUrl } from "../ipc/handlers/local_model_ollama_handler";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { LM_STUDIO_BASE_URL } from "../ipc/utils/lm_studio_utils";
 import { buildMcpToolSet } from "./mcp_ai_bridge";
+import { voiceAssistant } from "./voice_assistant";
 import { BrowserWindow } from "electron";
 import {
   clearSessionMessages,
@@ -379,6 +380,12 @@ export async function chat(
   callbacks: StreamCallbacks,
   abortSignal?: AbortSignal,
   selectedModelOverride?: { provider: string; name: string },
+  /**
+   * Where the request originated from. When `"voice"`, the MCP allow-list
+   * is taken from `VoiceConfig.mcpToolsAllow` instead of being unrestricted.
+   * Defaults to `"text"`.
+   */
+  origin: "text" | "voice" = "text",
 ): Promise<void> {
   const session = getSession(sessionId);
   if (mode !== session.mode) session.mode = mode;
@@ -503,8 +510,26 @@ export async function chat(
         const focusedWin =
           BrowserWindow.getFocusedWindow() ??
           BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+        // Voice-originated turns honor the user's per-voice MCP allow-list.
+        // `undefined` => all enabled MCP tools (back-compat with text turns).
+        // `[]`        => skip MCP entirely for voice.
+        let voiceAllow: string[] | undefined;
+        if (origin === "voice") {
+          try {
+            voiceAllow = voiceAssistant.getConfig().mcpToolsAllow;
+          } catch {
+            voiceAllow = undefined;
+          }
+        }
+        if (origin === "voice" && Array.isArray(voiceAllow) && voiceAllow.length === 0) {
+          // Explicit "no MCP for voice" — skip the bridge entirely.
+          logger.info("Joy Assistant: voice origin with empty MCP allow-list — skipping MCP tools");
+        } else {
         const mcpResult = await buildMcpToolSet({
           consentWindow: focusedWin,
+          ...(origin === "voice" && Array.isArray(voiceAllow)
+            ? { toolAllowList: voiceAllow }
+            : {}),
         });
         if (mcpResult.summary.totalTools > 0) {
           assistantTools = { ...assistantTools, ...mcpResult.tools };
@@ -517,6 +542,7 @@ export async function chat(
             `Joy Assistant: ${mcpResult.summary.serversFailed.length} MCP server(s) unavailable`,
             mcpResult.summary.serversFailed,
           );
+        }
         }
       } catch (err) {
         logger.warn("Failed to load MCP tools for Joy Assistant", err);

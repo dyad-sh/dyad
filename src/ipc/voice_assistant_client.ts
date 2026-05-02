@@ -26,6 +26,11 @@ export interface VoiceConfig {
   autoSubmit: boolean;
   soundEffects: boolean;
   continuousMode: boolean;
+  /**
+   * MCP Hub — fully-qualified tool names the voice assistant may
+   * invoke. `undefined` = all enabled MCP servers, `[]` = disabled.
+   */
+  mcpToolsAllow?: string[];
 }
 
 export interface SystemCapabilities {

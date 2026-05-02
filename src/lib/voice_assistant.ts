@@ -45,6 +45,15 @@ export interface VoiceConfig {
   autoSubmit: boolean;       // Auto-submit after transcription
   soundEffects: boolean;     // Play beeps
   continuousMode: boolean;   // Keep listening after response
+  /**
+   * MCP Hub — fully-qualified tool names (`mcp__<server>__<tool>`)
+   * the voice assistant is allowed to invoke when the LLM step runs
+   * a voice-originated turn. `undefined` (the default) means "all
+   * enabled MCP servers’ tools". An empty array disables MCP for
+   * voice. Wired by `joy_assistant_service` when the request flags
+   * `origin === "voice"`.
+   */
+  mcpToolsAllow?: string[];
 }
 
 export interface SystemCapabilities {

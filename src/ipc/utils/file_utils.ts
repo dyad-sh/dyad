@@ -53,12 +53,19 @@ export async function copyDirectoryRecursive(
     const srcPath = path.join(source, entry.name);
     const destPath = path.join(destination, entry.name);
 
-    if (entry.isDirectory()) {
+    // Resolve symlinks so Windows doesn't EPERM on copyFile of a symlink-to-directory
+    const isDir = entry.isDirectory()
+      ? true
+      : entry.isSymbolicLink()
+        ? (await fsPromises.stat(srcPath)).isDirectory()
+        : false;
+
+    if (isDir) {
       // Exclude node_modules directories
       if (entry.name !== "node_modules") {
         await copyDirectoryRecursive(srcPath, destPath);
       }
-    } else {
+    } else if (!entry.isSymbolicLink()) {
       await fsPromises.copyFile(srcPath, destPath);
     }
   }

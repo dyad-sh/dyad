@@ -1,10 +1,10 @@
 import log from "electron-log";
 import fs from "node:fs/promises";
-import path from "node:path";
 import { getDyadAppPath } from "@/paths/paths";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
+import { safeJoin } from "@/ipc/utils/path_utils";
 
 const logger = log.scope("media_cleanup");
 
@@ -22,7 +22,7 @@ export async function cleanupOldMediaFiles(): Promise<void> {
 
     const counts = await Promise.all(
       allApps.map(async (app) => {
-        const mediaDir = path.join(
+        const mediaDir = safeJoin(
           getDyadAppPath(app.path),
           DYAD_MEDIA_DIR_NAME,
         );
@@ -36,7 +36,7 @@ export async function cleanupOldMediaFiles(): Promise<void> {
 
         const results = await Promise.all(
           files.map(async (file) => {
-            const filePath = path.join(mediaDir, file);
+            const filePath = safeJoin(mediaDir, file);
             try {
               const stat = await fs.stat(filePath);
               if (!stat.isFile()) {

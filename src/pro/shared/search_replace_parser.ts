@@ -9,7 +9,8 @@ const BLOCK_REGEX =
 export function parseSearchReplaceBlocks(
   diffContent: string,
 ): SearchReplaceBlock[] {
-  const matches = [...diffContent.matchAll(BLOCK_REGEX)];
+  const normalizedDiffContent = diffContent.replace(/\r\n/g, "\n");
+  const matches = [...normalizedDiffContent.matchAll(BLOCK_REGEX)];
   return matches.map((m) => ({
     searchContent: m[1] ?? "",
     replaceContent: m[2] ?? "",

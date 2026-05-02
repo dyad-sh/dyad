@@ -13,12 +13,16 @@ import { normalizePath } from "../../../shared/normalizePath";
  * @throws Error if the resulting path would be outside the base directory
  */
 export function safeJoin(basePath: string, ...paths: string[]): string {
+  const useWindowsPathSemantics =
+    /^[A-Za-z]:[\\/]/.test(basePath) || basePath.includes("\\");
+  const pathModule = useWindowsPathSemantics ? path.win32 : path.posix;
+
   // Normalize backslashes to forward slashes for cross-platform consistency
   const normalizedPaths = paths.map((p) => normalizePath(p));
 
   // Check if any of the path segments are absolute paths (which would be unsafe)
   for (const pathSegment of normalizedPaths) {
-    if (path.isAbsolute(pathSegment)) {
+    if (pathModule.isAbsolute(pathSegment)) {
       throw new DyadError(
         `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
         DyadErrorKind.Validation,
@@ -48,18 +52,21 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
   }
 
   // Join all the paths
-  const joinedPath = path.join(basePath, ...normalizedPaths);
+  const joinedPath = pathModule.join(basePath, ...normalizedPaths);
 
   // Resolve both paths to absolute paths to handle any ".." components
-  const resolvedBasePath = path.resolve(basePath);
-  const resolvedJoinedPath = path.resolve(joinedPath);
+  const resolvedBasePath = pathModule.resolve(basePath);
+  const resolvedJoinedPath = pathModule.resolve(joinedPath);
 
   // Check if the resolved joined path starts with the base path
   // Use path.relative to ensure we're doing a proper path comparison
-  const relativePath = path.relative(resolvedBasePath, resolvedJoinedPath);
+  const relativePath = pathModule.relative(
+    resolvedBasePath,
+    resolvedJoinedPath,
+  );
 
   // If relativePath starts with ".." or is absolute, then resolvedJoinedPath is outside basePath
-  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+  if (relativePath.startsWith("..") || pathModule.isAbsolute(relativePath)) {
     throw new DyadError(
       `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
       DyadErrorKind.Validation,

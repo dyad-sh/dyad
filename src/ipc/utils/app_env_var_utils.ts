@@ -5,19 +5,19 @@
 
 import { getDyadAppPath } from "@/paths/paths";
 import { EnvVar } from "@/ipc/types";
-import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "./cloud_sandbox_provider";
+import { safeJoin } from "@/ipc/utils/path_utils";
 
 const logger = log.scope("app_env_var_utils");
 
 export const ENV_FILE_NAME = ".env.local";
 
 export function getEnvFilePath({ appPath }: { appPath: string }): string {
-  return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
+  return safeJoin(getDyadAppPath(appPath), ENV_FILE_NAME);
 }
 
 export async function updatePostgresUrlEnvVar({

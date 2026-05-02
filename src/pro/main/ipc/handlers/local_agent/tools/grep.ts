@@ -15,6 +15,7 @@ import {
   DYAD_INTERNAL_RIPGREP_EXCLUDE,
   resolveTargetAppPath,
 } from "./resolve_app_context";
+import { normalizePath } from "../../../../../../../shared/normalizePath";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -200,8 +201,8 @@ async function runRipgrep({
             continue;
           }
 
-          // Normalize path (remove leading ./)
-          const normalizedPath = matchPath.replace(/^\.\//, "");
+          // Normalize path for cross-platform consistency and remove leading ./
+          const normalizedPath = normalizePath(matchPath).replace(/^\.\//, "");
 
           if (maxMatches !== undefined && results.length >= maxMatches) {
             stoppedEarly = true;

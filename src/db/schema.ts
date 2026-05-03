@@ -1769,7 +1769,7 @@ export const jcnChainTransactions = sqliteTable("jcn_chain_transactions", {
  * `jcnPublishRecords` was originally scoped to AI bundles with a state
  * machine. Both can coexist; orchestrator writes to both.
  */
-export const publishBundles = sqliteTable("publish_bundles", {
+export const publishBundles = sqliteTable("onchain_publish_bundles", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   assetType: text("asset_type").notNull(), // "agent" | "document" | "image" | "video" | "model"
   name: text("name").notNull(),

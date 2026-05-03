@@ -37,7 +37,10 @@ const SUBGRAPH_URLS = {
   drops:
     "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-drop-amoy/0.0.1/gn",
   stores:
-    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-stores-amoy/0.0.2/gn",
+    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-stores-amoy/0.0.3/gn",
+  /** @deprecated MarketplaceV3 subgraph — retired in the 2026-05-02 pivot.
+   *  Use `src/lib/joymarketplace/drop_subgraph.ts` for browse / detail reads.
+   *  Kept only so legacy helpers below surface a clear failure mode. */
   marketplace:
     "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-marketplace-amoy/0.0.3/gn",
 } as const;
@@ -298,6 +301,12 @@ export async function getStoreStats(): Promise<SubgraphStoreStats | null> {
 
 // ── Marketplace subgraph queries ───────────────────────────────────────────
 
+/**
+ * @deprecated MarketplaceV3 read path — retired 2026-05-02. Use
+ * `listDrops` / `getDrop` from `lib/joymarketplace/drop_subgraph.ts`.
+ * This helper still calls a subgraph that doesn't index DropERC1155 data
+ * for our flow; expect empty/erroring results in production.
+ */
 export async function getMarketplaceAssets(params?: SubgraphAssetsParams): Promise<SubgraphAsset[]> {
   const first = params?.first ?? 100;
   const skip = params?.skip ?? 0;
@@ -353,6 +362,12 @@ export async function getMarketplaceAssets(params?: SubgraphAssetsParams): Promi
   return data.assets;
 }
 
+/**
+ * @deprecated MarketplaceV3 read path — retired 2026-05-02. There are no
+ * marketplace "listings" anymore; ownership = DropERC1155 balance and
+ * purchasability = `pricePerToken` on the token's claim conditions. Use
+ * `listDrops` from `lib/joymarketplace/drop_subgraph.ts`.
+ */
 export async function getMarketplaceListings(params?: SubgraphListingsParams): Promise<SubgraphListing[]> {
   const first = params?.first ?? 100;
   const skip = params?.skip ?? 0;
@@ -408,6 +423,9 @@ export async function getMarketplaceListings(params?: SubgraphListingsParams): P
   return data.listings;
 }
 
+/**
+ * @deprecated MarketplaceV3 read path — retired 2026-05-02.
+ */
 export async function getAIModels(params?: SubgraphAIModelsParams): Promise<SubgraphAIModel[]> {
   const first = params?.first ?? 100;
   const skip = params?.skip ?? 0;
@@ -452,6 +470,9 @@ export async function getAIModels(params?: SubgraphAIModelsParams): Promise<Subg
   return data.aimodels;
 }
 
+/**
+ * @deprecated MarketplaceV3 read path — retired 2026-05-02.
+ */
 export async function getUserLicenses(walletAddress: string, first = 100): Promise<SubgraphAIModelLicense[]> {
   const addr = walletAddress.toLowerCase();
 
@@ -483,6 +504,9 @@ export async function getUserLicenses(walletAddress: string, first = 100): Promi
   return data.aimodelLicenses;
 }
 
+/**
+ * @deprecated MarketplaceV3 read path — retired 2026-05-02.
+ */
 export async function getUserReceipts(walletAddress: string, first = 100): Promise<SubgraphReceipt[]> {
   const addr = walletAddress.toLowerCase();
 
@@ -514,6 +538,9 @@ export async function getUserReceipts(walletAddress: string, first = 100): Promi
   return data.receipts;
 }
 
+/**
+ * @deprecated MarketplaceV3 read path — retired 2026-05-02.
+ */
 export async function getMarketplaceStats(): Promise<SubgraphMarketplaceStats | null> {
   try {
     const data = await querySubgraph<{ marketplaceStats_collection: SubgraphMarketplaceStats[] }>(

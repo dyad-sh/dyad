@@ -49,16 +49,70 @@ This branch closes that gap. It is the "surgery" half of the locked-in plan
 
 ## Surgery Checklist
 
-### A. Subgraph + config
+### A. Subgraph + config — DONE 2026-05-02
 
-- [ ] Add DropERC1155 Goldsky endpoint to `src/config/joymarketplace.ts`
-      (or wherever the existing subgraph URL lives). Keep it env-overridable.
-- [ ] Document required Goldsky entities in this brief once confirmed:
-      `claimConditions`, `tokens` (per-tokenId metadata), `claims`,
-      `tokenOwners` / `transfers`.
-- [ ] Add a tiny typed client (`src/lib/joymarketplace/drop_subgraph.ts`)
-      with `listDrops`, `getDrop`, `listDropsByCreator`, `listClaimsByBuyer`,
-      `getOwnership(tokenId, address)`. Pure functions, no React.
+- [x] Confirmed live Goldsky endpoints via `_meta` + introspection. Both
+      indexed to block 37,698,890+, no indexing errors.
+      - Drop: `joy-drop-amoy/0.0.1` (entities: `Token`, `Purchase`,
+        `UserBalance`, `DropStats`).
+      - Stores: `joy-stores-amoy/0.0.3` (entities: `Store`,
+        `StoreTextRecord`, `DomainRegistration`, `DomainTextRecord`,
+        `StoreStats`).
+- [x] Bumped stores subgraph URL `0.0.2` → `0.0.3` in
+      `src/lib/subgraph_client.ts` and `src/config/thirdweb.ts`. Removed
+      the now-retired `joy-marketplace-amoy` URL from `GOLDSKY_SUBGRAPHS`
+      in `thirdweb.ts` and added a deprecation note where it still lives
+      in `subgraph_client.ts` (kept only so legacy callers compile while
+      we work through B/C/D).
+- [x] New typed client at `src/lib/joymarketplace/drop_subgraph.ts` with
+      `listDrops`, `getDrop`, `listDropsByCreator`, `listClaimsByBuyer`,
+      `getOwnership`, `getStore`, `listStoresByOwner`, `summarizeDrop`.
+      Endpoints are env-overridable via
+      `JOYMARKETPLACE_DROP_SUBGRAPH_URL` /
+      `JOYMARKETPLACE_STORES_SUBGRAPH_URL`.
+- [x] Live smoke at `scripts/smoke-test-drop-subgraph.mjs` confirmed
+      against Polygon Amoy: 12 lazy-minted tokens already indexed, the
+      `love` store reads as `isActive: true`.
+
+### A.1. Browse handler rewrite — DONE 2026-05-02
+
+- [x] `src/ipc/handlers/marketplace_browse_handlers.ts` now uses the new
+      drop client only. Browse / detail / featured / categories all flow
+      through `listDrops` + `getDrop`.
+- [x] Returns the proper `MarketplaceBrowseResult` shape (the previous
+      handler returned `{assets, listings, total}` which never matched
+      `IpcClient.marketplaceBrowse`'s return type — the renderer was
+      effectively broken).
+- [x] Resolves `baseURI` metadata via a 3-gateway IPFS fallback
+      (`ipfs.io` → `pinata` → `4everland`) with a 5-minute in-process
+      cache. Filters by category / assetType / pricingModel / free-text
+      `query` against the resolved metadata.
+- [x] `marketplace:asset-detail` returns a fully populated
+      `MarketplaceAssetDetail` with `screenshotUrls` rewritten through
+      the IPFS gateway, `publisherVerified` derived from the presence of
+      a `creatorWallet` in metadata, and `status` always `"published"`
+      (on-chain drops are by definition published).
+- [x] `marketplace:install-asset` looks up the drop on-chain first and
+      writes a manifest containing the resolved `baseURI` so the renderer
+      can fetch from IPFS without another round trip.
+
+### A.2. Tests — DONE 2026-05-02
+
+- [x] 27 unit tests for `drop_subgraph.ts` (mocked GraphQL transport)
+      covering pagination clamping, env override, error surfacing,
+      address lower-casing, ownership fall-through.
+- [x] 16 unit tests for `marketplace_browse_handlers.ts` helpers
+      (`ipfsToHttp`, `weiToDisplay`, `toBrowseItem`, `toAssetDetail`)
+      covering metadata fallbacks, gateway rotation, free / paid pricing
+      derivation, description truncation.
+- [x] `tsc --noEmit` clean. `oxlint` clean.
+
+**Note for follow-up:** the live `love` store's `owner` field on the
+subgraph reads as `0x40cc...ac7a` (the JoyRegistrarController), not the
+.joy domain owner. That means `listStoresByOwner(walletAddress)` won't
+surface stores by their human owner today — the join needs to go through
+`DomainRegistration.owner` rather than `Store.owner`. Out of scope for
+section A; will fix in section B (creator dashboard hook).
 
 ### B. Hooks (renderer read layer)
 
@@ -82,7 +136,7 @@ Repoint these hooks to the new client. Drop legacy listing types.
 
 ### D. IPC / handlers
 
-- [ ] `src/ipc/handlers/marketplace_browse_handlers.ts` — switch to drop client.
+- [x] `src/ipc/handlers/marketplace_browse_handlers.ts` — switched to drop client (see A.1).
 - [ ] `src/ipc/handlers/marketplace_handlers.ts` — audit; remove
       MarketplaceV3-shaped responses.
 - [ ] `src/ipc/handlers/marketplace_sync_handlers.ts` — likely DELETE the

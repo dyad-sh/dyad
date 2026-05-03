@@ -38,14 +38,18 @@ export const THIRDWEB_CONTRACTS = {
 // Goldsky Subgraph Endpoints (Polygon Amoy Testnet)
 // =============================================================================
 
+/**
+ * Goldsky subgraph endpoints. The MarketplaceV3 subgraph (`joy-marketplace-amoy`)
+ * was retired in the 2026-05-02 architecture pivot — all browse / detail /
+ * ownership queries now hit the DropERC1155 + Stores subgraphs only.
+ * See `briefs/droperc1155-read-layer-surgery.md` and
+ * `src/lib/joymarketplace/drop_subgraph.ts`.
+ */
 export const GOLDSKY_SUBGRAPHS = {
-  /** Joy Marketplace subgraph — listings, purchases, activity */
-  marketplace:
-    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-marketplace-amoy/0.0.3/gn",
-  /** Joy Stores subgraph — store metadata, creator profiles */
+  /** Joy Stores subgraph — store metadata, creator profiles. */
   stores:
-    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-stores-amoy/0.0.2/gn",
-  /** Joy Drop subgraph — edition drops, claims, mints */
+    "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-stores-amoy/0.0.3/gn",
+  /** Joy Drop subgraph — edition drops, claims, mints. */
   drop:
     "https://api.goldsky.com/api/public/project_cmnkv2wbi14re01un3l5lb3rf/subgraphs/joy-drop-amoy/0.0.1/gn",
 } as const;

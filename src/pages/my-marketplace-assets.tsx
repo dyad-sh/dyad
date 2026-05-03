@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import JoyDeprecationBanner from "@/components/joy/JoyDeprecationBanner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -429,6 +430,9 @@ export default function MyMarketplaceAssetsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-6 pt-4">
+        <JoyDeprecationBanner to="/joy/my-assets" label="My Assets" />
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between p-6 pb-0">
         <div>

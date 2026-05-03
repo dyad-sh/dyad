@@ -248,11 +248,62 @@ export class TrustlessInferenceClient {
   async sendMessage(params: {
     conversationId: string;
     message: string;
-    config?: { temperature?: number; maxTokens?: number };
+    config?: {
+      temperature?: number;
+      maxTokens?: number;
+      topP?: number;
+      topK?: number;
+      repeatPenalty?: number;
+      numCtx?: number;
+      seed?: number;
+      stop?: string[];
+    };
     skipVerification?: boolean;
   }): Promise<InferenceResult> {
     return this.ipcRenderer.invoke("trustless:send-message", params);
   }
+
+  // ============================================================================
+  // Marketplace Monetization
+  // ============================================================================
+
+  /**
+   * Mark a saved playground message (prompt or assistant response) for sale on
+   * JoyMarketplace. Persists the listing metadata; the renderer is then
+   * expected to drive the on-chain mint/list via `CreateAssetWizard`.
+   */
+  async monetizeMessage(params: {
+    messageId?: string;
+    conversationId?: string;
+    ordinal?: number;
+    title: string;
+    description?: string;
+    priceWei?: string;
+    marketplaceAssetId?: string;
+  }): Promise<MonetizedPlaygroundMessage> {
+    return this.ipcRenderer.invoke("trustless:monetize-message", params);
+  }
+
+  async listMonetizedMessages(): Promise<MonetizedPlaygroundMessage[]> {
+    return this.ipcRenderer.invoke("trustless:list-monetized-messages");
+  }
+}
+
+/** Renderer-facing shape of a row from `playground_messages`. */
+export interface MonetizedPlaygroundMessage {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  recordId: string | null;
+  cid: string | null;
+  marketplaceAssetId: string | null;
+  priceWei: string | null;
+  monetizeTitle: string | null;
+  monetizeDescription: string | null;
+  monetizedAt: Date | null;
+  ordinal: number;
+  createdAt: Date;
 }
 
 // Export singleton instance

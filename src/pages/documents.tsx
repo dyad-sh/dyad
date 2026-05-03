@@ -6,6 +6,7 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import PublishToMarketplaceButton from "@/components/joy/PublishToMarketplaceButton";
 import {
   FileText,
   FileSpreadsheet,
@@ -648,6 +649,7 @@ export default function DocumentsPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <PublishToMarketplaceButton assetType="document" studio="document_studio" />
             {/* LibreOffice Status Badge */}
             {isStatusLoading ? (
               <Badge

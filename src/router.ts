@@ -83,6 +83,11 @@ import { ssiCredentialsRoute } from "./routes/ssi-credentials";
 import { creatorProfileRoute } from "./routes/creator-profile";
 import { agenticOSRoute } from "./routes/agentic-os";
 import { automationOrchestratorRoute } from "./routes/automation-orchestrator";
+// Joy Unification — 4 unified pages under /joy/*
+import { joyMarketplaceRoute } from "./routes/joy/marketplace";
+import { joyMyStoresRoute } from "./routes/joy/my-stores";
+import { joyMyAssetsRoute } from "./routes/joy/my-assets";
+import { joyPublishRoute } from "./routes/joy/publish";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -171,6 +176,11 @@ const routeTree = rootRoute.addChildren([
   creatorProfileRoute,
   agenticOSRoute,
   automationOrchestratorRoute,
+  // Joy Unification — unified marketplace pages
+  joyMarketplaceRoute,
+  joyMyStoresRoute,
+  joyMyAssetsRoute,
+  joyPublishRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

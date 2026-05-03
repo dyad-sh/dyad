@@ -5,9 +5,17 @@
 
 import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import { localModelService } from "@/lib/local_model_service";
 import { heliaVerificationService } from "@/lib/helia_verification_service";
+import { db } from "@/db";
+import {
+  playgroundConversations,
+  playgroundMessages,
+  type PlaygroundConversationRow,
+  type PlaygroundMessageRow,
+} from "@/db/playground_chat_schema";
 
 import type {
   LocalModelProvider,
@@ -40,7 +48,9 @@ interface TrustlessServiceConfig {
 class TrustlessInferenceService {
   private config: TrustlessServiceConfig;
   private inferenceHistory: InferenceRecord[] = [];
-  private conversations: Map<string, InferenceConversation> = new Map();
+  // NOTE: conversations are now persisted in SQLite (`playground_conversations`
+  // + `playground_messages`) so playground chats survive app restarts.
+  // The previous in-memory Map<string, InferenceConversation> has been removed.
 
   constructor(config?: Partial<TrustlessServiceConfig>) {
     this.config = {
@@ -417,70 +427,129 @@ class TrustlessInferenceService {
   }
 
   // ============================================================================
-  // Conversation Operations
+  // Conversation Operations (DB-backed via `playground_conversations` /
+  // `playground_messages` so playground chats survive app restarts).
   // ============================================================================
 
-  createConversation(params: {
+  /** Hydrate a domain `InferenceConversation` from the DB rows. */
+  private async hydrateConversation(
+    convRow: PlaygroundConversationRow
+  ): Promise<InferenceConversation> {
+    const msgRows = await db
+      .select()
+      .from(playgroundMessages)
+      .where(eq(playgroundMessages.conversationId, convRow.id))
+      .orderBy(asc(playgroundMessages.ordinal));
+    return {
+      id: convRow.id,
+      title: convRow.title,
+      provider: convRow.provider as LocalModelProvider,
+      modelId: convRow.modelId,
+      systemPrompt: convRow.systemPrompt ?? undefined,
+      messages: msgRows.map((m) => ({
+        role: m.role as InferenceMessage["role"],
+        content: m.content,
+      })),
+      recordIds: convRow.recordIds ?? [],
+      createdAt: convRow.createdAt.getTime(),
+      updatedAt: convRow.updatedAt.getTime(),
+    };
+  }
+
+  async createConversation(params: {
     provider: LocalModelProvider;
     modelId: string;
     systemPrompt?: string;
     title?: string;
-  }): InferenceConversation {
-    const now = Date.now();
-    const conversation: InferenceConversation = {
-      id: uuidv4(),
-      title: params.title || "New Conversation",
-      provider: params.provider,
-      modelId: params.modelId,
-      systemPrompt: params.systemPrompt,
-      messages: [],
-      recordIds: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.conversations.set(conversation.id, conversation);
-    logger.info("Created conversation", { id: conversation.id, title: conversation.title });
-    return conversation;
+  }): Promise<InferenceConversation> {
+    const id = uuidv4();
+    const now = new Date();
+    const [row] = await db
+      .insert(playgroundConversations)
+      .values({
+        id,
+        title: params.title || "New Conversation",
+        provider: params.provider,
+        modelId: params.modelId,
+        systemPrompt: params.systemPrompt ?? null,
+        recordIds: [],
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    logger.info("Created conversation", { id: row.id, title: row.title });
+    return this.hydrateConversation(row);
   }
 
-  getConversation(conversationId: string): InferenceConversation | null {
-    return this.conversations.get(conversationId) ?? null;
+  async getConversation(conversationId: string): Promise<InferenceConversation | null> {
+    const [row] = await db
+      .select()
+      .from(playgroundConversations)
+      .where(eq(playgroundConversations.id, conversationId))
+      .limit(1);
+    if (!row) return null;
+    return this.hydrateConversation(row);
   }
 
-  listConversations(): InferenceConversation[] {
-    return Array.from(this.conversations.values()).sort(
-      (a, b) => b.updatedAt - a.updatedAt
-    );
+  async listConversations(): Promise<InferenceConversation[]> {
+    const rows = await db
+      .select()
+      .from(playgroundConversations)
+      .orderBy(desc(playgroundConversations.updatedAt));
+    // Hydrate in parallel; small N (UI list)
+    return Promise.all(rows.map((r) => this.hydrateConversation(r)));
   }
 
-  deleteConversation(conversationId: string): void {
-    if (!this.conversations.has(conversationId)) {
+  async deleteConversation(conversationId: string): Promise<void> {
+    const result = await db
+      .delete(playgroundConversations)
+      .where(eq(playgroundConversations.id, conversationId))
+      .returning({ id: playgroundConversations.id });
+    if (result.length === 0) {
       throw new Error(`Conversation not found: ${conversationId}`);
     }
-    this.conversations.delete(conversationId);
     logger.info("Deleted conversation", { id: conversationId });
   }
 
-  updateConversation(
+  async updateConversation(
     conversationId: string,
-    updates: { title?: string; systemPrompt?: string; provider?: LocalModelProvider; modelId?: string }
-  ): InferenceConversation {
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation) {
+    updates: {
+      title?: string;
+      systemPrompt?: string;
+      provider?: LocalModelProvider;
+      modelId?: string;
+    }
+  ): Promise<InferenceConversation> {
+    const patch: Partial<PlaygroundConversationRow> = {};
+    if (updates.title !== undefined) patch.title = updates.title;
+    if (updates.systemPrompt !== undefined) patch.systemPrompt = updates.systemPrompt;
+    if (updates.provider !== undefined) patch.provider = updates.provider;
+    if (updates.modelId !== undefined) patch.modelId = updates.modelId;
+    patch.updatedAt = new Date();
+    const [row] = await db
+      .update(playgroundConversations)
+      .set(patch)
+      .where(eq(playgroundConversations.id, conversationId))
+      .returning();
+    if (!row) {
       throw new Error(`Conversation not found: ${conversationId}`);
     }
-    if (updates.title !== undefined) conversation.title = updates.title;
-    if (updates.systemPrompt !== undefined) conversation.systemPrompt = updates.systemPrompt;
-    if (updates.provider !== undefined) conversation.provider = updates.provider;
-    if (updates.modelId !== undefined) conversation.modelId = updates.modelId;
-    conversation.updatedAt = Date.now();
-    return conversation;
+    return this.hydrateConversation(row);
   }
 
   async sendMessage(
     conversationId: string,
     userMessage: string,
-    config?: { temperature?: number; maxTokens?: number },
+    config?: {
+      temperature?: number;
+      maxTokens?: number;
+      topP?: number;
+      topK?: number;
+      repeatPenalty?: number;
+      numCtx?: number;
+      seed?: number;
+      stop?: string[];
+    },
     skipVerification?: boolean
   ): Promise<{
     output: string;
@@ -490,47 +559,84 @@ class TrustlessInferenceService {
     tokens: number;
     timeMs: number;
   }> {
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation) {
+    const [convRow] = await db
+      .select()
+      .from(playgroundConversations)
+      .where(eq(playgroundConversations.id, conversationId))
+      .limit(1);
+    if (!convRow) {
       throw new Error(`Conversation not found: ${conversationId}`);
     }
 
-    // Add user message to conversation
-    conversation.messages.push({ role: "user", content: userMessage });
-    conversation.updatedAt = Date.now();
+    // Load existing messages (ordered) so we can pass full history to the model
+    const existing = await db
+      .select()
+      .from(playgroundMessages)
+      .where(eq(playgroundMessages.conversationId, conversationId))
+      .orderBy(asc(playgroundMessages.ordinal));
+    const nextOrdinal = existing.length;
 
-    // Auto-title from first user message
-    if (conversation.messages.filter((m) => m.role === "user").length === 1) {
-      conversation.title = userMessage.slice(0, 60) + (userMessage.length > 60 ? "..." : "");
-    }
+    // Persist the user turn first.
+    await db.insert(playgroundMessages).values({
+      id: uuidv4(),
+      conversationId,
+      role: "user",
+      content: userMessage,
+      ordinal: nextOrdinal,
+      createdAt: new Date(),
+    });
 
     // Build full messages array including system prompt
     const allMessages: InferenceMessage[] = [];
-    if (conversation.systemPrompt) {
-      allMessages.push({ role: "system", content: conversation.systemPrompt });
+    if (convRow.systemPrompt) {
+      allMessages.push({ role: "system", content: convRow.systemPrompt });
     }
-    allMessages.push(...conversation.messages);
+    for (const m of existing) {
+      allMessages.push({ role: m.role as InferenceMessage["role"], content: m.content });
+    }
+    allMessages.push({ role: "user", content: userMessage });
 
     // Run inference with full conversation history
     const result = await this.runVerifiedInference(
-      conversation.provider,
-      conversation.modelId,
+      convRow.provider as LocalModelProvider,
+      convRow.modelId,
       userMessage,
       {
-        systemPrompt: conversation.systemPrompt,
+        systemPrompt: convRow.systemPrompt ?? undefined,
         messages: allMessages,
         config: config ? { options: config } : undefined,
         skipVerification,
       }
     );
 
-    // Add assistant response
-    conversation.messages.push({ role: "assistant", content: result.response.output });
-    conversation.updatedAt = Date.now();
+    // Persist the assistant turn.
+    await db.insert(playgroundMessages).values({
+      id: uuidv4(),
+      conversationId,
+      role: "assistant",
+      content: result.response.output,
+      recordId: result.record?.id ?? null,
+      cid: result.record?.cid ?? null,
+      ordinal: nextOrdinal + 1,
+      createdAt: new Date(),
+    });
 
-    if (result.record?.id) {
-      conversation.recordIds.push(result.record.id);
-    }
+    // Update conversation: title (first turn) + recordIds + updatedAt
+    const newRecordIds = result.record?.id
+      ? [...(convRow.recordIds ?? []), result.record.id]
+      : convRow.recordIds ?? [];
+    const isFirstUserTurn = existing.filter((m) => m.role === "user").length === 0;
+    const newTitle = isFirstUserTurn
+      ? userMessage.slice(0, 60) + (userMessage.length > 60 ? "..." : "")
+      : convRow.title;
+    await db
+      .update(playgroundConversations)
+      .set({
+        title: newTitle,
+        recordIds: newRecordIds,
+        updatedAt: new Date(),
+      })
+      .where(eq(playgroundConversations.id, conversationId));
 
     return {
       output: result.response.output,
@@ -540,6 +646,85 @@ class TrustlessInferenceService {
       tokens: result.response.totalTokens,
       timeMs: result.response.generationTimeMs,
     };
+  }
+
+  // ============================================================================
+  // Marketplace Monetization
+  // ============================================================================
+
+  /**
+   * Tag an individual playground message (a saved prompt or assistant response)
+   * for sale on JoyMarketplace. Returns the updated message row so the renderer
+   * can hand it off to `CreateAssetWizard` for the actual on-chain mint/list.
+   */
+  async monetizeMessage(params: {
+    /** Either pass `messageId` directly... */
+    messageId?: string;
+    /** ...or address the message by its position within a conversation. */
+    conversationId?: string;
+    ordinal?: number;
+    title: string;
+    description?: string;
+    priceWei?: string;
+    marketplaceAssetId?: string;
+  }): Promise<PlaygroundMessageRow> {
+    if (!params.title || params.title.trim().length === 0) {
+      throw new Error("A title is required to monetize a message");
+    }
+
+    // Resolve message id if caller provided (conversationId, ordinal).
+    let messageId = params.messageId;
+    if (!messageId) {
+      if (!params.conversationId || params.ordinal === undefined) {
+        throw new Error(
+          "monetizeMessage requires either messageId or (conversationId + ordinal)"
+        );
+      }
+      const [target] = await db
+        .select({ id: playgroundMessages.id })
+        .from(playgroundMessages)
+        .where(
+          and(
+            eq(playgroundMessages.conversationId, params.conversationId),
+            eq(playgroundMessages.ordinal, params.ordinal)
+          )
+        )
+        .limit(1);
+      if (!target) {
+        throw new Error(
+          `Message not found at ordinal ${params.ordinal} in conversation ${params.conversationId}`
+        );
+      }
+      messageId = target.id;
+    }
+
+    const [row] = await db
+      .update(playgroundMessages)
+      .set({
+        monetizeTitle: params.title.trim(),
+        monetizeDescription: params.description?.trim() ?? null,
+        priceWei: params.priceWei ?? null,
+        marketplaceAssetId: params.marketplaceAssetId ?? null,
+        monetizedAt: new Date(),
+      })
+      .where(eq(playgroundMessages.id, messageId))
+      .returning();
+    if (!row) {
+      throw new Error(`Message not found: ${messageId}`);
+    }
+    logger.info("Marked message for monetization", {
+      messageId: row.id,
+      title: row.monetizeTitle,
+    });
+    return row;
+  }
+
+  async listMonetizedMessages(): Promise<PlaygroundMessageRow[]> {
+    return db
+      .select()
+      .from(playgroundMessages)
+      .where(and(eq(playgroundMessages.role, "assistant")))
+      .orderBy(desc(playgroundMessages.createdAt));
   }
 
   // ============================================================================

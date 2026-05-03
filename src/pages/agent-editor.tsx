@@ -97,6 +97,7 @@ import AgentKnowledgePanel from "@/components/agent/AgentKnowledgePanel";
 import { AgentFlywheelTab } from "@/components/agent/AgentFlywheelTab";
 import AgentSharePanel from "@/components/agent/AgentSharePanel";
 import { McpToolPicker } from "@/components/mcp/McpToolPicker";
+import PublishToMarketplaceButton from "@/components/joy/PublishToMarketplaceButton";
 import {
   useDecentralizedPlatforms,
   useDecentralizedDeploy,
@@ -489,6 +490,14 @@ export default function AgentEditorPage() {
               Test
             </Button>
             <PublishAgentButton agent={agent} />
+            <PublishToMarketplaceButton
+              assetType="agent"
+              studio="agent_builder"
+              assetId={String(agent.id)}
+              name={agent.name}
+              variant="outline"
+              size="default"
+            />
             <Button
               onClick={handleSave}
               disabled={!hasChanges || updateAgentMutation.isPending}

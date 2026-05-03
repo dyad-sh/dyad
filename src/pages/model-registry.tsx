@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import PublishToMarketplaceButton from "@/components/joy/PublishToMarketplaceButton";
 import {
   Search,
   Upload,
@@ -450,10 +451,13 @@ export default function ModelRegistryPage() {
             Publish, discover, and rate AI models across the network
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh}>
-          <RefreshCw className="h-4 w-4 mr-1" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <PublishToMarketplaceButton assetType="model" studio="model_studio" />
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">

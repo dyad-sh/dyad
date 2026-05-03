@@ -2401,6 +2401,9 @@ export * from "./agent_wallet_schema";
 // ── Agent Provenance & Reputation — Tier 4 ────────────────────
 export * from "./agent_provenance_schema";
 
+// ── Local-AI Playground Chat persistence ──────────────────────
+export * from "./playground_chat_schema";
+
 // -- Image Studio (AI Image Generation + Canvas Editing) ------
 export const imageStudioImages = sqliteTable("image_studio_images", {
   id: integer("id").primaryKey({ autoIncrement: true }),

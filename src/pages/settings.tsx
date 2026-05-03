@@ -28,6 +28,7 @@ import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
+import { JoyMarketplaceSettings } from "@/components/settings/JoyMarketplaceSettings";
 import { CNSSettings } from "@/components/settings/CNSSettings";
 import { ExternalServicesSettings } from "@/components/settings/ExternalServicesSettings";
 import { CelestiaBlobExplorer } from "@/components/settings/CelestiaBlobExplorer";
@@ -177,6 +178,11 @@ export default function SettingsPage() {
           {/* Joy Blockchain Identity */}
           <div id="joy-identity">
             <JoyIdentitySettings />
+          </div>
+
+          {/* Joy Marketplace API — Joy Unification PR */}
+          <div id="joy-marketplace">
+            <JoyMarketplaceSettings />
           </div>
 
           {/* Agent v2 Permissions */}

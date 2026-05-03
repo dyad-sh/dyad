@@ -582,6 +582,9 @@ const validInvokeChannels = [
   "trustless:delete-conversation",
   "trustless:update-conversation",
   "trustless:send-message",
+  // Trustless Marketplace Monetization
+  "trustless:monetize-message",
+  "trustless:list-monetized-messages",
   // IPLD Receipts
   "receipt:create",
   "receipt:list",
@@ -630,7 +633,23 @@ const validInvokeChannels = [
   // Marketplace inbound (incoming purchases / receipts pushed by remote stores)
   "marketplace-inbound:process",
   "marketplace-inbound:test",
-  // JoyMarketplace.io Sync (Local → Online)
+  // JoyBridge — single canonical namespace (Joy Unification PR).
+  // Each channel below is also registered in joybridge_handlers.ts. If you
+  // add a new joybridge:* channel, you MUST add it here too — see Collab
+  // Hub PR #16 post-mortem (channels exposed in handlers but missing from
+  // preload silently fail in the renderer).
+  "joybridge:get-config",
+  "joybridge:connect",
+  "joybridge:create-store",
+  "joybridge:get-store",
+  "joybridge:list-my-stores",
+  "joybridge:publish-asset",
+  "joybridge:get-asset",
+  "joybridge:list-my-assets",
+  "joybridge:browse-marketplace",
+  "joybridge:goldsky-query",
+  "joybridge:pin-to-ipfs",
+  // JoyMarketplace.io Sync (Local → Online) — deprecated, kept as compat shims.
   "marketplace-sync:get-config",
   "marketplace-sync:connect",
   "marketplace-sync:disconnect",

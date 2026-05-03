@@ -281,6 +281,16 @@ async function startN8nService(): Promise<ServiceStatus> {
     
     let n8nCommand: string;
     
+    // Prefer the locally installed n8n binstub. This avoids `npx` entirely,
+    // which on nvm-windows can fail with MODULE_NOT_FOUND for npm-prefix.js
+    // when an `npm`-spawned parent process leaks env vars (npm_config_*) into
+    // the detached cmd shell, redirecting npx's prefix lookup to the project
+    // root instead of the active Node install.
+    const localN8n = path.join(getAppBasePath(), "node_modules", ".bin", "n8n.cmd");
+    const n8nLauncher = fs.existsSync(localN8n)
+      ? `"${localN8n}"`
+      : `"${resolveNodeCli("npx")}" n8n`;
+    
     if (pgReady) {
       logger.info(`PostgreSQL detected on ${pgHost}:${pgPort} — using postgresdb backend`);
       n8nCommand = [
@@ -295,10 +305,10 @@ async function startN8nService(): Promise<ServiceStatus> {
         `set "DB_POSTGRESDB_CONNECTION_TIMEOUT=60000"`,
         `set "N8N_PORT=${config.port}"`,
         `set "N8N_SECURE_COOKIE=false"`,
-        `"${resolveNodeCli("npx")}" n8n start`,
+        `${n8nLauncher} start`,
       ].join(" && ");
     } else {
-      logger.info("PostgreSQL not available — using SQLite backend");
+      logger.info("PostgreSQL not available \u2014 using SQLite backend");
       const sqlitePath = path.join(getUserDataPath(), "n8n", "n8n.sqlite");
       n8nCommand = [
         `echo Starting n8n with SQLite on port ${config.port}...`,
@@ -307,7 +317,7 @@ async function startN8nService(): Promise<ServiceStatus> {
         `set "N8N_PORT=${config.port}"`,
         `set "N8N_SECURE_COOKIE=false"`,
         `set "N8N_USER_FOLDER=${path.join(getUserDataPath(), "n8n")}"`,
-        `"${resolveNodeCli("npx")}" n8n start`,
+        `${n8nLauncher} start`,
       ].join(" && ");
     }
     

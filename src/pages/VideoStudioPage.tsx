@@ -29,6 +29,7 @@ import {
   FastForward, Rewind, Volume2, Grid3X3, Plug,
 } from "lucide-react";
 import { McpToolPicker } from "@/components/mcp/McpToolPicker";
+import PublishToMarketplaceButton from "@/components/joy/PublishToMarketplaceButton";
 
 function VideoGenerateTab() {
   const [prompt, setPrompt] = useState("");
@@ -287,10 +288,11 @@ export default function VideoStudioPage() {
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
             <Video className="w-5 h-5 text-white" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-semibold">Video Studio</h1>
             <p className="text-sm text-muted-foreground">AI video generation, editing, and management</p>
           </div>
+          <PublishToMarketplaceButton assetType="video" studio="video_studio" />
         </div>
       </div>
 

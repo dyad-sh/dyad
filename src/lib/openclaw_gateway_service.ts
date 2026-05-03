@@ -113,6 +113,16 @@ export class OpenClawGatewayService extends EventEmitter {
     logger.info("Initializing OpenClaw Gateway Service...");
     
     await this.loadConfig();
+
+    // Apply preventive hardening to the daemon config (timeouts, disable
+    // unreachable channels, drop *:cloud Ollama entries) BEFORE the daemon
+    // is spawned. This avoids the 75s event-loop freezes we observed during
+    // models.list when slow cloud providers were enumerated synchronously.
+    try {
+      this.hardenDaemonConfig();
+    } catch (err) {
+      logger.warn("hardenDaemonConfig failed (non-fatal):", err);
+    }
     
     if (this.config.gateway.enabled && !this.server && !this.bridgeMode) {
       await this.startGateway();
@@ -151,6 +161,108 @@ export class OpenClawGatewayService extends EventEmitter {
       return cfg?.gateway?.auth?.token || "";
     } catch {
       return "";
+    }
+  }
+
+  /**
+   * Apply preventive hardening to the OpenClaw daemon config to avoid
+   * event-loop freezes during startup and models.list:
+   *  - Cap fetch / model-list timeouts so a single slow provider can't
+   *    block the Node.js event loop for 60+ seconds.
+   *  - Disable channels whose token/secret is empty (they otherwise spin
+   *    on auth failures and starve the loop).
+   *  - Strip Ollama "*:cloud" model entries that require a network round-trip
+   *    and are the most common cause of a slow models.list.
+   *
+   * Idempotent: safe to call repeatedly. Mutates ~/.openclaw/openclaw.json
+   * in place. Returns early if the daemon config does not exist (the daemon
+   * has not been initialized yet).
+   */
+  private hardenDaemonConfig(): void {
+    const daemonConfigPath = path.join(app.getPath("home"), ".openclaw", "openclaw.json");
+    if (!nodeFs.existsSync(daemonConfigPath)) {
+      return;
+    }
+
+    let cfg: Record<string, unknown>;
+    try {
+      const raw = nodeFs.readFileSync(daemonConfigPath, "utf8").replace(/^\uFEFF/, "");
+      cfg = JSON.parse(raw);
+    } catch (err) {
+      logger.warn("hardenDaemonConfig: failed to parse daemon config — skipping", err);
+      return;
+    }
+
+    let mutated = false;
+
+    // 1. Conservative network timeouts. OpenClaw recognizes these under
+    //    `gateway.timeouts.*`; unrecognized keys are harmless.
+    const gateway = (cfg.gateway as Record<string, unknown> | undefined) ?? {};
+    const timeouts = (gateway.timeouts as Record<string, number> | undefined) ?? {};
+    const desiredTimeouts: Record<string, number> = {
+      fetchMs: 5000,
+      modelsListMs: 8000,
+      providerHandshakeMs: 5000,
+    };
+    for (const [k, v] of Object.entries(desiredTimeouts)) {
+      if (timeouts[k] !== v) {
+        timeouts[k] = v;
+        mutated = true;
+      }
+    }
+    gateway.timeouts = timeouts;
+    cfg.gateway = gateway;
+
+    // 2. Disable channels with empty/missing credentials so they don't
+    //    repeatedly time out on startup.
+    const channels = (cfg.channels as Record<string, Record<string, unknown>> | undefined) ?? {};
+    const credentialKeys: Record<string, string[]> = {
+      telegram: ["botToken"],
+      discord: ["token"],
+      slack: ["botToken", "appToken", "signingSecret"],
+      whatsapp: ["sessionId"],
+    };
+    for (const [name, keys] of Object.entries(credentialKeys)) {
+      const ch = channels[name];
+      if (!ch) continue;
+      const hasAnyCred = keys.some((k) => {
+        const v = ch[k];
+        return typeof v === "string" && v.trim().length > 0;
+      });
+      if (!hasAnyCred && ch.enabled !== false) {
+        ch.enabled = false;
+        mutated = true;
+        logger.info(`hardenDaemonConfig: disabled channel "${name}" (no credentials)`);
+      }
+    }
+    cfg.channels = channels;
+
+    // 3. Drop Ollama "*:cloud" model entries from the daemon's models config.
+    //    These require a live network round-trip to the Ollama cloud API and
+    //    are the most common cause of a slow / freezing models.list call.
+    const models = cfg.models as Record<string, unknown> | undefined;
+    const providers = (models?.providers as Record<string, Record<string, unknown>> | undefined);
+    const ollama = providers?.ollama;
+    if (ollama && Array.isArray(ollama.models)) {
+      const before = (ollama.models as Array<Record<string, unknown>>).length;
+      const filtered = (ollama.models as Array<Record<string, unknown>>).filter((m) => {
+        const id = typeof m.id === "string" ? m.id : "";
+        return !id.endsWith(":cloud");
+      });
+      if (filtered.length !== before) {
+        ollama.models = filtered;
+        mutated = true;
+        logger.info(`hardenDaemonConfig: removed ${before - filtered.length} *:cloud Ollama model entries`);
+      }
+    }
+
+    if (mutated) {
+      try {
+        nodeFs.writeFileSync(daemonConfigPath, JSON.stringify(cfg, null, 2), "utf8");
+        logger.info("hardenDaemonConfig: wrote sanitized daemon config");
+      } catch (err) {
+        logger.warn("hardenDaemonConfig: failed to write daemon config", err);
+      }
     }
   }
   
@@ -494,7 +606,7 @@ export class OpenClawGatewayService extends EventEmitter {
     try {
       const daemonConfigPath = path.join(app.getPath("home"), ".openclaw", "openclaw.json");
       if (nodeFs.existsSync(daemonConfigPath)) {
-        const raw = nodeFs.readFileSync(daemonConfigPath, "utf8");
+        const raw = nodeFs.readFileSync(daemonConfigPath, "utf8").replace(/^\uFEFF/, "");
         const daemonCfg = JSON.parse(raw);
         if (daemonCfg?.channels?.telegram?.enabled && daemonCfg?.channels?.telegram?.botToken) {
           const { getTelegramBot } = await import("@/lib/telegram_bot_service");

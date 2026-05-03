@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from "react";
+import JoyDeprecationBanner from "@/components/joy/JoyDeprecationBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,9 @@ export default function MarketplaceExplorerPage() {
 
   return (
     <div className="flex flex-col h-full">
+      <div className="px-6 pt-4">
+        <JoyDeprecationBanner />
+      </div>
       {/* Header */}
       <div className="border-b bg-gradient-to-r from-violet-600/10 via-fuchsia-600/10 to-pink-600/10 px-6 py-8">
         <div className="max-w-5xl mx-auto">

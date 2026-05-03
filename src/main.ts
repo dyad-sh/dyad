@@ -32,6 +32,7 @@ import {
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import { startTaskExecutor } from "./lib/kanban_task_executor";
 import { ensureOllamaCredentialInN8n } from "./ipc/handlers/n8n_handlers";
+import { seedEssentialMcpServers } from "./ipc/handlers/mcp_handlers";
 import { getOpenClawGateway } from "./lib/openclaw_gateway_service";
 import { startAllServices } from "./ipc/handlers/services_handlers";
 import { consolidateAgentMemories } from "./lib/agent_memory_engine";
@@ -102,6 +103,12 @@ export async function onReady() {
     logger.error("Error initializing backup manager", e);
   }
   initializeDatabase();
+
+  // Seed essential MCP servers (n8n + reference servers) now that the DB is up.
+  // Idempotent — only inserts what's missing.
+  void seedEssentialMcpServers().catch((err) =>
+    logger.warn("Essential MCP server seeding failed", err),
+  );
 
   // Restore vault config from disk (if vault was previously initialized)
   loadVaultConfigFromDisk();

@@ -34,10 +34,12 @@ import {
   Bot,
   User,
   Pencil,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { trustlessInferenceClient } from "@/ipc/trustless_inference_client";
+import { IpcClient } from "@/ipc/ipc_client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +62,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import type {
   LocalModelProvider,
@@ -411,10 +421,15 @@ function ChatBubble({
   message,
   recordId,
   isStreaming,
+  onMonetize,
+  isMonetized,
 }: {
   message: InferenceMessage;
   recordId?: string;
   isStreaming?: boolean;
+  /** When provided, an action button is rendered to publish this message to the marketplace. */
+  onMonetize?: () => void;
+  isMonetized?: boolean;
 }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -449,8 +464,8 @@ function ChatBubble({
         >
           {message.content || (isStreaming ? "Thinking..." : "")}
         </div>
-        {recordId && !isUser && (
-          <div className="flex items-center gap-1.5 px-1">
+        <div className="flex items-center gap-1.5 px-1 flex-wrap">
+          {recordId && !isUser && (
             <Badge
               variant="outline"
               className="text-[10px] h-5 cursor-pointer hover:bg-muted"
@@ -462,8 +477,24 @@ function ChatBubble({
               <ShieldCheck className="h-2.5 w-2.5 mr-1 text-emerald-500" />
               Verified
             </Badge>
-          </div>
-        )}
+          )}
+          {onMonetize && !isStreaming && message.content && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px] px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={onMonetize}
+              title={
+                isMonetized
+                  ? "Update marketplace listing"
+                  : "List this prompt/response on JoyMarketplace"
+              }
+            >
+              <DollarSign className="h-3 w-3 mr-1 text-amber-500" />
+              {isMonetized ? "Listed" : "Monetize"}
+            </Button>
+          )}
+        </div>
       </div>
       {isUser && (
         <div className="shrink-0 mt-1">
@@ -473,6 +504,144 @@ function ChatBubble({
         </div>
       )}
     </div>
+  );
+}
+
+// ============================================================================
+// Monetize Message Dialog
+// ============================================================================
+
+function MonetizeMessageDialog({
+  open,
+  onOpenChange,
+  conversationId,
+  ordinal,
+  preview,
+  onListed,
+}: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  conversationId: string | null;
+  ordinal: number | null;
+  preview: string;
+  onListed?: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priceEth, setPriceEth] = useState("0.001");
+
+  useEffect(() => {
+    if (open) {
+      setTitle("");
+      setDescription("");
+      setPriceEth("0.001");
+    }
+  }, [open]);
+
+  const monetizeMutation = useMutation({
+    mutationFn: async () => {
+      if (!conversationId || ordinal === null) {
+        throw new Error("No message selected");
+      }
+      // Convert ETH → wei (string, no precision loss).
+      const ethNum = Number.parseFloat(priceEth || "0");
+      if (!Number.isFinite(ethNum) || ethNum < 0) {
+        throw new Error("Enter a valid non-negative price");
+      }
+      const priceWei = BigInt(Math.round(ethNum * 1e18)).toString();
+      return trustlessInferenceClient.monetizeMessage({
+        conversationId,
+        ordinal,
+        title,
+        description: description || undefined,
+        priceWei,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Listed on JoyMarketplace");
+      onOpenChange(false);
+      onListed?.();
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to list on marketplace"
+      );
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-amber-500" />
+            Monetize on JoyMarketplace
+          </DialogTitle>
+          <DialogDescription>
+            List this prompt or response for sale. The content stays on your
+            machine; buyers receive a verified copy via IPFS once they purchase.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground max-h-24 overflow-auto whitespace-pre-wrap">
+            {preview.slice(0, 280)}
+            {preview.length > 280 ? "…" : ""}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="monetize-title">Title</Label>
+            <Input
+              id="monetize-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Best system prompt for code review"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="monetize-desc">Description (optional)</Label>
+            <Textarea
+              id="monetize-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What buyers should know"
+              rows={3}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="monetize-price">Price (ETH)</Label>
+            <Input
+              id="monetize-price"
+              value={priceEth}
+              onChange={(e) => setPriceEth(e.target.value)}
+              type="number"
+              min="0"
+              step="0.0001"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={monetizeMutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => monetizeMutation.mutate()}
+            disabled={monetizeMutation.isPending || !title.trim()}
+          >
+            {monetizeMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                Listing…
+              </>
+            ) : (
+              "List on Marketplace"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -489,13 +658,27 @@ function InferencePlayground() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Monetize-message dialog state
+  const [monetizeOrdinal, setMonetizeOrdinal] = useState<number | null>(null);
+  const [monetizePreview, setMonetizePreview] = useState<string>("");
+
   // Model settings
   const [provider, setProvider] = useState<LocalModelProvider>("ollama");
   const [modelId, setModelId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
+  const [topP, setTopP] = useState(0.9);
+  const [topK, setTopK] = useState(40);
+  const [repeatPenalty, setRepeatPenalty] = useState(1.1);
+  const [numCtx, setNumCtx] = useState(4096);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [enableVerification, setEnableVerification] = useState(true);
+  // Model pull state
+  const [showPullDialog, setShowPullDialog] = useState(false);
+  const [pullModelName, setPullModelName] = useState("");
+  const [pullProgress, setPullProgress] = useState<string | null>(null);
+  const [isPulling, setIsPulling] = useState(false);
 
   const { data: availableModels = [] } = useQuery({
     queryKey: ["trustless-models"],
@@ -519,7 +702,7 @@ function InferencePlayground() {
       trustlessInferenceClient.sendMessage({
         conversationId: activeConversationId!,
         message,
-        config: { temperature, maxTokens },
+        config: { temperature, maxTokens, topP, topK, repeatPenalty, numCtx },
         skipVerification: !enableVerification,
       }),
     onSuccess: () => {
@@ -571,7 +754,7 @@ function InferencePlayground() {
         await trustlessInferenceClient.sendMessage({
           conversationId: conv.id,
           message: msg,
-          config: { temperature, maxTokens },
+          config: { temperature, maxTokens, topP, topK, repeatPenalty, numCtx },
           skipVerification: !enableVerification,
         });
         queryClient.invalidateQueries({
@@ -586,6 +769,37 @@ function InferencePlayground() {
     }
 
     sendMutation.mutate(msg);
+  };
+
+  const handlePullModel = async () => {
+    const name = pullModelName.trim();
+    if (!name || isPulling) return;
+    setIsPulling(true);
+    setPullProgress(`Pulling ${name}…`);
+    try {
+      const ipc = IpcClient.getInstance();
+      // Subscribe to progress events
+      const removeListener = ipc.onModelPullProgress((evt) => {
+        if (evt.modelId === name || evt.modelId === undefined) {
+          const pct = evt.total && evt.completed !== undefined
+            ? ` — ${Math.round((evt.completed / evt.total) * 100)}%`
+            : evt.progress !== undefined ? ` — ${Math.round(evt.progress)}%` : "";
+          setPullProgress(`${evt.status}${pct}`);
+        }
+      });
+      await ipc.modelManagerPullModel(name);
+      removeListener();
+      setPullProgress(`✓ ${name} pulled successfully`);
+      toast.success(`Model "${name}" downloaded`);
+      queryClient.invalidateQueries({ queryKey: ["trustless-models"] });
+      setModelId(name);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setPullProgress(`Error: ${msg}`);
+      toast.error(`Pull failed: ${msg}`);
+    } finally {
+      setIsPulling(false);
+    }
   };
 
   const handleNewConversation = () => {
@@ -759,7 +973,68 @@ function InferencePlayground() {
                 <Shield className="h-3.5 w-3.5 text-emerald-500" />
                 Enable IPFS Verification
               </Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-7 text-xs px-2"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                {showAdvanced ? "Less" : "Advanced"}
+                <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+              </Button>
             </div>
+            {showAdvanced && (
+              <div className="space-y-3 pt-1 border-t border-muted/50">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs flex items-center justify-between">
+                      Top P
+                      <span className="font-mono text-muted-foreground text-[10px]">{topP.toFixed(2)}</span>
+                    </Label>
+                    <Slider value={[topP]} onValueChange={([v]) => setTopP(v)} min={0} max={1} step={0.01} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs flex items-center justify-between">
+                      Top K
+                      <span className="font-mono text-muted-foreground text-[10px]">{topK}</span>
+                    </Label>
+                    <Slider value={[topK]} onValueChange={([v]) => setTopK(v)} min={1} max={100} step={1} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs flex items-center justify-between">
+                      Repeat Penalty
+                      <span className="font-mono text-muted-foreground text-[10px]">{repeatPenalty.toFixed(2)}</span>
+                    </Label>
+                    <Slider value={[repeatPenalty]} onValueChange={([v]) => setRepeatPenalty(v)} min={0.5} max={2} step={0.05} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs flex items-center justify-between">
+                      Context Window
+                      <span className="font-mono text-muted-foreground text-[10px]">{numCtx.toLocaleString()}</span>
+                    </Label>
+                    <Slider value={[numCtx]} onValueChange={([v]) => setNumCtx(v)} min={512} max={32768} step={512} />
+                  </div>
+                </div>
+                {provider === "ollama" && (
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => setShowPullDialog(true)}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Pull Model
+                    </Button>
+                    <span className="text-xs text-muted-foreground self-center">
+                      Download new Ollama models without leaving JoyCreate
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -782,6 +1057,14 @@ function InferencePlayground() {
                 key={`${activeConversation?.id}-${i}`}
                 message={msg}
                 recordId={messageRecordMap[i]}
+                onMonetize={
+                  activeConversationId && msg.role !== "system"
+                    ? () => {
+                        setMonetizeOrdinal(i);
+                        setMonetizePreview(msg.content);
+                      }
+                    : undefined
+                }
               />
             ))}
             {sendMutation.isPending && (
@@ -826,6 +1109,68 @@ function InferencePlayground() {
           </div>
         </div>
       </div>
+
+      <MonetizeMessageDialog
+        open={monetizeOrdinal !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setMonetizeOrdinal(null);
+            setMonetizePreview("");
+          }
+        }}
+        conversationId={activeConversationId}
+        ordinal={monetizeOrdinal}
+        preview={monetizePreview}
+        onListed={() => {
+          queryClient.invalidateQueries({
+            queryKey: ["conversation", activeConversationId],
+          });
+        }}
+      />
+
+      {/* Pull Model Dialog */}
+      <Dialog open={showPullDialog} onOpenChange={(next) => { setShowPullDialog(next); if (!next) { setPullModelName(""); setPullProgress(null); setIsPulling(false); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-4 w-4 text-blue-500" />
+              Pull Model from Ollama
+            </DialogTitle>
+            <DialogDescription>
+              Enter a model name to download, e.g. <code className="text-xs bg-muted px-1 rounded">llama3.2:3b</code>,{" "}
+              <code className="text-xs bg-muted px-1 rounded">mistral</code>,{" "}
+              <code className="text-xs bg-muted px-1 rounded">codellama:7b</code>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              placeholder="llama3.2:3b"
+              value={pullModelName}
+              onChange={(e) => setPullModelName(e.target.value)}
+              disabled={isPulling}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && pullModelName.trim() && !isPulling) {
+                  void handlePullModel();
+                }
+              }}
+            />
+            {pullProgress && (
+              <div className="text-xs bg-muted rounded-md p-2 font-mono text-muted-foreground whitespace-pre-wrap max-h-24 overflow-auto">
+                {pullProgress}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowPullDialog(false)} disabled={isPulling}>Cancel</Button>
+            <Button
+              onClick={handlePullModel}
+              disabled={!pullModelName.trim() || isPulling}
+            >
+              {isPulling ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Pulling…</> : "Pull"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

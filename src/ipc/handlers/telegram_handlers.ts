@@ -14,6 +14,10 @@ import { getTelegramBot } from "@/lib/telegram_bot_service";
 import { getOpenClawGateway } from "@/lib/openclaw_gateway_service";
 import { getOpenClawAutonomous } from "@/lib/openclaw_autonomous";
 import { voiceAssistant } from "@/lib/voice_assistant";
+import {
+  detectPublishCommand,
+  runPublishCommand,
+} from "@/lib/joymarketplace/bot_publish_commands";
 import { homedir } from "node:os";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -217,6 +221,25 @@ You don't just talk about doing things — you actually do them. When someone as
     }
 
     if (!content) return;
+
+    // ── Marketplace publish slash commands ──
+    // /publish_agent <id>  /publish_dryrun_agent <id>  /publish_help
+    // Handled before approval/skill/intent so deterministic prefix wins.
+    const publishMatch = detectPublishCommand(content);
+    if (publishMatch) {
+      bot.sendChatAction(chatId, "typing").catch(() => {});
+      try {
+        const reply = await runPublishCommand(publishMatch);
+        await sendChunkedMessage(bot, chatId, reply);
+      } catch (err) {
+        logger.error("Telegram publish command failed:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        bot
+          .sendMessage(chatId, `❌ Publish command failed: ${msg}`)
+          .catch(() => {});
+      }
+      return;
+    }
 
     // ── Approval commands ──
     const approveMatch = content.match(/^\/approve_(.+)$/);

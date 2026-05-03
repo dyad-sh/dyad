@@ -43,6 +43,7 @@ import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inferen
 import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
 import { registerMarketplaceHandlers } from "./handlers/marketplace_handlers";
 import { registerMarketplaceSyncHandlers } from "./handlers/marketplace_sync_handlers";
+import { registerJoyBridgeHandlers } from "./handlers/joybridge_handlers";
 import { registerMarketplaceInboundHandlers } from "./handlers/marketplace_inbound_handlers";
 import { registerScraperHandlers } from "./handlers/scraper_handlers";
 import { registerAssetStudioHandlers } from "./handlers/asset_studio_handlers";
@@ -211,6 +212,10 @@ export function registerIpcHandlers() {
   registerLibreOfficeHandlers();
   registerMarketplaceHandlers();
   registerMarketplaceSyncHandlers();
+  // JoyBridge — single canonical client for the JoyMarketplace API
+  // (Joy Unification PR — supersedes the 7 overlapping marketplace handler
+  // namespaces; the old ones stay registered as compatibility shims.)
+  registerJoyBridgeHandlers();
   registerMarketplaceInboundHandlers(); // Inbound: Joy Marketplace → JoyCreate webhook handler
   registerScraperHandlers();
   registerAssetStudioHandlers();

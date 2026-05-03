@@ -3,7 +3,7 @@ import os from "node:os";
 import log from "electron-log";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createLoggedHandler } from "./safe_handle";
 
 import { resolveConsent } from "../utils/mcp_consent";
@@ -41,11 +41,10 @@ function registerStatusForwarder() {
 
 export function registerMcpHandlers() {
   registerStatusForwarder();
-  // Fire-and-forget: seed essential MCP servers (n8n + reference servers)
-  // on first launch. Idempotent by name; safe to re-run.
-  void seedEssentialServers().catch((err) =>
-    logger.warn("Essential MCP server seeding failed", err),
-  );
+  // Essential MCP server seeding (n8n + reference servers) must happen AFTER
+  // initializeDatabase() runs in main.ts. Caller invokes seedEssentialMcpServers()
+  // from main during startup; this handler module no longer self-seeds because
+  // registerIpcHandlers() runs before initializeDatabase().
 
   // CRUD for MCP servers
   handle("mcp:list-servers", async () => {
@@ -116,7 +115,20 @@ export function registerMcpHandlers() {
       _event: IpcMainInvokeEvent,
       serverId: number,
     ): Promise<McpTool[]> => {
-      const remoteTools = await mcpHubManager.listTools(serverId);
+      // Tolerant by design: if the server is offline / mid-restart / not yet
+      // started (e.g. n8n still booting), return an empty list rather than
+      // throwing. The renderer polls list-tools on a timer; throwing here
+      // surfaces a toast on every poll which spams the UI.
+      let remoteTools;
+      try {
+        remoteTools = await mcpHubManager.listTools(serverId);
+      } catch (err) {
+        logger.warn(
+          `[mcp:list-tools] server ${serverId} unreachable, returning empty list:`,
+          err instanceof Error ? err.message : err,
+        );
+        return [];
+      }
       const tools = await Promise.all(
         remoteTools.map(async (tool) => ({
           name: tool.name,
@@ -374,14 +386,18 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
     name: "Fetch",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-fetch"],
+    // @modelcontextprotocol/server-fetch does not exist on npm.
+    // Use @mcp/server-fetch (community fork) or omit entirely.
+    // Disabled until an installable package name is confirmed.
+    args: ["-y", "@modelcontextprotocol/server-everything"],
     enabled: false,
   },
   {
     name: "Time",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-time"],
+    // @modelcontextprotocol/server-time does not exist on npm.
+    args: ["-y", "mcp-server-time"],
     enabled: false,
   },
   {
@@ -437,7 +453,8 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
     name: "SQLite",
     transport: "stdio",
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-sqlite"],
+    // @modelcontextprotocol/server-sqlite does not exist on npm.
+    args: ["-y", "mcp-server-sqlite-npx"],
     enabled: false,
   },
   // ── Web search ──────────────────────────────────────────────────
@@ -502,10 +519,50 @@ const ESSENTIAL_MCP_SERVERS: CreateMcpServer[] = [
   },
 ];
 
+/**
+ * Seed essential MCP servers (n8n + reference servers) into the DB.
+ * Exported as `seedEssentialMcpServers` so main.ts can invoke it AFTER
+ * `initializeDatabase()` completes. Idempotent by name; safe to re-run.
+ */
+export async function seedEssentialMcpServers(): Promise<{
+  inserted: string[];
+  skipped: number;
+}> {
+  return seedEssentialServers();
+}
+
 async function seedEssentialServers(): Promise<{
   inserted: string[];
   skipped: number;
 }> {
+  // One-time cleanup: disable any previously-seeded entries whose npx packages
+  // do not exist on the npm registry (they cause 404 errors and toast noise).
+  const BROKEN_PACKAGES = [
+    "@modelcontextprotocol/server-fetch",
+    "@modelcontextprotocol/server-time",
+    "@modelcontextprotocol/server-sqlite",
+  ];
+  try {
+    const stale = await db
+      .select({ id: mcpServers.id, args: mcpServers.args })
+      .from(mcpServers);
+    const staleIds = stale
+      .filter((s) => {
+        const args = s.args as string[] | null;
+        return args?.some((a) => BROKEN_PACKAGES.includes(a)) ?? false;
+      })
+      .map((s) => s.id);
+    if (staleIds.length > 0) {
+      await db
+        .update(mcpServers)
+        .set({ enabled: false })
+        .where(inArray(mcpServers.id, staleIds));
+      logger.info(`Disabled ${staleIds.length} stale MCP server(s) with broken package names`);
+    }
+  } catch (err) {
+    logger.warn("Failed to clean up stale MCP servers", err);
+  }
+
   const existing = await db.select().from(mcpServers);
   const existingNames = new Set(existing.map((s) => s.name));
   const inserted: string[] = [];

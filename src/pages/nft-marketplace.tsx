@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import JoyDeprecationBanner from "@/components/joy/JoyDeprecationBanner";
 import { NFTClient } from "@/ipc/nft_client";
 import { AssetStudioClient } from "@/ipc/asset_studio_client";
 import { FederationClient } from "@/ipc/federation_client";
@@ -1569,6 +1570,9 @@ export default function JoyCreatorStudioPage() {
 
   return (
     <div className="flex flex-col h-full bg-background">
+      <div className="px-4 pt-4">
+        <JoyDeprecationBanner />
+      </div>
       {/* Header */}
       <div className="border-b p-4 bg-gradient-to-r from-violet-500/5 via-fuchsia-500/5 to-pink-500/5">
         <div className="flex items-center justify-between">

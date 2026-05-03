@@ -340,7 +340,16 @@ export function registerTrustlessInferenceHandlers(): void {
       params: {
         conversationId: string;
         message: string;
-        config?: { temperature?: number; maxTokens?: number };
+        config?: {
+          temperature?: number;
+          maxTokens?: number;
+          topP?: number;
+          topK?: number;
+          repeatPenalty?: number;
+          numCtx?: number;
+          seed?: number;
+          stop?: string[];
+        };
         skipVerification?: boolean;
       }
     ): Promise<{
@@ -359,6 +368,32 @@ export function registerTrustlessInferenceHandlers(): void {
       );
     }
   );
+
+  // ============================================================================
+  // Marketplace Monetization
+  // ============================================================================
+
+  ipcMain.handle(
+    "trustless:monetize-message",
+    async (
+      _,
+      params: {
+        messageId?: string;
+        conversationId?: string;
+        ordinal?: number;
+        title: string;
+        description?: string;
+        priceWei?: string;
+        marketplaceAssetId?: string;
+      }
+    ) => {
+      return trustlessInferenceService.monetizeMessage(params);
+    }
+  );
+
+  ipcMain.handle("trustless:list-monetized-messages", async () => {
+    return trustlessInferenceService.listMonetizedMessages();
+  });
 
   logger.info("Trustless inference handlers registered");
 }

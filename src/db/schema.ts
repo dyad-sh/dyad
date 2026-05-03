@@ -332,6 +332,8 @@ export const agents = sqliteTable("agents", {
   publishedAt: integer("published_at", { mode: "timestamp" }),
   publishPrice: integer("publish_price"),
   publishCurrency: text("publish_currency").default("USD"),
+  // On-chain publish tracking — set when an agent's most-recent publish was a dry-run.
+  dryRunAt: integer("dry_run_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -1754,6 +1756,40 @@ export const jcnChainTransactions = sqliteTable("jcn_chain_transactions", {
     .notNull()
     .default(sql`(unixepoch())`),
   createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Publish Bundles — durable per-asset receipts for the on-chain
+ * fire-and-forget publish orchestrator. One row per `publishAndForget` call.
+ *
+ * Differs from `jcnPublishRecords` in that this table is the canonical
+ * receipt source for the orchestrator (any asset type), whereas
+ * `jcnPublishRecords` was originally scoped to AI bundles with a state
+ * machine. Both can coexist; orchestrator writes to both.
+ */
+export const publishBundles = sqliteTable("publish_bundles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  assetType: text("asset_type").notNull(), // "agent" | "document" | "image" | "video" | "model"
+  name: text("name").notNull(),
+  description: text("description"),
+  contentCid: text("content_cid"),
+  metadataCid: text("metadata_cid"),
+  metadataUri: text("metadata_uri"),
+  tokenId: text("token_id"),
+  listingId: text("listing_id"),
+  mintTxHash: text("mint_tx_hash"),
+  listTxHash: text("list_tx_hash"),
+  status: text("status").notNull().default("started"),
+  blockedAt: text("blocked_at"),
+  errorLog: text("error_log"),
+  goldskyIndexed: integer("goldsky_indexed", { mode: "boolean" }).default(false),
+  dryRun: integer("dry_run", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
 });

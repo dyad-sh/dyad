@@ -242,3 +242,63 @@ export interface WorkflowPublishMetadata {
   requiresCredentials: boolean;
   credentialTypes?: string[];
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// DropERC1155 read-layer renderer-safe types
+//
+// These mirror the electron-main `drop_subgraph.ts` shapes but live here so
+// the renderer can import them without pulling in `electron-log`. Keep them
+// in sync with the corresponding interfaces in
+// `src/lib/joymarketplace/drop_subgraph.ts`.
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface DropPurchaseRecord {
+  id: string;
+  tokenId: string;
+  claimConditionIndex: string;
+  claimer: string;
+  receiver: string;
+  quantity: string;
+  timestamp: string;
+  blockNumber: string;
+  txHash: string;
+}
+
+export interface DropOwnershipRecord {
+  id: string;
+  user: string;
+  tokenId: string;
+  totalClaimed: string;
+  lastClaimedAt: string;
+}
+
+export interface JoyStoreRecord {
+  id: string;
+  owner: string | null;
+  name: string | null;
+  description: string | null;
+  logo: string | null;
+  website: string | null;
+  tagline: string | null;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface MyDropsParams {
+  wallet: string;
+  page?: number;
+  pageSize?: number;
+  query?: string;
+}
+
+export interface MyClaimsParams {
+  wallet: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface OwnershipParams {
+  tokenId: string | number;
+  wallet: string;
+}

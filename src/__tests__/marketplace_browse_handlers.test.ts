@@ -16,7 +16,7 @@ import { describe, it, expect } from "vitest";
 import { __test__ } from "@/ipc/handlers/marketplace_browse_handlers";
 import type { DropToken } from "@/lib/joymarketplace/drop_subgraph";
 
-const { ipfsToHttp, weiToDisplay, toBrowseItem, toAssetDetail } = __test__;
+const { ipfsToHttp, weiToDisplay, toBrowseItem, toAssetDetail, isMyDrop } = __test__;
 
 const baseToken: DropToken = {
   id: "11",
@@ -197,5 +197,49 @@ describe("toAssetDetail", () => {
 
   it("status is always `published` for on-chain drops", () => {
     expect(toAssetDetail(baseToken, null).status).toBe("published");
+  });
+});
+
+// ── isMyDrop (creator-wallet predicate for marketplace:my-drops) ─────────────────────────────────────────────────────
+
+describe("isMyDrop", () => {
+  const wallet = "0xabcdef0000000000000000000000000000001234";
+
+  it("returns false for null metadata", () => {
+    expect(isMyDrop(null, wallet)).toBe(false);
+  });
+
+  it("returns false when creatorWallet is missing entirely", () => {
+    expect(isMyDrop({ properties: {} }, wallet)).toBe(false);
+    expect(isMyDrop({}, wallet)).toBe(false);
+  });
+
+  it("returns false when creatorWallet is non-string (defensive)", () => {
+    expect(
+      isMyDrop({ properties: { creatorWallet: 42 as unknown as string } }, wallet),
+    ).toBe(false);
+    expect(
+      isMyDrop({ properties: { creatorWallet: "" } }, wallet),
+    ).toBe(false);
+  });
+
+  it("returns true when creatorWallet matches the wallet (lower-case)", () => {
+    expect(
+      isMyDrop({ properties: { creatorWallet: wallet } }, wallet),
+    ).toBe(true);
+  });
+
+  it("is case-insensitive on the metadata side", () => {
+    const checksum = "0xABCDef0000000000000000000000000000001234";
+    expect(isMyDrop({ properties: { creatorWallet: checksum } }, wallet)).toBe(true);
+  });
+
+  it("returns false on mismatch", () => {
+    expect(
+      isMyDrop(
+        { properties: { creatorWallet: "0x000" } },
+        wallet,
+      ),
+    ).toBe(false);
   });
 });

@@ -401,6 +401,70 @@ export async function listStoresByOwner(walletAddress: string, first = 50): Prom
   return data.stores;
 }
 
+/**
+ * List stores associated with a wallet via its `.joy` domain ownership.
+ *
+ * Why this exists: the live `Store.owner` field on the stores subgraph
+ * resolves to the JoyRegistrarController contract (e.g. `0x40cc…ac7a`),
+ * NOT the human wallet that owns the underlying `.joy` domain. So
+ * `listStoresByOwner(humanWallet)` returns nothing useful for a creator
+ * dashboard. The correct join is:
+ *
+ *   DomainRegistration.owner == humanWallet
+ *      → DomainRegistration.name (label, e.g. "love")
+ *      → Store.id == label
+ *
+ * This helper does that join in one round trip per stores-subgraph and
+ * filters out domains without a backing store.
+ */
+export async function listStoresByDomainOwner(
+  walletAddress: string,
+  first = 50,
+): Promise<JoyStore[]> {
+  if (!walletAddress) {
+    throw new Error("listStoresByDomainOwner: walletAddress is required");
+  }
+  const owner = walletAddress.toLowerCase();
+  const cap = Math.min(Math.max(first, 1), 100);
+
+  // 1. Fetch the wallet's domain registrations (we only need `name`).
+  const domainData = await gql<{
+    domainRegistrations: { name: string | null }[];
+  }>(
+    getStoresSubgraphUrl(),
+    `query DomainsByOwner($owner: Bytes!, $first: Int!) {
+      domainRegistrations(
+        where: { owner: $owner }
+        first: $first
+        orderBy: registeredAt
+        orderDirection: desc
+      ) {
+        name
+      }
+    }`,
+    { owner, first: cap },
+  );
+
+  const labels = domainData.domainRegistrations
+    .map((d) => d.name)
+    .filter((n): n is string => typeof n === "string" && n.length > 0);
+
+  if (labels.length === 0) return [];
+
+  // 2. One bulk store fetch by id (== label).
+  const storeData = await gql<{ stores: JoyStore[] }>(
+    getStoresSubgraphUrl(),
+    `query StoresByLabels($ids: [ID!]!) {
+      stores(where: { id_in: $ids }, orderBy: createdAt, orderDirection: desc) {
+        ${STORE_FIELDS}
+      }
+    }`,
+    { ids: labels },
+  );
+
+  return storeData.stores;
+}
+
 /** Pretty-print a DropToken for logs / UI debug. */
 export function summarizeDrop(t: DropToken): string {
   return `Drop#${t.tokenId} (${t.baseURI ? "baseURI=" + t.baseURI.slice(0, 60) : "no baseURI"}, claimed=${t.supplyClaimed ?? 0}/${t.maxClaimableSupply ?? "∞"})`;

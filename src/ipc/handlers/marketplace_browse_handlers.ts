@@ -22,7 +22,14 @@ import * as path from "path";
 import {
   listDrops,
   getDrop,
+  listDropsByCreator,
+  listClaimsByBuyer,
+  getOwnership,
+  listStoresByDomainOwner,
   type DropToken,
+  type DropPurchase,
+  type DropUserBalance,
+  type JoyStore,
 } from "@/lib/joymarketplace/drop_subgraph";
 import type {
   MarketplaceBrowseParams,
@@ -91,6 +98,23 @@ interface TokenMetadata {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Predicate — "does this drop's metadata identify `wallet` as its creator?".
+ *
+ * The DropERC1155 subgraph doesn't store creator on each Token (every drop
+ * is lazyMinted by a single platform admin/bot wallet to satisfy
+ * creatorGate). So "my drops" can only be derived by matching the
+ * `creatorWallet` field that `publish_orchestrator.ts` writes into the
+ * pinned metadata at publish time. We compare lower-cased to be safe — the
+ * wallet UI may pass mixed-case checksum strings while the metadata is
+ * usually written lowercase.
+ */
+function isMyDrop(meta: TokenMetadata | null, walletLower: string): boolean {
+  const raw = meta?.properties?.creatorWallet;
+  if (!raw || typeof raw !== "string") return false;
+  return raw.toLowerCase() === walletLower;
+}
 
 /**
  * Resolve an `ipfs://...` or `https?://...` URI to a fetchable HTTPS URL.
@@ -364,6 +388,130 @@ export function registerMarketplaceBrowseHandlers() {
     };
   });
 
+  /**
+   * "My drops" — drops authored by the given creator wallet, in browse-grid
+   * shape so the existing renderer components can render them with no extra
+   * conversion. The drop subgraph doesn't store creator on Token (see
+   * `listDropsByCreator` for details), so we fetch a page of drops and
+   * filter by metadata.creatorWallet (set during publish-orchestrator pin).
+   *
+   * Params: { wallet: string, page?, pageSize?, query? }
+   */
+  ipcMain.handle(
+    "marketplace:my-drops",
+    async (
+      _,
+      params: {
+        wallet: string;
+        page?: number;
+        pageSize?: number;
+        query?: string;
+      },
+    ): Promise<MarketplaceBrowseResult> => {
+      if (!params?.wallet) throw new Error("wallet is required");
+      const pageSize = Math.min(Math.max(params.pageSize ?? 24, 1), 100);
+      const page = Math.max(params.page ?? 1, 1);
+      const wallet = params.wallet.toLowerCase();
+
+      logger.info(`my-drops wallet=${wallet} page=${page} pageSize=${pageSize}`);
+
+      // Fetch a page of drops (subgraph-side filter unavailable today).
+      const { items: tokens, hasMore } = await listDropsByCreator({
+        creator: wallet,
+        page,
+        pageSize,
+        orderBy: "lazyMintedAt",
+        orderDirection: "desc",
+      });
+
+      const enriched = await Promise.all(
+        tokens.map(async (t) => ({
+          token: t,
+          meta: await fetchMetadata(t.baseURI).catch(() => null),
+        })),
+      );
+
+      // Filter by creatorWallet (set by publish_orchestrator). When metadata
+      // is missing or creatorWallet is absent, exclude rather than
+      // over-include — "my drops" should never show a stranger's drops.
+      let items = enriched
+        .filter(({ meta }) => isMyDrop(meta, wallet))
+        .map(({ token, meta }) => toBrowseItem(token, meta));
+
+      if (params.query) {
+        const q = params.query.toLowerCase();
+        items = items.filter(
+          (i) =>
+            i.name.toLowerCase().includes(q) ||
+            i.shortDescription.toLowerCase().includes(q) ||
+            i.tags.some((t) => t.toLowerCase().includes(q)),
+        );
+      }
+
+      return {
+        items,
+        total: (page - 1) * pageSize + items.length + (hasMore ? 1 : 0),
+        page,
+        pageSize,
+        hasMore,
+      };
+    },
+  );
+
+  /**
+   * "My claims" — raw on-chain claim() events authored by the given buyer
+   * wallet. Returns the subgraph-shape `DropPurchase[]` so the renderer can
+   * decide whether to render as a history table or hydrate against drop
+   * details.
+   */
+  ipcMain.handle(
+    "marketplace:my-claims",
+    async (
+      _,
+      params: { wallet: string; page?: number; pageSize?: number },
+    ): Promise<DropPurchase[]> => {
+      if (!params?.wallet) throw new Error("wallet is required");
+      logger.info(`my-claims wallet=${params.wallet} page=${params.page ?? 1}`);
+      return listClaimsByBuyer({
+        buyer: params.wallet,
+        page: params.page,
+        pageSize: params.pageSize,
+      });
+    },
+  );
+
+  /**
+   * Ownership probe — "does wallet X own any quantity of tokenId Y?". Returns
+   * the aggregate `DropUserBalance` entity, or `null` when never claimed.
+   */
+  ipcMain.handle(
+    "marketplace:ownership",
+    async (
+      _,
+      params: { tokenId: string | number; wallet: string },
+    ): Promise<DropUserBalance | null> => {
+      if (!params?.wallet) throw new Error("wallet is required");
+      if (params.tokenId === undefined || params.tokenId === null) {
+        throw new Error("tokenId is required");
+      }
+      return getOwnership(params.tokenId, params.wallet);
+    },
+  );
+
+  /**
+   * "My stores" — stores associated with the wallet via .joy domain
+   * ownership. See `listStoresByDomainOwner` for why this joins through
+   * DomainRegistration.owner instead of Store.owner.
+   */
+  ipcMain.handle(
+    "marketplace:my-stores",
+    async (_, params: { wallet: string; first?: number }): Promise<JoyStore[]> => {
+      if (!params?.wallet) throw new Error("wallet is required");
+      logger.info(`my-stores wallet=${params.wallet}`);
+      return listStoresByDomainOwner(params.wallet, params.first ?? 50);
+    },
+  );
+
   /** Categories with counts — derived from the first 1000 drops' metadata. */
   ipcMain.handle("marketplace:categories", async () => {
     const { items: tokens } = await listDrops({ page: 1, pageSize: 100 });
@@ -388,4 +536,5 @@ export const __test__ = {
   weiToDisplay,
   toBrowseItem,
   toAssetDetail,
+  isMyDrop,
 };

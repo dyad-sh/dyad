@@ -125,6 +125,12 @@ import type {
   CreatorAnalytics,
   UnifiedPublishPayload,
   PublishResult,
+  DropPurchaseRecord,
+  DropOwnershipRecord,
+  JoyStoreRecord,
+  MyDropsParams,
+  MyClaimsParams,
+  OwnershipParams,
 } from "@/types/publish_types";
 
 export interface ChatStreamCallbacks {
@@ -4446,6 +4452,35 @@ export class IpcClient {
 
   public async marketplaceCategories(): Promise<{ category: string; count: number }[]> {
     return this.ipcRenderer.invoke("marketplace:categories");
+  }
+
+  // ── Marketplace reads (wallet-scoped) ─────────────────────────────
+  //
+  // All four endpoints route through the DropERC1155 + Stores Goldsky
+  // subgraphs (see briefs/droperc1155-read-layer-surgery.md §B). They are
+  // safe to call without a connected wallet — the handlers will throw a
+  // typed error which TanStack Query surfaces to the UI.
+
+  /** Drops authored by `params.wallet` (creatorWallet metadata match). */
+  public async marketplaceMyDrops(params: MyDropsParams): Promise<MarketplaceBrowseResult> {
+    return this.ipcRenderer.invoke("marketplace:my-drops", params);
+  }
+
+  /** Raw on-chain claim() events authored by the buyer wallet. */
+  public async marketplaceMyClaims(params: MyClaimsParams): Promise<DropPurchaseRecord[]> {
+    return this.ipcRenderer.invoke("marketplace:my-claims", params);
+  }
+
+  /** Aggregate ownership of a tokenId for a wallet, or null if never claimed. */
+  public async marketplaceOwnership(
+    params: OwnershipParams,
+  ): Promise<DropOwnershipRecord | null> {
+    return this.ipcRenderer.invoke("marketplace:ownership", params);
+  }
+
+  /** Stores associated with a wallet via .joy domain ownership. */
+  public async marketplaceMyStores(params: { wallet: string; first?: number }): Promise<JoyStoreRecord[]> {
+    return this.ipcRenderer.invoke("marketplace:my-stores", params);
   }
 
   // ── Creator Dashboard ─────────────────────────────────────────────────

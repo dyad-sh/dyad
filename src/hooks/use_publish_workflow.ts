@@ -1,5 +1,16 @@
 /**
- * Workflow Publish Hook — TanStack Query mutation for publishing workflows to JoyMarketplace.
+ * Workflow Publish Hook — TanStack Query mutation for publishing workflows
+ * to JoyMarketplace (DropERC1155 lazy-mint via the on-chain publish
+ * orchestrator).
+ *
+ * Section B verification (briefs/droperc1155-read-layer-surgery.md):
+ *   This hook is write-side only. It calls `workflowPublishToMarketplace`
+ *   (which routes through `workflow:publish-to-marketplace` → the on-chain
+ *   orchestrator) and on success invalidates the `workflows` and `creator`
+ *   query caches. There is NO post-publish read against MarketplaceV3
+ *   listings, NO call to `marketplace-sync:*`, and NO Supabase
+ *   listing-mirror confirmation. Correct under the DropERC1155 locked-in
+ *   architecture.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";

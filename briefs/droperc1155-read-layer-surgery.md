@@ -114,16 +114,56 @@ surface stores by their human owner today — the join needs to go through
 `DomainRegistration.owner` rather than `Store.owner`. Out of scope for
 section A; will fix in section B (creator dashboard hook).
 
-### B. Hooks (renderer read layer)
+### B. Hooks (renderer read layer) — DONE 2026-05-02
 
-Repoint these hooks to the new client. Drop legacy listing types.
+- [x] `src/hooks/use_marketplace_browse.ts` — already routes through the
+      browse-handler IPC surface (rewritten in A.1) so `useMarketplaceBrowse`
+      / `useMarketplaceAssetDetail` / `useMarketplaceFeatured` /
+      `useMarketplaceCategories` / `useInstallAsset` are correct as-is.
+      EXTENDED with four new wallet-scoped read hooks: `useMyDrops`,
+      `useMyClaims`, `useOwnership`, `useMyStores`. They are no-op
+      (`enabled: false`) when no wallet is connected.
+- [x] `src/hooks/useThirdwebMarketplace.ts` — SHRUNK to a deprecation stub.
+      The old hook called `marketplace-sync:sync-listing` (Supabase mirror
+      of MarketplaceV3 listings). The replacement keeps the same call
+      signature so the legacy `CreateAssetWizard.tsx` continues to compile,
+      but `createDirectListing` now `console.warn`s and returns
+      `{ success: false, error: "… disabled…" }`. The wizard itself goes
+      away in section E.
+- [x] `src/hooks/use_publish_agent.ts` / `use_publish_workflow.ts` —
+      verified write-side only. They invoke `agentPublishToMarketplace` /
+      `workflowPublishToMarketplace` (DropERC1155 orchestrator) and on
+      success only invalidate the `agents` / `workflows` / `creator`
+      caches. NO post-publish MarketplaceV3 read, NO `marketplace-sync:*`
+      call, NO Supabase listing-mirror confirmation. Verification recorded
+      in JSDoc on each hook.
 
-- [ ] `src/hooks/use_marketplace_browse.ts` → `listDrops` (paginated).
-- [ ] `src/hooks/useThirdwebMarketplace.ts` → either remove or shrink to a thin
-      wrapper around the drop client; do NOT keep MarketplaceV3 listing logic.
-- [ ] `src/hooks/use_publish_agent.ts` / `use_publish_workflow.ts` —
-      verify they only call the orchestrator (write side) and don't read
-      MarketplaceV3 listings post-publish for confirmation.
+#### B supporting changes
+
+- [x] New `listStoresByDomainOwner(wallet)` in
+      `src/lib/joymarketplace/drop_subgraph.ts` — the join the section A
+      note flagged. Walks `DomainRegistration.owner == wallet` →
+      `Store.id == label`, because the live `Store.owner` field resolves
+      to the JoyRegistrarController contract, not the human wallet.
+- [x] Four new IPC handlers in `marketplace_browse_handlers.ts`:
+      `marketplace:my-drops` (browse-shaped, filtered by metadata
+      `creatorWallet`), `marketplace:my-claims` (raw `DropPurchase[]`),
+      `marketplace:ownership` (`DropUserBalance | null`),
+      `marketplace:my-stores` (`JoyStore[]` via the domain-owner join).
+- [x] All four channels added to `validInvokeChannels` in `src/preload.ts`
+      and exposed on `IpcClient` as `marketplaceMyDrops` / `marketplaceMyClaims`
+      / `marketplaceOwnership` / `marketplaceMyStores`.
+- [x] Renderer-safe types added to `src/types/publish_types.ts`
+      (`DropPurchaseRecord`, `DropOwnershipRecord`, `JoyStoreRecord`,
+      `MyDropsParams`, `MyClaimsParams`, `OwnershipParams`) so the
+      renderer can hold them without pulling in `electron-log`.
+- [x] New pure helper `isMyDrop(meta, walletLower)` in
+      `marketplace_browse_handlers.ts` — used by `marketplace:my-drops`
+      and unit-tested via the `__test__` bag.
+- [x] **Tests:** 5 new tests for `listStoresByDomainOwner` in
+      `drop_subgraph.test.ts` (now 32 total) and 6 new tests for `isMyDrop`
+      in `marketplace_browse_handlers.test.ts` (now 22 total). All 54 pass.
+      `tsc --noEmit` clean. `oxlint` clean on every file touched.
 
 ### C. Pages
 

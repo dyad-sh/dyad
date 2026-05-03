@@ -683,6 +683,11 @@ const validInvokeChannels = [
   "marketplace:install-asset",
   "marketplace:featured",
   "marketplace:categories",
+  // Marketplace Reads — wallet-scoped (DropERC1155 subgraph)
+  "marketplace:my-drops",
+  "marketplace:my-claims",
+  "marketplace:ownership",
+  "marketplace:my-stores",
   // Subgraph — On-chain marketplace data (Goldsky)
   "subgraph:my-assets",
   "subgraph:tokens",

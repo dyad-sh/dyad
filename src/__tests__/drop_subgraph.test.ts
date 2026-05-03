@@ -18,6 +18,7 @@ import {
   getOwnership,
   getStore,
   listStoresByOwner,
+  listStoresByDomainOwner,
   summarizeDrop,
   getDropSubgraphUrl,
   getStoresSubgraphUrl,
@@ -251,6 +252,83 @@ describe("stores subgraph", () => {
     mockOnce({ data: { stores: [] } });
     await listStoresByOwner("0xABC", 9999);
     expect(calls[0].body.variables).toMatchObject({ owner: "0xabc", first: 100 });
+  });
+});
+
+// ── listStoresByDomainOwner (the join the section A note flagged) ───────────────────────────────────────────────────────
+
+describe("listStoresByDomainOwner", () => {
+  it("requires a wallet address", async () => {
+    await expect(listStoresByDomainOwner("")).rejects.toThrow(/walletAddress is required/i);
+  });
+
+  it("joins through DomainRegistration.owner → Store.id (label) in two queries", async () => {
+    // 1st call: fetch the wallet's domain registrations.
+    mockOnce({
+      data: {
+        domainRegistrations: [
+          { name: "love" },
+          { name: "terry" },
+        ],
+      },
+    });
+    // 2nd call: bulk store lookup by the labels we got back.
+    const loveStore = {
+      id: "love",
+      owner: "0x40cc111111111111111111111111111111111ac7a",
+      name: "Love Store",
+      description: null,
+      logo: null,
+      website: null,
+      tagline: null,
+      isActive: true,
+      createdAt: "1",
+      updatedAt: "1",
+    };
+    mockOnce({ data: { stores: [loveStore] } });
+
+    const stores = await listStoresByDomainOwner("0xABCDEF");
+    expect(stores).toEqual([loveStore]);
+
+    // First call: domain lookup with lower-cased owner.
+    expect(calls[0].url).toBe(DEFAULT_STORES_SUBGRAPH_URL);
+    expect(calls[0].body.variables).toMatchObject({ owner: "0xabcdef", first: 50 });
+    // Second call: bulk store lookup by the labels we just discovered.
+    expect(calls[1].body.variables).toEqual({ ids: ["love", "terry"] });
+  });
+
+  it("short-circuits to [] when the wallet owns no domains (skips the second query)", async () => {
+    mockOnce({ data: { domainRegistrations: [] } });
+    const stores = await listStoresByDomainOwner("0xabc");
+    expect(stores).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("filters out domain registrations with null/empty names before the store lookup", async () => {
+    mockOnce({
+      data: {
+        domainRegistrations: [
+          { name: "love" },
+          { name: null },
+          { name: "" },
+          { name: "terry" },
+        ],
+      },
+    });
+    mockOnce({ data: { stores: [] } });
+    await listStoresByDomainOwner("0xabc");
+    expect(calls[1].body.variables).toEqual({ ids: ["love", "terry"] });
+  });
+
+  it("clamps `first` between 1 and 100", async () => {
+    mockOnce({ data: { domainRegistrations: [] } });
+    await listStoresByDomainOwner("0xabc", 9999);
+    expect(calls[0].body.variables).toMatchObject({ first: 100 });
+
+    calls = [];
+    mockOnce({ data: { domainRegistrations: [] } });
+    await listStoresByDomainOwner("0xabc", 0);
+    expect(calls[0].body.variables).toMatchObject({ first: 1 });
   });
 });
 

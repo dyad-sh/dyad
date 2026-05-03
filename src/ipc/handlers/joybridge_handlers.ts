@@ -36,6 +36,11 @@ import {
   type PublishAssetInput,
   type BrowseQuery,
 } from "@/lib/joybridge_client";
+import {
+  publishAndForget,
+  type AssetType,
+  type PublishInput as OrchestratorInput,
+} from "@/lib/joymarketplace/publish_orchestrator";
 
 const logger = log.scope("joybridge_handlers");
 
@@ -196,8 +201,45 @@ export function registerJoyBridgeHandlers(): void {
 
   ipcMain.handle(
     "joybridge:publish-asset",
-    async (_e, input: PublishAssetInput) => {
+    async (
+      _e,
+      input: PublishAssetInput & {
+        /** Default true — the Supabase publish-asset edge function 401s for joy_xxx
+         * keys, so on-chain is the primary path going forward. Set to false to
+         * keep the legacy Supabase publish call (only useful while we still have
+         * callers that haven't migrated). */
+        onchain?: boolean;
+        dryRun?: boolean;
+        /** Raw content (orchestrator-only) — base64 of bytes to pin to IPFS. */
+        contentBase64?: string;
+        contentMimeType?: string;
+        /** Optional flat metadata bag passed through. */
+        properties?: Record<string, unknown>;
+        quantity?: number;
+      },
+    ) => {
       await loadConfig();
+      const useOnchain = input.dryRun === true || (input.onchain ?? true);
+      if (useOnchain) {
+        const buf =
+          input.contentBase64 != null
+            ? Buffer.from(input.contentBase64, "base64")
+            : undefined;
+        const orchInput: OrchestratorInput = {
+          assetType: (input.assetType as AssetType) ?? "document",
+          name: input.name,
+          description: input.description,
+          contentBuffer: buf,
+          contentMimeType: input.contentMimeType,
+          metadata: input.properties,
+          priceUsdc: typeof input.priceUsdc === "number" ? input.priceUsdc : undefined,
+          royaltyBps: input.royaltyBps,
+          quantity: input.quantity ?? 1,
+          dryRun: input.dryRun,
+          license: input.license,
+        };
+        return publishAndForget(orchInput);
+      }
       return ensureClient().publishAsset(input);
     },
   );

@@ -60,14 +60,17 @@ function gatewayUrl(cid: string): string {
   return `https://ipfs.io/ipfs/${cid}`;
 }
 
-function toUint8(input: Buffer | ArrayBuffer | Uint8Array | Blob): Uint8Array | Promise<Uint8Array> {
+function toUint8(
+  input: Buffer | ArrayBuffer | Uint8Array | Blob,
+): Uint8Array | Promise<Uint8Array> {
   if (input instanceof Uint8Array) return input;
   if (input instanceof ArrayBuffer) return new Uint8Array(input);
   if (typeof Blob !== "undefined" && input instanceof Blob) {
     return input.arrayBuffer().then((b) => new Uint8Array(b));
   }
-  // Buffer is a Uint8Array subclass
-  return new Uint8Array(input as Buffer);
+  // Anything else (e.g. node Buffer in environments where it isn't a Uint8Array
+  // subclass) — cast safely through unknown.
+  return new Uint8Array(input as unknown as ArrayBufferLike);
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +168,7 @@ export class IpfsPinner {
     const form = new FormData();
     form.append(
       "file",
-      new Blob([bytes], { type: contentType ?? "application/octet-stream" }),
+      new Blob([bytes as BlobPart], { type: contentType ?? "application/octet-stream" }),
       filename,
     );
     const res = await this.fetchImpl(url, {
@@ -244,7 +247,7 @@ export class IpfsPinner {
     const form = new FormData();
     form.append(
       "file",
-      new Blob([bytes], { type: contentType ?? "application/octet-stream" }),
+      new Blob([bytes as BlobPart], { type: contentType ?? "application/octet-stream" }),
       filename,
     );
     const headers = this.pinataHeaders(false);

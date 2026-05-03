@@ -273,14 +273,14 @@ export class OnchainPublisher {
     let listingId = "0";
     try {
       const evt = receipt?.logs
-        ?.map((l: ethers.Log) => {
+        ?.map((l: ethers.Log): ethers.LogDescription | null => {
           try {
             return contract.interface.parseLog({ topics: [...l.topics], data: l.data });
           } catch {
             return null;
           }
         })
-        ?.find((parsed) => parsed?.name === "ListingCreated");
+        ?.find((parsed: ethers.LogDescription | null) => parsed?.name === "ListingCreated");
       if (evt && "args" in evt && evt.args && evt.args[0] != null) {
         listingId = evt.args[0].toString();
       }

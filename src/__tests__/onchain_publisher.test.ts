@@ -28,13 +28,14 @@ import {
 // Build a wallet with a stub provider whose `send` we can drive deterministically.
 function buildStubWallet(sendImpl: (method: string, params: unknown[]) => Promise<unknown>): ethers.Wallet {
   const provider = new ethers.JsonRpcProvider(POLYGON_AMOY.rpcUrl, POLYGON_AMOY.chainId);
-  // Override the network detection so ethers doesn't try to call eth_chainId
-  // at construction time.
-  // @ts-expect-error: private API used for testing
-  provider._detectNetwork = async () =>
+  // Override private network detection + transport for deterministic tests.
+  const p = provider as unknown as {
+    _detectNetwork: () => Promise<ethers.Network>;
+    send: (method: string, params: unknown[]) => Promise<unknown>;
+  };
+  p._detectNetwork = async () =>
     new ethers.Network(POLYGON_AMOY.name, BigInt(POLYGON_AMOY.chainId));
-  // @ts-expect-error: replace transport
-  provider.send = sendImpl;
+  p.send = sendImpl;
   // Pseudo-private-key — never used to sign anything we send.
   const pk = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
   return new ethers.Wallet(pk, provider);

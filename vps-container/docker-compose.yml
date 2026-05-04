@@ -1,0 +1,28 @@
+services:
+  dyad-vps:
+    build:
+      context: ..
+      dockerfile: vps-container/Dockerfile
+    image: dyad-vps:0.44.0
+    container_name: dyad-vps
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMIN_USER: "${ADMIN_USER:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-change-me-now}"
+      VNC_GEOMETRY: "1440x900"
+      VNC_DEPTH: "24"
+      FILEBROWSER_USER: "${FILEBROWSER_USER:-admin}"
+      FILEBROWSER_PASSWORD: "${FILEBROWSER_PASSWORD:-change-me-now}"
+      VNC_PASSWORD: "${VNC_PASSWORD:-change-me-now}"
+      # Optional: if you use Dyad Engine/Pro-style endpoint
+      # DYAD_ENGINE_URL: "https://your-engine.example.com/v1"
+    volumes:
+      - dyad_data:/data
+    shm_size: "2gb"
+    security_opt:
+      - seccomp=unconfined
+
+volumes:
+  dyad_data:

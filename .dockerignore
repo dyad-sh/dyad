@@ -1,0 +1,9 @@
+.git
+node_modules
+out
+.npm
+.cache
+.DS_Store
+**/node_modules
+**/.DS_Store
+dyad-vps-container.tar.gz

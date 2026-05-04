@@ -1,0 +1,24 @@
+services:
+  dyad:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080"
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123456789}
+      VNC_PASSWORD: ${VNC_PASSWORD:-Vnc123456789}
+      FILEBROWSER_USER: ${FILEBROWSER_USER:-admin}
+      FILEBROWSER_PASSWORD: ${FILEBROWSER_PASSWORD:-Files123456789}
+      VNC_GEOMETRY: ${VNC_GEOMETRY:-1440x900}
+      VNC_DEPTH: ${VNC_DEPTH:-24}
+    volumes:
+      - dyad_data:/data
+    shm_size: "2gb"
+    security_opt:
+      - seccomp=unconfined
+
+volumes:
+  dyad_data:

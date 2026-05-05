@@ -8,6 +8,7 @@ import {
   planStateAtom,
   pendingPlanImplementationAtom,
   pendingQuestionnaireAtom,
+  pendingIntegrationAtom,
 } from "@/atoms/planAtoms";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -17,6 +18,7 @@ import {
   type PlanUpdatePayload,
   type PlanExitPayload,
   type PlanQuestionnairePayload,
+  type PlanIntegrationPayload,
 } from "@/ipc/types/plan";
 import { ipc, type App } from "@/ipc/types";
 import { showError } from "@/lib/toast";
@@ -34,6 +36,7 @@ export function usePlanEvents() {
     pendingPlanImplementationAtom,
   );
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
+  const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -194,10 +197,38 @@ export function usePlanEvents() {
       },
     );
 
+    // Handle integration setup events
+    const unsubscribeIntegration = planEventClient.onIntegration(
+      (payload: PlanIntegrationPayload) => {
+        setPendingIntegration((prev) => {
+          const next = new Map(prev);
+          next.set(payload.chatId, payload);
+          return next;
+        });
+
+        // Show native notification if enabled and window is not focused
+        const notificationsEnabled =
+          settingsRef.current?.enableChatEventNotifications === true;
+        if (
+          notificationsEnabled &&
+          Notification.permission === "granted" &&
+          !document.hasFocus()
+        ) {
+          const app = queryClient.getQueryData<App | null>(
+            queryKeys.apps.detail({ appId: selectedAppIdRef.current! }),
+          );
+          new Notification(app?.name ?? "Dyad", {
+            body: "Database integration setup needs your input",
+          });
+        }
+      },
+    );
+
     return () => {
       unsubscribeUpdate();
       unsubscribeExit();
       unsubscribeQuestionnaire();
+      unsubscribeIntegration();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -205,6 +236,7 @@ export function usePlanEvents() {
     setPreviewMode,
     setPendingPlanImplementation,
     setPendingQuestionnaire,
+    setPendingIntegration,
     setSelectedChatId,
     navigate,
     queryClient,

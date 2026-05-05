@@ -216,6 +216,70 @@ export function clearPendingQuestionnairesForChat(chatId: number): void {
   }
 }
 
+// ============================================================================
+// Integration Setup Response Management
+// ============================================================================
+
+export interface IntegrationResult {
+  provider: "supabase" | "neon";
+}
+
+interface PendingIntegrationEntry {
+  chatId: number;
+  resolve: (result: IntegrationResult | null) => void;
+}
+
+const pendingIntegrationResolvers = new Map<string, PendingIntegrationEntry>();
+
+const INTEGRATION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes (OAuth + project creation can take a while)
+
+export function waitForIntegrationResponse(
+  requestId: string,
+  chatId: number,
+): Promise<IntegrationResult | null> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      const entry = pendingIntegrationResolvers.get(requestId);
+      if (entry) {
+        pendingIntegrationResolvers.delete(requestId);
+        entry.resolve(null);
+      }
+    }, INTEGRATION_TIMEOUT_MS);
+
+    pendingIntegrationResolvers.set(requestId, {
+      chatId,
+      resolve: (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      },
+    });
+  });
+}
+
+export function resolveIntegrationResponse(
+  requestId: string,
+  result: IntegrationResult | null,
+) {
+  const entry = pendingIntegrationResolvers.get(requestId);
+  if (entry) {
+    pendingIntegrationResolvers.delete(requestId);
+    entry.resolve(result);
+  }
+}
+
+/**
+ * Clean up all pending integration requests for a given chat.
+ * Called when a stream is cancelled/aborted to prevent orphaned promises.
+ */
+export function clearPendingIntegrationsForChat(chatId: number): void {
+  for (const [requestId, entry] of pendingIntegrationResolvers) {
+    if (entry.chatId === chatId) {
+      pendingIntegrationResolvers.delete(requestId);
+      entry.resolve(null);
+    }
+  }
+}
+
 export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   const tool = TOOL_DEFINITIONS.find((t) => t.name === toolName);
   return tool?.defaultConsent ?? "ask";

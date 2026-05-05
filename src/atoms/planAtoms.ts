@@ -1,5 +1,8 @@
 import { atom } from "jotai";
-import type { PlanQuestionnairePayload } from "@/ipc/types/plan";
+import type {
+  PlanIntegrationPayload,
+  PlanQuestionnairePayload,
+} from "@/ipc/types/plan";
 
 export interface PlanData {
   content: string;
@@ -31,6 +34,10 @@ export const pendingPlanImplementationAtom =
 export const pendingQuestionnaireAtom = atom<
   Map<number, PlanQuestionnairePayload>
 >(new Map());
+
+export const pendingIntegrationAtom = atom<Map<number, PlanIntegrationPayload>>(
+  new Map(),
+);
 
 export interface PlanAnnotation {
   id: string;

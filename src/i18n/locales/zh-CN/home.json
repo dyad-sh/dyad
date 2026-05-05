@@ -616,6 +616,8 @@
       "connectedToProject": "此应用已连接到 {{provider}} 项目：",
       "continue": "继续",
       "continuing": "继续中...",
+      "next": "下一步",
+      "back": "返回",
       "chooseProvider": "选择数据库提供商",
       "setUpProvider": "设置 {{provider}}",
       "setUpDatabase": "设置数据库",

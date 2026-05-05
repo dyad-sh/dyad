@@ -56,6 +56,24 @@ export type QuestionnaireResponsePayload = z.infer<
   typeof QuestionnaireResponseSchema
 >;
 
+export const PlanIntegrationSchema = z.object({
+  chatId: z.number(),
+  requestId: z.string(),
+  provider: z.enum(["supabase", "neon"]).optional(),
+});
+
+export type PlanIntegrationPayload = z.infer<typeof PlanIntegrationSchema>;
+
+export const IntegrationResponseSchema = z.object({
+  requestId: z.string(),
+  provider: z.enum(["supabase", "neon"]).nullable(),
+  completed: z.boolean(),
+});
+
+export type IntegrationResponsePayload = z.infer<
+  typeof IntegrationResponseSchema
+>;
+
 export const PlanSchema = z.object({
   id: z.string(),
   appId: z.number(),
@@ -106,6 +124,11 @@ export const planEvents = {
     channel: "plan:questionnaire",
     payload: PlanQuestionnaireSchema,
   }),
+
+  integration: defineEvent({
+    channel: "plan:integration",
+    payload: PlanIntegrationSchema,
+  }),
 } as const;
 
 // Plan CRUD Contracts (Invoke/Response)
@@ -144,6 +167,12 @@ export const planContracts = {
   respondToQuestionnaire: defineContract({
     channel: "plan:questionnaire-response",
     input: QuestionnaireResponseSchema,
+    output: z.void(),
+  }),
+
+  respondToIntegration: defineContract({
+    channel: "plan:integration-response",
+    input: IntegrationResponseSchema,
     output: z.void(),
   }),
 } as const;

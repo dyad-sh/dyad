@@ -42,7 +42,7 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "plan" });
   });
 
-  it("falls back when stored local-agent mode has no provider", () => {
+  it("keeps stored local-agent mode when no provider is configured", () => {
     const settings = makeSettings({ defaultChatMode: "build" });
 
     expect(
@@ -52,7 +52,7 @@ describe("chat mode resolution", () => {
         envVars: {},
         freeAgentQuotaAvailable: true,
       }),
-    ).toEqual({ mode: "build", fallbackReason: "no-provider" });
+    ).toEqual({ mode: "local-agent" });
   });
 
   it("falls back when stored local-agent mode is out of quota", () => {
@@ -180,7 +180,23 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "local-agent" });
   });
 
-  it("reports quota exhausted before Pro required when a provider is configured", () => {
+  it("keeps stored local-agent mode without a provider when Pro is enabled without a key", () => {
+    const settings = makeSettings({
+      enableDyadPro: true,
+      defaultChatMode: "build",
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("reports quota exhausted when Pro is enabled without a key", () => {
     const settings = makeSettings({
       enableDyadPro: true,
       defaultChatMode: "build",

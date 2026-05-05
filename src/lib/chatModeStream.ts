@@ -20,7 +20,6 @@ export function handleEffectiveChatModeChunk(
 
   if (chunk.chatModeFallbackReason) {
     showChatModeFallbackToast({
-      reason: chunk.chatModeFallbackReason,
       effectiveMode: chunk.effectiveChatMode,
       isPro: settings ? isDyadProEnabled(settings) : false,
       toastId: getChatModeFallbackToastId({

@@ -55,16 +55,9 @@ export function useChatMode(chatId: number | null | undefined) {
     return getUnavailableChatModeReason({
       mode: storedChatMode,
       settings,
-      envVars,
       freeAgentQuotaAvailable,
     });
-  }, [
-    activeChatId,
-    envVars,
-    freeAgentQuotaAvailable,
-    settings,
-    storedChatMode,
-  ]);
+  }, [activeChatId, freeAgentQuotaAvailable, settings, storedChatMode]);
 
   const effectiveMode =
     activeChatId && fallbackReason ? effectiveDefaultMode : selectedMode;

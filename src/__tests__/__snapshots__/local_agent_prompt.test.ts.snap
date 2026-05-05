@@ -105,13 +105,11 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 </image_generation_guidelines>
 
 <ai_rules_meta>
-AI_RULES.md is the app's persistent project guidance file.
-
-Use it to understand project-specific conventions such as the framework, routing, file organization, styling system, available libraries, server setup, and other constraints that should carry across chat conversations.
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
 
 When working in the app:
 - Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
-- When your current mode allows file edits, it is OK to edit AI_RULES.md when project guidance changes, when new durable conventions are introduced, or when the user asks you to remember something across conversations.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
 - Keep AI_RULES.md concise and easy to scan.
 - Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
 - If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
@@ -241,13 +239,11 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 </image_generation_guidelines>
 
 <ai_rules_meta>
-AI_RULES.md is the app's persistent project guidance file.
-
-Use it to understand project-specific conventions such as the framework, routing, file organization, styling system, available libraries, server setup, and other constraints that should carry across chat conversations.
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
 
 When working in the app:
 - Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
-- When your current mode allows file edits, it is OK to edit AI_RULES.md when project guidance changes, when new durable conventions are introduced, or when the user asks you to remember something across conversations.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
 - Keep AI_RULES.md concise and easy to scan.
 - Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
 - If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
@@ -321,16 +317,9 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 </workflow>
 
 <ai_rules_meta>
-AI_RULES.md is the app's persistent project guidance file.
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
 
-Use it to understand project-specific conventions such as the framework, routing, file organization, styling system, available libraries, server setup, and other constraints that should carry across chat conversations.
-
-When working in the app:
-- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
-- When your current mode allows file edits, it is OK to edit AI_RULES.md when project guidance changes, when new durable conventions are introduced, or when the user asks you to remember something across conversations.
-- Keep AI_RULES.md concise and easy to scan.
-- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
-- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
 </ai_rules_meta>
 
 <ai_rules>
@@ -449,13 +438,11 @@ This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writin
 </server_layer>
 
 <ai_rules_meta>
-AI_RULES.md is the app's persistent project guidance file.
-
-Use it to understand project-specific conventions such as the framework, routing, file organization, styling system, available libraries, server setup, and other constraints that should carry across chat conversations.
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
 
 When working in the app:
 - Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
-- When your current mode allows file edits, it is OK to edit AI_RULES.md when project guidance changes, when new durable conventions are introduced, or when the user asks you to remember something across conversations.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
 - Keep AI_RULES.md concise and easy to scan.
 - Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
 - If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
@@ -573,13 +560,11 @@ After every edit, read the file to verify changes applied correctly. If somethin
 </development_workflow>
 
 <ai_rules_meta>
-AI_RULES.md is the app's persistent project guidance file.
-
-Use it to understand project-specific conventions such as the framework, routing, file organization, styling system, available libraries, server setup, and other constraints that should carry across chat conversations.
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
 
 When working in the app:
 - Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
-- When your current mode allows file edits, it is OK to edit AI_RULES.md when project guidance changes, when new durable conventions are introduced, or when the user asks you to remember something across conversations.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
 - Keep AI_RULES.md concise and easy to scan.
 - Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
 - If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.

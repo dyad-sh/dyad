@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
 import {
+  addGeneratedSchemaContextToDrizzleKitError,
   assertGenerateArtifactsComplete,
   detectDestructiveStatements,
   detectDrizzleKitFailureInStderr,
@@ -214,6 +215,51 @@ describe("detectDrizzleKitFailureInStderr", () => {
     const stderr =
       "warning: experimental dialect 'postgresql' may change in future releases\n";
     expect(detectDrizzleKitFailureInStderr(stderr)).toBeNull();
+  });
+});
+
+describe("addGeneratedSchemaContextToDrizzleKitError", () => {
+  it("appends nearby generated schema lines when stderr includes a file location", async () => {
+    const dir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-migration-utils-test-"),
+    );
+    try {
+      const schemaPath = path.join(dir, "dev-schema-out", "schema.ts");
+      await fs.mkdir(path.dirname(schemaPath), { recursive: true });
+      await fs.writeFile(
+        schemaPath,
+        [
+          "import { pgTable, text } from 'drizzle-orm/pg-core';",
+          "",
+          "export const users = pgTable('users', {",
+          "  id: text('id').primaryKey(),",
+          "  displayName: text('display_name",
+          "});",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+
+      const detail = [
+        "Error: Transform failed with 1 error:",
+        `${schemaPath}:5:32: ERROR: Unterminated string literal`,
+      ].join("\n");
+
+      const enriched = await addGeneratedSchemaContextToDrizzleKitError(detail);
+
+      expect(enriched).toContain("Generated schema context");
+      expect(enriched).toContain("> 5 |   displayName:");
+      expect(enriched).toContain("^");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns the original detail when stderr has no generated schema location", async () => {
+    const detail = "Error: connect ECONNREFUSED 127.0.0.1:5432";
+    await expect(
+      addGeneratedSchemaContextToDrizzleKitError(detail),
+    ).resolves.toBe(detail);
   });
 });
 

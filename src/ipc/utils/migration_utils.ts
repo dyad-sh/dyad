@@ -694,6 +694,60 @@ export function detectDrizzleKitFailureInStderr(stderr: string): string | null {
   return null;
 }
 
+const GENERATED_SCHEMA_LOCATION_RE =
+  /((?:[A-Za-z]:)?[/\\][^\n:()]+?schema\.ts):(\d+):(\d+)/m;
+
+export async function addGeneratedSchemaContextToDrizzleKitError(
+  detail: string,
+): Promise<string> {
+  const match = detail.match(GENERATED_SCHEMA_LOCATION_RE);
+  if (!match) return detail;
+
+  const [, schemaPath, lineText, columnText] = match;
+  const lineNumber = Number(lineText);
+  const columnNumber = Number(columnText);
+  if (
+    !Number.isInteger(lineNumber) ||
+    !Number.isInteger(columnNumber) ||
+    lineNumber <= 0 ||
+    columnNumber <= 0
+  ) {
+    return detail;
+  }
+
+  try {
+    const source = await fs.readFile(schemaPath, "utf-8");
+    const lines = source.split(/\r?\n/);
+    const start = Math.max(1, lineNumber - 3);
+    const end = Math.min(lines.length, lineNumber + 3);
+    const lineLabelWidth = String(end).length;
+    const contextLines: string[] = [];
+
+    for (let current = start; current <= end; current++) {
+      const prefix = current === lineNumber ? ">" : " ";
+      const label = String(current).padStart(lineLabelWidth, " ");
+      contextLines.push(`${prefix} ${label} | ${lines[current - 1]}`);
+      if (current === lineNumber) {
+        const caretOffset = 4 + lineLabelWidth + columnNumber;
+        contextLines.push(`${" ".repeat(caretOffset)}^`);
+      }
+    }
+
+    return [
+      detail,
+      "",
+      `Generated schema context (${schemaPath}:${lineNumber}:${columnNumber}):`,
+      ...contextLines,
+    ].join("\n");
+  } catch (err) {
+    return [
+      detail,
+      "",
+      `Unable to read generated schema context from ${schemaPath}: ${err instanceof Error ? err.message : String(err)}`,
+    ].join("\n");
+  }
+}
+
 const DESTRUCTIVE_PATTERNS: Array<{
   regex: RegExp;
   reason: DestructiveStatementReason;
@@ -1162,8 +1216,11 @@ export async function runBaselineGenerate({
   // any failure printed to stderr would otherwise be silently dropped.
   const baselineStderrFailure = detectDrizzleKitFailureInStderr(result.stderr);
   if (baselineStderrFailure) {
+    const detail = await addGeneratedSchemaContextToDrizzleKitError(
+      baselineStderrFailure,
+    );
     throw new DyadError(
-      `drizzle-kit baseline generation reported an error on stderr: ${baselineStderrFailure}`,
+      `drizzle-kit baseline generation reported an error on stderr: ${detail}`,
       DyadErrorKind.External,
     );
   }
@@ -1270,8 +1327,10 @@ export async function runDiffGenerate({
   // sync even though the diff never executed.
   const diffStderrFailure = detectDrizzleKitFailureInStderr(result.stderr);
   if (diffStderrFailure) {
+    const detail =
+      await addGeneratedSchemaContextToDrizzleKitError(diffStderrFailure);
     throw new DyadError(
-      `drizzle-kit migration plan generation reported an error on stderr: ${diffStderrFailure}`,
+      `drizzle-kit migration plan generation reported an error on stderr: ${detail}`,
       DyadErrorKind.External,
     );
   }

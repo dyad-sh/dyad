@@ -128,6 +128,10 @@ git push --force origin HEAD
 
 In some Codex shells, pushing to fork remotes can fail immediately with `Repo <owner>/<repo> is not allowlisted` even when `gh auth status` shows a valid token. If both fork remotes are blocked this way but `upstream` is allowed, push the branch directly to `upstream` (for example `git push --force-with-lease upstream HEAD:<branch>`) and then repoint the local branch to track `upstream/<branch>` so later status and push commands reflect the real remote.
 
+## GitHub broker credential failures
+
+If `git push`, `gh pr view`, and `gh auth status` fail with only `fetch failed`, but unauthenticated `git ls-remote https://github.com/dyad-sh/dyad HEAD` works, the local `gh-broker` credential helper is unreachable rather than GitHub being down. Check the broker health/token path before retrying pushes; SSH is not a fallback unless `ssh -T git@github.com` succeeds.
+
 ## Rebase workflow and conflict resolution
 
 ### Handling unstaged changes during rebase

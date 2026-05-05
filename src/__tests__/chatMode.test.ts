@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeStoredChatMode, resolveChatMode } from "@/lib/chatMode";
-import type { UserSettings } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode, type UserSettings } from "@/lib/schemas";
 
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -71,6 +71,76 @@ describe("chat mode resolution", () => {
         freeAgentQuotaAvailable: false,
       }),
     ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
+  });
+
+  it("allows stored local-agent mode with a non-OpenAI/Anthropic provider", () => {
+    const settings = makeSettings({
+      defaultChatMode: "build",
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("allows stored local-agent mode with a non-OpenAI/Anthropic env var provider", () => {
+    const settings = makeSettings({ defaultChatMode: "build" });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: { OPENROUTER_API_KEY: "test-key" },
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("still reports quota exhausted for stored local-agent mode with another provider", () => {
+    const settings = makeSettings({
+      defaultChatMode: "build",
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: false,
+      }),
+    ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
+  });
+
+  it("does not auto-default to basic agent for non-OpenAI/Anthropic providers", () => {
+    const settings = makeSettings({
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
+  });
+
+  it("does not honor a local-agent default for non-OpenAI/Anthropic providers", () => {
+    const settings = makeSettings({
+      defaultChatMode: "local-agent",
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
   });
 
   it("does not treat unknown quota as exhausted", () => {

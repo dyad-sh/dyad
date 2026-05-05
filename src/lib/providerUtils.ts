@@ -3,7 +3,10 @@ import {
   type VertexProviderSetting,
   type AzureProviderSetting,
 } from "./schemas";
-import { PROVIDER_TO_ENV_VAR } from "../ipc/shared/language_model_constants";
+import {
+  CLOUD_PROVIDERS,
+  PROVIDER_TO_ENV_VAR,
+} from "../ipc/shared/language_model_constants";
 
 export interface ProviderCheckOptions {
   settings: UserSettings | null;
@@ -92,5 +95,42 @@ export function isOpenAIOrAnthropicSetup(
   const options: ProviderCheckOptions = { settings, envVars };
   return (
     isProviderSetup("openai", options) || isProviderSetup("anthropic", options)
+  );
+}
+
+/**
+ * Checks whether any non-Dyad cloud or custom provider is configured.
+ * Used for allowing an explicitly selected Basic Agent mode without changing
+ * the stricter OpenAI/Anthropic defaulting behavior.
+ */
+export function isAnyNonDyadProviderSetup(
+  settings: UserSettings,
+  envVars: Record<string, string | undefined>,
+  providerData?: { id: string; envVarName?: string; type?: string }[],
+): boolean {
+  if (!settings) return false;
+
+  const options: ProviderCheckOptions = { settings, envVars, providerData };
+  const builtinCloudProviders = Object.keys(CLOUD_PROVIDERS).filter(
+    (provider) => provider !== "auto",
+  );
+
+  if (
+    builtinCloudProviders.some((provider) => isProviderSetup(provider, options))
+  ) {
+    return true;
+  }
+
+  if (
+    providerData
+      ?.filter((provider) => provider.type === "custom")
+      .some((provider) => isProviderSetup(provider.id, options))
+  ) {
+    return true;
+  }
+
+  return Object.entries(settings.providerSettings ?? {}).some(
+    ([provider, providerSettings]) =>
+      provider !== "auto" && Boolean(providerSettings?.apiKey?.value),
   );
 }

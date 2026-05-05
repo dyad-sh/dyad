@@ -1,4 +1,4 @@
-import { isOpenAIOrAnthropicSetup } from "./providerUtils";
+import { isAnyNonDyadProviderSetup } from "./providerUtils";
 import {
   getEffectiveDefaultChatMode,
   hasDyadProKey,
@@ -53,7 +53,7 @@ export function getUnavailableChatModeReason({
     return undefined;
   }
 
-  if (isOpenAIOrAnthropicSetup(settings, envVars)) {
+  if (isAnyNonDyadProviderSetup(settings, envVars)) {
     if (freeAgentQuotaAvailable === false) {
       return "quota-exhausted";
     }

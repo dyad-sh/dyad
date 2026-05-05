@@ -144,6 +144,27 @@ const BASIC_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
 </development_workflow>`;
 
 // ============================================================================
+// AI Rules Block
+// ============================================================================
+
+const AI_RULES_BLOCK = `<ai_rules_meta>
+AI_RULES.md is the app's persistent project guidance file.
+
+Use it to understand project-specific conventions such as the framework, routing, file organization, styling system, available libraries, server setup, and other constraints that should carry across chat conversations.
+
+When working in the app:
+- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+- When your current mode allows file edits, it is OK to edit AI_RULES.md when project guidance changes, when new durable conventions are introduced, or when the user asks you to remember something across conversations.
+- Keep AI_RULES.md concise and easy to scan.
+- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
+- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+</ai_rules_meta>
+
+<ai_rules>
+[[AI_RULES]]
+</ai_rules>`;
+
+// ============================================================================
 // Ask Mode (Read-Only) Prompt
 // ============================================================================
 
@@ -190,7 +211,7 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 4. **Explain:** Provide a clear, accurate answer based on what you found
 </workflow>
 
-[[AI_RULES]]
+${AI_RULES_BLOCK}
 `;
 
 // ============================================================================
@@ -239,7 +260,7 @@ ${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
 [[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
 
-[[AI_RULES]]
+${AI_RULES_BLOCK}
 `;
 
 /**
@@ -261,7 +282,7 @@ ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${BASIC_DEVELOPMENT_WORKFLOW_BLOCK}
 [[SERVER_LAYER]]
-[[AI_RULES]]
+${AI_RULES_BLOCK}
 `;
 
 // ============================================================================

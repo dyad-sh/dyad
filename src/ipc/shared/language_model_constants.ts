@@ -327,6 +327,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Auto",
       description: "Automatically selects the best model",
       tag: "Default",
+      tagColor: "bg-primary text-primary-foreground",
       // The following is reasonable defaults.
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
@@ -337,6 +338,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Free (OpenRouter)",
       description: "Selects from one of the free OpenRouter models",
       tag: "Free",
+      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
       // These are below Gemini 2.5 Pro & Flash limits
       // which are the ones defaulted to for both regular auto
       // and smart auto.
@@ -345,24 +347,24 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
     {
-      name: "turbo",
-      displayName: "Turbo (Pro)",
-      description: "Use very fast open-source frontier models",
-      maxOutputTokens: 32_000,
-      contextWindow: 256_000,
-      temperature: 0,
-      tag: "Fast",
-      tagColor: "bg-rose-800 text-white",
-    },
-    {
       name: "value",
-      displayName: "Super Value (Pro)",
+      displayName: "Super Value",
       description: "Uses the most cost-effective models available",
       maxOutputTokens: 32_000,
       contextWindow: 256_000,
       temperature: 0,
       tag: "Budget",
-      tagColor: "bg-emerald-700 text-white",
+      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    },
+    {
+      name: "turbo",
+      displayName: "Turbo",
+      description: "Use very fast open-source frontier models",
+      maxOutputTokens: 32_000,
+      contextWindow: 256_000,
+      temperature: 0,
+      tag: "Fast",
+      tagColor: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
     },
   ],
   azure: [

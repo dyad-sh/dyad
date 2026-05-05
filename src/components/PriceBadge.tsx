@@ -1,4 +1,22 @@
 import React from "react";
+import { cn } from "@/lib/utils";
+
+const PILL_BASE =
+  "text-[10px] leading-none px-1.5 py-1 rounded-full font-medium";
+
+function HalfDollar() {
+  return (
+    <span className="relative inline-block align-baseline" aria-hidden="true">
+      <span className="opacity-30">$</span>
+      <span
+        className="absolute inset-0"
+        style={{ clipPath: "inset(0 35% 0 0)" }}
+      >
+        $
+      </span>
+    </span>
+  );
+}
 
 export function PriceBadge({
   dollarSigns,
@@ -7,14 +25,31 @@ export function PriceBadge({
 }) {
   if (dollarSigns === undefined || dollarSigns === null) return null;
 
-  const label = dollarSigns === 0 ? "Free" : "$".repeat(dollarSigns);
+  if (dollarSigns === 0) {
+    return (
+      <span
+        className={cn(
+          PILL_BASE,
+          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+        )}
+      >
+        Free
+      </span>
+    );
+  }
 
-  const className =
-    dollarSigns === 0
-      ? "text-[10px] text-primary border border-primary px-1.5 py-0.5 rounded-full font-medium"
-      : "text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium";
+  const full = Math.floor(dollarSigns / 2);
+  const half = dollarSigns % 2 === 1;
 
-  return <span className={className}>{label}</span>;
+  return (
+    <span
+      aria-label={`Price: ${(dollarSigns / 2).toFixed(1)}`}
+      className={cn(PILL_BASE, "bg-primary/10 text-primary tracking-tight")}
+    >
+      {"$".repeat(full)}
+      {half && <HalfDollar />}
+    </span>
+  );
 }
 
 export default PriceBadge;

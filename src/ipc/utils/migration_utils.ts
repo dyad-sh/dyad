@@ -851,8 +851,71 @@ interface PendingMigration {
   isBaseline: boolean;
 }
 
+interface MigrationArtifact {
+  name: string;
+  sqlPath: string;
+  snapshotPath: string;
+}
+
+async function readLegacyMigrationArtifacts(
+  drizzleDir: string,
+): Promise<MigrationArtifact[] | null> {
+  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
+
+  let journal: { entries?: Array<{ idx: number; tag: string }> };
+  try {
+    journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+  } catch {
+    return null;
+  }
+
+  return (journal.entries ?? []).map((entry) => ({
+    name: entry.tag,
+    sqlPath: path.join(drizzleDir, `${entry.tag}.sql`),
+    snapshotPath: path.join(
+      drizzleDir,
+      "meta",
+      `${String(entry.idx).padStart(4, "0")}_snapshot.json`,
+    ),
+  }));
+}
+
+async function readDirectoryMigrationArtifacts(
+  drizzleDir: string,
+): Promise<MigrationArtifact[]> {
+  let entries: Array<{
+    name: string;
+    isDirectory: () => boolean;
+  }>;
+  try {
+    entries = await fs.readdir(drizzleDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const artifacts: MigrationArtifact[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === "meta") continue;
+    const artifactDir = path.join(drizzleDir, entry.name);
+    artifacts.push({
+      name: entry.name,
+      sqlPath: path.join(artifactDir, "migration.sql"),
+      snapshotPath: path.join(artifactDir, "snapshot.json"),
+    });
+  }
+  return artifacts.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function readMigrationArtifacts(
+  drizzleDir: string,
+): Promise<MigrationArtifact[]> {
+  const legacyArtifacts = await readLegacyMigrationArtifacts(drizzleDir);
+  if (legacyArtifacts) return legacyArtifacts;
+  return readDirectoryMigrationArtifacts(drizzleDir);
+}
+
 /**
- * Reads `<workDir>/drizzle/meta/_journal.json` and returns each entry's SQL.
+ * Reads drizzle-kit migration outputs and returns each entry's SQL.
  *
  * The baseline file is identified by **content equality** to
  * `BASELINE_SQL_BODY`. `runBaselineGenerate` always overwrites the file
@@ -864,27 +927,18 @@ export async function readPendingMigrationFiles(
   workDir: string,
 ): Promise<PendingMigration[]> {
   const drizzleDir = path.join(workDir, "drizzle");
-  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
 
-  let journal: { entries?: Array<{ idx: number; tag: string }> };
-  try {
-    journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
-  } catch {
-    return [];
-  }
-
-  const entries = journal.entries ?? [];
   const out: PendingMigration[] = [];
-  for (const entry of entries) {
-    const filePath = path.join(drizzleDir, `${entry.tag}.sql`);
+  const artifacts = await readMigrationArtifacts(drizzleDir);
+  for (const artifact of artifacts) {
     let sql: string;
     try {
-      sql = await fs.readFile(filePath, "utf-8");
+      sql = await fs.readFile(artifact.sqlPath, "utf-8");
     } catch {
       continue;
     }
     out.push({
-      name: entry.tag,
+      name: artifact.name,
       sql,
       isBaseline: sql === BASELINE_SQL_BODY,
     });
@@ -1078,16 +1132,16 @@ export async function introspectProdWithCache({
 
 /**
  * Verifies the on-disk artifacts produced by `drizzle-kit generate` are
- * complete: every journal entry must reference an existing SQL file and
+ * complete: every generated entry must reference an existing SQL file and
  * matching snapshot. We can settle the spawn early on idle (drizzle-kit's
  * neon driver / esbuild service can leave handles open that prevent a clean
  * process exit), so we need a separate signal that the work actually
- * finished. A complete journal whose referenced files all exist means
- * drizzle-kit got past the write phase before we killed it; a missing file
- * means we settled too early and the plan would be partial / incorrect.
+ * finished. A complete artifact set means drizzle-kit got past the write
+ * phase before we killed it; a missing file means we settled too early and
+ * the plan would be partial / incorrect.
  *
- * Returns the number of complete entries (0 means drizzle-kit reported "no
- * schema changes" and never wrote a journal).
+ * Returns the number of complete entries (0 means drizzle-kit reported
+ * "no schema changes" and never wrote migration artifacts).
  */
 export async function assertGenerateArtifactsComplete(
   drizzleDir: string,
@@ -1096,53 +1150,42 @@ export async function assertGenerateArtifactsComplete(
     "terminatedReason" | "stderr"
   >,
 ): Promise<number> {
-  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
-  let entries: Array<{ idx: number; tag: string }>;
-  try {
-    const journal = JSON.parse(await fs.readFile(journalPath, "utf-8")) as {
-      entries?: Array<{ idx: number; tag: string }>;
-    };
-    entries = journal.entries ?? [];
-  } catch {
-    // No journal at all. The benign reading is "drizzle-kit reported no
-    // schema changes and never wrote one." But if we settled via `idle` AND
+  const artifacts = await readMigrationArtifacts(drizzleDir);
+
+  if (artifacts.length === 0) {
+    // No artifacts at all. The benign reading is "drizzle-kit reported no
+    // schema changes and never wrote any." But if we settled via `idle` AND
     // stderr is non-empty, that combination is suspicious by definition:
-    // on a successful generate, drizzle-kit writes the journal before going
-    // quiet. An idle settle with no journal AND output on stderr almost
-    // certainly means the command failed before completing — Treat it as a
-    // hard failure so we don't tell the user "already in sync" when the
-    // diff never actually ran.
+    // on a successful generate, drizzle-kit writes artifacts before going
+    // quiet. An idle settle with no artifacts AND output on stderr almost
+    // certainly means the command failed before completing. Treat it as a
+    // hard failure so we don't tell the user "already in sync" when the diff
+    // never actually ran.
     if (
       spawnResult.terminatedReason === "idle" &&
       spawnResult.stderr.trim().length > 0
     ) {
       throw new DyadError(
-        `drizzle-kit generate produced no journal but emitted stderr before going idle; the command likely failed before writing artifacts: ${spawnResult.stderr.trim()}`,
+        `drizzle-kit generate produced no migration artifacts but emitted stderr before going idle; the command likely failed before writing artifacts: ${spawnResult.stderr.trim()}`,
         DyadErrorKind.External,
       );
     }
     return 0;
   }
 
-  for (const entry of entries) {
-    const sqlPath = path.join(drizzleDir, `${entry.tag}.sql`);
-    const snapshotPath = path.join(
-      drizzleDir,
-      "meta",
-      `${String(entry.idx).padStart(4, "0")}_snapshot.json`,
-    );
+  for (const artifact of artifacts) {
     try {
-      await fs.access(sqlPath);
-      await fs.access(snapshotPath);
+      await fs.access(artifact.sqlPath);
+      await fs.access(artifact.snapshotPath);
     } catch {
       throw new DyadError(
-        `drizzle-kit generate left an incomplete journal: entry ${entry.tag} is missing its SQL or snapshot file. The process likely settled before drizzle-kit finished writing artifacts.`,
+        `drizzle-kit generate left incomplete artifacts: entry ${artifact.name} is missing its SQL or snapshot file. The process likely settled before drizzle-kit finished writing artifacts.`,
         DyadErrorKind.External,
       );
     }
   }
 
-  return entries.length;
+  return artifacts.length;
 }
 
 /**
@@ -1227,28 +1270,25 @@ export async function runBaselineGenerate({
 
   // Verify drizzle-kit finished writing its artifacts before we settled.
   // Idle-termination is a best-effort signal (the neon driver / esbuild
-  // service can keep handles open after work completes), so a journal with
-  // missing SQL or snapshot files means we killed the process mid-write and
-  // the plan would be partial.
+  // service can keep handles open after work completes), so an artifact set
+  // with missing SQL or snapshot files means we killed the process mid-write
+  // and the plan would be partial.
   const completeEntryCount = await assertGenerateArtifactsComplete(
     drizzleDir,
     result,
   );
   if (completeEntryCount === 0) {
-    // No journal — drizzle-kit said "no schema changes" (empty prod). No
+    // No artifacts — drizzle-kit said "no schema changes" (empty prod). No
     // baseline file to neutralize; the next diff-generate will start fresh.
     return { baselineProduced: false };
   }
 
-  // Find the baseline file via the journal's first entry. drizzle-kit names
-  // the file randomly on some versions even with --name=baseline, so we
-  // can't hardcode a path.
-  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
-  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8")) as {
-    entries?: Array<{ idx: number; tag: string }>;
-  };
-  const firstEntry = journal.entries?.[0];
-  if (!firstEntry) {
+  // Find the baseline file via the first artifact. drizzle-kit names the file
+  // randomly on some versions even with --name=baseline, and newer versions
+  // write directory-based artifacts, so we can't hardcode a path.
+  const artifacts = await readMigrationArtifacts(drizzleDir);
+  const firstArtifact = artifacts[0];
+  if (!firstArtifact) {
     return { baselineProduced: false };
   }
 
@@ -1256,8 +1296,7 @@ export async function runBaselineGenerate({
   // to zero statements in `parseDrizzleMigrationFile` and never contributes
   // to the apply plan; the snapshot beside it is the real anchor for the
   // next diff.
-  const baselineSqlPath = path.join(drizzleDir, `${firstEntry.tag}.sql`);
-  await fs.writeFile(baselineSqlPath, BASELINE_SQL_BODY, "utf-8");
+  await fs.writeFile(firstArtifact.sqlPath, BASELINE_SQL_BODY, "utf-8");
 
   return { baselineProduced: true };
 }

@@ -5,10 +5,12 @@ import fs from "node:fs/promises";
 import {
   addGeneratedSchemaContextToDrizzleKitError,
   assertGenerateArtifactsComplete,
+  BASELINE_SQL_BODY,
   detectDestructiveStatements,
   detectDrizzleKitFailureInStderr,
-  parseDrizzleMigrationFile,
   deriveDestructiveReasons,
+  parseDrizzleMigrationFile,
+  readPendingMigrationFiles,
 } from "./migration_utils";
 import { DyadError } from "@/errors/dyad_error";
 
@@ -270,6 +272,7 @@ describe("assertGenerateArtifactsComplete", () => {
   //      drizzle-kit normally writes the journal before going quiet).
   //   3. Journal entry missing its SQL/snapshot → throw regardless of how
   //      we settled (caller would otherwise read a partial plan as success).
+  //   4. Newer drizzle-kit directory artifacts are handled the same way.
 
   async function makeTempDrizzleDir(): Promise<string> {
     const dir = await fs.mkdtemp(
@@ -381,6 +384,104 @@ describe("assertGenerateArtifactsComplete", () => {
       expect(count).toBe(1);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns the entry count for directory-based drizzle-kit artifacts", async () => {
+    const dir = await makeTempDrizzleDir();
+    try {
+      const migrationDir = path.join(dir, "20260505171818_left_bloodstorm");
+      await fs.mkdir(migrationDir, { recursive: true });
+      await fs.writeFile(
+        path.join(migrationDir, "migration.sql"),
+        'CREATE TABLE "bookmarks" ("id" bigserial PRIMARY KEY);\n',
+        "utf-8",
+      );
+      await fs.writeFile(
+        path.join(migrationDir, "snapshot.json"),
+        "{}",
+        "utf-8",
+      );
+
+      const count = await assertGenerateArtifactsComplete(dir, {
+        terminatedReason: "exit",
+        stderr: "",
+      });
+      expect(count).toBe(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when a directory-based artifact is missing its snapshot", async () => {
+    const dir = await makeTempDrizzleDir();
+    try {
+      const migrationDir = path.join(dir, "20260505171818_left_bloodstorm");
+      await fs.mkdir(migrationDir, { recursive: true });
+      await fs.writeFile(
+        path.join(migrationDir, "migration.sql"),
+        'CREATE TABLE "bookmarks" ("id" bigserial PRIMARY KEY);\n',
+        "utf-8",
+      );
+
+      await expect(
+        assertGenerateArtifactsComplete(dir, {
+          terminatedReason: "exit",
+          stderr: "",
+        }),
+      ).rejects.toBeInstanceOf(DyadError);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readPendingMigrationFiles", () => {
+  it("reads directory-based drizzle-kit artifacts and identifies the neutralized baseline", async () => {
+    const workDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-migration-utils-test-"),
+    );
+    try {
+      const drizzleDir = path.join(workDir, "drizzle");
+      const baselineDir = path.join(drizzleDir, "20260505171817_baseline");
+      const diffDir = path.join(drizzleDir, "20260505171818_left_bloodstorm");
+      await fs.mkdir(baselineDir, { recursive: true });
+      await fs.mkdir(diffDir, { recursive: true });
+      await fs.writeFile(
+        path.join(baselineDir, "migration.sql"),
+        BASELINE_SQL_BODY,
+        "utf-8",
+      );
+      await fs.writeFile(
+        path.join(baselineDir, "snapshot.json"),
+        "{}",
+        "utf-8",
+      );
+      await fs.writeFile(
+        path.join(diffDir, "migration.sql"),
+        [
+          'CREATE TABLE "bookmarks" ("id" bigserial PRIMARY KEY);',
+          "--> statement-breakpoint",
+          'CREATE TABLE "notes" ("id" bigserial PRIMARY KEY);',
+        ].join("\n"),
+        "utf-8",
+      );
+      await fs.writeFile(path.join(diffDir, "snapshot.json"), "{}", "utf-8");
+
+      const pending = await readPendingMigrationFiles(workDir);
+
+      expect(pending).toHaveLength(2);
+      expect(pending[0]).toMatchObject({
+        name: "20260505171817_baseline",
+        isBaseline: true,
+      });
+      expect(pending[1]).toMatchObject({
+        name: "20260505171818_left_bloodstorm",
+        isBaseline: false,
+      });
+      expect(pending[1].sql).toContain('CREATE TABLE "bookmarks"');
+    } finally {
+      await fs.rm(workDir, { recursive: true, force: true });
     }
   });
 });

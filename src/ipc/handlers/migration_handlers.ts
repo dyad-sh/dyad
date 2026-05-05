@@ -19,7 +19,6 @@ import {
   detectDestructiveStatements,
   deriveDestructiveReasons,
   invalidateProdIntrospectCache,
-  cleanupWorkDir,
   getProductionBranchId,
 } from "../utils/migration_utils";
 import { getAppWithNeonBranch } from "../utils/neon_utils";
@@ -69,7 +68,7 @@ export function registerMigrationHandlers() {
   // 3. Introspect dev (always fresh) → run diff generate.
   // 4. Read pending migration files; the baseline file is hidden from the UI.
   // 5. Stash the SQL statements in the in-memory plan store keyed by a fresh
-  //    migrationId; the work dir is then discarded — apply will execute
+  //    migrationId; apply will execute
   //    statements directly via Neon's HTTP transaction.
   // -------------------------------------------------------------------------
   createTypedHandler(migrationContracts.preview, async (_, params) => {
@@ -138,7 +137,7 @@ export function registerMigrationHandlers() {
         destructiveStatements,
       };
     } finally {
-      await cleanupWorkDir(ctx.workDir);
+      // await cleanupWorkDir(ctx.workDir);
     }
   });
 

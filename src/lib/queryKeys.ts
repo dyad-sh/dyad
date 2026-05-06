@@ -243,6 +243,13 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Product Nudges
+  // ─────────────────────────────────────────────────────────────────────────────
+  productNudges: {
+    list: ["productNudges"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
@@ -402,6 +409,9 @@ export type AppQueryKey =
     >
   | QueryKeyOf<
       (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
+    >
+  | QueryKeyOf<
+      (typeof queryKeys.productNudges)[keyof typeof queryKeys.productNudges]
     >
   | QueryKeyOf<(typeof queryKeys.vercel)[keyof typeof queryKeys.vercel]>
   | QueryKeyOf<

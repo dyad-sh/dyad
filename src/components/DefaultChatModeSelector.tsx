@@ -13,7 +13,11 @@ import { useTranslation } from "react-i18next";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings, envVars } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const {
+    isQuotaExceeded,
+    isLoading: isQuotaLoading,
+    messagesLimit,
+  } = useFreeAgentQuota();
   const { t } = useTranslation("settings");
 
   if (!settings) {
@@ -76,7 +80,7 @@ export function DefaultChatModeSelector() {
                   <span className="text-xs text-muted-foreground">
                     {isProEnabled
                       ? "Better at bigger tasks"
-                      : "Free tier (10 messages/day)"}
+                      : `Free tier (${messagesLimit} messages/day)`}
                   </span>
                 </div>
               </SelectItem>

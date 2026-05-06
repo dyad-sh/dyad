@@ -1,1 +1,5 @@
+- "actionedProductNudgeIds": []
++ "actionedProductNudgeIds": [
++     "chat-notifications"
++   ]
 + "enableChatEventNotifications": true

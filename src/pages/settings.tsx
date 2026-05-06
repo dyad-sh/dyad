@@ -24,6 +24,7 @@ import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
+import { ProductTipsSwitch } from "@/components/ProductTipsSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
@@ -439,6 +440,13 @@ export function WorkflowSettings() {
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Show native notifications when a chat response completes or a
           questionnaire needs your input while the app is not focused.
+        </div>
+      </div>
+
+      <div id={SETTING_IDS.productTips} className="space-y-1 mt-4">
+        <ProductTipsSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Hide in-chat tips and offers from Dyad.
         </div>
       </div>
     </div>

@@ -6,8 +6,12 @@ import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
 import { ipcMain } from "electron";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
+import {
+  FREE_AGENT_QUOTA_LIMIT,
+  getFreeAgentGithubStarBonusMessages,
+} from "@/lib/free_agent_quota_limit";
 import fetch from "node-fetch";
+import { readSettings, writeSettings } from "@/main/settings";
 
 const logger = log.scope("free_agent_quota_handlers");
 
@@ -79,6 +83,12 @@ export function registerFreeAgentQuotaHandlers() {
     },
   );
 
+  createTypedHandler(freeAgentQuotaContracts.claimGithubStarBonus, async () => {
+    const now = await getServerTime();
+    writeSettings({ freeAgentGithubStarBonusClaimedAt: now });
+    return getFreeAgentQuotaStatus();
+  });
+
   // Test-only handler to simulate time passing for quota tests
   if (IS_TEST_BUILD) {
     ipcMain.handle(
@@ -142,6 +152,15 @@ export async function unmarkMessageAsUsingFreeAgentQuota(
  * since the oldest message was sent (not a rolling window).
  */
 export async function getFreeAgentQuotaStatus() {
+  const settings = readSettings();
+  const now = await getServerTime();
+  const bonusMessages = getFreeAgentGithubStarBonusMessages(
+    settings,
+    now,
+    QUOTA_WINDOW_MS,
+  );
+  const messagesLimit = FREE_AGENT_QUOTA_LIMIT + bonusMessages;
+
   // Get all messages with usingFreeAgentModeQuota = true, ordered by creation time
   const quotaMessages = await db
     .select({
@@ -155,7 +174,8 @@ export async function getFreeAgentQuotaStatus() {
   if (quotaMessages.length === 0) {
     return {
       messagesUsed: 0,
-      messagesLimit: FREE_AGENT_QUOTA_LIMIT,
+      messagesLimit,
+      bonusMessages,
       isQuotaExceeded: false,
       windowStartTime: null,
       resetTime: null,
@@ -169,8 +189,6 @@ export async function getFreeAgentQuotaStatus() {
   const oldestMessage = quotaMessages[0];
   const windowStartTime = oldestMessage.createdAt.getTime();
   const resetTime = windowStartTime + QUOTA_WINDOW_MS;
-  const now = await getServerTime();
-
   if (now >= resetTime) {
     // Clean up expired quota messages before returning fresh quota
     // This prevents stale messages from accumulating and causing incorrect window calculations
@@ -184,7 +202,8 @@ export async function getFreeAgentQuotaStatus() {
     // Quota has reset - all messages are released
     return {
       messagesUsed: 0,
-      messagesLimit: FREE_AGENT_QUOTA_LIMIT,
+      messagesLimit,
+      bonusMessages,
       isQuotaExceeded: false,
       windowStartTime: null,
       resetTime: null,
@@ -194,17 +213,18 @@ export async function getFreeAgentQuotaStatus() {
 
   // Quota has not reset - count all quota messages
   const messagesUsed = quotaMessages.length;
-  const isQuotaExceeded = messagesUsed >= FREE_AGENT_QUOTA_LIMIT;
+  const isQuotaExceeded = messagesUsed >= messagesLimit;
   let hoursUntilReset = Math.ceil((resetTime - now) / (60 * 60 * 1000));
   if (hoursUntilReset < 0) hoursUntilReset = 0;
 
   logger.log(
-    `Free agent quota status: ${messagesUsed}/${FREE_AGENT_QUOTA_LIMIT} used, exceeded: ${isQuotaExceeded}`,
+    `Free agent quota status: ${messagesUsed}/${messagesLimit} used, exceeded: ${isQuotaExceeded}`,
   );
 
   return {
     messagesUsed,
-    messagesLimit: FREE_AGENT_QUOTA_LIMIT,
+    messagesLimit,
+    bonusMessages,
     isQuotaExceeded,
     windowStartTime,
     resetTime,

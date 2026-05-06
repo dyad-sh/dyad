@@ -21,7 +21,7 @@ const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
   const banner = po.page.getByTestId("uncommitted-files-banner");
 
   // Verify clean state
-  await expect(banner).not.toBeVisible();
+  await expect(banner).not.toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Create a new file (untracked)
   const newFilePath = path.join(appPath, "discard-test.txt");
@@ -93,7 +93,7 @@ const runUncommittedFilesBannerTest = async (
   const banner = po.page.getByTestId("uncommitted-files-banner");
 
   // Verify banner is NOT visible when there are no uncommitted changes
-  await expect(banner).not.toBeVisible();
+  await expect(banner).not.toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Create a new file (tests "added" status)
   const newFilePath = path.join(appPath, "new-file.txt");

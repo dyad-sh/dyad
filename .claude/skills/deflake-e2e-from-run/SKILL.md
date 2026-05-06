@@ -105,7 +105,7 @@ Prefer fixing the test over the app unless the race would actually bite a real u
    PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<affected-file>.spec.ts
    ```
    If the fix is in a shared helper that affected several failing specs, run all representative affected specs in one command or separate commands.
-5. Use `/dyad:pr-push` or commit + `gh pr create` directly. The PR body MUST include:
+5. As the final step, call `/dyad:pr-push`. Do not commit, push, or create the PR directly from this skill. When invoking `/dyad:pr-push`, carry forward enough context for the PR body to include:
    - A link to the failing run.
    - The root-cause narrative (what raced, in concrete terms — not "timing issue").
    - Why the fix is correct (what the retry loop is doing that the original flow wasn't).

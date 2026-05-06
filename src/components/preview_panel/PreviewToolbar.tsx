@@ -30,13 +30,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-const PRIMARY_MODES: PreviewMode[] = [
+const PRIMARY_MODES = [
   "preview",
   "code",
   "configure",
   "publish",
-];
-const OVERFLOW_MODES: PreviewMode[] = ["problems", "security"];
+] as const satisfies readonly Exclude<PreviewMode, "plan">[];
+const OVERFLOW_MODES = [
+  "problems",
+  "security",
+] as const satisfies readonly Exclude<PreviewMode, "plan">[];
 const COMPACT_TOOLBAR_THRESHOLD = 700;
 
 interface ModeButtonsProps {
@@ -65,8 +68,9 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
     }
   };
 
+  type ToolbarMode = Exclude<PreviewMode, "plan">;
   const modeMeta: Record<
-    PreviewMode,
+    ToolbarMode,
     { icon: React.ReactNode; label: string; testId: string }
   > = {
     preview: {
@@ -99,14 +103,9 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
       label: t("preview.publish"),
       testId: "publish-mode-button",
     },
-    plan: {
-      icon: <Eye size={16} />,
-      label: t("preview.plan"),
-      testId: "plan-mode-button",
-    },
   };
 
-  const renderButton = (mode: PreviewMode) => {
+  const renderButton = (mode: ToolbarMode) => {
     const meta = modeMeta[mode];
     const isActive = previewMode === mode && isPreviewOpen;
     const badge =
@@ -144,11 +143,13 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
     );
   };
 
-  const visibleModes = isCompact
+  const visibleModes: readonly ToolbarMode[] = isCompact
     ? PRIMARY_MODES
     : [...PRIMARY_MODES, ...OVERFLOW_MODES];
   const isOverflowActive =
-    OVERFLOW_MODES.includes(previewMode) && isPreviewOpen;
+    (OVERFLOW_MODES as readonly PreviewMode[]).includes(previewMode) &&
+    isPreviewOpen;
+  const showOverflowProblemBadge = isCompact && !!displayCount;
 
   return (
     <div className="flex items-center gap-0.5">
@@ -171,6 +172,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
               }
             >
               <MoreHorizontal size={16} />
+              {showOverflowProblemBadge && (
+                <span className="absolute -top-1 -right-1 px-1 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
+                  {displayCount}
+                </span>
+              )}
             </TooltipTrigger>
             <TooltipContent>{t("preview.moreOptions")}</TooltipContent>
           </Tooltip>
@@ -185,6 +191,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
                 >
                   {meta.icon}
                   <span>{meta.label}</span>
+                  {mode === "problems" && displayCount && (
+                    <span className="ml-auto px-1.5 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
+                      {displayCount}
+                    </span>
+                  )}
                 </DropdownMenuItem>
               );
             })}

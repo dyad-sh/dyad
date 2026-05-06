@@ -94,12 +94,12 @@ export class PreviewPanel {
       );
     }
 
-    // When the toolbar is narrow (< 700px), `security` and `publish` move into
+    // When the toolbar is narrow (< 700px), `problems` and `security` move into
     // an overflow dropdown. Open the dropdown first if the direct button isn't
     // visible.
     const directButton = this.page.getByTestId(`${mode}-mode-button`);
     const isInOverflow =
-      (mode === "security" || mode === "publish") &&
+      (mode === "security" || mode === "problems") &&
       (await directButton
         .first()
         .isVisible()

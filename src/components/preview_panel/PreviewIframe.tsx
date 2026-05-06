@@ -1709,6 +1709,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 render={
                   <button
                     onClick={handleAnnotatorClick}
+                    aria-label={
+                      annotatorMode
+                        ? "Annotator mode active"
+                        : "Activate annotator"
+                    }
+                    aria-pressed={annotatorMode}
                     className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
                       annotatorMode
                         ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
@@ -1735,6 +1741,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 render={
                   <button
                     onClick={handleActivateComponentSelector}
+                    aria-label={
+                      isPicking
+                        ? "Deactivate component selector"
+                        : "Select component"
+                    }
+                    aria-pressed={isPicking}
                     className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
                       isPicking
                         ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
@@ -1762,6 +1774,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 render={
                   <button
                     onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
+                    aria-pressed={isChatPanelHidden}
                     className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                     data-testid="preview-toggle-chat-panel-button"
                   />

@@ -109,6 +109,8 @@ Packaged Electron E2E runs may fail inside the Codex sandbox before any test log
 
 The same sandbox issue can appear earlier as a Playwright `config.webServer` startup failure, for example `Error: listen EPERM: operation not permitted 0.0.0.0:3500` from the fake LLM server. Re-run the same E2E command outside the sandbox before treating it as a product regression.
 
+If Playwright's `config.webServer` exits while building `testing/fake-llm-server` with missing `express`/`cors` type declarations (`TS7016`) or implicit `req`/`res` errors, run `npm install` inside `testing/fake-llm-server` before rerunning E2E.
+
 If this happens:
 
 1. Verify whether the failure reproduces on an existing known-good E2E spec.

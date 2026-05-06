@@ -52,7 +52,7 @@ jobs:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           model: claude-opus-4-6
-          allowed_tools: "Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Write"
+          allowed_tools: "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Write"
           prompt: ${{ steps.render-prompt.outputs.prompt }}
 
       - name: Upload issue triage artifact

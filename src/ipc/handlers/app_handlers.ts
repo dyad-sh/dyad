@@ -68,29 +68,6 @@ async function readScreenshotEntries(
   return results;
 }
 
-async function ensureDyadInternalDirGitExcluded(appPath: string) {
-  const gitDir = path.join(appPath, ".git");
-  const gitDirStat = await fsPromises.stat(gitDir).catch(() => null);
-  if (!gitDirStat?.isDirectory()) {
-    return;
-  }
-
-  const infoDir = path.join(gitDir, "info");
-  const excludePath = path.join(infoDir, "exclude");
-  await fsPromises.mkdir(infoDir, { recursive: true });
-
-  const existing = await fsPromises
-    .readFile(excludePath, "utf-8")
-    .catch(() => "");
-  const lines = existing.split(/\r?\n/).map((line) => line.trim());
-  if (lines.includes(".dyad/") || lines.includes(".dyad")) {
-    return;
-  }
-
-  const prefix = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
-  await fsPromises.writeFile(excludePath, `${existing}${prefix}.dyad/\n`);
-}
-
 import fixPath from "fix-path";
 
 import killPort from "kill-port";
@@ -2797,7 +2774,6 @@ export function registerAppHandlers() {
     }
 
     const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
-    await ensureDyadInternalDirGitExcluded(appPath);
     await fsPromises.mkdir(screenshotDir, { recursive: true });
 
     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, "");

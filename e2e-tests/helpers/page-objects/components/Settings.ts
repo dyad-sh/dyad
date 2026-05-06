@@ -172,10 +172,22 @@ export class Settings {
   async setUpTestModel() {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
-    await this.page.locator("#model-id").fill("test-model");
-    await this.page.locator("#model-name").fill("test-model");
-    await this.page.getByRole("button", { name: "Add Model" }).click();
-    await expect(this.page.getByRole("dialog")).toBeHidden();
+    const dialog = this.page.getByRole("dialog", { name: "Add Custom Model" });
+    const modelIdInput = dialog.locator("#model-id");
+    const modelNameInput = dialog.locator("#model-name");
+    const addModelButton = dialog.getByRole("button", { name: "Add Model" });
+
+    await expect(async () => {
+      await modelIdInput.fill("test-model");
+      await expect(modelIdInput).toHaveValue("test-model", { timeout: 1_000 });
+      await modelNameInput.fill("test-model");
+      await expect(modelNameInput).toHaveValue("test-model", {
+        timeout: 1_000,
+      });
+      await expect(addModelButton).toBeEnabled({ timeout: 1_000 });
+      await addModelButton.click({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   }
 
   async addCustomTestModel({

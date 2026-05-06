@@ -33,6 +33,11 @@ export default function ChatPage() {
   const { chats, loading } = useChats(selectedAppId);
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
+  const selectedAppIdRef = useRef(selectedAppId);
+
+  useEffect(() => {
+    selectedAppIdRef.current = selectedAppId;
+  }, [selectedAppId]);
 
   // Sync selectedChatIdAtom with the chatId from the URL
   useEffect(() => {
@@ -77,7 +82,8 @@ export default function ChatPage() {
     }
 
     if (routeAppId) {
-      if (routeAppId !== selectedAppId) {
+      if (routeAppId !== selectedAppIdRef.current) {
+        selectedAppIdRef.current = routeAppId;
         setSelectedAppId(routeAppId);
       }
       return;
@@ -87,7 +93,8 @@ export default function ChatPage() {
     ipc.chat
       .getChat(chatId)
       .then((chat) => {
-        if (!isCancelled && chat.appId !== selectedAppId) {
+        if (!isCancelled && chat.appId !== selectedAppIdRef.current) {
+          selectedAppIdRef.current = chat.appId;
           setSelectedAppId(chat.appId);
         }
       })
@@ -97,7 +104,7 @@ export default function ChatPage() {
     return () => {
       isCancelled = true;
     };
-  }, [chatId, routeAppId, selectedAppId, setSelectedAppId]);
+  }, [chatId, routeAppId, setSelectedAppId]);
 
   useEffect(() => {
     if (isPreviewOpen) {

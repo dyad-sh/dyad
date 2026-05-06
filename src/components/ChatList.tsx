@@ -42,6 +42,7 @@ import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 
 import { ChatSearchDialog } from "./ChatSearchDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import { useLoadApps } from "@/hooks/useLoadApps";
 
 export function ChatList({
   show,
@@ -60,6 +61,8 @@ export function ChatList({
   const initialChatMode = useInitialChatMode();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
+  const { apps } = useLoadApps();
+  const selectedApp = apps.find((app) => app.id === selectedAppId);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
 
@@ -212,6 +215,14 @@ export function ChatList({
             <ArrowLeft size={16} />
             <span>{t("viewAllApps")}</span>
           </Button>
+        )}
+        {showViewAllAppsButton && selectedApp && (
+          <div
+            className="mx-4 mb-1 truncate text-xs font-medium text-muted-foreground"
+            title={selectedApp.name}
+          >
+            {selectedApp.name}
+          </div>
         )}
         <SidebarGroupLabel>{t("recentChats")}</SidebarGroupLabel>
         <SidebarGroupContent>

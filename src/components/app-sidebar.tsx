@@ -180,6 +180,7 @@ export function AppSidebar() {
     selectedPanel: selectedItem,
     selectedAppId,
     isHoveringPanel: hoverState.startsWith("start-hover"),
+    pathname: routerState.location.pathname,
   });
 
   const handleViewAllApps = () => {

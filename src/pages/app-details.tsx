@@ -7,7 +7,7 @@ import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -103,6 +103,8 @@ export default function AppDetailsPage() {
     useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isRenamingFolder, setIsRenamingFolder] = useState(false);
+  const [isOpeningChat, setIsOpeningChat] = useState(false);
+  const isOpeningChatRef = useRef(false);
 
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const [newCopyAppName, setNewCopyAppName] = useState("");
@@ -336,12 +338,18 @@ export default function AppDetailsPage() {
   const currentAppPath = selectedApp.resolvedPath || "";
   const latestChat = chats[0];
   const handleOpenInChat = async () => {
+    if (isOpeningChatRef.current) {
+      return;
+    }
+
     if (!appId) {
       console.error("No app id found");
       return;
     }
 
     try {
+      isOpeningChatRef.current = true;
+      setIsOpeningChat(true);
       if (latestChat) {
         selectChat({ chatId: latestChat.id, appId });
         return;
@@ -355,6 +363,9 @@ export default function AppDetailsPage() {
       selectChat({ chatId, appId });
     } catch (error) {
       showError(error);
+    } finally {
+      isOpeningChatRef.current = false;
+      setIsOpeningChat(false);
     }
   };
 
@@ -515,7 +526,7 @@ export default function AppDetailsPage() {
         <div className="mt-4 flex flex-col gap-2">
           <Button
             onClick={handleOpenInChat}
-            disabled={chatsLoading}
+            disabled={chatsLoading || isOpeningChat}
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >

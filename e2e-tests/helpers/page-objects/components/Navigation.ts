@@ -56,6 +56,16 @@ export class Navigation {
       const appListItem = this.page.locator('[data-testid^="app-list-item-"]');
       await expect(appListItem.first()).toBeVisible({ timeout: 60000 });
       await appListItem.first().click();
+
+      const openInChatButton = this.page.getByRole("button", {
+        name: "Open in Chat",
+      });
+      await expect(openInChatButton).toBeVisible({ timeout: 60000 });
+      await openInChatButton.click();
+      await expect(this.page.getByTestId("chat-input-container")).toBeVisible({
+        timeout: 60000,
+      });
+      return;
     }
 
     await expect(chatList).toBeVisible({ timeout: 60000 });

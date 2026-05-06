@@ -364,7 +364,7 @@
       {
         "type": "function",
         "name": "enable_nitro",
-        "description": "Add a Nitro server layer to this Vite app so it can run secure server-side code\n(API routes, database clients, secrets, webhooks).\n\nWHEN TO CALL: Before writing any code under server/, before referencing DATABASE_URL\nor any server-only env var, or when the user asks for an API route, webhook, or\nserver-side compute. Skip for client-side fetch with public/anon keys, for use\ncases fully covered by Supabase (anon key + RLS), or when the user explicitly\nsays \"static only\" / \"no backend\".\n\nAfter this tool returns, follow the \"Nitro Server Layer\" section appended to\nAI_RULES.md — it covers the required vite.config.ts changes and the conventions\nfor routes under server/routes/api/.",
+        "description": "Add a Nitro server layer to this Vite app so it can run secure server-side code\n(API routes, database clients, secrets, webhooks).\n\nWHEN TO CALL: Before writing any code under server/, before referencing DATABASE_URL\nor any server-only env var, or when the user asks for an API route, webhook, or\nserver-side compute. Skip for client-side fetch with public/anon keys, for use\ncases fully covered by Supabase (anon key + RLS), or when the user explicitly\nsays \"static only\" / \"no backend\".",
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

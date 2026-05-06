@@ -129,6 +129,7 @@ export type {
   UpdateChatParams,
   TokenCountParams,
   TokenCountResult,
+  StreamingPatch,
 } from "./chat";
 
 // Agent types

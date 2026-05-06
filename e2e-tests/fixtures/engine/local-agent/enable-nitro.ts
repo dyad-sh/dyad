@@ -15,7 +15,7 @@ export const fixture: LocalAgentFixture = {
       ],
     },
     {
-      text: "Server layer added. Now update vite.config.ts and write the API route.",
+      text: "Server layer added. Now I'll write the API route.",
     },
   ],
 };

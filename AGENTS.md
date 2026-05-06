@@ -26,6 +26,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/product-principles.md](rules/product-principles.md)           | Planning new features, especially via `dyad:swarm-to-plan`, to guide design trade-offs           |
 | [rules/jotai-testing.md](rules/jotai-testing.md)                     | Unit-testing Jotai atoms/hooks with `renderHook`, especially across unmount/remount              |
 | [rules/claude-github-workflows.md](rules/claude-github-workflows.md) | Editing `.github/workflows/*.yml` that invoke `anthropics/claude-code-action` (LLM-driven jobs)  |
+| [rules/ui-styling.md](rules/ui-styling.md)                           | Adding provider/brand icons, styling scrollable popovers, or using Tailwind v4 arbitrary values  |
 
 ## Project setup and lints
 
@@ -70,6 +71,8 @@ If you get any lint errors, you can usually fix it by doing:
 ```sh
 npm run lint:fix
 ```
+
+> **WARNING: Do NOT run `npx eslint` directly.** The project uses **oxlint** (not eslint) via `npm run lint`. Running `npx eslint <file>` produces spurious `import/no-unresolved` errors for `@/...` path aliases and other false positives — ignore those and rely on `npm run lint` / `npm run lint:fix`.
 
 **Type-checks**
 

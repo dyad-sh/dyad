@@ -18,7 +18,11 @@ import {
   getSettingsFilePath,
   writeSettings,
   readEffectiveSettings,
+  writeCrashSentinel,
+  clearCrashSentinel,
+  crashSentinelExists,
 } from "./main/settings";
+import { sendTelemetryEvent } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
@@ -191,9 +195,19 @@ export async function onReady() {
     gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
   }
 
-  // Check if app was force-closed
-  if (settings.isRunning) {
+  // Check if app was force-closed by checking for the crash sentinel file.
+  // The sentinel is written at startup and deleted in before-quit on clean exit.
+  // If it exists at startup, the previous session ended without a clean quit.
+  //
+  // Migration fallback: builds prior to the sentinel approach used a
+  // settings.isRunning flag to detect crashes. On first launch of a new build
+  // after a force-close of an old build, the sentinel won't exist yet but
+  // settings.isRunning may still be true. Honour it once, then clear it so
+  // subsequent runs rely solely on the sentinel.
+  const legacyIsRunningCrash = settings.isRunning === true;
+  if (crashSentinelExists() || legacyIsRunningCrash) {
     logger.warn("App was force-closed on previous run");
+    pendingCrashDetected = true;
 
     // Store performance data to send after window is created
     if (settings.lastKnownPerformance) {
@@ -202,8 +216,13 @@ export async function onReady() {
     }
   }
 
-  // Set isRunning to true at startup
-  writeSettings({ isRunning: true });
+  // TODO: Remove legacyIsRunningCrash migration path after a few releases
+  // once existing users have launched at least once on the sentinel build.
+  if (legacyIsRunningCrash) {
+    writeSettings({ isRunning: false });
+  }
+
+  writeCrashSentinel();
 
   // Start performance monitoring
   startPerformanceMonitoring();
@@ -334,6 +353,7 @@ declare global {
 
 let mainWindow: BrowserWindow | null = null;
 let pendingForceCloseData: any = null;
+let pendingCrashDetected = false;
 
 const createWindow = () => {
   // Create the browser window.
@@ -394,15 +414,39 @@ const createWindow = () => {
     }
 
     // Send force-close once after the correct load
-    if (pendingForceCloseData && !forceCloseMessageSent) {
+    if (pendingCrashDetected && !forceCloseMessageSent) {
       forceCloseMessageSent = true;
+
       const windowRef = mainWindow;
       if (!windowRef?.isDestroyed()) {
         windowRef?.webContents.send("force-close-detected", {
-          performanceData: pendingForceCloseData,
+          ...(pendingForceCloseData && {
+            performanceData: pendingForceCloseData,
+          }),
         });
       }
+
+      sendTelemetryEvent("app:crash_detected", {
+        // Mark as error so renderer PostHog before_send sampling does not
+        // drop 90% of events for non-Pro users (see src/renderer.tsx).
+        error: true,
+        has_performance_data: !!pendingForceCloseData,
+        ...(pendingForceCloseData && {
+          last_known_memory_mb: pendingForceCloseData.memoryUsageMB,
+          last_known_cpu_pct: pendingForceCloseData.cpuUsagePercent,
+          last_known_system_memory_mb:
+            pendingForceCloseData.systemMemoryUsageMB,
+          last_known_system_memory_total_mb:
+            pendingForceCloseData.systemMemoryTotalMB,
+          last_known_system_cpu_pct: pendingForceCloseData.systemCpuPercent,
+          last_known_snapshot_timestamp: pendingForceCloseData.timestamp,
+          time_since_last_heartbeat_ms:
+            Date.now() - pendingForceCloseData.timestamp,
+        }),
+      });
+
       pendingForceCloseData = null;
+      pendingCrashDetected = false;
     }
   });
 
@@ -734,11 +778,17 @@ app.on("window-all-closed", () => {
   }
 });
 
-// Only set isRunning to false when the app is properly quit by the user.
+// Clear the crash sentinel as early as possible on clean exit so that slow
+// cleanup in will-quit cannot race against OS-imposed termination timeouts
+// (e.g. Windows WM_ENDSESSION) and leave the sentinel behind as a false positive.
+app.on("before-quit", () => {
+  clearCrashSentinel();
+});
+
 // IMPORTANT: This handler must be synchronous because Electron's EventEmitter
 // does not await async callbacks — the returned Promise would be silently ignored.
 app.on("will-quit", () => {
-  logger.info("App is quitting, setting isRunning to false");
+  logger.info("App is quitting");
 
   // Stop the garbage collection timer
   stopAppGarbageCollection();
@@ -749,8 +799,6 @@ app.on("will-quit", () => {
 
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();
-
-  writeSettings({ isRunning: false });
 });
 
 app.on("activate", () => {

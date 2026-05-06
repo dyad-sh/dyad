@@ -172,12 +172,10 @@ export class Settings {
   async setUpTestModel() {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
-    await this.page
-      .getByRole("textbox", { name: "Model ID*" })
-      .fill("test-model");
-    await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
-    await this.page.getByRole("textbox", { name: "Name*" }).fill("test-model");
+    await this.page.locator("#model-id").fill("test-model");
+    await this.page.locator("#model-name").fill("test-model");
     await this.page.getByRole("button", { name: "Add Model" }).click();
+    await expect(this.page.getByRole("dialog")).toBeHidden();
   }
 
   async addCustomTestModel({
@@ -189,13 +187,13 @@ export class Settings {
   }) {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
-    await this.page.getByRole("textbox", { name: "Model ID*" }).fill(name);
-    await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
-    await this.page.getByRole("textbox", { name: "Name*" }).fill(name);
+    await this.page.locator("#model-id").fill(name);
+    await this.page.locator("#model-name").fill(name);
     if (contextWindow) {
       await this.page.locator("#context-window").fill(String(contextWindow));
     }
     await this.page.getByRole("button", { name: "Add Model" }).click();
+    await expect(this.page.getByRole("dialog")).toBeHidden();
   }
 
   async setUpTestProviderApiKey() {

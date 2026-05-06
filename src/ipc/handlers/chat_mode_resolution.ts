@@ -70,13 +70,14 @@ export async function getInitialChatModeForNewChat(
 }
 
 function getChatModeEnvVars(): Record<string, string | undefined> {
-  const openAiEnvVar = PROVIDER_TO_ENV_VAR.openai;
-  const anthropicEnvVar = PROVIDER_TO_ENV_VAR.anthropic;
+  const envVarNames = new Set([
+    ...Object.values(PROVIDER_TO_ENV_VAR),
+    "AZURE_RESOURCE_NAME",
+  ]);
 
-  return {
-    [openAiEnvVar]: getEnvVar(openAiEnvVar),
-    [anthropicEnvVar]: getEnvVar(anthropicEnvVar),
-  };
+  return Object.fromEntries(
+    [...envVarNames].map((envVarName) => [envVarName, getEnvVar(envVarName)]),
+  );
 }
 
 async function getFreeAgentQuotaAvailableIfNeeded(

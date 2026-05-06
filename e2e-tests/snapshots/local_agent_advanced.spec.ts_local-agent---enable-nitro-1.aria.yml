@@ -28,7 +28,7 @@
 - paragraph:
   - text: API routes can now live under
   - code: "`server/routes/api/`"
-- paragraph: Server layer added. Now update vite.config.ts and write the API route.
+- paragraph: Server layer added. Now I'll write the API route.
 - button "Copy":
   - img
 - img
@@ -38,7 +38,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 3: (5 files changed)"
+- text: "Version 3: (6 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""

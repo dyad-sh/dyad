@@ -104,6 +104,18 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 - Reference the copied path in code (e.g., \`<img src="/assets/hero-banner.png" />\`)
 </image_generation_guidelines>
 
+<ai_rules_meta>
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
+
+When working in the app:
+- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
+- Keep AI_RULES.md concise and easy to scan.
+- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
+- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+</ai_rules_meta>
+
+<ai_rules>
 # Tech Stack
 - You are building a React application.
 - Use TypeScript.
@@ -122,6 +134,7 @@ Available packages and libraries:
 - You have ALL the necessary Radix UI components installed.
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
+</ai_rules>
 "
 `;
 
@@ -225,6 +238,18 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 - Reference the copied path in code (e.g., \`<img src="/assets/hero-banner.png" />\`)
 </image_generation_guidelines>
 
+<ai_rules_meta>
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
+
+When working in the app:
+- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
+- Keep AI_RULES.md concise and easy to scan.
+- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
+- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+</ai_rules_meta>
+
+<ai_rules>
 # Tech Stack
 - You are building a React application.
 - Use TypeScript.
@@ -243,6 +268,7 @@ Available packages and libraries:
 - You have ALL the necessary Radix UI components installed.
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
+</ai_rules>
 "
 `;
 
@@ -290,6 +316,13 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 4. **Explain:** Provide a clear, accurate answer based on what you found
 </workflow>
 
+<ai_rules_meta>
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
+
+Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+</ai_rules_meta>
+
+<ai_rules>
 # Tech Stack
 - You are building a React application.
 - Use TypeScript.
@@ -308,6 +341,7 @@ Available packages and libraries:
 - You have ALL the necessary Radix UI components installed.
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
+</ai_rules>
 "
 `;
 
@@ -403,6 +437,18 @@ After every edit, read the file to verify changes applied correctly. If somethin
 This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
 </server_layer>
 
+<ai_rules_meta>
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
+
+When working in the app:
+- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
+- Keep AI_RULES.md concise and easy to scan.
+- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
+- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+</ai_rules_meta>
+
+<ai_rules>
 # Tech Stack
 - You are building a React application.
 - Use TypeScript.
@@ -421,6 +467,7 @@ Available packages and libraries:
 - You have ALL the necessary Radix UI components installed.
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
+</ai_rules>
 "
 `;
 
@@ -512,6 +559,18 @@ After every edit, read the file to verify changes applied correctly. If somethin
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>
 
+<ai_rules_meta>
+AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
+
+When working in the app:
+- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
+- Keep AI_RULES.md concise and easy to scan.
+- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
+- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+</ai_rules_meta>
+
+<ai_rules>
 # Tech Stack
 - You are building a React application.
 - Use TypeScript.
@@ -530,5 +589,6 @@ Available packages and libraries:
 - You have ALL the necessary Radix UI components installed.
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
+</ai_rules>
 "
 `;

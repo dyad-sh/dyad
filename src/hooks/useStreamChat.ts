@@ -4,7 +4,7 @@ import type {
   FileAttachment,
   ChatAttachment,
 } from "@/ipc/types";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
@@ -23,6 +23,12 @@ import type { ChatResponseEnd, App, Chat } from "@/ipc/types";
 import type { ChatSummary } from "@/lib/schemas";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
+import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
+import {
+  triggerResync,
+  syncChatFromDb,
+  mergeResyncMessages,
+} from "@/lib/resyncChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast, showWarning } from "@/lib/toast";
@@ -46,6 +52,37 @@ export function getRandomNumberId() {
 // This prevents race conditions when clicking rapidly before state updates
 const pendingStreamChatIds = new Set<number>();
 
+// Throttled ack scheduler for the canned test stream's ack-based
+// backpressure. Stores the highest chunkSeq received per chatId; at most
+// one ack per ACK_THROTTLE_MS is sent per chatId, carrying the latest
+// received seq. Real LLM streams omit chunkSeq, so the scheduler is never
+// armed for them.
+const ACK_THROTTLE_MS = 250;
+const latestChunkByChatId = new Map<number, number>();
+const ackTimerByChatId = new Map<number, ReturnType<typeof setTimeout>>();
+
+function scheduleThrottledAck(chatId: number): void {
+  if (ackTimerByChatId.has(chatId)) return;
+  const timer = setTimeout(() => {
+    ackTimerByChatId.delete(chatId);
+    const seq = latestChunkByChatId.get(chatId);
+    if (seq === undefined) return;
+    void ipc.chat.responseAck({ chatId, lastSeq: seq }).catch(() => {
+      // Ignore ack failures; main has no retry path and acks are
+      // advisory under throttling.
+    });
+  }, ACK_THROTTLE_MS);
+  ackTimerByChatId.set(chatId, timer);
+}
+
+function cancelAckTimer(chatId: number): void {
+  const timer = ackTimerByChatId.get(chatId);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    ackTimerByChatId.delete(chatId);
+  }
+}
+
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
@@ -59,6 +96,7 @@ export function useStreamChat({
   const { invalidateChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
 
+  const store = useStore();
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
@@ -221,7 +259,8 @@ export function useStreamChat({
             onChunk: ({
               messages: updatedMessages,
               streamingMessageId,
-              streamingContent,
+              streamingPatch,
+              chunkSeq,
               effectiveChatMode,
               chatModeFallbackReason,
             }) => {
@@ -258,26 +297,35 @@ export function useStreamChat({
                 });
               } else if (
                 streamingMessageId !== undefined &&
-                streamingContent !== undefined
+                streamingPatch !== undefined
               ) {
-                // Incremental update: only update the streaming message's content
-                setMessagesById((prev) => {
-                  const existingMessages = prev.get(chatId);
-                  if (!existingMessages) return prev;
+                const applied = applyStreamingPatch(
+                  setMessagesById,
+                  chatId,
+                  streamingMessageId,
+                  streamingPatch,
+                );
+                if (!applied) {
+                  triggerResync(chatId, setMessagesById, store);
+                }
+              }
 
-                  const next = new Map(prev);
-                  const updated = existingMessages.map((msg) =>
-                    msg.id === streamingMessageId
-                      ? { ...msg, content: streamingContent }
-                      : msg,
-                  );
-                  next.set(chatId, updated);
-                  return next;
-                });
+              // Ack-based backpressure for the canned test stream. Real
+              // LLM streams omit chunkSeq, so this is a no-op for them.
+              // Coalesce many incoming chunks into a single ack fired on a
+              // fixed throttle interval (ACK_THROTTLE_MS).
+              if (chunkSeq !== undefined) {
+                const prev = latestChunkByChatId.get(chatId) ?? 0;
+                if (chunkSeq > prev) {
+                  latestChunkByChatId.set(chatId, chunkSeq);
+                }
+                scheduleThrottledAck(chatId);
               }
             },
             onEnd: (response: ChatResponseEnd) => {
               pendingStreamChatIds.delete(chatId);
+              latestChunkByChatId.delete(chatId);
+              cancelAckTimer(chatId);
               void (async () => {
                 // Only mark as successful if NOT cancelled - wasCancelled flag is set
                 // by the backend when user cancels the stream
@@ -401,11 +449,27 @@ export function useStreamChat({
                       queryKeys.chats.detail({ chatId }),
                       latestChat,
                     );
-                    setMessagesById((prev) => {
-                      const next = new Map(prev);
-                      next.set(chatId, latestChat.messages);
-                      return next;
-                    });
+                    // Guard against a racing new stream that started after
+                    // setIsStreamingById(false) above.
+                    if (!store.get(isStreamingByIdAtom).get(chatId)) {
+                      setMessagesById((prev) => {
+                        const currentMessages = prev.get(chatId);
+                        if (!currentMessages) {
+                          const next = new Map(prev);
+                          next.set(chatId, latestChat.messages);
+                          return next;
+                        }
+                        if (currentMessages.length > latestChat.messages.length)
+                          return prev;
+                        const merged = mergeResyncMessages(
+                          latestChat.messages,
+                          currentMessages,
+                        );
+                        const next = new Map(prev);
+                        next.set(chatId, merged);
+                        return next;
+                      });
+                    }
                   } catch (error) {
                     console.warn(
                       `[CHAT] Failed to refresh latest chat for ${chatId}:`,
@@ -437,6 +501,8 @@ export function useStreamChat({
             onError: ({ error: errorMessage, warningMessages }) => {
               // Remove from pending set now that stream ended with error
               pendingStreamChatIds.delete(chatId);
+              latestChunkByChatId.delete(chatId);
+              cancelAckTimer(chatId);
 
               for (const warningMessage of warningMessages ?? []) {
                 showWarning(warningMessage);
@@ -460,6 +526,7 @@ export function useStreamChat({
                 next.set(chatId, false);
                 return next;
               });
+              syncChatFromDb(chatId, setMessagesById, "[CHAT] onError", store);
               invalidateChats();
               refreshApp();
               refreshVersions();
@@ -471,6 +538,8 @@ export function useStreamChat({
       } catch (error) {
         // Remove from pending set on exception
         pendingStreamChatIds.delete(chatId);
+        latestChunkByChatId.delete(chatId);
+        cancelAckTimer(chatId);
 
         console.error("[CHAT] Exception during streaming setup:", error);
         setIsStreamingById((prev) => {
@@ -500,6 +569,7 @@ export function useStreamChat({
       refetchUserBudget,
       settings,
       queryClient,
+      store,
     ],
   );
 

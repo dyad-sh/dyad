@@ -571,6 +571,13 @@ app.post("/engine/v1/images/generations", (req, res) => {
   }
 });
 
+app.get("/test-image.png", (_req, res) => {
+  const tinyPngBase64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+  res.type("png").send(Buffer.from(tinyPngBase64, "base64"));
+});
+
 // Dyad Engine web-crawl endpoint for web_fetch tool
 app.post("/engine/v1/tools/web-crawl", (req, res) => {
   const { url, markdownOnly } = req.body;

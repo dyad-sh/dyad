@@ -26,8 +26,8 @@ export class ModelPicker {
     return false;
   }
 
-  private async clickModel(model: string) {
-    const modelItem = this.getMenuItem(model);
+  private async clickModel(model: string, exact = true) {
+    const modelItem = this.getMenuItem(model, exact);
     await expect(modelItem).toBeVisible();
     await modelItem.click();
   }
@@ -63,14 +63,14 @@ export class ModelPicker {
     await this.page.getByTestId("model-picker").click();
     await this.getMenuItem("Local models", false).click();
     await this.getMenuItem("Ollama", false).click();
-    await this.clickModel("Testollama");
+    await this.clickModel("Testollama", false);
   }
 
   async selectTestLMStudioModel() {
     await this.page.getByTestId("model-picker").click();
     await this.getMenuItem("Local models", false).click();
     await this.getMenuItem("LM Studio", false).click();
-    await this.clickModel("lmstudio-model-1");
+    await this.clickModel("lmstudio-model-1", false);
   }
 
   async selectTestAzureModel() {

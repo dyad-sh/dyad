@@ -345,13 +345,26 @@ const IntegrationSetupSection = () => {
       ? t("integrations.databaseSetup.providers.supabase.name")
       : t("integrations.databaseSetup.providers.neon.name");
 
-  const handleContinueClick = () => {
+  const handleContinueClick = async () => {
     if (chatId == null || !canContinue) return;
-    planClient.respondToIntegration({
-      requestId: pendingIntegration.requestId,
-      provider,
-      completed: true,
-    });
+    // Await the IPC: if it fails (e.g. webContents destroyed during nav, or a
+    // serialization error) the backend's waitForIntegrationResponse promise
+    // would otherwise hang to its 30-min timeout while the UI moves on as if
+    // everything succeeded. On error, surface a toast and leave state intact.
+    try {
+      await planClient.respondToIntegration({
+        requestId: pendingIntegration.requestId,
+        provider,
+        completed: true,
+      });
+    } catch (error) {
+      showError(
+        `Failed to continue integration: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
     setPendingIntegrationMap((prev) => {
       if (!prev.has(chatId)) return prev;
       const next = new Map(prev);
@@ -396,6 +409,13 @@ const IntegrationSetupSection = () => {
           >
             {t("integrations.databaseSetup.continue")}
           </Button>
+          {!canContinue && (
+            <p className="text-xs text-muted-foreground text-center">
+              {t("integrations.databaseSetup.completePrompt", {
+                provider: providerName,
+              })}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

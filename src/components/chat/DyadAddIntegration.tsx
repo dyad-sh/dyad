@@ -55,9 +55,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     frameworkType: app?.frameworkType ?? null,
   });
 
-  const [selectedProvider, setSelectedProvider] = useState<
+  // Track explicit user choice. The effective `selectedProvider` is derived
+  // below so it stays reactive to `pendingIntegration?.provider`, which can
+  // arrive via IPC after this component mounts.
+  const [userSelectedProvider, setUserSelectedProvider] = useState<
     "neon" | "supabase" | null
-  >(requestedProvider ?? pendingIntegration?.provider ?? "supabase");
+  >(null);
   // True after the user clicks Next: the chat card collapses to a "finish in
   // the right panel" message with a Back button. Local-only — if the user
   // navigates between chats and returns, they restart from selection (which
@@ -84,6 +87,15 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       experimental: true,
     },
   ];
+
+  // Derived: prefer explicit user choice, then tool-locked, then AI-requested
+  // (from the IPC-driven atom), then default. Re-derives every render so a
+  // late `pendingIntegration?.provider` is reflected without a sync effect.
+  const selectedProvider =
+    userSelectedProvider ??
+    requestedProvider ??
+    pendingIntegration?.provider ??
+    "supabase";
 
   const lockedProvider = requestedProvider ?? pendingIntegration?.provider;
 
@@ -113,6 +125,10 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const radioGroupRef = useRef<HTMLDivElement>(null);
 
   const handleRadioKeyDown = (e: React.KeyboardEvent) => {
+    // Mirror the click handler's disabled check: don't let keyboard arrow
+    // navigation change the selection in non-interactive (historical) renders
+    // or when only one provider is available.
+    if (!pendingIntegration || availableProviders.length === 1) return;
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key))
       return;
     e.preventDefault();
@@ -133,7 +149,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
     buttons[nextIndex].focus();
     const providerId = availableProviders[nextIndex]?.id;
-    if (providerId) setSelectedProvider(providerId);
+    if (providerId) setUserSelectedProvider(providerId);
   };
 
   const completedProvider = getCompletedIntegrationProvider(app);
@@ -179,7 +195,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   const handleBackClick = () => {
     setInPanelMode(false);
-    setSelectedProvider(null);
+    setUserSelectedProvider(null);
     // Drop the chosen provider from the pending integration so the Configure
     // panel collapses and the radios reopen with no preselection. (The
     // tool-locked provider, if any, is still preserved via `requestedProvider`
@@ -325,14 +341,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                     }
                     onClick={() => {
                       if (disableSwitch) return;
-                      setSelectedProvider(option.id);
+                      setUserSelectedProvider(option.id);
                     }}
                     aria-checked={isSelected}
                     aria-disabled={disableSwitch}
                     className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                       isSelected
                         ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
-                        : "border-border hover:border-blue-400"
+                        : `border-border ${disableSwitch ? "" : "hover:border-blue-400"}`
                     } ${disableSwitch ? "cursor-default" : "cursor-pointer"}`}
                   >
                     <div className="flex items-center gap-2 flex-wrap">

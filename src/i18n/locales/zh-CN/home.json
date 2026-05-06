@@ -616,6 +616,7 @@
       "connectedToProject": "此应用已连接到 {{provider}} 项目：",
       "continue": "继续",
       "continuing": "继续中...",
+      "completePrompt": "请先完成上方的 {{provider}} 连接，然后继续。",
       "next": "下一步",
       "back": "返回",
       "chooseProvider": "选择数据库提供商",

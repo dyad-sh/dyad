@@ -619,6 +619,7 @@
       "connectedToProject": "This app is connected to the {{provider}} project:",
       "continue": "Continue",
       "continuing": "Continuing...",
+      "completePrompt": "Complete the {{provider}} connection above to continue.",
       "next": "Next",
       "back": "Back",
       "chooseProvider": "Choose a database provider",

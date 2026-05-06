@@ -224,102 +224,127 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   if (supabase) {
     // Decrypt legacy tokens (kept but ignored)
     if (supabase.refreshToken) {
-      const encryptionType = supabase.refreshToken.encryptionType;
-      if (encryptionType) {
-        supabase.refreshToken = {
-          value: decrypt(supabase.refreshToken),
-          encryptionType,
-        };
+      const decrypted = decryptStoredSecret(
+        supabase.refreshToken,
+        "Supabase refresh token",
+      );
+      if (decrypted) {
+        supabase.refreshToken = decrypted;
+      } else {
+        delete supabase.refreshToken;
       }
     }
     if (supabase.accessToken) {
-      const encryptionType = supabase.accessToken.encryptionType;
-      if (encryptionType) {
-        supabase.accessToken = {
-          value: decrypt(supabase.accessToken),
-          encryptionType,
-        };
+      const decrypted = decryptStoredSecret(
+        supabase.accessToken,
+        "Supabase access token",
+      );
+      if (decrypted) {
+        supabase.accessToken = decrypted;
+      } else {
+        delete supabase.accessToken;
       }
     }
     // Decrypt tokens for each organization in the organizations map
     if (supabase.organizations) {
       for (const orgId in supabase.organizations) {
         const org = supabase.organizations[orgId];
-        if (org.accessToken) {
-          const encryptionType = org.accessToken.encryptionType;
-          if (encryptionType) {
-            org.accessToken = {
-              value: decrypt(org.accessToken),
-              encryptionType,
-            };
-          }
+        const accessToken = org.accessToken
+          ? decryptStoredSecret(
+              org.accessToken,
+              `Supabase access token for organization ${orgId}`,
+            )
+          : undefined;
+        const refreshToken = org.refreshToken
+          ? decryptStoredSecret(
+              org.refreshToken,
+              `Supabase refresh token for organization ${orgId}`,
+            )
+          : undefined;
+
+        if (!accessToken || !refreshToken) {
+          delete supabase.organizations[orgId];
+          continue;
         }
-        if (org.refreshToken) {
-          const encryptionType = org.refreshToken.encryptionType;
-          if (encryptionType) {
-            org.refreshToken = {
-              value: decrypt(org.refreshToken),
-              encryptionType,
-            };
-          }
-        }
+
+        org.accessToken = accessToken;
+        org.refreshToken = refreshToken;
       }
     }
   }
   const neon = combinedSettings.neon;
   if (neon) {
     if (neon.refreshToken) {
-      const encryptionType = neon.refreshToken.encryptionType;
-      if (encryptionType) {
-        neon.refreshToken = {
-          value: decrypt(neon.refreshToken),
-          encryptionType,
-        };
+      const decrypted = decryptStoredSecret(
+        neon.refreshToken,
+        "Neon refresh token",
+      );
+      if (decrypted) {
+        neon.refreshToken = decrypted;
+      } else {
+        delete neon.refreshToken;
       }
     }
     if (neon.accessToken) {
-      const encryptionType = neon.accessToken.encryptionType;
-      if (encryptionType) {
-        neon.accessToken = {
-          value: decrypt(neon.accessToken),
-          encryptionType,
-        };
+      const decrypted = decryptStoredSecret(
+        neon.accessToken,
+        "Neon access token",
+      );
+      if (decrypted) {
+        neon.accessToken = decrypted;
+      } else {
+        delete neon.accessToken;
       }
     }
   }
   if (combinedSettings.githubAccessToken) {
-    const encryptionType = combinedSettings.githubAccessToken.encryptionType;
-    combinedSettings.githubAccessToken = {
-      value: decrypt(combinedSettings.githubAccessToken),
-      encryptionType,
-    };
+    const decrypted = decryptStoredSecret(
+      combinedSettings.githubAccessToken,
+      "GitHub access token",
+    );
+    if (decrypted) {
+      combinedSettings.githubAccessToken = decrypted;
+    } else {
+      delete combinedSettings.githubAccessToken;
+    }
   }
   if (combinedSettings.vercelAccessToken) {
-    const encryptionType = combinedSettings.vercelAccessToken.encryptionType;
-    combinedSettings.vercelAccessToken = {
-      value: decrypt(combinedSettings.vercelAccessToken),
-      encryptionType,
-    };
+    const decrypted = decryptStoredSecret(
+      combinedSettings.vercelAccessToken,
+      "Vercel access token",
+    );
+    if (decrypted) {
+      combinedSettings.vercelAccessToken = decrypted;
+    } else {
+      delete combinedSettings.vercelAccessToken;
+    }
   }
   for (const provider in combinedSettings.providerSettings) {
     if (combinedSettings.providerSettings[provider].apiKey) {
-      const encryptionType =
-        combinedSettings.providerSettings[provider].apiKey.encryptionType;
-      combinedSettings.providerSettings[provider].apiKey = {
-        value: decrypt(combinedSettings.providerSettings[provider].apiKey),
-        encryptionType,
-      };
+      const decrypted = decryptStoredSecret(
+        combinedSettings.providerSettings[provider].apiKey,
+        `${provider} API key`,
+      );
+      if (decrypted) {
+        combinedSettings.providerSettings[provider].apiKey = decrypted;
+      } else {
+        delete combinedSettings.providerSettings[provider].apiKey;
+      }
     }
     // Decrypt Vertex service account key if present
     const v = combinedSettings.providerSettings[
       provider
     ] as VertexProviderSetting;
     if (provider === "vertex" && v?.serviceAccountKey) {
-      const encryptionType = v.serviceAccountKey.encryptionType;
-      v.serviceAccountKey = {
-        value: decrypt(v.serviceAccountKey),
-        encryptionType,
-      };
+      const decrypted = decryptStoredSecret(
+        v.serviceAccountKey,
+        "Vertex service account key",
+      );
+      if (decrypted) {
+        v.serviceAccountKey = decrypted;
+      } else {
+        delete v.serviceAccountKey;
+      }
     }
   }
 
@@ -333,6 +358,29 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   const migratedSettings = migrateStoredSettings(storedSettings);
   // Validate the migrated settings against the active schema
   return UserSettingsSchema.parse(migratedSettings);
+}
+
+function decryptStoredSecret(data: Secret, label: string): Secret | undefined {
+  try {
+    const encryptionType = data.encryptionType;
+    return {
+      value: decrypt(data),
+      encryptionType,
+    };
+  } catch (error) {
+    if (isSafeStorageNotReadyError(error)) {
+      throw error;
+    }
+    logger.warn(`Could not decrypt ${label}; ignoring stored secret.`, error);
+    return undefined;
+  }
+}
+
+function isSafeStorageNotReadyError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("safeStorage cannot be used before app is ready")
+  );
 }
 
 function readSettingsForWrite(filePath: string): {

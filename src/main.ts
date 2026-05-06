@@ -54,12 +54,14 @@ import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
+import { createDeepLinkQueue } from "./main/deep_link_queue";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
 log.scope.labelPadding = false;
 
 const logger = log.scope("main");
+const deepLinkQueue = createDeepLinkQueue(handleDeepLinkReturn);
 
 // Load environment variables from .env file
 dotenv.config();
@@ -413,6 +415,8 @@ const createWindow = () => {
       }
     }
 
+    deepLinkQueue.markReady();
+
     // Send force-close once after the correct load
     if (pendingCrashDetected && !forceCloseMessageSent) {
       forceCloseMessageSent = true;
@@ -606,7 +610,7 @@ protocol.registerSchemesAsPrivileged([
 // Deep link handling still works via the 'open-url' event registered below.
 // The 'second-instance' handler is intentionally omitted since it requires the singleton lock.
 if (IS_TEST_BUILD) {
-  app.whenReady().then(onReady);
+  startAppWhenReady();
 } else {
   const gotTheLock = app.requestSingleInstanceLock();
 
@@ -622,17 +626,21 @@ if (IS_TEST_BUILD) {
       // the commandLine is array of strings in which last element is deep link url
       const url = commandLine.at(-1);
       if (url) {
-        handleDeepLinkReturn(url);
+        deepLinkQueue.handle(url);
       }
     });
-    app.whenReady().then(onReady);
+    startAppWhenReady();
   }
 }
 
 // Handle the protocol. In this case, we choose to show an Error Box.
 app.on("open-url", (event, url) => {
-  handleDeepLinkReturn(url);
+  deepLinkQueue.handle(url);
 });
+
+function startAppWhenReady() {
+  app.whenReady().then(onReady);
+}
 
 async function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"

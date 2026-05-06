@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Terminal,
   Database,
+  Loader2,
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -320,6 +321,7 @@ const IntegrationSetupSection = () => {
   const setPendingContinuationMap = useSetAtom(pendingContinuationProviderAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { app } = useLoadApp(selectedAppId);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pendingIntegration =
     chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
@@ -346,7 +348,8 @@ const IntegrationSetupSection = () => {
       : t("integrations.databaseSetup.providers.neon.name");
 
   const handleContinueClick = async () => {
-    if (chatId == null || !canContinue) return;
+    if (chatId == null || !canContinue || isSubmitting) return;
+    setIsSubmitting(true);
     // Await the IPC: if it fails (e.g. webContents destroyed during nav, or a
     // serialization error) the backend's waitForIntegrationResponse promise
     // would otherwise hang to its 30-min timeout while the UI moves on as if
@@ -363,6 +366,7 @@ const IntegrationSetupSection = () => {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      setIsSubmitting(false);
       return;
     }
     setPendingIntegrationMap((prev) => {
@@ -402,12 +406,19 @@ const IntegrationSetupSection = () => {
           )}
           <Button
             onClick={handleContinueClick}
-            disabled={!canContinue}
+            disabled={!canContinue || isSubmitting}
             className="w-full"
             size="sm"
             data-testid="integration-setup-continue-button"
           >
-            {t("integrations.databaseSetup.continue")}
+            {isSubmitting ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                {t("integrations.databaseSetup.continuing")}
+              </>
+            ) : (
+              t("integrations.databaseSetup.continue")
+            )}
           </Button>
           {!canContinue && (
             <p className="text-xs text-muted-foreground text-center">

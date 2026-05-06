@@ -625,8 +625,6 @@
       "chooseProvider": "Choose a database provider",
       "configureInPanelTitle": "Finish setup in the Configure panel",
       "configureInPanelDescription": "Complete the {{provider}} setup in the panel on the right, then come back here.",
-      "setUpProvider": "Set up {{provider}}",
-      "setUpDatabase": "Set up database",
       "experimental": "Experimental",
       "providers": {
         "supabase": {

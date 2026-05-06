@@ -1,23 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { pendingIntegrationAtom } from "@/atoms/planAtoms";
-import { useAtom, useAtomValue } from "jotai";
+import {
+  pendingContinuationProviderAtom,
+  pendingIntegrationAtom,
+} from "@/atoms/planAtoms";
+import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useTranslation } from "react-i18next";
 import { isNextJsProject } from "@/lib/framework_constants";
-import { ArrowLeft, CheckCircle2, Database, ExternalLink } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  Database,
+  ExternalLink,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 import { ipc } from "@/ipc/types";
-import { planClient } from "@/ipc/types/plan";
-import { SupabaseConnector } from "@/components/SupabaseConnector";
-import { NeonConnector } from "@/components/NeonConnector";
 
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
@@ -34,9 +40,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
     pendingIntegrationAtom,
   );
+  const [pendingContinuationMap, setPendingContinuationMap] = useAtom(
+    pendingContinuationProviderAtom,
+  );
+  const setPreviewMode = useSetAtom(previewModeAtom);
+  const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const pendingIntegration =
     chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
-  const { app, refreshApp } = useLoadApp(appId);
+  const { app } = useLoadApp(appId);
   const { projectInfo, isLoadingBranches } = useNeon(appId);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const isNextJs = isNextJsProject({
@@ -47,12 +58,11 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const [selectedProvider, setSelectedProvider] = useState<
     "neon" | "supabase" | null
   >(requestedProvider ?? pendingIntegration?.provider ?? "supabase");
-  const [stepOverride, setStepOverride] = useState<
-    "select" | "configure" | null
-  >(null);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [pendingContinuationProvider, setPendingContinuationProvider] =
-    useState<"supabase" | "neon" | null>(null);
+  // True after the user clicks Next: the chat card collapses to a "finish in
+  // the right panel" message with a Back button. Local-only — if the user
+  // navigates between chats and returns, they restart from selection (which
+  // is harmless: their previous choice is still pre-selected).
+  const [inPanelMode, setInPanelMode] = useState(false);
   const isStreamingMap = useAtomValue(isStreamingByIdAtom);
   const isStreaming = chatId != null && isStreamingMap.get(chatId) === true;
 
@@ -122,7 +132,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
         : (currentIndex - 1 + buttons.length) % buttons.length;
 
     buttons[nextIndex].focus();
-    const providerId = displayedProviders[nextIndex]?.id;
+    const providerId = availableProviders[nextIndex]?.id;
     if (providerId) setSelectedProvider(providerId);
   };
 
@@ -147,65 +157,68 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     isLoadingBranches &&
     !projectInfo?.projectName;
 
-  const clearPendingForChat = () => {
-    if (chatId == null) return;
+  const handleNextClick = () => {
+    if (!effectiveSelectedProvider || chatId == null || !pendingIntegration)
+      return;
+    // Persist the chosen provider on the pending integration so the Configure
+    // panel knows which connector to render. The tool may have left provider
+    // unset when it allowed the user to pick.
     setPendingIntegrationMap((prev) => {
+      const existing = prev.get(chatId);
+      if (!existing) return prev;
+      if (existing.provider === effectiveSelectedProvider) return prev;
+      const next = new Map(prev);
+      next.set(chatId, { ...existing, provider: effectiveSelectedProvider });
+      return next;
+    });
+    // Surface the right-sidebar Configure tab where the integration setup now lives.
+    setPreviewMode("configure");
+    setIsPreviewOpen(true);
+    setInPanelMode(true);
+  };
+
+  const handleBackClick = () => {
+    setInPanelMode(false);
+    setSelectedProvider(null);
+    // Drop the chosen provider from the pending integration so the Configure
+    // panel collapses and the radios reopen with no preselection. (The
+    // tool-locked provider, if any, is still preserved via `requestedProvider`
+    // and continues to constrain `availableProviders`.)
+    if (chatId != null) {
+      setPendingIntegrationMap((prev) => {
+        const existing = prev.get(chatId);
+        if (!existing || existing.provider === undefined) return prev;
+        const next = new Map(prev);
+        next.set(chatId, { ...existing, provider: undefined });
+        return next;
+      });
+    }
+  };
+
+  // Auto-send the continuation message once the panel signals completion
+  // (via pendingContinuationProviderAtom) and the current stream finishes.
+  const pendingContinuationProvider =
+    chatId != null ? pendingContinuationMap.get(chatId) : undefined;
+  useEffect(() => {
+    if (!pendingContinuationProvider || isStreaming || chatId == null) return;
+    const provider = pendingContinuationProvider;
+    setPendingContinuationMap((prev) => {
       if (!prev.has(chatId)) return prev;
       const next = new Map(prev);
       next.delete(chatId);
       return next;
     });
-  };
-
-  const handleBackClick = async () => {
-    if (completedProvider && appId != null) {
-      setIsDisconnecting(true);
-      try {
-        if (completedProvider === "supabase") {
-          await ipc.supabase.unsetAppProject({ app: appId });
-        } else {
-          await ipc.neon.unsetAppProject({ appId });
-        }
-        await refreshApp();
-      } catch (error) {
-        console.error("Failed to disconnect project:", error);
-        toast.error(
-          completedProvider === "supabase"
-            ? t("integrations.supabase.failedDisconnectProject")
-            : t("integrations.neon.failedDisconnectProject"),
-        );
-        setIsDisconnecting(false);
-        return;
-      }
-      setIsDisconnecting(false);
-    }
-    setStepOverride("select");
-  };
-
-  const handleContinueClick = () => {
-    if (!pendingIntegration || !completedProvider || chatId == null) return;
-    planClient.respondToIntegration({
-      requestId: pendingIntegration.requestId,
-      provider: completedProvider,
-      completed: true,
-    });
-    clearPendingForChat();
-    // The current stream ends shortly after respondToIntegration resolves the
-    // backend wait (the agent's stopWhen fires on the add_integration tool).
-    // Defer the continuation message until that stream finishes — the effect
-    // below fires it when isStreaming transitions to false.
-    setPendingContinuationProvider(completedProvider);
-  };
-
-  useEffect(() => {
-    if (!pendingContinuationProvider || isStreaming || chatId == null) return;
-    const provider = pendingContinuationProvider;
-    setPendingContinuationProvider(null);
     streamMessage({
       chatId,
       prompt: `Continue. I have completed the ${provider} integration.`,
     });
-  }, [pendingContinuationProvider, isStreaming, chatId, streamMessage]);
+  }, [
+    pendingContinuationProvider,
+    isStreaming,
+    chatId,
+    streamMessage,
+    setPendingContinuationMap,
+  ]);
 
   // Final completed view: no active pending request and the app has a linked
   // provider. This covers historical replays of completed chats too.
@@ -242,21 +255,8 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   // If there is no pending request for this chat and no completion, this is a
   // stale/historical render — show the radios in a read-only display state with
-  // no Continue button (nothing to resolve).
+  // no Next button (nothing to resolve).
   const isInteractive = !!pendingIntegration;
-  const autoStep: "select" | "configure" =
-    availableProviders.length === 1 || !!completedProvider
-      ? "configure"
-      : "select";
-  const showConnectorStep = (stepOverride ?? autoStep) === "configure";
-  const inlineConnectorProvider =
-    isInteractive && showConnectorStep ? effectiveSelectedProvider : null;
-  const displayedProviders =
-    showConnectorStep && effectiveSelectedProvider
-      ? availableProviders.filter((p) => p.id === effectiveSelectedProvider)
-      : availableProviders;
-  const canGoBack =
-    showConnectorStep && isInteractive && availableProviders.length > 1;
 
   return (
     <DyadCard accentColor="blue">
@@ -272,142 +272,117 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
         {children && (
           <div className="text-xs text-muted-foreground mb-3">{children}</div>
         )}
-        {!(isInteractive && showConnectorStep) && (
-          <div
-            ref={radioGroupRef}
-            role="radiogroup"
-            aria-label={t("integrations.databaseSetup.chooseProvider")}
-            onKeyDown={handleRadioKeyDown}
-            className={`grid ${displayedProviders.length > 1 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
-          >
-            {displayedProviders.map((option, index) => {
-            const isSelected = effectiveSelectedProvider === option.id;
-            const disableSwitch =
-              !isInteractive ||
-              !!completedProvider ||
-              availableProviders.length === 1 ||
-              showConnectorStep;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                tabIndex={
-                  isSelected || (!effectiveSelectedProvider && index === 0)
-                    ? 0
-                    : -1
-                }
-                onClick={() => {
-                  if (disableSwitch) return;
-                  setSelectedProvider(option.id);
-                }}
-                aria-checked={isSelected}
-                aria-disabled={disableSwitch}
-                className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                  isSelected
-                    ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
-                    : "border-border hover:border-blue-400"
-                } ${disableSwitch ? "cursor-default" : "cursor-pointer"}`}
-              >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-foreground">
-                    {option.name}
-                  </span>
-                  {option.experimental && (
-                    <DyadBadge color="amber">
-                      {t("integrations.databaseSetup.experimental")}
-                    </DyadBadge>
-                  )}
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      ipc.system.openExternalUrl(option.url);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        ipc.system.openExternalUrl(option.url);
-                      }
-                    }}
-                    tabIndex={0}
-                    className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
-                    role="link"
-                    aria-label={`Visit ${option.name} website`}
-                  >
-                    <ExternalLink size={12} />
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-snug">
-                  {option.description}
-                </p>
-              </button>
-            );
-          })}
-          </div>
-        )}
-
-        {inlineConnectorProvider && appId != null && (
-          <div className="mt-4 rounded-lg border border-border bg-background/40 p-3">
-            {inlineConnectorProvider === "supabase" ? (
-              <SupabaseConnector appId={appId} />
-            ) : (
-              <NeonConnector appId={appId} />
-            )}
-          </div>
-        )}
-
-        {isInteractive && completedProvider && (
-          <div className="mt-3 flex items-center gap-2 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-800 dark:bg-green-950/40 dark:text-green-200">
-            <CheckCircle2 size={14} />
-            <span>
-              {t("integrations.databaseSetup.connectedToProject", {
-                provider: completedProviderName,
-              })}{" "}
-              {showIntegrationLabelSkeleton ? (
-                <Skeleton className="inline-block h-5 w-24 align-middle rounded bg-green-100/80 dark:bg-green-900/50" />
-              ) : (
-                <span className="font-mono font-medium">
-                  {integrationLabel ?? "—"}
+        {isInteractive && inPanelMode && effectiveSelectedProvider ? (
+          <>
+            <div className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+              <div className="flex items-center gap-2 font-medium">
+                <ArrowRight size={14} />
+                <span>
+                  {t("integrations.databaseSetup.configureInPanelTitle")}
                 </span>
-              )}
-            </span>
-          </div>
-        )}
-
-        {isInteractive && !showConnectorStep && (
-          <Button
-            onClick={() => setStepOverride("configure")}
-            disabled={!effectiveSelectedProvider}
-            className="w-full mt-3"
-            size="sm"
-          >
-            {t("integrations.databaseSetup.next")}
-          </Button>
-        )}
-
-        {isInteractive && showConnectorStep && (
-          <div className="mt-3 flex gap-2">
-            {canGoBack && (
-              <Button
-                onClick={handleBackClick}
-                disabled={isDisconnecting}
-                variant="outline"
-                size="sm"
-              >
-                <ArrowLeft size={14} />
-                {t("integrations.databaseSetup.back")}
-              </Button>
-            )}
+              </div>
+              <p className="mt-1 text-xs text-blue-800/90 dark:text-blue-200/80">
+                {t("integrations.databaseSetup.configureInPanelDescription", {
+                  provider:
+                    effectiveSelectedProvider === "supabase"
+                      ? t("integrations.databaseSetup.providers.supabase.name")
+                      : t("integrations.databaseSetup.providers.neon.name"),
+                })}
+              </p>
+            </div>
             <Button
-              onClick={handleContinueClick}
-              disabled={!completedProvider}
-              className="flex-1"
+              onClick={handleBackClick}
+              variant="outline"
+              className="w-full mt-3"
               size="sm"
             >
-              {t("integrations.databaseSetup.continue")}
+              <ArrowLeft size={14} />
+              {t("integrations.databaseSetup.back")}
             </Button>
-          </div>
+          </>
+        ) : (
+          <>
+            <div
+              ref={radioGroupRef}
+              role="radiogroup"
+              aria-label={t("integrations.databaseSetup.chooseProvider")}
+              onKeyDown={handleRadioKeyDown}
+              className={`grid ${availableProviders.length > 1 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
+            >
+              {availableProviders.map((option, index) => {
+                const isSelected = effectiveSelectedProvider === option.id;
+                const disableSwitch =
+                  !isInteractive || availableProviders.length === 1;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    tabIndex={
+                      isSelected || (!effectiveSelectedProvider && index === 0)
+                        ? 0
+                        : -1
+                    }
+                    onClick={() => {
+                      if (disableSwitch) return;
+                      setSelectedProvider(option.id);
+                    }}
+                    aria-checked={isSelected}
+                    aria-disabled={disableSwitch}
+                    className={`flex flex-col items-start gap-2 rounded-lg border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
+                        : "border-border hover:border-blue-400"
+                    } ${disableSwitch ? "cursor-default" : "cursor-pointer"}`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">
+                        {option.name}
+                      </span>
+                      {option.experimental && (
+                        <DyadBadge color="amber">
+                          {t("integrations.databaseSetup.experimental")}
+                        </DyadBadge>
+                      )}
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          ipc.system.openExternalUrl(option.url);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            ipc.system.openExternalUrl(option.url);
+                          }
+                        }}
+                        tabIndex={0}
+                        className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                        role="link"
+                        aria-label={`Visit ${option.name} website`}
+                      >
+                        <ExternalLink size={12} />
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-snug">
+                      {option.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {isInteractive && (
+              <Button
+                onClick={handleNextClick}
+                disabled={!effectiveSelectedProvider}
+                className="w-full mt-3"
+                size="sm"
+              >
+                {t("integrations.databaseSetup.next")}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </DyadCard>

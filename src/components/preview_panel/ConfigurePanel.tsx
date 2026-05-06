@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,12 +19,24 @@ import {
   HelpCircle,
   ArrowRight,
   Terminal,
+  Database,
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import {
+  pendingContinuationProviderAtom,
+  pendingIntegrationAtom,
+} from "@/atoms/planAtoms";
 import { ipc } from "@/ipc/types";
+import { planClient } from "@/ipc/types/plan";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
+import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { NeonConnector } from "@/components/NeonConnector";
+import { useLoadApp } from "@/hooks/useLoadApp";
+import { getCompletedIntegrationProvider } from "@/components/chat/dyadAddIntegrationUtils";
+import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
 
 const AppCommandsTitle = () => (
@@ -298,6 +310,98 @@ const EnvironmentVariablesTitle = () => (
   </div>
 );
 
+const IntegrationSetupSection = () => {
+  const { t } = useTranslation("home");
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
+    pendingIntegrationAtom,
+  );
+  const setPendingContinuationMap = useSetAtom(pendingContinuationProviderAtom);
+  const setPreviewMode = useSetAtom(previewModeAtom);
+  const { app } = useLoadApp(selectedAppId);
+
+  const pendingIntegration =
+    chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
+  const provider = pendingIntegration?.provider;
+
+  // Scroll the section into view whenever a pending integration with a
+  // chosen provider becomes visible — so the user lands directly on the
+  // connector instead of having to scroll past env vars / app commands.
+  const sectionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!provider) return;
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [provider, chatId]);
+
+  if (!pendingIntegration || selectedAppId == null) return null;
+  // Until the chat card pushes a chosen provider, there's nothing to render.
+  if (!provider) return null;
+
+  const completedProvider = getCompletedIntegrationProvider(app);
+  const canContinue = completedProvider === provider;
+  const providerName =
+    provider === "supabase"
+      ? t("integrations.databaseSetup.providers.supabase.name")
+      : t("integrations.databaseSetup.providers.neon.name");
+
+  const handleContinueClick = () => {
+    if (chatId == null || !canContinue) return;
+    planClient.respondToIntegration({
+      requestId: pendingIntegration.requestId,
+      provider,
+      completed: true,
+    });
+    setPendingIntegrationMap((prev) => {
+      if (!prev.has(chatId)) return prev;
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
+    setPendingContinuationMap((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, provider);
+      return next;
+    });
+    // Switch the right sidebar back to the preview so the user sees the
+    // resumed conversation rather than a now-empty configure panel.
+    setPreviewMode("preview");
+  };
+
+  return (
+    <div ref={sectionRef}>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <div className="flex items-center gap-2">
+              <Database size={18} className="text-muted-foreground" />
+              <span className="text-lg font-semibold">
+                {t("integrations.databaseSetup.badge")}: {providerName}
+              </span>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {provider === "supabase" ? (
+            <SupabaseConnector appId={selectedAppId} />
+          ) : (
+            <NeonConnector appId={selectedAppId} />
+          )}
+          <Button
+            onClick={handleContinueClick}
+            disabled={!canContinue}
+            className="w-full"
+            size="sm"
+            data-testid="integration-setup-continue-button"
+          >
+            {t("integrations.databaseSetup.continue")}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 export const ConfigurePanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const queryClient = useQueryClient();
@@ -420,52 +524,28 @@ export const ConfigurePanel = () => {
     setNewValue("");
   }, []);
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="p-4 space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <EnvironmentVariablesTitle />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-muted-foreground">
-                Loading environment variables...
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+  // Render env vars card content based on current state
+  const envVarsCardContent = isLoading ? (
+    <div className="text-center py-8">
+      <div className="text-sm text-muted-foreground">
+        Loading environment variables...
       </div>
-    );
-  }
-
-  // Show error state
-  if (error) {
-    return (
-      <div className="p-4 space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <EnvironmentVariablesTitle />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-red-500">
-                Error loading environment variables: {error.message}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+    </div>
+  ) : error ? (
+    <div className="text-center py-8">
+      <div className="text-sm text-red-500">
+        Error loading environment variables: {error.message}
       </div>
-    );
-  }
+    </div>
+  ) : !selectedAppId ? (
+    <div className="text-center py-8">
+      <div className="text-sm text-muted-foreground">
+        Select an app to manage environment variables
+      </div>
+    </div>
+  ) : null;
 
-  // Show no app selected state
-  if (!selectedAppId) {
+  if (envVarsCardContent) {
     return (
       <div className="p-4 space-y-4">
         <Card>
@@ -474,14 +554,9 @@ export const ConfigurePanel = () => {
               <EnvironmentVariablesTitle />
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-muted-foreground">
-                Select an app to manage environment variables
-              </div>
-            </div>
-          </CardContent>
+          <CardContent>{envVarsCardContent}</CardContent>
         </Card>
+        <IntegrationSetupSection />
       </div>
     );
   }
@@ -652,6 +727,9 @@ export const ConfigurePanel = () => {
 
       {/* App Commands Configuration */}
       <AppCommandsSection selectedAppId={selectedAppId} />
+
+      {/* Integration setup (Supabase / Neon) — only when chat has a pending integration */}
+      <IntegrationSetupSection />
 
       {/* Neon Database Configuration */}
       <div className="grid grid-cols-1 gap-6">

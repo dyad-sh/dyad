@@ -619,6 +619,8 @@
       "next": "Próximo",
       "back": "Voltar",
       "chooseProvider": "Escolha um provedor de banco de dados",
+      "configureInPanelTitle": "Conclua a configuração no painel Configurar",
+      "configureInPanelDescription": "Conclua a configuração do {{provider}} no painel à direita e depois volte aqui.",
       "setUpProvider": "Configurar {{provider}}",
       "setUpDatabase": "Configurar banco de dados",
       "experimental": "Experimental",

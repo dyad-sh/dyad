@@ -32,11 +32,11 @@ import { cn } from "@/lib/utils";
 
 const PRIMARY_MODES: PreviewMode[] = [
   "preview",
-  "problems",
   "code",
   "configure",
+  "publish",
 ];
-const OVERFLOW_MODES: PreviewMode[] = ["security", "publish"];
+const OVERFLOW_MODES: PreviewMode[] = ["problems", "security"];
 const COMPACT_TOOLBAR_THRESHOLD = 700;
 
 interface ModeButtonsProps {
@@ -124,9 +124,9 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
               aria-label={meta.label}
               aria-pressed={isActive}
               className={cn(
-                "no-app-region-drag cursor-pointer relative flex items-center justify-center p-1.5 rounded-md transition-colors",
+                "no-app-region-drag cursor-pointer relative flex items-center justify-center gap-1.5 p-1.5 rounded-md transition-colors",
                 isActive
-                  ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                  ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-2"
                   : "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
               )}
               onClick={() => selectPanel(mode)}
@@ -134,6 +134,9 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
           }
         >
           {meta.icon}
+          {isActive && (
+            <span className="text-sm font-medium">{meta.label}</span>
+          )}
           {badge}
         </TooltipTrigger>
         <TooltipContent>{meta.label}</TooltipContent>

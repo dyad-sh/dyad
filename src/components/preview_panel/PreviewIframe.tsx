@@ -1500,7 +1500,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </div>
           </div>
 
-          {/* Address Bar - white pill with device mode, green status dot, refresh + external inside */}
+          {/* Address Bar - white pill with device mode, refresh + external inside */}
           <div className="relative w-1/2 min-w-20 flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
             <Popover open={isDevicePopoverOpen} modal={false}>
               <Tooltip>
@@ -1585,15 +1585,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </Popover>
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center flex-1 min-w-0 py-1 pl-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
-                <span
-                  className={cn(
-                    "flex-shrink-0 mr-2 h-2 w-2 rounded-full",
-                    appUrl && !errorMessage
-                      ? "bg-green-500"
-                      : "bg-gray-400 dark:bg-gray-600",
-                  )}
-                  data-testid="preview-address-bar-status"
-                />
                 <span
                   className="truncate flex-1 min-w-0 text-left"
                   data-testid="preview-address-bar-path"
@@ -1692,8 +1683,27 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </Tooltip>
           </div>
 
-          {/* Right action group - editing tools, panel toggle, restart */}
+          {/* Right action group - restart, editing tools, panel toggle */}
           <div className="flex items-center space-x-1 ml-auto pl-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onRestart}
+                    data-testid="preview-restart-button"
+                    aria-label={
+                      isCloudMode ? "Restart Cloud Sandbox" : "Restart"
+                    }
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                  />
+                }
+              >
+                <Power size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1765,25 +1775,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipTrigger>
               <TooltipContent>
                 {isChatPanelHidden ? "Show chat" : "Hide chat"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={onRestart}
-                    data-testid="preview-restart-button"
-                    aria-label={
-                      isCloudMode ? "Restart Cloud Sandbox" : "Restart"
-                    }
-                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
-                  />
-                }
-              >
-                <Power size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
               </TooltipContent>
             </Tooltip>
           </div>

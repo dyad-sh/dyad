@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 
 test("should connect to GitHub using device flow", async ({ po }) => {
   await po.setUp();
@@ -17,7 +17,7 @@ test("should connect to GitHub using device flow", async ({ po }) => {
   ).toBeVisible();
 
   // Verify the "Set up your GitHub repo" section appears
-  await expect(po.githubConnector.getSetupYourGitHubRepoButton()).toBeVisible();
+  await po.githubConnector.waitForSetupRepo();
 });
 
 test("create and sync to new repo", async ({ po }) => {
@@ -26,10 +26,12 @@ test("create and sync to new repo", async ({ po }) => {
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
 
   // Verify "Create new repo" is selected by default
   await expect(po.githubConnector.getCreateNewRepoModeButton()).toHaveClass(
     /bg-primary/,
+    { timeout: Timeout.MEDIUM },
   );
 
   await po.githubConnector.fillCreateRepoName("test-new-repo");
@@ -63,6 +65,7 @@ test("create and sync to new repo - custom branch", async ({ po }) => {
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
 
   await po.githubConnector.fillCreateRepoName("test-new-repo-custom");
   await po.githubConnector.fillNewRepoBranchName("new-branch");
@@ -92,6 +95,7 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
 
   // Enter a repo name with spaces - GitHub normalizes these to hyphens
   await po.githubConnector.fillCreateRepoName("my new repo");
@@ -124,6 +128,7 @@ test("disconnect from repo", async ({ po }) => {
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
 
   await po.githubConnector.fillCreateRepoName("test-new-repo-disconnect");
   await po.githubConnector.clickCreateRepoButton();
@@ -141,6 +146,7 @@ test("create and sync to existing repo", async ({ po }) => {
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
 
   await po.githubConnector.getConnectToExistingRepoModeButton().click();
 
@@ -160,6 +166,7 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
 
   await po.githubConnector.getConnectToExistingRepoModeButton().click();
 
@@ -184,6 +191,7 @@ test("github clear integration settings", async ({ po }) => {
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
+  await po.githubConnector.waitForSetupRepo();
   await expect(po.githubConnector.getCreateNewRepoModeButton()).toBeVisible();
 
   // Capture settings before disconnecting

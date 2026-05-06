@@ -28,6 +28,12 @@ export class GitHubConnector {
     return this.page.getByRole("button", { name: "Connect to existing repo" });
   }
 
+  async waitForSetupRepo() {
+    await expect(this.getSetupYourGitHubRepoButton()).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
   async clickCreateRepoButton() {
     await this.page.getByRole("button", { name: "Create Repo" }).click();
     await this.waitForSyncToFinish();

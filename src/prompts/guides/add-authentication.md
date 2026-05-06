@@ -219,7 +219,7 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 - Do NOT pass a bare path (`'/api/auth'`) to `createAuthClient`. Use `${window.location.origin}/api/auth`.
 - Do NOT import `BetterAuthReactAdapter` from `@neondatabase/auth`. Use `@neondatabase/auth/react/adapters`.
 - Do NOT call `auth.getSession({ headers })` from server code in a Vite + Nitro project — there is no `auth` instance to call. Read the session by fetching `${NEON_AUTH_BASE_URL}/get-session` directly with the user's cookie.
-- Do NOT import `@neondatabase/auth` or `@neondatabase/serverless` from any file under `src/`.
+- Do NOT import `@neondatabase/serverless` (or any `@neondatabase/auth/next/*` server-only subpath) from any file under `src/`. The browser-safe entry points used by this guide — `@neondatabase/auth` (for `createAuthClient`), `@neondatabase/auth/react`, and `@neondatabase/auth/react/adapters` — ARE allowed in `src/` and are required by the templates below.
 - Do NOT use `createAuthClient(import.meta.env.VITE_NEON_AUTH_URL)` — that exposes the auth URL in the client bundle and bypasses the proxy.
 - Do NOT use Next.js patterns (`'use client'`, `next/navigation`, `app/auth/[path]/page.tsx`, server components, `dynamic = 'force-dynamic'`). This is a Vite + React Router project.
 - Do NOT rely on `NEON_AUTH_COOKIE_SECRET` in this path. The cookie that holds the session is issued and signed by Neon Auth itself; the secret is only used by the Next.js `createNeonAuth` integration to sign an optional `session_data` cache cookie. The proxy approach does not need it.
@@ -434,11 +434,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { NeonAuthUIProvider } from '@neondatabase/auth/react';
 import { authClient } from '@/lib/auth-client';
 
+// Set defaultTheme to match the app's theme: "light", "dark", or "system"
+// if the app uses system-based switching.
 export function AuthProvider({ children }: { children: ReactNode }) {
 const navigate = useNavigate();
 
 return (
-{/* Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching */}
 <NeonAuthUIProvider
 authClient={authClient}
 defaultTheme="light"

@@ -24,8 +24,8 @@ This project has a Nitro server layer for backend API routes. A \`nitro.config.t
 
 Imports come from two different sources:
 
-- \`defineHandler\` is imported from **\`"nitro"\`**.
-- **Every other request/response helper comes from \`"nitro/h3"\`** — Nitro v3 re-exports h3 utilities through that subpath. Common ones: \`readBody\`, \`readValidatedBody\`, \`getQuery\`, \`getRouterParam\`, \`getRouterParams\`, \`createError\`, \`sendError\`, \`setResponseStatus\`, \`getRequestHeaders\`, \`getRequestURL\`, \`setCookie\`, \`getCookie\`, \`deleteCookie\`, \`useRuntimeConfig\`.
+- \`defineHandler\` and \`useRuntimeConfig\` are imported from **\`"nitro"\`**.
+- **Every request/response helper comes from \`"nitro/h3"\`** — Nitro v3 re-exports h3 utilities through that subpath. Common ones: \`readBody\`, \`readValidatedBody\`, \`getQuery\`, \`getRouterParam\`, \`getRouterParams\`, \`createError\`, \`sendError\`, \`setResponseStatus\`, \`getRequestHeaders\`, \`getRequestURL\`, \`setCookie\`, \`getCookie\`, \`deleteCookie\`.
 
 Worked example — \`server/routes/api/todos.post.ts\`:
 

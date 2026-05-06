@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
@@ -45,6 +45,7 @@ export function ChatPanel({
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
+  const store = useStore();
   const { settings } = useSettings();
   const { selectedMode, setChatMode } = useChatMode(chatId);
   const { isQuotaExceeded } = useFreeAgentQuota();
@@ -124,13 +125,22 @@ export function ChatPanel({
       // no-op when no chat
       return;
     }
+    // Skip IPC fetch entirely when streaming: the patch stream carries fresher
+    // content than the throttled DB snapshot, and overwriting would corrupt the
+    // renderer's base for subsequent patches (offset mismatch). onEnd will do
+    // a correct full sync when the stream finishes.
+    // Read via store.get so both checks see the current atom value regardless
+    // of React batching or commit-to-effect timing.
+    if (store.get(isStreamingByIdAtom).get(chatId)) return;
     const chat = await ipc.chat.getChat(chatId);
+    // Re-check after the async fetch: streaming may have started while in flight.
+    if (store.get(isStreamingByIdAtom).get(chatId)) return;
     setMessagesById((prev) => {
       const next = new Map(prev);
       next.set(chatId, chat.messages);
       return next;
     });
-  }, [chatId, setMessagesById]);
+  }, [chatId, setMessagesById, store]); // store is stable; isStreamingById read via store.get at call time
 
   useEffect(() => {
     fetchChatMessages();

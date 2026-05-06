@@ -4,7 +4,7 @@ import type {
   FileAttachment,
   ChatAttachment,
 } from "@/ipc/types";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
@@ -23,6 +23,12 @@ import type { ChatResponseEnd, App, Chat } from "@/ipc/types";
 import type { ChatSummary } from "@/lib/schemas";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
+import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
+import {
+  triggerResync,
+  syncChatFromDb,
+  mergeResyncMessages,
+} from "@/lib/resyncChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast, showWarning } from "@/lib/toast";
@@ -59,6 +65,7 @@ export function useStreamChat({
   const { invalidateChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
 
+  const store = useStore();
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
@@ -221,7 +228,7 @@ export function useStreamChat({
             onChunk: ({
               messages: updatedMessages,
               streamingMessageId,
-              streamingContent,
+              streamingPatch,
               effectiveChatMode,
               chatModeFallbackReason,
             }) => {
@@ -258,22 +265,17 @@ export function useStreamChat({
                 });
               } else if (
                 streamingMessageId !== undefined &&
-                streamingContent !== undefined
+                streamingPatch !== undefined
               ) {
-                // Incremental update: only update the streaming message's content
-                setMessagesById((prev) => {
-                  const existingMessages = prev.get(chatId);
-                  if (!existingMessages) return prev;
-
-                  const next = new Map(prev);
-                  const updated = existingMessages.map((msg) =>
-                    msg.id === streamingMessageId
-                      ? { ...msg, content: streamingContent }
-                      : msg,
-                  );
-                  next.set(chatId, updated);
-                  return next;
-                });
+                const applied = applyStreamingPatch(
+                  setMessagesById,
+                  chatId,
+                  streamingMessageId,
+                  streamingPatch,
+                );
+                if (!applied) {
+                  triggerResync(chatId, setMessagesById, store);
+                }
               }
             },
             onEnd: (response: ChatResponseEnd) => {
@@ -401,11 +403,27 @@ export function useStreamChat({
                       queryKeys.chats.detail({ chatId }),
                       latestChat,
                     );
-                    setMessagesById((prev) => {
-                      const next = new Map(prev);
-                      next.set(chatId, latestChat.messages);
-                      return next;
-                    });
+                    // Guard against a racing new stream that started after
+                    // setIsStreamingById(false) above.
+                    if (!store.get(isStreamingByIdAtom).get(chatId)) {
+                      setMessagesById((prev) => {
+                        const currentMessages = prev.get(chatId);
+                        if (!currentMessages) {
+                          const next = new Map(prev);
+                          next.set(chatId, latestChat.messages);
+                          return next;
+                        }
+                        if (currentMessages.length > latestChat.messages.length)
+                          return prev;
+                        const merged = mergeResyncMessages(
+                          latestChat.messages,
+                          currentMessages,
+                        );
+                        const next = new Map(prev);
+                        next.set(chatId, merged);
+                        return next;
+                      });
+                    }
                   } catch (error) {
                     console.warn(
                       `[CHAT] Failed to refresh latest chat for ${chatId}:`,
@@ -460,6 +478,7 @@ export function useStreamChat({
                 next.set(chatId, false);
                 return next;
               });
+              syncChatFromDb(chatId, setMessagesById, "[CHAT] onError", store);
               invalidateChats();
               refreshApp();
               refreshVersions();
@@ -500,6 +519,7 @@ export function useStreamChat({
       refetchUserBudget,
       settings,
       queryClient,
+      store,
     ],
   );
 

@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import { createTypedHandler } from "./base";
+import { computeStreamingPatch } from "../utils/stream_text_utils";
 import { chatContracts } from "../types/chat";
 import {
   ModelMessage,
@@ -1195,6 +1196,12 @@ This conversation includes one or more image attachments. When the user uploads 
         };
 
         let lastDbSaveAt = 0;
+        // Tracks what was last sent to the renderer so we can emit only the
+        // tail diff. `cleanFullResponse` may retroactively rewrite earlier
+        // bytes inside an in-progress dyad-tag's attribute values, so we
+        // compute the longest common prefix on each send rather than
+        // assuming pure appends.
+        let lastSentContent = "";
 
         const processResponseChunkUpdate = async ({
           fullResponse,
@@ -1214,12 +1221,15 @@ This conversation includes one or more image attachments. When the user uploads 
             lastDbSaveAt = now;
           }
 
-          // Send incremental update with only the streaming message content
-          // instead of the full messages array to reduce IPC overhead
+          const patch = computeStreamingPatch(fullResponse, lastSentContent);
+          lastSentContent = fullResponse;
+          if (!patch) {
+            return fullResponse;
+          }
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
             streamingMessageId: placeholderAssistantMessage.id,
-            streamingContent: fullResponse,
+            streamingPatch: patch,
           });
           return fullResponse;
         };

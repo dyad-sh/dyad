@@ -52,6 +52,7 @@
   "forceCloseDetected": "Force Close Detected",
   "forceCloseDescription": "The app was not closed properly the last time it was running. This could indicate a crash or unexpected termination.",
   "lastKnownState": "Last Known State:",
+  "noDiagnosticData": "No diagnostic data available for this crash.",
   "processMetrics": "Process Metrics",
   "memory": "Memory:",
   "cpu": "CPU:",

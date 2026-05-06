@@ -45,6 +45,12 @@ export function ForceCloseDialog({
             <div className="space-y-4 pt-2 text-muted-foreground">
               <div className="text-base">{t("home:forceCloseDescription")}</div>
 
+              {!performanceData && (
+                <div className="rounded-lg border bg-muted/50 p-4 text-sm">
+                  {t("home:noDiagnosticData")}
+                </div>
+              )}
+
               {performanceData && (
                 <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
                   <div className="font-semibold text-sm text-foreground">

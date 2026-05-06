@@ -30,23 +30,16 @@ export function getChatModeFallbackToastId({
 }
 
 export function showChatModeFallbackToast({
-  reason,
   effectiveMode,
   isPro,
   toastId,
 }: {
-  reason: ChatModeFallbackReason;
   effectiveMode: ChatMode;
   isPro: boolean;
   toastId?: string;
 }) {
   const modeName = getChatModeDisplayName(effectiveMode, isPro);
-  const message =
-    reason === "pro-required"
-      ? `Agent v2 unavailable (Pro required). Using ${modeName} mode.`
-      : reason === "quota-exhausted"
-        ? `Quota exhausted. Using ${modeName} mode.`
-        : `No provider configured. Using ${modeName} mode.`;
+  const message = `Quota exhausted. Using ${modeName} mode.`;
 
   toast.warning(message, {
     id: toastId,

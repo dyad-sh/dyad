@@ -1,7 +1,5 @@
-import { isOpenAIOrAnthropicSetup } from "./providerUtils";
 import {
   getEffectiveDefaultChatMode,
-  hasDyadProKey,
   isDyadProEnabled,
   migrateStoredChatMode,
   StoredChatModeSchema,
@@ -9,10 +7,7 @@ import {
   type UserSettings,
 } from "./schemas";
 
-export type ChatModeFallbackReason =
-  | "pro-required"
-  | "quota-exhausted"
-  | "no-provider";
+export type ChatModeFallbackReason = "quota-exhausted";
 
 export interface ChatModeResolution {
   mode: ChatMode;
@@ -37,12 +32,10 @@ export function normalizeStoredChatMode(
 export function getUnavailableChatModeReason({
   mode,
   settings,
-  envVars,
   freeAgentQuotaAvailable,
 }: {
   mode: ChatMode | null | undefined;
   settings: UserSettings;
-  envVars: Record<string, string | undefined>;
   freeAgentQuotaAvailable?: boolean;
 }): ChatModeFallbackReason | undefined {
   if (mode !== "local-agent") {
@@ -53,19 +46,11 @@ export function getUnavailableChatModeReason({
     return undefined;
   }
 
-  if (isOpenAIOrAnthropicSetup(settings, envVars)) {
-    if (freeAgentQuotaAvailable === false) {
-      return "quota-exhausted";
-    }
-
-    return undefined;
+  if (freeAgentQuotaAvailable === false) {
+    return "quota-exhausted";
   }
 
-  if (settings.enableDyadPro === true && !hasDyadProKey(settings)) {
-    return "pro-required";
-  }
-
-  return "no-provider";
+  return undefined;
 }
 
 export function resolveChatMode({
@@ -93,7 +78,6 @@ export function resolveChatMode({
   const fallbackReason = getUnavailableChatModeReason({
     mode: chatMode,
     settings,
-    envVars,
     freeAgentQuotaAvailable,
   });
 

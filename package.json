@@ -186,7 +186,7 @@
     }
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24 <26"
   },
   "productName": "dyad"
 }

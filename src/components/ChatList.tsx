@@ -9,7 +9,7 @@ import {
   Trash2,
   Edit3,
   Search,
-  X,
+  ArrowLeft,
 } from "lucide-react";
 import { useAtom, useSetAtom } from "jotai";
 import {
@@ -209,7 +209,7 @@ export function ChatList({
             className="mx-2 mb-2 flex items-center justify-start gap-2"
             data-testid="view-all-apps-button"
           >
-            <X size={16} />
+            <ArrowLeft size={16} />
             <span>{t("viewAllApps")}</span>
           </Button>
         )}

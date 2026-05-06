@@ -44,10 +44,32 @@ export class Navigation {
     await expect(appsLink).toBeVisible({ timeout: 60000 });
     await appsLink.click();
 
+    const appList = this.page.getByTestId("app-list-container");
     const chatList = this.page.getByTestId("chat-list-container");
+    await expect(async () => {
+      expect((await chatList.isVisible()) || (await appList.isVisible())).toBe(
+        true,
+      );
+    }).toPass({ timeout: 60000 });
+
+    if (await appList.isVisible()) {
+      const appListItem = this.page.locator('[data-testid^="app-list-item-"]');
+      await expect(appListItem.first()).toBeVisible({ timeout: 60000 });
+      await appListItem.first().click();
+    }
+
     await expect(chatList).toBeVisible({ timeout: 60000 });
 
     const existingChat = this.page.locator('[data-testid^="chat-list-item-"]');
+    const emptyChatList = this.page.getByText("No chats found", {
+      exact: true,
+    });
+    await expect(async () => {
+      expect(
+        (await existingChat.count()) > 0 || (await emptyChatList.isVisible()),
+      ).toBe(true);
+    }).toPass({ timeout: 60000 });
+
     if ((await existingChat.count()) > 0) {
       await existingChat.first().click();
       await expect(this.page.getByTestId("chat-input-container")).toBeVisible({

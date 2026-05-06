@@ -15,11 +15,12 @@ import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { usePlanImplementation } from "@/hooks/usePlanImplementation";
+import { ipc } from "@/ipc/types";
 
 const DEFAULT_CHAT_PANEL_SIZE = 50;
 
 export default function ChatPage() {
-  const { id: chatId } = useSearch({ from: "/chat" });
+  const { id: chatId, appId: routeAppId } = useSearch({ from: "/chat" });
   const navigate = useNavigate();
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
@@ -30,7 +31,6 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
-  const { chats: allChats, loading: allChatsLoading } = useChats(null);
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
 
@@ -56,7 +56,11 @@ export default function ChatPage() {
       // Not a real navigation, just a redirect, when the user navigates to /chat
       // without a chatId, we redirect to the first chat
       setSelectedAppId(chats[0].appId);
-      navigate({ to: "/chat", search: { id: chats[0].id }, replace: true });
+      navigate({
+        to: "/chat",
+        search: { id: chats[0].id, appId: chats[0].appId },
+        replace: true,
+      });
       return;
     }
 
@@ -68,15 +72,32 @@ export default function ChatPage() {
   }, [chatId, chats, loading, navigate, selectedAppId, setSelectedAppId]);
 
   useEffect(() => {
-    if (!chatId || allChatsLoading) {
+    if (!chatId) {
       return;
     }
 
-    const chat = allChats.find((chat) => chat.id === chatId);
-    if (chat && chat.appId !== selectedAppId) {
-      setSelectedAppId(chat.appId);
+    if (routeAppId) {
+      if (routeAppId !== selectedAppId) {
+        setSelectedAppId(routeAppId);
+      }
+      return;
     }
-  }, [allChats, allChatsLoading, chatId, selectedAppId, setSelectedAppId]);
+
+    let isCancelled = false;
+    ipc.chat
+      .getChat(chatId)
+      .then((chat) => {
+        if (!isCancelled && chat.appId !== selectedAppId) {
+          setSelectedAppId(chat.appId);
+        }
+      })
+      .catch(() => {
+        // Let the chat panel surface any load error for the selected chat.
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [chatId, routeAppId, selectedAppId, setSelectedAppId]);
 
   useEffect(() => {
     if (isPreviewOpen) {

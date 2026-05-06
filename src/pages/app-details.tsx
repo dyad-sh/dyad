@@ -58,6 +58,7 @@ import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManage
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 function UnavailableIntegrationCard({
   provider,
@@ -123,8 +124,9 @@ export default function AppDetailsPage() {
   // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
-  const { chats, loading: chatsLoading } = useChats(appId);
+  const { chats, loading: chatsLoading, invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
+  const initialChatMode = useInitialChatMode();
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -152,6 +154,8 @@ export default function AppDetailsPage() {
       setIsDeleting(true);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
+      setSelectedAppId(null);
+      setSelectedChatId(null);
       await refreshApps();
       navigate({ to: "/", search: {} });
     } catch (error) {
@@ -331,6 +335,28 @@ export default function AppDetailsPage() {
 
   const currentAppPath = selectedApp.resolvedPath || "";
   const latestChat = chats[0];
+  const handleOpenInChat = async () => {
+    if (!appId) {
+      console.error("No app id found");
+      return;
+    }
+
+    try {
+      if (latestChat) {
+        selectChat({ chatId: latestChat.id, appId });
+        return;
+      }
+
+      const chatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode,
+      });
+      await invalidateChats();
+      selectChat({ chatId, appId });
+    } catch (error) {
+      showError(error);
+    }
+  };
 
   return (
     <div
@@ -488,17 +514,8 @@ export default function AppDetailsPage() {
         </div>
         <div className="mt-4 flex flex-col gap-2">
           <Button
-            onClick={() => {
-              if (!appId) {
-                console.error("No app id found");
-                return;
-              }
-              if (!latestChat) {
-                return;
-              }
-              selectChat({ chatId: latestChat.id, appId });
-            }}
-            disabled={chatsLoading || !latestChat}
+            onClick={handleOpenInChat}
+            disabled={chatsLoading}
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >

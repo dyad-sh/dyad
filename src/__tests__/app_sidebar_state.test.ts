@@ -36,18 +36,28 @@ describe("app sidebar state", () => {
       shouldShowSelectedAppChatList({
         selectedPanel: "Apps",
         selectedAppId: 1,
+        isHoveringPanel: false,
       }),
     ).toBe(true);
     expect(
       shouldShowSelectedAppChatList({
         selectedPanel: "Apps",
         selectedAppId: null,
+        isHoveringPanel: false,
       }),
     ).toBe(false);
     expect(
       shouldShowSelectedAppChatList({
         selectedPanel: "Settings",
         selectedAppId: 1,
+        isHoveringPanel: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowSelectedAppChatList({
+        selectedPanel: "Apps",
+        selectedAppId: 1,
+        isHoveringPanel: true,
       }),
     ).toBe(false);
   });

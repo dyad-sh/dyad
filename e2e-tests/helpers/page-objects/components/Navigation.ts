@@ -36,7 +36,30 @@ export class Navigation {
   }
 
   async goToChatTab() {
-    await this.page.getByRole("link", { name: "Chat" }).click();
+    if (await this.page.getByTestId("chat-input-container").isVisible()) {
+      return;
+    }
+
+    const appsLink = this.page.getByRole("link", { name: "Apps" });
+    await expect(appsLink).toBeVisible({ timeout: 60000 });
+    await appsLink.click();
+
+    const chatList = this.page.getByTestId("chat-list-container");
+    await expect(chatList).toBeVisible({ timeout: 60000 });
+
+    const existingChat = this.page.locator('[data-testid^="chat-list-item-"]');
+    if ((await existingChat.count()) > 0) {
+      await existingChat.first().click();
+      await expect(this.page.getByTestId("chat-input-container")).toBeVisible({
+        timeout: 60000,
+      });
+      return;
+    }
+
+    await this.page.getByTestId("new-chat-button").click();
+    await expect(this.page.getByTestId("chat-input-container")).toBeVisible({
+      timeout: 60000,
+    });
   }
 
   async goToHubTab() {

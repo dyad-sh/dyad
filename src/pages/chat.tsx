@@ -30,6 +30,7 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+  const { chats: allChats, loading: allChatsLoading } = useChats(null);
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
 
@@ -42,13 +43,40 @@ export default function ChatPage() {
   usePlanImplementation();
 
   useEffect(() => {
-    if (!chatId && chats.length && !loading) {
+    if (chatId || loading) {
+      return;
+    }
+
+    if (!selectedAppId) {
+      navigate({ to: "/", replace: true });
+      return;
+    }
+
+    if (chats.length) {
       // Not a real navigation, just a redirect, when the user navigates to /chat
       // without a chatId, we redirect to the first chat
       setSelectedAppId(chats[0].appId);
       navigate({ to: "/chat", search: { id: chats[0].id }, replace: true });
+      return;
     }
-  }, [chatId, chats, loading, navigate]);
+
+    navigate({
+      to: "/app-details",
+      search: { appId: selectedAppId },
+      replace: true,
+    });
+  }, [chatId, chats, loading, navigate, selectedAppId, setSelectedAppId]);
+
+  useEffect(() => {
+    if (!chatId || allChatsLoading) {
+      return;
+    }
+
+    const chat = allChats.find((chat) => chat.id === chatId);
+    if (chat && chat.appId !== selectedAppId) {
+      setSelectedAppId(chat.appId);
+    }
+  }, [allChats, allChatsLoading, chatId, selectedAppId, setSelectedAppId]);
 
   useEffect(() => {
     if (isPreviewOpen) {

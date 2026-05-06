@@ -2,8 +2,11 @@ import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
 import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useChats } from "@/hooks/useChats";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -107,6 +110,7 @@ export default function AppDetailsPage() {
 
   const queryClient = useQueryClient();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
 
   const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
   const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
@@ -119,6 +123,8 @@ export default function AppDetailsPage() {
   // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
+  const { chats, loading: chatsLoading } = useChats(appId);
+  const { selectChat } = useSelectChat();
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -131,6 +137,13 @@ export default function AppDetailsPage() {
     setScreenshotLoadFailed(false);
   }, [latestScreenshotUrl]);
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
+
+  useEffect(() => {
+    if (appId) {
+      setSelectedAppId(appId);
+      setSelectedChatId(null);
+    }
+  }, [appId, setSelectedAppId, setSelectedChatId]);
 
   const handleDeleteApp = async () => {
     if (!appId) return;
@@ -317,6 +330,7 @@ export default function AppDetailsPage() {
   }
 
   const currentAppPath = selectedApp.resolvedPath || "";
+  const latestChat = chats[0];
 
   return (
     <div
@@ -479,8 +493,12 @@ export default function AppDetailsPage() {
                 console.error("No app id found");
                 return;
               }
-              navigate({ to: "/chat" });
+              if (!latestChat) {
+                return;
+              }
+              selectChat({ chatId: latestChat.id, appId });
             }}
+            disabled={chatsLoading || !latestChat}
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >

@@ -1,6 +1,7 @@
 {
   "newChat": "新建聊天",
   "recentChats": "最近的聊天",
+  "viewAllApps": "查看所有应用",
   "searchChats": "搜索聊天",
   "closeChatTab": "关闭标签页：{{title}}",
   "closeTab": "关闭",

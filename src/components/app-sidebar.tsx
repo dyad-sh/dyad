@@ -1,17 +1,19 @@
 import {
   type LucideIcon,
   Home,
-  Inbox,
   Settings,
   HelpCircle,
   Store,
   BookOpen,
 } from "lucide-react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useRef, useState } from "react";
-import { useAtom } from "jotai";
+import type { ComponentType } from "react";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 import {
   Sidebar,
@@ -29,6 +31,13 @@ import { AppList } from "./AppList";
 import { HelpDialog } from "./HelpDialog"; // Import the new dialog
 import { SettingsList } from "./SettingsList";
 import { LibraryList } from "./LibraryList";
+import {
+  type AppSidebarHoverState,
+  type AppSidebarItemTitle,
+  getSelectedSidebarPanel,
+  isSidebarItemActive,
+  shouldShowSelectedAppChatList,
+} from "./app-sidebar-state";
 
 // Menu items.
 const items = [
@@ -36,11 +45,6 @@ const items = [
     title: "Apps",
     to: "/",
     icon: Home,
-  },
-  {
-    title: "Chat",
-    to: "/chat",
-    icon: Inbox,
   },
   {
     title: "Settings",
@@ -57,7 +61,11 @@ const items = [
     to: "/hub",
     icon: Store,
   },
-];
+] satisfies Array<{
+  title: AppSidebarItemTitle;
+  to: string;
+  icon: ComponentType<{ className?: string }>;
+}>;
 
 type AppSidebarItemTo = (typeof items)[number]["to"];
 
@@ -133,21 +141,17 @@ function AppSidebarRailButton({
   );
 }
 
-// Hover state types
-type HoverState =
-  | "start-hover:app"
-  | "start-hover:chat"
-  | "start-hover:settings"
-  | "start-hover:library"
-  | "clear-hover"
-  | "no-hover";
-
 export function AppSidebar() {
-  const { state, toggleSidebar } = useSidebar();
-  const [hoverState, setHoverState] = useState<HoverState>("no-hover");
+  const { state, toggleSidebar } = useSidebar(); // retrieve current sidebar state
+  const [hoverState, setHoverState] =
+    useState<AppSidebarHoverState>("no-hover");
   const expandedByHover = useRef(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (hoverState.startsWith("start-hover") && state === "collapsed") {
@@ -167,33 +171,21 @@ export function AppSidebar() {
   }, [hoverState, toggleSidebar, state, setHoverState, isDropdownOpen]);
 
   const routerState = useRouterState();
-  const isAppRoute =
-    routerState.location.pathname === "/" ||
-    routerState.location.pathname.startsWith("/app-details");
-  const isChatRoute = routerState.location.pathname === "/chat";
-  const isSettingsRoute = routerState.location.pathname.startsWith("/settings");
-  const isLibraryRoute = routerState.location.pathname.startsWith("/library");
+  const selectedItem = getSelectedSidebarPanel({
+    hoverState,
+    sidebarState: state,
+    pathname: routerState.location.pathname,
+  });
+  const showSelectedAppChats = shouldShowSelectedAppChatList({
+    selectedPanel: selectedItem,
+    selectedAppId,
+  });
 
-  let selectedItem: string | null = null;
-  if (hoverState === "start-hover:app") {
-    selectedItem = "Apps";
-  } else if (hoverState === "start-hover:chat") {
-    selectedItem = "Chat";
-  } else if (hoverState === "start-hover:settings") {
-    selectedItem = "Settings";
-  } else if (hoverState === "start-hover:library") {
-    selectedItem = "Library";
-  } else if (state === "expanded") {
-    if (isAppRoute) {
-      selectedItem = "Apps";
-    } else if (isChatRoute) {
-      selectedItem = "Chat";
-    } else if (isSettingsRoute) {
-      selectedItem = "Settings";
-    } else if (isLibraryRoute) {
-      selectedItem = "Library";
-    }
-  }
+  const handleViewAllApps = () => {
+    setSelectedAppId(null);
+    setSelectedChatId(null);
+    navigate({ to: "/" });
+  };
 
   return (
     <Sidebar
@@ -225,8 +217,12 @@ export function AppSidebar() {
           </div>
           {/* Right Column: Contextual sub-list (only visible when expanded) */}
           <div className="w-[224px] border-l border-sidebar-border">
-            <AppList show={selectedItem === "Apps"} />
-            <ChatList show={selectedItem === "Chat"} />
+            <AppList show={selectedItem === "Apps" && !showSelectedAppChats} />
+            <ChatList
+              show={showSelectedAppChats}
+              showViewAllAppsButton
+              onViewAllApps={handleViewAllApps}
+            />
             <SettingsList show={selectedItem === "Settings"} />
             <LibraryList show={selectedItem === "Library"} />
           </div>
@@ -257,18 +253,16 @@ function AppIcons({
   onHoverChange,
   isExpanded,
 }: {
-  onHoverChange: (state: HoverState) => void;
+  onHoverChange: (state: AppSidebarHoverState) => void;
   isExpanded: boolean;
 }) {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
 
-  const hoverForTitle = (title: string): HoverState => {
+  const hoverForTitle = (title: AppSidebarItemTitle): AppSidebarHoverState => {
     switch (title) {
       case "Apps":
         return "start-hover:app";
-      case "Chat":
-        return "start-hover:chat";
       case "Settings":
         return "start-hover:settings";
       case "Library":
@@ -285,9 +279,10 @@ function AppIcons({
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const isActive =
-              (item.to === "/" && pathname === "/") ||
-              (item.to !== "/" && pathname.startsWith(item.to));
+            const isActive = isSidebarItemActive({
+              title: item.title,
+              pathname,
+            });
 
             return (
               <SidebarMenuItem key={item.title}>

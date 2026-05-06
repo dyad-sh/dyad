@@ -3,7 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { formatDistanceToNow } from "date-fns";
-import { PlusCircle, MoreVertical, Trash2, Edit3, Search } from "lucide-react";
+import {
+  PlusCircle,
+  MoreVertical,
+  Trash2,
+  Edit3,
+  Search,
+  X,
+} from "lucide-react";
 import { useAtom, useSetAtom } from "jotai";
 import {
   selectedChatIdAtom,
@@ -36,7 +43,15 @@ import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 import { ChatSearchDialog } from "./ChatSearchDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
 
-export function ChatList({ show }: { show?: boolean }) {
+export function ChatList({
+  show,
+  showViewAllAppsButton,
+  onViewAllApps,
+}: {
+  show?: boolean;
+  showViewAllAppsButton?: boolean;
+  onViewAllApps?: () => void;
+}) {
   const { t } = useTranslation("chat");
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
@@ -138,7 +153,11 @@ export function ChatList({ show }: { show?: boolean }) {
       // If the deleted chat was selected, navigate to home (matches tab-close behavior)
       if (selectedChatId === chatId) {
         setSelectedChatId(null);
-        navigate({ to: "/" });
+        if (selectedAppId) {
+          navigate({ to: "/app-details", search: { appId: selectedAppId } });
+        } else {
+          navigate({ to: "/" });
+        }
       }
 
       // Refresh the chat list
@@ -183,6 +202,17 @@ export function ChatList({ show }: { show?: boolean }) {
         className="overflow-y-auto h-[calc(100vh-112px)]"
         data-testid="chat-list-container"
       >
+        {showViewAllAppsButton && (
+          <Button
+            onClick={onViewAllApps}
+            variant="ghost"
+            className="mx-2 mb-2 flex items-center justify-start gap-2"
+            data-testid="view-all-apps-button"
+          >
+            <X size={16} />
+            <span>{t("viewAllApps")}</span>
+          </Button>
+        )}
         <SidebarGroupLabel>{t("recentChats")}</SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex flex-col space-y-4">
@@ -231,6 +261,7 @@ export function ChatList({ show }: { show?: boolean }) {
                             ? "bg-sidebar-accent text-sidebar-accent-foreground"
                             : ""
                         }`}
+                        data-testid={`chat-list-item-${chat.id}`}
                       >
                         <div className="flex flex-col w-full">
                           <span className="truncate">

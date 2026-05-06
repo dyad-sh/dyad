@@ -1,6 +1,7 @@
 {
   "newChat": "Novo Chat",
   "recentChats": "Chats Recentes",
+  "viewAllApps": "Ver todos os apps",
   "searchChats": "Pesquisar chats",
   "closeChatTab": "Fechar aba: {{title}}",
   "closeTab": "Fechar",

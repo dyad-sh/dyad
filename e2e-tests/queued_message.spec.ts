@@ -168,8 +168,8 @@ testSkipIfWindows(
     await po.sendPrompt("tc=basic");
     await po.previewPanel.clickTogglePreviewPanel();
 
-    // Start a slow streaming response so subsequent messages get queued
-    await po.sendPrompt("tc=1 [sleep=medium]", {
+    // Start a slow streaming response so the setup below finishes while queuing is still active
+    await po.sendPrompt("tc=1 [sleep=long]", {
       skipWaitForCompletion: true,
     });
     await expect(chatInput).toBeVisible();
@@ -233,12 +233,12 @@ testSkipIfWindows(
     ).not.toBeVisible();
 
     // Wait for all messages to complete
-    await po.chatActions.waitForChatCompletion();
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
     await po.chatActions.waitForChatCompletion();
 
     // Verify both messages were sent
     const messagesList = po.page.locator('[data-testid="messages-list"]');
-    await expect(messagesList.getByText("tc=1 [sleep=medium]")).toBeVisible();
+    await expect(messagesList.getByText("tc=1 [sleep=long]")).toBeVisible();
     await expect(messagesList.getByText("queued with extras")).toBeVisible();
   },
 );
@@ -253,8 +253,8 @@ testSkipIfWindows(
     await po.sendPrompt("tc=basic");
     await po.previewPanel.clickTogglePreviewPanel();
 
-    // Start a slow streaming response so subsequent messages get queued
-    await po.sendPrompt("tc=1 [sleep=medium]", {
+    // Start a slow streaming response so the setup below finishes while queuing is still active
+    await po.sendPrompt("tc=1 [sleep=long]", {
       skipWaitForCompletion: true,
     });
     await expect(chatInput).toBeVisible();
@@ -293,7 +293,7 @@ testSkipIfWindows(
     await expect(chatInput).toBeEmpty();
 
     // Wait for the in-flight chat and the queued message to finish before ending the test
-    await po.chatActions.waitForChatCompletion();
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
     await po.chatActions.waitForChatCompletion();
   },
 );

@@ -8,8 +8,23 @@ import { expect, Page } from "@playwright/test";
 export class ModelPicker {
   constructor(public page: Page) {}
 
+  private escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
   private getMenuItem(name: string, exact = true) {
-    return this.page.getByRole("menuitem", { name, exact }).first();
+    if (!exact) {
+      return this.page.getByRole("menuitem", { name, exact: false }).first();
+    }
+
+    return this.page
+      .getByRole("menuitem", {
+        name: new RegExp(
+          `^${this.escapeRegExp(name)}(?:\\s+${this.escapeRegExp(name)})?$`,
+          "i",
+        ),
+      })
+      .first();
   }
 
   private async clickMenuItemIfVisible(name: string, exact = true) {

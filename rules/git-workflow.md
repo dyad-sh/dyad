@@ -153,6 +153,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Modify/delete conflicts**: When a rebase shows `CONFLICT (modify/delete): <file> deleted in <commit> and modified in HEAD`, use `git rm <file>` (not `git add`) to resolve by confirming the deletion. Use `git add <file>` only when you want to keep the modified version instead.
 - **Non-interactive rebase continue**: After resolving conflicts, prefer `GIT_EDITOR=true git rebase --continue` in agent shells. Plain `git rebase --continue` can open `vi` for `COMMIT_EDITMSG` and fail with `error: vi died of signal 15` when stdin is not interactive.
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
+- **After rebasing new dependencies:** If `npm run ts` reports `Cannot find module '<package>'` but `package.json`/`package-lock.json` already include it, the local `node_modules` tree may be stale from before the rebase. Run `npm install`, verify `package-lock.json` did not get unrelated churn, then rerun `npm run ts`.
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions

@@ -132,6 +132,7 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 - **Monaco race repros**: If a file-editor bug only appears during quick tab/file changes, alternate between the affected files several times in one test before declaring it non-reproducible. A single switch often misses save-vs-switch timing bugs that show up immediately under `--repeat-each`.
 - **GitHub sync success assertions**: Scope "Successfully pushed to GitHub!" assertions to `getByTestId("github-connected-repo")`; the same text can also appear in a toast, causing Playwright strict-mode failures.
 - **Visual image swap URLs**: Use a reachable fake-server image URL for visual editing URL-swap tests. Broken external URLs (for example `example.com/*.png`) trigger `dyad-image-load-error`, remove the pending image change, and make "component modified" assertions time out.
+- **Cloud sandbox snapshot assertions**: Preview iframe visibility can happen before the fake cloud sandbox has accepted the latest upload. When asserting remote snapshot changes, poll `get-cloud-sandbox-status` and wait for `syncRevision` to advance before reading the iframe digest; the first full sync can be revision `1` even when it already includes the prompt change.
 
 ## Real Socket Firewall E2E tests
 

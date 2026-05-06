@@ -231,7 +231,7 @@ interface PendingIntegrationEntry {
 
 const pendingIntegrationResolvers = new Map<string, PendingIntegrationEntry>();
 
-const INTEGRATION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes (OAuth + project creation can take a while)
+const INTEGRATION_TIMEOUT_MS = 30 * 60 * 1000;
 
 export function waitForIntegrationResponse(
   requestId: string,

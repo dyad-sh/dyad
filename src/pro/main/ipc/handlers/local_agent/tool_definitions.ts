@@ -277,12 +277,14 @@ export function waitForIntegrationResponse(
 export function resolveIntegrationResponse(
   requestId: string,
   result: IntegrationResult | null,
-) {
+): boolean {
   const entry = pendingIntegrationResolvers.get(requestId);
-  if (entry) {
-    pendingIntegrationResolvers.delete(requestId);
-    entry.resolve(result);
+  if (!entry) {
+    return false;
   }
+  pendingIntegrationResolvers.delete(requestId);
+  entry.resolve(result);
+  return true;
 }
 
 /**

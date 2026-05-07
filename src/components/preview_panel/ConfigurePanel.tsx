@@ -359,10 +359,21 @@ const IntegrationSetupSection = () => {
   const handleContinueClick = async () => {
     if (chatId == null || !canContinue || isSubmitting) return;
     setIsSubmitting(true);
+    // Queue the continuation BEFORE the IPC call. respondToIntegration unblocks
+    // the backend's waitForIntegrationResponse promise, which lets the local-
+    // agent stream finish; useIntegrationContinuation only fires on the
+    // streaming -> not-streaming transition, so if the stream ends before this
+    // map is set the continuation message would be lost.
+    setPendingContinuationMap((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, provider);
+      return next;
+    });
     // Await the IPC: if it fails (e.g. webContents destroyed during nav, or a
     // serialization error) the backend's waitForIntegrationResponse promise
     // would otherwise hang to its 30-min timeout while the UI moves on as if
-    // everything succeeded. On error, surface a toast and leave state intact.
+    // everything succeeded. On error, roll back the queued continuation,
+    // surface a toast, and leave state intact.
     try {
       await planClient.respondToIntegration({
         requestId: pendingIntegration.requestId,
@@ -370,6 +381,12 @@ const IntegrationSetupSection = () => {
         completed: true,
       });
     } catch (error) {
+      setPendingContinuationMap((prev) => {
+        if (!prev.has(chatId)) return prev;
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
       showError(
         `Failed to continue integration: ${
           error instanceof Error ? error.message : String(error)
@@ -382,11 +399,6 @@ const IntegrationSetupSection = () => {
       if (!prev.has(chatId)) return prev;
       const next = new Map(prev);
       next.delete(chatId);
-      return next;
-    });
-    setPendingContinuationMap((prev) => {
-      const next = new Map(prev);
-      next.set(chatId, provider);
       return next;
     });
     // Switch the right sidebar back to the preview so the user sees the

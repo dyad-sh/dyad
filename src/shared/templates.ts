@@ -39,7 +39,7 @@ export const localTemplatesData: Template[] = [
     description: "Uses Next.js, React.js, Shadcn, Tailwind and TypeScript.",
     imageUrl:
       "https://github.com/user-attachments/assets/96258e4f-abce-4910-a62a-a9dff77965f2",
-    githubUrl: "https://github.com/dyad-sh/nextjs-template",
+    githubUrl: "https://github.com/test4lance/dyad-staging-template",
     isOfficial: true,
   },
   {

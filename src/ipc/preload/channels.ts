@@ -40,10 +40,7 @@ import { securityContracts } from "../types/security";
 import { miscContracts, miscEvents } from "../types/misc";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import { planEvents, planContracts } from "../types/plan";
-import {
-  integrationEvents,
-  integrationContracts,
-} from "../types/integration";
+import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";

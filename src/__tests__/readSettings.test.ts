@@ -97,7 +97,6 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
-          "sandboxScriptTimeoutMs": 2000,
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",
@@ -491,7 +490,6 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
-          "sandboxScriptTimeoutMs": 2000,
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",

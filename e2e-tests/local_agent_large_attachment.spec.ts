@@ -21,6 +21,9 @@ testSkipIfWindows(
     await po.chatActions.selectLocalAgentMode();
 
     await po.page.evaluate(async () => {
+      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+        experiments: { enableSandboxScriptExecution: true },
+      });
       await (window as any).electron.ipcRenderer.invoke(
         "agent-tool:set-consent",
         {

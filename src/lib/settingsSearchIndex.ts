@@ -29,7 +29,6 @@ export const SETTING_IDS = {
   maxChatTurns: "setting-max-chat-turns",
   maxToolCallSteps: "setting-max-tool-call-steps",
   contextCompaction: "setting-context-compaction",
-  sandboxScripts: "setting-sandbox-scripts",
   telemetry: "setting-telemetry",
   github: "setting-github",
   vercel: "setting-vercel",
@@ -37,6 +36,7 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
+  enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableSelectAppFromHomeChatInput:
@@ -234,24 +234,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.ai,
     sectionLabel: "AI",
   },
-  {
-    id: SETTING_IDS.sandboxScripts,
-    label: "Scripts",
-    description:
-      "Configure local-agent attachment script timeout and open .dyad/media/",
-    keywords: [
-      "script",
-      "scripts",
-      "sandbox",
-      "attachments",
-      "mustard",
-      "media",
-      "timeout",
-    ],
-    sectionId: SECTION_IDS.ai,
-    sectionLabel: "AI",
-  },
-
   // Provider Settings
   {
     id: SECTION_IDS.providers,
@@ -394,6 +376,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "pro",
       "credits",
       "secure",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableSandboxScriptExecution,
+    label: "Enable sandbox script execution",
+    description:
+      "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
+    keywords: [
+      "script",
+      "scripts",
+      "sandbox",
+      "attachments",
+      "mustard",
+      "agent",
+      "experiment",
     ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",

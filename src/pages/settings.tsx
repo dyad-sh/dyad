@@ -37,7 +37,6 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
-import { SandboxScriptSettings } from "@/components/SandboxScriptSettings";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -204,6 +203,35 @@ export default function SettingsPage() {
                 className="space-y-1 mt-4"
               >
                 <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.enableSandboxScriptExecution}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-sandbox-script-execution"
+                    aria-label="Enable sandbox script execution"
+                    checked={
+                      !!settings?.experiments?.enableSandboxScriptExecution
+                    }
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        experiments: {
+                          ...settings?.experiments,
+                          enableSandboxScriptExecution: checked,
+                        },
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-sandbox-script-execution">
+                    Enable sandbox script execution
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Allow local-agent attachment scripts to inspect files with
+                  execute_sandbox_script.
+                </div>
               </div>
               <div
                 id={SETTING_IDS.blockUnsafeNpmPackages}
@@ -473,10 +501,6 @@ export function AISettings() {
           Automatically compact long conversations to stay within context
           limits. Original messages are preserved in the app data directory.
         </div>
-      </div>
-
-      <div id={SETTING_IDS.sandboxScripts} className="mt-4">
-        <SandboxScriptSettings />
       </div>
     </div>
   );

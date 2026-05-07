@@ -3,8 +3,11 @@ import {
   runSandboxScript,
   isSandboxSupportedPlatform,
 } from "@/ipc/utils/sandbox/runner";
+import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
+import type { UserSettings } from "@/lib/schemas";
 import {
   AgentContext,
   escapeXmlAttr,
@@ -15,8 +18,8 @@ import {
 const executeSandboxScriptSchema = z.object({
   script: z
     .string()
-    .max(32 * 1024)
-    .describe("MustardScript source code to execute."),
+    .max(SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES)
+    .describe("Sandboxed JavaScript subset source code to execute."),
   description: z
     .string()
     .max(160)
@@ -26,12 +29,33 @@ const executeSandboxScriptSchema = z.object({
 
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
 
+export function isSandboxScriptExecutionEnabled(
+  settings: Pick<UserSettings, "experiments"> | undefined,
+): boolean {
+  return !!settings?.experiments?.enableSandboxScriptExecution;
+}
+
 function isAttachmentHostCallPath(path: string | undefined): boolean {
   return (
     path === "attachments" ||
     path === "attachments:" ||
     path?.startsWith("attachments:") === true
   );
+}
+
+function buildSandboxFailureMessage(params: {
+  script: string;
+  errorMessage: string;
+}): string {
+  return [
+    "This script contains unsupported syntax.",
+    "",
+    "Script:",
+    params.script,
+    "",
+    "Original error:",
+    params.errorMessage,
+  ].join("\n");
 }
 
 function buildScriptXml(params: {
@@ -64,18 +88,49 @@ function buildScriptXml(params: {
 export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
   {
     name: "execute_sandbox_script",
-    description: `Run a small read-only MustardScript program to inspect attached files or project files without loading all contents into context.
+    description: `Run a small read-only program written in a strict, sandboxed subset of JavaScript to inspect attached files or project files without loading all contents into context.
 
-Available host functions:
-- read_file(path, { start?, length?, encoding? }) for app-relative paths or attachments:<filename>
-- list_files(dir) where dir can be "." or "attachments:"
-- file_stats(path)
+Use this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.
 
-Return a concise value. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
+Supported language surface:
+- let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
+- The script has no ambient authority. It can only inspect files through the host functions below.
+
+Unsupported / unavailable:
+- No import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, timers, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.
+- Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.
+
+Host functions:
+\`\`\`ts
+type ReadFileOptions = {
+  start?: number; // zero-indexed byte offset
+  length?: number; // max bytes to read
+  encoding?: "utf8" | "base64";
+};
+
+type FileStats = {
+  size: number;
+  isText: boolean;
+  mtime: string; // ISO timestamp
+};
+
+declare function read_file(
+  path: string,
+  options?: ReadFileOptions,
+): Promise<string>;
+
+declare function list_files(dir?: "." | "attachments:" | string): Promise<string[]>;
+
+declare function file_stats(path: string): Promise<FileStats>;
+\`\`\`
+
+Paths are app-relative, or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
     inputSchema: executeSandboxScriptSchema,
-    defaultConsent: "ask",
+    defaultConsent: "always",
 
-    isEnabled: () => isSandboxSupportedPlatform(),
+    isEnabled: () =>
+      isSandboxSupportedPlatform() &&
+      isSandboxScriptExecutionEnabled(readSettings()),
 
     getConsentPreview: (args) =>
       args.description?.trim() || "Run a read-only script",
@@ -90,7 +145,6 @@ Return a concise value. Prefer range reads, filtering, aggregation, and small su
         const result = await runSandboxScript({
           appPath: ctx.appPath,
           script: args.script,
-          timeoutMs: readSettings().sandboxScriptTimeoutMs,
           onHostCall: ({ path }) => {
             if (isAttachmentHostCallPath(path)) {
               ctx.onAttachmentAccess?.();
@@ -137,7 +191,13 @@ Return a concise value. Prefer range reads, filtering, aggregation, and small su
             error: errorMessage,
           },
         );
-        throw error;
+        throw new DyadError(
+          buildSandboxFailureMessage({
+            script: args.script,
+            errorMessage,
+          }),
+          isDyadError(error) ? error.kind : DyadErrorKind.Validation,
+        );
       }
     },
   };

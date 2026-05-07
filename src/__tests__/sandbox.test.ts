@@ -253,7 +253,7 @@ describe("sandbox capabilities", () => {
 
     const result = await runSandboxScript({
       appPath,
-      script: `"x".repeat(2 * 1024 * 1024);`,
+      script: `"x".repeat(${SANDBOX_UI_OUTPUT_LIMIT_BYTES + 1024});`,
     });
 
     expect(result.truncated).toBe(true);

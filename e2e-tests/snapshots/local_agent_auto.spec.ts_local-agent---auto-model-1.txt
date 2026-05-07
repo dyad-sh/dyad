@@ -589,31 +589,6 @@
       },
       {
         "type": "function",
-        "name": "execute_sandbox_script",
-        "description": "Run a small read-only MustardScript program to inspect attached files or project files without loading all contents into context.\n\nAvailable host functions:\n- read_file(path, { start?, length?, encoding? }) for app-relative paths or attachments:<filename>\n- list_files(dir) where dir can be \".\" or \"attachments:\"\n- file_stats(path)\n\nReturn a concise value. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "script": {
-              "type": "string",
-              "maxLength": 32768,
-              "description": "MustardScript source code to execute."
-            },
-            "description": {
-              "description": "One-line human-readable summary of what the script reads.",
-              "type": "string",
-              "maxLength": 160
-            }
-          },
-          "required": [
-            "script"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "type": "function",
         "name": "planning_questionnaire",
         "description": "Present a structured questionnaire to gather requirements from the user. The tool displays questions in the UI and waits for the user's responses, returning them as the tool result.\n\n<when_to_use>\nUse this tool when:\n- The user wants to create a NEW app or project\n- The request is vague or open-ended\n- There are multiple reasonable interpretations\nSkip when the request is a specific, concrete change.\n</when_to_use>\n\n<input_schema>\nThe tool accepts ONLY a \"questions\" array.\n\nEach question object has these fields:\n- \"question\" (string, REQUIRED): The question text shown to the user\n- \"type\" (string, REQUIRED): One of \"text\", \"radio\", or \"checkbox\"\n- \"options\" (string array, REQUIRED for radio/checkbox, OMIT for text): 1-3 predefined choices\n- \"id\" (string, optional): Unique identifier, auto-generated if omitted\n- \"required\" (boolean, optional): Defaults to true\n- \"placeholder\" (string, optional): Placeholder for text inputs\n</input_schema>\n\n<correct_example>\nReasoning: The user asked to \"build me a todo app\". I need to clarify the tech stack and key features. I'll use radio for single-choice and checkbox for multi-choice.\n\n{\n  \"questions\": [\n    {\n      \"type\": \"radio\",\n      \"question\": \"What visual style do you prefer?\",\n      \"options\": [\"Minimal & clean\", \"Colorful & playful\", \"Dark & modern\"]\n    },\n    {\n      \"type\": \"checkbox\",\n      \"question\": \"Which features do you want?\",\n      \"options\": [\"Due dates\", \"Categories/tags\", \"Priority levels\"]\n    }\n  ]\n}\n</correct_example>\n\n<incorrect_examples>\nWRONG — Empty questions array:\n{ \"questions\": [] }\n\nWRONG — options on text type:\n{ \"type\": \"text\", \"question\": \"...\", \"options\": [\"a\"] }\n\nWRONG — Empty options array:\n{ \"type\": \"radio\", \"question\": \"...\", \"options\": [] }\n\nWRONG — Missing options for radio:\n{ \"type\": \"radio\", \"question\": \"...\" }\n\nWRONG — More than 3 questions or more than 3 options\n\nWRONG — Array with empty object (missing required \"question\" and \"type\" fields):\n{ \"questions\": [{}] }\n</incorrect_examples>",
         "parameters": {

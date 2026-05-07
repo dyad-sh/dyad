@@ -137,6 +137,7 @@ import {
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings } from "@/main/settings";
 import { isSandboxSupportedPlatform } from "../utils/sandbox/runner";
+import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -731,7 +732,9 @@ ${componentSnippet}
         userPrompt +
         buildLocalAgentAttachmentInfo(storedAttachments, {
           includeSandboxScript:
-            selectedChatMode === "local-agent" || selectedChatMode === "ask",
+            (selectedChatMode === "local-agent" ||
+              selectedChatMode === "ask") &&
+            isSandboxScriptExecutionEnabled(settings),
           includeCopyFile: selectedChatMode === "local-agent",
         });
       safeSend(event.sender, "chat:response:chunk", {

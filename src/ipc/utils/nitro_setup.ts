@@ -12,6 +12,8 @@ import {
   restoreViteConfig,
   ViteConfigBackup,
 } from "@/ipc/utils/vite_config_patcher";
+import { detectFrameworkType } from "@/ipc/utils/framework_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("nitro_setup");
 
@@ -39,6 +41,13 @@ async function writeNitroConfigIfMissing(
 export interface EnsureNitroResult {
   /** Non-fatal warnings produced during package install. */
   warningMessages: string[];
+  /**
+   * Best-effort rollback of everything this call materialized (AI_RULES patch,
+   * nitro.config.ts, server/, vite.config.ts changes). Safe to call even if
+   * the call was a no-op — it only undoes what *this* invocation added.
+   * Does not uninstall the `nitro` package.
+   */
+  rollback: () => Promise<void>;
 }
 
 /**
@@ -51,7 +60,8 @@ export interface EnsureNitroResult {
  *
  * Idempotent: skips file/section creation if already present. Rolls back its
  * own scratch (AI_RULES patch, nitro.config.ts, server/, vite.config.ts) if
- * anything throws.
+ * anything throws. Callers can also invoke the returned `rollback` if a
+ * subsequent step fails and they want to undo the Nitro setup.
  */
 export async function ensureNitroOnViteApp(
   appPath: string,
@@ -62,6 +72,28 @@ export async function ensureNitroOnViteApp(
   let serverDirCreated = false;
   let viteConfigBackup: ViteConfigBackup | null = null;
   const serverDirPath = path.join(appPath, "server");
+
+  const rollback = async () => {
+    try {
+      if (rulesBackup.wasAppended) {
+        await restoreAiRules(appPath, rulesBackup.backup);
+      }
+      if (nitroConfigResult?.wasCreated) {
+        await fs.rm(nitroConfigResult.filePath, { force: true });
+      }
+      if (serverDirCreated) {
+        await fs.rm(serverDirPath, { recursive: true, force: true });
+      }
+      if (viteConfigBackup) {
+        await restoreViteConfig(viteConfigBackup);
+      }
+    } catch (rollbackError) {
+      logger.error(
+        "Rollback failed during ensureNitroOnViteApp:",
+        rollbackError,
+      );
+    }
+  };
 
   try {
     nitroConfigResult = await writeNitroConfigIfMissing(appPath);
@@ -90,28 +122,39 @@ export async function ensureNitroOnViteApp(
 
     return {
       warningMessages: result.warningMessages,
+      rollback,
     };
   } catch (error) {
-    try {
-      await restoreAiRules(appPath, rulesBackup.backup);
-      if (nitroConfigResult?.wasCreated) {
-        await fs.rm(nitroConfigResult.filePath, { force: true });
-      }
-      if (serverDirCreated) {
-        await fs.rm(serverDirPath, { recursive: true, force: true });
-      }
-      if (viteConfigBackup) {
-        await restoreViteConfig(viteConfigBackup);
-      }
-    } catch (rollbackError) {
-      logger.error(
-        "Rollback failed during ensureNitroOnViteApp:",
-        rollbackError,
-      );
-    }
+    await rollback();
     if (error instanceof ExecuteAddDependencyError) {
       throw error;
     }
     throw error;
+  }
+}
+
+/**
+ * Vite apps need a Nitro server layer to host server-only code (DATABASE_URL,
+ * Neon client, auth secrets). This helper detects the framework, runs
+ * `ensureNitroOnViteApp` when the app is Vite, and wraps any failure in a
+ * `DyadError` so callers surface a clear "Nitro setup" error rather than a
+ * generic provider error. Returns an empty result + no-op rollback when the
+ * app is not Vite.
+ */
+export async function ensureNitroIfVite(
+  resolvedAppPath: string,
+): Promise<EnsureNitroResult> {
+  if (detectFrameworkType(resolvedAppPath) !== "vite") {
+    return { warningMessages: [], rollback: async () => {} };
+  }
+  try {
+    return await ensureNitroOnViteApp(resolvedAppPath);
+  } catch (nitroError: unknown) {
+    const message =
+      nitroError instanceof Error ? nitroError.message : String(nitroError);
+    throw new DyadError(
+      `Failed to set up Nitro server layer: ${message}`,
+      DyadErrorKind.External,
+    );
   }
 }

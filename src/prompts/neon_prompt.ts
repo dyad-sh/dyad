@@ -36,7 +36,7 @@ export function getNeonAvailableSystemPrompt(
   if (frameworkType === "vite-nitro") {
     return (
       sharedPrompt +
-      getViteNitroNeonPrompt() +
+      getViteNitroNeonPrompt(isLocalAgentMode) +
       (emailVerification ? getEmailVerificationNote(isLocalAgentMode) : "")
     );
   }
@@ -228,7 +228,23 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here
 `;
 }
 
-function getViteNitroNeonPrompt(): string {
+function getViteNitroNeonPrompt(isLocalAgentMode: boolean): string {
+  const authDecisionSteps = isLocalAgentMode
+    ? `4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication", then follow the Vite + Nitro section. It has full code for the catch-all proxy at \`server/routes/api/auth/[...all].ts\`, \`server/utils/session.ts\`, \`server/middleware/auth.ts\`, and \`src/lib/auth-client.ts\`.
+5. **If** user wants prebuilt auth or account pages → call \`read_guide\` with guide="add-authentication", then follow the Vite + Nitro section. Wrap the app with \`NeonAuthUIProvider\`, register a \`/auth/:path\` React Router route that renders \`<AuthView>\`, and rely on the catch-all Nitro proxy for \`/api/auth/*\`.
+6. **If** user wants password reset or forgot-password → call \`read_guide\` with guide="add-password-reset", then follow the Vite + Nitro section. The same \`[...all]\` proxy handles reset traffic; UI lives in \`src/pages/auth/\`.`
+    : `4. **If** user needs auth APIs or sessions → follow the Auth guide
+   (Vite + Nitro section). It has full code for the catch-all proxy at
+   \`server/routes/api/auth/[...all].ts\`, \`server/utils/session.ts\`,
+   \`server/middleware/auth.ts\`, and \`src/lib/auth-client.ts\`.
+5. **If** user wants prebuilt auth or account pages → follow the Auth guide
+   (Vite + Nitro section). Wrap the app with \`NeonAuthUIProvider\`, register
+   a \`/auth/:path\` React Router route that renders \`<AuthView>\`, and rely
+   on the catch-all Nitro proxy for \`/api/auth/*\`.
+6. **If** user wants password reset or forgot-password → follow the Password
+   Reset guide (Vite + Nitro section). The same \`[...all]\` proxy handles
+   reset traffic; UI lives in \`src/pages/auth/\`.`;
+
   return `
 <vite-nitro-instructions>
 
@@ -246,8 +262,11 @@ Vite-Nitro-specific rules that supplement the global critical rules:
   \`NEON_AUTH_BASE_URL\` from any file under \`src/\`. The Vite client bundle is
   public — leaking these gives anyone full database access or lets them
   bypass the proxy and call Neon Auth directly.
-- **no-neon-import-in-src**: NEVER import \`@neondatabase/serverless\` or
-  \`@neondatabase/auth\` from \`src/\`. Those packages belong in \`server/\`.
+- **no-neon-import-in-src**: NEVER import \`@neondatabase/serverless\` from
+  \`src/\` — it is server-only. The browser-safe entry points
+  \`@neondatabase/auth\` (for \`createAuthClient\`),
+  \`@neondatabase/auth/react\`, and \`@neondatabase/auth/react/adapters\` ARE
+  allowed in \`src/\` and are required by the auth client templates.
 - **no-vite-prefix-on-secrets**: NEVER expose Neon vars as \`VITE_*\` — that
   inlines them into the client bundle.
 </critical-rules>
@@ -263,17 +282,7 @@ Follow this strictly, in order:
 2. Reuse those modules and conventions if they exist. Do NOT create duplicate
    database clients, auth clients, or middleware files.
 3. **If** user only needs server-side database access → use the DB-only path.
-4. **If** user needs auth APIs or sessions → follow the Auth guide
-   (Vite + Nitro section). It has full code for the catch-all proxy at
-   \`server/routes/api/auth/[...all].ts\`, \`server/utils/session.ts\`,
-   \`server/middleware/auth.ts\`, and \`src/lib/auth-client.ts\`.
-5. **If** user wants prebuilt auth or account pages → follow the Auth guide
-   (Vite + Nitro section). Wrap the app with \`NeonAuthUIProvider\`, register
-   a \`/auth/:path\` React Router route that renders \`<AuthView>\`, and rely
-   on the catch-all Nitro proxy for \`/api/auth/*\`.
-6. **If** user wants password reset or forgot-password → follow the Password
-   Reset guide (Vite + Nitro section). The same \`[...all]\` proxy handles
-   reset traffic; UI lives in \`src/pages/auth/\`.
+${authDecisionSteps}
 </decision-tree>
 
 ### DATABASE_URL Allowed Locations
@@ -303,12 +312,13 @@ export default defineHandler(async () => {
 
 ### Environment Variables (\`.env.local\`)
 
+DB-only apps need just the Neon database URL. \`NEON_AUTH_BASE_URL\` is added
+by the Auth guide when the user adds auth — do not include it for DB-only
+projects.
+
 <code-template label="env-vars" file=".env.local" language="bash">
 # Neon Database (injected by Dyad)
 DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
-
-# Neon Auth (managed by Neon, value from Neon Console > Auth settings) — server-only
-NEON_AUTH_BASE_URL=https://ep-xxx.neonauth.us-east-1.aws.neon.tech/neondb/auth
 </code-template>
 
 </vite-nitro-instructions>

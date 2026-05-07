@@ -128,7 +128,10 @@ import './auth.css';
 
 export default function AuthPage() {
 const { path = 'sign-in' } = useParams<{ path: string }>();
-return <AuthView path={path} credentials={{ forgotPassword: true }} />;
+// redirectTo is REQUIRED — without it AuthView leaves the user stranded on
+// the auth page after a successful sign-in/sign-up. Keep this even when
+// adding the forgot-password flow.
+return <AuthView path={path} redirectTo="/" credentials={{ forgotPassword: true }} />;
 }
 </code-template>
 

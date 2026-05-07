@@ -13,21 +13,6 @@ export const NEXTJS_CONFIG_FILES = [
   "next.config.ts",
 ];
 
-export function isNextJsProject({
-  files,
-  frameworkType,
-}: {
-  files?: string[];
-  frameworkType?: AppFrameworkType | null;
-}): boolean {
-  if (frameworkType) {
-    return frameworkType === "nextjs";
-  }
-
-  if (!files) return false;
-  return files.some((file) => NEXTJS_CONFIG_FILES.includes(file));
-}
-
 export const VITE_CONFIG_FILES = [
   "vite.config.js",
   "vite.config.ts",

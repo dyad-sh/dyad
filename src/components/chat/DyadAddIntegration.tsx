@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { pendingIntegrationAtom } from "@/atoms/planAtoms";
+import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useLoadApp } from "@/hooks/useLoadApp";

@@ -3,7 +3,7 @@ import { useAtom } from "jotai";
 import {
   pendingContinuationProviderAtom,
   pendingIntegrationAtom,
-} from "@/atoms/planAtoms";
+} from "@/atoms/integrationAtoms";
 import { isStreamingByIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
 

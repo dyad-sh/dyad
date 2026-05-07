@@ -41,9 +41,11 @@ import {
   buildAgentToolSet,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
-  clearPendingQuestionnairesForChat,
-  clearPendingIntegrationsForChat,
 } from "./tool_definitions";
+import {
+  questionnaireResolver,
+  integrationResolver,
+} from "./userInputResolvers";
 import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
@@ -1048,8 +1050,8 @@ export async function handleLocalAgentStream(
                 logger.log(`Stream aborted for chat ${req.chatId}`);
                 // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
                 clearPendingConsentsForChat(req.chatId);
-                clearPendingQuestionnairesForChat(req.chatId);
-                clearPendingIntegrationsForChat(req.chatId);
+                questionnaireResolver.abortChat(req.chatId);
+                integrationResolver.abortChat(req.chatId);
                 break;
               }
 
@@ -1516,8 +1518,8 @@ export async function handleLocalAgentStream(
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
-    clearPendingQuestionnairesForChat(req.chatId);
-    clearPendingIntegrationsForChat(req.chatId);
+    questionnaireResolver.abortChat(req.chatId);
+    integrationResolver.abortChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation

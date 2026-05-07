@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import log from "electron-log";
 import { ToolDefinition, AgentContext } from "./types";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import { waitForQuestionnaireResponse } from "../tool_definitions";
+import { questionnaireResolver } from "../userInputResolvers";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -146,7 +146,7 @@ export const planningQuestionnaireTool: ToolDefinition<
       questions,
     });
 
-    const answers = await waitForQuestionnaireResponse(requestId, ctx.chatId);
+    const answers = await questionnaireResolver.wait(requestId, ctx.chatId);
 
     if (!answers) {
       return "The user dismissed the questionnaire without answering. Ask them how they'd like to proceed, or try asking questions in regular chat text.";

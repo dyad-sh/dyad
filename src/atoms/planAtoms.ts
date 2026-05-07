@@ -1,8 +1,5 @@
 import { atom } from "jotai";
-import type {
-  PlanIntegrationPayload,
-  PlanQuestionnairePayload,
-} from "@/ipc/types/plan";
+import type { PlanQuestionnairePayload } from "@/ipc/types/plan";
 
 export interface PlanData {
   content: string;
@@ -35,16 +32,10 @@ export const pendingQuestionnaireAtom = atom<
   Map<number, PlanQuestionnairePayload>
 >(new Map());
 
-export const pendingIntegrationAtom = atom<Map<number, PlanIntegrationPayload>>(
-  new Map(),
-);
-
-// Tracks chats whose integration was just completed and need to auto-send the
-// "Continue. I have completed the X integration." message once the current
-// stream ends. Written by the Configure panel's Continue button; consumed by
-// the in-chat DyadAddIntegration card's auto-send effect.
-export const pendingContinuationProviderAtom = atom<
-  Map<number, "supabase" | "neon">
+// Transient flag: chatIds that just had a questionnaire submitted (for brief confirmation)
+// "visible" = showing, "fading" = fade-out in progress
+export const questionnaireSubmittedChatIdsAtom = atom<
+  Map<number, "visible" | "fading">
 >(new Map());
 
 export interface PlanAnnotation {
@@ -112,9 +103,3 @@ export function clearPlanAnnotations(
   next.delete(chatId);
   return next;
 }
-
-// Transient flag: chatIds that just had a questionnaire submitted (for brief confirmation)
-// "visible" = showing, "fading" = fade-out in progress
-export const questionnaireSubmittedChatIdsAtom = atom<
-  Map<number, "visible" | "fading">
->(new Map());

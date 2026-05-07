@@ -26,10 +26,8 @@ import {
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
-import {
-  pendingQuestionnaireAtom,
-  pendingIntegrationAtom,
-} from "./atoms/planAtoms";
+import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
+import { pendingIntegrationAtom } from "./atoms/integrationAtoms";
 import { queryKeys } from "./lib/queryKeys";
 import {
   createExceptionFromTelemetry,

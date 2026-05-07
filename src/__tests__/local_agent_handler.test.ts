@@ -270,8 +270,19 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   buildAgentToolSet: vi.fn(() => ({})),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),
-  clearPendingQuestionnairesForChat: vi.fn(),
-  clearPendingIntegrationsForChat: vi.fn(),
+}));
+
+vi.mock("@/pro/main/ipc/handlers/local_agent/userInputResolvers", () => ({
+  questionnaireResolver: {
+    wait: vi.fn(),
+    resolve: vi.fn(),
+    abortChat: vi.fn(),
+  },
+  integrationResolver: {
+    wait: vi.fn(),
+    resolve: vi.fn(),
+    abortChat: vi.fn(),
+  },
 }));
 
 vi.mock(

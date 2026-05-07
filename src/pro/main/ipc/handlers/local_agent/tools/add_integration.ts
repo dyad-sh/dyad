@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import { waitForIntegrationResponse } from "../tool_definitions";
+import { integrationResolver } from "../userInputResolvers";
 
 const logger = log.scope("add_integration");
 
@@ -45,13 +45,13 @@ export const addIntegrationTool: ToolDefinition<
       `Presenting integration setup (provider: ${provider ?? "user-choice"}), requestId: ${requestId}`,
     );
 
-    safeSend(ctx.event.sender, "plan:integration", {
+    safeSend(ctx.event.sender, "integration:prompt", {
       chatId: ctx.chatId,
       requestId,
       provider,
     });
 
-    const result = await waitForIntegrationResponse(
+    const result = await integrationResolver.wait(
       requestId,
       ctx.chatId,
       ctx.abortSignal,

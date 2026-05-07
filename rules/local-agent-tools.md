@@ -29,6 +29,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - When changing local-agent prompt text or tool descriptions, update both prompt unit snapshots and E2E request snapshots; stale request snapshots can still contain old tool descriptions even after unit prompt snapshots pass.
 - When a local-agent tool is gated by a setting or experiment, keep related user-message hints in sync with the same gate. Request snapshots for the default-disabled path should not advertise or include a tool that `buildAgentToolSet` filters out.
 
+## Attachment manifest lifecycle
+
+- When deleting old `.dyad/media` attachment files, also prune `attachments-manifest.json` entries under the `attachments-manifest:${appPath}` lock. Read-time filtering hides broken entries but still leaves stale logical names that force unnecessary suffixes like `notes-2.txt` on future uploads.
+
 ## Tool spec mock contexts
 
 - When adding a required field to `AgentContext` (in `tools/types.ts`), grep `src/pro/main/ipc/handlers/local_agent/tools/*.spec.ts` and update every mock context literal. The TS error appears as e.g. `Property 'nitroEnabled' is missing in type ... but required in type 'AgentContext'` and surfaces only via `npm run ts` — `npm run lint` does not catch it.

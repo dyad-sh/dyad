@@ -106,17 +106,13 @@ export class AppManagement {
     await this.page.getByTestId("connect-supabase-button").click();
   }
 
-  async startDatabaseIntegrationSetup(provider: "supabase" | "neon") {
-    const providerLabel = provider === "supabase" ? "Supabase" : "Neon";
-    await this.page.getByText(providerLabel, { exact: true }).click();
-
-    const setupButton = this.page.getByRole("button", {
-      name: `Set up ${providerLabel}`,
-    });
-    await expect(setupButton).toBeEnabled({
-      timeout: Timeout.MEDIUM,
-    });
-    await setupButton.click();
+  async startDatabaseIntegrationSetup(_provider: "supabase" | "neon") {
+    // The in-chat integration card is now read-only outside the Agent v2
+    // pending-integration flow (which the markdown-driven test fixtures don't
+    // trigger). Navigate to the app details page where the connectors live so
+    // the rest of the setup flow (clickConnect*Button, selectNeonProject, etc.)
+    // can continue against the same UI as before.
+    await this.getTitleBarAppNameButton().click();
   }
 
   async clickConnectNeonButton() {

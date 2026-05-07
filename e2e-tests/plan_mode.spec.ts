@@ -216,7 +216,9 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/accept-plan");
 
     // Wait for the "View Plan" button to appear
-    const viewPlanButton = po.page.getByRole("button", { name: "View Plan" });
+    const viewPlanButton = po.page
+      .getByRole("button", { name: "View Plan" })
+      .last();
     await expect(viewPlanButton).toBeVisible({ timeout: Timeout.MEDIUM });
 
     // Verify plan content is visible

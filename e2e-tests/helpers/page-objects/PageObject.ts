@@ -34,6 +34,7 @@ import { PromptLibrary } from "./components/PromptLibrary";
 // Import dialog page objects
 import { ContextFilesPickerDialog } from "./dialogs/ContextFilesPickerDialog";
 import { ProModesDialog } from "./dialogs/ProModesDialog";
+import { Timeout } from "../constants";
 
 export class PageObject {
   public userDataDir: string;
@@ -231,11 +232,19 @@ export class PageObject {
   // ================================
 
   async approveProposal() {
-    await this.page.getByTestId("approve-proposal-button").click();
+    const approveButton = this.page
+      .getByTestId("approve-proposal-button")
+      .last();
+    await expect(approveButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await approveButton.click();
+    await expect(approveButton).toBeHidden({ timeout: Timeout.MEDIUM });
   }
 
   async rejectProposal() {
-    await this.page.getByTestId("reject-proposal-button").click();
+    const rejectButton = this.page.getByTestId("reject-proposal-button").last();
+    await expect(rejectButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await rejectButton.click();
+    await expect(rejectButton).toBeHidden({ timeout: Timeout.MEDIUM });
   }
 
   async clickRestart() {

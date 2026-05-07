@@ -37,15 +37,12 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
     skipWaitForCompletion: true,
   });
   // Wait for consent dialog to appear
-  const alwaysAllowButton = po.page.getByRole("button", {
-    name: "Always allow",
-  });
-  await expect(alwaysAllowButton).toBeVisible();
+  await po.agentConsent.waitForAgentConsentBanner();
 
   // Make sure the tool call doesn't execute until consent is given
   await po.snapshotMessages();
-  await alwaysAllowButton.click();
-  await po.page.getByRole("button", { name: "Approve" }).click();
+  await po.agentConsent.clickAgentConsentAlwaysAllow();
+  await po.approveProposal();
 
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("all-messages");
@@ -125,13 +122,13 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await po.sendPrompt("[call_tool=calculator_add]", {
       skipWaitForCompletion: true,
     });
-    const alwaysAllowButton = po.page.getByRole("button", {
+    const allowOnceButton = po.page.getByRole("button", {
       name: "Allow once",
     });
-    await expect(alwaysAllowButton).toBeVisible();
+    await expect(allowOnceButton).toBeVisible({ timeout: 30_000 });
     await po.snapshotMessages();
-    await alwaysAllowButton.click();
-    await po.page.getByRole("button", { name: "Approve" }).click();
+    await po.agentConsent.clickAgentConsentAllowOnce();
+    await po.approveProposal();
 
     await po.sendPrompt("[dump]");
     await po.snapshotServerDump("all-messages");

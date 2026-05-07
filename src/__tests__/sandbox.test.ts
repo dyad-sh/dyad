@@ -9,6 +9,7 @@ import {
   getAttachmentsManifestPath,
   getDyadMediaDir,
   listStoredAttachments,
+  pruneAttachmentManifest,
 } from "@/ipc/utils/media_path_utils";
 import {
   sandboxFileStats,
@@ -188,6 +189,42 @@ describe("sandbox capabilities", () => {
     await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
       "attachments:server.log",
     ]);
+  });
+
+  it("prunes stale attachment manifest entries", async () => {
+    await appendAttachmentManifestEntries(appPath, [
+      {
+        logicalName: "missing.log",
+        originalName: "missing.log",
+        storedFileName: "missing-log.txt",
+        mimeType: "text/plain",
+        sizeBytes: 12,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
+    ]);
+
+    await expect(pruneAttachmentManifest(appPath)).resolves.toBe(1);
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+    ]);
+
+    const mediaDir = getDyadMediaDir(appPath);
+    await fs.writeFile(path.join(mediaDir, "stored-missing.txt"), "new\n");
+    const [entry] = await appendAttachmentManifestEntriesWithLogicalNames(
+      appPath,
+      [
+        {
+          requestedLogicalName: "missing.log",
+          originalName: "missing.log",
+          storedFileName: "stored-missing.txt",
+          mimeType: "text/plain",
+          sizeBytes: 4,
+          createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+        },
+      ],
+    );
+
+    expect(entry.logicalName).toBe("missing.log");
   });
 
   it("recovers from malformed attachment manifests", async () => {

@@ -18,7 +18,11 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import type { SmartContextMode } from "../../lib/schemas";
+import type {
+  ChatMode,
+  SmartContextMode,
+  UserSettings,
+} from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -154,6 +158,44 @@ type PendingStoredChatAttachment = Omit<
   attachmentType: "upload-to-codebase" | "chat-context";
 };
 
+type AttachmentDeliveryConfig = {
+  /**
+   * Whether text-like attachments should be expanded into the model message.
+   * False for local-agent/ask so large files stay on disk and tools read slices.
+   */
+  inlineTextAttachments: boolean;
+  /**
+   * Whether image attachments should be sent as model image parts.
+   * Usually true even when text attachments stay on disk, because tools cannot inspect images semantically.
+   */
+  includeImageParts: boolean;
+  /**
+   * Whether to append the local-agent attachment block listing attachments:<name> paths.
+   * This is the replacement for inline text content in tool-backed modes.
+   */
+  useOnDiskAttachmentBlock: boolean;
+  /**
+   * Whether that on-disk block should mention execute_sandbox_script.
+   * Depends on mode plus sandbox setting/platform availability.
+   */
+  includeSandboxScriptHint: boolean;
+  /**
+   * Whether that on-disk block should tell the model it may copy upload-to-codebase attachments.
+   * Only useful when copy_file is available, not in read-only ask mode.
+   */
+  includeCopyFileHint: boolean;
+  /**
+   * Whether non-local-agent build-mode prompts need legacy <dyad-copy> system instructions.
+   * Local-agent uses copy_file/tool hints instead, so it should not get this.
+   */
+  addSystemCopyInstructions: boolean;
+  /**
+   * Whether the system prompt should include image-analysis guidance.
+   * Kept separate because images can be inline even when text attachments are on disk.
+   */
+  addSystemVisionInstructions: boolean;
+};
+
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
 
@@ -212,15 +254,12 @@ function formatAttachmentSize(sizeBytes: number): string {
 
 function buildLocalAgentAttachmentInfo(
   attachments: StoredChatAttachment[],
-  options: {
-    includeSandboxScript: boolean;
-    includeCopyFile: boolean;
-  },
+  deliveryConfig: AttachmentDeliveryConfig,
 ): string {
   const diskAttachments = attachments.filter(
     (attachment) =>
       !isInlineImageAttachment(attachment) ||
-      (options.includeCopyFile &&
+      (deliveryConfig.includeCopyFileHint &&
         attachment.attachmentType === "upload-to-codebase"),
   );
   if (diskAttachments.length === 0) {
@@ -231,7 +270,7 @@ function buildLocalAgentAttachmentInfo(
     (attachment) => !isInlineImageAttachment(attachment),
   );
   const lines = hasReadableAttachment
-    ? options.includeSandboxScript && isSandboxSupportedPlatform()
+    ? deliveryConfig.includeSandboxScriptHint
       ? [
           "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
         ]
@@ -242,7 +281,7 @@ function buildLocalAgentAttachmentInfo(
 
   for (const attachment of diskAttachments) {
     const uploadNote =
-      options.includeCopyFile &&
+      deliveryConfig.includeCopyFileHint &&
       attachment.attachmentType === "upload-to-codebase"
         ? "; if this should become part of the project, use copy_file from this attachment path"
         : "";
@@ -258,6 +297,38 @@ function hasScriptReadableAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
   return attachments.some((attachment) => !isInlineImageAttachment(attachment));
+}
+
+function resolveAttachmentDeliveryConfig({
+  mode,
+  settings,
+  hasImageAttachments,
+  hasUploadedAttachments,
+}: {
+  mode: ChatMode;
+  settings: Pick<UserSettings, "experiments">;
+  hasImageAttachments: boolean;
+  hasUploadedAttachments: boolean;
+}): AttachmentDeliveryConfig {
+  const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
+  const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
+
+  return {
+    inlineTextAttachments: !useOnDiskAttachmentBlock,
+    includeImageParts: true,
+    useOnDiskAttachmentBlock,
+    includeSandboxScriptHint:
+      useOnDiskAttachmentBlock &&
+      isSandboxScriptExecutionEnabled(settings) &&
+      isSandboxSupportedPlatform(),
+    includeCopyFileHint: mode === "local-agent",
+    addSystemCopyInstructions:
+      !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
+    addSystemVisionInstructions:
+      hasImageAttachments &&
+      (!willUseLocalAgentStream || mode === "plan") &&
+      !(hasUploadedAttachments && mode !== "ask"),
+  };
 }
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
@@ -728,15 +799,24 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
+      const hasImageAttachments = storedAttachments.some((attachment) =>
+        attachment.mimeType.startsWith("image/"),
+      );
+      const hasUploadedAttachments = storedAttachments.some(
+        (attachment) => attachment.attachmentType === "upload-to-codebase",
+      );
+      const attachmentDeliveryConfig = resolveAttachmentDeliveryConfig({
+        mode: selectedChatMode,
+        settings,
+        hasImageAttachments,
+        hasUploadedAttachments,
+      });
       const localAgentAiUserPrompt =
         userPrompt +
-        buildLocalAgentAttachmentInfo(storedAttachments, {
-          includeSandboxScript:
-            (selectedChatMode === "local-agent" ||
-              selectedChatMode === "ask") &&
-            isSandboxScriptExecutionEnabled(settings),
-          includeCopyFile: selectedChatMode === "local-agent",
-        });
+        buildLocalAgentAttachmentInfo(
+          storedAttachments,
+          attachmentDeliveryConfig,
+        );
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
         effectiveChatMode: selectedChatMode,
@@ -879,10 +959,10 @@ ${componentSnippet}
         }
         const useReferencedAppManifest =
           willUseLocalAgentStream && referencedAppsForAgent.length > 0;
-        const willUseOnDiskAttachmentPrompt = isLocalAgentMode || isAskMode;
-        const effectiveAiUserPrompt = willUseOnDiskAttachmentPrompt
-          ? localAgentAiUserPrompt
-          : defaultAiUserPrompt;
+        const effectiveAiUserPrompt =
+          attachmentDeliveryConfig.useOnDiskAttachmentBlock
+            ? localAgentAiUserPrompt
+            : defaultAiUserPrompt;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
@@ -1098,16 +1178,8 @@ ${componentSnippet}
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
 
-        const hasImageAttachments = storedAttachments.some((attachment) =>
-          attachment.mimeType.startsWith("image/"),
-        );
-        const hasUploadedAttachments = storedAttachments.some(
-          (attachment) => attachment.attachmentType === "upload-to-codebase",
-        );
-
-        if (!willUseLocalAgentStream) {
-          if (hasUploadedAttachments && !isAskMode) {
-            systemPrompt += `
+        if (attachmentDeliveryConfig.addSystemCopyInstructions) {
+          systemPrompt += `
 
 When files are attached to this conversation for upload to the codebase, copy them into the project using this exact format:
 
@@ -1116,14 +1188,9 @@ When files are attached to this conversation for upload to the codebase, copy th
 Use the attached file path from the user's message as the \`from\` value. Choose an appropriate project-relative \`to\` path.
 
 `;
-          }
         }
 
-        if (
-          hasImageAttachments &&
-          (!willUseLocalAgentStream || selectedChatMode === "plan") &&
-          !(hasUploadedAttachments && !isAskMode)
-        ) {
+        if (attachmentDeliveryConfig.addSystemVisionInstructions) {
           systemPrompt += `
 
 # Image Analysis Instructions
@@ -1200,8 +1267,10 @@ This conversation includes one or more image attachments. When the user uploads 
                 lastUserMessage,
                 attachmentPaths,
                 {
-                  includeImageAttachments: true,
-                  inlineTextAttachments: !willUseOnDiskAttachmentPrompt,
+                  includeImageAttachments:
+                    attachmentDeliveryConfig.includeImageParts,
+                  inlineTextAttachments:
+                    attachmentDeliveryConfig.inlineTextAttachments,
                 },
               );
             }

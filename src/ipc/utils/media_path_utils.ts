@@ -282,6 +282,45 @@ export async function appendAttachmentManifestEntriesWithLogicalNames(
   );
 }
 
+async function pruneAttachmentManifestUnlocked(
+  appPath: string,
+): Promise<number> {
+  const entries = await readAttachmentManifest(appPath);
+  if (entries.length === 0) {
+    return 0;
+  }
+
+  const mediaDir = getDyadMediaDir(appPath);
+  const keptEntries: AttachmentManifestEntry[] = [];
+  for (const entry of entries) {
+    const storedAttachment = await toStoredAttachmentInfoIfPresent(
+      mediaDir,
+      entry,
+    );
+    if (storedAttachment) {
+      keptEntries.push(entry);
+    }
+  }
+
+  const removedCount = entries.length - keptEntries.length;
+  if (removedCount > 0) {
+    await writeAttachmentManifestAtomic(
+      getAttachmentsManifestPath(appPath),
+      keptEntries,
+    );
+  }
+
+  return removedCount;
+}
+
+export async function pruneAttachmentManifest(
+  appPath: string,
+): Promise<number> {
+  return withLock(`attachments-manifest:${appPath}`, () =>
+    pruneAttachmentManifestUnlocked(appPath),
+  );
+}
+
 async function toStoredAttachmentInfoIfPresent(
   mediaDir: string,
   entry: AttachmentManifestEntry,

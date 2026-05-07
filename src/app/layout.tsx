@@ -18,6 +18,7 @@ import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
+import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 
@@ -41,6 +42,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Process queued messages globally (even when not on chat page)
   useQueueProcessor();
+
+  // Auto-send integration continuation messages and clean up stale integration
+  // state at the root level — keeps the dispatch alive even if the in-chat
+  // card unmounts (e.g. virtualized scroll-out).
+  useIntegrationContinuation();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;

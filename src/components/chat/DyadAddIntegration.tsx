@@ -1,16 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
-import {
-  pendingContinuationProviderAtom,
-  pendingIntegrationAtom,
-} from "@/atoms/planAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { pendingIntegrationAtom } from "@/atoms/planAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
-import { useStreamChat } from "@/hooks/useStreamChat";
 import { useTranslation } from "react-i18next";
 import { isNextJsProject } from "@/lib/framework_constants";
 import {
@@ -40,16 +36,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
     pendingIntegrationAtom,
   );
-  const [pendingContinuationMap, setPendingContinuationMap] = useAtom(
-    pendingContinuationProviderAtom,
-  );
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const pendingIntegration =
     chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
   const { app } = useLoadApp(appId);
   const { projectInfo, isLoadingBranches } = useNeon(appId);
-  const { streamMessage } = useStreamChat({ hasChatId: false });
   const isNextJs = isNextJsProject({
     files: app?.files,
     frameworkType: app?.frameworkType ?? null,
@@ -66,8 +58,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   // navigates between chats and returns, they restart from selection (which
   // is harmless: their previous choice is still pre-selected).
   const [inPanelMode, setInPanelMode] = useState(false);
-  const isStreamingMap = useAtomValue(isStreamingByIdAtom);
-  const isStreaming = chatId != null && isStreamingMap.get(chatId) === true;
 
   const providerOptions = [
     {
@@ -210,31 +200,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       });
     }
   };
-
-  // Auto-send the continuation message once the panel signals completion
-  // (via pendingContinuationProviderAtom) and the current stream finishes.
-  const pendingContinuationProvider =
-    chatId != null ? pendingContinuationMap.get(chatId) : undefined;
-  useEffect(() => {
-    if (!pendingContinuationProvider || isStreaming || chatId == null) return;
-    const provider = pendingContinuationProvider;
-    setPendingContinuationMap((prev) => {
-      if (!prev.has(chatId)) return prev;
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
-    streamMessage({
-      chatId,
-      prompt: `Continue. I have completed the ${provider} integration.`,
-    });
-  }, [
-    pendingContinuationProvider,
-    isStreaming,
-    chatId,
-    streamMessage,
-    setPendingContinuationMap,
-  ]);
 
   // Final completed view: no active pending request and the app has a linked
   // provider. This covers historical replays of completed chats too.

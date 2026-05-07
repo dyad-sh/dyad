@@ -326,6 +326,7 @@ const IntegrationSetupSection = () => {
   const pendingIntegration =
     chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
   const provider = pendingIntegration?.provider;
+  const requestId = pendingIntegration?.requestId;
 
   // Scroll the section into view whenever a pending integration with a
   // chosen provider becomes visible — so the user lands directly on the
@@ -335,6 +336,14 @@ const IntegrationSetupSection = () => {
     if (!provider) return;
     sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [provider, chatId]);
+
+  // Reset the submitting state whenever the active integration request
+  // changes (or is cleared). The component stays mounted across requests, so
+  // without this a successful continue would leave isSubmitting stuck at true
+  // and the next request's Continue button would render permanently disabled.
+  useEffect(() => {
+    setIsSubmitting(false);
+  }, [requestId]);
 
   if (!pendingIntegration || selectedAppId == null) return null;
   // Until the chat card pushes a chosen provider, there's nothing to render.

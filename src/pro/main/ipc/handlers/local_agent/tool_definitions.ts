@@ -236,8 +236,16 @@ const INTEGRATION_TIMEOUT_MS = 30 * 60 * 1000;
 export function waitForIntegrationResponse(
   requestId: string,
   chatId: number,
+  abortSignal?: AbortSignal,
 ): Promise<IntegrationResult | null> {
   return new Promise((resolve) => {
+    // If already aborted, resolve immediately so the tool returns instead of
+    // sitting on the 30-min timeout.
+    if (abortSignal?.aborted) {
+      resolve(null);
+      return;
+    }
+
     const timeout = setTimeout(() => {
       const entry = pendingIntegrationResolvers.get(requestId);
       if (entry) {
@@ -246,10 +254,20 @@ export function waitForIntegrationResponse(
       }
     }, INTEGRATION_TIMEOUT_MS);
 
+    const onAbort = () => {
+      const entry = pendingIntegrationResolvers.get(requestId);
+      if (entry) {
+        pendingIntegrationResolvers.delete(requestId);
+        entry.resolve(null);
+      }
+    };
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+
     pendingIntegrationResolvers.set(requestId, {
       chatId,
       resolve: (result) => {
         clearTimeout(timeout);
+        abortSignal?.removeEventListener("abort", onAbort);
         resolve(result);
       },
     });

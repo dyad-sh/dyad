@@ -219,6 +219,7 @@ export function usePlanEvents() {
           );
           new Notification(app?.name ?? "Dyad", {
             body: "Database integration setup needs your input",
+            requireInteraction: true,
           });
         }
       },

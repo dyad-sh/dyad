@@ -51,7 +51,11 @@ export const addIntegrationTool: ToolDefinition<
       provider,
     });
 
-    const result = await waitForIntegrationResponse(requestId, ctx.chatId);
+    const result = await waitForIntegrationResponse(
+      requestId,
+      ctx.chatId,
+      ctx.abortSignal,
+    );
 
     if (!result) {
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";

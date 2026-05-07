@@ -654,6 +654,7 @@ export async function handleLocalAgentStream(
       onAttachmentAccess: () => {
         usedAttachmentAccessTool = true;
       },
+      abortSignal: abortController.signal,
     };
 
     // Build tool set (agent tools + MCP tools)

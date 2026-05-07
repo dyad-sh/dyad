@@ -45,11 +45,13 @@ export interface EnsureNitroResult {
  * Ensure the given Vite app has a Nitro server layer installed:
  *   - `nitro.config.ts` at the app root (`serverDir: "./server"`)
  *   - `server/routes/api/.gitkeep` to materialize the routes directory
+ *   - Nitro plugin wired into `vite.config.ts`
  *   - `nitro` package installed
  *   - "Nitro Server Layer" section appended to `AI_RULES.md`
  *
  * Idempotent: skips file/section creation if already present. Rolls back its
- * own scratch (AI_RULES patch, nitro.config.ts, server/) if anything throws.
+ * own scratch (AI_RULES patch, nitro.config.ts, server/, vite.config.ts) if
+ * anything throws.
  */
 export async function ensureNitroOnViteApp(
   appPath: string,

@@ -24,7 +24,6 @@ import {
   streamingBlocksByMessageIdAtom,
   messageJsxByIdAtom,
   type CachedClosedBlock,
-  type DroppedSummary,
 } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
@@ -55,11 +54,7 @@ import { DyadReadGuide } from "./DyadReadGuide";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
-import {
-  type Block,
-  parseFullMessage,
-  TOOL_CALL_TAGS,
-} from "@/lib/streamingMessageParser";
+import { type Block, parseFullMessage } from "@/lib/streamingMessageParser";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -168,9 +163,6 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
 
   return (
     <>
-      {cachedJsx && hasDropped(cachedJsx.dropped) && (
-        <DroppedSummaryBlock dropped={cachedJsx.dropped} />
-      )}
       {cachedJsx ? (
         <MemoCachedClosedBlocks entries={cachedJsx.entries} />
       ) : fallbackBlocks ? (
@@ -200,50 +192,9 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   );
 };
 
-function hasDropped(dropped: DroppedSummary): boolean {
-  return dropped.markdown > 0 || dropped.toolCalls > 0;
-}
-
-/**
- * Header block summarizing what was evicted from the JSX cache while the
- * stream was running. Disappears automatically once the stream ends and the
- * cache is cleared (renderer falls back to a one-shot parse of the full DB
- * content). Suppresses any sub-count that is zero.
- */
-const DroppedSummaryBlock: React.FC<{ dropped: DroppedSummary }> = ({
-  dropped,
-}) => {
-  const parts: string[] = [];
-  if (dropped.markdown > 0) {
-    const noun = dropped.markdown === 1 ? "block" : "blocks";
-    parts.push(`${dropped.markdown} markdown ${noun}`);
-  }
-  if (dropped.toolCalls > 0) {
-    const writes = dropped.byToolTag["dyad-write"] ?? 0;
-    const searchReplaces = dropped.byToolTag["dyad-search-replace"] ?? 0;
-    const breakdown: string[] = [];
-    if (writes > 0) {
-      breakdown.push(`${writes} write_file`);
-    }
-    if (searchReplaces > 0) {
-      breakdown.push(`${searchReplaces} search_replace`);
-    }
-    const detail = breakdown.length > 0 ? ` (${breakdown.join(", ")})` : "";
-    const noun = dropped.toolCalls === 1 ? "call" : "calls";
-    parts.push(`${dropped.toolCalls} tool ${noun}${detail}`);
-  }
-  if (parts.length === 0) return null;
-  return (
-    <div className="mb-3 px-3 py-2 rounded-md border border-dashed border-border bg-muted/40 text-xs text-muted-foreground">
-      Earlier in this response: omitted {parts.join(" and ")}.
-    </div>
-  );
-};
-
 // Memoized renderer for the closed-block JSX cache. Skips re-rendering its
 // subtree entirely when the entries array reference is unchanged. The chunk
-// handler creates a new array reference only when blocks are appended or
-// evicted.
+// handler creates a new array reference only when blocks are appended.
 const MemoCachedClosedBlocks = React.memo(function MemoCachedClosedBlocks({
   entries,
 }: {
@@ -316,8 +267,6 @@ export function buildClosedBlockJsx(block: Block): CachedClosedBlock {
     return {
       id: block.id,
       element: <MemoMarkdown key={`m${block.id}`} content={block.content} />,
-      bytes: block.content.length,
-      category: "markdown",
     };
   }
   let errorMessage: string | undefined;
@@ -325,7 +274,6 @@ export function buildClosedBlockJsx(block: Block): CachedClosedBlock {
     const trimmed = block.attributes.message?.trim();
     if (trimmed) errorMessage = trimmed;
   }
-  const isToolCall = TOOL_CALL_TAGS.has(block.tag);
   return {
     id: block.id,
     element: (
@@ -336,9 +284,6 @@ export function buildClosedBlockJsx(block: Block): CachedClosedBlock {
       />
     ),
     errorMessage,
-    bytes: block.content.length,
-    category: isToolCall ? "tool-call" : "markdown",
-    toolTag: isToolCall ? block.tag : undefined,
   };
 }
 

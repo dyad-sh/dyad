@@ -22,37 +22,16 @@ export interface CachedClosedBlock {
   element: ReactElement;
   /** Pre-extracted error message (for FixAllErrorsButton aggregation). */
   errorMessage?: string;
-  /**
-   * Approximate char weight for cap accounting. For markdown blocks this
-   * is `block.content.length`; for tool-call blocks (dyad-write etc.) it
-   * is the same — the file source counts toward the total even after
-   * the block is closed.
-   */
-  bytes: number;
-  /** "tool-call" if the block's tag is in TOOL_CALL_TAGS, else "markdown". */
-  category: "markdown" | "tool-call";
-  /** The custom-tag name (e.g. "dyad-write"). Set only when category === "tool-call". */
-  toolTag?: string;
-}
-
-/** Running totals for blocks that have been evicted from the JSX cache. */
-export interface DroppedSummary {
-  markdown: number;
-  toolCalls: number;
-  /** Per-tool counts, keyed by dyad-* tag name. Subset of TOOL_CALL_TAGS. */
-  byToolTag: Record<string, number>;
 }
 
 /**
- * Bundled JSX cache + cap-accounting state for a streaming message. Stored
- * as a single atom value so the entries list, total-char counter, and
- * dropped-summary update atomically per chunk.
+ * Per-message JSX cache. The full response lives here as pre-rendered
+ * React elements; nothing is ever evicted while a stream is active. Cleared
+ * on stream end so the renderer falls back to a one-shot parse of the full
+ * DB content.
  */
 export interface MessageJsxState {
   entries: CachedClosedBlock[];
-  /** Sum of `bytes` across `entries`. Maintained on push and shift. */
-  totalChars: number;
-  dropped: DroppedSummary;
 }
 
 // Per-chat atoms implemented with maps keyed by chatId

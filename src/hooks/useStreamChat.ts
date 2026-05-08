@@ -17,7 +17,6 @@ import {
   contentBytesDroppedByMessageIdAtom,
   messageJsxByIdAtom,
   type CachedClosedBlock,
-  type DroppedSummary,
   type MessageJsxState,
   queuePausedByIdAtom,
   type QueuedMessageItem,
@@ -29,88 +28,24 @@ import {
 } from "@/lib/streamingMessageParser";
 import { buildClosedBlockJsx } from "@/components/chat/DyadMarkdownParser";
 
-// Tail-only render caps. Each closed block is rendered to JSX once and held
-// in messageJsxByIdAtom. Cap accounting evicts entries from the FRONT of
-// that list while the user response is being streamed:
-//   - count > MAX_BLOCKS  -> evict
-//   - totalChars > MAX_CHARS -> evict
-//   - never evict if remaining count <= MIN_BLOCKS (UX floor)
-// Parser state and renderer-local message.content are unconditionally
-// trimmed to the open block (KEEP_COMMITTED_BLOCKS = 0); the JSX cache is
-// the only place closed-block content lives during a stream.
-const MAX_BLOCKS = 50;
-const MIN_BLOCKS = 10;
-const MAX_CHARS = 200_000;
+// Renderer-local message.content is trimmed to the open block on every
+// chunk. Closed blocks live in messageJsxByIdAtom as pre-rendered React
+// elements — never evicted during a stream so the user sees the full
+// response. The cache is cleared on stream end (renderer falls back to a
+// one-shot parse of the full DB content).
 const KEEP_COMMITTED_BLOCKS = 0;
 
-const EMPTY_DROPPED: DroppedSummary = {
-  markdown: 0,
-  toolCalls: 0,
-  byToolTag: {},
-};
-
-const EMPTY_JSX_STATE: MessageJsxState = {
-  entries: [],
-  totalChars: 0,
-  dropped: EMPTY_DROPPED,
-};
-
 /**
- * Append newly-committed closed-block JSX to the per-message cache and
- * evict from the front until the caps hold. MIN_BLOCKS is a hard floor —
- * never drop below it even if MAX_CHARS is still exceeded. Returns a fresh
- * MessageJsxState with the updated entries, totalChars, and dropped
- * counters; callers wrap it in the atom map.
+ * Append newly-committed closed-block JSX to the per-message cache. No
+ * eviction — the full response is preserved as pre-rendered React elements.
  */
-function appendAndEnforceCaps(
+function appendJsxEntries(
   prev: MessageJsxState | undefined,
   newEntries: CachedClosedBlock[],
 ): MessageJsxState {
-  const base = prev ?? EMPTY_JSX_STATE;
-  const entries = [...base.entries, ...newEntries];
-  let totalChars = base.totalChars;
-  for (const e of newEntries) totalChars += e.bytes;
-
-  let droppedMd = base.dropped.markdown;
-  let droppedTools = base.dropped.toolCalls;
-  let byTagMutated: Record<string, number> | null = null;
-
-  while (
-    entries.length > MIN_BLOCKS &&
-    (entries.length > MAX_BLOCKS || totalChars > MAX_CHARS)
-  ) {
-    const head = entries.shift()!;
-    totalChars -= head.bytes;
-    if (head.category === "markdown") {
-      droppedMd++;
-    } else {
-      droppedTools++;
-      if (byTagMutated === null) {
-        byTagMutated = { ...base.dropped.byToolTag };
-      }
-      const tag = head.toolTag ?? "unknown";
-      byTagMutated[tag] = (byTagMutated[tag] ?? 0) + 1;
-    }
-  }
-
-  if (
-    droppedMd === base.dropped.markdown &&
-    droppedTools === base.dropped.toolCalls &&
-    byTagMutated === null &&
-    newEntries.length > 0
-  ) {
-    return { entries, totalChars, dropped: base.dropped };
-  }
-
-  return {
-    entries,
-    totalChars,
-    dropped: {
-      markdown: droppedMd,
-      toolCalls: droppedTools,
-      byToolTag: byTagMutated ?? base.dropped.byToolTag,
-    },
-  };
+  if (newEntries.length === 0) return prev ?? { entries: [] };
+  const base = prev ?? { entries: [] };
+  return { entries: [...base.entries, ...newEntries] };
 }
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -456,10 +391,7 @@ export function useStreamChat({
                           newClosed.map(buildClosedBlockJsx);
                         setMessageJsxById((prevMap) => {
                           const cur2 = prevMap.get(streamingMessageId);
-                          const updated = appendAndEnforceCaps(
-                            cur2,
-                            newEntries,
-                          );
+                          const updated = appendJsxEntries(cur2, newEntries);
                           const out = new Map(prevMap);
                           out.set(streamingMessageId, updated);
                           return out;

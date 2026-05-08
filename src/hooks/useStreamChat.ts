@@ -379,13 +379,14 @@ export function useStreamChat({
                       if (newContent.length === cur.cursor && cur.cursor > 0) {
                         return prev;
                       }
+                      // advanceParser shares `cur.blocks` by reference and
+                      // pushes new closed blocks onto it, so capture the
+                      // count BEFORE the call — otherwise the post-advance
+                      // length equals advanced.blocks.length and the slice
+                      // below is always empty.
+                      const priorBlockCount = cur.blocks.length;
                       let advanced = advanceParser(cur, newContent);
-                      // Render any newly-committed closed blocks to JSX and
-                      // append to the message-JSX cache, then evict from the
-                      // front while the cap is exceeded.
-                      const newClosed = advanced.blocks.slice(
-                        cur.blocks.length,
-                      );
+                      const newClosed = advanced.blocks.slice(priorBlockCount);
                       if (newClosed.length > 0) {
                         const newEntries: CachedClosedBlock[] =
                           newClosed.map(buildClosedBlockJsx);

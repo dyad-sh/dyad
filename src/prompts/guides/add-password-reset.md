@@ -121,19 +121,7 @@ In a Vite + React Router project, password reset goes through the same Nitro pro
 
 If the auth route is already wired up per the auth guide (`/auth/:path` → `AuthView`), simply pass `credentials={{ forgotPassword: true }}`. `AuthView` handles `forgot-password` and `reset-password` paths automatically — no extra routes needed.
 
-<code-template label="authview-with-forgot-password" file="src/pages/auth/AuthPage.tsx" language="tsx">
-import { useParams } from 'react-router-dom';
-import { AuthView } from '@neondatabase/auth/react';
-import './auth.css';
-
-export default function AuthPage() {
-const { path = 'sign-in' } = useParams<{ path: string }>();
-// redirectTo is REQUIRED — without it AuthView leaves the user stranded on
-// the auth page after a successful sign-in/sign-up. Keep this even when
-// adding the forgot-password flow.
-return <AuthView path={path} redirectTo="/" credentials={{ forgotPassword: true }} />;
-}
-</code-template>
+In `src/pages/auth/AuthPage.tsx` (the existing component from the auth guide), keep the imports (`useParams` from `'react-router-dom'`, `AuthView` from `'@neondatabase/auth/react'`, the scoped `./auth.css`) and the `useParams<{ path: string }>()` call defaulting `path` to `'sign-in'`. Render `<AuthView path={path} redirectTo="/" credentials={{ forgotPassword: true }} />`. `redirectTo` is still REQUIRED — keep it when adding the forgot-password flow, otherwise users land stranded on the auth page after sign-in/sign-up.
 
 `AuthView` will now render at `/auth/forgot-password` and `/auth/reset-password` automatically because the route is `/auth/:path`.
 
@@ -141,64 +129,34 @@ return <AuthView path={path} redirectTo="/" credentials={{ forgotPassword: true 
 
 Use this when you need custom layouts beyond what `AuthView` exposes. The standalone components own the token exchange — you only own the page shell.
 
-<code-template label="forgot-password-page" file="src/pages/auth/ForgotPasswordPage.tsx" language="tsx">
-import { useNavigate } from 'react-router-dom';
-import { ForgotPasswordForm } from '@neondatabase/auth/react';
-import { authClient } from '@/lib/auth-client';
+##### Forgot-password page
 
-export default function ForgotPasswordPage() {
-const navigate = useNavigate();
-const resetUrl = `${window.location.origin}/auth/reset-password`;
+Create `src/pages/auth/ForgotPasswordPage.tsx`.
 
-return (
+- Imports: `useNavigate` from `'react-router-dom'`, `ForgotPasswordForm` from `'@neondatabase/auth/react'`, `authClient` from `'@/lib/auth-client'`.
+- Compute the reset URL as an **absolute, same-origin URL**: `\`${window.location.origin}/auth/reset-password\``. The reset link Neon emails to the user must be a real, unauthenticated route in the app — relative paths or paths to a non-existent route give the user a dead link.
+- Render the page shell (heading, a short instruction, app styling) and a `<ForgotPasswordForm>` with these props:
+  - `authClient={authClient}`
+  - `redirectTo={resetUrl}` (the absolute URL above)
+  - `onSuccess={() => navigate('/auth/forgot-password/sent')}` — after submission, navigate to a "check your inbox" confirmation page (or show inline confirmation; whichever the app prefers).
 
-<div>
-<h1>Reset your password</h1>
-<p>Enter your email and we'll send you a link to reset your password.</p>
-<ForgotPasswordForm
-authClient={authClient}
-redirectTo={resetUrl}
-onSuccess={() => navigate('/auth/forgot-password/sent')}
-/>
-</div>
-);
-}
-</code-template>
+##### Reset-password page
 
-<code-template label="reset-password-page" file="src/pages/auth/ResetPasswordPage.tsx" language="tsx">
-import { useNavigate } from 'react-router-dom';
-import { ResetPasswordForm } from '@neondatabase/auth/react';
-import { authClient } from '@/lib/auth-client';
+Create `src/pages/auth/ResetPasswordPage.tsx`.
 
-export default function ResetPasswordPage() {
-const navigate = useNavigate();
+- Imports: `useNavigate` from `'react-router-dom'`, `ResetPasswordForm` from `'@neondatabase/auth/react'`, `authClient` from `'@/lib/auth-client'`.
+- Render the page shell (heading like "Choose a new password", app styling) and a `<ResetPasswordForm>` with:
+  - `authClient={authClient}`
+  - `onSuccess={() => navigate('/auth/sign-in')}` — after a successful reset, send the user to sign-in (or to the app home if the SDK auto-signs them in; check `data` if the version returns one).
+- Surface a clear "request a new link" affordance (e.g. a link back to `/auth/forgot-password`) so users who arrive with an expired token (>15 minutes) aren't stuck.
 
-return (
+##### Register the routes
 
-<div>
-<h1>Choose a new password</h1>
-<ResetPasswordForm
-authClient={authClient}
-onSuccess={() => navigate('/auth/sign-in')}
-/>
-</div>
-);
-}
-</code-template>
+In `src/App.tsx`, inside the existing `<Routes>` block, add `<Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />` and `<Route path="/auth/reset-password" element={<ResetPasswordPage />} />`. Import both pages from `@/pages/auth/...`.
 
-Register the routes in React Router:
+Both routes MUST be reachable without auth — the user is not signed in when they click the email link. The auth middleware's `/auth/*` public prefix from the auth guide already covers this; do NOT tighten it.
 
-<code-template label="reset-routes-registration" file="src/App.tsx" language="tsx">
-import { Routes, Route } from 'react-router-dom';
-import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
-
-// Inside <Routes>:
-<Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
-<Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-</code-template>
-
-Make sure `server/middleware/auth.ts` lets `/auth/*` through unauthenticated (the public-prefixes list in the auth guide already does this).
+If the project also has the generic `/auth/:path` catch-all rendering `AuthView`, register these specific routes **before** it so React Router prefers the custom pages.
 
 </vite-nitro-only>
 

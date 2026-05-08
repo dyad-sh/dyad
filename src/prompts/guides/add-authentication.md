@@ -227,303 +227,97 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 
 ### Server: catch-all proxy
 
-This is the heart of the integration. Forward every `/api/auth/*` request to `${NEON_AUTH_BASE_URL}/<path>`, undoing the cookie-name rewrite on the way up and applying it on the way down.
+This is the heart of the integration. Create `server/routes/api/auth/[...all].ts` as a single catch-all that forwards every `/api/auth/*` request to `${NEON_AUTH_BASE_URL}/<path>`, undoing the cookie-name rewrite on the way up and applying it on the way down.
 
-<code-template label="auth-proxy-route" file="server/routes/api/auth/[...all].ts" language="typescript">
-import { defineHandler } from 'nitro';
+The handler must:
 
-const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL!;
-
-// Cookies whose names start with __Secure- / __Host- are rejected by the
-// browser unless served over HTTPS. In dev the preview runs over HTTP, so we
-// rename them on the way to the browser and undo the rename on the way back.
-function isHttpDev(req: Request): boolean {
-return new URL(req.url).protocol === 'http:';
-}
-
-function restoreUpstreamCookieNames(cookieHeader: string | null): string | null {
-if (!cookieHeader) return null;
-return cookieHeader
-.replace(/(^|;\s*)__Secure_/g, '$1__Secure-')
-.replace(/(^|;\s*)__Host_/g, '$1__Host-');
-}
-
-function rewriteSetCookieForHttpDev(setCookie: string): string {
-return setCookie
-.replace(/^__Secure-/, '__Secure_')
-.replace(/^__Host-/, '__Host_')
-.replace(/;\s*Secure/gi, '')
-.replace(/;\s*Partitioned/gi, '')
-.replace(/;\s*Domain=[^;]+/gi, '')
-.replace(/;\s*SameSite=None/gi, '; SameSite=Lax');
-}
-
-export default defineHandler(async (event) => {
-const req = event.request;
-const url = new URL(req.url);
-
-// Strip the /api/auth prefix; everything after is the upstream path.
-const upstreamPath = url.pathname.replace(/^\/api\/auth/, '') || '/';
-const upstreamUrl = `${NEON_AUTH_BASE_URL}${upstreamPath}${url.search}`;
-
-// Forward headers, restoring upstream cookie names so Neon sees __Secure-*.
-const forwardedHeaders = new Headers(req.headers);
-forwardedHeaders.delete('host');
-forwardedHeaders.delete('content-length');
-const restoredCookie = restoreUpstreamCookieNames(forwardedHeaders.get('cookie'));
-if (restoredCookie) {
-forwardedHeaders.set('cookie', restoredCookie);
-} else {
-forwardedHeaders.delete('cookie');
-}
-
-const body =
-req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
-
-const upstream = await fetch(upstreamUrl, {
-method: req.method,
-headers: forwardedHeaders,
-body,
-redirect: 'manual',
-});
-
-// Build the response. Rewrite Set-Cookie for HTTP dev so the browser keeps it.
-const responseHeaders = new Headers();
-upstream.headers.forEach((value, key) => {
-if (key.toLowerCase() === 'set-cookie') return;
-responseHeaders.set(key, value);
-});
-const setCookies = upstream.headers.getSetCookie?.() ?? [];
-const cookiesOut = isHttpDev(req)
-? setCookies.map(rewriteSetCookieForHttpDev)
-: setCookies;
-for (const c of cookiesOut) {
-responseHeaders.append('set-cookie', c);
-}
-
-return new Response(upstream.body, {
-status: upstream.status,
-statusText: upstream.statusText,
-headers: responseHeaders,
-});
-});
-</code-template>
+- Use `defineHandler` from `"nitro"` and the h3 utilities `getRequestHeaders`, `getRequestURL`, and `readRawBody` from `"nitro/h3"`. Read `process.env.NEON_AUTH_BASE_URL` at module scope.
+- **Do not** use `event.request` — h3 in this Nitro version does not expose a Web `Request`. Use `getRequestURL(event)` for the URL and `event.method` for the HTTP method.
+- Compute the upstream path by stripping the `/api/auth` prefix from `url.pathname` (fall back to `/`), then build the upstream URL as `${NEON_AUTH_BASE_URL}${upstreamPath}${url.search}`.
+- Build `forwardedHeaders` (a `Headers` object) from `getRequestHeaders(event)`, skipping `host` and `content-length` and any `undefined` values. **On the way up**, restore upstream cookie names in the `cookie` header by replacing `__Secure_` → `__Secure-` and `__Host_` → `__Host-` (anchored to start-of-name boundary, i.e. `(^|;\s*)`). If no cookie remains, delete the header.
+- Read the body via `readRawBody(event, false)` (returns `Buffer`) for everything except `GET` and `HEAD`; pass it to `fetch` as `BodyInit`.
+- `fetch` the upstream with `method`, `forwardedHeaders`, `body`, and `redirect: 'manual'`.
+- Build the response `Headers` by copying every upstream header **except** `set-cookie`. For `set-cookie`, call `upstream.headers.getSetCookie?.() ?? []` to get the array (the standard `forEach` collapses duplicates).
+- **HTTP dev cookie rewrite (way down)**: if `url.protocol === 'http:'`, rewrite each `Set-Cookie` string by renaming `__Secure-` → `__Secure_` and `__Host-` → `__Host_` at the start, stripping `; Secure`, stripping `; Partitioned`, stripping `; Domain=...`, and changing `; SameSite=None` → `; SameSite=Lax`. Append each rewritten cookie to the response headers via `responseHeaders.append('set-cookie', c)`.
+- Return `new Response(upstream.body, { status, statusText, headers: responseHeaders })` — stream the body through, do not buffer it.
 
 ### Server: shared session helper
 
-Read the session directly from `${NEON_AUTH_BASE_URL}/get-session` using the user's cookie. There is no `auth` instance in this path — `createNeonAuth` would crash on import.
+Create `server/utils/session.ts` that reads the session directly from `${NEON_AUTH_BASE_URL}/get-session` using the user's cookie. There is no `auth` instance in this path — `createNeonAuth` would crash on import.
 
-<code-template label="auth-session-helper" file="server/utils/session.ts" language="typescript">
-const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL!;
+The module must:
 
-export type Session = {
-user: { id: string; name: string; email: string; emailVerified: boolean };
-} | null;
-
-function restoreUpstreamCookieNames(cookieHeader: string | null): string | null {
-if (!cookieHeader) return null;
-return cookieHeader
-.replace(/(^|;\s*)__Secure_/g, '$1__Secure-')
-.replace(/(^|;\s*)__Host_/g, '$1__Host-');
-}
-
-export async function getSessionFromCookie(cookieHeader: string | null): Promise<Session> {
-const cookie = restoreUpstreamCookieNames(cookieHeader);
-if (!cookie) return null;
-const res = await fetch(`${NEON_AUTH_BASE_URL}/get-session`, {
-headers: { cookie },
-});
-if (!res.ok) return null;
-const json = (await res.json()) as Session;
-return json?.user ? json : null;
-}
-</code-template>
+- Read `process.env.NEON_AUTH_BASE_URL` at module scope.
+- Export a `Session` type: `{ user: { id: string; name: string; email: string; emailVerified: boolean } } | null`.
+- Export `getSessionFromCookie(cookieHeader: string | null): Promise<Session>` which:
+  - Restores upstream cookie names in the input header (same `__Secure_`/`__Host_` → `__Secure-`/`__Host-` rewrite as the proxy uses on the way up). If no cookie, return `null`.
+  - Calls `fetch(\`${NEON_AUTH_BASE_URL}/get-session\`, { headers: { cookie } })`.
+  - Returns `null` on `!res.ok`. Otherwise parses JSON as `Session`; returns `null` if there is no `user`, otherwise returns the parsed session.
 
 ### Server: request-boundary middleware
 
-Place this in `server/middleware/` so Nitro auto-loads it. Public-prefix matching whitelists the auth routes themselves and the SPA's auth pages.
+Place this in `server/middleware/auth.ts` so Nitro auto-loads it. The middleware gates every `/api/*` request that is not itself an auth route and is not an SPA route.
 
-<code-template label="auth-middleware" file="server/middleware/auth.ts" language="typescript">
-import { defineHandler } from 'nitro';
-import { createError, getRequestHeader, getRequestURL } from 'nitro/h3';
-import { getSessionFromCookie } from '../utils/session';
+It must:
 
-const PUBLIC_PREFIXES = ['/api/auth/', '/auth/'];
-
-export default defineHandler(async (event) => {
-const { pathname } = getRequestURL(event);
-if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return;
-if (!pathname.startsWith('/api/')) return; // SPA routes are gated client-side
-
-const session = await getSessionFromCookie(getRequestHeader(event, 'cookie') ?? null);
-if (!session?.user) {
-throw createError({ statusCode: 401, statusMessage: 'Unauthorized' });
-}
-event.context.userId = session.user.id;
-});
-</code-template>
+- Import `defineHandler` from `"nitro"`, and `createError`, `getRequestHeader`, `getRequestURL` from `"nitro/h3"`. Import `getSessionFromCookie` from `../utils/session`.
+- Define `PUBLIC_PREFIXES = ['/api/auth/', '/auth/']`.
+- Read `pathname` from `getRequestURL(event)`. If it starts with any public prefix, `return` (allow). If it does not start with `/api/`, `return` (SPA routes are gated client-side).
+- Read the cookie via `getRequestHeader(event, 'cookie') ?? null`, call `getSessionFromCookie`. If there is no `session?.user`, `throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })`. Otherwise stash `session.user.id` on `event.context.userId` for downstream handlers.
 
 ### Server: reading session inside Nitro handlers
 
-<code-template label="server-route-with-session" file="server/routes/api/me.get.ts" language="typescript">
-import { defineHandler } from 'nitro';
-import { createError, getRequestHeader } from 'nitro/h3';
-import { getSessionFromCookie } from '../../utils/session';
+For any protected route file (e.g. `server/routes/api/me.get.ts`):
 
-export default defineHandler(async (event) => {
-const session = await getSessionFromCookie(getRequestHeader(event, 'cookie') ?? null);
-if (!session?.user) {
-throw createError({ statusCode: 401, statusMessage: 'Unauthorized' });
-}
-return { id: session.user.id, name: session.user.name };
-});
-</code-template>
+- Import `defineHandler` from `"nitro"`, and `createError`, `getRequestHeader` from `"nitro/h3"`, and `getSessionFromCookie` from the session helper.
+- In the handler, call `getSessionFromCookie(getRequestHeader(event, 'cookie') ?? null)`. Throw a 401 via `createError` if there is no `session?.user`. Otherwise return the data the route needs (e.g. `{ id, name }`).
+
+(In practice the middleware has already enforced auth, so handlers can also read `event.context.userId` directly if they only need the id.)
 
 ### Client: auth client
 
-Pass an absolute same-origin URL — the Better Auth client validator rejects bare paths.
+Create `src/lib/auth-client.ts`.
 
-<code-template label="auth-client" file="src/lib/auth-client.ts" language="typescript">
-import { createAuthClient } from '@neondatabase/auth';
-import { BetterAuthReactAdapter } from '@neondatabase/auth/react/adapters';
-
-// Same-origin absolute URL — requests go through the Nitro proxy at /api/auth/\*.
-// Bare paths fail Better Auth's assertHasProtocol validator at runtime.
-const baseURL =
-typeof window !== 'undefined'
-? `${window.location.origin}/api/auth`
-: 'http://localhost/api/auth';
-
-export const authClient = createAuthClient(baseURL, {
-adapter: BetterAuthReactAdapter(),
-});
-
-// Typed accessor for useSession (Neon's published types currently mistype it
-// as a nanostores Atom; runtime behavior is the better-auth/react hook).
-type SessionState = {
-data: { user: { id: string; name: string; email: string; emailVerified: boolean } } | null;
-isPending: boolean;
-};
-export const useAuthSession = (): SessionState =>
-(authClient.useSession as unknown as () => SessionState)();
-</code-template>
+- Import `createAuthClient` from `"@neondatabase/auth"` and `BetterAuthReactAdapter` from `"@neondatabase/auth/react/adapters"` (NOT from the root entry).
+- Compute `baseURL` as an **absolute same-origin URL**: in the browser `${window.location.origin}/api/auth`; for SSR/build-time fall back to a placeholder absolute URL like `'http://localhost/api/auth'`. Do not pass a bare `'/api/auth'` — Better Auth's `assertHasProtocol` validator throws on relative paths.
+- Export `authClient = createAuthClient(baseURL, { adapter: BetterAuthReactAdapter() })`.
+- Export a typed `useAuthSession()` accessor: Neon's published types currently mistype `useSession` as a nanostores `Atom`, but at runtime it is the `better-auth/react` hook. Cast it through `unknown`: `(authClient.useSession as unknown as () => SessionState)()`, where `SessionState` is `{ data: { user: { id; name; email; emailVerified } } | null; isPending: boolean }`. Use `useAuthSession()` everywhere instead of `authClient.useSession()`.
 
 ### Client: provider with React Router wiring
 
 `NeonAuthUIProvider`'s default `navigate`/`replace`/`Link` use `window.location.href`, which causes a full page reload after sign-in/sign-up that races the session cookie. Wire React Router in.
 
-<code-template label="root-with-provider" file="src/main.tsx" language="tsx">
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import App from './App';
-import './globals.css';
-
-createRoot(document.getElementById('root')!).render(
-<StrictMode>
-<BrowserRouter>
-<App />
-</BrowserRouter>
-</StrictMode>,
-);
-</code-template>
-
-<code-template label="auth-provider" file="src/components/AuthProvider.tsx" language="tsx">
-import type { ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { NeonAuthUIProvider } from '@neondatabase/auth/react';
-import { authClient } from '@/lib/auth-client';
-
-// Set defaultTheme to match the app's theme: "light", "dark", or "system"
-// if the app uses system-based switching.
-export function AuthProvider({ children }: { children: ReactNode }) {
-const navigate = useNavigate();
-
-return (
-<NeonAuthUIProvider
-authClient={authClient}
-defaultTheme="light"
-navigate={(href) => navigate(href)}
-replace={(href) => navigate(href, { replace: true })}
-Link={({ href, ...props }) => <Link to={href} {...props} />} >
-{children}
-</NeonAuthUIProvider>
-);
-}
-</code-template>
-
-<code-template label="auth-route" file="src/pages/auth/AuthPage.tsx" language="tsx">
-import { useParams } from 'react-router-dom';
-import { AuthView } from '@neondatabase/auth/react';
-import './auth.css';
-
-export default function AuthPage() {
-const { path = 'sign-in' } = useParams<{ path: string }>();
-// redirectTo is REQUIRED — without it AuthView leaves the user stranded
-// on the auth page after a successful sign-in/sign-up.
-return <AuthView path={path} redirectTo="/" />;
-}
-</code-template>
-
-Register the route — note the `:path` param matches `AuthView`'s expected URL shape (`/auth/sign-in`, `/auth/sign-up`, `/auth/forgot-password`, `/auth/reset-password`, etc.):
-
-<code-template label="auth-routes-registration" file="src/App.tsx" language="tsx">
-import { Routes, Route } from 'react-router-dom';
-import { AuthProvider } from '@/components/AuthProvider';
-import AuthPage from '@/pages/auth/AuthPage';
-import { UserMenu } from '@/components/UserMenu';
-
-export default function App() {
-return (
-<AuthProvider>
-<header>
-<UserMenu />
-</header>
-<Routes>
-<Route path="/auth/:path" element={<AuthPage />} />
-{/_ ...your other routes _/}
-</Routes>
-</AuthProvider>
-);
-}
-</code-template>
+- **`src/main.tsx`**: wrap `<App />` in `<BrowserRouter>` from `react-router-dom` (inside `<StrictMode>`).
+- **`src/components/AuthProvider.tsx`**: a wrapper component that imports `Link` and `useNavigate` from `react-router-dom`, `NeonAuthUIProvider` from `"@neondatabase/auth/react"`, and `authClient` from `@/lib/auth-client`. Inside, call `useNavigate()` and render `<NeonAuthUIProvider>` with these props:
+  - `authClient={authClient}`
+  - `defaultTheme="light"` (or `"dark"` / `"system"`) — **inspect the app's theme first** (Tailwind config, theme provider, `<html>` class) and pass the matching value. Do not leave it as the library default.
+  - `navigate={(href) => navigate(href)}`
+  - `replace={(href) => navigate(href, { replace: true })}`
+  - `Link={({ href, ...props }) => <Link to={href} {...props} />}`
+- **`src/pages/auth/AuthPage.tsx`**: read `path` from `useParams` (default `'sign-in'`), import `AuthView` from `"@neondatabase/auth/react"`, render `<AuthView path={path} redirectTo="/" />`. `redirectTo` is REQUIRED — without it the user gets stranded on the auth page after a successful sign-in. Also import a scoped `auth.css` for page-level styling (centered card, padding, branded colors); do NOT touch `globals.css`.
+- **`src/App.tsx`**: render `<AuthProvider>` at the top, then a header with `<UserMenu />`, then `<Routes>` with `<Route path="/auth/:path" element={<AuthPage />} />` plus the app's other routes. The `:path` param matches `AuthView`'s URL shape: `/auth/sign-in`, `/auth/sign-up`, `/auth/forgot-password`, `/auth/reset-password`.
 
 **IMPORTANT:** If the system prompt says email verification is enabled, do NOT use `AuthView` for the sign-up page — you must build a custom sign-up form (see the email verification guide). You may still use `AuthView` for the sign-in page.
 
 ### Client: user menu
 
-Prefer a small custom menu over `<UserButton />` for app-themed designs — `UserButton` is a heavy dropdown bundled with the auth UI library and styling it to match a non-default app design is non-trivial. The menu below uses the typed `useAuthSession()` accessor and the project's existing UI primitives (e.g. shadcn `DropdownMenu` if present).
+Prefer a small custom menu over `<UserButton />` for app-themed designs — `UserButton` is a heavy dropdown bundled with the auth UI library and styling it to match a non-default app design is non-trivial.
 
-<code-template label="auth-client-usage" file="src/components/UserMenu.tsx" language="tsx">
-import { authClient, useAuthSession } from '@/lib/auth-client';
+Create `src/components/UserMenu.tsx`:
 
-export function UserMenu() {
-const { data: session, isPending } = useAuthSession();
+- Import `authClient` and `useAuthSession` from `@/lib/auth-client`.
+- Call `useAuthSession()`. Return `null` while `isPending`, return `null` if there is no `session?.user`.
+- Render the user's name and a sign-out control wired to `authClient.signOut()`. Use the project's existing UI primitives (e.g. shadcn `DropdownMenu` if the project already has one).
 
-if (isPending) return null;
-if (!session?.user) return null;
-
-return (
-<button onClick={() => authClient.signOut()}>
-Sign out {session.user.name}
-</button>
-);
-}
-</code-template>
-
-If you do prefer the prebuilt `<UserButton />`, import it from `@neondatabase/auth/react` and pass `classNames` to align it with the app's design tokens; do NOT import the package's CSS.
+If you do prefer the prebuilt `<UserButton />`, import it from `"@neondatabase/auth/react"` and pass `classNames` to align it with the app's design tokens; do NOT import the package's CSS.
 
 ### Environment Variables (`.env.local`)
 
-`NEON_AUTH_BASE_URL` is the only required server-only var. `NEON_AUTH_COOKIE_SECRET` is **not used** by this proxy path — it only matters for the Next.js `createNeonAuth` integration's optional `session_data` cache cookie. Never prefix either with `VITE_`.
+`NEON_AUTH_BASE_URL` is the only required server-only var for this path. `NEON_AUTH_COOKIE_SECRET` is **not used** by the proxy path — it only matters for the Next.js `createNeonAuth` integration's optional `session_data` cache cookie. Never prefix either with `VITE_`.
 
-<code-template label="env-vars" file=".env.local" language="bash">
-# Neon Database (injected by Dyad) — server-only
-DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
+The file should contain (server-only):
 
-# Neon Auth (managed by Neon, value from Neon Console > Auth settings) — server-only
-
-NEON_AUTH_BASE_URL=https://ep-xxx.neonauth.us-east-1.aws.neon.tech/neondb/auth
-</code-template>
+- `DATABASE_URL` — Neon Postgres connection string, injected by Dyad.
+- `NEON_AUTH_BASE_URL` — copy from Neon Console → Auth settings (e.g. `https://ep-xxx.neonauth.us-east-1.aws.neon.tech/neondb/auth`).
 
 </vite-nitro-only>

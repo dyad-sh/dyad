@@ -99,6 +99,10 @@ When adding new test server URLs, update **both** the test fixtures (`e2e-tests/
 
 For app features that fetch `api.dyad.sh` directly, add a test-only env override in app code and point it at the worker-specific fake server during E2E. Without that override, E2E tests cannot deterministically exercise both the remote-success and local-fallback paths.
 
+## CI scaffold dependency installs
+
+If an E2E CI shard fails before Playwright starts with `[ERR_PNPM_IGNORED_BUILDS]` during `cd scaffold && pnpm install` or `cd nextjs-template && pnpm install`, check the workflow pnpm version first. `pnpm@latest` can change build-script policy between major versions; pin the workflow pnpm version or explicitly update the build-script policy instead of debugging test code.
+
 ## Sandbox-related Electron launch failures
 
 Packaged Electron E2E runs may fail inside the Codex sandbox before any test logic executes, with Playwright reporting `electron.launch: Process failed to launch!` and the Electron process exiting with `SIGABRT`.

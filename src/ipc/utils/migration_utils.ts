@@ -936,7 +936,18 @@ export async function introspectBranch({
     );
   }
 
-  return path.join(outDir, tsSchemaFile);
+  const schemaPath = path.join(outDir, tsSchemaFile);
+  // Temporary workaround until drizzle-kit@1.0.0 stable is released:
+  // introspect can emit `.default(')` for empty-string defaults, which is
+  // syntactically broken and fails the subsequent generate step. Repair the
+  // malformed default in-place before handing the file back.
+  const original = await fs.readFile(schemaPath, "utf-8");
+  const repaired = original.split(".default(')").join(".default('')");
+  if (repaired !== original) {
+    await fs.writeFile(schemaPath, repaired, "utf-8");
+  }
+
+  return schemaPath;
 }
 
 /**

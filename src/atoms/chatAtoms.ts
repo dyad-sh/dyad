@@ -7,6 +7,53 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import type { ReactElement } from "react";
+import type { ParserState } from "@/lib/streamingMessageParser";
+
+/**
+ * Per-message cache of pre-rendered React elements for committed (closed)
+ * blocks. Built at chunk-handle time so the renderer never re-creates them
+ * during render.
+ */
+export interface CachedClosedBlock {
+  /** Stable React key. Mirrors the parser block id. */
+  id: number;
+  /** The pre-built React element (key already set, props frozen). */
+  element: ReactElement;
+  /** Pre-extracted error message (for FixAllErrorsButton aggregation). */
+  errorMessage?: string;
+  /**
+   * Approximate char weight for cap accounting. For markdown blocks this
+   * is `block.content.length`; for tool-call blocks (dyad-write etc.) it
+   * is the same — the file source counts toward the total even after
+   * the block is closed.
+   */
+  bytes: number;
+  /** "tool-call" if the block's tag is in TOOL_CALL_TAGS, else "markdown". */
+  category: "markdown" | "tool-call";
+  /** The custom-tag name (e.g. "dyad-write"). Set only when category === "tool-call". */
+  toolTag?: string;
+}
+
+/** Running totals for blocks that have been evicted from the JSX cache. */
+export interface DroppedSummary {
+  markdown: number;
+  toolCalls: number;
+  /** Per-tool counts, keyed by dyad-* tag name. Subset of TOOL_CALL_TAGS. */
+  byToolTag: Record<string, number>;
+}
+
+/**
+ * Bundled JSX cache + cap-accounting state for a streaming message. Stored
+ * as a single atom value so the entries list, total-char counter, and
+ * dropped-summary update atomically per chunk.
+ */
+export interface MessageJsxState {
+  entries: CachedClosedBlock[];
+  /** Sum of `bytes` across `entries`. Maintained on push and shift. */
+  totalChars: number;
+  dropped: DroppedSummary;
+}
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -263,3 +310,31 @@ export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
 
 // Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
 export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());
+
+// Cache of incremental parser state per assistant message id. The renderer
+// reads from this map when present; otherwise it falls back to a one-shot
+// parse from message.content. Updated in the streaming chunk handler so
+// committed blocks keep stable refs across patches and only the open
+// trailing block changes shape per chunk.
+export const streamingBlocksByMessageIdAtom = atom<Map<number, ParserState>>(
+  new Map(),
+);
+
+// Cumulative bytes dropped from the front of the renderer-local
+// message.content for each message, while a stream is in progress. The
+// chunk handler trims old completed blocks from memory once the count
+// exceeds a threshold; the count translates server-side patch offsets
+// (which are absolute) into local-content offsets used by
+// applyStreamingPatch. Cleared on stream end (full content is re-fetched
+// from the database).
+export const contentBytesDroppedByMessageIdAtom = atom<Map<number, number>>(
+  new Map(),
+);
+
+// Per-message JSX cache + cap-accounting state. Each chunk handler appends
+// pre-rendered React elements for any newly-committed closed blocks, then
+// evicts entries from the front while the cap is exceeded (configured by
+// MAX_BLOCKS / MAX_CHARS / MIN_BLOCKS in useStreamChat). Cleared on stream
+// end so the renderer falls back to a one-shot parse of the full DB
+// content (and the omitted-blocks summary disappears).
+export const messageJsxByIdAtom = atom<Map<number, MessageJsxState>>(new Map());

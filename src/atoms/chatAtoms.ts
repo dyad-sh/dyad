@@ -7,32 +7,7 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
-import type { ReactElement } from "react";
 import type { ParserState } from "@/lib/streamingMessageParser";
-
-/**
- * Per-message cache of pre-rendered React elements for committed (closed)
- * blocks. Built at chunk-handle time so the renderer never re-creates them
- * during render.
- */
-export interface CachedClosedBlock {
-  /** Stable React key. Mirrors the parser block id. */
-  id: number;
-  /** The pre-built React element (key already set, props frozen). */
-  element: ReactElement;
-  /** Pre-extracted error message (for FixAllErrorsButton aggregation). */
-  errorMessage?: string;
-}
-
-/**
- * Per-message JSX cache. The full response lives here as pre-rendered
- * React elements; nothing is ever evicted while a stream is active. Cleared
- * on stream end so the renderer falls back to a one-shot parse of the full
- * DB content.
- */
-export interface MessageJsxState {
-  entries: CachedClosedBlock[];
-}
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -294,26 +269,8 @@ export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());
 // reads from this map when present; otherwise it falls back to a one-shot
 // parse from message.content. Updated in the streaming chunk handler so
 // committed blocks keep stable refs across patches and only the open
-// trailing block changes shape per chunk.
+// trailing block changes shape per chunk. Cleared on stream end / full
+// message replace so the renderer reparses from the finalized DB content.
 export const streamingBlocksByMessageIdAtom = atom<Map<number, ParserState>>(
   new Map(),
 );
-
-// Cumulative bytes dropped from the front of the renderer-local
-// message.content for each message, while a stream is in progress. The
-// chunk handler trims old completed blocks from memory once the count
-// exceeds a threshold; the count translates server-side patch offsets
-// (which are absolute) into local-content offsets used by
-// applyStreamingPatch. Cleared on stream end (full content is re-fetched
-// from the database).
-export const contentBytesDroppedByMessageIdAtom = atom<Map<number, number>>(
-  new Map(),
-);
-
-// Per-message JSX cache + cap-accounting state. Each chunk handler appends
-// pre-rendered React elements for any newly-committed closed blocks, then
-// evicts entries from the front while the cap is exceeded (configured by
-// MAX_BLOCKS / MAX_CHARS / MIN_BLOCKS in useStreamChat). Cleared on stream
-// end so the renderer falls back to a one-shot parse of the full DB
-// content (and the omitted-blocks summary disappears).
-export const messageJsxByIdAtom = atom<Map<number, MessageJsxState>>(new Map());

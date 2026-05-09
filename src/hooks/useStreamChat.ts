@@ -14,39 +14,13 @@ import {
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
   streamingBlocksByMessageIdAtom,
-  contentBytesDroppedByMessageIdAtom,
-  messageJsxByIdAtom,
-  type CachedClosedBlock,
-  type MessageJsxState,
   queuePausedByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import {
   advanceParser,
   initialParserState,
-  trimToLastNBlocks,
 } from "@/lib/streamingMessageParser";
-import { buildClosedBlockJsx } from "@/components/chat/DyadMarkdownParser";
-
-// Renderer-local message.content is trimmed to the open block on every
-// chunk. Closed blocks live in messageJsxByIdAtom as pre-rendered React
-// elements — never evicted during a stream so the user sees the full
-// response. The cache is cleared on stream end (renderer falls back to a
-// one-shot parse of the full DB content).
-const KEEP_COMMITTED_BLOCKS = 0;
-
-/**
- * Append newly-committed closed-block JSX to the per-message cache. No
- * eviction — the full response is preserved as pre-rendered React elements.
- */
-function appendJsxEntries(
-  prev: MessageJsxState | undefined,
-  newEntries: CachedClosedBlock[],
-): MessageJsxState {
-  if (newEntries.length === 0) return prev ?? { entries: [] };
-  const base = prev ?? { entries: [] };
-  return { entries: [...base.entries, ...newEntries] };
-}
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { pendingScreenshotAppIdAtom } from "@/atoms/previewAtoms";
@@ -142,10 +116,6 @@ export function useStreamChat({
     streamCompletedSuccessfullyByIdAtom,
   );
   const setStreamingBlocksById = useSetAtom(streamingBlocksByMessageIdAtom);
-  const setContentBytesDroppedById = useSetAtom(
-    contentBytesDroppedByMessageIdAtom,
-  );
-  const setMessageJsxById = useSetAtom(messageJsxByIdAtom);
   const queuePausedById = useAtomValue(queuePausedByIdAtom);
   const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
 
@@ -331,12 +301,10 @@ export function useStreamChat({
                   next.set(chatId, updatedMessages);
                   return next;
                 });
-                // Drop any cached parser states / dropped-byte counters /
-                // JSX caches that don't correspond to messages in the new
-                // payload. The renderer falls back to one-shot parsing for
-                // the replaced messages.
+                // Drop parser states for messages that aren't in the new
+                // payload; the renderer reparses replaced messages one-shot.
                 const validIds = new Set(updatedMessages.map((m) => m.id));
-                const pruneByMessageId = <V>(prev: Map<number, V>) => {
+                setStreamingBlocksById((prev) => {
                   if (prev.size === 0) return prev;
                   let changed = false;
                   const next = new Map(prev);
@@ -347,24 +315,16 @@ export function useStreamChat({
                     }
                   }
                   return changed ? next : prev;
-                };
-                setStreamingBlocksById(pruneByMessageId);
-                setContentBytesDroppedById(pruneByMessageId);
-                setMessageJsxById(pruneByMessageId);
+                });
               } else if (
                 streamingMessageId !== undefined &&
                 streamingPatch !== undefined
               ) {
-                const priorDropped =
-                  store
-                    .get(contentBytesDroppedByMessageIdAtom)
-                    .get(streamingMessageId) ?? 0;
                 const applied = applyStreamingPatch(
                   setMessagesById,
                   chatId,
                   streamingMessageId,
                   streamingPatch,
-                  priorDropped,
                 );
                 if (applied) {
                   const messages = store.get(chatMessagesByIdAtom).get(chatId);
@@ -379,63 +339,7 @@ export function useStreamChat({
                       if (newContent.length === cur.cursor && cur.cursor > 0) {
                         return prev;
                       }
-                      // advanceParser shares `cur.blocks` by reference and
-                      // pushes new closed blocks onto it, so capture the
-                      // count BEFORE the call — otherwise the post-advance
-                      // length equals advanced.blocks.length and the slice
-                      // below is always empty.
-                      const priorBlockCount = cur.blocks.length;
-                      let advanced = advanceParser(cur, newContent);
-                      const newClosed = advanced.blocks.slice(priorBlockCount);
-                      if (newClosed.length > 0) {
-                        const newEntries: CachedClosedBlock[] =
-                          newClosed.map(buildClosedBlockJsx);
-                        setMessageJsxById((prevMap) => {
-                          const cur2 = prevMap.get(streamingMessageId);
-                          const updated = appendJsxEntries(cur2, newEntries);
-                          const out = new Map(prevMap);
-                          out.set(streamingMessageId, updated);
-                          return out;
-                        });
-                      }
-                      // Aggressive trim: drop ALL closed blocks from parser
-                      // state and from message.content. Renderer pulls closed
-                      // blocks from the JSX cache; only the open block needs
-                      // to be alive in parser state + content.
-                      let trimmedContent: string | null = null;
-                      let dropDelta = 0;
-                      if (advanced.blocks.length > KEEP_COMMITTED_BLOCKS) {
-                        const trim = trimToLastNBlocks(
-                          advanced,
-                          newContent,
-                          KEEP_COMMITTED_BLOCKS,
-                        );
-                        if (trim.bytesDropped > 0) {
-                          advanced = trim.state;
-                          trimmedContent = trim.content;
-                          dropDelta = trim.bytesDropped;
-                        }
-                      }
-                      if (trimmedContent !== null) {
-                        setMessagesById((prevMap) => {
-                          const list = prevMap.get(chatId);
-                          if (!list) return prevMap;
-                          const updated = list.map((m) =>
-                            m.id === streamingMessageId
-                              ? { ...m, content: trimmedContent! }
-                              : m,
-                          );
-                          const out = new Map(prevMap);
-                          out.set(chatId, updated);
-                          return out;
-                        });
-                        setContentBytesDroppedById((prevMap) => {
-                          const cur2 = prevMap.get(streamingMessageId) ?? 0;
-                          const out = new Map(prevMap);
-                          out.set(streamingMessageId, cur2 + dropDelta);
-                          return out;
-                        });
-                      }
+                      const advanced = advanceParser(cur, newContent);
                       const next = new Map(prev);
                       next.set(streamingMessageId, advanced);
                       return next;
@@ -443,18 +347,14 @@ export function useStreamChat({
                   }
                 } else {
                   triggerResync(chatId, setMessagesById, store);
-                  // Drop parser state, dropped-byte counter, and JSX cache
-                  // for this message so the renderer re-parses from the
-                  // resynced (full DB) content.
-                  const dropForMessage = <V>(prev: Map<number, V>) => {
+                  // Drop parser state for this message so the renderer
+                  // re-parses from the resynced (full DB) content.
+                  setStreamingBlocksById((prev) => {
                     if (!prev.has(streamingMessageId)) return prev;
                     const next = new Map(prev);
                     next.delete(streamingMessageId);
                     return next;
-                  };
-                  setStreamingBlocksById(dropForMessage);
-                  setContentBytesDroppedById(dropForMessage);
-                  setMessageJsxById(dropForMessage);
+                  });
                 }
               }
 
@@ -617,16 +517,13 @@ export function useStreamChat({
                         next.set(chatId, merged);
                         return next;
                       });
-                      // Stream ended successfully — full message content
-                      // was just merged from the DB into the messages atom.
-                      // Drop the JSX cache, parser state, and dropped-byte
-                      // counters for finalized messages so the renderer
-                      // falls back to a one-shot parse of the full content
-                      // and the omitted-blocks summary disappears.
+                      // Stream ended successfully — drop parser states for
+                      // finalized messages so the renderer falls back to a
+                      // one-shot parse of the merged DB content.
                       const finalizedIds = new Set(
                         latestChat.messages.map((m) => m.id),
                       );
-                      const dropFinalized = <V>(prev: Map<number, V>) => {
+                      setStreamingBlocksById((prev) => {
                         if (prev.size === 0) return prev;
                         let changed = false;
                         const next = new Map(prev);
@@ -637,10 +534,7 @@ export function useStreamChat({
                           }
                         }
                         return changed ? next : prev;
-                      };
-                      setMessageJsxById(dropFinalized);
-                      setStreamingBlocksById(dropFinalized);
-                      setContentBytesDroppedById(dropFinalized);
+                      });
                     }
                   } catch (error) {
                     console.warn(

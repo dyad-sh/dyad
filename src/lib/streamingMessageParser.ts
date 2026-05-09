@@ -67,50 +67,12 @@ const DYAD_CUSTOM_TAG_NAMES = [
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);
 
-/**
- * Tags that represent a tool call (i.e. the LLM interacting with its
- * environment). Sourced from `pro/main/ipc/handlers/local_agent/tools/`:
- * any tool whose `buildXml` emits one of these dyad-* tags is a tool call.
- * Used by the renderer's tail-only cap to bucket dropped blocks into
- * "markdown" vs "tool-call" for the omitted-blocks summary.
- */
-export const TOOL_CALL_TAGS: ReadonlySet<string> = new Set([
-  "dyad-write",
-  "dyad-rename",
-  "dyad-delete",
-  "dyad-add-dependency",
-  "dyad-execute-sql",
-  "dyad-read-logs",
-  "dyad-add-integration",
-  "dyad-enable-nitro",
-  "dyad-grep",
-  "dyad-search-replace",
-  "dyad-web-search",
-  "dyad-web-crawl",
-  "dyad-web-fetch",
-  "dyad-code-search",
-  "dyad-read",
-  "dyad-list-files",
-  "dyad-db-table-schema",
-  "dyad-supabase-project-info",
-  "dyad-neon-project-info",
-  "dyad-read-guide",
-  "dyad-status",
-  "dyad-copy",
-  "dyad-image-generation",
-  "dyad-write-plan",
-  "dyad-exit-plan",
-  "dyad-questionnaire",
-]);
-
 export type Block =
   | {
       kind: "markdown";
       id: number;
       content: string;
       complete: boolean;
-      /** Byte offset (in the parser's local content) at which this block ends. Set on commit. */
-      endOffset?: number;
     }
   | {
       kind: "custom-tag";
@@ -121,8 +83,6 @@ export type Block =
       complete: boolean;
       /** True when the closing tag has not yet been seen. */
       inProgress: boolean;
-      /** Byte offset (in the parser's local content) at which this block ends. Set on commit. */
-      endOffset?: number;
     };
 
 type Mode =
@@ -156,12 +116,6 @@ export interface ParserState {
   pendingCloseName: string;
   /** The currently-open custom tag, if mode is tag-content / tag-close-*. */
   currentTag: OpenTag | null;
-  /**
-   * Byte offset of the '<' that started the most recent tag candidate.
-   * Valid while mode is tag-open / tag-attrs / tag-close-* — used to set
-   * the endOffset of the markdown block that preceded a real tag.
-   */
-  tagStartOffset: number;
   /** Open trailing block — markdown while in prose modes, custom-tag while in tag-content/close. */
   openBlock: Block | null;
   /** Committed (closed) blocks. Refs stable across updates. */
@@ -178,7 +132,6 @@ export function initialParserState(): ParserState {
     pendingAttrs: "",
     pendingCloseName: "",
     currentTag: null,
-    tagStartOffset: 0,
     openBlock: null,
     blocks: [],
     nextBlockId: 0,
@@ -216,13 +169,12 @@ function appendToMarkdownOpen(state: ParserState, text: string): void {
   }
 }
 
-function commitOpenMarkdown(state: ParserState, endOffset: number): void {
+function commitOpenMarkdown(state: ParserState): void {
   if (state.openBlock && state.openBlock.kind === "markdown") {
     if (state.openBlock.content.length > 0) {
       state.blocks.push({
         ...state.openBlock,
         complete: true,
-        endOffset,
       });
     }
     state.openBlock = null;
@@ -252,7 +204,6 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
       pendingAttrs: prev.pendingAttrs,
       pendingCloseName: prev.pendingCloseName,
       currentTag: prev.currentTag,
-      tagStartOffset: prev.tagStartOffset,
       openBlock: prev.openBlock,
       blocks: prev.blocks,
       nextBlockId: prev.nextBlockId,
@@ -268,7 +219,6 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
     if (state.mode === "prose") {
       if (ch === "<") {
         state.pending = "<";
-        state.tagStartOffset = i;
         state.mode = "tag-open";
         i++;
       } else {
@@ -313,9 +263,8 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
       if (ch === ">") {
         const attrs = parseAttributes(state.pendingAttrs);
         // Commit the prior markdown block (if any) so the new tag block
-        // becomes the trailing open block. The markdown block ends at the
-        // '<' that began this tag.
-        commitOpenMarkdown(state, state.tagStartOffset);
+        // becomes the trailing open block.
+        commitOpenMarkdown(state);
         state.currentTag = {
           tag: state.pendingTagName,
           attributes: attrs,
@@ -399,7 +348,7 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
       if (ch === ">") {
         const closing = state.pendingCloseName;
         if (state.currentTag && closing === state.currentTag.tag) {
-          // Finalize the custom-tag block. End offset is one past the '>'.
+          // Finalize the custom-tag block.
           const finalContent = unescapeXmlContent(state.currentTag.rawContent);
           state.blocks.push({
             kind: "custom-tag",
@@ -409,7 +358,6 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
             content: finalContent,
             complete: true,
             inProgress: false,
-            endOffset: i + 1,
           });
           state.currentTag = null;
           state.openBlock = null;
@@ -522,45 +470,4 @@ export function parseFullMessage(content: string): {
 } {
   const state = advanceParser(initialParserState(), content);
   return { state, blocks: getParserBlocks(state) };
-}
-
-/**
- * Drop the oldest committed blocks beyond `keepLastN`, slicing the content
- * string at the byte boundary of the last dropped block. Returns adjusted
- * state and content. The open block (if any) and parser scan position
- * are shifted to the new origin so subsequent advanceParser calls keep
- * working in local coordinates.
- *
- * Caller is responsible for tracking the cumulative `bytesDropped` so
- * incoming streaming patches (which carry server-side offsets) can be
- * translated to local coordinates.
- */
-export function trimToLastNBlocks(
-  state: ParserState,
-  content: string,
-  keepLastN: number,
-): { state: ParserState; content: string; bytesDropped: number } {
-  if (state.blocks.length <= keepLastN) {
-    return { state, content, bytesDropped: 0 };
-  }
-  const dropCount = state.blocks.length - keepLastN;
-  const lastDropped = state.blocks[dropCount - 1];
-  // Every committed block must have an endOffset (parser sets it on commit).
-  // If somehow absent (forward-compat), bail out instead of corrupting state.
-  if (lastDropped.endOffset === undefined) {
-    return { state, content, bytesDropped: 0 };
-  }
-  const cutAt = lastDropped.endOffset;
-  const newContent = content.slice(cutAt);
-  const remaining = state.blocks.slice(dropCount).map((b) => ({
-    ...b,
-    endOffset: b.endOffset !== undefined ? b.endOffset - cutAt : b.endOffset,
-  }));
-  const newState: ParserState = {
-    ...state,
-    cursor: state.cursor - cutAt,
-    tagStartOffset: Math.max(0, state.tagStartOffset - cutAt),
-    blocks: remaining,
-  };
-  return { state: newState, content: newContent, bytesDropped: cutAt };
 }

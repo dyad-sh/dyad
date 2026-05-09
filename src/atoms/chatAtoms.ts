@@ -7,7 +7,7 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
-import type { Block, ParserState } from "@/lib/streamingMessageParser";
+import type { ParserState } from "@/lib/streamingMessageParser";
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -277,23 +277,10 @@ export const streamingBlocksByMessageIdAtom = atom<Map<number, ParserState>>(
 
 // Cumulative bytes dropped from the front of the renderer-local
 // message.content for each message, while a stream is in progress. The
-// chunk handler trims old completed blocks from memory after every patch;
+// chunk handler trims content past the open-block boundary every patch;
 // the count translates server-side patch offsets (which are absolute) into
 // local-content offsets used by applyStreamingPatch. Cleared on stream end
 // (full content is re-fetched from the database).
 export const contentBytesDroppedByMessageIdAtom = atom<Map<number, number>>(
-  new Map(),
-);
-
-// Per-message accumulator of committed (closed) parser blocks. The chunk
-// handler immutable-appends newly-closed blocks every patch; the parser
-// state itself is trimmed (state.blocks is wiped) so blocks survive the
-// trim only by living here. Block object refs are stable across chunks so
-// the renderer's per-block React.memo skips unchanged children. The array
-// ref changes only when a block closes, letting a wrapper memo skip the
-// whole closed-block subtree on chunks that just extend the open block.
-// Cleared on stream end so the renderer falls back to a one-shot parse of
-// the full DB content.
-export const closedBlocksByMessageIdAtom = atom<Map<number, Block[]>>(
   new Map(),
 );

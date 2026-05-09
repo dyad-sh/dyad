@@ -22,7 +22,6 @@ import {
   isStreamingByIdAtom,
   selectedChatIdAtom,
   streamingBlocksByMessageIdAtom,
-  closedBlocksByMessageIdAtom,
 } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
@@ -53,7 +52,11 @@ import { DyadReadGuide } from "./DyadReadGuide";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
-import { type Block, parseFullMessage } from "@/lib/streamingMessageParser";
+import {
+  type Block,
+  getOpenBlock,
+  parseFullMessage,
+} from "@/lib/streamingMessageParser";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -120,22 +123,20 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   const parserState =
     messageId !== undefined ? streamingStates.get(messageId) : undefined;
 
-  const closedBlocksMap = useAtomValue(closedBlocksByMessageIdAtom);
-  const closedBlocks =
-    messageId !== undefined ? closedBlocksMap.get(messageId) : undefined;
+  // While streaming, closed blocks live in parserState.blocks (immutable-
+  // appended on commit) and the open block comes from getOpenBlock. The
+  // closed-blocks array ref is stable across chunks that don't close a
+  // block, so MemoClosedBlocks skips its subtree entirely on those chunks
+  // (O(1) per chunk).
+  const closedBlocks = parserState?.blocks;
+  const openBlock = parserState ? getOpenBlock(parserState) : null;
 
-  // While streaming, closed blocks live in closedBlocksByMessageIdAtom and
-  // the open block lives in the parser state. The closed-blocks array ref
-  // is stable across chunks that don't close a block, so MemoClosedBlocks
-  // skips its subtree entirely on those chunks (O(1) per chunk).
-  const openBlock = parserState?.openBlock ?? null;
-
-  // Fallback path: no closed-block accumulator (history, post-DB-restore).
-  // One-shot parse of the full content.
+  // Fallback path: no parser state (history, post-DB-restore). One-shot
+  // parse of the full content.
   const fallbackBlocks = useMemo<Block[] | null>(() => {
-    if (closedBlocks !== undefined) return null;
+    if (parserState !== undefined) return null;
     return parseFullMessage(contentToParse).blocks;
-  }, [closedBlocks, contentToParse]);
+  }, [parserState, contentToParse]);
 
   // Aggregate error messages for the FixAllErrorsButton. Recomputes only
   // when one of the input arrays gets a new ref (closed blocks: on commit;

@@ -103,23 +103,48 @@ export const ChatStreamParamsSchema = z.object({
 export type ChatStreamParams = z.infer<typeof ChatStreamParamsSchema>;
 
 /**
+ * `streamingPatch` describes a tail-only update: replace the streaming
+ * message's content from `offset` onward with `content`. Sending only the
+ * tail avoids serializing tens of thousands of unchanged bytes on every
+ * text delta during a long response.
+ *
+ * The renderer reconstructs as `current.slice(0, offset) + content`, so
+ * `offset` must be the longest common prefix length between the previously
+ * sent content and the current full response (cleanFullResponse may rewrite
+ * earlier bytes inside in-progress dyad-tag attribute values).
+ */
+export const StreamingPatchSchema = z.object({
+  offset: z.number().int().nonnegative(),
+  content: z.string(),
+  /**
+   * djb2 hash of `fullResponse.slice(0, offset)` — the full agreed-upon prefix.
+   * Lets the renderer detect any stale-base mismatch (e.g. a cleanFullResponse
+   * `<` → `＜` rewrite anywhere in the prefix after the DB write), not just a
+   * mismatch at the boundary character.
+   * Absent when offset === 0 (no agreed-upon prefix to check).
+   */
+  prefixHash: z.number().int().nonnegative().optional(),
+});
+export type StreamingPatch = z.infer<typeof StreamingPatchSchema>;
+
+/**
  * Schema for chat response chunk event.
  *
  * Supports two modes:
  * 1. Full update: `messages` is set with the complete messages array
- * 2. Incremental update: `streamingMessageId` + `streamingContent` are set
- *    to update only the content of a single message being streamed.
- *    This avoids serializing the entire messages array on every text delta.
+ * 2. Incremental tail patch: `streamingMessageId` + `streamingPatch`
  */
 export const ChatResponseChunkSchema = z.object({
   chatId: z.number(),
   messages: z.array(MessageSchema).optional(),
   streamingMessageId: z.number().optional(),
-  streamingContent: z.string().optional(),
+  streamingPatch: StreamingPatchSchema.optional(),
+  // Monotonic chunk sequence used for ack-based backpressure on the canned
+  // test streaming path. Real LLM streams omit this field; the renderer
+  // only acks when chunkSeq is present.
+  chunkSeq: z.number().int().nonnegative().finite().optional(),
   effectiveChatMode: ChatModeSchema.optional(),
-  chatModeFallbackReason: z
-    .enum(["pro-required", "quota-exhausted", "no-provider"])
-    .optional(),
+  chatModeFallbackReason: z.literal("quota-exhausted").optional(),
 });
 
 export type ChatResponseChunk = z.infer<typeof ChatResponseChunkSchema>;
@@ -277,6 +302,19 @@ export const chatContracts = {
     channel: "chat:cancel",
     input: z.number(), // chatId
     output: z.boolean(),
+  }),
+
+  // Renderer→main ack for stress-test backpressure on the canned test
+  // streaming path. The handler is registered unconditionally, but real
+  // LLM streams omit `chunkSeq`, so the renderer only invokes this
+  // channel for canned [dyad-qa=...] streams.
+  responseAck: defineContract({
+    channel: "chat:response:ack",
+    input: z.object({
+      chatId: z.number().int().nonnegative().finite(),
+      lastSeq: z.number().int().nonnegative().finite(),
+    }),
+    output: z.void(),
   }),
 } as const;
 

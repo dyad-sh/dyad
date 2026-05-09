@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { useSetAtom } from "jotai";
+import { useSetAtom, useStore } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc } from "@/ipc/types";
 import {
@@ -14,6 +14,8 @@ import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
+import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
+import { triggerResync, syncChatFromDb } from "@/lib/resyncChat";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
@@ -35,6 +37,7 @@ export function useResolveMergeConflictsWithAI({
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
+  const store = useStore();
   const navigate = useNavigate();
   const [isResolving, setIsResolving] = useState(false);
   const isResolvingRef = useRef(false);
@@ -106,7 +109,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           onChunk: ({
             messages,
             streamingMessageId,
-            streamingContent,
+            streamingPatch,
             effectiveChatMode,
             chatModeFallbackReason,
           }) => {
@@ -138,22 +141,17 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               });
             } else if (
               streamingMessageId !== undefined &&
-              streamingContent !== undefined
+              streamingPatch !== undefined
             ) {
-              // Incremental update: only update the streaming message's content
-              setMessagesById((prev) => {
-                const existingMessages = prev.get(newChatId);
-                if (!existingMessages) return prev;
-
-                const next = new Map(prev);
-                const updated = existingMessages.map((msg) =>
-                  msg.id === streamingMessageId
-                    ? { ...msg, content: streamingContent }
-                    : msg,
-                );
-                next.set(newChatId, updated);
-                return next;
-              });
+              const applied = applyStreamingPatch(
+                setMessagesById,
+                newChatId,
+                streamingMessageId,
+                streamingPatch,
+              );
+              if (!applied) {
+                triggerResync(newChatId, setMessagesById, store);
+              }
             }
           },
           onEnd: () => {
@@ -166,6 +164,12 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
             setIsResolving(false);
             invalidateChats();
             refreshApp();
+            syncChatFromDb(
+              newChatId,
+              setMessagesById,
+              "[CHAT] Merge conflict onEnd",
+              store,
+            );
           },
           onError: ({ error }) => {
             showError(error || "Failed to resolve conflicts");
@@ -178,6 +182,12 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
             setIsResolving(false);
             invalidateChats();
             refreshApp();
+            syncChatFromDb(
+              newChatId,
+              setMessagesById,
+              "[CHAT] Merge conflict onError",
+              store,
+            );
           },
         },
       );
@@ -206,6 +216,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     invalidateChats,
     refreshApp,
     settings,
+    store,
   ]);
 
   return { resolveWithAI, isResolving };

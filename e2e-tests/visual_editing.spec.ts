@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
 const fs = require("fs");
 const path = require("path");
 
@@ -195,7 +196,7 @@ testSkipIfWindows("swap image via URL", async ({ po }) => {
 
   // Enter a new image URL
   const urlInput = po.page.getByLabel("Image URL");
-  await urlInput.fill("https://example.com/new-hero.png");
+  await urlInput.fill(`http://localhost:${FAKE_LLM_BASE_PORT}/test-image.png`);
 
   // Click Apply to submit the new URL
   await po.page.getByRole("button", { name: "Apply" }).click();

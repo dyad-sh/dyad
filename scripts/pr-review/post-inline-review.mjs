@@ -5,6 +5,7 @@ const repository = process.env.GITHUB_REPOSITORY;
 const prNumber = Number.parseInt(process.env.PR_NUMBER ?? "", 10);
 const contextPath = process.env.CONTEXT_PATH;
 const findingsPath = process.env.FINDINGS_PATH;
+const reviewLabel = process.env.REVIEW_LABEL || "Codex";
 
 if (!token) throw new Error("GITHUB_TOKEN is required");
 if (!repository) throw new Error("GITHUB_REPOSITORY is required");
@@ -83,7 +84,7 @@ const response = await fetch(
     body: JSON.stringify({
       commit_id: headSha,
       event: "COMMENT",
-      body: `Codex review: ${findings.length} inline finding(s).`,
+      body: `${reviewLabel} review: ${findings.length} inline finding(s).`,
       comments,
     }),
   },

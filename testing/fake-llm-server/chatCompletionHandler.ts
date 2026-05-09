@@ -118,6 +118,13 @@ export const createChatCompletionHandler =
     ) {
       await new Promise((resolve) => setTimeout(resolve, 10_000));
     }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.includes("[sleep=long]")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
+    }
 
     // Handle merge conflict resolution prompts (both old and new formats)
     if (

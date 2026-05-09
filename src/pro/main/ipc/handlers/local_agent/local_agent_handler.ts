@@ -101,6 +101,7 @@ import {
   maybeAppendRetryReplayForRetry,
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
+import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -337,10 +338,33 @@ export async function handleLocalAgentStream(
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
+  // Tracks what was last sent to the renderer for the placeholder
+  // assistant message so we can emit only the tail diff. Updated by both
+  // streaming-patch sends and full-messages-replacement sends so that the
+  // next tail patch is computed against the renderer's actual state.
+  // Held in a ref object so sendResponseChunk can mutate it.
+  const lastSentRef = { value: "" };
   let activeRetryReplayEvents: RetryReplayEvent[] | null = null;
   // Mid-turn compaction inserts a DB summary row for LLM history, but we render
   // the user-facing compaction indicator inline in the active assistant turn.
   const hiddenMessageIdsForStreaming = new Set<number>();
+  // Convenience wrapper that binds the stream-invariant context args so call
+  // sites only pass the two things that vary: the current response content and
+  // whether to send the full messages array.
+  const sendChunk = (
+    response: string,
+    { fullMessages = false }: { fullMessages?: boolean } = {},
+  ) =>
+    sendResponseChunk(
+      event,
+      req.chatId,
+      chat,
+      response,
+      placeholderMessageId,
+      hiddenMessageIdsForStreaming,
+      fullMessages,
+      lastSentRef,
+    );
   let postMidTurnCompactionStartStep: number | null = null;
 
   const appendInlineCompactionToTurn = async (
@@ -439,15 +463,7 @@ export async function handleLocalAgentStream(
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}${streamingPreview ? streamingPreview : ""}\n${compactionPreview}`
           : compactionPreview;
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          previewContent,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-          true, // Full messages: compaction changes message list
-        );
+        sendChunk(previewContent, { fullMessages: true });
       },
       {
         // Mid-turn compaction should not render as a separate message above the
@@ -490,15 +506,7 @@ export async function handleLocalAgentStream(
     }
 
     if (options?.showOnTopOfCurrentResponse) {
-      sendResponseChunk(
-        event,
-        req.chatId,
-        chat,
-        fullResponse + streamingPreview,
-        placeholderMessageId,
-        hiddenMessageIdsForStreaming,
-        true, // Full messages: post-compaction refresh
-      );
+      sendChunk(fullResponse + streamingPreview, { fullMessages: true });
     }
 
     return compactionResult.success;
@@ -507,13 +515,9 @@ export async function handleLocalAgentStream(
   // Check if compaction is pending and enabled before processing the message
   await maybePerformPendingCompaction();
 
-  // Send initial message update
-  safeSend(event.sender, "chat:response:chunk", {
-    chatId: req.chatId,
-    messages: chat.messages.filter(
-      (message) => !hiddenMessageIdsForStreaming.has(message.id),
-    ),
-  });
+  // Send initial message update. Routed through sendChunk so lastSentRef
+  // stays in sync automatically (same as every other full-messages send).
+  sendChunk(fullResponse, { fullMessages: true });
 
   // Track pending user messages to inject after tool results
   const pendingUserMessages: UserMessageContentPart[][] = [];
@@ -571,14 +575,7 @@ export async function handleLocalAgentStream(
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          fullResponse + streamingPreview,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-        );
+        sendChunk(fullResponse + streamingPreview);
       },
       onXmlComplete: (finalXml: string) => {
         // Write final XML to DB and UI
@@ -586,14 +583,7 @@ export async function handleLocalAgentStream(
         fullResponse += xmlChunk;
         streamingPreview = ""; // Clear preview
         updateResponseInDb(placeholderMessageId, fullResponse);
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          fullResponse,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-        );
+        sendChunk(fullResponse);
       },
       requireConsent: async (params: {
         toolName: string;
@@ -1110,14 +1100,7 @@ export async function handleLocalAgentStream(
               if (chunk) {
                 fullResponse += chunk;
                 await updateResponseInDb(placeholderMessageId, fullResponse);
-                sendResponseChunk(
-                  event,
-                  req.chatId,
-                  chat,
-                  fullResponse,
-                  placeholderMessageId,
-                  hiddenMessageIdsForStreaming,
-                );
+                sendChunk(fullResponse);
               }
             }
           } catch (error) {
@@ -1135,6 +1118,7 @@ export async function handleLocalAgentStream(
             const closingThinkBlock = "</think>\n";
             fullResponse += closingThinkBlock;
             await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendChunk(fullResponse);
           }
           activeRetryReplayEvents = null;
 
@@ -1348,14 +1332,7 @@ export async function handleLocalAgentStream(
       postTurnXmlParts.push(stepLimitXml);
       fullResponse += `\n\n${stepLimitXml}`;
       await updateResponseInDb(placeholderMessageId, fullResponse);
-      sendResponseChunk(
-        event,
-        req.chatId,
-        chat,
-        fullResponse,
-        placeholderMessageId,
-        hiddenMessageIdsForStreaming,
-      );
+      sendChunk(fullResponse);
     }
 
     // In read-only and plan mode, skip the deploy step (commit follows below)
@@ -1609,9 +1586,11 @@ function sendResponseChunk(
   chat: any,
   fullResponse: string,
   placeholderMessageId: number,
-  hiddenMessageIds?: Set<number>,
+  hiddenMessageIds: Set<number> | undefined,
   /** When true, sends the full messages array instead of an incremental update */
-  sendFullMessages?: boolean,
+  sendFullMessages: boolean | undefined,
+  /** Mutable ref tracking the renderer's last seen placeholder content. */
+  lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
     const currentMessages = [...chat.messages].filter(
@@ -1627,13 +1606,19 @@ function sendResponseChunk(
       chatId,
       messages: currentMessages,
     });
+    // Renderer's placeholder content now matches fullResponse — keep the
+    // tail-diff baseline in sync so the next streaming patch is correct.
+    lastSentRef.value = fullResponse;
   } else {
-    // Send incremental update with only the streaming message content
-    // to reduce IPC overhead during high-frequency streaming
+    const patch = computeStreamingPatch(fullResponse, lastSentRef.value);
+    lastSentRef.value = fullResponse;
+    if (!patch) {
+      return;
+    }
     safeSend(event.sender, "chat:response:chunk", {
       chatId,
       streamingMessageId: placeholderMessageId,
-      streamingContent: fullResponse,
+      streamingPatch: patch,
     });
   }
 }

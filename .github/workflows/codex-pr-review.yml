@@ -14,6 +14,8 @@ concurrency:
 jobs:
   codex-review:
     environment: ai-bots
+    outputs:
+      context_sha: ${{ steps.context.outputs.context_sha }}
     # Only review code from regular contributors since Codex review has non-trivial costs.
     # This also keeps privileged pull_request_target tokens away from untrusted PRs.
     if: >-
@@ -26,7 +28,7 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
     env:
       REVIEW_CONTEXT_PATH: tmp/pr-review/codex-context.json
       REVIEW_PROMPT_PATH: tmp/pr-review/codex-prompt.txt
@@ -34,15 +36,6 @@ jobs:
       REVIEW_FINDINGS_PATH: tmp/pr-review/codex-findings.json
       CODEX_HOME: tmp/pr-review/codex-home
     steps:
-      - name: Create read-only agent token
-        id: agent-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
-          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
-          permission-contents: read
-          permission-pull-requests: read
-
       - name: Checkout trusted workflow repo
         uses: actions/checkout@v5
         with:
@@ -59,7 +52,7 @@ jobs:
       - name: Build PR review context
         id: context
         env:
-          GITHUB_TOKEN: ${{ steps.agent-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OUTPUT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
@@ -89,6 +82,36 @@ jobs:
           PROMPT_PATH: ${{ env.REVIEW_PROMPT_PATH }}
         run: bash scripts/codex-commit-review/run-codex.sh
 
+      - name: Upload Codex review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-pr-review
+          path: |
+            ${{ env.REVIEW_CONTEXT_PATH }}
+            ${{ env.REVIEW_OUTPUT_PATH }}
+            ${{ env.REVIEW_FINDINGS_PATH }}
+          if-no-files-found: error
+          retention-days: 1
+
+  post-codex-review:
+    environment: ai-bots
+    needs: codex-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    env:
+      REVIEW_CONTEXT_PATH: tmp/pr-review/codex-context.json
+      REVIEW_OUTPUT_PATH: tmp/pr-review/codex-review.md
+      REVIEW_FINDINGS_PATH: tmp/pr-review/codex-findings.json
+    steps:
+      - name: Download Codex review artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-pr-review
+          path: tmp/pr-review
+
       - name: Refresh trusted post-agent helpers
         uses: actions/checkout@v5
         with:
@@ -102,7 +125,7 @@ jobs:
         env:
           CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
           REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
-          EXPECTED_CONTEXT_SHA: ${{ steps.context.outputs.context_sha }}
+          EXPECTED_CONTEXT_SHA: ${{ needs.codex-review.outputs.context_sha }}
         run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/validate-review-summary.mjs
 
       - name: Validate Codex findings
@@ -112,7 +135,7 @@ jobs:
           CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
           REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
           FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
-          EXPECTED_CONTEXT_SHA: ${{ steps.context.outputs.context_sha }}
+          EXPECTED_CONTEXT_SHA: ${{ needs.codex-review.outputs.context_sha }}
         run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/validate-review.mjs
 
       - name: Warn when Codex findings validation fails

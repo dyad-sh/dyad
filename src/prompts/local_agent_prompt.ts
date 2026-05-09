@@ -144,6 +144,37 @@ const BASIC_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
 </development_workflow>`;
 
 // ============================================================================
+// AI Rules Block
+// ============================================================================
+
+const AI_RULES_META_HEADER = `AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.`;
+
+const AI_RULES_BLOCK = `<ai_rules_meta>
+${AI_RULES_META_HEADER}
+
+When working in the app:
+- Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+- Edit AI_RULES.md only when the user explicitly asks you to remember something across conversations, or when introducing a foundational convention (e.g., adopting a new framework) that future turns must know about.
+- Keep AI_RULES.md concise and easy to scan.
+- Do not use AI_RULES.md as a scratchpad, changelog, or place for temporary task notes.
+- If instructions become lengthy, move the detailed guidance into separate markdown files and keep a short table of contents or reference list in AI_RULES.md.
+</ai_rules_meta>
+
+<ai_rules>
+[[AI_RULES]]
+</ai_rules>`;
+
+const AI_RULES_BLOCK_READONLY = `<ai_rules_meta>
+${AI_RULES_META_HEADER}
+
+Treat AI_RULES.md as authoritative project context, unless it conflicts with the user's current request or higher-priority system instructions.
+</ai_rules_meta>
+
+<ai_rules>
+[[AI_RULES]]
+</ai_rules>`;
+
+// ============================================================================
 // Ask Mode (Read-Only) Prompt
 // ============================================================================
 
@@ -190,7 +221,7 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 4. **Explain:** Provide a clear, accurate answer based on what you found
 </workflow>
 
-[[AI_RULES]]
+${AI_RULES_BLOCK_READONLY}
 `;
 
 // ============================================================================
@@ -239,7 +270,7 @@ ${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
 [[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
 
-[[AI_RULES]]
+${AI_RULES_BLOCK}
 `;
 
 /**
@@ -261,7 +292,7 @@ ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${BASIC_DEVELOPMENT_WORKFLOW_BLOCK}
 [[SERVER_LAYER]]
-[[AI_RULES]]
+${AI_RULES_BLOCK}
 `;
 
 // ============================================================================

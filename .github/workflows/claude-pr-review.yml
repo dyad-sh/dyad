@@ -15,8 +15,9 @@ concurrency:
 
 jobs:
   claude-review:
-    # Has Anthropic API key, etc.
     environment: ai-bots
+    outputs:
+      context_sha: ${{ steps.context.outputs.context_sha }}
     # Only review code from regular contributors since claude code has non-trivial costs.
     # It's also a safe-guard for preventing malicious PRs from doing bad things although we restrict
     # the permissions and tools allowed in this job.
@@ -30,22 +31,45 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+    env:
+      REVIEW_CONTEXT_PATH: tmp/pr-review/claude-context.json
+      REVIEW_PROMPT_PATH: tmp/pr-review/claude-prompt.txt
+      REVIEW_OUTPUT_PATH: tmp/pr-review/claude-review.md
+      REVIEW_FINDINGS_PATH: tmp/pr-review/claude-findings.json
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
-          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
-          permission-pull-requests: write
-
-      - name: Checkout repository
+      - name: Checkout trusted workflow repo
         uses: actions/checkout@v5
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build PR review context
+        id: context
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTPUT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+        run: node scripts/pr-review/build-context.mjs
+
+      - name: Render Claude review prompt
+        id: render-prompt
+        env:
+          TEMPLATE_PATH: .github/prompts/claude-pr-review.txt
+          OUTPUT_PATH: ${{ env.REVIEW_PROMPT_PATH }}
+          OUTPUT_NAME: prompt
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          OUTPUT_MD_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+          OUTPUT_FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
+        run: node scripts/issue-agent/render-template.mjs
 
       - name: PR Review
         uses: anthropics/claude-code-action@v1.0.96
@@ -58,17 +82,143 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
-          github_token: ${{ steps.app-token.outputs.token }}
+          github_token: ${{ github.token }}
           allowed_non_write_users: "princeaden1,nourzakhama2003,ryangroch" # remember, we already filter above.
           allowed_bots: "keppo-bot[bot]"
 
           # Disable progress tracking (try to save tokens)
           track_progress: false
-          display_report: true
+          display_report: false
 
-          prompt: |
-            /dyad:multi-pr-review ${{ github.event.pull_request.number }}
+          prompt: ${{ steps.render-prompt.outputs.prompt }}
 
-          # Uses .claude/settings.json for permissions; only add MCP tool not in settings
           claude_args: |
-            --model claude-opus-4-6 --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --model claude-opus-4-6
+
+      - name: Upload Claude review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-pr-review
+          path: |
+            ${{ env.REVIEW_CONTEXT_PATH }}
+            ${{ env.REVIEW_OUTPUT_PATH }}
+            ${{ env.REVIEW_FINDINGS_PATH }}
+          if-no-files-found: error
+          retention-days: 1
+
+  post-claude-review:
+    environment: ai-bots
+    needs: claude-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    env:
+      REVIEW_CONTEXT_PATH: tmp/pr-review/claude-context.json
+      REVIEW_OUTPUT_PATH: tmp/pr-review/claude-review.md
+      REVIEW_FINDINGS_PATH: tmp/pr-review/claude-findings.json
+    steps:
+      - name: Download Claude review artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: claude-pr-review
+          path: tmp/pr-review
+
+      - name: Refresh trusted post-agent helpers
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: tmp/pr-review/trusted-post-agent
+
+      - name: Validate Claude review summary
+        env:
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+          EXPECTED_CONTEXT_SHA: ${{ needs.claude-review.outputs.context_sha }}
+        run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/validate-review-summary.mjs
+
+      - name: Validate Claude findings
+        id: validate-findings
+        continue-on-error: true
+        env:
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+          FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
+          EXPECTED_CONTEXT_SHA: ${{ needs.claude-review.outputs.context_sha }}
+        run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/validate-review.mjs
+
+      - name: Warn when Claude findings validation fails
+        if: ${{ steps.validate-findings.outcome == 'failure' }}
+        run: |
+          echo "::warning::Claude findings validation failed; skipped inline comments."
+          echo "Claude findings validation failed; skipped inline comments." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create fresh post-review token
+        id: post-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Post Claude inline review comments
+        id: post-inline
+        if: ${{ steps.validate-findings.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.post-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CONTEXT_PATH: ${{ env.REVIEW_CONTEXT_PATH }}
+          FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
+          REVIEW_LABEL: Claude
+        run: node tmp/pr-review/trusted-post-agent/scripts/pr-review/post-inline-review.mjs
+
+      - name: Warn when Claude inline posting fails
+        if: ${{ steps.post-inline.outcome == 'failure' }}
+        run: |
+          echo "::warning::Claude inline comment posting failed; summary comment still posted."
+          echo "Claude inline comment posting failed; summary comment still posted." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post Claude review comment
+        if: ${{ always() && steps.post-token.outcome == 'success' }}
+        uses: actions/github-script@v7
+        env:
+          REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
+        with:
+          github-token: ${{ steps.post-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+
+            const reviewPath = process.env.REVIEW_PATH;
+            if (!reviewPath) {
+              throw new Error('REVIEW_PATH is required');
+            }
+
+            const summary = fs.readFileSync(reviewPath, 'utf8').trim();
+            if (!summary) {
+              throw new Error('Validated Claude review is missing summary text');
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+            const body = [
+              '<!-- pr-review:claude -->',
+              '## :mag: Dyadbot Code Review Summary',
+              '',
+              summary,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+            core.info('Created Claude review comment');

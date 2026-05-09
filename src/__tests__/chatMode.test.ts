@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeStoredChatMode, resolveChatMode } from "@/lib/chatMode";
-import type { UserSettings } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode, type UserSettings } from "@/lib/schemas";
 
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -42,7 +42,7 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "plan" });
   });
 
-  it("falls back when stored local-agent mode has no provider", () => {
+  it("keeps stored local-agent mode when no provider is configured", () => {
     const settings = makeSettings({ defaultChatMode: "build" });
 
     expect(
@@ -52,7 +52,7 @@ describe("chat mode resolution", () => {
         envVars: {},
         freeAgentQuotaAvailable: true,
       }),
-    ).toEqual({ mode: "build", fallbackReason: "no-provider" });
+    ).toEqual({ mode: "local-agent" });
   });
 
   it("falls back when stored local-agent mode is out of quota", () => {
@@ -71,6 +71,76 @@ describe("chat mode resolution", () => {
         freeAgentQuotaAvailable: false,
       }),
     ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
+  });
+
+  it("allows stored local-agent mode with a non-OpenAI/Anthropic provider", () => {
+    const settings = makeSettings({
+      defaultChatMode: "build",
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("allows stored local-agent mode with a non-OpenAI/Anthropic env var provider", () => {
+    const settings = makeSettings({ defaultChatMode: "build" });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: { OPENROUTER_API_KEY: "test-key" },
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("still reports quota exhausted for stored local-agent mode with another provider", () => {
+    const settings = makeSettings({
+      defaultChatMode: "build",
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: false,
+      }),
+    ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
+  });
+
+  it("does not auto-default to basic agent for non-OpenAI/Anthropic providers", () => {
+    const settings = makeSettings({
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
+  });
+
+  it("does not honor a local-agent default for non-OpenAI/Anthropic providers", () => {
+    const settings = makeSettings({
+      defaultChatMode: "local-agent",
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
   });
 
   it("does not treat unknown quota as exhausted", () => {
@@ -110,7 +180,23 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "local-agent" });
   });
 
-  it("reports quota exhausted before Pro required when a provider is configured", () => {
+  it("keeps stored local-agent mode without a provider when Pro is enabled without a key", () => {
+    const settings = makeSettings({
+      enableDyadPro: true,
+      defaultChatMode: "build",
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "local-agent",
+        settings,
+        envVars: {},
+        freeAgentQuotaAvailable: true,
+      }),
+    ).toEqual({ mode: "local-agent" });
+  });
+
+  it("reports quota exhausted when Pro is enabled without a key", () => {
     const settings = makeSettings({
       enableDyadPro: true,
       defaultChatMode: "build",

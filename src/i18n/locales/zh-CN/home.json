@@ -49,6 +49,7 @@
   "forceCloseDetected": "检测到强制关闭",
   "forceCloseDescription": "上次运行时应用未正常关闭。这可能表示崩溃或意外终止。",
   "lastKnownState": "最后已知状态：",
+  "noDiagnosticData": "此次崩溃无可用诊断数据。",
   "processMetrics": "进程指标",
   "memory": "内存：",
   "cpu": "CPU：",

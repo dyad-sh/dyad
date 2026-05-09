@@ -1,14 +1,17 @@
 import { useEffect, useRef } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { pendingPlanImplementationAtom } from "@/atoms/planAtoms";
 import {
   isStreamingByIdAtom,
   chatMessagesByIdAtom,
   chatErrorByIdAtom,
+  chatStreamCountByIdAtom,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
+import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
+import { triggerResync, syncChatFromDb } from "@/lib/resyncChat";
 
 /**
  * Hook to handle starting plan implementation when a plan is accepted.
@@ -22,6 +25,8 @@ export function usePlanImplementation() {
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setErrorById = useSetAtom(chatErrorByIdAtom);
+  const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
+  const store = useStore();
   const { settings } = useSettings();
 
   // Track if we've already triggered implementation for this pending plan
@@ -85,6 +90,8 @@ export function usePlanImplementation() {
           return next;
         });
 
+        let hasIncrementedStreamCount = false;
+
         // Clear any previous errors
         setErrorById((prev) => {
           const next = new Map(prev);
@@ -104,7 +111,7 @@ export function usePlanImplementation() {
             onChunk: ({
               messages: updatedMessages,
               streamingMessageId,
-              streamingContent,
+              streamingPatch,
               effectiveChatMode,
               chatModeFallbackReason,
             }) => {
@@ -120,6 +127,15 @@ export function usePlanImplementation() {
                 return;
               }
 
+              if (!hasIncrementedStreamCount) {
+                setStreamCountById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, (prev.get(chatId) ?? 0) + 1);
+                  return next;
+                });
+                hasIncrementedStreamCount = true;
+              }
+
               if (updatedMessages) {
                 // Full messages update (initial load, post-compaction, etc.)
                 setMessagesById((prev) => {
@@ -129,48 +145,51 @@ export function usePlanImplementation() {
                 });
               } else if (
                 streamingMessageId !== undefined &&
-                streamingContent !== undefined
+                streamingPatch !== undefined
               ) {
-                // Incremental update: only update the streaming message's content
-                setMessagesById((prev) => {
-                  const existingMessages = prev.get(chatId);
-                  if (!existingMessages) return prev;
-
-                  const next = new Map(prev);
-                  const updated = existingMessages.map((msg) =>
-                    msg.id === streamingMessageId
-                      ? { ...msg, content: streamingContent }
-                      : msg,
-                  );
-                  next.set(chatId, updated);
-                  return next;
-                });
+                const applied = applyStreamingPatch(
+                  setMessagesById,
+                  chatId,
+                  streamingMessageId,
+                  streamingPatch,
+                );
+                if (!applied) {
+                  triggerResync(chatId, setMessagesById, store);
+                }
               }
             },
             onEnd: () => {
-              if (!isMountedRef.current) return;
-              // Stream completed - update streaming state
+              // Global Jotai state — must run even if unmounted, else chat stays stuck isStreaming=true.
               setIsStreamingById((prev) => {
                 const next = new Map(prev);
                 next.set(chatId, false);
                 return next;
               });
+              syncChatFromDb(
+                chatId,
+                setMessagesById,
+                "[CHAT] Plan onEnd",
+                store,
+              );
             },
             onError: ({ error }) => {
-              if (!isMountedRef.current) return;
               console.error("Plan implementation stream error:", error);
-              // Update error state
               setErrorById((prev) => {
                 const next = new Map(prev);
                 next.set(chatId, error);
                 return next;
               });
-              // Also set streaming to false on error
               setIsStreamingById((prev) => {
                 const next = new Map(prev);
                 next.set(chatId, false);
                 return next;
               });
+              syncChatFromDb(
+                chatId,
+                setMessagesById,
+                "[CHAT] Plan onError",
+                store,
+              );
             },
           },
         );
@@ -192,6 +211,8 @@ export function usePlanImplementation() {
     setIsStreamingById,
     setMessagesById,
     setErrorById,
+    setStreamCountById,
     settings,
+    store,
   ]);
 }

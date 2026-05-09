@@ -71,7 +71,6 @@ export function ChatModeSelector() {
 
     fallbackToastKeyRef.current = toastKey;
     showChatModeFallbackToast({
-      reason: fallbackReason,
       effectiveMode,
       isPro: isProEnabled,
       toastId: toastKey,

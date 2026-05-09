@@ -49,6 +49,7 @@
   "forceCloseDetected": "Fechamento Forçado Detectado",
   "forceCloseDescription": "O app não foi fechado corretamente na última vez que foi executado. Isso pode indicar uma falha ou encerramento inesperado.",
   "lastKnownState": "Último Estado Conhecido:",
+  "noDiagnosticData": "Nenhum dado de diagnóstico disponível para esta falha.",
   "processMetrics": "Métricas do Processo",
   "memory": "Memória:",
   "cpu": "CPU:",

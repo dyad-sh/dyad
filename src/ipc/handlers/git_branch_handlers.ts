@@ -31,6 +31,7 @@ import { withLock } from "../utils/lock_utils";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 import type {
   GitBranchAppIdParams,
   CreateGitBranchParams,
@@ -404,6 +405,7 @@ async function handleCommitChanges(
   { appId, message }: { appId: number; message: string },
 ): Promise<string> {
   return withAppGitOp(appId, "commit", async (appPath) => {
+    await ensureDyadGitignored(appPath);
     await gitAddAll({ path: appPath });
     return gitCommit({ path: appPath, message });
   });

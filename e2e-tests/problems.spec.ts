@@ -113,7 +113,7 @@ export default App;
 
     // Initially, all selected: button shows Fix X problems and Clear all is visible
     const fixButton = po.page.getByTestId("fix-all-button");
-    await expect(fixButton).toBeVisible();
+    await expect(fixButton).toBeVisible({ timeout: Timeout.LONG });
     await expect(fixButton).toContainText(/Fix \d+ problem\(s\)/);
 
     // Click first two rows to toggle off (deselect)

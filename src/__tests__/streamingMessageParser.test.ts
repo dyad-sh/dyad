@@ -4,6 +4,7 @@ import {
   getParserBlocks,
   initialParserState,
   parseFullMessage,
+  trimToLastNBlocks,
   type Block,
 } from "@/lib/streamingMessageParser";
 
@@ -258,6 +259,52 @@ trailing`;
       }
       state = advanceParser(state, content);
       expect(blocksToShape(getParserBlocks(state))).toEqual(fullBlocks);
+    }
+  });
+
+  it("trimToLastNBlocks drops oldest blocks and shifts coordinates", () => {
+    const segments: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      segments.push(`<dyad-write path="f${i}.ts">body${i}</dyad-write>`);
+    }
+    const fullContent = segments.join("\n") + '\n<dyad-write path="open.ts">in';
+    let state = advanceParser(initialParserState(), fullContent);
+
+    // Closed blocks include both dyad-write and the "\n" markdown blocks
+    // between them. Keep last 3 → most recent dyad-write + "\n" markdown
+    // before/after it.
+    const trimmed = trimToLastNBlocks(state, fullContent, 3);
+    expect(trimmed.bytesDropped).toBeGreaterThan(0);
+    expect(trimmed.state.blocks.length).toBe(3);
+
+    // Trimmed content must be reparseable. The most recent dyad-write
+    // (f4.ts) must still be present plus the open one (open.ts).
+    const reparsed = parseFullMessage(trimmed.content).blocks;
+    const tagPaths = reparsed
+      .filter(
+        (b): b is Extract<Block, { kind: "custom-tag" }> =>
+          b.kind === "custom-tag",
+      )
+      .map((b) => b.attributes.path);
+    expect(tagPaths).toContain("f4.ts");
+    expect(tagPaths).toContain("open.ts");
+    // Older blocks dropped.
+    expect(tagPaths).not.toContain("f0.ts");
+    expect(tagPaths).not.toContain("f1.ts");
+
+    // After trimming, cursor matches new content length so the renderer's
+    // cache-hit guard succeeds.
+    expect(trimmed.state.cursor).toBe(trimmed.content.length);
+
+    // Subsequent advance with more bytes appended works on local coordinates.
+    const moreContent = trimmed.content + "progress";
+    state = advanceParser(trimmed.state, moreContent);
+    const open = getParserBlocks(state).find(
+      (b) => b.kind === "custom-tag" && b.attributes.path === "open.ts",
+    );
+    expect(open?.kind).toBe("custom-tag");
+    if (open?.kind === "custom-tag") {
+      expect(open.content).toBe("inprogress");
     }
   });
 

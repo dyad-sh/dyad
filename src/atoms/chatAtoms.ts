@@ -7,34 +7,7 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
-import type { ReactElement } from "react";
-import type { ParserState } from "@/lib/streamingMessageParser";
-
-/**
- * Per-message cache of pre-rendered React elements for committed (closed)
- * blocks. Built at chunk-handle time so the renderer never re-creates them
- * during render. Closed-block visibility relies on this cache because the
- * chunk handler trims closed blocks out of the parser state and
- * message.content (see KEEP_COMMITTED_BLOCKS in useStreamChat).
- */
-export interface CachedClosedBlock {
-  /** Stable React key. Mirrors the parser block id. */
-  id: number;
-  /** The pre-built React element (key already set, props frozen). */
-  element: ReactElement;
-  /** Pre-extracted error message (for FixAllErrorsButton aggregation). */
-  errorMessage?: string;
-}
-
-/**
- * Per-message JSX cache. The full response lives here as pre-rendered
- * React elements; nothing is ever evicted while a stream is active. Cleared
- * on stream end so the renderer falls back to a one-shot parse of the full
- * DB content.
- */
-export interface MessageJsxState {
-  entries: CachedClosedBlock[];
-}
+import type { Block, ParserState } from "@/lib/streamingMessageParser";
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -312,10 +285,15 @@ export const contentBytesDroppedByMessageIdAtom = atom<Map<number, number>>(
   new Map(),
 );
 
-// Per-message JSX cache. The chunk handler appends pre-rendered React
-// elements for any newly-committed closed blocks; nothing is evicted while
-// a stream is active. Required for closed-block visibility because the
-// trim drops closed blocks out of the parser state and message.content.
+// Per-message accumulator of committed (closed) parser blocks. The chunk
+// handler immutable-appends newly-closed blocks every patch; the parser
+// state itself is trimmed (state.blocks is wiped) so blocks survive the
+// trim only by living here. Block object refs are stable across chunks so
+// the renderer's per-block React.memo skips unchanged children. The array
+// ref changes only when a block closes, letting a wrapper memo skip the
+// whole closed-block subtree on chunks that just extend the open block.
 // Cleared on stream end so the renderer falls back to a one-shot parse of
 // the full DB content.
-export const messageJsxByIdAtom = atom<Map<number, MessageJsxState>>(new Map());
+export const closedBlocksByMessageIdAtom = atom<Map<number, Block[]>>(
+  new Map(),
+);

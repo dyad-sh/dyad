@@ -183,11 +183,17 @@ function appendToMarkdownOpen(state: ParserState, text: string): void {
 function commitOpenMarkdown(state: ParserState, endOffset: number): void {
   if (state.openBlock && state.openBlock.kind === "markdown") {
     if (state.openBlock.content.length > 0) {
-      state.blocks.push({
-        ...state.openBlock,
-        complete: true,
-        endOffset,
-      });
+      // Immutable append: new array ref on commit so the renderer's
+      // closed-block memo wrapper invalidates exactly when a block closes
+      // and stays stable across "open block extends" chunks.
+      state.blocks = [
+        ...state.blocks,
+        {
+          ...state.openBlock,
+          complete: true,
+          endOffset,
+        },
+      ];
     }
     state.openBlock = null;
   }
@@ -198,16 +204,21 @@ function commitOpenMarkdown(state: ParserState, endOffset: number): void {
  * If `content` is shorter than state.cursor (a rewrite/resync), the parser
  * is reset and re-runs from scratch.
  *
- * Returns a NEW state object. Committed blocks share refs with the previous
- * state; the open block is rebuilt only when its content changes.
+ * Returns a NEW state object. Individual committed Block objects share refs
+ * with the previous state (so per-block React.memo hits); the blocks array
+ * gets a new ref only when a block closes during this advance, so the
+ * renderer's closed-block wrapper memo can short-circuit on chunks that
+ * just extend the open block. The open block is rebuilt only when its
+ * content changes.
  */
 export function advanceParser(prev: ParserState, content: string): ParserState {
   let state: ParserState;
   if (content.length < prev.cursor) {
     state = initialParserState();
   } else {
-    // Shallow clone — we mutate locally then return it. Committed blocks
-    // array reference is reused (we only push, never mutate prior entries).
+    // Shallow clone — we mutate locally then return it. The blocks array
+    // is reassigned (immutable append) on each commit, so prior refs are
+    // preserved on chunks that don't close any block.
     state = {
       cursor: prev.cursor,
       mode: prev.mode,
@@ -364,17 +375,21 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
         const closing = state.pendingCloseName;
         if (state.currentTag && closing === state.currentTag.tag) {
           // Finalize the custom-tag block. End offset is one past the '>'.
+          // Immutable append (see commitOpenMarkdown).
           const finalContent = unescapeXmlContent(state.currentTag.rawContent);
-          state.blocks.push({
-            kind: "custom-tag",
-            id: state.currentTag.blockId,
-            tag: state.currentTag.tag,
-            attributes: state.currentTag.attributes,
-            content: finalContent,
-            complete: true,
-            inProgress: false,
-            endOffset: i + 1,
-          });
+          state.blocks = [
+            ...state.blocks,
+            {
+              kind: "custom-tag",
+              id: state.currentTag.blockId,
+              tag: state.currentTag.tag,
+              attributes: state.currentTag.attributes,
+              content: finalContent,
+              complete: true,
+              inProgress: false,
+              endOffset: i + 1,
+            },
+          ];
           state.currentTag = null;
           state.openBlock = null;
           state.pending = "";

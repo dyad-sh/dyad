@@ -22,8 +22,7 @@ import {
   isStreamingByIdAtom,
   selectedChatIdAtom,
   streamingBlocksByMessageIdAtom,
-  messageJsxByIdAtom,
-  type CachedClosedBlock,
+  closedBlocksByMessageIdAtom,
 } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
@@ -118,54 +117,56 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   const contentToParse = isStreaming ? deferredContent : content;
 
   const streamingStates = useAtomValue(streamingBlocksByMessageIdAtom);
-  const cachedState =
+  const parserState =
     messageId !== undefined ? streamingStates.get(messageId) : undefined;
 
-  const messageJsxMap = useAtomValue(messageJsxByIdAtom);
-  const cachedJsx =
-    messageId !== undefined ? messageJsxMap.get(messageId) : undefined;
+  const closedBlocksMap = useAtomValue(closedBlocksByMessageIdAtom);
+  const closedBlocks =
+    messageId !== undefined ? closedBlocksMap.get(messageId) : undefined;
 
-  // Open block (in-progress) is sourced from the parser state. Closed blocks
-  // come from the JSX cache when present (the chunk handler trims closed
-  // blocks out of the parser state, so this is the only place they survive).
-  // Falls back to one-shot parse for history / non-streaming messages.
-  const openBlock = cachedState?.openBlock ?? null;
+  // While streaming, closed blocks live in closedBlocksByMessageIdAtom and
+  // the open block lives in the parser state. The closed-blocks array ref
+  // is stable across chunks that don't close a block, so MemoClosedBlocks
+  // skips its subtree entirely on those chunks (O(1) per chunk).
+  const openBlock = parserState?.openBlock ?? null;
 
-  // Fallback path: no JSX cache (history, post-DB-restore). One-shot parse.
+  // Fallback path: no closed-block accumulator (history, post-DB-restore).
+  // One-shot parse of the full content.
   const fallbackBlocks = useMemo<Block[] | null>(() => {
-    if (cachedJsx !== undefined) return null;
+    if (closedBlocks !== undefined) return null;
     return parseFullMessage(contentToParse).blocks;
-  }, [cachedJsx, contentToParse]);
+  }, [closedBlocks, contentToParse]);
 
-  // Aggregate error messages for the FixAllErrorsButton.
+  // Aggregate error messages for the FixAllErrorsButton. Recomputes only
+  // when one of the input arrays gets a new ref (closed blocks: on commit;
+  // fallback: on content change).
   const { errorMessages, errorCount } = useMemo(() => {
     const errors: string[] = [];
-    if (cachedJsx) {
-      for (const entry of cachedJsx.entries) {
-        if (entry.errorMessage) errors.push(entry.errorMessage);
+    const collectFrom = (block: Block) => {
+      if (
+        block.kind === "custom-tag" &&
+        block.tag === "dyad-output" &&
+        block.attributes.type === "error"
+      ) {
+        const msg = block.attributes.message?.trim();
+        if (msg) errors.push(msg);
       }
+    };
+    if (closedBlocks) {
+      for (const block of closedBlocks) collectFrom(block);
     } else if (fallbackBlocks) {
-      for (const block of fallbackBlocks) {
-        if (
-          block.kind === "custom-tag" &&
-          block.tag === "dyad-output" &&
-          block.attributes.type === "error"
-        ) {
-          const msg = block.attributes.message?.trim();
-          if (msg) errors.push(msg);
-        }
-      }
+      for (const block of fallbackBlocks) collectFrom(block);
     }
     return { errorMessages: errors, errorCount: errors.length };
-  }, [cachedJsx, fallbackBlocks]);
+  }, [closedBlocks, fallbackBlocks]);
 
   const showFixAll =
     errorCount > 1 && !isStreaming && chatId !== null && chatId !== undefined;
 
   return (
     <>
-      {cachedJsx ? (
-        <MemoCachedClosedBlocks entries={cachedJsx.entries} />
+      {closedBlocks ? (
+        <MemoClosedBlocks blocks={closedBlocks} isStreaming={isStreaming} />
       ) : fallbackBlocks ? (
         fallbackBlocks.map((block) => (
           <React.Fragment key={block.id}>
@@ -193,18 +194,29 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   );
 };
 
-// Memoized renderer for the closed-block JSX cache. Skips re-rendering its
-// subtree entirely when the entries array reference is unchanged. The chunk
-// handler creates a new array reference only when blocks are appended.
-const MemoCachedClosedBlocks = React.memo(function MemoCachedClosedBlocks({
-  entries,
+// Memoized wrapper for closed blocks. Memo hits when the `blocks` array ref
+// is unchanged (chunks that just extend the open block) so the entire
+// closed-block subtree is skipped — O(1) per chunk in the common case.
+// On commit chunks, the wrapper re-renders and reconciles N child fibers,
+// but each child is also memoed on `prev.block === next.block` so closed
+// children short-circuit and never re-render their subtrees.
+const MemoClosedBlocks = React.memo(function MemoClosedBlocks({
+  blocks,
+  isStreaming,
 }: {
-  entries: CachedClosedBlock[];
+  blocks: Block[];
+  isStreaming: boolean;
 }) {
   return (
     <>
-      {entries.map((entry) => (
-        <React.Fragment key={entry.id}>{entry.element}</React.Fragment>
+      {blocks.map((block) => (
+        <React.Fragment key={block.id}>
+          {block.kind === "markdown" ? (
+            block.content && <MemoMarkdown content={block.content} />
+          ) : (
+            <MemoBlockCustomTag block={block} isStreaming={isStreaming} />
+          )}
+        </React.Fragment>
       ))}
     </>
   );
@@ -255,38 +267,6 @@ const MemoBlockCustomTag = React.memo(
     // completed tag when streaming ends.
     (prev.block.inProgress === false || prev.isStreaming === next.isStreaming),
 );
-
-/**
- * Build a React element for a committed (closed) block. Called from the
- * chunk handler on commit so the renderer stores a fully-built element
- * and never re-creates it across renders. The element is wrapped in a
- * memoized component so React.memo's ref equality skips re-rendering for
- * unchanged blocks even if the parent re-renders.
- */
-export function buildClosedBlockJsx(block: Block): CachedClosedBlock {
-  if (block.kind === "markdown") {
-    return {
-      id: block.id,
-      element: <MemoMarkdown key={`m${block.id}`} content={block.content} />,
-    };
-  }
-  let errorMessage: string | undefined;
-  if (block.tag === "dyad-output" && block.attributes.type === "error") {
-    const trimmed = block.attributes.message?.trim();
-    if (trimmed) errorMessage = trimmed;
-  }
-  return {
-    id: block.id,
-    element: (
-      <MemoBlockCustomTag
-        key={`t${block.id}`}
-        block={block}
-        isStreaming={false}
-      />
-    ),
-    errorMessage,
-  };
-}
 
 function getState({
   isStreaming,

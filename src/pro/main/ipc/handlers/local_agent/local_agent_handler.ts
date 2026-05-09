@@ -1820,6 +1820,7 @@ async function getMcpTools(
                 toolName: name,
                 toolDescription: mcpTool.description,
                 inputPreview,
+                chatId: ctx.chatId,
               });
 
               if (!ok) throw new Error(`User declined running tool ${key}`);

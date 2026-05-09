@@ -8,6 +8,29 @@ import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 
+// Chat completion events - used to notify when a stream has completed
+export type ChatCompletionEvent = {
+  sequence: number;
+  chatId: number;
+  title?: string;
+};
+
+let nextChatCompletionSequence = 0;
+
+//  atom that holds the latest chat completion event
+export const chatCompletionEventAtom = atom<ChatCompletionEvent | null>(null);
+
+// Atom to publish new chat completion events
+export const publishChatCompletionEventAtom = atom(
+  null,
+  (_get, set, payload: Omit<ChatCompletionEvent, "sequence">) => {
+    set(chatCompletionEventAtom, {
+      sequence: ++nextChatCompletionSequence,
+      ...payload,
+    });
+  },
+);
+
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
 export const chatErrorByIdAtom = atom<Map<number, string | null>>(new Map());

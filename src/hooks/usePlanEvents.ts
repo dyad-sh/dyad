@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSettings } from "./useSettings";
 import { queryKeys } from "@/lib/queryKeys";
 import {
   planStateAtom,
@@ -38,17 +37,14 @@ export function usePlanEvents() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { settings } = useSettings();
 
   // Use refs for values accessed in event handlers to avoid stale closures
   const planStateRef = useRef(planState);
   const selectedAppIdRef = useRef(selectedAppId);
-  const settingsRef = useRef(settings);
 
   // Keep refs up to date
   planStateRef.current = planState;
   selectedAppIdRef.current = selectedAppId;
-  settingsRef.current = settings;
 
   useEffect(() => {
     // Handle plan updates
@@ -168,7 +164,11 @@ export function usePlanEvents() {
       },
     );
 
+
     // Handle questionnaire events (part of the planning flow)
+
+    // Handle questionnaire events - set pending questionnaire for in-app display
+
     const unsubscribeQuestionnaire = planEventClient.onQuestionnaire(
       (payload: PlanQuestionnairePayload) => {
         setPendingQuestionnaire((prev) => {
@@ -177,12 +177,6 @@ export function usePlanEvents() {
           return next;
         });
 
-        showUserInputNotification({
-          appId: selectedAppIdRef.current,
-          queryClient,
-          settings: settingsRef.current,
-          body: "A questionnaire needs your input",
-        });
       },
     );
 

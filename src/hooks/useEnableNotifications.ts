@@ -3,8 +3,11 @@ import { useSettings } from "@/hooks/useSettings";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 
 function sendTestNotification() {
-  if (Notification.permission === "granted") {
-    new Notification("Dyad", {
+  if (
+    typeof window.Notification !== "undefined" &&
+    window.Notification.permission === "granted"
+  ) {
+    new window.Notification("Dyad", {
       body: "Notifications are working! You'll be notified when responses finish or input is needed.",
     });
   }
@@ -22,12 +25,13 @@ export function useEnableNotifications() {
   }, [isMac]);
 
   const enable = useCallback(async () => {
-    if (Notification.permission === "denied") {
+    if (typeof window.Notification === "undefined") return;
+    if (window.Notification.permission === "denied") {
       openMacGuide();
       return;
     }
-    if (Notification.permission === "default") {
-      const permission = await Notification.requestPermission();
+    if (window.Notification.permission === "default") {
+      const permission = await window.Notification.requestPermission();
       if (permission !== "granted") {
         openMacGuide();
         return;

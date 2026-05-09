@@ -54,6 +54,25 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }
 
+  async enableChatEventNotifications() {
+    await expect(
+      this.page.getByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeVisible();
+
+    const label = this.page.getByText("Enable notifications", { exact: true });
+
+    // Find the switch button that is a sibling to the label by going to the parent container
+    const toggleButton = label.locator("xpath=..").getByRole("switch");
+    await expect(toggleButton).toBeAttached();
+
+    await toggleButton.scrollIntoViewIfNeeded();
+
+    const ariaChecked = await toggleButton.getAttribute("aria-checked");
+    if (ariaChecked !== "true") {
+      await label.click();
+    }
+  }
+
   async changeReleaseChannel(channel: "stable" | "beta") {
     await this.page.getByRole("combobox", { name: "Release Channel" }).click();
     await this.page

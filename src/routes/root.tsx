@@ -1,10 +1,14 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import Layout from "../app/layout";
+import { useNotificationHandler } from "../hooks/useNotificationHandler";
 
 export const rootRoute = createRootRoute({
-  component: () => (
-    <Layout>
-      <Outlet />
-    </Layout>
-  ),
+  component: () => {
+    useNotificationHandler();
+    return (
+      <Layout>
+        <Outlet />
+      </Layout>
+    );
+  },
 });

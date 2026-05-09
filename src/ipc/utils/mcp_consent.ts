@@ -84,6 +84,7 @@ export async function requireMcpToolConsent(
     toolName: string;
     toolDescription?: string | null;
     inputPreview?: string | null;
+    chatId: number;
   },
 ): Promise<boolean> {
   const current = await getStoredConsent(params.serverId, params.toolName);

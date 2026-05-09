@@ -7,7 +7,34 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import type { ReactElement } from "react";
 import type { ParserState } from "@/lib/streamingMessageParser";
+
+/**
+ * Per-message cache of pre-rendered React elements for committed (closed)
+ * blocks. Built at chunk-handle time so the renderer never re-creates them
+ * during render. Closed-block visibility relies on this cache because the
+ * chunk handler trims closed blocks out of the parser state and
+ * message.content (see KEEP_COMMITTED_BLOCKS in useStreamChat).
+ */
+export interface CachedClosedBlock {
+  /** Stable React key. Mirrors the parser block id. */
+  id: number;
+  /** The pre-built React element (key already set, props frozen). */
+  element: ReactElement;
+  /** Pre-extracted error message (for FixAllErrorsButton aggregation). */
+  errorMessage?: string;
+}
+
+/**
+ * Per-message JSX cache. The full response lives here as pre-rendered
+ * React elements; nothing is ever evicted while a stream is active. Cleared
+ * on stream end so the renderer falls back to a one-shot parse of the full
+ * DB content.
+ */
+export interface MessageJsxState {
+  entries: CachedClosedBlock[];
+}
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -284,3 +311,11 @@ export const streamingBlocksByMessageIdAtom = atom<Map<number, ParserState>>(
 export const contentBytesDroppedByMessageIdAtom = atom<Map<number, number>>(
   new Map(),
 );
+
+// Per-message JSX cache. The chunk handler appends pre-rendered React
+// elements for any newly-committed closed blocks; nothing is evicted while
+// a stream is active. Required for closed-block visibility because the
+// trim drops closed blocks out of the parser state and message.content.
+// Cleared on stream end so the renderer falls back to a one-shot parse of
+// the full DB content.
+export const messageJsxByIdAtom = atom<Map<number, MessageJsxState>>(new Map());

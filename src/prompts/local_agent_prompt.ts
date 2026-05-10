@@ -231,7 +231,7 @@ ${AI_RULES_BLOCK_READONLY}
 const SERVER_LAYER_BLOCK = `<server_layer>
 This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
 
-**Database requests come first:** If the user is asking for a database (or a feature that needs one — auth, persistence, CRUD, etc.) and no provider is set up yet, call \`add_integration\` FIRST and stop. Do NOT call \`enable_nitro\` before \`add_integration\` — the user must pick their provider first, and that choice determines whether Nitro is needed at all.
+**Database requests come first:** If the user is asking for a database (or a feature that needs one — auth, persistence, CRUD, etc.) and no provider is set up yet, call \`add_integration\` FIRST and stop. Do NOT call \`enable_nitro\` before \`add_integration\` — the user must pick their provider first, and that choice determines whether Nitro is needed at all. If the user picks Neon, the integration sets up the Nitro server layer automatically, so do NOT call \`enable_nitro\` after a Neon integration either.
 </server_layer>`;
 
 // ============================================================================

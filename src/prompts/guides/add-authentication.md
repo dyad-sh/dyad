@@ -212,6 +212,7 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 - **must-rewrite-secure-cookies-for-http-dev**: Neon Auth's session cookie is named `__Secure-neon-auth.session_token`. The browser enforces a hard rule: any cookie whose name starts with `__Secure-` or `__Host-` MUST carry the `Secure` attribute AND can only be set over HTTPS. The Vite dev server and Dyad preview run over plain HTTP, so the browser silently drops every session cookie — sign-in returns 200, the next `get-session` finds no cookie, and the user appears to never sign in. The proxy MUST therefore rewrite cookies in HTTP dev (see template below): on the way down rename `__Secure-` → `__Secure_` and `__Host-` → `__Host_`, strip `Secure`, strip `Partitioned`, strip `Domain=...`, and rewrite `SameSite=None` → `SameSite=Lax`; on the way up, undo the rename in the incoming `Cookie` header before forwarding upstream. Without this rewrite, sign-in is silently broken in every HTTP preview.
 - **must-wire-react-router-into-provider**: `NeonAuthUIProvider` defaults its `navigate`/`replace`/`Link` to `window.location.href`, which causes a full page reload after sign-in/sign-up. The reload races the session cookie write and frequently leaves the user stuck on the auth page. You MUST pass `navigate`, `replace`, and `Link` from `react-router-dom` into `NeonAuthUIProvider`, AND pass `redirectTo="/"` (or the app's home route) on `<AuthView>`.
 - **no-nitro-auto-imports-in-templates**: Always write explicit `import` statements in server code. Nitro's auto-import is opt-in and not enabled in the default Dyad scaffolding; relying on it will fail type-checking and (often) runtime.
+- **must-avoid-regex-pitfalls-in-proxy**: Past LLM-generated proxies have repeatedly emitted broken regex literals like `/^/api/auth/` (the second `/` ends the regex; `api` becomes flags) or `/(^|;s*)/` (the `\s` got mangled to bare `s`). To prevent this, follow these rules in the proxy and session helper: (1) use `String.prototype.startsWith` + `slice` for the `/api/auth` prefix strip — do NOT use a regex; (2) for fixed-string substitutions like `__Secure_` ↔ `__Secure-`, `__Host_` ↔ `__Host-`, `; Secure`, `; Partitioned`, and `; SameSite=None` → `; SameSite=Lax`, use `String.prototype.replaceAll` with **string literals** — do NOT use regex; (3) the only place a regex is required is stripping `; Domain=<value>` from a `Set-Cookie`, where the value is variable. For that single regex, use `/;[ ]*Domain=[^;]*/gi` — note the literal-space character class `[ ]*` instead of `\s*` (resists `\s`-loss bugs), and no slashes inside the pattern.
 </critical-rules>
 
 <anti-patterns>
@@ -233,12 +234,17 @@ The handler must:
 
 - Use `defineHandler` from `"nitro"` and the h3 utilities `getRequestHeaders`, `getRequestURL`, and `readRawBody` from `"nitro/h3"`. Read `process.env.NEON_AUTH_BASE_URL` at module scope.
 - **Do not** use `event.request` — h3 in this Nitro version does not expose a Web `Request`. Use `getRequestURL(event)` for the URL and `event.method` for the HTTP method.
-- Compute the upstream path by stripping the `/api/auth` prefix from `url.pathname` (fall back to `/`), then build the upstream URL as `${NEON_AUTH_BASE_URL}${upstreamPath}${url.search}`.
-- Build `forwardedHeaders` (a `Headers` object) from `getRequestHeaders(event)`, skipping `host` and `content-length` and any `undefined` values. **On the way up**, restore upstream cookie names in the `cookie` header by replacing `__Secure_` → `__Secure-` and `__Host_` → `__Host-` (anchored to start-of-name boundary, i.e. `(^|;\s*)`). If no cookie remains, delete the header.
+- Compute the upstream path by stripping the `/api/auth` prefix from `url.pathname` using `pathname.startsWith('/api/auth') ? pathname.slice('/api/auth'.length) || '/' : pathname` — **do NOT use a regex** (LLM-emitted regexes like `/^/api/auth/` are broken because the embedded `/` ends the literal). Then build the upstream URL as `${NEON_AUTH_BASE_URL}${upstreamPath}${url.search}`.
+- Build `forwardedHeaders` (a `Headers` object) from `getRequestHeaders(event)`, skipping `host` and `content-length` and any `undefined` values. **On the way up**, restore upstream cookie names in the `cookie` header by calling `cookieHeader.replaceAll('__Secure_', '__Secure-').replaceAll('__Host_', '__Host-')` — string literals only, **no regex**. The `_` placeholder is unique enough that no false positive can occur in normal cookie values. If no cookie remains, delete the header.
 - Read the body via `readRawBody(event, false)` (returns `Buffer`) for everything except `GET` and `HEAD`; pass it to `fetch` as `BodyInit`.
 - `fetch` the upstream with `method`, `forwardedHeaders`, `body`, and `redirect: 'manual'`.
 - Build the response `Headers` by copying every upstream header **except** `set-cookie`. For `set-cookie`, call `upstream.headers.getSetCookie?.() ?? []` to get the array (the standard `forEach` collapses duplicates).
-- **HTTP dev cookie rewrite (way down)**: if `url.protocol === 'http:'`, rewrite each `Set-Cookie` string by renaming `__Secure-` → `__Secure_` and `__Host-` → `__Host_` at the start, stripping `; Secure`, stripping `; Partitioned`, stripping `; Domain=...`, and changing `; SameSite=None` → `; SameSite=Lax`. Append each rewritten cookie to the response headers via `responseHeaders.append('set-cookie', c)`.
+- **HTTP dev cookie rewrite (way down)**: if `url.protocol === 'http:'`, rewrite each `Set-Cookie` string with the following exact sequence (string literals first, one regex only for the variable `Domain=` value):
+  1. `c = c.replaceAll('__Secure-', '__Secure_').replaceAll('__Host-', '__Host_')` — restore the underscored placeholder so the browser will accept the cookie over HTTP.
+  2. `c = c.replaceAll('; Secure', '').replaceAll(';Secure', '').replaceAll('; Partitioned', '').replaceAll(';Partitioned', '')` — fixed strings, **no regex**.
+  3. `c = c.replace(/;[ ]*Domain=[^;]*/gi, '')` — the **only** required regex. Use the literal-space character class `[ ]*` (NOT `\s*`, which has been mangled to bare `s` by past LLM emissions) and no slashes inside the pattern.
+  4. `c = c.replaceAll('; SameSite=None', '; SameSite=Lax').replaceAll(';SameSite=None', ';SameSite=Lax')` — fixed strings, **no regex**.
+  Append each rewritten cookie to the response headers via `responseHeaders.append('set-cookie', c)`.
 - Return `new Response(upstream.body, { status, statusText, headers: responseHeaders })` — stream the body through, do not buffer it.
 
 ### Server: shared session helper
@@ -250,7 +256,7 @@ The module must:
 - Read `process.env.NEON_AUTH_BASE_URL` at module scope.
 - Export a `Session` type: `{ user: { id: string; name: string; email: string; emailVerified: boolean } } | null`.
 - Export `getSessionFromCookie(cookieHeader: string | null): Promise<Session>` which:
-  - Restores upstream cookie names in the input header (same `__Secure_`/`__Host_` → `__Secure-`/`__Host-` rewrite as the proxy uses on the way up). If no cookie, return `null`.
+  - Restores upstream cookie names in the input header by calling `cookieHeader.replaceAll('__Secure_', '__Secure-').replaceAll('__Host_', '__Host-')` — string literals only, **no regex** (same rewrite as the proxy uses on the way up). If no cookie, return `null`.
   - Calls `fetch(\`${NEON_AUTH_BASE_URL}/get-session\`, { headers: { cookie } })`.
   - Returns `null` on `!res.ok`. Otherwise parses JSON as `Session`; returns `null` if there is no `user`, otherwise returns the parsed session.
 

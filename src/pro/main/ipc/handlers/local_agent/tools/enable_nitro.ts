@@ -25,10 +25,12 @@ says "static only" / "no backend".
 DATABASE REQUESTS: If the user is asking for a database (or anything that needs
 one — auth, persistence, CRUD, etc.) and no provider is set up yet, call
 \`add_integration\` FIRST and stop. Do NOT call \`enable_nitro\` in the same turn
-— the user must pick their provider first. Supabase makes Nitro unnecessary;
-Neon needs Nitro but should be set up after the integration so the connection
-details are available. Only call \`enable_nitro\` after the integration is in
-place (or for non-database server-side needs).
+— the user must pick their provider first. Supabase makes Nitro unnecessary.
+Neon automatically sets up the Nitro server layer as part of its integration
+flow, so do NOT call \`enable_nitro\` after a Neon integration either — Nitro
+will already be in place when the integration completes. Only call
+\`enable_nitro\` for non-database server-side needs (API routes, webhooks,
+server-only secrets) when no provider is involved.
 `.trim();
 
 export const enableNitroTool: ToolDefinition<

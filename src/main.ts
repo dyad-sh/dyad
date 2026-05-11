@@ -511,19 +511,12 @@ const createWindow = () => {
     );
     // Capture the latest heartbeat snapshot synchronously so the record pins
     // the pre-crash performance state, matching the semantics of
-    // `app:crash_detected`. `readSettings` may throw if settings are
-    // unreadable; treat that as "no snapshot" rather than failing the crash
-    // write.
-    let performance: ReturnType<typeof readSettings>["lastKnownPerformance"];
-    try {
-      performance = readSettings().lastKnownPerformance;
-    } catch (error) {
-      logger.warn("Unable to read perf snapshot for renderer crash:", error);
-    }
+    // `app:crash_detected`. `readSettings` returns `DEFAULT_SETTINGS` on any
+    // I/O or parse failure rather than throwing, so this is safe to inline.
     recordRendererCrash({
       reason: details.reason,
       exitCode: details.exitCode,
-      performance,
+      performance: readSettings().lastKnownPerformance,
     });
   });
 

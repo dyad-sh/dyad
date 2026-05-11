@@ -254,7 +254,8 @@
       "noAppSelectedDescription": "Selecciona una aplicación para ver los problemas de TypeScript y la información de diagnóstico.",
       "noProblemsReportTitle": "No Hay Informe de Problemas",
       "noProblemsReportDescription": "Ejecuta comprobaciones para analizar tu aplicación en busca de errores de TypeScript y otros problemas.",
-      "fixProblems": "Arreglar {{count}} problema(s)",
+      "fixProblems_one": "Arreglar {{count}} problema",
+      "fixProblems_other": "Arreglar {{count}} problemas",
       "error_one": "{{count}} error",
       "error_other": "{{count}} errores"
     },

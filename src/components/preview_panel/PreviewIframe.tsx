@@ -1585,7 +1585,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </PopoverContent>
             </Popover>
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center flex-1 min-w-0 py-1 pl-2 pr-1 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+              <DropdownMenuTrigger className="flex items-center flex-1 min-w-[2rem] py-1 pl-2 pr-1 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
                 <span
                   className="truncate flex-1 min-w-0 text-left"
                   data-testid="preview-address-bar-path"

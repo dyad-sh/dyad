@@ -33,10 +33,10 @@ import { cn } from "@/lib/utils";
 const PRIMARY_MODES = [
   "preview",
   "code",
-  "configure",
   "publish",
 ] as const satisfies readonly Exclude<PreviewMode, "plan">[];
 const OVERFLOW_MODES = [
+  "configure",
   "problems",
   "security",
 ] as const satisfies readonly Exclude<PreviewMode, "plan">[];

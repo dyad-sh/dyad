@@ -1980,19 +1980,21 @@ export function registerAppHandlers() {
       error?: string;
     }[] = [];
 
-    for (const appId of params.appIds) {
-      try {
-        await deleteAppById(appId);
-        results.push({ appId, success: true });
-      } catch (error: any) {
-        logger.error(`Error deleting app ${appId} in bulk delete:`, error);
-        results.push({
-          appId,
-          success: false,
-          error: error?.message ?? String(error),
-        });
-      }
-    }
+    await Promise.all(
+      params.appIds.map(async (appId) => {
+        try {
+          await deleteAppById(appId);
+          results.push({ appId, success: true });
+        } catch (error: any) {
+          logger.error(`Error deleting app ${appId} in bulk delete:`, error);
+          results.push({
+            appId,
+            success: false,
+            error: error?.message ?? String(error),
+          });
+        }
+      }),
+    );
 
     return { results };
   });

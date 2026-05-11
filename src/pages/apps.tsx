@@ -107,7 +107,6 @@ export default function AppsPage() {
     setIsDeleting(true);
     try {
       const { results } = await ipc.app.deleteApps({ appIds: idsToDelete });
-      await refreshApps();
 
       const failed = results.filter((r) => !r.success);
       const succeededIds = new Set(
@@ -138,6 +137,7 @@ export default function AppsPage() {
         setIsBulkDeleteDialogOpen(false);
         setIsSelectionMode(false);
       }
+      await refreshApps();
     } catch (error) {
       showError(error);
       setIsBulkDeleteDialogOpen(false);

@@ -6,22 +6,22 @@ testSkipIfWindows("bulk delete apps from gallery", async ({ po }) => {
   await po.setUp();
 
   // Create 3 apps.
-  await po.sendPrompt("hi");
-  const appName1 = await po.appManagement.getCurrentAppName();
-  if (!appName1) throw new Error("App 1 name not found");
-  const appPath1 = po.appManagement.getAppPath({ appName: appName1 });
-
-  await po.navigation.goToAppsTab();
-  await po.sendPrompt("hi");
-  const appName2 = await po.appManagement.getCurrentAppName();
-  if (!appName2) throw new Error("App 2 name not found");
-  const appPath2 = po.appManagement.getAppPath({ appName: appName2 });
-
-  await po.navigation.goToAppsTab();
-  await po.sendPrompt("hi");
-  const appName3 = await po.appManagement.getCurrentAppName();
-  if (!appName3) throw new Error("App 3 name not found");
-  const appPath3 = po.appManagement.getAppPath({ appName: appName3 });
+  const appDetails: { appName: string; appPath: string }[] = [];
+  for (let i = 1; i <= 3; i++) {
+    if (i > 1) {
+      await po.navigation.goToAppsTab();
+    }
+    await po.sendPrompt("hi");
+    const appName = await po.appManagement.getCurrentAppName();
+    if (!appName) throw new Error(`App ${i} name not found`);
+    const appPath = po.appManagement.getAppPath({ appName });
+    appDetails.push({ appName, appPath });
+  }
+  const [
+    { appName: appName1, appPath: appPath1 },
+    { appName: appName2, appPath: appPath2 },
+    { appName: appName3, appPath: appPath3 },
+  ] = appDetails;
 
   // Navigate to the gallery via "See more" on the home page.
   await po.navigation.goToAppsTab();

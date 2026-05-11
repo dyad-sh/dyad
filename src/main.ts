@@ -21,6 +21,9 @@ import {
   writeCrashSentinel,
   clearCrashSentinel,
   crashSentinelExists,
+  recordRendererCrash,
+  readRendererCrashRecord,
+  clearRendererCrashRecord,
 } from "./main/settings";
 import { sendTelemetryEvent } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
@@ -356,6 +359,7 @@ declare global {
 let mainWindow: BrowserWindow | null = null;
 let pendingForceCloseData: any = null;
 let pendingCrashDetected = false;
+let isAppQuitting = false;
 
 const createWindow = () => {
   // Create the browser window.
@@ -452,6 +456,47 @@ const createWindow = () => {
       pendingForceCloseData = null;
       pendingCrashDetected = false;
     }
+
+    // Forward any pending renderer crash recorded on a previous load. We send
+    // this from `did-finish-load` rather than `render-process-gone` because the
+    // renderer (which owns the PostHog client) is dead at crash time.
+    const rendererCrash = readRendererCrashRecord();
+    if (rendererCrash) {
+      sendTelemetryEvent("renderer:crash_detected", {
+        // Mark as error so renderer PostHog before_send sampling does not
+        // drop 90% of events for non-Pro users (see src/renderer.tsx).
+        error: true,
+        reason: rendererCrash.reason,
+        exit_code: rendererCrash.exitCode,
+        crash_count: rendererCrash.count,
+        crash_timestamp: rendererCrash.timestamp,
+        ms_since_crash: Date.now() - rendererCrash.timestamp,
+      });
+      clearRendererCrashRecord();
+    }
+  });
+
+  // Persist any non-clean renderer-process termination so we can report it on
+  // the next successful renderer load. We deliberately do nothing here besides
+  // writing the record: triggering reloads/dialogs is out of scope for the
+  // telemetry hook.
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    if (isAppQuitting) {
+      return;
+    }
+    if (details.reason === "clean-exit") {
+      return;
+    }
+    logger.warn(
+      "Renderer process gone:",
+      details.reason,
+      "exitCode=",
+      details.exitCode,
+    );
+    recordRendererCrash({
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
   });
 
   // Enable native context menu on right-click
@@ -790,6 +835,7 @@ app.on("window-all-closed", () => {
 // cleanup in will-quit cannot race against OS-imposed termination timeouts
 // (e.g. Windows WM_ENDSESSION) and leave the sentinel behind as a false positive.
 app.on("before-quit", () => {
+  isAppQuitting = true;
   clearCrashSentinel();
 });
 

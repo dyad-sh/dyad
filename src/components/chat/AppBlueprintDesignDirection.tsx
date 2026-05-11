@@ -2,14 +2,14 @@ import React, { useState, useCallback } from "react";
 import { Compass, Pencil, Check, X, Plus } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 
-interface MiniPlanDesignDirectionProps {
+interface AppBlueprintDesignDirectionProps {
   direction: string;
   isApproved?: boolean;
   onEdit?: (value: string) => void;
 }
 
-export const MiniPlanDesignDirection: React.FC<
-  MiniPlanDesignDirectionProps
+export const AppBlueprintDesignDirection: React.FC<
+  AppBlueprintDesignDirectionProps
 > = ({ direction, isApproved, onEdit }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(direction);

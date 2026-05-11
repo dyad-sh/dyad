@@ -21,7 +21,7 @@ import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector"
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
-import { MiniPlanSwitch } from "@/components/MiniPlanSwitch";
+import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
@@ -444,10 +444,10 @@ export function WorkflowSettings() {
         </div>
       </div>
 
-      <div id={SETTING_IDS.miniPlan} className="space-y-1 mt-4">
-        <MiniPlanSwitch />
+      <div id={SETTING_IDS.appBlueprint} className="space-y-1 mt-4">
+        <AppBlueprintSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          When creating a new app, generate a lightweight mini plan (name,
+          When creating a new app, generate a lightweight app blueprint (name,
           design, color, template) before building.
         </div>
       </div>

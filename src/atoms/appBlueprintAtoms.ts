@@ -1,14 +1,14 @@
 import { atom } from "jotai";
-import type { MiniPlanData } from "@/ipc/types/mini_plan";
+import type { AppBlueprintData } from "@/ipc/types/app_blueprint";
 
-export interface MiniPlanState {
-  plansByChatId: Map<number, MiniPlanData>;
+export interface AppBlueprintState {
+  plansByChatId: Map<number, AppBlueprintData>;
   approvedChatIds: Set<number>;
   visualsReadyChatIds: Set<number>;
   timedOutChatIds: Set<number>;
 }
 
-export const miniPlanStateAtom = atom<MiniPlanState>({
+export const appBlueprintStateAtom = atom<AppBlueprintState>({
   plansByChatId: new Map(),
   approvedChatIds: new Set<number>(),
   visualsReadyChatIds: new Set<number>(),

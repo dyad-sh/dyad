@@ -142,7 +142,8 @@ export function registerImportHandlers() {
       }
 
       // Create a new app
-      // Store the full absolute path when skipCopy is true, otherwise store appName
+      // Store the full absolute path when skipCopy is true, otherwise store appName.
+      // Imported apps don't need an app blueprint — the schema default (false) is correct.
       const [app] = await db
         .insert(apps)
         .values({

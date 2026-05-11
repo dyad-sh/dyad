@@ -270,7 +270,6 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   buildAgentToolSet: vi.fn(() => ({})),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),
-  clearPendingMiniPlanApprovalsForChat: vi.fn(),
 }));
 
 vi.mock("@/pro/main/ipc/handlers/local_agent/userInputResolvers", () => ({

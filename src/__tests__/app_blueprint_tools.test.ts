@@ -1,17 +1,16 @@
 import crypto from "node:crypto";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
+import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import {
-  MiniPlanFieldEditSchema,
-  type MiniPlanVisual,
-} from "@/ipc/types/mini_plan";
-import { planVisualsTool } from "@/pro/main/ipc/handlers/local_agent/tools/plan_visuals";
+  AppBlueprintFieldEditSchema,
+  type AppBlueprintVisual,
+} from "@/ipc/types/app_blueprint";
 import {
   type AgentContext,
   type Todo,
 } from "@/pro/main/ipc/handlers/local_agent/tools/types";
-import { writeMiniPlanTool } from "@/pro/main/ipc/handlers/local_agent/tools/write_mini_plan";
+import { writeAppBlueprintTool } from "@/pro/main/ipc/handlers/local_agent/tools/write_app_blueprint";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -31,8 +30,11 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
   safeSend: (...args: unknown[]) => safeSend(...args),
 }));
 
-vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
-  waitForMiniPlanApproval: vi.fn(async () => true),
+vi.mock("@/main/settings", () => ({
+  readSettings: () => ({
+    selectedTemplateId: "react",
+    selectedThemeId: "default",
+  }),
 }));
 
 function createAgentContext(chatId: number): AgentContext {
@@ -66,16 +68,19 @@ function createAgentContext(chatId: number): AgentContext {
   };
 }
 
-describe("mini plan tools", () => {
+describe("app blueprint tools", () => {
   beforeEach(() => {
     safeSend.mockReset();
   });
 
-  it("persists mini plan data when write_mini_plan executes", async () => {
+  it("persists app blueprint data when write_app_blueprint executes", async () => {
     const chatId = 1001;
     const ctx = createAgentContext(chatId);
+    const uuidSpy = vi
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue("12345678-1234-5678-90ab-1234567890ab");
 
-    await writeMiniPlanTool.execute(
+    await writeAppBlueprintTool.execute(
       {
         app_name: "Lumen Notes",
         user_prompt: "Build me a beautiful notes app",
@@ -84,12 +89,19 @@ describe("mini plan tools", () => {
         theme_id: "default",
         design_direction:
           "Clean and polished productivity interface with warm accents.",
-        main_color: "#F59E0B",
+        primary_color: "#F59E0B",
+        visuals: [
+          {
+            type: "logo",
+            description: "App logo for the notes dashboard",
+            prompt: "Minimal notes app logo in amber tones",
+          },
+        ],
       },
       ctx,
     );
 
-    expect(getMiniPlanForChat(chatId)).toMatchObject({
+    expect(getAppBlueprintForChat(chatId)).toMatchObject({
       appName: "Lumen Notes",
       userPrompt: "Build me a beautiful notes app",
       attachments: ["docs/spec.md"],
@@ -97,80 +109,64 @@ describe("mini plan tools", () => {
       themeId: "default",
       designDirection:
         "Clean and polished productivity interface with warm accents.",
-      mainColor: "#F59E0B",
-      visuals: [],
+      primaryColor: "#F59E0B",
+      visuals: [
+        {
+          id: "visual_12345678",
+          type: "logo",
+          description: "App logo for the notes dashboard",
+          prompt: "Minimal notes app logo in amber tones",
+        },
+      ] satisfies AppBlueprintVisual[],
       approved: false,
     });
 
     expect(safeSend).toHaveBeenCalledWith(
       ctx.event.sender,
-      "mini-plan:update",
+      "app-blueprint:update",
       {
         chatId,
         data: expect.objectContaining({
           appName: "Lumen Notes",
-          visuals: [],
+          visuals: [expect.objectContaining({ type: "logo" })],
         }),
-      },
-    );
-  });
-
-  it("updates persisted visuals when plan_visuals executes", async () => {
-    const chatId = 1002;
-    const ctx = createAgentContext(chatId);
-    const uuidSpy = vi
-      .spyOn(crypto, "randomUUID")
-      .mockReturnValue("12345678-1234-5678-90ab-1234567890ab");
-
-    await writeMiniPlanTool.execute(
-      {
-        app_name: "Template Trial",
-        user_prompt: "Build me a polished notes app",
-        attachments: [],
-        template_id: "react",
-        theme_id: "default",
-        design_direction: "Simple and professional with strong readability.",
-        main_color: "#2563EB",
-      },
-      ctx,
-    );
-
-    const visualsInput = [
-      {
-        type: "logo" as const,
-        description: "App logo for the notes dashboard",
-        prompt: "Minimal notes app logo in cobalt blue",
-      },
-    ];
-
-    await planVisualsTool.execute({ visuals: visualsInput }, ctx);
-
-    const persistedVisuals = getMiniPlanForChat(chatId)?.visuals;
-    expect(persistedVisuals).toEqual([
-      {
-        id: "visual_12345678",
-        type: "logo",
-        description: "App logo for the notes dashboard",
-        prompt: "Minimal notes app logo in cobalt blue",
-      },
-    ] satisfies MiniPlanVisual[]);
-
-    expect(safeSend).toHaveBeenLastCalledWith(
-      ctx.event.sender,
-      "mini-plan:visuals-update",
-      {
-        chatId,
-        visuals: persistedVisuals,
-        complete: true,
       },
     );
 
     uuidSpy.mockRestore();
   });
 
-  it("rejects invalid field names in mini plan edits", () => {
+  it("falls back to user's selectedTemplateId when template_id is omitted", async () => {
+    const chatId = 1002;
+    const ctx = createAgentContext(chatId);
+
+    await writeAppBlueprintTool.execute(
+      {
+        app_name: "Template Fallback",
+        user_prompt: "Build me a polished notes app",
+        attachments: [],
+        design_direction: "Simple and professional with strong readability.",
+        primary_color: "#2563EB",
+        visuals: [
+          {
+            type: "logo",
+            description: "App logo",
+            prompt: "Minimal logo",
+          },
+        ],
+      },
+      ctx,
+    );
+
+    expect(getAppBlueprintForChat(chatId)).toMatchObject({
+      templateId: "react",
+      themeId: "default",
+    });
+  });
+
+  it("rejects invalid field names in app blueprint edits", () => {
     expect(() =>
-      MiniPlanFieldEditSchema.parse({
+      AppBlueprintFieldEditSchema.parse({
         chatId: 1,
         field: "unknownField",
         value: "x",
@@ -178,7 +174,7 @@ describe("mini plan tools", () => {
     ).toThrow();
 
     expect(
-      MiniPlanFieldEditSchema.parse({
+      AppBlueprintFieldEditSchema.parse({
         chatId: 1,
         field: "themeId",
         value: "default",

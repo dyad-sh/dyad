@@ -23,11 +23,25 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("enable_nitro");
   });
 
-  it("basic agent mode system prompt", () => {
+  it("agent mode system prompt with app blueprint enabled", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
-      basicAgentMode: true,
+      enableAppBlueprint: true,
     });
     expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain("<app_blueprint>");
+    expect(prompt).toContain("App Blueprint (new apps only)");
+    expect(prompt).toContain("write_app_blueprint");
+    expect(prompt).toContain("planning_questionnaire");
+  });
+
+  it("basic agent mode system prompt with app blueprint enabled", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      basicAgentMode: true,
+      enableAppBlueprint: true,
+    });
+    expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain("<app_blueprint>");
+    expect(prompt).toContain("App Blueprint (new apps only)");
   });
 
   it("basic agent mode system prompt (vite framework includes Nitro nudge)", () => {
@@ -45,27 +59,27 @@ describe("local_agent_prompt", () => {
     expect(prompt).toMatchSnapshot();
   });
 
-  it("agent mode system prompt with mini plan disabled", () => {
+  it("agent mode system prompt with app blueprint disabled", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
-      enableMiniPlan: false,
+      enableAppBlueprint: false,
     });
     expect(prompt).toMatchSnapshot();
-    expect(prompt).not.toContain("<mini_plan>");
-    expect(prompt).not.toContain("Mini Plan (new apps only)");
-    expect(prompt).not.toContain("mini_plan_questionnaire");
+    expect(prompt).not.toContain("<app_blueprint>");
+    expect(prompt).not.toContain("App Blueprint (new apps only)");
+    expect(prompt).not.toContain("write_app_blueprint");
     expect(prompt).toContain("1. **Understand:**");
     expect(prompt).toContain("based on the understanding in steps 1-2");
   });
 
-  it("basic agent mode system prompt with mini plan disabled", () => {
+  it("basic agent mode system prompt with app blueprint disabled", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       basicAgentMode: true,
-      enableMiniPlan: false,
+      enableAppBlueprint: false,
     });
     expect(prompt).toMatchSnapshot();
-    expect(prompt).not.toContain("<mini_plan>");
-    expect(prompt).not.toContain("Mini Plan (new apps only)");
-    expect(prompt).not.toContain("mini_plan_questionnaire");
+    expect(prompt).not.toContain("<app_blueprint>");
+    expect(prompt).not.toContain("App Blueprint (new apps only)");
+    expect(prompt).not.toContain("write_app_blueprint");
     expect(prompt).toContain("1. **Understand:**");
     expect(prompt).toContain("based on the understanding in steps 1-2");
   });

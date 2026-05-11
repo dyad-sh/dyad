@@ -84,10 +84,10 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
-          "enableMiniPlan": true,
           "enableNativeGit": true,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,
@@ -479,10 +479,10 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
-          "enableMiniPlan": true,
           "enableNativeGit": true,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,

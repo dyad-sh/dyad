@@ -1286,12 +1286,14 @@ export function registerAppHandlers() {
       );
     }
     // Create a new app
+    const settings = readSettings();
     const [app] = await db
       .insert(apps)
       .values({
         name: params.name,
         // Use the name as the path for now
         path: appPath,
+        needsAppBlueprint: settings.enableAppBlueprint,
       })
       .returning();
 
@@ -1314,7 +1316,7 @@ export function registerAppHandlers() {
 
     // Ensure `.dyad/` is gitignored before the initial commit so the agent's
     // later `ensureDyadGitignored` call is a no-op and the app stays clean.
-    // Otherwise the first template swap (e.g. from mini-plan approval) fails
+    // Otherwise the first template swap (e.g. from app-blueprint approval) fails
     // the clean-working-tree check.
     await ensureDyadGitignored(fullAppPath);
 

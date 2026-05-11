@@ -87,7 +87,7 @@ testSkipIfWindows("local-agent - questionnaire flow", async ({ po }) => {
 });
 
 testSkipIfWindows(
-  "local-agent - mini plan approval renames the app",
+  "local-agent - app blueprint approval renames the app",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
@@ -98,7 +98,7 @@ testSkipIfWindows(
     await po.chatActions.waitForChatCompletion();
     await po.chatActions.clickNewChat();
 
-    await po.sendPrompt("tc=local-agent/mini-plan-rename");
+    await po.sendPrompt("tc=local-agent/app-blueprint-rename");
 
     const approveButton = po.page.getByRole("button", { name: "Approve Plan" });
     await expect(approveButton).toBeVisible({ timeout: Timeout.MEDIUM });
@@ -111,7 +111,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "local-agent - mini plan approve button waits for streaming to finish",
+  "local-agent - app blueprint approve button waits for streaming to finish",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
@@ -120,7 +120,7 @@ testSkipIfWindows(
     await po.chatActions.waitForChatCompletion();
     await po.chatActions.clickNewChat();
 
-    await po.sendPrompt("tc=local-agent/mini-plan-template-switch", {
+    await po.sendPrompt("tc=local-agent/app-blueprint-template-switch", {
       skipWaitForCompletion: true,
     });
 
@@ -136,7 +136,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "local-agent - mini plan template edits are applied",
+  "local-agent - app blueprint template edits are applied",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
@@ -145,11 +145,9 @@ testSkipIfWindows(
     await po.chatActions.waitForChatCompletion();
     await po.chatActions.clickNewChat();
 
-    const appPath = await po.appManagement.getCurrentAppPath();
+    await po.sendPrompt("tc=local-agent/app-blueprint-template-switch");
 
-    await po.sendPrompt("tc=local-agent/mini-plan-template-switch");
-
-    const templateSelect = po.page.getByTestId("mini-plan-template-select");
+    const templateSelect = po.page.getByTestId("app-blueprint-template-select");
     await expect(templateSelect).toBeVisible({ timeout: Timeout.MEDIUM });
     await templateSelect.selectOption("next");
 
@@ -157,9 +155,12 @@ testSkipIfWindows(
     await expect(approveButton).toBeVisible({ timeout: Timeout.MEDIUM });
     await approveButton.click();
 
+    // Re-fetch the app path after the apply settles: the path-swap branch
+    // may relocate the app to a fresh kebab-slug directory.
     await expect(async () => {
+      const currentAppPath = await po.appManagement.getCurrentAppPath();
       const packageJson = JSON.parse(
-        fs.readFileSync(path.join(appPath, "package.json"), "utf8"),
+        fs.readFileSync(path.join(currentAppPath, "package.json"), "utf8"),
       );
       expect(
         packageJson.dependencies?.next || packageJson.devDependencies?.next,
@@ -169,7 +170,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "local-agent - mini plan shows custom themes",
+  "local-agent - app blueprint shows custom themes",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
@@ -200,9 +201,9 @@ testSkipIfWindows(
 
     await po.chatActions.clickNewChat();
 
-    await po.sendPrompt("tc=local-agent/mini-plan-template-switch");
+    await po.sendPrompt("tc=local-agent/app-blueprint-template-switch");
 
-    const themeSelect = po.page.getByTestId("mini-plan-theme-select");
+    const themeSelect = po.page.getByTestId("app-blueprint-theme-select");
     await expect(themeSelect).toBeVisible({ timeout: Timeout.MEDIUM });
 
     const themeOptions = await themeSelect

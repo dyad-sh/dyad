@@ -3,21 +3,21 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "react-i18next";
 
-export function MiniPlanSwitch() {
+export function AppBlueprintSwitch() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
-  const enabled = settings?.enableMiniPlan !== false;
+  const enabled = settings?.enableAppBlueprint ?? true;
   return (
     <div className="flex items-center space-x-2">
       <Switch
-        id="mini-plan"
-        aria-label="Mini Plan"
+        id="app-blueprint"
+        aria-label="App Blueprint"
         checked={enabled}
         onCheckedChange={() => {
-          updateSettings({ enableMiniPlan: !enabled });
+          updateSettings({ enableAppBlueprint: !enabled });
         }}
       />
-      <Label htmlFor="mini-plan">{t("workflow.miniPlan")}</Label>
+      <Label htmlFor="app-blueprint">{t("workflow.appBlueprint")}</Label>
     </div>
   );
 }

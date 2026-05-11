@@ -11,55 +11,65 @@ import {
   Pencil,
 } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { miniPlanStateAtom } from "@/atoms/miniPlanAtoms";
+import { appBlueprintStateAtom } from "@/atoms/appBlueprintAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useThemes } from "@/hooks/useThemes";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
+import { sanitizeAppFolderName } from "@/shared/sanitizeAppFolderName";
 import type {
-  MiniPlanEditableField,
-  MiniPlanVisualEditableField,
-  MiniPlanVisual,
-} from "@/ipc/types/mini_plan";
+  AppBlueprintEditableField,
+  AppBlueprintVisualEditableField,
+  AppBlueprintVisual,
+} from "@/ipc/types/app_blueprint";
 import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
-import { MiniPlanUserPrompt } from "./MiniPlanUserPrompt";
-import { MiniPlanDesignDirection } from "./MiniPlanDesignDirection";
-import { MiniPlanVisuals } from "./MiniPlanVisuals";
+import { AppBlueprintUserPrompt } from "./AppBlueprintUserPrompt";
+import { AppBlueprintDesignDirection } from "./AppBlueprintDesignDirection";
+import { AppBlueprintVisuals } from "./AppBlueprintVisuals";
 import type { CustomTagState } from "./stateTypes";
 
-interface DyadMiniPlanCardProps {
+interface DyadAppBlueprintCardProps {
   node: {
     properties: {
       "app-name"?: string;
       template?: string;
       theme?: string;
       "design-direction"?: string;
-      "main-color"?: string;
+      "primary-color"?: string;
       complete?: string;
       state?: CustomTagState;
     };
   };
 }
 
-export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
+export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
+  node,
+}) => {
   const props = node.properties;
   const chatId = useAtomValue(selectedChatIdAtom);
-  const miniPlanState = useAtomValue(miniPlanStateAtom);
-  const setMiniPlanState = useSetAtom(miniPlanStateAtom);
+  const appBlueprintState = useAtomValue(appBlueprintStateAtom);
+  const setAppBlueprintState = useSetAtom(appBlueprintStateAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  // hasChatId: false so we don't read it from the router; we pass it explicitly.
+  const { streamMessage } = useStreamChat({ hasChatId: false });
   const { app, refreshApp } = useLoadApp(selectedAppId);
   const queryClient = useQueryClient();
   const { templates } = useTemplates();
   const { themes } = useThemes();
   const { customThemes } = useCustomThemes();
 
-  const isApproved = chatId ? miniPlanState.approvedChatIds.has(chatId) : false;
-  const planData = chatId ? miniPlanState.plansByChatId.get(chatId) : null;
-  const isTimedOut = chatId ? miniPlanState.timedOutChatIds.has(chatId) : false;
+  const isApproved = chatId
+    ? appBlueprintState.approvedChatIds.has(chatId)
+    : false;
+  const planData = chatId ? appBlueprintState.plansByChatId.get(chatId) : null;
+  const isTimedOut = chatId
+    ? appBlueprintState.timedOutChatIds.has(chatId)
+    : false;
   // Use atom data if available, fall back to XML attributes. Preserve
   // intentionally empty user edits (e.g. cleared app name) by checking for
   // live plan data presence rather than truthiness of individual fields.
@@ -73,8 +83,8 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     planData != null
       ? planData.designDirection
       : (props["design-direction"] ?? "");
-  const mainColor =
-    planData != null ? planData.mainColor : (props["main-color"] ?? "");
+  const primaryColor =
+    planData != null ? planData.primaryColor : (props["primary-color"] ?? "");
   const userPrompt = planData?.userPrompt || "";
   const attachments = planData?.attachments || [];
   const visuals = planData?.visuals || [];
@@ -94,21 +104,21 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   ];
 
   // The XML tag's `complete` attribute is the definitive signal that the
-  // agent finished emitting the plan. Don't gate readiness on a separate
-  // visuals-update event — if the agent skips `plan_visuals` or the event
-  // never arrives, the card would otherwise stay permanently disabled.
+  // agent finished emitting the blueprint. Don't gate readiness on a separate
+  // visuals-update event — if the visuals event never arrives, the card would
+  // otherwise stay permanently disabled.
   const isReady = props.state !== "pending" && props.complete !== "false";
-  const inputIdPrefix = chatId ? `mini-plan-${chatId}` : "mini-plan";
+  const inputIdPrefix = chatId ? `app-blueprint-${chatId}` : "app-blueprint";
   const appNameFieldId = `${inputIdPrefix}-app-name`;
   const templateFieldId = `${inputIdPrefix}-template`;
   const themeFieldId = `${inputIdPrefix}-theme`;
-  const mainColorTextFieldId = `${inputIdPrefix}-main-color-text`;
-  const mainColorPickerFieldId = `${inputIdPrefix}-main-color-picker`;
+  const primaryColorTextFieldId = `${inputIdPrefix}-primary-color-text`;
+  const primaryColorPickerFieldId = `${inputIdPrefix}-primary-color-picker`;
   const statusId = `${inputIdPrefix}-status`;
 
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(appName);
-  const [colorTextValue, setColorTextValue] = useState(mainColor);
+  const [colorTextValue, setColorTextValue] = useState(primaryColor);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   // Synchronous guard against fast double-clicks on Approve — `isApproving`
@@ -123,15 +133,19 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   }, [appName, editingName]);
 
   useEffect(() => {
-    setColorTextValue(mainColor);
-  }, [mainColor]);
+    setColorTextValue(primaryColor);
+  }, [primaryColor]);
 
   const handleVisualEdit = useCallback(
-    (visualId: string, field: MiniPlanVisualEditableField, value: string) => {
+    (
+      visualId: string,
+      field: AppBlueprintVisualEditableField,
+      value: string,
+    ) => {
       if (!chatId || isApproved) return;
 
       // Update local state immediately
-      setMiniPlanState((prev) => {
+      setAppBlueprintState((prev) => {
         const nextPlans = new Map(prev.plansByChatId);
         const existing = nextPlans.get(chatId);
         if (existing) {
@@ -146,25 +160,25 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       });
 
       // Persist to main process
-      void ipc.miniPlan
+      void ipc.appBlueprint
         .editVisual({ chatId, visualId, field, value })
         .catch((error) => {
           console.error("Failed to persist visual edit:", error);
           showError("Could not save visual changes. Please try again.");
         });
     },
-    [chatId, isApproved, setMiniPlanState],
+    [chatId, isApproved, setAppBlueprintState],
   );
 
   const handleAddVisual = useCallback(
-    (visual: Omit<MiniPlanVisual, "id">) => {
+    (visual: Omit<AppBlueprintVisual, "id">) => {
       if (!chatId || isApproved) return;
 
       // Generate a temporary ID for optimistic update
       const tempId = `visual_${Date.now().toString(36)}`;
 
       // Update local state immediately
-      setMiniPlanState((prev) => {
+      setAppBlueprintState((prev) => {
         const nextPlans = new Map(prev.plansByChatId);
         const existing = nextPlans.get(chatId);
         if (existing) {
@@ -177,11 +191,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       });
 
       // Persist to main process and update with real ID
-      void ipc.miniPlan
+      void ipc.appBlueprint
         .addVisual({ chatId, ...visual })
         .then(({ visualId }) => {
           if (visualId && visualId !== tempId) {
-            setMiniPlanState((prev) => {
+            setAppBlueprintState((prev) => {
               const nextPlans = new Map(prev.plansByChatId);
               const existing = nextPlans.get(chatId);
               if (existing) {
@@ -200,7 +214,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           console.error("Failed to add visual:", error);
           showError("Could not add visual. Please try again.");
           // Roll back optimistic update
-          setMiniPlanState((prev) => {
+          setAppBlueprintState((prev) => {
             const nextPlans = new Map(prev.plansByChatId);
             const existing = nextPlans.get(chatId);
             if (existing) {
@@ -213,7 +227,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           });
         });
     },
-    [chatId, isApproved, setMiniPlanState],
+    [chatId, isApproved, setAppBlueprintState],
   );
 
   const handleRemoveVisual = useCallback(
@@ -222,13 +236,13 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
       // Capture for rollback before mutating state — reading inside the
       // updater is unsafe because React may invoke updaters more than once.
-      const removedVisual = miniPlanState.plansByChatId
+      const removedVisual = appBlueprintState.plansByChatId
         .get(chatId)
         ?.visuals.find((v) => v.id === visualId);
       if (!removedVisual) return;
 
       // Update local state immediately
-      setMiniPlanState((prev) => {
+      setAppBlueprintState((prev) => {
         const nextPlans = new Map(prev.plansByChatId);
         const existing = nextPlans.get(chatId);
         if (existing) {
@@ -241,32 +255,34 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       });
 
       // Persist to main process
-      void ipc.miniPlan.removeVisual({ chatId, visualId }).catch((error) => {
-        console.error("Failed to remove visual:", error);
-        showError("Could not remove visual. Please try again.");
-        // Roll back
-        setMiniPlanState((prev) => {
-          const nextPlans = new Map(prev.plansByChatId);
-          const existing = nextPlans.get(chatId);
-          if (existing) {
-            nextPlans.set(chatId, {
-              ...existing,
-              visuals: [...existing.visuals, removedVisual],
-            });
-          }
-          return { ...prev, plansByChatId: nextPlans };
+      void ipc.appBlueprint
+        .removeVisual({ chatId, visualId })
+        .catch((error) => {
+          console.error("Failed to remove visual:", error);
+          showError("Could not remove visual. Please try again.");
+          // Roll back
+          setAppBlueprintState((prev) => {
+            const nextPlans = new Map(prev.plansByChatId);
+            const existing = nextPlans.get(chatId);
+            if (existing) {
+              nextPlans.set(chatId, {
+                ...existing,
+                visuals: [...existing.visuals, removedVisual],
+              });
+            }
+            return { ...prev, plansByChatId: nextPlans };
+          });
         });
-      });
     },
-    [chatId, isApproved, miniPlanState, setMiniPlanState],
+    [chatId, isApproved, appBlueprintState, setAppBlueprintState],
   );
 
   const handleFieldEdit = useCallback(
-    (field: MiniPlanEditableField, value: string) => {
+    (field: AppBlueprintEditableField, value: string) => {
       if (!chatId || isApproved) return;
 
       // Update local state immediately
-      setMiniPlanState((prev) => {
+      setAppBlueprintState((prev) => {
         const nextPlans = new Map(prev.plansByChatId);
         const existing = nextPlans.get(chatId);
         if (existing) {
@@ -276,19 +292,21 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       });
 
       // Persist to main process
-      void ipc.miniPlan.editField({ chatId, field, value }).catch((error) => {
-        console.error("Failed to persist mini plan field edit:", error);
-        showError("Could not save mini plan changes. Please try again.");
-      });
+      void ipc.appBlueprint
+        .editField({ chatId, field, value })
+        .catch((error) => {
+          console.error("Failed to persist app blueprint field edit:", error);
+          showError("Could not save app blueprint changes. Please try again.");
+        });
     },
-    [chatId, isApproved, setMiniPlanState],
+    [chatId, isApproved, setAppBlueprintState],
   );
 
   const handleApprove = useCallback(async () => {
     if (!chatId || isApproved) return;
     if (approvingRef.current) return;
 
-    const plan = miniPlanState.plansByChatId.get(chatId);
+    const plan = appBlueprintState.plansByChatId.get(chatId);
     if (!plan) {
       showError("Mini plan data is unavailable. Please regenerate the plan.");
       return;
@@ -299,7 +317,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     setApprovalError(null);
 
     // Optimistically mark as approved so UI updates immediately
-    setMiniPlanState((prev) => {
+    setAppBlueprintState((prev) => {
       const nextApproved = new Set(prev.approvedChatIds);
       nextApproved.add(chatId);
       return { ...prev, approvedChatIds: nextApproved };
@@ -328,22 +346,32 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             currentApp = await ipc.app.getApp(selectedAppId);
           } catch (error) {
             recordApplyError(
-              "Could not load the app before applying the mini plan.",
+              "Could not load the app before applying the app blueprint.",
               error,
             );
           }
         }
 
-        // Rename the app if the name differs (keep existing folder path)
-        if (currentApp && plan.appName && plan.appName !== currentApp.name) {
-          try {
-            await ipc.app.renameApp({
-              appId: selectedAppId,
-              appName: plan.appName,
-              appPath: currentApp.path,
-            });
-          } catch (error) {
-            recordApplyError("Could not rename the app.", error);
+        // Rename the app and its folder to match the new name. The handler
+        // moves files when the path differs and no-ops when the sanitized
+        // folder name already matches the current path's leaf.
+        if (currentApp && plan.appName) {
+          const desiredFolder = sanitizeAppFolderName(plan.appName);
+          const currentFolder =
+            currentApp.path.split(/[\\/]/).filter(Boolean).pop() ??
+            currentApp.path;
+          const folderChanged = desiredFolder !== currentFolder;
+          const nameChanged = plan.appName !== currentApp.name;
+          if (nameChanged || folderChanged) {
+            try {
+              await ipc.app.renameApp({
+                appId: selectedAppId,
+                appName: plan.appName,
+                appPath: desiredFolder,
+              });
+            } catch (error) {
+              recordApplyError("Could not rename the app.", error);
+            }
           }
         }
 
@@ -388,10 +416,15 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           }
         }
 
-        // Refresh app data so the sidebar/header reflect the new name
+        // Refresh app data so the sidebar/header reflect the new name. Also
+        // invalidate token counts since AI_RULES.md changes with the
+        // template, which alters the system-prompt size.
         await Promise.all([
           refreshApp(),
           queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.tokenCount.all,
+          }),
         ]);
       }
 
@@ -399,7 +432,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       // unblock the agent so the user can fix the plan and re-approve.
       // The agent would otherwise build for the wrong framework.
       if (templateApplyFailed) {
-        setMiniPlanState((prev) => {
+        setAppBlueprintState((prev) => {
           const nextApproved = new Set(prev.approvedChatIds);
           nextApproved.delete(chatId);
           return { ...prev, approvedChatIds: nextApproved };
@@ -416,18 +449,51 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         showError(errorMessage);
       }
 
-      // Approve the plan — this resolves the agent's blocking promise
-      // so it can continue in the existing stream (no new chatStream.start needed)
-      await ipc.miniPlan.approve({ chatId });
+      // Flip the per-app `needsAppBlueprint` flag and notify the renderer.
+      // The agent's previous turn already ended (the write_app_blueprint tool
+      // returned immediately and `stopWhen` stopped the generation), so we can
+      // start a fresh chat stream right away — it will rebuild `AgentContext`
+      // from the renamed app row.
+      await ipc.appBlueprint.approve({ chatId });
+
+      // Build the follow-up user message with the approved blueprint inline.
+      const visualsSummary =
+        plan.visuals.length > 0
+          ? plan.visuals
+              .map(
+                (v) =>
+                  `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
+              )
+              .join("\n")
+          : "No visuals planned";
+
+      const followUpPrompt = [
+        "The app blueprint has been approved. Please build the app based on the following approved blueprint:",
+        "",
+        `App Name: ${plan.appName}`,
+        `Template: ${plan.templateId}`,
+        `Theme: ${plan.themeId}`,
+        `Primary Color: ${plan.primaryColor}`,
+        `Design Direction: ${plan.designDirection}`,
+        "",
+        "Visual Assets:",
+        visualsSummary,
+        "",
+        `Original Prompt: ${plan.userPrompt}`,
+      ].join("\n");
+
+      await streamMessage({ chatId, prompt: followUpPrompt });
     } catch (error) {
-      console.error("Failed to approve mini plan:", error);
-      setMiniPlanState((prev) => {
+      console.error("Failed to approve app blueprint:", error);
+      setAppBlueprintState((prev) => {
         const nextApproved = new Set(prev.approvedChatIds);
         nextApproved.delete(chatId);
         return { ...prev, approvedChatIds: nextApproved };
       });
-      setApprovalError("Failed to approve the mini plan. Please try again.");
-      showError("Failed to approve the mini plan. Please try again.");
+      setApprovalError(
+        "Failed to approve the app blueprint. Please try again.",
+      );
+      showError("Failed to approve the app blueprint. Please try again.");
     } finally {
       setIsApproving(false);
       approvingRef.current = false;
@@ -435,12 +501,13 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   }, [
     chatId,
     isApproved,
-    miniPlanState,
+    appBlueprintState,
     selectedAppId,
     app,
     refreshApp,
     queryClient,
-    setMiniPlanState,
+    setAppBlueprintState,
+    streamMessage,
   ]);
 
   const handleNameSubmit = useCallback(() => {
@@ -455,13 +522,13 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   return (
     <div
       aria-busy={!isReady}
-      className={`my-4 border rounded-lg overflow-hidden transition-colors ${
+      className={`my-4 border rounded-lg overflow-hidden transition-colors bg-card ${
         !isReady
           ? "border-primary/60"
           : isApproved
-            ? "border-emerald-500/30 bg-emerald-50/5"
+            ? "border-emerald-500/30"
             : "border-primary/20"
-      } bg-card`}
+      }`}
     >
       {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between border-b border-border/50">
@@ -471,7 +538,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             size={18}
           />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Mini Plan
+            App Blueprint
           </span>
         </div>
         {!isReady && (
@@ -559,7 +626,10 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               Prompt
             </div>
-            <MiniPlanUserPrompt prompt={userPrompt} attachments={attachments} />
+            <AppBlueprintUserPrompt
+              prompt={userPrompt}
+              attachments={attachments}
+            />
           </div>
         )}
 
@@ -580,7 +650,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               <select
                 id={templateFieldId}
                 aria-label="Tech Stack"
-                data-testid="mini-plan-template-select"
+                data-testid="app-blueprint-template-select"
                 value={templateId}
                 onChange={(e) => handleFieldEdit("templateId", e.target.value)}
                 className="w-full text-sm bg-background border border-border/50 rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
@@ -613,7 +683,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               <select
                 id={themeFieldId}
                 aria-label="Theme"
-                data-testid="mini-plan-theme-select"
+                data-testid="app-blueprint-theme-select"
                 value={themeId}
                 onChange={(e) => handleFieldEdit("themeId", e.target.value)}
                 className="w-full text-sm bg-background border border-border/50 rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
@@ -642,36 +712,36 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           </div>
         </div>
 
-        {/* Main Color */}
-        {(mainColor || !isApproved) && (
+        {/* Primary Color */}
+        {(primaryColor || !isApproved) && (
           <div className="space-y-1">
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
               <Palette size={10} />
-              Main Color
+              Primary Color
             </div>
             <div className="flex items-center gap-2">
-              {mainColor && (
+              {primaryColor && (
                 <div
                   className="w-7 h-7 rounded-md border border-border/50 shrink-0"
-                  style={{ backgroundColor: mainColor }}
+                  style={{ backgroundColor: primaryColor }}
                 />
               )}
               {isApproved ? (
                 <span className="text-sm text-foreground/80 font-mono">
-                  {mainColor}
+                  {primaryColor}
                 </span>
               ) : (
                 <input
-                  id={mainColorTextFieldId}
+                  id={primaryColorTextFieldId}
                   type="text"
-                  aria-label="Main Color Hex Code"
+                  aria-label="Primary Color Hex Code"
                   value={colorTextValue}
                   onChange={(e) => setColorTextValue(e.target.value)}
                   onBlur={() => {
                     if (/^#[0-9a-fA-F]{6}$/.test(colorTextValue)) {
-                      handleFieldEdit("mainColor", colorTextValue);
+                      handleFieldEdit("primaryColor", colorTextValue);
                     } else {
-                      setColorTextValue(mainColor);
+                      setColorTextValue(primaryColor);
                     }
                   }}
                   onKeyDown={(e) => {
@@ -685,13 +755,13 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               )}
               {!isApproved && (
                 <input
-                  id={mainColorPickerFieldId}
+                  id={primaryColorPickerFieldId}
                   type="color"
-                  aria-label="Main Color Picker"
-                  value={mainColor || "#000000"}
+                  aria-label="Primary Color Picker"
+                  value={primaryColor || "#000000"}
                   onChange={(e) => {
                     setColorTextValue(e.target.value);
-                    handleFieldEdit("mainColor", e.target.value);
+                    handleFieldEdit("primaryColor", e.target.value);
                   }}
                   className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer"
                 />
@@ -706,7 +776,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               Design Direction
             </div>
-            <MiniPlanDesignDirection
+            <AppBlueprintDesignDirection
               direction={designDirection}
               isApproved={isApproved}
               onEdit={(value) => handleFieldEdit("designDirection", value)}
@@ -717,7 +787,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         {/* Visuals */}
         {(visuals.length > 0 || !isReady) && (
           <div className="space-y-1">
-            <MiniPlanVisuals
+            <AppBlueprintVisuals
               visuals={visuals}
               state={isReady ? "finished" : "pending"}
               isApproved={isApproved}
@@ -780,10 +850,10 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               }`}
             >
               {isTimedOut
-                ? "Plan timed out — start a new chat to try again."
+                ? "Blueprint timed out — start a new chat to try again."
                 : isReady
-                  ? "Your mini plan is ready to review."
-                  : "Preparing mini plan..."}
+                  ? "Your app blueprint is ready to review."
+                  : "Preparing app blueprint..."}
             </p>
             <button
               type="button"

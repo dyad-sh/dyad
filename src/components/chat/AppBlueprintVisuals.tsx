@@ -10,24 +10,24 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  MINI_PLAN_VISUAL_TYPES,
-  type MiniPlanVisual,
-  type MiniPlanVisualEditableField,
-} from "@/ipc/types/mini_plan";
+  APP_BLUEPRINT_VISUAL_TYPES,
+  type AppBlueprintVisual,
+  type AppBlueprintVisualEditableField,
+} from "@/ipc/types/app_blueprint";
 import type { CustomTagState } from "./stateTypes";
 
-type VisualType = (typeof MINI_PLAN_VISUAL_TYPES)[number];
+type VisualType = (typeof APP_BLUEPRINT_VISUAL_TYPES)[number];
 
-interface MiniPlanVisualsProps {
-  visuals: MiniPlanVisual[];
+interface AppBlueprintVisualsProps {
+  visuals: AppBlueprintVisual[];
   state?: CustomTagState;
   isApproved?: boolean;
   onEditVisual?: (
     visualId: string,
-    field: MiniPlanVisualEditableField,
+    field: AppBlueprintVisualEditableField,
     value: string,
   ) => void;
-  onAddVisual?: (visual: Omit<MiniPlanVisual, "id">) => void;
+  onAddVisual?: (visual: Omit<AppBlueprintVisual, "id">) => void;
   onRemoveVisual?: (visualId: string) => void;
 }
 
@@ -65,11 +65,11 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 interface EditableTextProps {
   value: string;
   visualId: string;
-  field: MiniPlanVisualEditableField;
+  field: AppBlueprintVisualEditableField;
   canEdit: boolean;
   onEdit?: (
     visualId: string,
-    field: MiniPlanVisualEditableField,
+    field: AppBlueprintVisualEditableField,
     value: string,
   ) => void;
   multiline?: boolean;
@@ -198,11 +198,11 @@ const EditableText: React.FC<EditableTextProps> = ({
 };
 
 const VisualEntry: React.FC<{
-  visual: MiniPlanVisual;
+  visual: AppBlueprintVisual;
   isApproved?: boolean;
   onEdit?: (
     visualId: string,
-    field: MiniPlanVisualEditableField,
+    field: AppBlueprintVisualEditableField,
     value: string,
   ) => void;
   onRemove?: (visualId: string) => void;
@@ -306,7 +306,7 @@ const VisualEntry: React.FC<{
 };
 
 const AddVisualForm: React.FC<{
-  onAdd: (visual: Omit<MiniPlanVisual, "id">) => void;
+  onAdd: (visual: Omit<AppBlueprintVisual, "id">) => void;
   onCancel: () => void;
 }> = ({ onAdd, onCancel }) => {
   const [type, setType] = useState<VisualType>("other");
@@ -329,7 +329,7 @@ const AddVisualForm: React.FC<{
           className="text-xs bg-background border border-border/50 rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           aria-label="Visual type"
         >
-          {MINI_PLAN_VISUAL_TYPES.map((t) => (
+          {APP_BLUEPRINT_VISUAL_TYPES.map((t) => (
             <option key={t} value={t}>
               {TYPE_LABELS[t].label}
             </option>
@@ -379,7 +379,7 @@ const AddVisualForm: React.FC<{
   );
 };
 
-export const MiniPlanVisuals: React.FC<MiniPlanVisualsProps> = ({
+export const AppBlueprintVisuals: React.FC<AppBlueprintVisualsProps> = ({
   visuals,
   state,
   isApproved,

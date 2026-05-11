@@ -48,9 +48,9 @@ import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
+import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { DyadScript } from "./DyadScript";
-import { DyadMiniPlanCard } from "./DyadMiniPlanCard";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -904,16 +904,16 @@ function renderCustomTag(
         </DyadStepLimit>
       );
 
-    case "dyad-mini-plan":
+    case "dyad-app-blueprint":
       return (
-        <DyadMiniPlanCard
+        <DyadAppBlueprintCard
           node={{
             properties: {
               "app-name": attributes["app-name"] || "",
               template: attributes.template || "react",
               theme: attributes.theme || "default",
               "design-direction": attributes["design-direction"] || "",
-              "main-color": attributes["main-color"] || "",
+              "primary-color": attributes["primary-color"] || "",
               complete: attributes.complete,
               state: getState({ isStreaming, inProgress }),
             },

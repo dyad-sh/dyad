@@ -1,30 +1,30 @@
 import { useEffect } from "react";
 import { useSetAtom } from "jotai";
-import { miniPlanStateAtom } from "@/atoms/miniPlanAtoms";
+import { appBlueprintStateAtom } from "@/atoms/appBlueprintAtoms";
 import {
-  miniPlanEventClient,
-  type MiniPlanUpdatePayload,
-  type MiniPlanVisualsUpdatePayload,
-  type MiniPlanApprovedPayload,
-  type MiniPlanTimeoutPayload,
-} from "@/ipc/types/mini_plan";
+  appBlueprintEventClient,
+  type AppBlueprintUpdatePayload,
+  type AppBlueprintVisualsUpdatePayload,
+  type AppBlueprintApprovedPayload,
+  type AppBlueprintTimeoutPayload,
+} from "@/ipc/types/app_blueprint";
 
 /**
- * Hook to handle mini plan IPC events.
- * Should be called at the app root level to listen for mini plan events.
+ * Hook to handle app blueprint IPC events.
+ * Should be called at the app root level to listen for app blueprint events.
  */
-export function useMiniPlanEvents() {
-  const setMiniPlanState = useSetAtom(miniPlanStateAtom);
+export function useAppBlueprintEvents() {
+  const setAppBlueprintState = useSetAtom(appBlueprintStateAtom);
 
   useEffect(() => {
-    const unsubscribeUpdate = miniPlanEventClient.onUpdate(
-      (payload: MiniPlanUpdatePayload) => {
-        setMiniPlanState((prev) => {
+    const unsubscribeUpdate = appBlueprintEventClient.onUpdate(
+      (payload: AppBlueprintUpdatePayload) => {
+        setAppBlueprintState((prev) => {
           const nextPlans = new Map(prev.plansByChatId);
           nextPlans.set(payload.chatId, payload.data);
-          // A fresh plan update supersedes any prior timeout/readiness state
-          // for this chat — otherwise a regenerated plan could stay stuck as
-          // "timed out" or carry over stale visuals readiness.
+          // A fresh blueprint update supersedes any prior timeout/readiness
+          // state for this chat — otherwise a regenerated blueprint could stay
+          // stuck as "timed out" or carry over stale visuals readiness.
           const nextTimedOut = new Set(prev.timedOutChatIds);
           nextTimedOut.delete(payload.chatId);
           const nextVisualsReady = new Set(prev.visualsReadyChatIds);
@@ -39,9 +39,9 @@ export function useMiniPlanEvents() {
       },
     );
 
-    const unsubscribeVisualsUpdate = miniPlanEventClient.onVisualsUpdate(
-      (payload: MiniPlanVisualsUpdatePayload) => {
-        setMiniPlanState((prev) => {
+    const unsubscribeVisualsUpdate = appBlueprintEventClient.onVisualsUpdate(
+      (payload: AppBlueprintVisualsUpdatePayload) => {
+        setAppBlueprintState((prev) => {
           const nextPlans = new Map(prev.plansByChatId);
           const existingPlan = nextPlans.get(payload.chatId);
           if (existingPlan) {
@@ -64,9 +64,9 @@ export function useMiniPlanEvents() {
       },
     );
 
-    const unsubscribeApproved = miniPlanEventClient.onApproved(
-      (payload: MiniPlanApprovedPayload) => {
-        setMiniPlanState((prev) => {
+    const unsubscribeApproved = appBlueprintEventClient.onApproved(
+      (payload: AppBlueprintApprovedPayload) => {
+        setAppBlueprintState((prev) => {
           const nextApproved = new Set(prev.approvedChatIds);
           nextApproved.add(payload.chatId);
           return {
@@ -77,9 +77,9 @@ export function useMiniPlanEvents() {
       },
     );
 
-    const unsubscribeTimeout = miniPlanEventClient.onTimeout(
-      (payload: MiniPlanTimeoutPayload) => {
-        setMiniPlanState((prev) => {
+    const unsubscribeTimeout = appBlueprintEventClient.onTimeout(
+      (payload: AppBlueprintTimeoutPayload) => {
+        setAppBlueprintState((prev) => {
           const nextTimedOut = new Set(prev.timedOutChatIds);
           nextTimedOut.add(payload.chatId);
           return {
@@ -96,5 +96,5 @@ export function useMiniPlanEvents() {
       unsubscribeApproved();
       unsubscribeTimeout();
     };
-  }, [setMiniPlanState]);
+  }, [setAppBlueprintState]);
 }

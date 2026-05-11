@@ -67,6 +67,9 @@ export const apps = sqliteTable("apps", {
     .default(sql`0`),
   // Theme ID for design system theming (null means "no theme")
   themeId: text("theme_id"),
+  needsAppBlueprint: integer("needs_app_blueprint", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
 });
 
 export const chats = sqliteTable("chats", {

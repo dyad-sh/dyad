@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { MessageSquare, ChevronDown, ChevronUp, Paperclip } from "lucide-react";
 
-interface MiniPlanUserPromptProps {
+interface AppBlueprintUserPromptProps {
   prompt: string;
   attachments: string[];
 }
 
 const PROMPT_PREVIEW_LIMIT = 200;
 
-export const MiniPlanUserPrompt: React.FC<MiniPlanUserPromptProps> = ({
+export const AppBlueprintUserPrompt: React.FC<AppBlueprintUserPromptProps> = ({
   prompt,
   attachments,
 }) => {

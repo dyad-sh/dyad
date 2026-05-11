@@ -24,7 +24,7 @@ export const SETTING_IDS = {
   autoFix: "setting-auto-fix",
   autoExpandPreview: "setting-auto-expand-preview",
   keepPreviewsRunning: "setting-keep-previews-running",
-  miniPlan: "setting-mini-plan",
+  appBlueprint: "setting-app-blueprint",
   chatEventNotification: "setting-chat-event-notification",
   thinkingBudget: "setting-thinking-budget",
   maxChatTurns: "setting-max-chat-turns",
@@ -140,13 +140,13 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Workflow",
   },
   {
-    id: SETTING_IDS.miniPlan,
-    label: "Mini Plan",
+    id: SETTING_IDS.appBlueprint,
+    label: "App Blueprint",
     description:
-      "Generate a lightweight mini plan (name, design, color, template) before building new apps",
+      "Generate a lightweight app blueprint (name, design, color, template) before building new apps",
     keywords: [
-      "mini",
-      "plan",
+      "blueprint",
+      "app",
       "new app",
       "template",
       "questionnaire",

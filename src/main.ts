@@ -17,6 +17,7 @@ import log from "electron-log";
 import {
   getSettingsFilePath,
   writeSettings,
+  readSettings,
   readEffectiveSettings,
   writeCrashSentinel,
   clearCrashSentinel,
@@ -462,6 +463,7 @@ const createWindow = () => {
     // renderer (which owns the PostHog client) is dead at crash time.
     const rendererCrash = readRendererCrashRecord();
     if (rendererCrash) {
+      const perf = rendererCrash.performance;
       sendTelemetryEvent("renderer:crash_detected", {
         // Mark as error so renderer PostHog before_send sampling does not
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
@@ -471,6 +473,20 @@ const createWindow = () => {
         crash_count: rendererCrash.count,
         crash_timestamp: rendererCrash.timestamp,
         ms_since_crash: Date.now() - rendererCrash.timestamp,
+        // Mirror the `app:crash_detected` performance fields so the two
+        // events can be unioned in PostHog without per-event field mapping.
+        has_performance_data: !!perf,
+        ...(perf && {
+          last_known_memory_mb: perf.memoryUsageMB,
+          last_known_cpu_pct: perf.cpuUsagePercent,
+          last_known_system_memory_mb: perf.systemMemoryUsageMB,
+          last_known_system_memory_total_mb: perf.systemMemoryTotalMB,
+          last_known_system_cpu_pct: perf.systemCpuPercent,
+          last_known_snapshot_timestamp: perf.timestamp,
+          // Match `app:crash_detected` semantics: measured at send time, not
+          // crash time. `ms_since_crash` already covers the crash → send gap.
+          time_since_last_heartbeat_ms: Date.now() - perf.timestamp,
+        }),
       });
       clearRendererCrashRecord();
     }
@@ -493,9 +509,21 @@ const createWindow = () => {
       "exitCode=",
       details.exitCode,
     );
+    // Capture the latest heartbeat snapshot synchronously so the record pins
+    // the pre-crash performance state, matching the semantics of
+    // `app:crash_detected`. `readSettings` may throw if settings are
+    // unreadable; treat that as "no snapshot" rather than failing the crash
+    // write.
+    let performance: ReturnType<typeof readSettings>["lastKnownPerformance"];
+    try {
+      performance = readSettings().lastKnownPerformance;
+    } catch (error) {
+      logger.warn("Unable to read perf snapshot for renderer crash:", error);
+    }
     recordRendererCrash({
       reason: details.reason,
       exitCode: details.exitCode,
+      performance,
     });
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,20 +23,13 @@ import {
   Loader2,
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
-import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import {
-  pendingContinuationProviderAtom,
-  pendingIntegrationAtom,
-} from "@/atoms/integrationAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
-import { integrationClient } from "@/ipc/types/integration";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
 import { NeonConnector } from "@/components/NeonConnector";
-import { useLoadApp } from "@/hooks/useLoadApp";
-import { getCompletedIntegrationProvider } from "@/components/chat/dyadAddIntegrationUtils";
+import { useIntegrationContinue } from "@/hooks/useIntegrationContinue";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -311,100 +304,42 @@ const EnvironmentVariablesTitle = () => (
   </div>
 );
 
-const IntegrationSetupSection = () => {
+const IntegrationSection = () => {
   const { t } = useTranslation("home");
-  const chatId = useAtomValue(selectedChatIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
-    pendingIntegrationAtom,
-  );
-  const setPendingContinuationMap = useSetAtom(pendingContinuationProviderAtom);
-  const setPreviewMode = useSetAtom(previewModeAtom);
-  const { app } = useLoadApp(selectedAppId);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    pendingIntegration,
+    provider: pendingProvider,
+    completedProvider,
+    canContinue,
+    isSubmitting,
+    handleContinue,
+  } = useIntegrationContinue();
 
-  const pendingIntegration =
-    chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
-  const provider = pendingIntegration?.provider;
-  const requestId = pendingIntegration?.requestId;
+  // Choose which connector to render: prefer the in-flight setup's provider
+  // (so the user sees the right connector before completion), otherwise fall
+  // back to whatever the app is already connected to. This is what lets the
+  // section remain visible after setup — users can change DB branches or
+  // reconnect without having to trigger a new integration prompt.
+  const displayProvider = pendingProvider ?? completedProvider;
 
   // Scroll the section into view whenever a pending integration with a
   // chosen provider becomes visible — so the user lands directly on the
   // connector instead of having to scroll past env vars / app commands.
+  // We only do this for *active* setup (not the always-visible post-setup
+  // view), to avoid hijacking scroll when the user opens the configure panel.
   const sectionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!provider) return;
+    if (!pendingProvider) return;
     sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [provider, chatId]);
+  }, [pendingProvider]);
 
-  // Reset the submitting state whenever the active integration request
-  // changes (or is cleared). The component stays mounted across requests, so
-  // without this a successful continue would leave isSubmitting stuck at true
-  // and the next request's Continue button would render permanently disabled.
-  useEffect(() => {
-    setIsSubmitting(false);
-  }, [requestId]);
+  if (selectedAppId == null || !displayProvider) return null;
 
-  if (!pendingIntegration || selectedAppId == null) return null;
-  // Until the chat card pushes a chosen provider, there's nothing to render.
-  if (!provider) return null;
-
-  const completedProvider = getCompletedIntegrationProvider(app);
-  const canContinue = completedProvider === provider;
   const providerName =
-    provider === "supabase"
+    displayProvider === "supabase"
       ? t("integrations.databaseSetup.providers.supabase.name")
       : t("integrations.databaseSetup.providers.neon.name");
-
-  const handleContinueClick = async () => {
-    if (chatId == null || !canContinue || isSubmitting) return;
-    setIsSubmitting(true);
-    // Queue the continuation BEFORE the IPC call. integrationClient.respond
-    // unblocks the backend's integrationResolver.wait promise, which lets the
-    // local-agent stream finish; useIntegrationContinuation only fires on the
-    // streaming -> not-streaming transition, so if the stream ends before this
-    // map is set the continuation message would be lost.
-    setPendingContinuationMap((prev) => {
-      const next = new Map(prev);
-      next.set(chatId, provider);
-      return next;
-    });
-    // Await the IPC: if it fails (e.g. webContents destroyed during nav, or a
-    // serialization error) the backend's integrationResolver.wait promise would
-    // otherwise hang to its 30-min timeout while the UI moves on as if
-    // everything succeeded. On error, roll back the queued continuation,
-    // surface a toast, and leave state intact.
-    try {
-      await integrationClient.respond({
-        requestId: pendingIntegration.requestId,
-        provider,
-        completed: true,
-      });
-    } catch (error) {
-      setPendingContinuationMap((prev) => {
-        if (!prev.has(chatId)) return prev;
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-      showError(
-        `Failed to continue integration: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      setIsSubmitting(false);
-      return;
-    }
-    setPendingIntegrationMap((prev) => {
-      if (!prev.has(chatId)) return prev;
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
-    // Switch the right sidebar back to the preview so the user sees the
-    // resumed conversation rather than a now-empty configure panel.
-    setPreviewMode("preview");
-  };
 
   return (
     <div ref={sectionRef}>
@@ -420,33 +355,37 @@ const IntegrationSetupSection = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {provider === "supabase" ? (
+          {displayProvider === "supabase" ? (
             <SupabaseConnector appId={selectedAppId} />
           ) : (
             <NeonConnector appId={selectedAppId} />
           )}
-          <Button
-            onClick={handleContinueClick}
-            disabled={!canContinue || isSubmitting}
-            className="w-full"
-            size="sm"
-            data-testid="integration-setup-continue-button"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                {t("integrations.databaseSetup.continuing")}
-              </>
-            ) : (
-              t("integrations.databaseSetup.continue")
-            )}
-          </Button>
-          {!canContinue && (
-            <p className="text-xs text-muted-foreground text-center">
-              {t("integrations.databaseSetup.completePrompt", {
-                provider: providerName,
-              })}
-            </p>
+          {pendingIntegration && pendingProvider && (
+            <>
+              <Button
+                onClick={handleContinue}
+                disabled={!canContinue || isSubmitting}
+                className="w-full"
+                size="sm"
+                data-testid="integration-setup-continue-button"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    {t("integrations.databaseSetup.continuing")}
+                  </>
+                ) : (
+                  t("integrations.databaseSetup.continue")
+                )}
+              </Button>
+              {!canContinue && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {t("integrations.databaseSetup.completePrompt", {
+                    provider: providerName,
+                  })}
+                </p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -608,7 +547,7 @@ export const ConfigurePanel = () => {
           </CardHeader>
           <CardContent>{envVarsCardContent}</CardContent>
         </Card>
-        <IntegrationSetupSection />
+        <IntegrationSection />
       </div>
     );
   }
@@ -780,8 +719,10 @@ export const ConfigurePanel = () => {
       {/* App Commands Configuration */}
       <AppCommandsSection selectedAppId={selectedAppId} />
 
-      {/* Integration setup (Supabase / Neon) — only when chat has a pending integration */}
-      <IntegrationSetupSection />
+      {/* Integration (Supabase / Neon) — visible during setup AND afterwards
+          so users can change their DB branch / reconnect without re-triggering
+          the integration prompt. */}
+      <IntegrationSection />
 
       {/* Neon Database Configuration */}
       <div className="grid grid-cols-1 gap-6">

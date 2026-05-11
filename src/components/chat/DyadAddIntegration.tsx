@@ -7,6 +7,7 @@ import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
+import { useIntegrationContinue } from "@/hooks/useIntegrationContinue";
 import { useTranslation } from "react-i18next";
 import { isNextJsProject } from "@/lib/framework_constants";
 import {
@@ -15,6 +16,7 @@ import {
   CheckCircle2,
   Database,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
@@ -183,6 +185,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     setInPanelMode(true);
   };
 
+  const {
+    canContinue,
+    isSubmitting: isContinueSubmitting,
+    handleContinue,
+  } = useIntegrationContinue();
+
   const handleBackClick = () => {
     setInPanelMode(false);
     setUserSelectedProvider(null);
@@ -271,10 +279,30 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                 })}
               </p>
             </div>
+            {/* Mirror the right-panel Continue button here so users don't have
+                to hunt for it in the Configure panel once the connector is
+                done. Both buttons share state via useIntegrationContinue, so
+                clicking one disables both. */}
+            <Button
+              onClick={handleContinue}
+              disabled={!canContinue || isContinueSubmitting}
+              className="w-full mt-3"
+              size="sm"
+              data-testid="integration-chat-continue-button"
+            >
+              {isContinueSubmitting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  {t("integrations.databaseSetup.continuing")}
+                </>
+              ) : (
+                t("integrations.databaseSetup.continue")
+              )}
+            </Button>
             <Button
               onClick={handleBackClick}
               variant="outline"
-              className="w-full mt-3"
+              className="w-full mt-2"
               size="sm"
             >
               <ArrowLeft size={14} />

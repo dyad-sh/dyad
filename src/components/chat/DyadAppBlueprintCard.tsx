@@ -308,7 +308,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
 
     const plan = appBlueprintState.plansByChatId.get(chatId);
     if (!plan) {
-      showError("Mini plan data is unavailable. Please regenerate the plan.");
+      showError("Blueprint data is unavailable. Please regenerate the plan.");
       return;
     }
 
@@ -444,7 +444,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
       }
 
       if (applyErrors.length > 0) {
-        const errorMessage = `Mini plan approved, but some changes could not be applied:\n- ${applyErrors.join("\n- ")}`;
+        const errorMessage = `Blueprint approved, but some changes could not be applied:\n- ${applyErrors.join("\n- ")}`;
         setApprovalError(errorMessage);
         showError(errorMessage);
       }

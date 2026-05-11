@@ -120,7 +120,28 @@ export class ChatActions {
       const visiblePrompt = prompt.replace(/@app:/g, "@");
       expect(await chatInput.textContent()).toContain(visiblePrompt);
       await expect(sendButton).toBeEnabled({ timeout: 1_000 });
-      await sendButton.click({ timeout: 1_000 });
+      try {
+        await sendButton.click({ timeout: 1_000 });
+      } catch (error) {
+        const promptSubmitted = await this.page
+          .getByTestId("messages-list")
+          .getByText(visiblePrompt)
+          .last()
+          .isVisible({ timeout: 1_000 })
+          .catch(() => false);
+        const generationStarted = await this.page
+          .getByRole("button", { name: "Cancel generation" })
+          .isVisible({ timeout: 500 })
+          .catch(() => false);
+        const inputText = await chatInput
+          .textContent({ timeout: 500 })
+          .catch(() => "");
+
+        if (promptSubmitted || (generationStarted && !inputText?.trim())) {
+          return;
+        }
+        throw error;
+      }
     }).toPass({ timeout: Timeout.MEDIUM });
 
     if (!skipWaitForCompletion) {

@@ -541,11 +541,24 @@ describe("readSettings", () => {
       });
     });
 
-    it("should handle decryption errors gracefully", () => {
+    it("should drop a secret that cannot be decrypted without discarding settings", () => {
       const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        telemetryConsent: "opted_in",
         githubAccessToken: {
           value: "corrupted-encrypted-data",
           encryptionType: "electron-safe-storage",
+        },
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "plaintext-api-key",
+              encryptionType: "plaintext",
+            },
+          },
         },
       };
 
@@ -557,13 +570,81 @@ describe("readSettings", () => {
 
       const result = readSettings();
 
-      expect(result).toMatchObject({
-        selectedModel: {
-          name: "auto",
-          provider: "auto",
-        },
-        releaseChannel: "stable",
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
       });
+      expect(result.telemetryConsent).toBe("opted_in");
+      expect(result.githubAccessToken).toBeUndefined();
+      expect(result.providerSettings.openai.apiKey?.value).toBe(
+        "plaintext-api-key",
+      );
+    });
+
+    it("should not treat safeStorage readiness errors as corrupt secrets", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        githubAccessToken: {
+          value: "encrypted-token",
+          encryptionType: "electron-safe-storage",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockImplementation(() => {
+        throw new Error("safeStorage cannot be used before app is ready");
+      });
+
+      const result = readSettings();
+
+      expect(result.selectedModel).toEqual({
+        name: "auto",
+        provider: "auto",
+      });
+      expect(result.githubAccessToken).toBeUndefined();
+    });
+
+    it("should drop a Supabase organization when one organization secret cannot be decrypted", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        supabase: {
+          organizations: {
+            badOrg: {
+              accessToken: {
+                value: "corrupted-access-token",
+                encryptionType: "electron-safe-storage",
+              },
+              refreshToken: {
+                value: "encrypted-refresh-token",
+                encryptionType: "electron-safe-storage",
+              },
+              expiresIn: 3600,
+              tokenTimestamp: 123,
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockImplementationOnce(() => {
+        throw new DyadError("Decryption failed", DyadErrorKind.External);
+      });
+
+      const result = readSettings();
+
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
+      });
+      expect(result.supabase?.organizations).toEqual({});
     });
   });
 

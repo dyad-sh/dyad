@@ -212,7 +212,10 @@ export type {
 } from "./neon";
 
 // Migration types
-export type { MigrationPushParams, MigrationPushResponse } from "./migration";
+export type {
+  MigrationMigrateParams,
+  MigrationMigrateResponse,
+} from "./migration";
 
 // System types
 export type {

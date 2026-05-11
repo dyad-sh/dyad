@@ -21,13 +21,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { queryKeys } from "@/lib/queryKeys";
+import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
 
 interface MigrationPanelProps {
   appId: number;
@@ -57,11 +58,22 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
       queryKey: queryKeys.migration.dependenciesStatus({ appId }),
     });
 
-  const pushMutation = useMutation({
-    mutationFn: () => ipc.migration.push({ appId }),
+  const previewMutation = useMutation({
+    mutationFn: () => ipc.migration.preview({ appId }),
     onSuccess: invalidateDepsStatus,
     onError: invalidateDepsStatus,
   });
+
+  const migrateMutation = useMutation({
+    mutationFn: (migrationId: string) =>
+      ipc.migration.migrate({ appId, migrationId }),
+    onSuccess: invalidateDepsStatus,
+    onError: invalidateDepsStatus,
+  });
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const previewHasDataLoss = previewMutation.data?.hasDataLoss ?? false;
 
   const productionBranch = branches.find(
     (branch) => branch.type === "production",
@@ -95,20 +107,20 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
 
   // Auto-dismiss success/info banners after 5 seconds
   useEffect(() => {
-    if (pushMutation.isSuccess && pushMutation.data?.success) {
-      const timer = setTimeout(() => pushMutation.reset(), 5000);
+    if (migrateMutation.isSuccess && migrateMutation.data?.success) {
+      const timer = setTimeout(() => migrateMutation.reset(), 5000);
       return () => clearTimeout(timer);
     }
-  }, [pushMutation.isSuccess, pushMutation.data?.success]);
+  }, [migrateMutation.isSuccess, migrateMutation.data?.success]);
 
-  const errorSummary = pushMutation.isError
-    ? getErrorMessage(pushMutation.error)
+  const errorSummary = migrateMutation.isError
+    ? getErrorMessage(migrateMutation.error)
     : t("integrations.migration.errorMessage");
   const errorDetails =
-    pushMutation.error instanceof Error
-      ? (pushMutation.error.stack ?? pushMutation.error.message)
-      : pushMutation.error
-        ? getErrorMessage(pushMutation.error)
+    migrateMutation.error instanceof Error
+      ? (migrateMutation.error.stack ?? migrateMutation.error.message)
+      : migrateMutation.error
+        ? getErrorMessage(migrateMutation.error)
         : null;
 
   return (
@@ -132,7 +144,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           <span>{t("integrations.migration.backupWarning")}</span>
         </div>
 
-        {depsInstalled === false && !pushMutation.isPending && (
+        {depsInstalled === false && !migrateMutation.isPending && (
           <div
             role="note"
             className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3"
@@ -142,29 +154,75 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           </div>
         )}
 
-        <AlertDialog>
-          <AlertDialogTrigger
-            disabled={pushMutation.isPending || isProductionBranchActive}
-            render={
-              <Button
-                disabled={pushMutation.isPending || isProductionBranchActive}
-              />
-            }
-          >
-            {pushMutation.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {installingDepsRef.current
-                  ? t("integrations.migration.installingDependencies")
-                  : t("integrations.migration.migrating")}
-              </>
-            ) : (
-              <>
-                <Database className="w-4 h-4 mr-2" />
-                {t("integrations.migration.migrateToProduction")}
-              </>
-            )}
-          </AlertDialogTrigger>
+        <Button
+          disabled={
+            migrateMutation.isPending ||
+            previewMutation.isPending ||
+            isProductionBranchActive
+          }
+          onClick={() => {
+            setShowErrorDetails(false);
+            installingDepsRef.current = depsInstalled === false;
+            previewMutation.reset();
+            // Clear any prior migrate error/success so the stale banner doesn't
+            // sit behind the preview dialog while the user reviews a new plan.
+            migrateMutation.reset();
+            previewMutation.mutate();
+            setPreviewOpen(true);
+          }}
+        >
+          {migrateMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {installingDepsRef.current
+                ? t("integrations.migration.installingDependencies")
+                : t("integrations.migration.migrating")}
+            </>
+          ) : previewMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {t("integrations.migration.computingMigrationPlan")}
+            </>
+          ) : (
+            <>
+              <Database className="w-4 h-4 mr-2" />
+              {t("integrations.migration.migrateToProduction")}
+            </>
+          )}
+        </Button>
+
+        <MigrationSqlPreviewDialog
+          open={previewOpen}
+          onOpenChange={(open) => {
+            setPreviewOpen(open);
+            // Don't reset() while the mutation is in-flight: doing so flips
+            // isPending back to false and re-enables the trigger button, but
+            // the backend preview keeps running. A second click would then
+            // race the first request through the same deterministic work
+            // dir, with each ensureFreshWorkDir wiping the other's files.
+            if (!open && !previewMutation.isPending) previewMutation.reset();
+          }}
+          preview={previewMutation.data ?? null}
+          isLoading={previewMutation.isPending}
+          isError={previewMutation.isError}
+          errorMessage={
+            previewMutation.error
+              ? getErrorMessage(previewMutation.error)
+              : undefined
+          }
+          targetBranchName={targetBranchName}
+          onApprove={() => {
+            setPreviewOpen(false);
+            setConfirmOpen(true);
+          }}
+          onCancel={() => {
+            setPreviewOpen(false);
+            if (!previewMutation.isPending) previewMutation.reset();
+          }}
+          onRetry={() => previewMutation.mutate()}
+        />
+
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
@@ -172,20 +230,56 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {confirmDescription}
+                {previewHasDataLoss && (
+                  <span className="mt-2 block font-medium text-red-700 dark:text-red-300">
+                    {t("integrations.migration.confirmDestructiveWarning")}
+                  </span>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>
                 {t("integrations.migration.cancel")}
               </AlertDialogCancel>
+              {previewMutation.data && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    setPreviewOpen(true);
+                  }}
+                >
+                  {t("integrations.migration.backToReview")}
+                </Button>
+              )}
               <AlertDialogAction
+                className={
+                  previewHasDataLoss
+                    ? buttonVariants({ variant: "destructive" })
+                    : undefined
+                }
+                disabled={!previewMutation.data?.migrationId}
                 onClick={() => {
+                  const migrationId = previewMutation.data?.migrationId;
                   setShowErrorDetails(false);
-                  installingDepsRef.current = depsInstalled === false;
-                  pushMutation.mutate();
+                  setConfirmOpen(false);
+                  if (!migrationId) {
+                    // Lost the preview between approve and confirm — re-open
+                    // the preview dialog so the user can regenerate.
+                    setPreviewOpen(true);
+                    return;
+                  }
+                  // Deps were installed during preview if needed; the migrate
+                  // step itself never installs anything, so make sure the
+                  // in-flight label doesn't claim otherwise.
+                  installingDepsRef.current = false;
+                  migrateMutation.mutate(migrationId);
                 }}
               >
-                {t("integrations.migration.migrateToProduction")}
+                {previewHasDataLoss
+                  ? t("integrations.migration.migrateToProductionDestructive")
+                  : t("integrations.migration.migrateToProduction")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -197,9 +291,9 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           </p>
         )}
 
-        {pushMutation.isSuccess &&
-          pushMutation.data?.success &&
-          !pushMutation.data?.noChanges && (
+        {migrateMutation.isSuccess &&
+          migrateMutation.data?.success &&
+          !migrateMutation.data?.noChanges && (
             <div
               role="status"
               aria-live="polite"
@@ -210,7 +304,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
             </div>
           )}
 
-        {pushMutation.isSuccess && pushMutation.data?.noChanges && (
+        {migrateMutation.isSuccess && migrateMutation.data?.noChanges && (
           <div
             role="status"
             aria-live="polite"
@@ -221,7 +315,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           </div>
         )}
 
-        {pushMutation.isError && (
+        {migrateMutation.isError && (
           <div
             role="alert"
             className="text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 space-y-2"

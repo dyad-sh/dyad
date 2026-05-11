@@ -636,6 +636,7 @@
       "description": "将当前开发分支的 schema 复制到生产分支。",
       "descriptionWithBranches": "将 {{projectName}} 中 {{sourceBranchName}} 的 schema 复制到 {{targetBranchName}}。",
       "migrateToProduction": "迁移到生产环境",
+      "migrateToProductionDestructive": "我已了解，迁移到生产环境",
       "migrating": "迁移中...",
       "installingDependencies": "正在安装依赖并迁移...",
       "installDependenciesNote": "首次迁移将安装 drizzle-kit 和 drizzle-orm，可能需要几分钟。",
@@ -648,7 +649,38 @@
       "confirmDescription": "此操作将修改您的生产数据库 schema。确定要继续吗？",
       "confirmDescriptionWithBranches": "此操作将使用 {{sourceBranchName}} 的 schema 修改 {{projectName}} 中 {{targetBranchName}} 的 schema。确定要继续吗？",
       "cancel": "取消",
-      "backupWarning": "请确保已启用数据库备份，否则此操作将无法撤销。"
+      "backToReview": "返回审阅",
+      "backupWarning": "请确保已启用数据库备份，否则此操作将无法撤销。",
+      "computingMigrationPlan": "正在计算迁移计划...",
+      "preview": {
+        "title": "审阅迁移 SQL",
+        "subtitle": "这些语句将在 {{targetBranchName}} 上执行。",
+        "subtitleNoTarget": "这些语句将在您的生产数据库上执行。",
+        "loading": "正在计算迁移计划...",
+        "loadingError": "无法计算迁移计划。",
+        "noChanges": "您的开发数据库和生产数据库已经同步。无需迁移。",
+        "continue": "继续",
+        "continueWithDataLoss": "我已了解，继续",
+        "cancel": "取消",
+        "close": "关闭",
+        "retry": "重试",
+        "sqlStatementsRegionLabel": "将要执行的 SQL 语句",
+        "destructiveStatementLabel": "破坏性语句",
+        "reviewAdvisory": "可能导致数据丢失的语句已用警告图标标记并以红色高亮显示。检测仅为近似 — 继续前请审阅每一条语句。",
+        "destructive": {
+          "title": "检测到破坏性更改",
+          "subtitle_one": "{{count}} 条语句将永久删除或修改现有数据。",
+          "subtitle_other": "{{count}} 条语句将永久删除或修改现有数据。",
+          "reasons": {
+            "drop_table": "将删除一张表。",
+            "drop_column": "将删除一个列。",
+            "alter_column_type": "列的类型将被更改（数据转换）。",
+            "truncate": "将清空一张表。",
+            "drop_schema": "将删除一个 schema。"
+          }
+        }
+      },
+      "confirmDestructiveWarning": "此次迁移包含可能导致数据丢失的破坏性更改。"
     },
     "mutualExclusion": {
       "supabaseUnavailable": "Supabase 不可用，因为已连接 Neon 数据库。一次只能激活一个数据库集成。",

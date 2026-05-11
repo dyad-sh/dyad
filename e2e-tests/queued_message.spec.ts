@@ -17,7 +17,7 @@ test.describe("queued messages", () => {
   let chatInput: Locator;
 
   test.beforeEach(async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     chatInput = po.chatActions.getChatInput();
   });
 
@@ -161,7 +161,7 @@ test.describe("queued messages", () => {
 testSkipIfWindows(
   "editing queued message restores attachments and selected components",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     const chatInput = po.chatActions.getChatInput();
 
     // Build an app so we have a preview with selectable components
@@ -246,7 +246,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "canceling queued message edit clears restored components",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     const chatInput = po.chatActions.getChatInput();
 
     // Build an app so we have a preview with selectable components

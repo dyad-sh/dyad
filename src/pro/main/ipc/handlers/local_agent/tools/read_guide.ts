@@ -5,6 +5,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import addAuthentication from "@/prompts/guides/add-authentication.md?raw";
 import addEmailVerification from "@/prompts/guides/add-email-verification.md?raw";
 import addPasswordReset from "@/prompts/guides/add-password-reset.md?raw";
+import { filterGuideByFramework } from "@/prompts/guides/filter_guide_by_framework";
 
 /**
  * Registry of available guides. To add a new guide, import its .md file
@@ -38,7 +39,7 @@ export const readGuideTool: ToolDefinition<z.infer<typeof readGuideSchema>> = {
     return `<dyad-read-guide name="${escapeXmlAttr(args.guide)}"></dyad-read-guide>`;
   },
 
-  execute: async (args) => {
+  execute: async (args, ctx) => {
     const content = GUIDES[args.guide];
     if (!content) {
       const available = Object.keys(GUIDES).join(", ");
@@ -47,6 +48,6 @@ export const readGuideTool: ToolDefinition<z.infer<typeof readGuideSchema>> = {
         DyadErrorKind.NotFound,
       );
     }
-    return content;
+    return filterGuideByFramework(content, ctx.frameworkType);
   },
 };

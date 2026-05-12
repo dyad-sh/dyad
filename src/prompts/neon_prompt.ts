@@ -1,6 +1,7 @@
 import addAuthenticationGuide from "./guides/add-authentication.md?raw";
 import addEmailVerificationGuide from "./guides/add-email-verification.md?raw";
 import addPasswordResetGuide from "./guides/add-password-reset.md?raw";
+import { filterGuideByFramework } from "./guides/filter_guide_by_framework";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 
 export function getNeonAvailableSystemPrompt(
@@ -19,6 +20,7 @@ export function getNeonAvailableSystemPrompt(
     neonClientCode,
     emailVerification,
     isLocalAgentMode,
+    frameworkType,
   );
 
   if (frameworkType === "nextjs") {
@@ -29,7 +31,9 @@ export function getNeonAvailableSystemPrompt(
         nextjsMajorVersion,
         isLocalAgentMode,
       ) +
-      (emailVerification ? getEmailVerificationNote(isLocalAgentMode) : "")
+      (emailVerification
+        ? getEmailVerificationNote(isLocalAgentMode, frameworkType)
+        : "")
     );
   }
 
@@ -37,7 +41,9 @@ export function getNeonAvailableSystemPrompt(
     return (
       sharedPrompt +
       getViteNitroNeonPrompt(isLocalAgentMode) +
-      (emailVerification ? getEmailVerificationNote(isLocalAgentMode) : "")
+      (emailVerification
+        ? getEmailVerificationNote(isLocalAgentMode, frameworkType)
+        : "")
     );
   }
 
@@ -48,6 +54,7 @@ function getSharedNeonPrompt(
   neonClientCode: string,
   emailVerificationEnabled: boolean,
   isLocalAgentMode: boolean,
+  frameworkType: AppFrameworkType | null,
 ): string {
   const authSection = isLocalAgentMode
     ? `## Auth (detailed guide available)
@@ -58,9 +65,9 @@ ${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. Af
 **IMPORTANT:** If the task involves password reset, forgot-password, or "reset my password" flows, you MUST call \`read_guide\` with guide="add-password-reset" BEFORE writing any password-reset code. Do NOT hand-roll a reset-token flow.`
     : `## Auth
 
-${addAuthenticationGuide}
-${emailVerificationEnabled ? `\n${addEmailVerificationGuide}` : ""}
-${addPasswordResetGuide}`;
+${filterGuideByFramework(addAuthenticationGuide, frameworkType)}
+${emailVerificationEnabled ? `\n${filterGuideByFramework(addEmailVerificationGuide, frameworkType)}` : ""}
+${filterGuideByFramework(addPasswordResetGuide, frameworkType)}`;
 
   return `
 <neon-system-prompt>
@@ -343,7 +350,10 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmod
 `;
 }
 
-function getEmailVerificationNote(isLocalAgentMode: boolean): string {
+function getEmailVerificationNote(
+  isLocalAgentMode: boolean,
+  frameworkType: AppFrameworkType | null,
+): string {
   if (isLocalAgentMode) {
     return `
 ## Email Verification
@@ -356,6 +366,6 @@ Email verification is **enabled** on this Neon Auth branch. When implementing si
 
 Email verification is **enabled** on this Neon Auth branch.
 
-${addEmailVerificationGuide}
+${filterGuideByFramework(addEmailVerificationGuide, frameworkType)}
 `;
 }

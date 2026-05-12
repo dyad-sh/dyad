@@ -29,8 +29,19 @@ testSkipIfWindows(
     // The "We've switched you to a new chat" sonner toast at the bottom-right
     // can overlap the Accept Plan button. Dismiss it so a normal click works
     // and Playwright's actionability checks are honored.
-    await po.toastNotifications.dismissAllToasts();
-    await acceptButton.click();
+    await expect(async () => {
+      await po.toastNotifications.dismissAllToasts();
+      await expect(acceptButton).toBeEnabled({ timeout: 1_000 });
+      try {
+        await acceptButton.click({ timeout: 1_000 });
+      } catch (error) {
+        const currentChatId = new URL(po.page.url()).searchParams.get("id");
+        if (currentChatId && currentChatId !== initialChatId) {
+          return;
+        }
+        throw error;
+      }
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     // Wait for navigation to a different chat
     await expect(async () => {

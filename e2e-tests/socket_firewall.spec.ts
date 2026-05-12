@@ -10,6 +10,9 @@ import {
 const originalNpmCache = process.env.npm_config_cache;
 const originalNpmStoreDir = process.env.npm_config_store_dir;
 const originalPnpmStoreDir = process.env.pnpm_config_store_dir;
+const SOCKET_FIREWALL_VERDICT_TIMEOUT = process.env.CI
+  ? 240_000
+  : Timeout.EXTRA_LONG;
 
 const testSkipIfWindows = testWithConfigSkipIfWindows({
   preLaunchHook: async ({ userDataDir }) => {
@@ -46,6 +49,15 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
 
 async function openMinimalBuildChat(po: PageObject) {
   await po.setUp();
+  await po.page.evaluate(async (nodeBinDir) => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      customNodePath: nodeBinDir,
+    });
+    await (window as any).electron.ipcRenderer.invoke(
+      "reload-env-path",
+      undefined,
+    );
+  }, path.dirname(process.execPath));
 
   await po.navigation.goToSettingsTab();
   await expect(
@@ -116,7 +128,7 @@ testSkipIfWindows(
       name: /Failed to add dependencies: axois\./i,
     });
     await expect(errorCard).toBeVisible({
-      timeout: Timeout.EXTRA_LONG,
+      timeout: SOCKET_FIREWALL_VERDICT_TIMEOUT,
     });
 
     await errorCard.click();

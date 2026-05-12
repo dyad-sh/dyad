@@ -46,9 +46,10 @@ export class ToastNotifications {
 
   async dismissAllToasts() {
     // Click all close buttons if they exist
-    const closeButtons = this.page.locator(
-      "[data-sonner-toast] button[data-close-button]",
-    );
+    const toasts = this.page.locator("[data-sonner-toast]");
+    const closeButtons = toasts
+      .locator("button[data-close-button]")
+      .or(toasts.getByRole("button", { name: "Dismiss" }));
     const maxAttempts = 20;
     let attempts = 0;
     while ((await closeButtons.count()) > 0 && attempts < maxAttempts) {
@@ -58,5 +59,11 @@ export class ToastNotifications {
         .catch(() => {});
       attempts++;
     }
+    if ((await toasts.count()) > 0) {
+      await toasts.evaluateAll((toastElements) => {
+        toastElements.forEach((toast) => toast.remove());
+      });
+    }
+    await expect(toasts).toHaveCount(0, { timeout: Timeout.SHORT });
   }
 }

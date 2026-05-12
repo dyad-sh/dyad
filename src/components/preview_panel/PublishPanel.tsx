@@ -8,6 +8,7 @@ import { MigrationPanel } from "@/components/MigrationPanel";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
+import { DatabaseUrlPanel } from "@/components/preview_panel/DatabaseUrlPanel";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -121,6 +122,8 @@ export const PublishPanel = () => {
             )}
           </CardContent>
         </Card>
+
+        {app.neonProjectId && <DatabaseUrlPanel appId={selectedAppId} />}
 
         {/* Vercel Section */}
         <Card>

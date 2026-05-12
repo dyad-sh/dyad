@@ -31,6 +31,8 @@ import {
   assertNoSupabaseProject,
   assertNoNeonProject,
 } from "../utils/neon_utils";
+import { getProductionBranchId } from "../utils/migration_utils";
+import { getConnectionUri } from "../../neon_admin/neon_context";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
@@ -741,6 +743,54 @@ export function registerNeonHandlers() {
       );
       invalidateEmailPasswordConfigCache(appData.neonProjectId!, branchId);
       return response.data;
+    },
+  );
+
+  // Do not use log handler because there's sensitive data in the response
+  createTypedHandler(
+    neonContracts.getBranchConnectionUri,
+    async (_, params) => {
+      const { appId, branchType } = params;
+
+      const appRows = await db
+        .select()
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .limit(1);
+      if (appRows.length === 0) {
+        throw new DyadError(
+          `App with ID ${appId} not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      const appData = appRows[0];
+      if (!appData.neonProjectId) {
+        throw new DyadError(
+          "This app is not connected to a Neon project.",
+          DyadErrorKind.Precondition,
+        );
+      }
+
+      let branchId: string;
+      if (branchType === "production") {
+        const result = await getProductionBranchId(appData.neonProjectId);
+        branchId = result.branchId;
+      } else {
+        if (!appData.neonDevelopmentBranchId) {
+          throw new DyadError(
+            "This app has no development branch. Create one in Neon before requesting a development connection URI.",
+            DyadErrorKind.Precondition,
+          );
+        }
+        branchId = appData.neonDevelopmentBranchId;
+      }
+
+      const connectionUri = await getConnectionUri({
+        projectId: appData.neonProjectId,
+        branchId,
+      });
+
+      return { connectionUri };
     },
   );
 

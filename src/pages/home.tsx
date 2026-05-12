@@ -150,10 +150,12 @@ export default function HomePage() {
     setRandomPrompts(getRandomPrompts());
   }, [getRandomPrompts]);
 
-  // Redirect to app details page if appId is present
+  // Redirect to app details page if appId is present. Use `replace` so the
+  // intermediate `/?appId=…` entry doesn't sit in history and trap the back
+  // button on app-details in a redirect loop.
   useEffect(() => {
     if (appId) {
-      navigate({ to: "/app-details", search: { appId } });
+      navigate({ to: "/app-details", search: { appId }, replace: true });
     }
   }, [appId, navigate]);
 

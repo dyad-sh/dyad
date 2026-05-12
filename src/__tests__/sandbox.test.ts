@@ -22,6 +22,7 @@ import {
 } from "@/ipc/utils/sandbox/runner";
 import {
   SANDBOX_LLM_OUTPUT_LIMIT_BYTES,
+  SANDBOX_READ_FILE_LIMIT_BYTES,
   SANDBOX_UI_OUTPUT_LIMIT_BYTES,
 } from "@/ipc/utils/sandbox/limits";
 
@@ -71,6 +72,24 @@ describe("sandbox capabilities", () => {
         length: 5,
       }),
     ).resolves.toBe("line2");
+  });
+
+  it("throws instead of silently truncating oversized project file reads", async () => {
+    const largePath = path.join(appPath, "src", "large.log");
+    await fs.writeFile(largePath, "hello", "utf8");
+    await fs.truncate(largePath, SANDBOX_READ_FILE_LIMIT_BYTES + 1);
+
+    await expect(sandboxReadFile(appPath, "src/large.log")).rejects.toThrow(
+      "exceeding the",
+    );
+    await expect(
+      sandboxReadFile(appPath, "src/large.log", {
+        length: SANDBOX_READ_FILE_LIMIT_BYTES + 1,
+      }),
+    ).rejects.toThrow("read_file length");
+    await expect(
+      sandboxReadFile(appPath, "src/large.log", { length: 5 }),
+    ).resolves.toBe("hello");
   });
 
   it("denies protected app paths", async () => {
@@ -302,6 +321,43 @@ describe("sandbox capabilities", () => {
       name: "read_file",
       path: "attachments:server.log",
     });
+  });
+
+  it("fails sandbox scripts that read oversized attachments without a range", async () => {
+    if (!isSandboxSupportedPlatform()) {
+      return;
+    }
+
+    const mediaDir = getDyadMediaDir(appPath);
+    const storedFileName = "stored-large.log";
+    await fs.writeFile(path.join(mediaDir, storedFileName), "large", "utf8");
+    await fs.truncate(
+      path.join(mediaDir, storedFileName),
+      SANDBOX_READ_FILE_LIMIT_BYTES + 1,
+    );
+    await appendAttachmentManifestEntries(appPath, [
+      {
+        logicalName: "large.log",
+        originalName: "large.log",
+        storedFileName,
+        mimeType: "text/plain",
+        sizeBytes: SANDBOX_READ_FILE_LIMIT_BYTES + 1,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
+    ]);
+
+    await expect(
+      runSandboxScript({
+        appPath,
+        script: `
+          async function main() {
+            const text = await read_file("attachments:large.log");
+            return text.length;
+          }
+          main();
+        `,
+      }),
+    ).rejects.toThrow("exceeding the");
   });
 
   it("spills oversized script output", async () => {

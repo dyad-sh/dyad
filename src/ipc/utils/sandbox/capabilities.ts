@@ -285,19 +285,32 @@ export async function sandboxReadFile(
     }
 
     const start = options.start ?? 0;
-    const maxLength = Math.min(
-      options.length ?? SANDBOX_READ_FILE_LIMIT_BYTES,
-      SANDBOX_READ_FILE_LIMIT_BYTES,
-    );
+    if (
+      options.length !== undefined &&
+      options.length > SANDBOX_READ_FILE_LIMIT_BYTES
+    ) {
+      throw new DyadError(
+        `read_file length ${options.length} exceeds the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Read the file in chunks with start and length instead.`,
+        DyadErrorKind.Validation,
+      );
+    }
     if (start > stat.size) {
       return "";
+    }
+    const remainingBytes = stat.size - start;
+    const length = options.length ?? remainingBytes;
+    if (length > SANDBOX_READ_FILE_LIMIT_BYTES) {
+      throw new DyadError(
+        `read_file would read ${length} bytes from ${resolved.displayPath}, exceeding the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Use file_stats to get the size, then read bounded chunks with start and length.`,
+        DyadErrorKind.Validation,
+      );
     }
 
     const handle = await fs.open(resolved.filePath, "r");
     try {
-      const length = Math.min(maxLength, stat.size - start);
-      const buffer = Buffer.alloc(length);
-      const { bytesRead } = await handle.read(buffer, 0, length, start);
+      const bytesToRead = Math.min(length, remainingBytes);
+      const buffer = Buffer.alloc(bytesToRead);
+      const { bytesRead } = await handle.read(buffer, 0, bytesToRead, start);
       const bytes = buffer.subarray(0, bytesRead);
       return (options.encoding ?? "utf8") === "base64"
         ? bytes.toString("base64")

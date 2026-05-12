@@ -57,6 +57,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";
+const RENDERER_CRASH_FILE = "renderer-crash.json";
 const SETTINGS_FILE = "user-settings.json";
 const RESTORE_SETTINGS_DOCS_URL =
   "https://www.dyad.sh/docs/guides/migrate-restore#restoring-settings-from-backup";
@@ -99,6 +100,116 @@ export function clearCrashSentinel(): void {
 
 export function crashSentinelExists(): boolean {
   return fs.existsSync(getCrashSentinelPath());
+}
+
+export type RendererCrashPerformanceSnapshot = NonNullable<
+  UserSettings["lastKnownPerformance"]
+>;
+
+export interface RendererCrashRecord {
+  reason: string;
+  exitCode?: number;
+  timestamp: number;
+  count: number;
+  performance?: RendererCrashPerformanceSnapshot;
+}
+
+function getRendererCrashPath(): string {
+  return path.join(getUserDataPath(), RENDERER_CRASH_FILE);
+}
+
+// Record a renderer crash so we can send a telemetry event on the next renderer
+// load. The renderer is dead at the time of writing, so the event cannot be
+// captured directly; we persist a small JSON record and forward it once the
+// renderer IPC bridge comes back up. If the renderer crashes again before the
+// record is consumed, we keep the latest reason/exitCode and bump `count`.
+export function recordRendererCrash(
+  details: Omit<RendererCrashRecord, "count" | "timestamp"> &
+    Partial<Pick<RendererCrashRecord, "timestamp">>,
+): void {
+  try {
+    const previous = readRendererCrashRecord();
+    const record: RendererCrashRecord = {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      timestamp: details.timestamp ?? Date.now(),
+      count: (previous?.count ?? 0) + 1,
+      // Latest snapshot wins; if the caller didn't supply one (e.g. settings
+      // unreadable at crash time) fall back to whatever the previous record
+      // had so we don't lose pre-existing context.
+      performance: details.performance ?? previous?.performance,
+    };
+    const filePath = getRendererCrashPath();
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(record));
+    fs.renameSync(tmpPath, filePath);
+  } catch (error) {
+    logger.error("Error writing renderer crash record:", error);
+  }
+}
+
+export function readRendererCrashRecord(): RendererCrashRecord | null {
+  try {
+    const filePath = getRendererCrashPath();
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    if (typeof raw !== "object" || raw === null) {
+      return null;
+    }
+    const reason = typeof raw.reason === "string" ? raw.reason : "unknown";
+    const exitCode =
+      typeof raw.exitCode === "number" ? raw.exitCode : undefined;
+    const timestamp =
+      typeof raw.timestamp === "number" ? raw.timestamp : Date.now();
+    const count =
+      typeof raw.count === "number" && raw.count > 0 ? raw.count : 1;
+    const performance = parseRendererCrashPerformance(raw.performance);
+    return { reason, exitCode, timestamp, count, performance };
+  } catch (error) {
+    logger.error("Error reading renderer crash record:", error);
+    return null;
+  }
+}
+
+export function clearRendererCrashRecord(): void {
+  try {
+    fs.unlinkSync(getRendererCrashPath());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.error("Error clearing renderer crash record:", error);
+    }
+  }
+}
+
+// Lenient parser for the performance block on a renderer-crash record.
+// We deliberately accept partial data rather than throwing: the record may
+// have been written by an older build, and the fields are best-effort
+// telemetry — losing one of them shouldn't drop the whole crash report.
+function parseRendererCrashPerformance(
+  raw: unknown,
+): RendererCrashPerformanceSnapshot | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const candidate = raw as Record<string, unknown>;
+  if (typeof candidate.timestamp !== "number") {
+    return undefined;
+  }
+  if (typeof candidate.memoryUsageMB !== "number") {
+    return undefined;
+  }
+  const optionalNumber = (key: string): number | undefined =>
+    typeof candidate[key] === "number" ? (candidate[key] as number) : undefined;
+  return {
+    timestamp: candidate.timestamp,
+    memoryUsageMB: candidate.memoryUsageMB,
+    cpuUsagePercent: optionalNumber("cpuUsagePercent"),
+    systemMemoryUsageMB: optionalNumber("systemMemoryUsageMB"),
+    systemMemoryTotalMB: optionalNumber("systemMemoryTotalMB"),
+    systemCpuPercent: optionalNumber("systemCpuPercent"),
+  };
 }
 
 export function readSettings(): UserSettings {

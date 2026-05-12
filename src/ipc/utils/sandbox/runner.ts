@@ -1,121 +1,158 @@
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
-import type { Capability, StructuredValue } from "mustardscript";
+import { Worker } from "node:worker_threads";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getDyadMediaDir } from "@/ipc/utils/media_path_utils";
+import type { SandboxHostCallObserver } from "./capabilities";
 import {
-  buildSandboxCapabilitiesWithObserver,
-  type SandboxHostCallObserver,
-} from "./capabilities";
+  executeSandboxScriptInProcess,
+  isSandboxSupportedPlatform,
+  type SandboxRunResult,
+} from "./execution";
 import {
   clampSandboxTimeoutMs,
-  SANDBOX_ALLOCATION_BUDGET,
-  SANDBOX_CALL_DEPTH_LIMIT,
-  SANDBOX_HEAP_LIMIT_BYTES,
-  SANDBOX_INSTRUCTION_BUDGET,
-  SANDBOX_LLM_OUTPUT_LIMIT_BYTES,
-  SANDBOX_MAX_OUTSTANDING_HOST_CALLS,
   SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES,
-  SANDBOX_UI_OUTPUT_LIMIT_BYTES,
 } from "./limits";
+import {
+  deserializeSandboxWorkerError,
+  type SandboxWorkerInput,
+  type SandboxWorkerMessage,
+} from "./worker_protocol";
 
-type MustardModule = typeof import("mustardscript");
+export { isSandboxSupportedPlatform };
+export type { SandboxRunResult };
 
-let mustardModulePromise: Promise<MustardModule> | null = null;
-
-export interface SandboxRunResult {
-  value: string;
-  truncated: boolean;
-  fullOutputPath?: string;
-  executionMs: number;
-  instructionsUsed?: number;
-  heapBytesUsed?: number;
-}
-
-export function isSandboxSupportedPlatform(): boolean {
-  if (process.platform === "darwin") {
-    return process.arch === "arm64" || process.arch === "x64";
-  }
-  if (process.platform === "linux") {
-    return process.arch === "x64";
-  }
-  if (process.platform === "win32") {
-    return process.arch === "x64";
-  }
-  return false;
-}
-
-async function loadMustard(): Promise<MustardModule> {
-  if (!isSandboxSupportedPlatform()) {
-    throw new DyadError(
-      "Sandbox scripting is unavailable on this platform.",
-      DyadErrorKind.Precondition,
-    );
-  }
-  mustardModulePromise ??= import("mustardscript").catch((error) => {
-    mustardModulePromise = null;
-    throw error;
-  });
-  return mustardModulePromise;
-}
-
-function stringifyStructuredValue(value: StructuredValue): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value === undefined) {
-    return "undefined";
-  }
-  return JSON.stringify(value, null, 2);
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  const bytes = Buffer.from(value, "utf8");
-  if (bytes.byteLength <= maxBytes) {
-    return value;
-  }
-  let end = maxBytes;
-  let charStart = end - 1;
-  while (charStart > 0 && (bytes[charStart] & 0xc0) === 0x80) {
-    charStart--;
-  }
-
-  const lead = bytes[charStart];
-  const expectedLength =
-    lead < 0x80
-      ? 1
-      : (lead & 0xe0) === 0xc0
-        ? 2
-        : (lead & 0xf0) === 0xe0
-          ? 3
-          : (lead & 0xf8) === 0xf0
-            ? 4
-            : 1;
-  if (charStart + expectedLength > end) {
-    end = charStart;
-  }
-
-  return bytes.subarray(0, end).toString("utf8");
-}
-
-async function spillOutput(params: {
-  appPath: string;
-  output: string;
-}): Promise<string> {
-  const hash = crypto
-    .createHash("sha256")
-    .update(params.output)
-    .digest("hex")
-    .slice(0, 16);
-  const capped = truncateUtf8(params.output, SANDBOX_UI_OUTPUT_LIMIT_BYTES);
-  const outputPath = path.join(
-    getDyadMediaDir(params.appPath),
-    `script-output-${hash}.txt`,
+function isTestRuntime(): boolean {
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST === "true" ||
+    process.env.VITEST_WORKER_ID !== undefined
   );
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  await fs.writeFile(outputPath, capped, "utf8");
-  return outputPath;
+}
+
+function resolveSandboxWorkerPath(): string | undefined {
+  const workerPath = path.join(__dirname, "sandbox_worker.js");
+  if (fs.existsSync(workerPath)) {
+    return workerPath;
+  }
+  if (isTestRuntime()) {
+    return undefined;
+  }
+  throw new DyadError(
+    "Sandbox worker script is missing from the application build.",
+    DyadErrorKind.Internal,
+  );
+}
+
+function runSandboxScriptInWorker(params: {
+  appPath: string;
+  script: string;
+  timeoutMs: number;
+  persistFullOutput?: boolean;
+  onHostCall?: SandboxHostCallObserver;
+}): Promise<SandboxRunResult> {
+  const workerPath = resolveSandboxWorkerPath();
+  if (!workerPath) {
+    return executeSandboxScriptInProcess(params);
+  }
+
+  const input: SandboxWorkerInput = {
+    appPath: params.appPath,
+    script: params.script,
+    timeoutMs: params.timeoutMs,
+    persistFullOutput: params.persistFullOutput,
+  };
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const worker = new Worker(workerPath, { workerData: input });
+    const timeout = setTimeout(() => {
+      settle(
+        () =>
+          reject(
+            new DyadError(
+              `Sandbox script timed out after ${params.timeoutMs}ms.`,
+              DyadErrorKind.External,
+            ),
+          ),
+        true,
+      );
+    }, params.timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      worker.removeAllListeners();
+    }
+
+    function settle(fn: () => void, terminate: boolean) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      fn();
+      if (terminate) {
+        void worker.terminate();
+      }
+    }
+
+    worker.on("message", (message: SandboxWorkerMessage) => {
+      if (settled) {
+        return;
+      }
+
+      if (message.type === "hostCall") {
+        try {
+          params.onHostCall?.(message.hostCall);
+        } catch (error) {
+          settle(() => reject(error), true);
+        }
+        return;
+      }
+
+      if (message.type === "result") {
+        settle(() => resolve(message.result), true);
+        return;
+      }
+
+      if (message.type === "error") {
+        settle(
+          () => reject(deserializeSandboxWorkerError(message.error)),
+          true,
+        );
+        return;
+      }
+
+      settle(
+        () =>
+          reject(
+            new DyadError(
+              "Sandbox worker sent an unknown message.",
+              DyadErrorKind.Internal,
+            ),
+          ),
+        true,
+      );
+    });
+
+    worker.on("error", (error) => {
+      settle(() => reject(error), true);
+    });
+
+    worker.on("exit", (code) => {
+      settle(
+        () =>
+          reject(
+            new DyadError(
+              code === 0
+                ? "Sandbox worker exited without returning a result."
+                : `Sandbox worker exited with code ${code}.`,
+              DyadErrorKind.Internal,
+            ),
+          ),
+        false,
+      );
+    });
+  });
 }
 
 export async function runSandboxScript(params: {
@@ -135,57 +172,5 @@ export async function runSandboxScript(params: {
   }
 
   const timeoutMs = clampSandboxTimeoutMs(params.timeoutMs);
-  const started = Date.now();
-  const { Mustard, ExecutionContext } = await loadMustard();
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), timeoutMs);
-
-  try {
-    const program = new Mustard(params.script);
-    const context = new ExecutionContext({
-      capabilities: buildSandboxCapabilitiesWithObserver(
-        params.appPath,
-        params.onHostCall,
-      ) as unknown as Record<string, Capability>,
-      limits: {
-        instructionBudget: SANDBOX_INSTRUCTION_BUDGET,
-        heapLimitBytes: SANDBOX_HEAP_LIMIT_BYTES,
-        allocationBudget: SANDBOX_ALLOCATION_BUDGET,
-        callDepthLimit: SANDBOX_CALL_DEPTH_LIMIT,
-        maxOutstandingHostCalls: SANDBOX_MAX_OUTSTANDING_HOST_CALLS,
-      },
-      snapshotKey: `dyad-sandbox:${params.appPath}`,
-    });
-
-    const result = await program.run({
-      context,
-      signal: abortController.signal,
-    });
-    const output = stringifyStructuredValue(result);
-    const truncated =
-      Buffer.byteLength(output, "utf8") > SANDBOX_LLM_OUTPUT_LIMIT_BYTES;
-    const fullOutputPath =
-      truncated && params.persistFullOutput !== false
-        ? await spillOutput({ appPath: params.appPath, output })
-        : undefined;
-
-    return {
-      value: truncated
-        ? truncateUtf8(output, SANDBOX_LLM_OUTPUT_LIMIT_BYTES)
-        : output,
-      truncated,
-      fullOutputPath,
-      executionMs: Date.now() - started,
-    };
-  } catch (error) {
-    if (abortController.signal.aborted) {
-      throw new DyadError(
-        `Sandbox script timed out after ${timeoutMs}ms.`,
-        DyadErrorKind.External,
-      );
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return runSandboxScriptInWorker({ ...params, timeoutMs });
 }

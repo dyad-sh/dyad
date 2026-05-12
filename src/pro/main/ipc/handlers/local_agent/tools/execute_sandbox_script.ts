@@ -94,6 +94,7 @@ Use this when you need to slice, search, count, aggregate, or summarize file con
 
 Supported language surface:
 - let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
+- Top-level await is not supported because scripts are not modules. When calling async host functions, wrap the script body in an async function and call it, e.g. \`async function main() { const text = await read_file("attachments:data.csv"); return text.length; } main();\`.
 - The script has no ambient authority. It can only inspect files through the host functions below.
 
 Unsupported / unavailable:

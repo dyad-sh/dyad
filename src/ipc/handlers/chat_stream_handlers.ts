@@ -2179,7 +2179,10 @@ async function replaceTextAttachmentWithContent(
 async function prepareMessageWithAttachments(
   message: ModelMessage,
   attachmentPaths: string[],
-  options: {
+  {
+    includeImageAttachments = true,
+    inlineTextAttachments = true,
+  }: {
     includeImageAttachments?: boolean;
     inlineTextAttachments?: boolean;
   } = {},
@@ -2193,7 +2196,7 @@ async function prepareMessageWithAttachments(
     return message;
   }
 
-  if (options.inlineTextAttachments !== false) {
+  if (inlineTextAttachments) {
     // Process text file attachments - replace placeholder tags with full content
     for (const filePath of attachmentPaths) {
       const fileName = path.basename(filePath);
@@ -2214,7 +2217,7 @@ async function prepareMessageWithAttachments(
     text: textContent,
   });
 
-  if (options.includeImageAttachments !== false) {
+  if (includeImageAttachments) {
     // Add image parts for any image attachments
     for (const filePath of attachmentPaths) {
       const mimeType = getInlineImageMimeType(filePath);

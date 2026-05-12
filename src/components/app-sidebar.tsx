@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 
@@ -69,10 +69,10 @@ type HoverState =
   | "no-hover";
 
 export function AppSidebar() {
-  const { state, toggleSidebar } = useSidebar(); // retrieve current sidebar state
+  const { state, toggleSidebar } = useSidebar();
   const [hoverState, setHoverState] = useState<HoverState>("no-hover");
   const expandedByHover = useRef(false);
-  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false); // State for dialog
+  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
 
   useEffect(() => {
@@ -124,6 +124,7 @@ export function AppSidebar() {
   return (
     <Sidebar
       collapsible="icon"
+      className="shadow-lg"
       onMouseLeave={() => {
         if (!isDropdownOpen) {
           setHoverState("clear-hover");
@@ -132,17 +133,18 @@ export function AppSidebar() {
     >
       <SidebarContent className="overflow-hidden">
         <div className="flex mt-8">
-          {/* Left Column: Menu items */}
-          <div className="">
+          {/* Left Column: Icon rail */}
+          <div className="px-1">
             <SidebarTrigger
+              className="h-10 w-10 mb-1"
               onMouseEnter={() => {
                 setHoverState("clear-hover");
               }}
             />
             <AppIcons onHoverChange={setHoverState} />
           </div>
-          {/* Right Column: Chat List Section */}
-          <div className="w-[272px]">
+          {/* Right Column: Contextual sub-list (only visible when expanded) */}
+          <div className="w-[272px] border-l border-sidebar-border">
             <AppList show={selectedItem === "Apps"} />
             <ChatList show={selectedItem === "Chat"} />
             <SettingsList show={selectedItem === "Settings"} />
@@ -151,17 +153,19 @@ export function AppSidebar() {
         </div>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="px-1 items-start">
         <SidebarMenu>
           <SidebarMenuItem>
-            {/* Change button to open dialog instead of linking */}
             <SidebarMenuButton
               size="sm"
-              className="font-medium w-14 flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl"
-              onClick={() => setIsHelpDialogOpen(true)} // Open dialog on click
+              aria-label="Help"
+              tooltip="Help"
+              className="w-10 h-10 mb-1 rounded-xl p-0 justify-center"
+              onClick={() => setIsHelpDialogOpen(true)}
             >
-              <HelpCircle className="h-5 w-5" />
-              <span className={"text-xs"}>Help</span>
+              <div className="flex items-center justify-center">
+                <HelpCircle className="size-5" />
+              </div>
             </SidebarMenuButton>
             <HelpDialog
               isOpen={isHelpDialogOpen}
@@ -184,11 +188,25 @@ function AppIcons({
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
 
-  return (
-    // When collapsed: only show the main menu
-    <SidebarGroup className="pr-0">
-      {/* <SidebarGroupLabel>Dyad</SidebarGroupLabel> */}
+  const hoverForTitle = (title: string): HoverState => {
+    switch (title) {
+      case "Apps":
+        return "start-hover:app";
+      case "Chat":
+        return "start-hover:chat";
+      case "Settings":
+        return "start-hover:settings";
+      case "Library":
+        return "start-hover:library";
+      default:
+        // Items without a sub-list (e.g. Hub) dismiss any open preview so a
+        // stale list doesn't linger while hovering an unrelated icon.
+        return "clear-hover";
+    }
+  };
 
+  return (
+    <SidebarGroup className="p-0 py-2">
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
@@ -202,24 +220,14 @@ function AppIcons({
                   as={Link}
                   to={item.to}
                   size="sm"
-                  className={`font-medium w-14 flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl ${
-                    isActive ? "bg-sidebar-accent" : ""
-                  }`}
-                  onMouseEnter={() => {
-                    if (item.title === "Apps") {
-                      onHoverChange("start-hover:app");
-                    } else if (item.title === "Chat") {
-                      onHoverChange("start-hover:chat");
-                    } else if (item.title === "Settings") {
-                      onHoverChange("start-hover:settings");
-                    } else if (item.title === "Library") {
-                      onHoverChange("start-hover:library");
-                    }
-                  }}
+                  isActive={isActive}
+                  aria-label={item.title}
+                  tooltip={item.title}
+                  className="w-10 h-10 mb-1 rounded-xl p-0 justify-center"
+                  onMouseEnter={() => onHoverChange(hoverForTitle(item.title))}
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <item.icon className="h-5 w-5" />
-                    <span className={"text-xs"}>{item.title}</span>
+                  <div className="flex items-center justify-center">
+                    <item.icon className="size-5" />
                   </div>
                 </SidebarMenuButton>
               </SidebarMenuItem>

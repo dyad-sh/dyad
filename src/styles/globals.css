@@ -84,9 +84,11 @@ body[data-scroll-locked] .app-region-drag {
 }
 
 .h-screenish {
-  height: calc(100vh - 64px);
+  height: calc(100vh - var(--layout-title-bar-offset));
 }
 :root {
+  /* Matches TitleBar height — keep TitleBar using this var so main panel clears it exactly */
+  --layout-title-bar-offset: 2.25rem;
   --docs-bg: #f5f5f5;
   --default-font-family: "Geist", sans-serif;
   --default-mono-font-family: "Geist Mono", monospace;

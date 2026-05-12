@@ -106,12 +106,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <>
       <ThemeProvider>
         <DeepLinkProvider>
-          <SidebarProvider>
+          <SidebarProvider defaultOpen={false}>
             <TitleBar />
             <AppSidebar />
             <div
               id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background"
+              className="flex h-screenish w-full overflow-x-hidden mt-[var(--layout-title-bar-offset)] border-t border-l border-border rounded-tl-lg bg-background"
             >
               {children}
             </div>

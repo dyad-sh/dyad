@@ -222,22 +222,34 @@ async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
   await fs.mkdir(path.dirname(manifestPath), { recursive: true });
   const existing = await readAttachmentManifest(appPath);
   const byLogicalName = new Map<string, AttachmentManifestEntry>();
+  const byStoredFileName = new Map<string, AttachmentManifestEntry>();
   const usedNames = new Set<string>();
   for (const entry of existing) {
     byLogicalName.set(entry.logicalName, entry);
+    if (!byStoredFileName.has(entry.storedFileName)) {
+      byStoredFileName.set(entry.storedFileName, entry);
+    }
     usedNames.add(entry.logicalName);
   }
 
-  const finalized = entries.map(({ requestedLogicalName, ...entry }) => ({
-    ...entry,
-    logicalName: createUniqueAttachmentLogicalName(
-      requestedLogicalName,
-      usedNames,
-    ),
-  }));
+  const finalized: AttachmentManifestEntry[] = [];
+  for (const { requestedLogicalName, ...entry } of entries) {
+    const existingEntry = byStoredFileName.get(entry.storedFileName);
+    if (existingEntry) {
+      finalized.push(existingEntry);
+      continue;
+    }
 
-  for (const entry of finalized) {
-    byLogicalName.set(entry.logicalName, entry);
+    const newEntry = {
+      ...entry,
+      logicalName: createUniqueAttachmentLogicalName(
+        requestedLogicalName,
+        usedNames,
+      ),
+    };
+    finalized.push(newEntry);
+    byLogicalName.set(newEntry.logicalName, newEntry);
+    byStoredFileName.set(newEntry.storedFileName, newEntry);
   }
 
   await writeAttachmentManifestAtomic(manifestPath, [

@@ -136,6 +136,27 @@ describe("sandbox capabilities", () => {
     ]);
   });
 
+  it("reuses manifest logical names for already registered stored files", async () => {
+    const [entry] = await appendAttachmentManifestEntriesWithLogicalNames(
+      appPath,
+      [
+        {
+          requestedLogicalName: "server.log",
+          originalName: "server.log",
+          storedFileName: "stored-log.txt",
+          mimeType: "text/plain",
+          sizeBytes: 12,
+          createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+        },
+      ],
+    );
+
+    expect(entry.logicalName).toBe("server.log");
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+    ]);
+  });
+
   it("lists attachment logical paths and returns file stats", async () => {
     await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
       "attachments:server.log",

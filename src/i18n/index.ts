@@ -22,6 +22,13 @@ import ptBRChat from "./locales/pt-BR/chat.json";
 import ptBRHome from "./locales/pt-BR/home.json";
 import ptBRErrors from "./locales/pt-BR/errors.json";
 
+// Spanish
+import esCommon from "./locales/es/common.json";
+import esSettings from "./locales/es/settings.json";
+import esChat from "./locales/es/chat.json";
+import esHome from "./locales/es/home.json";
+import esErrors from "./locales/es/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -43,6 +50,13 @@ const resources = {
     chat: ptBRChat,
     home: ptBRHome,
     errors: ptBRErrors,
+  },
+  es: {
+    common: esCommon,
+    settings: esSettings,
+    chat: esChat,
+    home: esHome,
+    errors: esErrors,
   },
 };
 

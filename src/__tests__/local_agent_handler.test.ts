@@ -642,6 +642,142 @@ describe("handleLocalAgentStream", () => {
         'message=\\"Failed to deploy Supabase functions\\"',
       );
     });
+
+    it("warns when a sandbox script does not read the current attachment", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'read_file("src/App.tsx");' },
+        },
+        { type: "text-delta", text: "I checked the project file." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).toContain(
+        "Your model did not reference the attached file",
+      );
+    });
+
+    it("does not warn when a sandbox script reads an attachment path", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'read_file("attachments:notes.txt");' },
+        },
+        { type: "text-delta", text: "I checked the attachment." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).not.toContain(
+        "Your model did not reference the attached file",
+      );
+    });
+
+    it("does not warn when a sandbox script uses the attachments alias", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'const files = await list_files("attachments");' },
+        },
+        { type: "text-delta", text: "I checked the attachment list." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).not.toContain(
+        "Your model did not reference the attached file",
+      );
+    });
+
+    it("warns when a sandbox script only mentions attachments in prose", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'const message = "No attachments found";' },
+        },
+        { type: "text-delta", text: "I checked the project file." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).toContain(
+        "Your model did not reference the attached file",
+      );
+    });
   });
 
   describe("Context compaction setting", () => {

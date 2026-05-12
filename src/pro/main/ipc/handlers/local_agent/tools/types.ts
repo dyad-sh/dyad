@@ -99,6 +99,10 @@ export interface AgentContext {
    * Queues a warning toast to be shown to the user when the turn completes.
    */
   onWarningMessage?: (message: string) => void;
+  /**
+   * Marks that the current turn actually accessed an attachment path.
+   */
+  onAttachmentAccess?: () => void;
 }
 
 // ============================================================================

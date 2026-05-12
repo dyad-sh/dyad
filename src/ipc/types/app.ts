@@ -77,6 +77,27 @@ export const DeleteAppParamsSchema = z.object({
 });
 
 /**
+ * Schema for bulk delete apps params.
+ */
+export const DeleteAppsParamsSchema = z.object({
+  appIds: z.array(z.number()).min(1),
+});
+
+/**
+ * Schema for bulk delete apps result. Per-app success/error so partial
+ * failures can be surfaced to the user without aborting the whole batch.
+ */
+export const DeleteAppsResultSchema = z.object({
+  results: z.array(
+    z.object({
+      appId: z.number(),
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
+  ),
+});
+
+/**
  * Schema for copy app params.
  */
 export const CopyAppParamsSchema = z.object({
@@ -341,6 +362,12 @@ export const appContracts = {
     channel: "delete-app",
     input: DeleteAppParamsSchema,
     output: z.void(),
+  }),
+
+  deleteApps: defineContract({
+    channel: "delete-apps",
+    input: DeleteAppsParamsSchema,
+    output: DeleteAppsResultSchema,
   }),
 
   copyApp: defineContract({

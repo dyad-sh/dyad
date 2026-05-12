@@ -7,6 +7,7 @@ import {
   assertDyadInternalAccessAllowed,
   resolveTargetAppPath,
 } from "./resolve_app_context";
+import { resolveAttachmentLogicalPath } from "@/ipc/utils/media_path_utils";
 
 const readFile = fs.promises.readFile;
 
@@ -54,7 +55,7 @@ const readFileSchema = z
 
 export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   name: "read_file",
-  description: `Read the content of a file from the codebase.
+  description: `Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.
   
 - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.`,
   inputSchema: readFileSchema,
@@ -97,8 +98,23 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
 
   execute: async (args, ctx: AgentContext) => {
     const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
-
-    const fullFilePath = safeJoin(targetAppPath, args.path);
+    let fullFilePath: string;
+    if (args.path.startsWith("attachments:")) {
+      const attachment = await resolveAttachmentLogicalPath(
+        targetAppPath,
+        args.path,
+      );
+      if (!attachment) {
+        const appContext = args.app_name ? ` (in app: ${args.app_name})` : "";
+        throw new DyadError(
+          `Attachment does not exist: ${args.path}${appContext}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      fullFilePath = attachment.filePath;
+    } else {
+      fullFilePath = safeJoin(targetAppPath, args.path);
+    }
 
     assertDyadInternalAccessAllowed({
       targetAppPath,

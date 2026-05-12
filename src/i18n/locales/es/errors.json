@@ -1,0 +1,11 @@
+{
+  "unknown": "Ocurrió un error desconocido",
+  "failedToCreate": "Error al crear: {{error}}",
+  "failedToUpdate": "Error al actualizar: {{error}}",
+  "failedToDelete": "Error al eliminar: {{error}}",
+  "failedToLoad": "Error al cargar: {{error}}",
+  "networkError": "Ocurrió un error de red. Por favor, revisa tu conexión.",
+  "copyError": "Copiar mensaje de error",
+  "errorOccurred": "Ocurrió un error"
+}
+

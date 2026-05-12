@@ -91,7 +91,10 @@ testSkipIfWindows(
       expect(await getCloudSyncRevision(appId)).toBeGreaterThan(
         updatedRevision,
       );
-      await po.previewPanel.clickPreviewRefresh();
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
+
+    await po.previewPanel.clickPreviewRefresh();
+    await expect(async () => {
       await expect(await getCloudSnapshotDigest()).not.toBe(updatedDigest);
     }).toPass({ timeout: Timeout.EXTRA_LONG });
   },

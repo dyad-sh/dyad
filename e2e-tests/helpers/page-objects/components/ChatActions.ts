@@ -19,7 +19,7 @@ export class ChatActions {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
     );
   }
 
@@ -111,7 +111,11 @@ export class ChatActions {
     // the next render, so the Send button stays disabled. Re-filling once the
     // atoms have settled deterministically recovers.
     const chatInput = this.getChatInput();
-    const sendButton = this.page.getByRole("button", { name: "Send message" });
+    const sendButton = this.page
+      .locator(
+        '[data-testid="chat-input-container"]:visible, [data-testid="home-chat-input-container"]:visible',
+      )
+      .getByRole("button", { name: "Send message" });
 
     await expect(chatInput).toBeVisible();
     await expect(async () => {

@@ -3,7 +3,10 @@ import path from "node:path";
 import log from "electron-log";
 import { safeJoin } from "./path_utils";
 import { gitAdd } from "./git_utils";
-import { isWithinDyadMediaDir } from "./media_path_utils";
+import {
+  isWithinDyadMediaDir,
+  resolveAttachmentLogicalPath,
+} from "./media_path_utils";
 import { withLock } from "./lock_utils";
 import { deploySupabaseFunction } from "../../supabase_admin/supabase_management_client";
 import {
@@ -50,7 +53,16 @@ export async function executeCopyFile({
   return withLock(appId, async () => {
     // Resolve the source path: allow both .dyad/media paths and app-relative paths
     let fromFullPath: string;
-    if (path.isAbsolute(from)) {
+    if (from.startsWith("attachments:")) {
+      const attachment = await resolveAttachmentLogicalPath(appPath, from);
+      if (!attachment) {
+        throw new DyadError(
+          `Attachment does not exist: ${from}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      fromFullPath = attachment.filePath;
+    } else if (path.isAbsolute(from)) {
       // Security: only allow absolute paths within the app's .dyad/media directory
       if (!isWithinDyadMediaDir(from, appPath)) {
         throw new Error(

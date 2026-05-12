@@ -226,6 +226,7 @@ export const ExperimentsSchema = z.object({
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
   enableCloudSandbox: z.boolean().optional(),
+  enableSandboxScriptExecution: z.boolean().optional(),
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 

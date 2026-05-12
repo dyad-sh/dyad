@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { getLanguage } from "@/utils/get_language";
+import { unescapeXmlAttr, unescapeXmlContent } from "../../shared/xmlEscape";
 
 const CUSTOM_TAG_NAMES = [
   "dyad-write",
@@ -13,6 +14,7 @@ const CUSTOM_TAG_NAMES = [
   "dyad-chat-summary",
   "dyad-edit",
   "dyad-codebase-context",
+  "dyad-script",
   "think",
   "dyad-command",
 ];
@@ -170,6 +172,19 @@ export const useCopyToClipboard = () => {
         return outputResult + "\n\n";
       }
 
+      case "dyad-script": {
+        const description = attributes.description || "Script";
+        try {
+          const payload = JSON.parse(content) as {
+            script?: string;
+            output?: string;
+          };
+          return `### ${description}\n\n\`\`\`js\n${payload.script ?? ""}\n\`\`\`\n\n\`\`\`text\n${payload.output ?? ""}\n\`\`\`\n\n`;
+        } catch {
+          return `### ${description}\n\n\`\`\`text\n${content}\n\`\`\`\n\n`;
+        }
+      }
+
       case "dyad-problem-report": {
         const summary = attributes.summary || "";
         let problemResult = `### Problem Report\n\n`;
@@ -219,10 +234,10 @@ export const useCopyToClipboard = () => {
 
       // Parse attributes
       const attributes: Record<string, string> = {};
-      const attrPattern = /(\w+)="([^"]*)"/g;
+      const attrPattern = /([\w-]+)="([^"]*)"/g;
       let attrMatch;
       while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
-        attributes[attrMatch[1]] = attrMatch[2];
+        attributes[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
       }
 
       // Add the tag info
@@ -231,7 +246,7 @@ export const useCopyToClipboard = () => {
         tagInfo: {
           tag,
           attributes,
-          content: tagContent,
+          content: unescapeXmlContent(tagContent),
           fullMatch,
         },
       });

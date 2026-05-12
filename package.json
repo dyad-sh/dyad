@@ -1,6 +1,6 @@
 {
   "name": "dyad",
-  "version": "0.45.0",
+  "version": "0.46.0-beta.1",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
   "license": "MIT",
@@ -108,6 +108,7 @@
     "lexical-beautiful-mentions": "^0.1.47",
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
+    "mustardscript": "^0.1.1",
     "node-pty": "^1.1.0",
     "perfect-freehand": "^1.2.2",
     "posthog-js": "^1.265.1",

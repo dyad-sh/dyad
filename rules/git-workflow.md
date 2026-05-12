@@ -132,6 +132,8 @@ In some Codex shells, pushing to fork remotes can fail immediately with `Repo <o
 
 If `git push`, `gh pr view`, and `gh auth status` fail with only `fetch failed`, but unauthenticated `git ls-remote https://github.com/dyad-sh/dyad HEAD` works, the local `gh-broker` credential helper is unreachable rather than GitHub being down. Check the broker health/token path before retrying pushes; SSH is not a fallback unless `ssh -T git@github.com` succeeds.
 
+If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, the configured broker URL is returning an HTML error page instead of the token API response. Verify `BROKER_BASE_URL` and broker routes such as `/healthz` or `/mint` before changing remotes or retrying GitHub commands.
+
 ## Rebase workflow and conflict resolution
 
 ### Handling unstaged changes during rebase

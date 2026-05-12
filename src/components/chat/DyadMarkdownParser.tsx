@@ -45,6 +45,7 @@ import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadReadGuide } from "./DyadReadGuide";
+import { DyadScript } from "./DyadScript";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -95,6 +96,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-questionnaire",
   // Step limit notification
   "dyad-step-limit",
+  "dyad-script",
 ];
 
 interface DyadMarkdownParserProps {
@@ -753,6 +755,22 @@ function renderCustomTag(
         >
           {content}
         </DyadOutput>
+      );
+
+    case "dyad-script":
+      return (
+        <DyadScript
+          node={{
+            properties: {
+              description: attributes.description || "",
+              truncated: attributes.truncated || "",
+              executionMs: attributes["execution-ms"] || "",
+              fullOutputPath: attributes["full-output-path"] || "",
+            },
+          }}
+        >
+          {content}
+        </DyadScript>
       );
 
     case "dyad-problem-report":

@@ -287,6 +287,45 @@ function getMidTurnCompactionSummaryIds(
   return hiddenIds;
 }
 
+function getMessageText(message: ModelMessage): string {
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+  return message.content
+    .map((part) =>
+      part && typeof part === "object" && "text" in part
+        ? String(part.text)
+        : "",
+    )
+    .join("\n");
+}
+
+function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
+  if (!isRecord(input)) {
+    return false;
+  }
+
+  if (
+    toolName === "execute_sandbox_script" &&
+    typeof input.script === "string"
+  ) {
+    return (
+      /\b(?:read_file|file_stats)\s*\(\s*["']attachments:/.test(input.script) ||
+      /\blist_files\s*\(\s*["']attachments:?["']\s*\)/.test(input.script)
+    );
+  }
+  if (toolName === "read_file" && typeof input.path === "string") {
+    return input.path.startsWith("attachments:");
+  }
+  if (toolName === "copy_file" && typeof input.from === "string") {
+    return input.from.startsWith("attachments:");
+  }
+  return false;
+}
+
 /**
  * Handle a chat stream in local-agent mode
  */
@@ -303,6 +342,7 @@ export async function handleLocalAgentStream(
     messageOverride,
     settingsOverride,
     referencedApps = [],
+    currentTurnHasOnDiskAttachment,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -331,6 +371,7 @@ export async function handleLocalAgentStream(
       appName: string;
       appPath: string;
     }[];
+    currentTurnHasOnDiskAttachment?: boolean;
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
@@ -609,6 +650,9 @@ export async function handleLocalAgentStream(
       onWarningMessage: (message) => {
         warningMessages.push(message);
       },
+      onAttachmentAccess: () => {
+        usedAttachmentAccessTool = true;
+      },
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -631,6 +675,15 @@ export async function handleLocalAgentStream(
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
       : buildChatMessageHistory(chat.messages);
+    const latestUserMessage = [...messageHistory]
+      .reverse()
+      .find((message) => message.role === "user");
+    const shouldWarnIfAttachmentUnread =
+      currentTurnHasOnDiskAttachment ??
+      (latestUserMessage != null &&
+        getMessageText(latestUserMessage).includes(
+          "Attachments available on disk",
+        ));
 
     // Inject the referenced-apps manifest into the user's latest message as a
     // `<system-reminder>` block (instead of appending it to the system prompt)
@@ -660,6 +713,7 @@ export async function handleLocalAgentStream(
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+    let usedAttachmentAccessTool = false;
     // Track total steps across all passes to detect step limit
     let totalStepsExecuted = 0;
     let hitStepLimit = false;
@@ -1087,6 +1141,9 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-call":
+                  if (isAttachmentAccessToolCall(part.toolName, part.input)) {
+                    usedAttachmentAccessTool = true;
+                  }
                   maybeCaptureRetryReplayEvent(retryReplayEvents, part);
                   // Tool execution happens via execute callbacks
                   break;
@@ -1365,6 +1422,19 @@ export async function handleLocalAgentStream(
       accumulatedAiMessages.push({
         role: "assistant",
         content: [{ type: "text", text: postTurnXmlParts.join("\n") }],
+      });
+    }
+
+    if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
+      const unreadAttachmentWarning =
+        "Your model did not reference the attached file. If this was unintended, try a larger model or paste the contents inline.";
+      const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;
+      fullResponse += warningMessage;
+      await updateResponseInDb(placeholderMessageId, fullResponse);
+      sendChunk(fullResponse);
+      sendTelemetryEvent("sandbox.tool.unused_with_attachment", {
+        chatId: req.chatId,
+        appId: ctx.appId,
       });
     }
 

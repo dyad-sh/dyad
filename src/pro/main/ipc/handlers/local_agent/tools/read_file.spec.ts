@@ -4,6 +4,10 @@ import path from "node:path";
 import os from "node:os";
 import { readFileTool } from "./read_file";
 import type { AgentContext } from "./types";
+import {
+  appendAttachmentManifestEntries,
+  getDyadMediaDir,
+} from "@/ipc/utils/media_path_utils";
 
 // Mock electron-log
 vi.mock("electron-log", () => ({
@@ -48,6 +52,23 @@ line 5`;
       path.join(testDir, "trailing-newline.txt"),
       "line 1\nline 2\nline 3\n",
     );
+
+    const mediaDir = getDyadMediaDir(testDir);
+    await fs.promises.mkdir(mediaDir, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(mediaDir, "stored-attachment.txt"),
+      "attachment line 1\nattachment line 2\n",
+    );
+    await appendAttachmentManifestEntries(testDir, [
+      {
+        logicalName: "notes.txt",
+        originalName: "notes.txt",
+        storedFileName: "stored-attachment.txt",
+        mimeType: "text/plain",
+        sizeBytes: 36,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
+    ]);
 
     mockContext = {
       event: {} as any,
@@ -175,6 +196,19 @@ line 5`;
       await expect(
         readFileTool.execute({ path: "nope.txt" }, mockContext),
       ).rejects.toThrow("File does not exist: nope.txt");
+    });
+
+    it("reads attachment logical paths", async () => {
+      const result = await readFileTool.execute(
+        {
+          path: "attachments:notes.txt",
+          start_line_one_indexed: 2,
+          end_line_one_indexed_inclusive: 2,
+        },
+        mockContext,
+      );
+
+      expect(result).toBe("attachment line 2\n");
     });
   });
 

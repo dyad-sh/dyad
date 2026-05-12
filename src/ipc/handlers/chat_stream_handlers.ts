@@ -18,7 +18,11 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import type { SmartContextMode } from "../../lib/schemas";
+import type {
+  ChatMode,
+  SmartContextMode,
+  UserSettings,
+} from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -106,7 +110,14 @@ import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference"
 import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
-import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import {
+  appendAttachmentManifestEntriesWithLogicalNames,
+  createUniqueAttachmentLogicalName,
+  DYAD_MEDIA_DIR_NAME,
+  toAttachmentLogicalPath,
+  type AttachmentManifestEntryInput,
+  type StoredAttachmentInfo,
+} from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -129,10 +140,61 @@ import {
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings } from "@/main/settings";
+import { isSandboxSupportedPlatform } from "../utils/sandbox/runner";
+import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
+
+type StoredChatAttachment = StoredAttachmentInfo & {
+  attachmentType: "upload-to-codebase" | "chat-context";
+};
+
+type PendingStoredChatAttachment = Omit<
+  StoredChatAttachment,
+  "logicalName" | "originalName" | "storedFileName" | "mimeType" | "sizeBytes"
+> & {
+  attachmentType: "upload-to-codebase" | "chat-context";
+};
+
+type AttachmentDeliveryConfig = {
+  /**
+   * Whether text-like attachments should be expanded into the model message.
+   * False for local-agent/ask so large files stay on disk and tools read slices.
+   */
+  inlineTextAttachments: boolean;
+  /**
+   * Whether image attachments should be sent as model image parts.
+   * Usually true even when text attachments stay on disk, because tools cannot inspect images semantically.
+   */
+  includeImageParts: boolean;
+  /**
+   * Whether to append the local-agent attachment block listing attachments:<name> paths.
+   * This is the replacement for inline text content in tool-backed modes.
+   */
+  useOnDiskAttachmentBlock: boolean;
+  /**
+   * Whether that on-disk block should mention execute_sandbox_script.
+   * Depends on mode plus sandbox setting/platform availability.
+   */
+  includeSandboxScriptHint: boolean;
+  /**
+   * Whether that on-disk block should tell the model it may copy upload-to-codebase attachments.
+   * Only useful when copy_file is available, not in read-only ask mode.
+   */
+  includeCopyFileHint: boolean;
+  /**
+   * Whether non-local-agent build-mode prompts need legacy <dyad-copy> system instructions.
+   * Local-agent uses copy_file/tool hints instead, so it should not get this.
+   */
+  addSystemCopyInstructions: boolean;
+  /**
+   * Whether the system prompt should include image-analysis guidance.
+   * Kept separate because images can be inline even when text attachments are on disk.
+   */
+  addSystemVisionInstructions: boolean;
+};
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
@@ -151,10 +213,122 @@ const TEXT_FILE_EXTENSIONS = [
   ".html",
   ".css",
 ];
+const INLINE_IMAGE_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+]);
+
+function getInlineImageMimeType(filePath: string): string | null {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!INLINE_IMAGE_EXTENSIONS.has(ext)) {
+    return null;
+  }
+  return ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
+}
+
+function isInlineImageAttachmentPath(filePath: string): boolean {
+  return getInlineImageMimeType(filePath) !== null;
+}
+
+function isInlineImageAttachment(attachment: StoredChatAttachment): boolean {
+  return isInlineImageAttachmentPath(attachment.filePath);
+}
 
 async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
   return TEXT_FILE_EXTENSIONS.includes(ext);
+}
+
+function formatAttachmentSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${Math.round(sizeBytes / 1024)} KB`;
+  }
+  return `${Math.round((sizeBytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
+function buildLocalAgentAttachmentInfo(
+  attachments: StoredChatAttachment[],
+  deliveryConfig: AttachmentDeliveryConfig,
+): string {
+  const diskAttachments = attachments.filter(
+    (attachment) =>
+      !isInlineImageAttachment(attachment) ||
+      (deliveryConfig.includeCopyFileHint &&
+        attachment.attachmentType === "upload-to-codebase"),
+  );
+  if (diskAttachments.length === 0) {
+    return "";
+  }
+
+  const hasReadableAttachment = diskAttachments.some(
+    (attachment) => !isInlineImageAttachment(attachment),
+  );
+  const lines = hasReadableAttachment
+    ? deliveryConfig.includeSandboxScriptHint
+      ? [
+          "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
+        ]
+      : [
+          "Attachments available on disk (use attachments:<name> with read_file):",
+        ]
+    : ["Attachments available on disk for copying into the codebase:"];
+
+  for (const attachment of diskAttachments) {
+    const uploadNote =
+      deliveryConfig.includeCopyFileHint &&
+      attachment.attachmentType === "upload-to-codebase"
+        ? "; if this should become part of the project, use copy_file from this attachment path"
+        : "";
+    lines.push(
+      `- ${toAttachmentLogicalPath(attachment.logicalName)} (${formatAttachmentSize(attachment.sizeBytes)}, ${attachment.mimeType}${uploadNote})`,
+    );
+  }
+
+  return `\n\n${lines.join("\n")}\n`;
+}
+
+function hasScriptReadableAttachment(
+  attachments: StoredChatAttachment[],
+): boolean {
+  return attachments.some((attachment) => !isInlineImageAttachment(attachment));
+}
+
+function resolveAttachmentDeliveryConfig({
+  mode,
+  settings,
+  hasImageAttachments,
+  hasUploadedAttachments,
+}: {
+  mode: ChatMode;
+  settings: Pick<UserSettings, "experiments">;
+  hasImageAttachments: boolean;
+  hasUploadedAttachments: boolean;
+}): AttachmentDeliveryConfig {
+  const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
+  const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
+
+  return {
+    inlineTextAttachments: !useOnDiskAttachmentBlock,
+    includeImageParts: true,
+    useOnDiskAttachmentBlock,
+    includeSandboxScriptHint:
+      useOnDiskAttachmentBlock &&
+      isSandboxScriptExecutionEnabled(settings) &&
+      isSandboxSupportedPlatform(),
+    includeCopyFileHint: mode === "local-agent",
+    addSystemCopyInstructions:
+      !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
+    addSystemVisionInstructions:
+      hasImageAttachments &&
+      (!willUseLocalAgentStream || mode === "plan") &&
+      !(hasUploadedAttachments && mode !== "ask"),
+  };
 }
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
@@ -321,37 +495,60 @@ export function registerChatStreamHandlers() {
       let attachmentInfo = "";
       // Display-only attachment info uses <dyad-attachment> tags for inline rendering
       let displayAttachmentInfo = "";
+      let storedAttachments: StoredChatAttachment[] = [];
+      const pendingStoredAttachments: PendingStoredChatAttachment[] = [];
+      const manifestEntries: AttachmentManifestEntryInput[] = [];
+      const usedLogicalNames = new Set<string>();
+      const appPath = getDyadAppPath(chat.app.path);
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
         // Create persistent .dyad/media directory for this app
-        const appPath = getDyadAppPath(chat.app.path);
         const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
         }
         await ensureDyadGitignored(appPath);
 
-        for (let i = 0; i < req.attachments.length; i++) {
-          const attachment = req.attachments[i];
-          // Generate a unique filename (include index to avoid collisions
-          // when multiple attachments share the same name within the same ms)
-          const hash = crypto
-            .createHash("md5")
-            .update(attachment.name + Date.now() + i)
-            .digest("hex");
-          const fileExtension = path.extname(attachment.name);
-          const filename = `${hash}${fileExtension}`;
-
+        for (const attachment of req.attachments) {
           // Extract the base64 data (remove the data:mime/type;base64, prefix)
           const base64Data = attachment.data.split(";base64,").pop() || "";
           const fileBuffer = Buffer.from(base64Data, "base64");
+          const hash = crypto
+            .createHash("sha256")
+            .update(fileBuffer)
+            .digest("hex");
+          const fileExtension = path.extname(attachment.name);
+          const filename = `${hash}${fileExtension}`;
+          const logicalName = createUniqueAttachmentLogicalName(
+            attachment.name,
+            usedLogicalNames,
+          );
 
           // Save to .dyad/media dir
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
           attachmentPaths.push(persistentPath);
+          pendingStoredAttachments.push({
+            filePath: persistentPath,
+            attachmentType: attachment.attachmentType,
+          });
+          manifestEntries.push({
+            requestedLogicalName: logicalName,
+            originalName: attachment.name,
+            storedFileName: filename,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+            createdAt: new Date().toISOString(),
+          });
+          sendTelemetryEvent("attachment.stored", {
+            appId: chat.app.id,
+            chatId: req.chatId,
+            attachmentType: attachment.attachmentType,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+          });
 
           // Build dyad-media:// URL for display
           // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
@@ -364,7 +561,7 @@ export function registerChatStreamHandlers() {
 
           if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the .dyad/media path so the AI can copy it into the codebase
-            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
+            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool when tools are available, or emit a <dyad-copy> tag otherwise, to copy this file into the codebase at the appropriate location.\n`;
           } else {
             // For chat-context, provide file info for reference (no path to avoid auto-copying)
             attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
@@ -382,8 +579,9 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      // Build the full AI prompt (with .dyad/media paths and copy_file instructions)
-      let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      // Build the full AI prompt. Attachment-specific instructions are added
+      // to the user message, never the system prompt.
+      let userPrompt = req.prompt;
       // Build the display prompt (with <dyad-attachment> tags for inline rendering)
       // This separates what the user sees from what the AI receives.
       let displayUserPrompt: string | undefined;
@@ -443,6 +641,23 @@ export function registerChatStreamHandlers() {
           let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {
             attachmentPaths.push(media.filePath);
+            const logicalName = createUniqueAttachmentLogicalName(
+              media.fileName,
+              usedLogicalNames,
+            );
+            const stat = await fs.promises.stat(media.filePath);
+            pendingStoredAttachments.push({
+              filePath: media.filePath,
+              attachmentType: "chat-context",
+            });
+            manifestEntries.push({
+              requestedLogicalName: logicalName,
+              originalName: media.fileName,
+              storedFileName: media.fileName,
+              mimeType: media.mimeType,
+              sizeBytes: stat.size,
+              createdAt: new Date().toISOString(),
+            });
             const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
             mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
           }
@@ -465,6 +680,17 @@ export function registerChatStreamHandlers() {
           logger.error("Failed to resolve media mentions:", e);
         }
       }
+
+      const finalizedManifestEntries =
+        await appendAttachmentManifestEntriesWithLogicalNames(
+          appPath,
+          manifestEntries,
+        );
+      storedAttachments = finalizedManifestEntries.map((entry, index) => ({
+        ...entry,
+        filePath: pendingStoredAttachments[index].filePath,
+        attachmentType: pendingStoredAttachments[index].attachmentType,
+      }));
 
       // Expand /implement-plan= into full implementation prompt
       // Keep the original short form for display in the UI; the expanded
@@ -546,13 +772,18 @@ ${componentSnippet}
         }
       }
 
+      const defaultAiUserPrompt =
+        userPrompt + (attachmentInfo ? attachmentInfo : "");
+
       const [insertedUserMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content:
-            implementPlanDisplayPrompt ?? displayUserPrompt ?? userPrompt,
+            implementPlanDisplayPrompt ??
+            displayUserPrompt ??
+            defaultAiUserPrompt,
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
@@ -568,6 +799,24 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
+      const hasImageAttachments = storedAttachments.some((attachment) =>
+        attachment.mimeType.startsWith("image/"),
+      );
+      const hasUploadedAttachments = storedAttachments.some(
+        (attachment) => attachment.attachmentType === "upload-to-codebase",
+      );
+      const attachmentDeliveryConfig = resolveAttachmentDeliveryConfig({
+        mode: selectedChatMode,
+        settings,
+        hasImageAttachments,
+        hasUploadedAttachments,
+      });
+      const localAgentAiUserPrompt =
+        userPrompt +
+        buildLocalAgentAttachmentInfo(
+          storedAttachments,
+          attachmentDeliveryConfig,
+        );
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
         effectiveChatMode: selectedChatMode,
@@ -710,6 +959,10 @@ ${componentSnippet}
         }
         const useReferencedAppManifest =
           willUseLocalAgentStream && referencedAppsForAgent.length > 0;
+        const effectiveAiUserPrompt =
+          attachmentDeliveryConfig.useOnDiskAttachmentBlock
+            ? localAgentAiUserPrompt
+            : defaultAiUserPrompt;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
@@ -767,7 +1020,7 @@ ${componentSnippet}
             if (messageHistory[i].role === "user") {
               messageHistory[i] = {
                 ...messageHistory[i],
-                content: userPrompt,
+                content: effectiveAiUserPrompt,
               };
               break;
             }
@@ -925,47 +1178,19 @@ ${componentSnippet}
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
 
-        // Update the system prompt for images if there are image attachments
-        const hasImageAttachments =
-          req.attachments &&
-          req.attachments.some((attachment) =>
-            attachment.type.startsWith("image/"),
-          );
+        if (attachmentDeliveryConfig.addSystemCopyInstructions) {
+          systemPrompt += `
 
-        const hasUploadedAttachments =
-          req.attachments &&
-          req.attachments.some(
-            (attachment) => attachment.attachmentType === "upload-to-codebase",
-          );
-        // If there's mixed attachments (e.g. some upload to codebase attachments and some upload images as chat context attachemnts)
-        // we will just include the file upload system prompt, otherwise the AI gets confused and doesn't reliably
-        // print out the dyad-write tags.
-        // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
-        // it's not that critical to include the image analysis instructions.
-        if (hasUploadedAttachments) {
-          if (isLocalAgentMode) {
-            systemPrompt += `
+When files are attached to this conversation for upload to the codebase, copy them into the project using this exact format:
 
-When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
+<dyad-copy from="/absolute/path/to/.dyad/media/source.ext" to="path/to/destination/filename.ext" description="Upload file to codebase"></dyad-copy>
 
-Example:
-\`\`\`
-copy_file(from=".dyad/media/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
-\`\`\`
+Use the attached file path from the user's message as the \`from\` value. Choose an appropriate project-relative \`to\` path.
 
-The file paths are provided in the attachment information above.
 `;
-          } else if (!isAskMode && !isPlanMode) {
-            systemPrompt += `
+        }
 
-When files are attached for upload to the codebase, copy them into the project using this format:
-
-<dyad-copy from=".dyad/media/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
-
-The file paths are provided in the attachment information above.
-`;
-          }
-        } else if (hasImageAttachments) {
+        if (attachmentDeliveryConfig.addSystemVisionInstructions) {
           systemPrompt += `
 
 # Image Analysis Instructions
@@ -1041,6 +1266,12 @@ This conversation includes one or more image attachments. When the user uploads 
               chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
                 lastUserMessage,
                 attachmentPaths,
+                {
+                  includeImageAttachments:
+                    attachmentDeliveryConfig.includeImageParts,
+                  inlineTextAttachments:
+                    attachmentDeliveryConfig.inlineTextAttachments,
+                },
               );
             }
             // Save aiMessagesJson for modes that use handleLocalAgentStream
@@ -1278,6 +1509,8 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               referencedApps: referencedAppsForAgent,
+              currentTurnHasOnDiskAttachment:
+                hasScriptReadableAttachment(storedAttachments),
             },
           );
           if (!streamSuccess) {
@@ -1307,6 +1540,7 @@ This conversation includes one or more image attachments. When the user uploads 
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
             referencedApps: referencedAppsForAgent,
+            currentTurnHasOnDiskAttachment: false,
           });
           return;
         }
@@ -1354,6 +1588,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
                 referencedApps: referencedAppsForAgent,
+                currentTurnHasOnDiskAttachment:
+                  hasScriptReadableAttachment(storedAttachments),
               },
             );
           } finally {
@@ -1943,6 +2179,13 @@ async function replaceTextAttachmentWithContent(
 async function prepareMessageWithAttachments(
   message: ModelMessage,
   attachmentPaths: string[],
+  {
+    includeImageAttachments = true,
+    inlineTextAttachments = true,
+  }: {
+    includeImageAttachments?: boolean;
+    inlineTextAttachments?: boolean;
+  } = {},
 ): Promise<ModelMessage> {
   let textContent = message.content;
   // Get the original text content
@@ -1953,14 +2196,16 @@ async function prepareMessageWithAttachments(
     return message;
   }
 
-  // Process text file attachments - replace placeholder tags with full content
-  for (const filePath of attachmentPaths) {
-    const fileName = path.basename(filePath);
-    textContent = await replaceTextAttachmentWithContent(
-      textContent,
-      filePath,
-      fileName,
-    );
+  if (inlineTextAttachments) {
+    // Process text file attachments - replace placeholder tags with full content
+    for (const filePath of attachmentPaths) {
+      const fileName = path.basename(filePath);
+      textContent = await replaceTextAttachmentWithContent(
+        textContent,
+        filePath,
+        fileName,
+      );
+    }
   }
 
   // For user messages with attachments, create a content array
@@ -1972,29 +2217,29 @@ async function prepareMessageWithAttachments(
     text: textContent,
   });
 
-  // Add image parts for any image attachments
-  for (const filePath of attachmentPaths) {
-    const ext = path.extname(filePath).toLowerCase();
-    if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) {
-      try {
-        // Read the file as a buffer and convert to base64 string
-        // Using base64 strings instead of raw Buffers ensures proper JSON serialization
-        // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
-        const imageBuffer = await readFile(filePath);
-        const mimeType =
-          ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
-        const base64Data = imageBuffer.toString("base64");
+  if (includeImageAttachments) {
+    // Add image parts for any image attachments
+    for (const filePath of attachmentPaths) {
+      const mimeType = getInlineImageMimeType(filePath);
+      if (mimeType) {
+        try {
+          // Read the file as a buffer and convert to base64 string
+          // Using base64 strings instead of raw Buffers ensures proper JSON serialization
+          // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
+          const imageBuffer = await readFile(filePath);
+          const base64Data = imageBuffer.toString("base64");
 
-        // Add the image to the content parts with base64 data and mediaType
-        contentParts.push({
-          type: "image",
-          image: base64Data,
-          mediaType: mimeType,
-        });
+          // Add the image to the content parts with base64 data and mediaType
+          contentParts.push({
+            type: "image",
+            image: base64Data,
+            mediaType: mimeType,
+          });
 
-        logger.log(`Added image attachment: ${filePath}`);
-      } catch (error) {
-        logger.error(`Error reading image file: ${error}`);
+          logger.log(`Added image attachment: ${filePath}`);
+        } catch (error) {
+          logger.error(`Error reading image file: ${error}`);
+        }
       }
     }
   }

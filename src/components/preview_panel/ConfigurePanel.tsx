@@ -325,7 +325,7 @@ const IntegrationSection = () => {
 
   // Scroll the section into view whenever a pending integration with a
   // chosen provider becomes visible — so the user lands directly on the
-  // connector instead of having to scroll past env vars / app commands.
+  // connector even if the configure panel is scrolled.
   // We only do this for *active* setup (not the always-visible post-setup
   // view), to avoid hijacking scroll when the user opens the configure panel.
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -539,6 +539,7 @@ export const ConfigurePanel = () => {
   if (envVarsCardContent) {
     return (
       <div className="p-4 space-y-4">
+        <IntegrationSection />
         <Card>
           <CardHeader>
             <CardTitle>
@@ -547,13 +548,17 @@ export const ConfigurePanel = () => {
           </CardHeader>
           <CardContent>{envVarsCardContent}</CardContent>
         </Card>
-        <IntegrationSection />
       </div>
     );
   }
 
   return (
     <div className="p-4 space-y-4">
+      {/* Integration (Supabase / Neon) — visible during setup AND afterwards
+          so users can change their DB branch / reconnect without re-triggering
+          the integration prompt. */}
+      <IntegrationSection />
+
       <Card>
         <CardHeader>
           <CardTitle>
@@ -718,11 +723,6 @@ export const ConfigurePanel = () => {
 
       {/* App Commands Configuration */}
       <AppCommandsSection selectedAppId={selectedAppId} />
-
-      {/* Integration (Supabase / Neon) — visible during setup AND afterwards
-          so users can change their DB branch / reconnect without re-triggering
-          the integration prompt. */}
-      <IntegrationSection />
 
       {/* Neon Database Configuration */}
       <div className="grid grid-cols-1 gap-6">

@@ -59,6 +59,7 @@ testSkipIfWindows(
     await expect(scriptCard).toBeVisible();
     await expect(scriptCard).toContainText("Summarize large-log.txt");
     await scriptCard.click();
+    await scriptCard.getByRole("tab", { name: "Output" }).click();
     await expect(scriptCard).toContainText('"markerCount": 6000');
     await expect(scriptCard).toContainText('"hasTail": true');
     await expect(

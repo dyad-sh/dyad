@@ -4,6 +4,7 @@
  */
 
 import { Page, expect } from "@playwright/test";
+import { Timeout } from "../../constants";
 
 export class Navigation {
   constructor(public page: Page) {}
@@ -20,7 +21,18 @@ export class Navigation {
     const appsLink = this.page.getByRole("link", { name: "Apps" });
     await expect(appsLink).toBeVisible({ timeout: 60000 });
     await appsLink.click();
-    await expect(this.page.getByText("Build a new app")).toBeVisible();
+    await expect(async () => {
+      const isAppsLandingVisible = await this.page
+        .getByText("Build a new app")
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      const isAppListVisible = await this.page
+        .getByRole("button", { name: "New App" })
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+
+      expect(isAppsLandingVisible || isAppListVisible).toBe(true);
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async goToChatTab() {

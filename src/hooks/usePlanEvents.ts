@@ -19,7 +19,6 @@ import {
 } from "@/ipc/types/plan";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
-import { showUserInputNotification } from "@/lib/userInputNotification";
 
 /**
  * Hook to handle plan mode IPC events.
@@ -164,7 +163,6 @@ export function usePlanEvents() {
       },
     );
 
-
     // Handle questionnaire events (part of the planning flow)
 
     // Handle questionnaire events - set pending questionnaire for in-app display
@@ -176,7 +174,6 @@ export function usePlanEvents() {
           next.set(payload.chatId, payload);
           return next;
         });
-
       },
     );
 

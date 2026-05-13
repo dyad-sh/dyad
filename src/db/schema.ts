@@ -29,6 +29,21 @@ export const prompts = sqliteTable(
   (table) => [unique("prompts_slug_unique").on(table.slug)],
 );
 
+export const categories = sqliteTable(
+  "categories",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("categories_name_unique").on(table.name)],
+);
+
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -72,25 +87,10 @@ export const apps = sqliteTable("apps", {
   needsAppBlueprint: integer("needs_app_blueprint", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
-  categoryId: integer("category_id").references((): any => categories.id, {
+  categoryId: integer("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
 });
-
-export const categories = sqliteTable(
-  "categories",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    name: text("name").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [unique("categories_name_unique").on(table.name)],
-);
 
 export const chats = sqliteTable("chats", {
   id: integer("id").primaryKey({ autoIncrement: true }),

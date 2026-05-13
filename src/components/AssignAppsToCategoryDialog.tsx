@@ -135,12 +135,12 @@ export function AssignAppsToCategoryDialog({
           </div>
         ) : (
           <>
-            <input
+            <Input
               type="text"
               placeholder="Search categories..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-border bg-(--background-lighter) px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+              className="bg-(--background-lighter)"
               data-testid="assign-apps-search"
             />
 

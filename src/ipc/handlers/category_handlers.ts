@@ -173,6 +173,19 @@ export function registerCategoryHandlers() {
   createTypedHandler(categoryContracts.assignApps, async (_, params) => {
     const { categoryId, appIds } = params;
     if (appIds.length === 0) return;
+    if (categoryId != null) {
+      // Verify the category exists before reassigning apps, since
+      // PRAGMA foreign_keys may not be enabled and we want to avoid
+      // leaving apps pointing at a deleted category.
+      const existing = db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(eq(categories.id, categoryId))
+        .get();
+      if (!existing) {
+        throw new DyadError("Category not found", DyadErrorKind.NotFound);
+      }
+    }
     db.update(apps).set({ categoryId }).where(inArray(apps.id, appIds)).run();
   });
 }

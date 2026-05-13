@@ -79,14 +79,14 @@
         "type": "function",
         "function": {
           "name": "copy_file",
-          "description": "Copy a file from one location to another. Can copy uploaded attachment files (from .dyad/media) into the codebase, or copy files within the codebase.",
+          "description": "Copy a file from one location to another. Can copy uploaded attachment files (attachments:<name> or .dyad/media paths) into the codebase, or copy files within the codebase.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "from": {
                 "type": "string",
-                "description": "The source file path (can be a .dyad/media path or a path relative to the app root)"
+                "description": "The source file path (can be attachments:<name>, a .dyad/media path, or a path relative to the app root)"
               },
               "to": {
                 "type": "string",
@@ -180,7 +180,7 @@
         "type": "function",
         "function": {
           "name": "read_file",
-          "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
+          "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",

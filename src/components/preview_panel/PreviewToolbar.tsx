@@ -212,26 +212,32 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
 
 interface PreviewToolbarProps {
   children?: React.ReactNode;
+  compactThreshold?: number;
 }
 
-export const PreviewToolbar = ({ children }: PreviewToolbarProps) => {
+export const PreviewToolbar = ({
+  children,
+  compactThreshold = COMPACT_TOOLBAR_THRESHOLD,
+}: PreviewToolbarProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
+    if (compactThreshold <= 0) {
+      setIsCompact(false);
+      return;
+    }
     const node = containerRef.current;
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setIsCompact(entry.contentRect.width < COMPACT_TOOLBAR_THRESHOLD);
+        setIsCompact(entry.contentRect.width < compactThreshold);
       }
     });
     observer.observe(node);
-    setIsCompact(
-      node.getBoundingClientRect().width < COMPACT_TOOLBAR_THRESHOLD,
-    );
+    setIsCompact(node.getBoundingClientRect().width < compactThreshold);
     return () => observer.disconnect();
-  }, []);
+  }, [compactThreshold]);
 
   return (
     <div ref={containerRef} className="flex items-center p-2 border-b gap-3">

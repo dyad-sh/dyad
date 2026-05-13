@@ -106,7 +106,7 @@ jobs:
           fi
 
           should_reopen="$(
-            jq -re '
+            jq -r '
               if type == "object" and (.should_reopen | type == "boolean") then
                 .should_reopen
               else

@@ -209,9 +209,10 @@ CREATE TABLE public.table_name (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Grant Data API access (REQUIRED for Supabase API access)
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO authenticated;
+-- Enable Data API Grants (REQUIRED)
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO service_role;
+-- Grant only the operations the authenticated client actually needs
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO authenticated;
 -- ONLY if public unauthenticated read access is specifically required
 -- GRANT SELECT ON TABLE public.table_name TO anon;
 
@@ -251,7 +252,7 @@ Before creating any table or database schema, verify:
 - ✅ User can only access their own data (unless public access is specifically required)
 - ✅ All user-specific policies include \`TO authenticated\` for additional security
 
-**Remember: Client-facing Data API grants must always be paired with proper RLS policies.**
+**Remember: Without proper RLS policies, your database is exposed to unauthorized access.**
 
 ## Creating User Profiles
 
@@ -271,7 +272,7 @@ CREATE TABLE public.profiles (
 );
 
 -- Grant Data API access
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO authenticated;
+GRANT SELECT, UPDATE ON TABLE public.profiles TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO service_role;
 
 -- Enable RLS (REQUIRED for security)

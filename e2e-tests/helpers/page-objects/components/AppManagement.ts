@@ -27,8 +27,9 @@ export class AppManagement {
 
   async isCurrentAppNameNone() {
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).toContainText(
-        "no app selected",
+      await expect(this.getTitleBarAppNameButton()).toHaveAttribute(
+        "data-app-name",
+        "",
       );
     }).toPass();
   }
@@ -36,13 +37,14 @@ export class AppManagement {
   async getCurrentAppName() {
     // Make sure to wait for the app to be set to avoid a race condition.
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).not.toContainText(
-        "no app selected",
+      await expect(this.getTitleBarAppNameButton()).not.toHaveAttribute(
+        "data-app-name",
+        "",
       );
     }).toPass();
-    return (await this.getTitleBarAppNameButton().textContent())?.replace(
-      "App: ",
-      "",
+    return (
+      (await this.getTitleBarAppNameButton().getAttribute("data-app-name")) ??
+      undefined
     );
   }
 

@@ -214,7 +214,6 @@ export function AppSidebar() {
             }`}
           >
             <SidebarTrigger
-              // className="h-10 w-10 mb-1"
               onMouseEnter={() => {
                 setHoverState("clear-hover");
               }}
@@ -250,8 +249,6 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-
-      {/* <SidebarRail /> */}
     </Sidebar>
   );
 }

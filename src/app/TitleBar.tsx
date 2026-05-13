@@ -94,6 +94,12 @@ export const TitleBar = () => {
               render={
                 <Button
                   data-testid="title-bar-app-name-button"
+                  data-app-name={selectedApp?.name ?? ""}
+                  aria-label={
+                    selectedApp
+                      ? `Manage ${selectedApp.name}`
+                      : "No app selected"
+                  }
                   variant="outline"
                   size="sm"
                   disabled={!selectedApp}

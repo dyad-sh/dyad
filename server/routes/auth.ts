@@ -14,10 +14,10 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "../../src/db";
 import { users, subscriptions, userSettings } from "../../src/db/schema";
 import { eq } from "drizzle-orm";
+import { jwtSecret as JWT_SECRET } from "../utils/jwt";
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "proteaai-dev-secret-change-in-production";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? "7d";
 const BCRYPT_ROUNDS = 12;
 
@@ -50,6 +50,11 @@ authRouter.post("/register", async (req, res) => {
 
     if (!email || !password) {
       res.status(400).json({ ok: false, error: "Email and password are required" });
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ ok: false, error: "Invalid email address" });
       return;
     }
 

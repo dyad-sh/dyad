@@ -12,8 +12,9 @@ import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LogOut } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
+import { useAuth } from "@/contexts/AuthContext";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
@@ -45,6 +46,8 @@ export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const router = useRouter();
   const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
+  const { user, logout, isAuthenticated } = useAuth();
+  const isWebMode = import.meta.env.PROTEAAI_WEB_MODE === "true";
 
   useEffect(() => {
     setActiveSettingsSection(SECTION_IDS.general);
@@ -245,6 +248,42 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* Account (web mode only) */}
+          {isWebMode && isAuthenticated && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                Account
+              </h2>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    {user?.name ?? user?.email}
+                  </p>
+                  {user?.name && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {user.email}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 capitalize">
+                    Plan: {user?.plan ?? "free"}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950"
+                  onClick={() => {
+                    logout();
+                    router.navigate({ to: "/login" });
+                  }}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Danger Zone */}
           <div

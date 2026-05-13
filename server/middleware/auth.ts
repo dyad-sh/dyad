@@ -16,9 +16,7 @@ import { db } from "../../src/db";
 import { users, subscriptions } from "../../src/db/schema";
 import { eq } from "drizzle-orm";
 import { runWithUserContext } from "../../src/ipc/context/user-context";
-
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "proteaai-dev-secret-change-in-production";
+import { jwtSecret as JWT_SECRET } from "../utils/jwt";
 
 /**
  * Express middleware that requires a valid JWT.

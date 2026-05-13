@@ -14,10 +14,9 @@ import {
   messages,
   subscriptions,
   mcpServers,
-  prompts,
   customThemes,
 } from "../../src/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { getCurrentUser } from "../../src/ipc/context/user-context";
 import { getProteaAIAppsBaseDirectory } from "../../src/paths/paths";
@@ -32,39 +31,28 @@ gdprRouter.get("/export", requireAuth, async (_req, res) => {
   try {
     const { userId, email } = getCurrentUser()!;
 
-    const [
-      userRow,
-      userApps,
-      userChats,
-      userMessages,
-      userSubscription,
-      userMcpServers,
-      userPrompts,
-      userThemes,
-    ] = await Promise.all([
-      db.query.users.findFirst({
-        where: eq(users.id, userId),
-        columns: { passwordHash: false },
-      }),
-      db.query.apps.findMany({ where: eq(apps.userId, userId) }),
-      db.query.chats.findMany({
-        // chats belong to apps; include all chats for user's apps
-        with: { app: { columns: { userId: true } } },
-      }),
-      db.select().from(messages),
-      db.query.subscriptions.findFirst({ where: eq(subscriptions.userId, userId) }),
-      db.query.mcpServers.findMany({ where: eq(mcpServers.userId, userId) }),
-      db.query.prompts.findMany(),
-      db.query.customThemes.findMany({ where: eq(customThemes.userId, userId) }),
-    ]);
+    // Phase 1: fetch user-owned top-level rows in parallel
+    const [userRow, userApps, userSubscription, userMcpServers, userThemes] =
+      await Promise.all([
+        db.query.users.findFirst({
+          where: eq(users.id, userId),
+          columns: { passwordHash: false },
+        }),
+        db.query.apps.findMany({ where: eq(apps.userId, userId) }),
+        db.query.subscriptions.findFirst({ where: eq(subscriptions.userId, userId) }),
+        db.query.mcpServers.findMany({ where: eq(mcpServers.userId, userId) }),
+        db.query.customThemes.findMany({ where: eq(customThemes.userId, userId) }),
+      ]);
 
-    // Filter chats/messages to only this user's data
-    const appIds = new Set(userApps.map((a) => a.id));
-    const ownedChats = userChats.filter(
-      (c) => c.app && (c.app as { userId: string | null }).userId === userId,
-    );
-    const chatIds = new Set(ownedChats.map((c) => c.id));
-    const ownedMessages = userMessages.filter((m) => chatIds.has(m.chatId));
+    // Phase 2: scope chats + messages to the user's own apps
+    const appIds = userApps.map((a) => a.id);
+    const ownedChats = appIds.length > 0
+      ? await db.query.chats.findMany({ where: inArray(chats.appId, appIds) })
+      : [];
+    const chatIds = ownedChats.map((c) => c.id);
+    const ownedMessages = chatIds.length > 0
+      ? await db.select().from(messages).where(inArray(messages.chatId, chatIds))
+      : [];
 
     const exportData = {
       exportedAt: new Date().toISOString(),

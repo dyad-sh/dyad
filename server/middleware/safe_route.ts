@@ -27,9 +27,12 @@ export function safeRoute(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[${channel}] Handler error:`, message);
-      res
-        .status(500)
-        .json({ ok: false, error: message, channel });
+      const isProd = process.env.NODE_ENV === "production";
+      res.status(500).json({
+        ok: false,
+        error: isProd ? "Internal server error" : message,
+        channel: isProd ? undefined : channel,
+      });
       // Don't call next(err) — we've already sent the response
     }
   };

@@ -37,6 +37,10 @@ dotenv.config();
 import { getProteaAIAppPath } from "../src/paths/paths";
 import { getMimeType } from "../src/ipc/utils/mime_utils";
 import { PROTEAAI_MEDIA_DIR_NAME } from "../src/ipc/utils/media_path_utils";
+import { db } from "../src/db";
+import { apps } from "../src/db/schema";
+import { and, eq } from "drizzle-orm";
+import { getCurrentUser } from "../src/ipc/context/user-context";
 
 // Now import and register all IPC handlers
 // (They will self-register into webHandlerRegistry because web mode is enabled)
@@ -144,7 +148,7 @@ app.post(
  * Mirrors the proteaai-media:// Electron protocol handler with the same
  * security checks (path traversal prevention, directory confinement).
  */
-app.get("/media/:encodedAppPath/:encodedFilename", requireAuth, (req, res) => {
+app.get("/media/:encodedAppPath/:encodedFilename", requireAuth, async (req, res) => {
   const encodedAppPath = req.params.encodedAppPath;
   const encodedFilename = req.params.encodedFilename;
 
@@ -166,6 +170,18 @@ app.get("/media/:encodedAppPath/:encodedFilename", requireAuth, (req, res) => {
   ) {
     res.status(403).send("Forbidden");
     return;
+  }
+
+  // Verify the requesting user owns the app this media belongs to
+  const currentUser = getCurrentUser();
+  if (currentUser) {
+    const ownedApp = await db.query.apps.findFirst({
+      where: and(eq(apps.path, appPathRaw), eq(apps.userId, currentUser.userId)),
+    });
+    if (!ownedApp) {
+      res.status(403).send("Forbidden");
+      return;
+    }
   }
 
   const appPath = getProteaAIAppPath(appPathRaw);

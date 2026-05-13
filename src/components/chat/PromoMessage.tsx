@@ -182,7 +182,6 @@ export const ROADMAP_TIP: MessageConfig = {
   ],
 };
 
-// Like ProteaAI? Star it on GitHub https://github.com/proteaai/dyad/
 export const GITHUB_TIP: MessageConfig = {
   spans: [
     {
@@ -192,7 +191,7 @@ export const GITHUB_TIP: MessageConfig = {
     {
       type: "link",
       content: "GitHub",
-      url: "https://github.com/proteaai/dyad",
+      url: "https://github.com/khayaai/proteaai",
     },
   ],
 };

@@ -9,13 +9,19 @@
  * Usage: imported by web-entry.tsx (the web build entry point).
  */
 
-const WS_URL =
-  (import.meta.env.VITE_WS_URL as string | undefined) ??
-  `ws://${window.location.host}/ws`;
-
 const API_BASE =
   (import.meta.env.VITE_API_BASE as string | undefined) ??
   `${window.location.origin}/api`;
+
+const TOKEN_KEY = "proteaai_token";
+
+function getWsUrl(): string {
+  const base =
+    (import.meta.env.VITE_WS_URL as string | undefined) ??
+    `ws://${window.location.host}/ws`;
+  const token = localStorage.getItem(TOKEN_KEY);
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+}
 
 // ── WebSocket connection (for push events) ───────────────────────────────────
 
@@ -25,7 +31,7 @@ const eventListeners = new Map<string, Set<(...args: unknown[]) => void>>();
 function getOrCreateWs(): WebSocket {
   if (ws && ws.readyState === WebSocket.OPEN) return ws;
 
-  ws = new WebSocket(WS_URL);
+  ws = new WebSocket(getWsUrl());
 
   ws.onmessage = (event) => {
     try {
@@ -51,8 +57,6 @@ function getOrCreateWs(): WebSocket {
 
   return ws;
 }
-
-const TOKEN_KEY = "proteaai_token";
 
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem(TOKEN_KEY);

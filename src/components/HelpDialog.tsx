@@ -69,7 +69,7 @@ const screenTransition = {
 // =============================================================================
 
 const GITHUB_ISSUES_BASE =
-  "https://github.com/proteaai/dyad/issues/new" as const;
+  "https://github.com/khayaai/proteaai/issues/new" as const;
 
 function formatSettingsLines(settings: UserSettings | null): string {
   if (!settings) return "Settings not available";

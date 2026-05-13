@@ -71,7 +71,7 @@ const config: ForgeConfig = {
     protocols: [
       {
         name: "ProteaAI",
-        schemes: ["dyad"],
+        schemes: ["proteaai"],
       },
     ],
     icon: "./assets/icon/logo",

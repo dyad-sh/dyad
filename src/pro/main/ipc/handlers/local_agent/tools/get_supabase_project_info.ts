@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
 import { getSupabaseProjectInfo } from "../../../../../../supabase_admin/supabase_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const getSupabaseProjectInfoSchema = z.object({
   includeDbFunctions: z
@@ -25,7 +26,10 @@ export const getSupabaseProjectInfoTool: ToolDefinition<
 
   execute: async (args, ctx: AgentContext) => {
     if (!ctx.supabaseProjectId) {
-      throw new Error("Supabase is not connected to this app");
+      throw new DyadError(
+        "Supabase is not connected to this app",
+        DyadErrorKind.Precondition,
+      );
     }
 
     ctx.onXmlStream(

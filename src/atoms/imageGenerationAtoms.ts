@@ -17,6 +17,7 @@ export interface ImageGenerationJob {
   startedAt: number;
   result?: GenerateImageResponse;
   error?: string;
+  source?: "chat" | "media-library";
 }
 
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
@@ -47,3 +48,16 @@ export const pendingImageGenerationsCountAtom = atom((get) => {
   const jobs = get(imageGenerationJobsAtom);
   return jobs.filter((job) => job.status === "pending").length;
 });
+
+export const chatImageGenerationJobsAtom = atom((get) => {
+  const jobs = get(imageGenerationJobsAtom);
+  // Only jobs with source === "chat" appear in the chat strip.
+  // Jobs from media.tsx / library-home.tsx intentionally omit `source`
+  // and therefore never appear here.
+  return jobs.filter((job) => job.source === "chat");
+});
+
+/** Tracks dismissed job IDs globally so dismissals persist across mounts. */
+export const dismissedImageGenerationJobIdsAtom = atom<Set<string>>(
+  new Set<string>(),
+);

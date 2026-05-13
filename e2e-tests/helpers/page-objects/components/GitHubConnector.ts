@@ -4,6 +4,7 @@
  */
 
 import { Page, expect } from "@playwright/test";
+import { Timeout } from "../../constants";
 
 export class GitHubConnector {
   constructor(
@@ -29,6 +30,7 @@ export class GitHubConnector {
 
   async clickCreateRepoButton() {
     await this.page.getByRole("button", { name: "Create Repo" }).click();
+    await this.waitForSyncToFinish();
   }
 
   async fillCreateRepoName(name: string) {
@@ -60,9 +62,11 @@ export class GitHubConnector {
 
   async clickConnectToRepoButton() {
     await this.page.getByRole("button", { name: "Connect to repo" }).click();
+    await this.waitForSyncToFinish();
   }
 
   async snapshotConnectedRepo() {
+    await this.waitForSyncToFinish();
     await expect(
       this.page.getByTestId("github-connected-repo"),
     ).toMatchAriaSnapshot();
@@ -82,6 +86,21 @@ export class GitHubConnector {
 
   async clickSyncToGithubButton() {
     await this.page.getByRole("button", { name: "Sync to GitHub" }).click();
+    await this.waitForSyncToFinish();
+  }
+
+  async waitForSyncToFinish() {
+    await expect(
+      this.page.getByRole("button", { name: "Syncing..." }),
+    ).toBeHidden({ timeout: Timeout.LONG });
+    await expect(
+      this.page.getByRole("button", { name: "Sync to GitHub" }),
+    ).toBeEnabled({ timeout: Timeout.LONG });
+    await expect(
+      this.page
+        .getByTestId("github-connected-repo")
+        .getByText("Successfully pushed to GitHub!"),
+    ).toBeVisible({ timeout: Timeout.LONG });
   }
 
   async clickDisconnectRepoButton() {

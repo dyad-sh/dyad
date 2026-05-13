@@ -5,6 +5,7 @@ import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getLogs } from "@/lib/log_store";
 import type { ConsoleEntry } from "@/ipc/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const readLogsSchema = z.object({
   type: z
@@ -125,7 +126,7 @@ ${summary}
     });
 
     if (!chat || !chat.app) {
-      throw new Error("Chat or app not found.");
+      throw new DyadError("Chat or app not found.", DyadErrorKind.NotFound);
     }
 
     const appId = chat.app.id;

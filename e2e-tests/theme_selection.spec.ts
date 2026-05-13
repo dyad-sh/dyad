@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("theme selection - dyad-wide default theme is persisted", async ({
@@ -42,6 +42,8 @@ test("theme selection - dyad-wide default theme is persisted", async ({
 test("theme selection - app-specific theme is persisted", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
+  await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+  await po.toastNotifications.dismissAllToasts();
 
   // Open menu and select "Default Theme" for this app
   await po.chatActions

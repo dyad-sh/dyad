@@ -3,6 +3,7 @@ import { readCurrentUserSettings } from "../../main/web-settings";
 
 import log from "electron-log";
 import { safeSend } from "../utils/safe_sender";
+import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
 import {
   createOpenAI,
   openai,
@@ -11,6 +12,7 @@ import {
 import { createTypedHandler } from "./base";
 import { helpContracts } from "../types/help";
 import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("help-bot");
 
@@ -24,7 +26,10 @@ export function registerHelpBotHandlers() {
     const { sessionId, message } = params;
     try {
       if (!sessionId || !message?.trim()) {
-        throw new Error("Missing sessionId or message");
+        throw new DyadError(
+          "Missing sessionId or message",
+          DyadErrorKind.External,
+        );
       }
 
       // Clear any existing active streams (only one session at a time)
@@ -88,9 +93,16 @@ export function registerHelpBotHandlers() {
         },
       });
 
+      // Read .fullStream now (not lazily) so the SDK's `teeStream()`
+      // runs synchronously, then cancel the orphaned tee branch before
+      // any chunks are pumped. See `cancelOrphanedBaseStream` for why
+      // this is required.
+      const fullStream = stream.fullStream;
+      cancelOrphanedBaseStream(stream);
+
       (async () => {
         try {
-          for await (const part of stream.fullStream) {
+          for await (const part of fullStream) {
             if (abortController.signal.aborted) break;
 
             if (part.type === "text-delta") {

@@ -34,7 +34,7 @@ export function AttachmentsList({
                 <img
                   src={URL.createObjectURL(attachment.file)}
                   alt={attachment.file.name}
-                  className="w-5 h-5 object-cover rounded"
+                  className="w-12 h-12 object-cover rounded-md"
                   onLoad={(e) =>
                     URL.revokeObjectURL((e.target as HTMLImageElement).src)
                   }
@@ -42,7 +42,7 @@ export function AttachmentsList({
                     URL.revokeObjectURL((e.target as HTMLImageElement).src)
                   }
                 />
-                <div className="absolute hidden group-hover:block top-6 left-0 z-10">
+                <div className="absolute hidden group-hover:block top-14 left-0 z-10">
                   <img
                     src={URL.createObjectURL(attachment.file)}
                     alt={attachment.file.name}

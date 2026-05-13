@@ -55,36 +55,6 @@
       {
         "type": "function",
         "function": {
-          "name": "edit_file",
-          "description": "\n## When to Use edit_file\n\nUse the `edit_file` tool when you need to modify **a section or function** within an existing file. The edit output will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.\n\n**Use only ONE edit_file call per file.** If you need to make multiple changes to the same file, include all edits in sequence within a single call using `// ... existing code ...` comments between them.\n\n## When NOT to Use edit_file\n\nDo NOT use this tool when:\n- You are making a **small, surgical edit** (1-3 lines) like fixing a typo, renaming a variable, updating a single value, or changing an import. Use `search_replace` instead for these precise changes.\n- You are creating a brand-new file (use `write_file` instead).\n- You are rewriting most of an existing file (in those cases, use `write_file` to output the complete file instead).\n\n## Basic Format\n\nWhen writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines.\n\nBasic example:\n```\nedit_file(path=\"file.js\", instructions=\"I am adding error handling to the fetchData function and updating the return type.\", content=\"\"\"\n// ... existing code ...\nFIRST_EDIT\n// ... existing code ...\nSECOND_EDIT\n// ... existing code ...\nTHIRD_EDIT\n// ... existing code ...\n\"\"\")\n```\n\n## General Principles\n\nYou should bias towards repeating as few lines of the original file as possible to convey the change.\n\nNEVER show unmodified code in the edit, unless sufficient context of unchanged lines around the code you're editing is needed to resolve ambiguity.\n\nDO NOT omit spans of pre-existing code without using the // ... existing code ... comment to indicate its absence.\n\n## Example: Basic Edit\n```\nedit_file(path=\"LandingPage.tsx\", instructions=\"I am changing the return statement in LandingPage to render a div with 'hello' instead of the previous content.\", content=\"\"\"\n// ... existing code ...\n\nconst LandingPage = () => {\n  // ... existing code ...\n  return (\n    <div>hello</div>\n  );\n};\n\n// ... existing code ...\n\"\"\")\n```\n\n## Example: Deleting Code\n\n**When deleting code, you must provide surrounding context and leave an explicit comment indicating what was removed.**\n```\nedit_file(path=\"utils.ts\", instructions=\"I am removing the deprecatedHelper function located between currentHelper and anotherHelper.\", content=\"\"\"\n// ... existing code ...\n\nexport function currentHelper() {\n  return \"active\";\n}\n\n// REMOVED: deprecatedHelper() function\n\nexport function anotherHelper() {\n  return \"working\";\n}\n\n// ... existing code ...\n\"\"\")\n```\n",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "description": "The file path relative to the app root"
-              },
-              "content": {
-                "type": "string",
-                "description": "The updated code snippet to apply"
-              },
-              "instructions": {
-                "description": "Instructions for the edit. A single sentence describing what you are going to do for the sketched edit. This helps the less intelligent model apply the edit correctly. Use first person to describe what you are doing. Don't repeat what you've said in previous messages. Use it to disambiguate any uncertainty in the edit.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "content"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
           "name": "search_replace",
           "description": "Use this tool to propose a search and replace operation on an existing file.\n\nThe tool will replace ONE occurrence of old_string with new_string in the specified file.\n\nCRITICAL REQUIREMENTS FOR USING THIS TOOL:\n\n1. UNIQUENESS: The old_string MUST uniquely identify the specific instance you want to change. This means:\n   - Include AT LEAST 3-5 lines of context BEFORE the change point\n   - Include AT LEAST 3-5 lines of context AFTER the change point\n   - Include all whitespace, indentation, and surrounding code exactly as it appears in the file\n\n2. SINGLE INSTANCE: This tool can only change ONE instance at a time. If you need to change multiple instances:\n   - Make separate calls to this tool for each instance\n   - Each call must uniquely identify its specific instance using extensive context\n\n3. VERIFICATION: Before using this tool:\n   - If multiple instances exist, gather enough context to uniquely identify each one\n   - Plan separate tool calls for each instance\n",
           "parameters": {
@@ -117,14 +87,14 @@
         "type": "function",
         "function": {
           "name": "copy_file",
-          "description": "Copy a file from one location to another. Can copy uploaded attachment files (from .dyad/media) into the codebase, or copy files within the codebase.",
+          "description": "Copy a file from one location to another. Can copy uploaded attachment files (attachments:<name> or .dyad/media paths) into the codebase, or copy files within the codebase.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "from": {
                 "type": "string",
-                "description": "The source file path (can be a .dyad/media path or a path relative to the app root)"
+                "description": "The source file path (can be attachments:<name>, a .dyad/media path, or a path relative to the app root)"
               },
               "to": {
                 "type": "string",
@@ -218,7 +188,7 @@
         "type": "function",
         "function": {
           "name": "read_file",
-          "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
+          "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -226,6 +196,10 @@
               "path": {
                 "type": "string",
                 "description": "The file path to read"
+              },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to read from instead of the current app. Omit to read from the current app.",
+                "type": "string"
               },
               "start_line_one_indexed": {
                 "description": "The one-indexed line number to start reading from (inclusive).",
@@ -251,7 +225,7 @@
         "type": "function",
         "function": {
           "name": "list_files",
-          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
+          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -260,12 +234,16 @@
                 "description": "Optional subdirectory to list",
                 "type": "string"
               },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to list from instead of the current app. Omit to list the current app.",
+                "type": "string"
+              },
               "recursive": {
                 "description": "Whether to list files recursively (default: false)",
                 "type": "boolean"
               },
-              "include_hidden": {
-                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
                 "type": "boolean"
               }
             },
@@ -277,7 +255,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -286,6 +264,10 @@
                 "type": "string",
                 "description": "The regex pattern to search for"
               },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+                "type": "string"
+              },
               "include_pattern": {
                 "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
                 "type": "string"
@@ -293,6 +275,10 @@
               "exclude_pattern": {
                 "description": "Glob pattern for files to exclude",
                 "type": "string"
+              },
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
+                "type": "boolean"
               },
               "case_sensitive": {
                 "description": "Whether the search should be case sensitive (default: false)",
@@ -324,6 +310,10 @@
               "query": {
                 "type": "string",
                 "description": "Search query to find relevant files"
+              },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+                "type": "string"
               }
             },
             "required": [
@@ -337,7 +327,7 @@
         "type": "function",
         "function": {
           "name": "set_chat_summary",
-          "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
+          "description": "Set the title/summary for this chat. Call this tool exactly once early in the turn, as soon as you understand the user's request well enough to write a short title. Do not wait until the end of the turn.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -358,21 +348,41 @@
         "type": "function",
         "function": {
           "name": "add_integration",
-          "description": "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+          "description": "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. The tool blocks until the user finishes the setup inside the chat and clicks Continue, then returns; you should then proceed with the next step.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "provider": {
+                "description": "Optional preferred database provider. Use 'none' (or omit) if the user did not explicitly name a provider. Only use 'supabase' or 'neon' if the user specifically mentions that provider name in their prompt.",
                 "type": "string",
                 "enum": [
-                  "supabase"
-                ],
-                "description": "The integration provider to add (e.g., 'supabase')"
+                  "none",
+                  "supabase",
+                  "neon"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "enable_nitro",
+          "description": "Add a Nitro server layer to this Vite app so it can run secure server-side code\n(API routes, database clients, secrets, webhooks).\n\nWHEN TO CALL: Before writing any code under server/, before referencing DATABASE_URL\nor any server-only env var, or when the user asks for an API route, webhook, or\nserver-side compute. Skip for client-side fetch with public/anon keys, for use\ncases fully covered by Supabase (anon key + RLS), or when the user explicitly\nsays \"static only\" / \"no backend\".",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "One sentence explaining why server-side code is needed for this prompt."
               }
             },
             "required": [
-              "provider"
+              "reason"
             ],
             "additionalProperties": false
           }
@@ -576,6 +586,27 @@
                 }
               }
             },
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "read_guide",
+          "description": "Read a detailed instruction guide. Use this when the system prompt tells you to load a guide before implementing a feature.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "guide": {
+                "type": "string",
+                "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
+              }
+            },
+            "required": [
+              "guide"
+            ],
             "additionalProperties": false
           }
         }

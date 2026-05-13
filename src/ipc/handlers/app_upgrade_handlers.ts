@@ -10,6 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -36,7 +37,10 @@ async function getApp(appId: number) {
     where: eq(apps.id, appId),
   });
   if (!app) {
-    throw new Error(`App with id ${appId} not found`);
+    throw new DyadError(
+      `App with id ${appId} not found`,
+      DyadErrorKind.NotFound,
+    );
   }
   return app;
 }
@@ -103,7 +107,10 @@ async function applyComponentTagger(appPath: string) {
   } else if (fs.existsSync(viteConfigPathJs)) {
     viteConfigPath = viteConfigPathJs;
   } else {
-    throw new Error("Could not find vite.config.js or vite.config.ts");
+    throw new DyadError(
+      "Could not find vite.config.js or vite.config.ts",
+      DyadErrorKind.External,
+    );
   }
 
   let content = await fs.promises.readFile(viteConfigPath, "utf-8");
@@ -273,7 +280,7 @@ export function registerAppUpgradeHandlers() {
     "execute-app-upgrade",
     async (_, { appId, upgradeId }: { appId: number; upgradeId: string }) => {
       if (!upgradeId) {
-        throw new Error("upgradeId is required");
+        throw new DyadError("upgradeId is required", DyadErrorKind.Validation);
       }
 
       const app = await getApp(appId);
@@ -284,7 +291,10 @@ export function registerAppUpgradeHandlers() {
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
       } else {
-        throw new Error(`Unknown upgrade id: ${upgradeId}`);
+        throw new DyadError(
+          `Unknown upgrade id: ${upgradeId}`,
+          DyadErrorKind.External,
+        );
       }
     },
   );

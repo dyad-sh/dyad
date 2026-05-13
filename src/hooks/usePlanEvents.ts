@@ -18,8 +18,9 @@ import {
   type PlanExitPayload,
   type PlanQuestionnairePayload,
 } from "@/ipc/types/plan";
-import { ipc, type App } from "@/ipc/types";
+import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import { showUserInputNotification } from "@/lib/userInputNotification";
 
 /**
  * Hook to handle plan mode IPC events.
@@ -37,7 +38,7 @@ export function usePlanEvents() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
 
   // Use refs for values accessed in event handlers to avoid stale closures
   const planStateRef = useRef(planState);
@@ -113,11 +114,6 @@ export function usePlanEvents() {
         const currentState = planStateRef.current;
         const planData = currentState.plansByChatId.get(payload.chatId);
 
-        // Switch chat mode to local-agent for implementation (only if currently in plan mode)
-        if (settingsRef.current?.selectedChatMode === "plan") {
-          updateSettings({ selectedChatMode: "local-agent" });
-        }
-
         // Switch preview back to preview mode
         setPreviewMode("preview");
 
@@ -130,7 +126,7 @@ export function usePlanEvents() {
           return;
         }
 
-        // Always persist the plan to .proteaai/plans/
+        // Always persist the plan to .dyad/plans/
         let planSlug: string;
         try {
           planSlug = await planClient.createPlan({
@@ -146,7 +142,10 @@ export function usePlanEvents() {
         }
 
         try {
-          const newChatId = await ipc.chat.createChat(selectedAppIdRef.current);
+          const newChatId = await ipc.chat.createChat({
+            appId: selectedAppIdRef.current,
+            initialChatMode: "local-agent",
+          });
 
           // Navigate to the new chat
           setSelectedChatId(newChatId);
@@ -169,7 +168,7 @@ export function usePlanEvents() {
       },
     );
 
-    // Handle questionnaire events
+    // Handle questionnaire events (part of the planning flow)
     const unsubscribeQuestionnaire = planEventClient.onQuestionnaire(
       (payload: PlanQuestionnairePayload) => {
         setPendingQuestionnaire((prev) => {
@@ -178,21 +177,12 @@ export function usePlanEvents() {
           return next;
         });
 
-        // Show native notification if enabled and window is not focused
-        const notificationsEnabled =
-          settingsRef.current?.enableChatEventNotifications === true;
-        if (
-          notificationsEnabled &&
-          Notification.permission === "granted" &&
-          !document.hasFocus()
-        ) {
-          const app = queryClient.getQueryData<App | null>(
-            queryKeys.apps.detail({ appId: selectedAppIdRef.current! }),
-          );
-          new Notification(app?.name ?? "ProteaAI", {
-            body: "A questionnaire needs your input",
-          });
-        }
+        showUserInputNotification({
+          appId: selectedAppIdRef.current,
+          queryClient,
+          settings: settingsRef.current,
+          body: "A questionnaire needs your input",
+        });
       },
     );
 
@@ -205,7 +195,6 @@ export function usePlanEvents() {
   }, [
     setPlanState,
     setPreviewMode,
-    updateSettings,
     setPendingPlanImplementation,
     setPendingQuestionnaire,
     setSelectedChatId,

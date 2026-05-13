@@ -20,6 +20,7 @@ interface StartGenerationParams {
   themeMode: ImageThemeMode;
   targetAppId: number;
   targetAppName: string;
+  source?: "chat" | "media-library";
 }
 
 // Track cancelled job IDs so onError can skip them when the abort error arrives.
@@ -69,6 +70,7 @@ export function useGenerateImage() {
         targetAppName: params.targetAppName,
         status: "pending",
         startedAt: Date.now(),
+        source: params.source,
       });
 
       // Show / update the single generating toast with the new pending count

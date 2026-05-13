@@ -2,8 +2,7 @@
 - paragraph: Adding supabase...
 - img
 - text: Integration Complete Supabase integration complete
-- paragraph: "This app is connected to Supabase project: Fake Supabase Project"
-- button "Continue"
+- paragraph: "This app is connected to the Supabase project: Fake Supabase Project"
 - button "Copy":
   - img
 - img

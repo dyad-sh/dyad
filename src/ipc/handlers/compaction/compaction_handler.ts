@@ -13,10 +13,12 @@ import { chats, messages } from "@/db/schema";
 import { readCurrentUserSettings } from "@/main/web-settings";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import {
+  getCompactionThreshold,
   getContextWindow,
   shouldTriggerCompaction,
 } from "@/ipc/utils/token_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
 import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {
   storePreCompactionMessages,
@@ -91,12 +93,17 @@ export async function checkAndMarkForCompaction(
   }
 
   const contextWindow = await getContextWindow();
-  const shouldCompact = shouldTriggerCompaction(totalTokens, contextWindow);
+  const provider = settings.selectedModel.provider;
+  const shouldCompact = shouldTriggerCompaction(
+    totalTokens,
+    contextWindow,
+    provider,
+  );
 
   if (shouldCompact) {
     await markChatForCompaction(chatId);
     logger.info(
-      `Compaction triggered for chat ${chatId}: ${totalTokens} tokens (threshold: ${Math.min(Math.floor(contextWindow * 0.8), 180_000)})`,
+      `Compaction triggered for chat ${chatId}: ${totalTokens} tokens (threshold: ${getCompactionThreshold(contextWindow, provider)})`,
     );
     return true;
   }
@@ -198,9 +205,15 @@ export async function performCompaction(
       maxRetries: 2,
     });
 
+    // Read .textStream now (not lazily) so the SDK's tee runs
+    // synchronously, then cancel the orphaned branch before any chunks
+    // are pumped. See `cancelOrphanedBaseStream` for why this is required.
+    const textStream = summaryResult.textStream;
+    cancelOrphanedBaseStream(summaryResult);
+
     // Stream summary text to the frontend as it generates
     let summary = "";
-    for await (const chunk of summaryResult.textStream) {
+    for await (const chunk of textStream) {
       summary += chunk;
       onSummaryChunk?.(summary);
     }

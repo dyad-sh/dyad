@@ -109,8 +109,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const handleImportFromUrl = async () => {
     setImporting(true);
     try {
-      const match = extractRepoNameFromUrl(url);
-      const repoName = match ? match[2] : "";
+      const repoName = extractRepoNameFromUrl(url) ?? "";
       const appName = githubAppName.trim() || repoName;
       const result = await ipc.github.cloneRepoFromUrl({
         url,
@@ -131,6 +130,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId,
+          appId: result.app.id,
         });
       }
       onClose();
@@ -167,6 +167,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId,
+          appId: result.app.id,
         });
       }
       onClose();
@@ -266,6 +267,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId: result.chatId,
+          appId: result.appId,
         });
       }
       setSelectedAppId(result.appId);

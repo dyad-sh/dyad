@@ -8,7 +8,7 @@ import * as schema from "./schema";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "node:path";
 import fs from "node:fs";
-import { getProteaAIAppPath, getUserDataPath } from "../paths/paths";
+import { getUserDataPath } from "../paths/paths";
 import log from "electron-log";
 
 const logger = log.scope("db");
@@ -48,11 +48,19 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   }
 
   fs.mkdirSync(getUserDataPath(), { recursive: true });
-  fs.mkdirSync(getProteaAIAppPath("."), { recursive: true });
 
   const sqlite = new Database(dbPath, { timeout: 10000 });
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("journal_mode = WAL");
+
+  try {
+    sqlite.pragma("journal_mode = WAL");
+  } catch (error) {
+    logger.warn(
+      "Could not enable WAL mode, falling back to default journal mode:",
+      error,
+    );
+  }
 
   _db = drizzle(sqlite, { schema });
 

@@ -1,11 +1,23 @@
 import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
-import { expect, Locator } from "@playwright/test";
+import { expect, Locator, type Page } from "@playwright/test";
+
+async function queueMessage(page: Page, chatInput: Locator, message: string) {
+  await expect(async () => {
+    await chatInput.click();
+    await chatInput.fill(message);
+    expect(await chatInput.textContent()).toContain(message);
+    await chatInput.press("Enter");
+    await expect(page.locator("li", { hasText: message })).toBeVisible({
+      timeout: 1_000,
+    });
+  }).toPass({ timeout: Timeout.MEDIUM });
+}
 
 test.describe("queued messages", () => {
   let chatInput: Locator;
 
   test.beforeEach(async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     chatInput = po.chatActions.getChatInput();
   });
 
@@ -19,8 +31,7 @@ test.describe("queued messages", () => {
     await expect(chatInput).toBeVisible();
 
     // While streaming, send another message - this should be queued
-    await chatInput.fill("tc=2");
-    await chatInput.press("Enter");
+    await queueMessage(po.page, chatInput, "tc=2");
 
     // Verify the queued message indicator is visible
     // The UI shows "{count} Queued" followed by "- {status}"
@@ -55,12 +66,9 @@ test.describe("queued messages", () => {
     await expect(chatInput).toBeVisible();
 
     // Queue 3 messages while streaming
-    await chatInput.fill("tc=first");
-    await chatInput.press("Enter");
-    await chatInput.fill("tc=second");
-    await chatInput.press("Enter");
-    await chatInput.fill("tc=third");
-    await chatInput.press("Enter");
+    await queueMessage(po.page, chatInput, "tc=first");
+    await queueMessage(po.page, chatInput, "tc=second");
+    await queueMessage(po.page, chatInput, "tc=third");
 
     // Verify 3 messages are queued
     await expect(po.page.getByText("3 Queued")).toBeVisible();
@@ -120,8 +128,7 @@ test.describe("queued messages", () => {
     await expect(chatInput).toBeVisible();
 
     // While streaming, queue a second message
-    await chatInput.fill("tc=2");
-    await chatInput.press("Enter");
+    await queueMessage(po.page, chatInput, "tc=2");
 
     // Verify the queued message indicator is visible
     await expect(
@@ -154,15 +161,15 @@ test.describe("queued messages", () => {
 testSkipIfWindows(
   "editing queued message restores attachments and selected components",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     const chatInput = po.chatActions.getChatInput();
 
     // Build an app so we have a preview with selectable components
     await po.sendPrompt("tc=basic");
     await po.previewPanel.clickTogglePreviewPanel();
 
-    // Start a slow streaming response so subsequent messages get queued
-    await po.sendPrompt("tc=1 [sleep=medium]", {
+    // Start a slow streaming response so the setup below finishes while queuing is still active
+    await po.sendPrompt("tc=1 [sleep=long]", {
       skipWaitForCompletion: true,
     });
     await expect(chatInput).toBeVisible();
@@ -193,8 +200,7 @@ testSkipIfWindows(
     await expect(po.page.getByText("logo.png")).toBeVisible();
 
     // Queue a message with both attachment and selected component
-    await chatInput.fill("queued with extras");
-    await chatInput.press("Enter");
+    await queueMessage(po.page, chatInput, "queued with extras");
 
     // After queuing, both should be cleared
     await expect(
@@ -227,12 +233,12 @@ testSkipIfWindows(
     ).not.toBeVisible();
 
     // Wait for all messages to complete
-    await po.chatActions.waitForChatCompletion();
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
     await po.chatActions.waitForChatCompletion();
 
     // Verify both messages were sent
     const messagesList = po.page.locator('[data-testid="messages-list"]');
-    await expect(messagesList.getByText("tc=1 [sleep=medium]")).toBeVisible();
+    await expect(messagesList.getByText("tc=1 [sleep=long]")).toBeVisible();
     await expect(messagesList.getByText("queued with extras")).toBeVisible();
   },
 );
@@ -240,15 +246,15 @@ testSkipIfWindows(
 testSkipIfWindows(
   "canceling queued message edit clears restored components",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     const chatInput = po.chatActions.getChatInput();
 
     // Build an app so we have a preview with selectable components
     await po.sendPrompt("tc=basic");
     await po.previewPanel.clickTogglePreviewPanel();
 
-    // Start a slow streaming response so subsequent messages get queued
-    await po.sendPrompt("tc=1 [sleep=medium]", {
+    // Start a slow streaming response so the setup below finishes while queuing is still active
+    await po.sendPrompt("tc=1 [sleep=long]", {
       skipWaitForCompletion: true,
     });
     await expect(chatInput).toBeVisible();
@@ -264,8 +270,7 @@ testSkipIfWindows(
       timeout: Timeout.SHORT,
     });
 
-    await chatInput.fill("queued with component");
-    await chatInput.press("Enter");
+    await queueMessage(po.page, chatInput, "queued with component");
     await expect(po.page.getByText(/\d+ Queued/)).toBeVisible();
 
     // Edit the queued message — components should be restored
@@ -288,7 +293,7 @@ testSkipIfWindows(
     await expect(chatInput).toBeEmpty();
 
     // Wait for the in-flight chat and the queued message to finish before ending the test
-    await po.chatActions.waitForChatCompletion();
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
     await po.chatActions.waitForChatCompletion();
   },
 );

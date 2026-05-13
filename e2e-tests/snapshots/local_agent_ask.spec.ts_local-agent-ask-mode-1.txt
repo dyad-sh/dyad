@@ -53,7 +53,7 @@
         "type": "function",
         "function": {
           "name": "read_file",
-          "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
+          "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -61,6 +61,10 @@
               "path": {
                 "type": "string",
                 "description": "The file path to read"
+              },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to read from instead of the current app. Omit to read from the current app.",
+                "type": "string"
               },
               "start_line_one_indexed": {
                 "description": "The one-indexed line number to start reading from (inclusive).",
@@ -86,7 +90,7 @@
         "type": "function",
         "function": {
           "name": "list_files",
-          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
+          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -95,12 +99,16 @@
                 "description": "Optional subdirectory to list",
                 "type": "string"
               },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to list from instead of the current app. Omit to list the current app.",
+                "type": "string"
+              },
               "recursive": {
                 "description": "Whether to list files recursively (default: false)",
                 "type": "boolean"
               },
-              "include_hidden": {
-                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
                 "type": "boolean"
               }
             },
@@ -112,7 +120,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -121,6 +129,10 @@
                 "type": "string",
                 "description": "The regex pattern to search for"
               },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+                "type": "string"
+              },
               "include_pattern": {
                 "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
                 "type": "string"
@@ -128,6 +140,10 @@
               "exclude_pattern": {
                 "description": "Glob pattern for files to exclude",
                 "type": "string"
+              },
+              "include_ignored": {
+                "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
+                "type": "boolean"
               },
               "case_sensitive": {
                 "description": "Whether the search should be case sensitive (default: false)",
@@ -159,6 +175,10 @@
               "query": {
                 "type": "string",
                 "description": "Search query to find relevant files"
+              },
+              "app_name": {
+                "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+                "type": "string"
               }
             },
             "required": [
@@ -172,7 +192,7 @@
         "type": "function",
         "function": {
           "name": "set_chat_summary",
-          "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
+          "description": "Set the title/summary for this chat. Call this tool exactly once early in the turn, as soon as you understand the user's request well enough to write a short title. Do not wait until the end of the turn.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -314,6 +334,27 @@
                 }
               }
             },
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "read_guide",
+          "description": "Read a detailed instruction guide. Use this when the system prompt tells you to load a guide before implementing a feature.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "guide": {
+                "type": "string",
+                "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
+              }
+            },
+            "required": [
+              "guide"
+            ],
             "additionalProperties": false
           }
         }

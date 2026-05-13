@@ -1,0 +1,55 @@
+name: GitHub Security Advisory Alerts
+
+on:
+  schedule:
+    # Nightly at 09:00 UTC
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: github-security-advisory-alerts
+  cancel-in-progress: true
+
+jobs:
+  send-alert:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          # No permission-* scoping: repository_advisories is not yet
+          # supported by create-github-app-token, so we inherit all
+          # permissions from the App installation.
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Send advisory alert email
+        env:
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SECURITY_ADVISORY_ALERT_EMAILS: ${{ vars.SECURITY_ADVISORY_ALERT_EMAILS }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+          MAILGUN_DOMAIN: ${{ vars.MAILGUN_DOMAIN }}
+          MAILGUN_FROM_EMAIL: ${{ vars.MAILGUN_FROM_EMAIL }}
+        run: node scripts/github-security-advisory-alert.mjs

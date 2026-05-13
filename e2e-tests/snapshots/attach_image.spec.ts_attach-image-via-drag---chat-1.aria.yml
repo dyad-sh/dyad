@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: "Version 2: wrote 1 file(s)"
 - paragraph: "[dump]"
 - 'button "Expand image: logo.png"':
   - img "logo.png"

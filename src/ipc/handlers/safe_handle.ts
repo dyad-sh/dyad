@@ -1,5 +1,6 @@
 import type { IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
+import { DyadError } from "@/errors/dyad_error";
 import { sendTelemetryException } from "../utils/telemetry";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { isWebMode, webHandlerRegistry } from "./base";
@@ -34,6 +35,10 @@ export function createLoggedHandler(logger: log.LogFunctions) {
         } catch (error) {
           logger.error(`Error in ${fn.name}`, error);
           sendTelemetryException(error, { ipc_channel: channel });
+          // Preserve DyadError so telemetry classification stay consistent.
+          if (error instanceof DyadError) {
+            throw error;
+          }
           throw new Error(`[${channel}] ${error}`);
         }
       });

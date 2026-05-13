@@ -7,13 +7,13 @@ import {
 } from "react-resizable-panels";
 import { ChatPanel } from "../components/ChatPanel";
 import { PreviewPanel } from "../components/preview_panel/PreviewPanel";
-import { RightActionSidebar } from "../components/RightActionSidebar";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isPreviewOpenAtom, isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { usePlanImplementation } from "@/hooks/usePlanImplementation";
 
 const DEFAULT_CHAT_PANEL_SIZE = 50;
@@ -25,12 +25,18 @@ export default function ChatPage() {
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const [isResizing, setIsResizing] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
+
+  // Sync selectedChatIdAtom with the chatId from the URL
+  useEffect(() => {
+    setSelectedChatId(chatId ?? null);
+  }, [chatId, setSelectedChatId]);
 
   // Handle plan implementation when a plan is accepted
   usePlanImplementation();
@@ -136,7 +142,6 @@ export default function ChatPage() {
       >
         <PreviewPanel />
       </Panel>
-      <RightActionSidebar />
     </PanelGroup>
   );
 }

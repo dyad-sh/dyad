@@ -12,15 +12,16 @@ import { renameFileTool } from "./tools/rename_file";
 import { copyFileTool } from "./tools/copy_file";
 import { addDependencyTool } from "./tools/add_dependency";
 import { executeSqlTool } from "./tools/execute_sql";
+import { getNeonProjectInfoTool } from "./tools/get_neon_project_info";
+import { getDatabaseTableSchemaTool } from "./tools/get_database_table_schema";
 
 import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
 import { getSupabaseProjectInfoTool } from "./tools/get_supabase_project_info";
-import { getSupabaseTableSchemaTool } from "./tools/get_supabase_table_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
+import { enableNitroTool } from "./tools/enable_nitro";
 import { readLogsTool } from "./tools/read_logs";
-import { editFileTool } from "./tools/edit_file";
 import { searchReplaceTool } from "./tools/search_replace";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
@@ -33,6 +34,8 @@ import { codeSearchTool } from "./tools/code_search";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import { readGuideTool } from "./tools/read_guide";
+import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -45,10 +48,29 @@ import {
 } from "./tools/types";
 import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
+import { getNeonClientCode } from "@/neon_admin/neon_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+
+function getToolErrorDisplayDetails(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displayDetails;
+  }
+
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getToolErrorSummary(error: unknown): string {
+  if (error instanceof ExecuteAddDependencyError) {
+    return error.displaySummary;
+  }
+
+  return error instanceof Error ? error.message : String(error);
+}
+
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
-  editFileTool,
   searchReplaceTool,
   copyFileTool,
   deleteFileTool,
@@ -60,9 +82,11 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   grepTool,
   codeSearchTool,
   getSupabaseProjectInfoTool,
-  getSupabaseTableSchemaTool,
+  getNeonProjectInfoTool,
+  getDatabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
+  enableNitroTool,
   readLogsTool,
   webSearchTool,
   webCrawlTool,
@@ -70,6 +94,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
+  readGuideTool,
+  executeSandboxScriptTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,
@@ -123,69 +149,6 @@ export function clearPendingConsentsForChat(chatId: number): void {
       pendingConsentResolvers.delete(requestId);
       // Resolve with decline so the tool execution fails gracefully
       entry.resolve("decline");
-    }
-  }
-}
-
-// ============================================================================
-// Questionnaire Response Management
-// ============================================================================
-
-interface PendingQuestionnaireEntry {
-  chatId: number;
-  resolve: (answers: Record<string, string> | null) => void;
-}
-
-const pendingQuestionnaireResolvers = new Map<
-  string,
-  PendingQuestionnaireEntry
->();
-
-const QUESTIONNAIRE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
-export function waitForQuestionnaireResponse(
-  requestId: string,
-  chatId: number,
-): Promise<Record<string, string> | null> {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      const entry = pendingQuestionnaireResolvers.get(requestId);
-      if (entry) {
-        pendingQuestionnaireResolvers.delete(requestId);
-        entry.resolve(null);
-      }
-    }, QUESTIONNAIRE_TIMEOUT_MS);
-
-    pendingQuestionnaireResolvers.set(requestId, {
-      chatId,
-      resolve: (answers) => {
-        clearTimeout(timeout);
-        resolve(answers);
-      },
-    });
-  });
-}
-
-export function resolveQuestionnaireResponse(
-  requestId: string,
-  answers: Record<string, string> | null,
-) {
-  const entry = pendingQuestionnaireResolvers.get(requestId);
-  if (entry) {
-    pendingQuestionnaireResolvers.delete(requestId);
-    entry.resolve(answers);
-  }
-}
-
-/**
- * Clean up all pending questionnaire requests for a given chat.
- * Called when a stream is cancelled/aborted to prevent orphaned promises.
- */
-export function clearPendingQuestionnairesForChat(chatId: number): void {
-  for (const [requestId, entry] of pendingQuestionnaireResolvers) {
-    if (entry.chatId === chatId) {
-      pendingQuestionnaireResolvers.delete(requestId);
-      entry.resolve(null);
     }
   }
 }
@@ -251,7 +214,10 @@ export async function requireAgentToolConsent(
 
   if (current === "always") return true;
   if (current === "never")
-    throw new Error("Should not ask for consent for a tool marked as 'never'");
+    throw new DyadError(
+      "Should not ask for consent for a tool marked as 'never'",
+      DyadErrorKind.Internal,
+    );
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
@@ -277,33 +243,52 @@ export async function requireAgentToolConsent(
 // ============================================================================
 
 /**
- * Process placeholders in tool args (e.g. $$SUPABASE_CLIENT_CODE$$)
+ * Process placeholders in tool args (e.g. $$SUPABASE_CLIENT_CODE$$, $$NEON_CLIENT_CODE$$)
  * Recursively processes all string values in the args object.
  */
 async function processArgPlaceholders<T extends Record<string, any>>(
   args: T,
   ctx: AgentContext,
 ): Promise<T> {
-  if (!ctx.supabaseProjectId) {
-    return args;
-  }
-
-  // Check if any string values contain the placeholder
   const argsStr = JSON.stringify(args);
-  if (!argsStr.includes("$$SUPABASE_CLIENT_CODE$$")) {
+  const hasSupabasePlaceholder = argsStr.includes("$$SUPABASE_CLIENT_CODE$$");
+  const hasNeonPlaceholder = argsStr.includes("$$NEON_CLIENT_CODE$$");
+
+  if (!hasSupabasePlaceholder && !hasNeonPlaceholder) {
     return args;
   }
 
-  // Fetch the replacement value once
-  const supabaseClientCode = await getSupabaseClientCode({
-    projectId: ctx.supabaseProjectId,
-    organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-  });
+  let supabaseClientCode: string | undefined;
+  if (hasSupabasePlaceholder && ctx.supabaseProjectId) {
+    supabaseClientCode = await getSupabaseClientCode({
+      projectId: ctx.supabaseProjectId,
+      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+    });
+  }
+
+  let neonClientCode: string | undefined;
+  if (hasNeonPlaceholder) {
+    if (ctx.neonProjectId) {
+      neonClientCode = getNeonClientCode(ctx.frameworkType);
+    } else {
+      neonClientCode = "";
+    }
+  }
 
   // Process all string values in args
   const processValue = (value: any): any => {
     if (typeof value === "string") {
-      return value.replace(/\$\$SUPABASE_CLIENT_CODE\$\$/g, supabaseClientCode);
+      let result = value;
+      if (supabaseClientCode) {
+        result = result.replace(
+          /\$\$SUPABASE_CLIENT_CODE\$\$/g,
+          supabaseClientCode,
+        );
+      }
+      if (neonClientCode !== undefined) {
+        result = result.replace(/\$\$NEON_CLIENT_CODE\$\$/g, neonClientCode);
+      }
+      return result;
     }
     if (Array.isArray(value)) {
       return value.map(processValue);
@@ -330,7 +315,10 @@ function convertToolResultForAiSdk(
   if (typeof result === "string") {
     return { type: "text", value: result };
   }
-  throw new Error(`Unsupported tool result type: ${typeof result}`);
+  throw new DyadError(
+    `Unsupported tool result type: ${typeof result}`,
+    DyadErrorKind.Internal,
+  );
 }
 
 export interface BuildAgentToolSetOptions {
@@ -371,7 +359,6 @@ function trackFileEditTool(
   if (!ctx.fileEditTracker[filePath]) {
     ctx.fileEditTracker[filePath] = {
       write_file: 0,
-      edit_file: 0,
       search_replace: 0,
     };
   }
@@ -456,7 +443,10 @@ export function buildAgentToolSet(
             inputPreview: tool.getConsentPreview?.(processedArgs) ?? null,
           });
           if (!allowed) {
-            throw new Error(`User denied permission for ${tool.name}`);
+            throw new DyadError(
+              `User denied permission for ${tool.name}`,
+              DyadErrorKind.UserCancelled,
+            );
           }
 
           // Track file edit tool usage before execution to capture all attempts
@@ -467,11 +457,11 @@ export function buildAgentToolSet(
 
           return convertToolResultForAiSdk(result);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
+          const errorMessage = getToolErrorSummary(error);
+          const errorDetails = getToolErrorDisplayDetails(error);
 
           ctx.onXmlComplete(
-            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorMessage)}</dyad-output>`,
+            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorDetails)}</dyad-output>`,
           );
           throw error;
         }

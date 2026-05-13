@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { IpcContract } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
 
@@ -74,8 +75,9 @@ export function createTypedHandler<
         const errorMessage = outputParsed.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
-        console.error(
-          `[${contract.channel}] Output validation warning: ${errorMessage}`,
+        throw new DyadError(
+          `[${contract.channel}] Invalid input: ${errorMessage}`,
+          DyadErrorKind.Validation,
         );
       }
     }

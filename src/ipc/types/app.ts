@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
+import { ChatModeSchema } from "../../lib/schemas";
 
 // =============================================================================
 // App Schemas
@@ -24,6 +26,7 @@ export const AppBaseSchema = z.object({
   neonProjectId: z.string().nullable(),
   neonDevelopmentBranchId: z.string().nullable(),
   neonPreviewBranchId: z.string().nullable(),
+  neonActiveBranchId: z.string().nullable(),
   vercelProjectId: z.string().nullable(),
   vercelProjectName: z.string().nullable(),
   vercelDeploymentUrl: z.string().nullable(),
@@ -39,6 +42,7 @@ export const AppBaseSchema = z.object({
  */
 export const AppSchema = AppBaseSchema.extend({
   files: z.array(z.string()),
+  frameworkType: z.enum(APP_FRAMEWORK_TYPES).nullable().optional(),
   supabaseProjectName: z.string().nullable(),
   vercelTeamSlug: z.string().nullable(),
   resolvedPath: z.string().optional(),
@@ -51,6 +55,7 @@ export type App = z.infer<typeof AppSchema>;
  */
 export const CreateAppParamsSchema = z.object({
   name: z.string().min(1),
+  initialChatMode: ChatModeSchema.optional(),
 });
 
 /**
@@ -69,6 +74,27 @@ export const CreateAppResultSchema = z.object({
  */
 export const DeleteAppParamsSchema = z.object({
   appId: z.number(),
+});
+
+/**
+ * Schema for bulk delete apps params.
+ */
+export const DeleteAppsParamsSchema = z.object({
+  appIds: z.array(z.number()).min(1),
+});
+
+/**
+ * Schema for bulk delete apps result. Per-app success/error so partial
+ * failures can be surfaced to the user without aborting the whole batch.
+ */
+export const DeleteAppsResultSchema = z.object({
+  results: z.array(
+    z.object({
+      appId: z.number(),
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
+  ),
 });
 
 /**
@@ -112,6 +138,58 @@ export const AppIdParamsSchema = z.object({
 export const RestartAppParamsSchema = z.object({
   appId: z.number(),
   removeNodeModules: z.boolean().optional(),
+  recreateSandbox: z.boolean().optional(),
+});
+
+export const CloudSandboxStatusSchema = z.object({
+  sandboxId: z.string(),
+  status: z.string(),
+  previewUrl: z.string(),
+  previewAuthToken: z.string(),
+  previewPort: z.number().int(),
+  syncRevision: z.number().int().nonnegative(),
+  initialSyncCompleted: z.boolean(),
+  appStatus: z.enum(["starting", "running", "standby", "failed"]),
+  syncAgentHealthy: z.boolean(),
+  createdAt: z.string(),
+  lastActiveAt: z.string(),
+  lastSuccessfulSyncAt: z.string().nullable(),
+  expiresAt: z.string(),
+  billingState: z.enum([
+    "active",
+    "charging",
+    "terminated",
+    "billing_unavailable",
+  ]),
+  billingStartedAt: z.string(),
+  billingLockedAt: z.string().nullable(),
+  lastChargedAt: z.string().nullable(),
+  nextChargeAt: z.string(),
+  billingSlicesCharged: z.number().int().nonnegative(),
+  creditsCharged: z.number().nonnegative(),
+  terminationReason: z
+    .enum([
+      "manual",
+      "idle_timeout",
+      "credits_exhausted",
+      "billing_unavailable",
+    ])
+    .nullable(),
+  lastErrorCode: z.string().nullable(),
+  lastErrorMessage: z.string().nullable(),
+  localSyncErrorMessage: z.string().nullable().optional(),
+});
+
+export const CreateCloudSandboxShareLinkParamsSchema = z.object({
+  appId: z.number(),
+  expiresInSeconds: z.number().int().positive().optional(),
+});
+
+export const CreateCloudSandboxShareLinkResultSchema = z.object({
+  sandboxId: z.string(),
+  shareLinkId: z.string(),
+  url: z.string(),
+  expiresAt: z.string(),
 });
 
 /**
@@ -286,6 +364,12 @@ export const appContracts = {
     output: z.void(),
   }),
 
+  deleteApps: defineContract({
+    channel: "delete-apps",
+    input: DeleteAppsParamsSchema,
+    output: DeleteAppsResultSchema,
+  }),
+
   copyApp: defineContract({
     channel: "copy-app",
     input: CopyAppParamsSchema,
@@ -314,6 +398,18 @@ export const appContracts = {
     channel: "restart-app",
     input: RestartAppParamsSchema,
     output: z.void(),
+  }),
+
+  getCloudSandboxStatus: defineContract({
+    channel: "get-cloud-sandbox-status",
+    input: AppIdParamsSchema,
+    output: CloudSandboxStatusSchema.nullable(),
+  }),
+
+  createCloudSandboxShareLink: defineContract({
+    channel: "create-cloud-sandbox-share-link",
+    input: CreateCloudSandboxShareLinkParamsSchema,
+    output: CreateCloudSandboxShareLinkResultSchema,
   }),
 
   editAppFile: defineContract({
@@ -391,6 +487,48 @@ export const appContracts = {
     input: z.object({ appId: z.number().nullable() }),
     output: z.void(),
   }),
+
+  getCurrentCommitHash: defineContract({
+    channel: "app:get-current-commit-hash",
+    input: z.object({ appId: z.number() }),
+    output: z.object({ commitHash: z.string().nullable() }),
+  }),
+
+  saveAppScreenshot: defineContract({
+    channel: "app:save-screenshot",
+    input: z.object({
+      appId: z.number(),
+      dataUrl: z.string(),
+      // Commit hash captured at the time the screenshot was requested.
+      // Required to avoid saving the screenshot under a newer HEAD if
+      // another commit lands between capture request and save.
+      commitHash: z.string(),
+    }),
+    output: z.void(),
+  }),
+
+  listAppScreenshots: defineContract({
+    channel: "app:list-screenshots",
+    input: z.object({ appId: z.number() }),
+    output: z.object({
+      screenshots: z.array(
+        z.object({ commitHash: z.string(), url: z.string() }),
+      ),
+    }),
+  }),
+
+  listAppThumbnails: defineContract({
+    channel: "app:list-thumbnails",
+    input: z.object({ appIds: z.array(z.number()) }),
+    output: z.object({
+      thumbnails: z.array(
+        z.object({
+          appId: z.number(),
+          thumbnailUrl: z.string().nullable(),
+        }),
+      ),
+    }),
+  }),
 } as const;
 
 // =============================================================================
@@ -431,3 +569,4 @@ export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema
 >;
+export type CloudSandboxStatus = z.infer<typeof CloudSandboxStatusSchema>;

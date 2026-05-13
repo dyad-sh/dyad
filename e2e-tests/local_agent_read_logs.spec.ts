@@ -1,3 +1,4 @@
+import { expect } from "@playwright/test";
 import { testSkipIfWindows } from "./helpers/test_helper";
 
 /**
@@ -18,5 +19,27 @@ testSkipIfWindows("local-agent - read logs with filters", async ({ po }) => {
   // - Client logs from last minute
   await po.sendPrompt("tc=local-agent/read-logs");
 
-  await po.snapshotMessages();
+  await expect(
+    po.page.getByText(
+      "Let me check the recent console logs to see what's happening in the application.",
+    ),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: /LOGS Reading \d+ logs$/ }),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", {
+      name: /LOGS Reading \d+ logs \(level: error\)/,
+    }),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", {
+      name: /LOGS Reading \d+ logs \(type: client\)/,
+    }),
+  ).toBeVisible();
+  await expect(
+    po.page.getByText(
+      "I've reviewed the console logs. The application appears to be running normally with no critical errors detected.",
+    ),
+  ).toBeVisible();
 });

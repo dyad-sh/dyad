@@ -1,11 +1,11 @@
 ---
 name: dyad:deflake-e2e-recent-commits
-description: Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot/dyadbot/dyad-assistant, then deflake them.
+description: Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/keppo-bot/dyad-assistant, then deflake them.
 ---
 
 # Deflake E2E Tests from Recent Commits
 
-Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot/dyadbot/dyad-assistant, then deflake them.
+Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/keppo-bot/dyad-assistant, then deflake them.
 
 ## Arguments
 
@@ -49,16 +49,15 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 
    **Note:** Some runs may not have an html-report artifact (e.g., if they were cancelled early, the merge-reports job didn't complete, or artifacts have expired past the 3-day retention period). Skip these runs and continue to the next one.
 
-2. **Gather flaky tests from recent PRs by wwwillchen, wwwillchen-bot, dyadbot, and dyad-assistant:**
+2. **Gather flaky tests from recent PRs by wwwillchen, keppo-bot, and dyad-assistant:**
 
-In addition to main branch CI runs, scan recent open PRs authored by `wwwillchen`, `wwwillchen-bot`, `dyadbot`, or `dyad-assistant` for flaky tests reported in Playwright report comments.
+In addition to main branch CI runs, scan recent open PRs authored by `wwwillchen`, `keppo-bot`, or `dyad-assistant` for flaky tests reported in Playwright report comments.
 
 a. List recent open PRs by these authors:
 
 ```
 gh pr list --author wwwillchen --state open --limit 10 --json number,title
-gh pr list --author wwwillchen-bot --state open --limit 10 --json number,title
-gh pr list --author dyadbot --state open --limit 10 --json number,title
+gh pr list --author keppo-bot --state open --limit 10 --json number,title
 gh pr list --author dyad-assistant --state open --limit 10 --json number,title
 ```
 
@@ -151,7 +150,7 @@ d. Add these flaky tests to the overall collection, noting they came from PR #N 
    Report:
    - Total flaky tests found across main branch commits and PRs
 
-- Sources of flaky tests (main branch CI runs vs. PR comments from wwwillchen/wwwillchen-bot/dyadbot/dyad-assistant)
+- Sources of flaky tests (main branch CI runs vs. PR comments from wwwillchen/keppo-bot/dyad-assistant)
   - Which tests were successfully deflaked
   - What fixes were applied to each
   - Which tests could not be fixed (and why)

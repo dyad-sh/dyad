@@ -1,5 +1,38 @@
-import { parseEnvFile, serializeEnvFile } from "@/ipc/utils/app_env_var_utils";
-import { describe, it, expect } from "vitest";
+import fs from "fs";
+import {
+  parseEnvFile,
+  removeNeonEnvVars,
+  serializeEnvFile,
+  updateNeonEnvVars,
+} from "@/ipc/utils/app_env_var_utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("fs", () => ({
+  default: {
+    promises: {
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+    },
+  },
+}));
+
+vi.mock("@/paths/paths", () => ({
+  getDyadAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
+}));
+
+function createEnoentError() {
+  return Object.assign(new Error("File not found"), {
+    code: "ENOENT",
+  });
+}
+
+function getWrittenEnvVars() {
+  const writeCall = vi.mocked(fs.promises.writeFile).mock.calls.at(-1);
+  if (!writeCall) {
+    throw new Error("No env file was written");
+  }
+  return parseEnvFile(String(writeCall[1]));
+}
 
 describe("parseEnvFile", () => {
   it("should parse basic key=value pairs", () => {
@@ -530,5 +563,181 @@ describe("parseEnvFile and serializeEnvFile integration", () => {
     const parsed = parseEnvFile(serialized);
 
     expect(parsed).toEqual(originalEnvVars);
+  });
+});
+
+describe("Neon env var helpers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("updateNeonEnvVars", () => {
+    it("writes initial Neon env vars when the env file does not exist", async () => {
+      vi.mocked(fs.promises.readFile).mockRejectedValueOnce(
+        createEnoentError(),
+      );
+
+      await updateNeonEnvVars({
+        appPath: "my-app",
+        connectionUri: "postgresql://test:test@test-development.neon.tech/test",
+        neonAuthBaseUrl:
+          "https://test-development.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+      });
+
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/mock/apps/my-app/.env.local",
+        expect.any(String),
+      );
+
+      const envVars = getWrittenEnvVars();
+      expect(envVars).toEqual(
+        expect.arrayContaining([
+          {
+            key: "DATABASE_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "POSTGRES_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "NEON_AUTH_BASE_URL",
+            value:
+              "https://test-development.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+          },
+        ]),
+      );
+      expect(
+        envVars.find((envVar) => envVar.key === "NEON_AUTH_COOKIE_SECRET")
+          ?.value,
+      ).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("updates Neon env vars in place and preserves unrelated env vars", async () => {
+      const existingSecret = "a".repeat(64);
+      vi.mocked(fs.promises.readFile).mockResolvedValueOnce(`KEEP_ME=value
+DATABASE_URL=postgresql://old.neon.tech/test
+POSTGRES_URL=postgresql://old.neon.tech/test
+NEON_AUTH_BASE_URL=https://old.neonauth.us-east-2.aws.neon.tech/neondb/auth
+NEON_AUTH_COOKIE_SECRET=${existingSecret}`);
+
+      await updateNeonEnvVars({
+        appPath: "my-app",
+        connectionUri: "postgresql://test:test@test-development.neon.tech/test",
+        neonAuthBaseUrl:
+          "https://old.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+      });
+
+      const envVars = getWrittenEnvVars();
+      expect(envVars).toEqual(
+        expect.arrayContaining([
+          { key: "KEEP_ME", value: "value" },
+          {
+            key: "DATABASE_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "POSTGRES_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "NEON_AUTH_COOKIE_SECRET",
+            value: existingSecret,
+          },
+        ]),
+      );
+    });
+
+    it("rotates the cookie secret when the Neon auth base URL changes", async () => {
+      const existingSecret = "b".repeat(64);
+      vi.mocked(fs.promises.readFile)
+        .mockResolvedValueOnce(`DATABASE_URL=postgresql://test:test@test-development.neon.tech/test
+POSTGRES_URL=postgresql://test:test@test-development.neon.tech/test
+NEON_AUTH_BASE_URL=https://test-development.neonauth.us-east-2.aws.neon.tech/neondb/auth
+NEON_AUTH_COOKIE_SECRET=${existingSecret}`);
+
+      await updateNeonEnvVars({
+        appPath: "my-app",
+        connectionUri: "postgresql://test:test@test-preview.neon.tech/test",
+        neonAuthBaseUrl:
+          "https://test-preview.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+      });
+
+      const envVars = getWrittenEnvVars();
+      expect(
+        envVars.find((envVar) => envVar.key === "NEON_AUTH_BASE_URL")?.value,
+      ).toBe(
+        "https://test-preview.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+      );
+      expect(
+        envVars.find((envVar) => envVar.key === "NEON_AUTH_COOKIE_SECRET")
+          ?.value,
+      ).toMatch(/^[a-f0-9]{64}$/);
+      expect(
+        envVars.find((envVar) => envVar.key === "NEON_AUTH_COOKIE_SECRET")
+          ?.value,
+      ).not.toBe(existingSecret);
+    });
+
+    it("preserves existing Neon auth vars when auth activation fails transiently", async () => {
+      const existingSecret = "c".repeat(64);
+      vi.mocked(fs.promises.readFile).mockResolvedValueOnce(`KEEP_ME=value
+DATABASE_URL=postgresql://old.neon.tech/test
+POSTGRES_URL=postgresql://old.neon.tech/test
+NEON_AUTH_BASE_URL=https://old.neonauth.us-east-2.aws.neon.tech/neondb/auth
+NEON_AUTH_COOKIE_SECRET=${existingSecret}`);
+
+      await updateNeonEnvVars({
+        appPath: "my-app",
+        connectionUri: "postgresql://test:test@test-development.neon.tech/test",
+        preserveExistingAuth: true,
+      });
+
+      const envVars = getWrittenEnvVars();
+      expect(envVars).toEqual(
+        expect.arrayContaining([
+          { key: "KEEP_ME", value: "value" },
+          {
+            key: "DATABASE_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "POSTGRES_URL",
+            value: "postgresql://test:test@test-development.neon.tech/test",
+          },
+          {
+            key: "NEON_AUTH_BASE_URL",
+            value: "https://old.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+          },
+          {
+            key: "NEON_AUTH_COOKIE_SECRET",
+            value: existingSecret,
+          },
+        ]),
+      );
+    });
+  });
+
+  describe("removeNeonEnvVars", () => {
+    it("removes Neon-owned env vars while preserving unrelated values", async () => {
+      vi.mocked(fs.promises.readFile).mockResolvedValueOnce(`KEEP_ME=value
+DATABASE_URL=postgres://localhost:5432/mydb
+POSTGRES_URL=postgresql://test:test@test-preview.neon.tech/test
+NEON_AUTH_BASE_URL=https://test-preview.neonauth.us-east-2.aws.neon.tech/neondb/auth
+NEON_AUTH_COOKIE_SECRET=${"c".repeat(64)}`);
+
+      await removeNeonEnvVars({ appPath: "my-app" });
+
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/mock/apps/my-app/.env.local",
+        expect.any(String),
+      );
+
+      const envVars = getWrittenEnvVars();
+      expect(envVars).toEqual([
+        { key: "KEEP_ME", value: "value" },
+        { key: "DATABASE_URL", value: "postgres://localhost:5432/mydb" },
+      ]);
+    });
   });
 });

@@ -88,9 +88,13 @@ function deepHello() {
       event: {} as any,
       appId: 1,
       appPath: testDir,
+      referencedApps: new Map(),
       chatId: 1,
       supabaseProjectId: null,
       supabaseOrganizationSlug: null,
+      neonProjectId: null,
+      neonActiveBranchId: null,
+      frameworkType: null,
       messageId: 1,
       isSharedModulesChanged: false,
       isProteaAIPro: false,
@@ -286,6 +290,63 @@ function deepHello() {
       expect(result).toContain("test1.ts");
       expect(result).not.toContain("node_modules");
     });
+
+    it("searches node_modules when include_ignored is true", async () => {
+      const nodeModulesDir = path.join(testDir, "node_modules", "some-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(nodeModulesDir, "index.js"),
+        `function dependencyHello() { return "hello from node_modules"; }`,
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "dependencyHello",
+          include_ignored: true,
+          include_pattern: "node_modules/some-pkg/**",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("node_modules/some-pkg/index.js");
+      expect(result).toContain("dependencyHello");
+    });
+
+    it("searches hidden ignored files when include_ignored is true", async () => {
+      const dyadDir = path.join(testDir, ".dyad");
+      await fs.promises.mkdir(dyadDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(dyadDir, "backup.txt"),
+        "hiddenIgnoredNeedle",
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "hiddenIgnoredNeedle",
+          include_ignored: true,
+          include_pattern: ".dyad/**",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain(".dyad/backup.txt");
+    });
+
+    it("keeps .git excluded when include_ignored is true", async () => {
+      const gitDir = path.join(testDir, ".git");
+      await fs.promises.mkdir(gitDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(gitDir, "config"),
+        "gitIgnoredNeedle",
+      );
+
+      const result = await grepTool.execute(
+        { query: "gitIgnoredNeedle", include_ignored: true },
+        mockContext,
+      );
+
+      expect(result).toBe("No matches found.");
+    });
   });
 
   describe("execute - regex patterns", () => {
@@ -353,6 +414,35 @@ function deepHello() {
       expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
         expect.stringContaining('total="'),
       );
+    });
+
+    it("stops ignored searches after collecting enough matches", async () => {
+      const nodeModulesDir = path.join(testDir, "node_modules", "many-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await Promise.all(
+        Array.from({ length: 20 }, (_, index) =>
+          fs.promises.writeFile(
+            path.join(nodeModulesDir, `file-${index}.js`),
+            "ignoredSearchNeedle\n",
+          ),
+        ),
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "ignoredSearchNeedle",
+          include_ignored: true,
+          include_pattern: "node_modules/many-pkg/**",
+          limit: 3,
+        },
+        mockContext,
+      );
+
+      const matchLines = result
+        .split("\n")
+        .filter((line) => line.match(/:\d+:/));
+      expect(matchLines).toHaveLength(3);
+      expect(result).toContain("[TRUNCATED: Showing 3 of at least 4 matches.");
     });
   });
 
@@ -457,6 +547,14 @@ function deepHello() {
       expect(result).toContain('exclude="*.md"');
     });
 
+    it("includes include_ignored in attributes", () => {
+      const result = grepTool.buildXml?.(
+        { query: "test", include_ignored: true },
+        false,
+      );
+      expect(result).toContain('include_ignored="true"');
+    });
+
     it("includes case-sensitive in attributes when true", () => {
       const result = grepTool.buildXml?.(
         { query: "test", case_sensitive: true },
@@ -478,6 +576,78 @@ function deepHello() {
         include_pattern: "*.ts",
       });
       expect(preview).toBe('Search for "hello" in *.ts');
+    });
+
+    it("includes include_ignored in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "hello",
+        include_ignored: true,
+      });
+      expect(preview).toBe('Search for "hello" including ignored files');
+    });
+
+    it("includes app_name in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "hello",
+        app_name: "other-app",
+      });
+      expect(preview).toBe('Search for "hello" (app: other-app)');
+    });
+  });
+
+  describe("app_name (referenced apps)", () => {
+    let otherAppDir: string;
+
+    beforeEach(async () => {
+      otherAppDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "grep-other-app-"),
+      );
+      await fs.promises.writeFile(
+        path.join(otherAppDir, "only-in-other.ts"),
+        `const onlyInOther = "unique-other-app-token";`,
+      );
+    });
+
+    afterEach(async () => {
+      await fs.promises.rm(otherAppDir, { recursive: true, force: true });
+    });
+
+    it("searches the referenced app when app_name is provided", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      const result = await grepTool.execute(
+        { query: "unique-other-app-token", app_name: "other-app" },
+        mockContext,
+      );
+      expect(result).toContain("only-in-other.ts");
+      expect(result).toContain("unique-other-app-token");
+    });
+
+    it("does not see current-app matches when app_name targets another app", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      const result = await grepTool.execute(
+        { query: "goodbye", app_name: "other-app" },
+        mockContext,
+      );
+      expect(result).toBe("No matches found.");
+    });
+
+    it("throws on unknown app_name", async () => {
+      await expect(
+        grepTool.execute(
+          { query: "hello", app_name: "does-not-exist" },
+          mockContext,
+        ),
+      ).rejects.toThrow(/Unknown app_name 'does-not-exist'/);
+    });
+
+    it("includes app_name in the final XML output", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      await grepTool.execute(
+        { query: "unique-other-app-token", app_name: "other-app" },
+        mockContext,
+      );
+      const xmlCall = (mockContext.onXmlComplete as any).mock.calls[0]?.[0];
+      expect(xmlCall).toContain('app_name="other-app"');
     });
   });
 });

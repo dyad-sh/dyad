@@ -14,7 +14,7 @@ const app = _electron?.app as typeof import("electron")["app"];
 const dialog = _electron?.dialog as typeof import("electron")["dialog"];
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
-import { desc, eq, like } from "drizzle-orm";
+import { desc, eq, inArray, like } from "drizzle-orm";
 import { createTypedHandler, isWebMode, webHandlerRegistry } from "./base";
 import { appContracts } from "../types/app";
 import type { AppFileSearchResult } from "../types/app";
@@ -22,7 +22,15 @@ import { miscContracts } from "../types/misc";
 import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
-import { getProteaAIAppPath, getUserDataPath } from "../../paths/paths";
+import {
+  getProteaAIAppPath,
+  getDyadAppPath,
+  getDefaultDyadAppsDirectory,
+  isAppLocationAccessible,
+  getUserDataPath,
+  getDyadAppsBaseDirectory,
+  invalidateDyadAppsBaseDirectoryCache,
+} from "../../paths/paths";
 import { getCurrentUser } from "../../ipc/context/user-context";
 import { ChildProcess, spawn } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
@@ -43,6 +51,38 @@ import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 import { readCurrentUserSettings } from "../../main/web-settings";
 import { addLog, clearLogs } from "../../lib/log_store";
+import {
+  DYAD_SCREENSHOT_DIR_NAME,
+  MAX_SCREENSHOTS_PER_APP,
+  SCREENSHOT_FILENAME_REGEX,
+} from "../utils/media_path_utils";
+
+/**
+ * Read screenshot entries for a single app directory, filtered by filename
+ * pattern and stat'd for mtime. Swallows per-file errors (races with prune).
+ */
+async function readScreenshotEntries(
+  screenshotDir: string,
+): Promise<{ name: string; mtimeMs: number }[]> {
+  let entries: string[];
+  try {
+    entries = await fsPromises.readdir(screenshotDir);
+  } catch {
+    return [];
+  }
+  const results: { name: string; mtimeMs: number }[] = [];
+  for (const entry of entries) {
+    if (!SCREENSHOT_FILENAME_REGEX.test(entry)) continue;
+    try {
+      const stat = await fsPromises.stat(path.join(screenshotDir, entry));
+      results.push({ name: entry, mtimeMs: stat.mtimeMs });
+    } catch {
+      // File disappeared between readdir and stat — skip.
+    }
+  }
+  results.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return results;
+}
 
 import fixPath from "fix-path";
 
@@ -56,15 +96,33 @@ import {
 import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
+import {
+  buildCloudSandboxFileMap,
+  CloudSandboxApiError,
+  createCloudSandboxShareLink,
+  createCloudSandbox,
+  destroyCloudSandbox,
+  getCloudSandboxStatus,
+  queueCloudSandboxSnapshotSync,
+  reconcileCloudSandboxes,
+  registerRunningCloudSandbox,
+  restartCloudSandbox,
+  setCloudSandboxSyncUpdateListener,
+  streamCloudSandboxLogs,
+  uploadCloudSandboxFiles,
+} from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
+import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 import {
   gitCommit,
   gitAdd,
   gitInit,
   gitListBranches,
   gitRenameBranch,
+  getCurrentCommitHash,
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
+import type { AppOutput } from "../types/misc";
 import { normalizePath } from "../../../shared/normalizePath";
 import {
   isServerFunction,
@@ -74,7 +132,7 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { AppSearchResult } from "@/lib/schemas";
+import type { AppSearchResult, RuntimeMode2 } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -82,9 +140,42 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { detectFrameworkType } from "../utils/framework_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
+
+function formatCloudSandboxError(error: unknown) {
+  if (!(error instanceof CloudSandboxApiError)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  switch (error.code) {
+    case "sandbox_pro_required":
+      return "Dyad Pro is required to use cloud sandboxes.";
+    case "sandbox_insufficient_credits":
+      return "You need at least 1 credit available to start a cloud sandbox.";
+    case "sandbox_billing_unavailable":
+      return "Dyad couldn’t verify sandbox billing right now. Please try again.";
+    case "sandbox_credits_exhausted":
+      return "This cloud sandbox stopped because your credits ran out.";
+    default:
+      if (error.status === 404) {
+        return "This cloud sandbox is no longer available.";
+      }
+      if (error.status === 401 || error.status === 403) {
+        return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
+      }
+      if (error.status === 429) {
+        return "Dyad is rate limiting cloud sandbox requests right now. Please try again.";
+      }
+      if (typeof error.status === "number" && error.status >= 500) {
+        return "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.";
+      }
+      return error.message;
+  }
+}
 
 function sanitizeSnippetText(text: string) {
   return text.replace(/\s+/g, " ").trim();
@@ -197,6 +288,14 @@ async function executeApp({
       installCommand,
       startCommand,
     });
+  } else if (runtimeMode === "cloud") {
+    await executeAppInCloud({
+      appPath,
+      appId,
+      event,
+      installCommand,
+      startCommand,
+    });
   } else {
     await executeAppLocalNode({
       appPath,
@@ -206,6 +305,100 @@ async function executeApp({
       installCommand,
       startCommand,
     });
+  }
+}
+
+function emitProxyServerStarted({
+  appId,
+  event,
+  proxyUrl,
+  originalUrl,
+  mode,
+}: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  proxyUrl: string;
+  originalUrl: string;
+  mode: RuntimeMode2;
+}) {
+  safeSend(event.sender, "app:output", {
+    type: "stdout",
+    message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}] mode=[${mode}]`,
+    appId,
+  });
+}
+
+async function ensureProxyForRunningApp({
+  appId,
+  event,
+  originalUrl,
+  mode,
+}: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  originalUrl: string;
+  mode: RuntimeMode2;
+}): Promise<void> {
+  const appInfo = runningApps.get(appId);
+  if (!appInfo) {
+    return;
+  }
+
+  const proxyAuthToken =
+    mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;
+
+  if (
+    appInfo.proxyWorker &&
+    appInfo.originalUrl === originalUrl &&
+    appInfo.proxyAuthToken === proxyAuthToken &&
+    appInfo.proxyUrl
+  ) {
+    emitProxyServerStarted({
+      appId,
+      event,
+      proxyUrl: appInfo.proxyUrl,
+      originalUrl,
+      mode,
+    });
+    return;
+  }
+
+  if (appInfo.proxyWorker) {
+    await appInfo.proxyWorker.terminate();
+    appInfo.proxyWorker = undefined;
+  }
+
+  const proxyWorker = await startProxy(originalUrl, {
+    onStarted: (proxyUrl) => {
+      const latestAppInfo = runningApps.get(appId);
+      if (latestAppInfo) {
+        latestAppInfo.proxyUrl = proxyUrl;
+        latestAppInfo.originalUrl = originalUrl;
+        latestAppInfo.proxyAuthToken = proxyAuthToken;
+      }
+      emitProxyServerStarted({
+        appId,
+        event,
+        proxyUrl,
+        originalUrl,
+        mode,
+      });
+    },
+    fixedHeaders:
+      mode === "cloud" && proxyAuthToken
+        ? {
+            Authorization: `Bearer ${proxyAuthToken}`,
+          }
+        : undefined,
+  });
+
+  const latestAppInfo = runningApps.get(appId);
+  if (latestAppInfo) {
+    latestAppInfo.proxyWorker = proxyWorker;
+    latestAppInfo.originalUrl = originalUrl;
+    latestAppInfo.proxyAuthToken = proxyAuthToken;
+  } else {
+    await proxyWorker.terminate();
   }
 }
 
@@ -281,7 +474,8 @@ Details: ${details || "n/a"}
   runningApps.set(appId, {
     process: spawnedProcess,
     processId: currentProcessId,
-    isDocker: false,
+    mode: "host",
+    rendererSender: event.sender,
     lastViewedAt: Date.now(),
   });
 
@@ -291,6 +485,110 @@ Details: ${details || "n/a"}
     isNeon,
     event,
   });
+}
+
+// =============================================================================
+// App Output Batcher
+// =============================================================================
+// Batches stdout/stderr IPC messages to avoid flooding the renderer when apps
+// emit high-volume logs. Messages are buffered and flushed every 100ms.
+
+const APP_OUTPUT_FLUSH_INTERVAL_MS = 100;
+
+const pendingOutputs = new Map<Electron.WebContents, AppOutput[]>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function enqueueAppOutput(
+  sender: Electron.WebContents,
+  output: AppOutput,
+): void {
+  let queue = pendingOutputs.get(sender);
+  if (!queue) {
+    queue = [];
+    pendingOutputs.set(sender, queue);
+  }
+  queue.push(output);
+
+  if (!flushTimer) {
+    flushTimer = setTimeout(flushAllAppOutputs, APP_OUTPUT_FLUSH_INTERVAL_MS);
+  }
+}
+
+function flushAllAppOutputs(): void {
+  flushTimer = null;
+  for (const [sender, outputs] of pendingOutputs) {
+    if (outputs.length > 0) {
+      safeSend(sender, "app:output-batch", outputs);
+    }
+  }
+  pendingOutputs.clear();
+}
+
+let cloudSandboxSyncUpdateListenerRegistered = false;
+
+function registerCloudSandboxSyncUpdateListener(): void {
+  if (cloudSandboxSyncUpdateListenerRegistered) {
+    return;
+  }
+
+  setCloudSandboxSyncUpdateListener(({ appId, errorMessage }) => {
+    const appInfo = runningApps.get(appId);
+    if (!appInfo || appInfo.mode !== "cloud") {
+      return;
+    }
+
+    const previousErrorMessage = appInfo.cloudSyncErrorMessage ?? null;
+    appInfo.cloudSyncErrorMessage = errorMessage ?? undefined;
+
+    const sender = appInfo.rendererSender;
+    if (!sender) {
+      return;
+    }
+
+    if (errorMessage) {
+      if (previousErrorMessage === errorMessage) {
+        return;
+      }
+
+      addLog({
+        level: "error",
+        type: "server",
+        message: errorMessage,
+        timestamp: Date.now(),
+        appId,
+      });
+
+      safeSend(sender, "app:output", {
+        type: "sync-error",
+        message: errorMessage,
+        appId,
+      });
+      return;
+    }
+
+    if (!previousErrorMessage) {
+      return;
+    }
+
+    const recoveredMessage =
+      "Cloud sandbox sync recovered. Local changes are uploading again.";
+
+    addLog({
+      level: "info",
+      type: "server",
+      message: recoveredMessage,
+      timestamp: Date.now(),
+      appId,
+    });
+
+    safeSend(sender, "app:output", {
+      type: "sync-recovered",
+      message: recoveredMessage,
+      appId,
+    });
+  });
+
+  cloudSandboxSyncUpdateListenerRegistered = true;
 }
 
 function listenToProcess({
@@ -337,15 +635,15 @@ function listenToProcess({
     const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
     const isInputRequest = inputRequestPattern.test(message);
     if (isInputRequest) {
-      // Send special input-requested event for interactive prompts
+      // Send input-requested immediately (not batched) for responsive UX
       safeSend(event.sender, "app:output", {
         type: "input-requested",
         message,
         appId,
       });
     } else {
-      // Normal stdout handling
-      safeSend(event.sender, "app:output", {
+      // Batch normal stdout for efficient IPC
+      enqueueAppOutput(event.sender, {
         type: "stdout",
         message,
         appId,
@@ -354,53 +652,12 @@ function listenToProcess({
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
         const originalUrl = urlMatch[1];
-        const appInfo = runningApps.get(appId);
-        if (!appInfo) {
-          return;
-        }
-
-        // Reuse the existing proxy worker for this app if it already targets this URL.
-        if (
-          appInfo.proxyWorker &&
-          appInfo.originalUrl === originalUrl &&
-          appInfo.proxyUrl
-        ) {
-          safeSend(event.sender, "app:output", {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${originalUrl}]`,
-            appId,
-          });
-          return;
-        }
-
-        if (appInfo.proxyWorker) {
-          await appInfo.proxyWorker.terminate();
-          appInfo.proxyWorker = undefined;
-        }
-
-        const proxyWorker = await startProxy(originalUrl, {
-          onStarted: (proxyUrl) => {
-            // Store proxy URL in running app info for re-emission on app switch
-            const latestAppInfo = runningApps.get(appId);
-            if (latestAppInfo) {
-              latestAppInfo.proxyUrl = proxyUrl;
-              latestAppInfo.originalUrl = originalUrl;
-            }
-            safeSend(event.sender, "app:output", {
-              type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}]`,
-              appId,
-            });
-          },
+        await ensureProxyForRunningApp({
+          appId,
+          event,
+          originalUrl,
+          mode: "host",
         });
-
-        const latestAppInfo = runningApps.get(appId);
-        if (latestAppInfo) {
-          latestAppInfo.proxyWorker = proxyWorker;
-          latestAppInfo.originalUrl = originalUrl;
-        } else {
-          await proxyWorker.terminate();
-        }
       }
     }
   });
@@ -420,7 +677,7 @@ function listenToProcess({
       appId,
     });
 
-    safeSend(event.sender, "app:output", {
+    enqueueAppOutput(event.sender, {
       type: "stderr",
       message,
       appId,
@@ -432,6 +689,8 @@ function listenToProcess({
     logger.log(
       `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
     );
+    // Flush any remaining batched output before signaling process exit
+    flushAllAppOutputs();
     removeAppIfCurrentProcess(appId, spawnedProcess);
   });
 
@@ -518,7 +777,10 @@ RUN npm install -g pnpm
       await fsPromises.writeFile(dockerfilePath, dockerfileContent, "utf-8");
     } catch (error) {
       logger.error(`Failed to create Dockerfile for app ${appId}:`, error);
-      throw new Error(`Failed to create Dockerfile: ${error}`);
+      throw new DyadError(
+        `Failed to create Dockerfile: ${error}`,
+        DyadErrorKind.External,
+      );
     }
   }
 
@@ -625,7 +887,8 @@ ${errorOutput || "(empty)"}`,
   runningApps.set(appId, {
     process,
     processId: currentProcessId,
-    isDocker: true,
+    mode: "docker",
+    rendererSender: event.sender,
     containerName,
     lastViewedAt: Date.now(),
   });
@@ -636,6 +899,157 @@ ${errorOutput || "(empty)"}`,
     isNeon,
     event,
   });
+}
+
+async function executeAppInCloud({
+  appPath,
+  appId,
+  event,
+  installCommand,
+  startCommand,
+}: {
+  appPath: string;
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  installCommand?: string | null;
+  startCommand?: string | null;
+}): Promise<void> {
+  const currentProcessId = processCounter.increment();
+  let sandboxId: string | undefined;
+  let previewUrl: string | undefined;
+  let previewAuthToken: string | undefined;
+
+  try {
+    const createResult = await createCloudSandbox({
+      appId,
+      appPath,
+      installCommand,
+      startCommand,
+    });
+    sandboxId = createResult.sandboxId;
+    previewUrl = createResult.previewUrl;
+    previewAuthToken = createResult.previewAuthToken;
+
+    const files = await buildCloudSandboxFileMap(appPath);
+    const uploadResult = await uploadCloudSandboxFiles({
+      sandboxId,
+      files,
+      replaceAll: true,
+    });
+    previewUrl = uploadResult.previewUrl ?? previewUrl;
+    previewAuthToken = uploadResult.previewAuthToken ?? previewAuthToken;
+  } catch (error) {
+    if (sandboxId) {
+      try {
+        await destroyCloudSandbox(sandboxId);
+      } catch (cleanupError) {
+        logger.warn(
+          `Failed to clean up cloud sandbox ${sandboxId} after startup error for app ${appId}:`,
+          cleanupError,
+        );
+      }
+    }
+    throw new Error(formatCloudSandboxError(error));
+  }
+
+  const resolvedPreviewUrl = previewUrl;
+  const resolvedPreviewAuthToken = previewAuthToken;
+  if (!sandboxId || !resolvedPreviewUrl || !resolvedPreviewAuthToken) {
+    throw new Error(
+      "Cloud sandbox startup returned incomplete preview credentials.",
+    );
+  }
+
+  const cloudLogAbortController = new AbortController();
+  runningApps.set(appId, {
+    process: null,
+    processId: currentProcessId,
+    mode: "cloud",
+    rendererSender: event.sender,
+    cloudSandboxId: sandboxId,
+    cloudPreviewUrl: resolvedPreviewUrl,
+    cloudPreviewAuthToken: resolvedPreviewAuthToken,
+    cloudLogAbortController,
+    lastViewedAt: Date.now(),
+    originalUrl: resolvedPreviewUrl,
+  });
+  registerRunningCloudSandbox({
+    appId,
+    appPath,
+    sandboxId,
+  });
+
+  await ensureProxyForRunningApp({
+    appId,
+    event,
+    originalUrl: resolvedPreviewUrl,
+    mode: "cloud",
+  });
+
+  startCloudSandboxLogStream({
+    appId,
+    event,
+    sandboxId,
+    cloudLogAbortController,
+  });
+}
+
+function startCloudSandboxLogStream(input: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  sandboxId: string;
+  cloudLogAbortController: AbortController;
+}) {
+  void (async () => {
+    try {
+      for await (const message of streamCloudSandboxLogs(
+        input.sandboxId,
+        input.cloudLogAbortController.signal,
+      )) {
+        const appInfo = runningApps.get(input.appId);
+        if (!appInfo || appInfo.cloudSandboxId !== input.sandboxId) {
+          return;
+        }
+
+        addLog({
+          level: "info",
+          type: "server",
+          message,
+          timestamp: Date.now(),
+          appId: input.appId,
+        });
+
+        safeSend(input.event.sender, "app:output", {
+          type: "stdout",
+          message,
+          appId: input.appId,
+        });
+      }
+    } catch (error) {
+      if (input.cloudLogAbortController.signal.aborted) {
+        return;
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Cloud sandbox log stream failed: ${String(error)}`;
+
+      addLog({
+        level: "error",
+        type: "server",
+        message,
+        timestamp: Date.now(),
+        appId: input.appId,
+      });
+
+      safeSend(input.event.sender, "app:output", {
+        type: "stderr",
+        message,
+        appId: input.appId,
+      });
+    }
+  })();
 }
 
 // Helper to kill process on a specific port (cross-platform, using kill-port)
@@ -822,7 +1236,64 @@ async function requireApp(appId: number) {
   return app;
 }
 
+async function deleteAppById(appId: number): Promise<void> {
+  return withLock(appId, async () => {
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    if (runningApps.has(appId)) {
+      const appInfo = runningApps.get(appId)!;
+      try {
+        logger.log(`Stopping app ${appId} before deletion.`);
+        await stopAppByInfo(appId, appInfo);
+      } catch (error: any) {
+        logger.error(`Error stopping app ${appId} before deletion:`, error);
+        // Continue with deletion even if stopping fails
+      }
+    }
+
+    // Clear logs for this app to prevent memory leak
+    clearLogs(appId);
+
+    try {
+      await db.delete(apps).where(eq(apps.id, appId));
+      // Note: Associated chats will cascade delete
+    } catch (error: any) {
+      logger.error(`Error deleting app ${appId} from database:`, error);
+      throw new DyadError(
+        `Failed to delete app from database: ${error.message}`,
+        DyadErrorKind.External,
+      );
+    }
+
+    const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
+    try {
+      // Use built-in retries because a dev server we just killed may still be
+      // flushing writes to `.next/` or node_modules for a brief window — that
+      // races with rm and surfaces as ENOTEMPTY/EBUSY without retries.
+      await fsPromises.rm(appPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      });
+    } catch (error: any) {
+      logger.error(`Error deleting app files for app ${appId}:`, error);
+      throw new Error(
+        `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+      );
+    }
+  });
+}
+
 export function registerAppHandlers() {
+  registerCloudSandboxSyncUpdateListener();
+
   createTypedHandler(systemContracts.restartProteaAI, async () => {
     app.relaunch();
     app.quit();
@@ -833,8 +1304,19 @@ export function registerAppHandlers() {
     const currentUser = getCurrentUser();
     const userIdValue = currentUser?.userId ?? null;
     const fullAppPath = getProteaAIAppPath(appPath, userIdValue ?? undefined);
+
+    if (!isAppLocationAccessible(fullAppPath)) {
+      throw new Error(
+        `The path ${fullAppPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
+
     if (fs.existsSync(fullAppPath)) {
-      throw new Error(`App already exists at: ${fullAppPath}`);
+      throw new DyadError(
+        `App already exists at: ${fullAppPath}`,
+        DyadErrorKind.Conflict,
+      );
     }
     // Create a new app
     const [app] = await db
@@ -847,11 +1329,16 @@ export function registerAppHandlers() {
       })
       .returning();
 
+    const initialChatMode = await getInitialChatModeForNewChat(
+      params.initialChatMode,
+    );
+
     // Create an initial chat for this app
     const [chat] = await db
       .insert(chats)
       .values({
         appId: app.id,
+        chatMode: initialChatMode,
       })
       .returning();
 
@@ -895,7 +1382,10 @@ export function registerAppHandlers() {
     });
 
     if (existingApp) {
-      throw new Error(`An app named "${newAppName}" already exists.`);
+      throw new DyadError(
+        `An app named "${newAppName}" already exists.`,
+        DyadErrorKind.Conflict,
+      );
     }
 
     // 2. Find the original app
@@ -905,6 +1395,12 @@ export function registerAppHandlers() {
     const userIdValue = currentUser?.userId ?? null;
     const originalAppPath = getProteaAIAppPath(originalApp.path, originalApp.userId ?? undefined);
     const newAppPath = getProteaAIAppPath(newAppName, userIdValue ?? undefined);
+
+    if (!isAppLocationAccessible(newAppPath)) {
+      throw new Error(
+        `The path ${newAppPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
 
     // 3. Copy the app folder
     try {
@@ -921,7 +1417,10 @@ export function registerAppHandlers() {
       );
     } catch (error) {
       logger.error("Failed to copy app directory:", error);
-      throw new Error("Failed to copy app directory.");
+      throw new DyadError(
+        "Failed to copy app directory.",
+        DyadErrorKind.External,
+      );
     }
 
     if (!withHistory) {
@@ -999,6 +1498,7 @@ export function registerAppHandlers() {
     return {
       ...app,
       files,
+      frameworkType: detectFrameworkType(appPath),
       resolvedPath: appPath,
       supabaseProjectName,
       vercelTeamSlug,
@@ -1028,11 +1528,11 @@ export function registerAppHandlers() {
 
     // Check if the path is within the app directory (security check)
     if (!fullPath.startsWith(appPath)) {
-      throw new Error("Invalid file path");
+      throw new DyadError("Invalid file path", DyadErrorKind.Validation);
     }
 
     if (!fs.existsSync(fullPath)) {
-      throw new Error("File not found");
+      throw new DyadError("File not found", DyadErrorKind.NotFound);
     }
 
     try {
@@ -1040,7 +1540,7 @@ export function registerAppHandlers() {
       return contents;
     } catch (error) {
       logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
-      throw new Error("Failed to read file");
+      throw new DyadError("Failed to read file", DyadErrorKind.External);
     }
   });
 
@@ -1070,10 +1570,12 @@ export function registerAppHandlers() {
         // Re-emit the proxy URL so the frontend can restore the preview
         const appInfo = runningApps.get(appId);
         if (appInfo?.proxyUrl && appInfo?.originalUrl) {
-          safeSend(event.sender, "app:output", {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${appInfo.originalUrl}]`,
+          emitProxyServerStarted({
             appId,
+            event,
+            proxyUrl: appInfo.proxyUrl,
+            originalUrl: appInfo.originalUrl,
+            mode: appInfo.mode,
           });
         }
         return;
@@ -1106,7 +1608,10 @@ export function registerAppHandlers() {
         ) {
           runningApps.delete(appId);
         }
-        throw new Error(`Failed to run app ${appId}: ${error.message}`);
+        throw new DyadError(
+          `Failed to run app ${appId}: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1128,11 +1633,14 @@ export function registerAppHandlers() {
 
       const { process, processId } = appInfo;
       logger.log(
-        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
+        `Found running app ${appId} with processId ${processId}${process?.pid ? ` (PID: ${process.pid})` : ""}. Attempting to stop.`,
       );
 
       // Check if the process is already exited or closed
-      if (process.exitCode !== null || process.signalCode !== null) {
+      if (
+        process &&
+        (process.exitCode !== null || process.signalCode !== null)
+      ) {
         logger.log(
           `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
         );
@@ -1144,28 +1652,157 @@ export function registerAppHandlers() {
         await stopAppByInfo(appId, appInfo);
 
         // Now, safely remove the app from the map *after* confirming closure
-        removeAppIfCurrentProcess(appId, process);
+        if (process) {
+          removeAppIfCurrentProcess(appId, process);
+        }
 
         return;
       } catch (error: any) {
         logger.error(
-          `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
+          `Error stopping app ${appId}${process?.pid ? ` (PID: ${process.pid}, processId: ${processId})` : ` (processId: ${processId})`}:`,
           error,
         );
         // Attempt cleanup even if an error occurred during the stop process
-        removeAppIfCurrentProcess(appId, process);
-        throw new Error(`Failed to stop app ${appId}: ${error.message}`);
+        if (process) {
+          removeAppIfCurrentProcess(appId, process);
+        } else if (appInfo.mode !== "cloud") {
+          runningApps.delete(appId);
+        }
+        throw new DyadError(
+          `Failed to stop app ${appId}: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
 
+  createTypedHandler(
+    appContracts.getCloudSandboxStatus,
+    async (event, params) => {
+      const { appId } = params;
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+        return null;
+      }
+
+      try {
+        const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
+        const previewChanged =
+          appInfo.cloudPreviewUrl !== status.previewUrl ||
+          appInfo.cloudPreviewAuthToken !== status.previewAuthToken;
+        appInfo.cloudPreviewUrl = status.previewUrl;
+        appInfo.cloudPreviewAuthToken = status.previewAuthToken;
+
+        if (previewChanged && appInfo.proxyWorker) {
+          await ensureProxyForRunningApp({
+            appId,
+            event,
+            originalUrl: status.previewUrl,
+            mode: "cloud",
+          });
+        } else {
+          appInfo.originalUrl = status.previewUrl;
+        }
+
+        return {
+          ...status,
+          localSyncErrorMessage: appInfo.cloudSyncErrorMessage ?? null,
+        };
+      } catch (error) {
+        logger.error(
+          `Failed to fetch cloud sandbox status for app ${appId}:`,
+          error,
+        );
+        throw new DyadError(
+          formatCloudSandboxError(error),
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
+
+  createTypedHandler(
+    appContracts.createCloudSandboxShareLink,
+    async (_, params) => {
+      const { appId, expiresInSeconds } = params;
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
+        throw new DyadError(
+          `App ${appId} is not running in cloud mode`,
+          DyadErrorKind.External,
+        );
+      }
+
+      try {
+        return await createCloudSandboxShareLink(appInfo.cloudSandboxId, {
+          expiresInSeconds,
+        });
+      } catch (error) {
+        logger.error(
+          `Failed to create cloud sandbox share link for app ${appId}:`,
+          error,
+        );
+        throw new DyadError(
+          formatCloudSandboxError(error),
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
+
   createTypedHandler(appContracts.restartApp, async (event, params) => {
-    const { appId, removeNodeModules } = params;
+    const { appId, removeNodeModules, recreateSandbox } = params;
     logger.log(`Restarting app ${appId}`);
     return withLock(appId, async () => {
       try {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+
+        if (!app) {
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+
+        const appPath = getDyadAppPath(app.path);
+
         // First stop the app if it's running
         const appInfo = runningApps.get(appId);
+        if (
+          appInfo &&
+          appInfo.mode === "cloud" &&
+          appInfo.cloudSandboxId &&
+          !recreateSandbox
+        ) {
+          logger.log(`Restarting cloud sandbox app ${appId} in place`);
+
+          const restartResult = await restartCloudSandbox(
+            appInfo.cloudSandboxId,
+          );
+          appInfo.cloudPreviewUrl = restartResult.previewUrl;
+          appInfo.cloudPreviewAuthToken = restartResult.previewAuthToken;
+          appInfo.lastViewedAt = Date.now();
+
+          appInfo.cloudLogAbortController?.abort();
+          appInfo.cloudLogAbortController = new AbortController();
+
+          await ensureProxyForRunningApp({
+            appId,
+            event,
+            originalUrl: restartResult.previewUrl,
+            mode: "cloud",
+          });
+
+          startCloudSandboxLogStream({
+            appId,
+            event,
+            sandboxId: appInfo.cloudSandboxId,
+            cloudLogAbortController: appInfo.cloudLogAbortController,
+          });
+          return;
+        }
+
         if (appInfo) {
           const { processId } = appInfo;
           logger.log(
@@ -1237,6 +1874,7 @@ export function registerAppHandlers() {
         return;
       } catch (error) {
         logger.error(`Error restarting app ${appId}:`, error);
+        console.error(error);
         throw error;
       }
     });
@@ -1252,7 +1890,7 @@ export function registerAppHandlers() {
 
     // Check if the path is within the app directory (security check)
     if (!fullPath.startsWith(appPath)) {
-      throw new Error("Invalid file path");
+      throw new DyadError("Invalid file path", DyadErrorKind.Validation);
     }
 
     if (app.neonProjectId && app.neonDevelopmentBranchId) {
@@ -1287,8 +1925,16 @@ export function registerAppHandlers() {
       }
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
-      throw new Error(`Failed to write file: ${error.message}`);
+      throw new DyadError(
+        `Failed to write file: ${error.message}`,
+        DyadErrorKind.External,
+      );
     }
+
+    queueCloudSandboxSnapshotSync({
+      appId,
+      changedPaths: [filePath],
+    });
 
     if (app.supabaseProjectId) {
       // Check if shared module was modified - redeploy all functions
@@ -1336,51 +1982,38 @@ export function registerAppHandlers() {
         }
       }
     }
+
     return {};
   });
 
   createTypedHandler(appContracts.deleteApp, async (_, params) => {
-    const { appId } = params;
-    // Static server worker is NOT terminated here anymore
+    await deleteAppById(params.appId);
+  });
 
-    return withLock(appId, async () => {
-      const app = await requireApp(appId);
+  createTypedHandler(appContracts.deleteApps, async (_, params) => {
+    const results: {
+      appId: number;
+      success: boolean;
+      error?: string;
+    }[] = [];
 
-      // Stop the app if it's running
-      if (runningApps.has(appId)) {
-        const appInfo = runningApps.get(appId)!;
+    await Promise.all(
+      params.appIds.map(async (appId) => {
         try {
-          logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
-          await stopAppByInfo(appId, appInfo);
+          await deleteAppById(appId);
+          results.push({ appId, success: true });
         } catch (error: any) {
-          logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
-          // Continue with deletion even if stopping fails
+          logger.error(`Error deleting app ${appId} in bulk delete:`, error);
+          results.push({
+            appId,
+            success: false,
+            error: error?.message ?? String(error),
+          });
         }
-      }
+      }),
+    );
 
-      // Clear logs for this app to prevent memory leak
-      clearLogs(appId);
-
-      // Delete app from database
-      try {
-        await db.delete(apps).where(eq(apps.id, appId));
-        // Note: Associated chats will cascade delete
-      } catch (error: any) {
-        logger.error(`Error deleting app ${appId} from database:`, error);
-        throw new Error(`Failed to delete app from database: ${error.message}`);
-      }
-
-      // Delete app files
-      const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
-      try {
-        await fsPromises.rm(appPath, { recursive: true, force: true });
-      } catch (error: any) {
-        logger.error(`Error deleting app files for app ${appId}:`, error);
-        throw new Error(
-          `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
-        );
-      }
-    });
+    return { results };
   });
 
   createTypedHandler(appContracts.addToFavorite, async (_, params) => {
@@ -1395,7 +2028,10 @@ export function registerAppHandlers() {
           .limit(1);
 
         if (result.length === 0) {
-          throw new Error(`App with ID ${appId} not found.`);
+          throw new DyadError(
+            `App with ID ${appId} not found.`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         const currentIsFavorite = result[0].isFavorite;
@@ -1420,7 +2056,10 @@ export function registerAppHandlers() {
           `Error in add-to-favorite handler for app ID ${appId}:`,
           error,
         );
-        throw new Error(`Failed to toggle favorite status: ${error.message}`);
+        throw new DyadError(
+          `Failed to toggle favorite status: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1460,7 +2099,10 @@ export function registerAppHandlers() {
       });
 
       if (nameConflict && nameConflict.id !== appId) {
-        throw new Error(`An app with the name '${appName}' already exists`);
+        throw new DyadError(
+          `An app with the name '${appName}' already exists`,
+          DyadErrorKind.Conflict,
+        );
       }
 
       // If the current path is absolute, preserve the directory and only change the folder name
@@ -1482,7 +2124,10 @@ export function registerAppHandlers() {
       }
 
       if (hasPathConflict) {
-        throw new Error(`An app with the path '${newAppPath}' already exists`);
+        throw new DyadError(
+          `An app with the path '${newAppPath}' already exists`,
+          DyadErrorKind.Conflict,
+        );
       }
 
       // Stop the app if it's running
@@ -1505,7 +2150,10 @@ export function registerAppHandlers() {
         try {
           // Check if destination directory already exists
           if (fs.existsSync(newAppPath)) {
-            throw new Error(`Destination path '${newAppPath}' already exists`);
+            throw new DyadError(
+              `Destination path '${newAppPath}' already exists`,
+              DyadErrorKind.Conflict,
+            );
           }
 
           // Create parent directory if it doesn't exist
@@ -1536,7 +2184,10 @@ export function registerAppHandlers() {
               );
             }
           }
-          throw new Error(`Failed to move app files: ${error.message}`);
+          throw new DyadError(
+            `Failed to move app files: ${error.message}`,
+            DyadErrorKind.External,
+          );
         }
 
         try {
@@ -1585,7 +2236,10 @@ export function registerAppHandlers() {
         }
 
         logger.error(`Error updating app ${appId} in database:`, error);
-        throw new Error(`Failed to update app in database: ${error.message}`);
+        throw new DyadError(
+          `Failed to update app in database: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1605,6 +2259,12 @@ export function registerAppHandlers() {
       }
     }
     logger.log("all running apps stopped.");
+    // Determine the paths of all apps in the database so that we can delete them.
+    // We do the deletion last, so technically this is a TOCTOU race, but
+    // it allows us to do the deletion last after removing the database
+    const allAppPaths = await db.select({ appPath: apps.path }).from(apps);
+    // To resolve app paths later
+    const basePath = getDyadAppsBaseDirectory();
     logger.log("deleting database...");
     // 1. Drop the database by deleting the SQLite file
     const dbPath = getDatabasePath();
@@ -1626,12 +2286,26 @@ export function registerAppHandlers() {
       await fsPromises.unlink(settingsPath);
       logger.log(`Settings file deleted: ${settingsPath}`);
     }
+    // Reset base directory cache to default, because settings are gone anyway
+    invalidateDyadAppsBaseDirectoryCache();
     logger.log("settings deleted.");
     // 3. Remove all app files recursively
     // Doing this last because it's the most time-consuming and the least important
     // in terms of resetting the app state.
     logger.log("removing all app files...");
-    const dyadAppPath = getProteaAIAppPath(".");
+    // Delete any app paths that were in the database before we deleted it
+    for (const { appPath } of allAppPaths) {
+      // We don't rely on getDyadAppPath here because we've already cleared the settings
+      const resolvedAppPath = path.isAbsolute(appPath)
+        ? appPath
+        : path.join(basePath, appPath);
+      await fsPromises.rm(resolvedAppPath, {
+        recursive: true,
+        force: true,
+      });
+    }
+    const dyadAppPath = getDefaultDyadAppsDirectory();
+    // Delete the default `dyad-apps` folder, even if the user no longer uses it
     if (fs.existsSync(dyadAppPath)) {
       await fsPromises.rm(dyadAppPath, { recursive: true, force: true });
       // Recreate the base directory
@@ -1658,7 +2332,10 @@ export function registerAppHandlers() {
         // Check if the old branch exists
         const branches = await gitListBranches({ path: appPath });
         if (!branches.includes(oldBranchName)) {
-          throw new Error(`Branch '${oldBranchName}' not found.`);
+          throw new DyadError(
+            `Branch '${oldBranchName}' not found.`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         // Check if the new branch name already exists
@@ -1694,18 +2371,32 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.respondToAppInput, async (_, params) => {
     const { appId, response } = params;
     if (response !== "y" && response !== "n") {
-      throw new Error(`Invalid response: ${response}`);
+      throw new DyadError(
+        `Invalid response: ${response}`,
+        DyadErrorKind.Validation,
+      );
     }
     const appInfo = runningApps.get(appId);
 
     if (!appInfo) {
-      throw new Error(`App ${appId} is not running`);
+      throw new DyadError(
+        `App ${appId} is not running`,
+        DyadErrorKind.External,
+      );
     }
 
     const { process } = appInfo;
+    if (!process) {
+      throw new Error(
+        `App ${appId} is running in ${appInfo.mode} mode and does not accept stdin responses.`,
+      );
+    }
 
     if (!process.stdin) {
-      throw new Error(`App ${appId} process has no stdin available`);
+      throw new DyadError(
+        `App ${appId} process has no stdin available`,
+        DyadErrorKind.External,
+      );
     }
 
     try {
@@ -1714,7 +2405,10 @@ export function registerAppHandlers() {
       logger.debug(`Sent response '${response}' to app ${appId} stdin`);
     } catch (error: any) {
       logger.error(`Error sending response to app ${appId}:`, error);
-      throw new Error(`Failed to send response to app: ${error.message}`);
+      throw new DyadError(
+        `Failed to send response to app: ${error.message}`,
+        DyadErrorKind.External,
+      );
     }
   });
 
@@ -1883,11 +2577,17 @@ export function registerAppHandlers() {
     const { appId, parentDirectory } = params;
 
     if (!parentDirectory) {
-      throw new Error("No destination folder provided.");
+      throw new DyadError(
+        "No destination folder provided.",
+        DyadErrorKind.External,
+      );
     }
 
     if (!path.isAbsolute(parentDirectory)) {
-      throw new Error("Please select an absolute destination folder.");
+      throw new DyadError(
+        "Please select an absolute destination folder.",
+        DyadErrorKind.External,
+      );
     }
 
     const normalizedParentDir = path.normalize(parentDirectory);
@@ -1954,7 +2654,10 @@ export function registerAppHandlers() {
           await stopAppByInfo(appId, appInfo);
         } catch (error: any) {
           logger.error(`Error stopping app ${appId} before moving:`, error);
-          throw new Error(`Failed to stop app before moving: ${error.message}`);
+          throw new DyadError(
+            `Failed to stop app before moving: ${error.message}`,
+            DyadErrorKind.External,
+          );
         }
       }
 
@@ -2006,7 +2709,10 @@ export function registerAppHandlers() {
           `Error moving app files from ${currentResolvedPath} to ${nextResolvedPath}:`,
           error,
         );
-        throw new Error(`Failed to move app files: ${error.message}`);
+        throw new DyadError(
+          `Failed to move app files: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -2021,6 +2727,143 @@ export function registerAppHandlers() {
       logger.debug("No app selected for preview");
       setCurrentlySelectedAppId(null);
     }
+  });
+
+  // Screenshot handlers
+  createTypedHandler(appContracts.getCurrentCommitHash, async (_, params) => {
+    const { appId } = params;
+
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!appRecord) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+    try {
+      const commitHash = await getCurrentCommitHash({ path: appPath });
+      return { commitHash };
+    } catch {
+      return { commitHash: null };
+    }
+  });
+
+  createTypedHandler(appContracts.saveAppScreenshot, async (_, params) => {
+    const { appId, dataUrl, commitHash } = params;
+
+    // Validate data URL format
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) {
+      throw new DyadError(
+        "Invalid screenshot data URL format",
+        DyadErrorKind.Validation,
+      );
+    }
+
+    // Enforce a max size of 5 MB
+    const MAX_DATA_URL_LENGTH = 5 * 1024 * 1024;
+    if (dataUrl.length > MAX_DATA_URL_LENGTH) {
+      throw new DyadError(
+        "Screenshot data URL exceeds maximum allowed size",
+        DyadErrorKind.Validation,
+      );
+    }
+
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!appRecord) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+
+    if (!SCREENSHOT_FILENAME_REGEX.test(`${commitHash}.png`)) {
+      logger.warn(
+        `Skipping screenshot save for app ${appId}: unexpected commit hash format`,
+      );
+      return;
+    }
+
+    const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
+    await fsPromises.mkdir(screenshotDir, { recursive: true });
+
+    const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+    await fsPromises.writeFile(
+      path.join(screenshotDir, `${commitHash}.png`),
+      buffer,
+    );
+
+    // Prune: keep only the newest MAX_SCREENSHOTS_PER_APP by mtime.
+    // Swallow ENOENT on unlink to tolerate concurrent saves.
+    try {
+      const screenshots = await readScreenshotEntries(screenshotDir);
+      for (const extra of screenshots.slice(MAX_SCREENSHOTS_PER_APP)) {
+        await fsPromises
+          .unlink(path.join(screenshotDir, extra.name))
+          .catch(() => {});
+      }
+    } catch (err) {
+      logger.warn(`Failed to prune screenshots for app ${appId}`, err);
+    }
+  });
+
+  createTypedHandler(appContracts.listAppScreenshots, async (_, params) => {
+    const { appId } = params;
+
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!appRecord) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+    const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
+
+    const entries = await readScreenshotEntries(screenshotDir);
+    const screenshots = entries.map(({ name }) => ({
+      commitHash: name.slice(0, -".png".length),
+      url: `dyad-media://media/${encodeURIComponent(appRecord.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${name}`,
+    }));
+    return { screenshots };
+  });
+
+  createTypedHandler(appContracts.listAppThumbnails, async (_, params) => {
+    const { appIds } = params;
+    if (appIds.length === 0) {
+      return { thumbnails: [] };
+    }
+
+    const records = await db.query.apps.findMany({
+      where: inArray(apps.id, appIds),
+    });
+    const recordById = new Map(records.map((r) => [r.id, r]));
+
+    const thumbnails = await Promise.all(
+      appIds.map(async (appId) => {
+        const record = recordById.get(appId);
+        if (!record) {
+          return { appId, thumbnailUrl: null };
+        }
+        const appPath = getDyadAppPath(record.path);
+        const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
+        const entries = await readScreenshotEntries(screenshotDir);
+        const latest = entries[0];
+        if (!latest) {
+          return { appId, thumbnailUrl: null };
+        }
+        const thumbnailUrl = `dyad-media://media/${encodeURIComponent(record.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${latest.name}`;
+        return { appId, thumbnailUrl };
+      }),
+    );
+
+    return { thumbnails };
+  });
+
+  void reconcileCloudSandboxes().catch((error) => {
+    logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
   });
 
   // Start the garbage collection for idle apps

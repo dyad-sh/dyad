@@ -9,6 +9,8 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
 const logger = log.scope("write_file");
 
 const writeFileSchema = z.object({
@@ -47,13 +49,19 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       ctx.isSharedModulesChanged = true;
     }
 
-    // Ensure directory exists
-    const dirPath = path.dirname(fullFilePath);
-    fs.mkdirSync(dirPath, { recursive: true });
+    await withLock(getFileWriteKey(fullFilePath), async () => {
+      // Ensure directory exists
+      const dirPath = path.dirname(fullFilePath);
+      fs.mkdirSync(dirPath, { recursive: true });
 
-    // Write file content
-    fs.writeFileSync(fullFilePath, args.content);
-    logger.log(`Successfully wrote file: ${fullFilePath}`);
+      // Write file content
+      fs.writeFileSync(fullFilePath, args.content);
+      logger.log(`Successfully wrote file: ${fullFilePath}`);
+      queueCloudSandboxSnapshotSync({
+        appId: ctx.appId,
+        changedPaths: [args.path],
+      });
+    });
 
     // Deploy Supabase function if applicable
     if (

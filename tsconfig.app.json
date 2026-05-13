@@ -28,5 +28,9 @@
     }
   },
   "include": ["src", "e2e-tests", "shared"],
-  "exclude": ["e2e-tests/fixtures"]
+  "exclude": [
+    "e2e-tests/fixtures",
+    "src/__tests__/evals/fixtures",
+    "eval-results"
+  ]
 }

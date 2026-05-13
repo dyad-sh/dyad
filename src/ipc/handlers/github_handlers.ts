@@ -28,7 +28,7 @@ import {
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getProteaAIAppPath } from "../../paths/paths";
+import { getProteaAIAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -40,6 +40,7 @@ import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("github_handlers");
 
@@ -138,7 +139,7 @@ export async function prepareLocalBranch({
 }) {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) {
-    throw new Error("App not found");
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
   const appPath = getProteaAIAppPath(app.path);
   const targetBranch = branch || "main";
@@ -426,7 +427,10 @@ async function pollForAccessToken(event: IpcMainInvokeEvent | null) {
           break;
       }
     } else {
-      throw new Error(`Unknown response structure: ${JSON.stringify(data)}`);
+      throw new DyadError(
+        `Unknown response structure: ${JSON.stringify(data)}`,
+        DyadErrorKind.External,
+      );
     }
   } catch (error) {
     logger.error("Error polling for GitHub access token:", error);
@@ -558,7 +562,7 @@ async function handleListGithubRepos(): Promise<
     const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     // Fetch user's repositories
@@ -586,6 +590,7 @@ async function handleListGithubRepos(): Promise<
       private: repo.private,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list repos:", err);
     throw new Error(err.message || "Failed to list GitHub repositories.");
   }
@@ -601,7 +606,7 @@ async function handleGetRepoBranches(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     // Fetch repository branches
@@ -628,6 +633,7 @@ async function handleGetRepoBranches(
       commit: { sha: branch.commit.sha },
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to get repo branches:", err);
     throw new Error(err.message || "Failed to get repository branches.");
   }
@@ -692,7 +698,7 @@ async function handleCreateRepo(
   const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
   // If org is empty, create for the authenticated user
   let owner = org;
@@ -797,7 +803,7 @@ async function handleConnectToExistingRepo(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     // Verify the repository exists and user has access
@@ -834,6 +840,7 @@ async function handleConnectToExistingRepo(
     // Store org, repo, and branch in the app's DB row
     await updateAppGithubRepo({ appId, org: owner, repo, branch });
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to connect to existing repo:", err);
     throw new Error(err.message || "Failed to connect to existing repository.");
   }
@@ -856,13 +863,16 @@ async function handlePushToGithub(
   const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
 
   // Get app info from DB
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new Error("App is not linked to a GitHub repo.");
+    throw new DyadError(
+      "App is not linked to a GitHub repo.",
+      DyadErrorKind.Precondition,
+    );
   }
   const appPath = getProteaAIAppPath(app.path);
   const branch = app.githubBranch || "main";
@@ -968,11 +978,14 @@ async function handleRebaseFromGithub(
   const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new Error("App is not linked to a GitHub repo.");
+    throw new DyadError(
+      "App is not linked to a GitHub repo.",
+      DyadErrorKind.Precondition,
+    );
   }
   const appPath = getProteaAIAppPath(app.path);
   const branch = app.githubBranch || "main";
@@ -1042,12 +1055,15 @@ async function handleListCollaborators(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      throw new Error("App is not linked to a GitHub repo.");
+      throw new DyadError(
+        "App is not linked to a GitHub repo.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     const response = await fetch(
@@ -1073,6 +1089,7 @@ async function handleListCollaborators(
       permissions: c.permissions,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list collaborators:", err);
     throw new Error(err.message || "Failed to list collaborators.");
   }
@@ -1086,10 +1103,13 @@ async function handleInviteCollaborator(
     // Validate username
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
-      throw new Error("Username cannot be empty.");
+      throw new DyadError("Username cannot be empty.", DyadErrorKind.External);
     }
     if (trimmedUsername.length > 39) {
-      throw new Error("GitHub username cannot exceed 39 characters.");
+      throw new DyadError(
+        "GitHub username cannot exceed 39 characters.",
+        DyadErrorKind.Validation,
+      );
     }
     // Single character usernames must be alphanumeric only
     if (trimmedUsername.length === 1) {
@@ -1110,12 +1130,15 @@ async function handleInviteCollaborator(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      throw new Error("App is not linked to a GitHub repo.");
+      throw new DyadError(
+        "App is not linked to a GitHub repo.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     // GitHub API to add a collaborator (sends an invitation)
@@ -1141,6 +1164,7 @@ async function handleInviteCollaborator(
       );
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to invite collaborator:", err);
     throw new Error(err.message || "Failed to invite collaborator.");
   }
@@ -1154,12 +1178,15 @@ async function handleRemoveCollaborator(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      throw new Error("App is not linked to a GitHub repo.");
+      throw new DyadError(
+        "App is not linked to a GitHub repo.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     const response = await fetch(
@@ -1181,6 +1208,7 @@ async function handleRemoveCollaborator(
       );
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to remove collaborator:", err);
     throw new Error(err.message || "Failed to remove collaborator.");
   }
@@ -1210,7 +1238,7 @@ async function handleDisconnectGithubRepo(
   });
 
   if (!app) {
-    throw new Error("App not found");
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
 
   // Update app in database to remove GitHub repo, org, and branch
@@ -1267,6 +1295,14 @@ async function handleCloneRepoFromUrl(
     }
 
     const appPath = getProteaAIAppPath(finalAppName);
+
+    if (!isAppLocationAccessible(appPath)) {
+      throw new Error(
+        `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
+
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {

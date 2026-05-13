@@ -1,6 +1,7 @@
 import { ipc, type BranchResult } from "@/ipc/types";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function useCurrentBranch(appId: number | null) {
   const {
@@ -13,7 +14,10 @@ export function useCurrentBranch(appId: number | null) {
       if (appId === null) {
         // This case should ideally be handled by the `enabled` option
         // but as a safeguard, and to ensure queryFn always has a valid appId if called.
-        throw new Error("appId is null, cannot fetch current branch.");
+        throw new DyadError(
+          "appId is null, cannot fetch current branch.",
+          DyadErrorKind.External,
+        );
       }
       return ipc.version.getCurrentBranch({ appId });
     },

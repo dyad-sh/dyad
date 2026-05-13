@@ -36,7 +36,7 @@ jobs:
           github-token: ${{ steps.base-app-token.outputs.token }}
           script: |
             const pr = context.payload.pull_request;
-            const allowedUsers = ['wwwillchen', 'wwwillchen-bot', 'dyadbot', 'dyad-assistant', 'azizmejri1', 'princeaden1'];
+            const allowedUsers = ['wwwillchen', 'keppo-bot', 'keppo-bot[bot]', 'dyad-assistant', 'azizmejri1', 'princeaden1'];
             if (!allowedUsers.includes(pr.user.login)) {
               console.log(`PR author ${pr.user.login} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');
@@ -104,7 +104,7 @@ jobs:
 
       - name: Run PR Rebase
         if: steps.check-author.outputs.should_continue == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.96
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.base-app-token.outputs.token }}

@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRouteLabel,
+  getReactRouterCandidateFiles,
   parseRoutesFromRouterFile,
+  parseRoutesFromRouterFiles,
   parseRoutesFromNextFiles,
 } from "@/hooks/useParseRouter";
 
@@ -128,6 +130,66 @@ describe("parseRoutesFromRouterFile", () => {
     const routes = parseRoutesFromRouterFile(content);
     expect(routes).toHaveLength(1);
     expect(routes[0].path).toBe("/users/:id");
+  });
+});
+
+describe("getReactRouterCandidateFiles", () => {
+  it("prioritizes src/App.tsx and includes modular route files", () => {
+    const files = [
+      "src/main.tsx",
+      "src/App.tsx",
+      "src/routes/publicRoutes.tsx",
+      "src/routes/protectedRoutes.tsx",
+      "src/features/orders/orderRoutes.tsx",
+      "src/router.tsx",
+      "src/pages/Home.tsx",
+    ];
+
+    expect(getReactRouterCandidateFiles(files)).toEqual([
+      "src/App.tsx",
+      "src/routes/publicRoutes.tsx",
+      "src/routes/protectedRoutes.tsx",
+      "src/features/orders/orderRoutes.tsx",
+      "src/router.tsx",
+    ]);
+  });
+
+  it("falls back to root App.tsx when src/App.tsx is absent", () => {
+    const files = ["App.tsx", "routes/publicRoutes.tsx"];
+
+    expect(getReactRouterCandidateFiles(files)).toEqual([
+      "App.tsx",
+      "routes/publicRoutes.tsx",
+    ]);
+  });
+});
+
+describe("parseRoutesFromRouterFiles", () => {
+  it("merges routes across multiple files without duplicates", () => {
+    const routes = parseRoutesFromRouterFiles([
+      `
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+        </Routes>
+      `,
+      `
+        export function protectedRoutes() {
+          return (
+            <>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/about" element={<AboutAgain />} />
+            </>
+          );
+        }
+      `,
+    ]);
+
+    expect(routes.map((route) => route.path)).toEqual([
+      "/",
+      "/about",
+      "/dashboard",
+    ]);
   });
 });
 

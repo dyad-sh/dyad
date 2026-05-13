@@ -1,5 +1,6 @@
 import log from "electron-log";
 import { z } from "zod";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type {
   LanguageModel,
   LanguageModelProvider,
@@ -327,8 +328,9 @@ async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null>
     });
 
     if (!response.ok) {
-      throw new Error(
+      throw new DyadError(
         `Failed to fetch language model catalog: ${response.status} ${response.statusText}`,
+        DyadErrorKind.External,
       );
     }
 

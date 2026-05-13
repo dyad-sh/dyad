@@ -26,14 +26,28 @@ import {
   getNeonClient,
   getNeonErrorMessage,
 } from "../../neon_admin/neon_management_client";
+import { getConnectionUri } from "../../neon_admin/neon_context";
 import {
   updatePostgresUrlEnvVar,
   updateDbPushEnvVar,
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("version_handlers");
+
+async function syncCloudSandboxSnapshotBestEffort(appId: number) {
+  try {
+    await syncCloudSandboxSnapshot({ appId });
+  } catch (error) {
+    logger.warn(
+      `Cloud sandbox sync failed after version operation for app ${appId}:`,
+      error,
+    );
+  }
+}
 
 async function restoreBranchForPreview({
   appId,
@@ -124,14 +138,14 @@ export function registerVersionHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const appPath = getProteaAIAppPath(app.path);
 
     // Return appropriate result if the app is not a git repo
     if (!fs.existsSync(path.join(appPath, ".git"))) {
-      throw new Error("Not a git repository");
+      throw new DyadError("Not a git repository", DyadErrorKind.External);
     }
 
     try {
@@ -142,7 +156,10 @@ export function registerVersionHandlers() {
       };
     } catch (error: any) {
       logger.error(`Error getting current branch for app ${appId}:`, error);
-      throw new Error(`Failed to get current branch: ${error.message}`);
+      throw new DyadError(
+        `Failed to get current branch: ${error.message}`,
+        DyadErrorKind.External,
+      );
     }
   });
 
@@ -156,7 +173,7 @@ export function registerVersionHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       const appPath = getProteaAIAppPath(app.path);
@@ -290,7 +307,10 @@ export function registerVersionHandlers() {
 
             const preserveBranchId = response.data.branch.parent_id;
             if (!preserveBranchId) {
-              throw new Error("Preserve branch ID not found");
+              throw new DyadError(
+                "Preserve branch ID not found",
+                DyadErrorKind.NotFound,
+              );
             }
             logger.info(
               `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
@@ -358,6 +378,7 @@ export function registerVersionHandlers() {
           // Continue with the revert operation even if function deployment fails
         }
       }
+      await syncCloudSandboxSnapshotBestEffort(appId);
       if (warningMessage) {
         return { warningMessage };
       }
@@ -373,7 +394,7 @@ export function registerVersionHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       if (
@@ -409,14 +430,9 @@ export function registerVersionHandlers() {
 
           if (version && version.neonDbTimestamp) {
             // SWITCH the env var for POSTGRES_URL to the preview branch
-            const neonClient = await getNeonClient();
-            const connectionUri = await neonClient.getConnectionUri({
+            const connectionUri = await getConnectionUri({
               projectId: app.neonProjectId,
-              branch_id: app.neonPreviewBranchId,
-              // This is the default database name for Neon
-              database_name: "neondb",
-              // This is the default role name for Neon
-              role_name: "neondb_owner",
+              branchId: app.neonPreviewBranchId,
             });
 
             await restoreBranchForPreview({
@@ -429,7 +445,7 @@ export function registerVersionHandlers() {
 
             await updatePostgresUrlEnvVar({
               appPath: app.path,
-              connectionUri: connectionUri.data.uri,
+              connectionUri,
             });
             logger.info(
               `Switched Postgres to preview branch for app ${appId} commit ${version.commitHash} dbTimestamp=${version.neonDbTimestamp}`,
@@ -442,6 +458,7 @@ export function registerVersionHandlers() {
         path: fullAppPath,
         ref: gitRef,
       });
+      await syncCloudSandboxSnapshotBestEffort(appId);
     });
   });
 }
@@ -456,19 +473,14 @@ async function switchPostgresToDevelopmentBranch({
   appPath: string;
 }) {
   // SWITCH the env var for POSTGRES_URL to the development branch
-  const neonClient = await getNeonClient();
-  const connectionUri = await neonClient.getConnectionUri({
+  const connectionUri = await getConnectionUri({
     projectId: neonProjectId,
-    branch_id: neonDevelopmentBranchId,
-    // This is the default database name for Neon
-    database_name: "neondb",
-    // This is the default role name for Neon
-    role_name: "neondb_owner",
+    branchId: neonDevelopmentBranchId,
   });
 
   await updatePostgresUrlEnvVar({
     appPath,
-    connectionUri: connectionUri.data.uri,
+    connectionUri,
   });
 
   await updateDbPushEnvVar({

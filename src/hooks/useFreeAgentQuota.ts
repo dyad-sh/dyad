@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc, type FreeAgentQuotaStatus } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
-import { isProteaAIProEnabled } from "@/lib/schemas";
+import { isDyadProEnabled } from "@/lib/schemas";
+import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 
 const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
 // In test mode, use very short staleTime for faster E2E tests
@@ -19,7 +20,7 @@ const TEST_STALE_TIME_MS = 500;
 export function useFreeAgentQuota() {
   const { settings } = useSettings();
   const queryClient = useQueryClient();
-  const isPro = settings ? isProteaAIProEnabled(settings) : false;
+  const isPro = settings ? isDyadProEnabled(settings) : false;
   const isTestMode = settings?.isTestMode ?? false;
 
   const {
@@ -53,10 +54,10 @@ export function useFreeAgentQuota() {
     // Convenience properties for easier consumption
     isQuotaExceeded: quotaStatus?.isQuotaExceeded ?? false,
     messagesUsed: quotaStatus?.messagesUsed ?? 0,
-    messagesLimit: quotaStatus?.messagesLimit ?? 5,
+    messagesLimit: quotaStatus?.messagesLimit ?? FREE_AGENT_QUOTA_LIMIT,
     messagesRemaining: quotaStatus
       ? Math.max(0, quotaStatus.messagesLimit - quotaStatus.messagesUsed)
-      : 5,
+      : FREE_AGENT_QUOTA_LIMIT,
     hoursUntilReset: quotaStatus?.hoursUntilReset ?? null,
     resetTime: quotaStatus?.resetTime ?? null,
   };

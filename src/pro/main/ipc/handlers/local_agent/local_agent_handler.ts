@@ -18,11 +18,17 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isProteaAIProEnabled, isBasicAgentMode } from "@/lib/schemas";
+import {
+  isProteaAIProEnabled,
+  isBasicAgentMode,
+  type UserSettings,
+} from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getProteaAIAppPath } from "@/paths/paths";
+import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import {
   getProviderOptions,
@@ -35,12 +41,16 @@ import {
   buildAgentToolSet,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
-  clearPendingQuestionnairesForChat,
 } from "./tool_definitions";
+import {
+  questionnaireResolver,
+  integrationResolver,
+} from "./userInputResolvers";
 import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
 } from "./processors/file_operations";
+import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
@@ -61,6 +71,7 @@ import {
   buildTodoReminderMessage,
   hasIncompleteTodos,
   formatTodoSummary,
+  ensureToolResultOrdering,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
@@ -75,12 +86,25 @@ import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
+import {
   isChatPendingCompaction,
   performCompaction,
   checkAndMarkForCompaction,
 } from "@/ipc/handlers/compaction/compaction_handler";
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  type RetryReplayEvent,
+  maybeCaptureRetryReplayEvent,
+  maybeCaptureRetryReplayText,
+  maybeAppendRetryReplayForRetry,
+} from "./retry_replay_utils";
+import { setChatSummaryTool } from "./tools/set_chat_summary";
+import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -120,24 +144,6 @@ interface ToolStreamingEntry {
   argsAccumulated: string;
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
-
-type RetryReplayEvent =
-  | {
-      type: "assistant-text";
-      text: string;
-    }
-  | {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-    }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
 
 function getOrCreateStreamingEntry(
   id: string,
@@ -216,10 +222,43 @@ function buildChatMessageHistory(
     reorderedMessages.splice(targetIndex, 0, summary);
   }
 
-  return reorderedMessages
+  const filtered = reorderedMessages
     .filter((msg) => !excludedIds?.has(msg.id))
-    .filter((msg) => msg.content || msg.aiMessagesJson)
-    .flatMap((msg) => parseAiMessagesJson(msg));
+    .filter((msg) => msg.content || msg.aiMessagesJson);
+
+  // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+  // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+  return filterCancelledMessagePairs(filtered).flatMap((msg) =>
+    parseAiMessagesJson(msg),
+  );
+}
+
+/**
+ * Append a `<system-reminder>` to the latest user message listing referenced
+ * apps so the agent knows which `app_name` values it can pass to read-only
+ * tools (`read_file`, `list_files`, `grep`, `code_search`). Mutates the last
+ * user message in-place to avoid copying unrelated parts of the history.
+ */
+function injectReferencedAppsReminder(
+  messageHistory: ModelMessage[],
+  referencedApps: readonly { appName: string }[],
+): void {
+  const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+
+  for (let i = messageHistory.length - 1; i >= 0; i--) {
+    const msg = messageHistory[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string") {
+      messageHistory[i] = { ...msg, content: msg.content + reminder };
+    } else {
+      messageHistory[i] = {
+        ...msg,
+        content: [...msg.content, { type: "text", text: reminder }],
+      };
+    }
+    return;
+  }
 }
 
 function getMidTurnCompactionSummaryIds(
@@ -251,6 +290,45 @@ function getMidTurnCompactionSummaryIds(
   return hiddenIds;
 }
 
+function getMessageText(message: ModelMessage): string {
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+  return message.content
+    .map((part) =>
+      part && typeof part === "object" && "text" in part
+        ? String(part.text)
+        : "",
+    )
+    .join("\n");
+}
+
+function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
+  if (!isRecord(input)) {
+    return false;
+  }
+
+  if (
+    toolName === "execute_sandbox_script" &&
+    typeof input.script === "string"
+  ) {
+    return (
+      /\b(?:read_file|file_stats)\s*\(\s*["']attachments:/.test(input.script) ||
+      /\blist_files\s*\(\s*["']attachments:?["']\s*\)/.test(input.script)
+    );
+  }
+  if (toolName === "read_file" && typeof input.path === "string") {
+    return input.path.startsWith("attachments:");
+  }
+  if (toolName === "copy_file" && typeof input.from === "string") {
+    return input.from.startsWith("attachments:");
+  }
+  return false;
+}
+
 /**
  * Handle a chat stream in local-agent mode
  */
@@ -265,6 +343,9 @@ export async function handleLocalAgentStream(
     readOnly = false,
     planModeOnly = false,
     messageOverride,
+    settingsOverride,
+    referencedApps = [],
+    currentTurnHasOnDiskAttachment,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -284,17 +365,50 @@ export async function handleLocalAgentStream(
      * Used for summarization where messages need to be transformed.
      */
     messageOverride?: ModelMessage[];
+    settingsOverride?: UserSettings;
+    /**
+     * Apps referenced via `@app:Name` mentions in the user's prompt.
+     * Read-only tools can target these via an `app_name` parameter.
+     */
+    referencedApps?: {
+      appName: string;
+      appPath: string;
+    }[];
+    currentTurnHasOnDiskAttachment?: boolean;
   },
 ): Promise<boolean> {
-  const settings = readSettings();
+  const settings = settingsOverride ?? readSettings();
   const maxToolCallSteps =
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
+  // Tracks what was last sent to the renderer for the placeholder
+  // assistant message so we can emit only the tail diff. Updated by both
+  // streaming-patch sends and full-messages-replacement sends so that the
+  // next tail patch is computed against the renderer's actual state.
+  // Held in a ref object so sendResponseChunk can mutate it.
+  const lastSentRef = { value: "" };
   let activeRetryReplayEvents: RetryReplayEvent[] | null = null;
   // Mid-turn compaction inserts a DB summary row for LLM history, but we render
   // the user-facing compaction indicator inline in the active assistant turn.
   const hiddenMessageIdsForStreaming = new Set<number>();
+  // Convenience wrapper that binds the stream-invariant context args so call
+  // sites only pass the two things that vary: the current response content and
+  // whether to send the full messages array.
+  const sendChunk = (
+    response: string,
+    { fullMessages = false }: { fullMessages?: boolean } = {},
+  ) =>
+    sendResponseChunk(
+      event,
+      req.chatId,
+      chat,
+      response,
+      placeholderMessageId,
+      hiddenMessageIdsForStreaming,
+      fullMessages,
+      lastSentRef,
+    );
   let postMidTurnCompactionStartStep: number | null = null;
 
   const appendInlineCompactionToTurn = async (
@@ -324,10 +438,13 @@ export async function handleLocalAgentStream(
     !isProteaAIProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
-    safeSend(event?.sender ?? null,"chat:response:error", {
+    const errorMessage =
+      referencedApps.length > 0
+        ? "Referencing other apps (@app:Name) in local-agent mode requires ProteaAI Pro. Please enable ProteaAI Pro in Settings → Pro."
+        : "Agent v2 requires ProteaAI Pro. Please enable ProteaAI Pro in Settings → Pro.";
+    safeSend(event?.sender ?? null, "chat:response:error", {
       chatId: req.chatId,
-      error:
-        "Agent v2 requires ProteaAI Pro. Please enable ProteaAI Pro in Settings → Pro.",
+      error: errorMessage,
     });
     return false;
   }
@@ -347,7 +464,10 @@ export async function handleLocalAgentStream(
   const initialChat = await loadChat();
 
   if (!initialChat || !initialChat.app) {
-    throw new Error(`Chat not found: ${req.chatId}`);
+    throw new DyadError(
+      `Chat not found: ${req.chatId}`,
+      DyadErrorKind.NotFound,
+    );
   }
 
   let chat = initialChat;
@@ -387,15 +507,7 @@ export async function handleLocalAgentStream(
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}${streamingPreview ? streamingPreview : ""}\n${compactionPreview}`
           : compactionPreview;
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          previewContent,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-          true, // Full messages: compaction changes message list
-        );
+        sendChunk(previewContent, { fullMessages: true });
       },
       {
         // Mid-turn compaction should not render as a separate message above the
@@ -438,15 +550,7 @@ export async function handleLocalAgentStream(
     }
 
     if (options?.showOnTopOfCurrentResponse) {
-      sendResponseChunk(
-        event,
-        req.chatId,
-        chat,
-        fullResponse + streamingPreview,
-        placeholderMessageId,
-        hiddenMessageIdsForStreaming,
-        true, // Full messages: post-compaction refresh
-      );
+      sendChunk(fullResponse + streamingPreview, { fullMessages: true });
     }
 
     return compactionResult.success;
@@ -455,18 +559,15 @@ export async function handleLocalAgentStream(
   // Check if compaction is pending and enabled before processing the message
   await maybePerformPendingCompaction();
 
-  // Send initial message update
-  safeSend(event?.sender ?? null,"chat:response:chunk", {
-    chatId: req.chatId,
-    messages: chat.messages.filter(
-      (message) => !hiddenMessageIdsForStreaming.has(message.id),
-    ),
-  });
+  // Send initial message update. Routed through sendChunk so lastSentRef
+  // stays in sync automatically (same as every other full-messages send).
+  sendChunk(fullResponse, { fullMessages: true });
 
   // Track pending user messages to inject after tool results
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
+  const warningMessages: string[] = [];
 
   try {
     // Get model client
@@ -494,13 +595,21 @@ export async function handleLocalAgentStream(
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
+    const referencedAppsMap = new Map(
+      referencedApps.map((ref) => [ref.appName.toLowerCase(), ref.appPath]),
+    );
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
       appPath,
+      referencedApps: referencedAppsMap,
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
+      neonProjectId: chat.app.neonProjectId,
+      neonActiveBranchId:
+        chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
+      frameworkType: detectFrameworkType(appPath),
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: persistedTodos,
@@ -510,14 +619,7 @@ export async function handleLocalAgentStream(
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          fullResponse + streamingPreview,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-        );
+        sendChunk(fullResponse + streamingPreview);
       },
       onXmlComplete: (finalXml: string) => {
         // Write final XML to DB and UI
@@ -525,14 +627,7 @@ export async function handleLocalAgentStream(
         fullResponse += xmlChunk;
         streamingPreview = ""; // Clear preview
         updateResponseInDb(placeholderMessageId, fullResponse);
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          fullResponse,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-        );
+        sendChunk(fullResponse);
       },
       requireConsent: async (params: {
         toolName: string;
@@ -555,6 +650,13 @@ export async function handleLocalAgentStream(
           todos,
         });
       },
+      onWarningMessage: (message) => {
+        warningMessages.push(message);
+      },
+      onAttachmentAccess: () => {
+        usedAttachmentAccessTool = true;
+      },
+      abortSignal: abortController.signal,
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -577,12 +679,33 @@ export async function handleLocalAgentStream(
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
       : buildChatMessageHistory(chat.messages);
+    const latestUserMessage = [...messageHistory]
+      .reverse()
+      .find((message) => message.role === "user");
+    const shouldWarnIfAttachmentUnread =
+      currentTurnHasOnDiskAttachment ??
+      (latestUserMessage != null &&
+        getMessageText(latestUserMessage).includes(
+          "Attachments available on disk",
+        ));
+
+    // Inject the referenced-apps manifest into the user's latest message as a
+    // `<system-reminder>` block (instead of appending it to the system prompt)
+    // so the system prompt stays static and cacheable.
+    if (referencedApps.length > 0) {
+      injectReferencedAppsReminder(messageHistory, referencedApps);
+    }
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
     let baseMessageHistoryCount = messageHistory.length;
     let compactBeforeNextStep = false;
     let compactedMidTurn = false;
     let compactionFailedMidTurn = false;
+    // Tracks the difference between the compacted base message count and the
+    // SDK's initialMessages count. Used to adjust injection indices after
+    // compaction so that subsequent steps (which use the SDK's shorter base)
+    // inject user messages at the correct position.
+    let compactionIndexDelta = 0;
 
     const maxOutputTokens = await getMaxTokens(settings.selectedModel);
     const temperature = await getTemperature(settings.selectedModel);
@@ -594,8 +717,10 @@ export async function handleLocalAgentStream(
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+    let usedAttachmentAccessTool = false;
     // Track total steps across all passes to detect step limit
     let totalStepsExecuted = 0;
+    let hitStepLimit = false;
 
     // If there are persisted todos from a previous turn, inject a synthetic
     // user message so the LLM is aware of them. Inserted BEFORE the user's
@@ -638,6 +763,7 @@ export async function handleLocalAgentStream(
       compactedMidTurn = false;
       compactionFailedMidTurn = false;
       compactBeforeNextStep = false;
+      compactionIndexDelta = 0;
       postMidTurnCompactionStartStep = null;
       baseMessageHistoryCount = currentMessageHistory.length;
 
@@ -695,6 +821,10 @@ export async function handleLocalAgentStream(
             tools: allTools,
             stopWhen: [
               stepCountIs(maxToolCallSteps),
+              // Stop after the integration tool so the next stream is started
+              // with a freshly built system prompt that includes the new
+              // Supabase/Neon context. The frontend auto-triggers a hidden
+              // continuation message once the user clicks Continue.
               hasToolCall(addIntegrationTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
               ...(planModeOnly
@@ -736,6 +866,7 @@ export async function handleLocalAgentStream(
                   // with a different (typically smaller) count. Keeping them would
                   // cause injectMessagesAtPositions to splice at wrong positions.
                   allInjectedMessages.length = 0;
+                  const preCompactionBaseCount = baseMessageHistoryCount;
                   const compactedMessageHistory = buildChatMessageHistory(
                     chat.messages,
                     {
@@ -744,7 +875,22 @@ export async function handleLocalAgentStream(
                       excludeMessageIds: new Set([placeholderMessageId]),
                     },
                   );
+                  // The referenced-apps reminder lives only in-memory on the
+                  // latest user message and is not persisted, so rebuilding
+                  // history from the DB drops it. Re-inject so post-compaction
+                  // tool steps keep the explicit app_name allow-list.
+                  if (referencedApps.length > 0) {
+                    injectReferencedAppsReminder(
+                      compactedMessageHistory,
+                      referencedApps,
+                    );
+                  }
                   baseMessageHistoryCount = compactedMessageHistory.length;
+                  // The compacted history includes the compaction summary, but the
+                  // AI SDK's initialMessages does not. Track the delta so we can
+                  // adjust injection indices after prepareStepMessages runs.
+                  compactionIndexDelta =
+                    baseMessageHistoryCount - preCompactionBaseCount;
                   stepOptions = {
                     ...options,
                     // Preserve in-flight turn messages so same-turn tool loops can
@@ -766,6 +912,24 @@ export async function handleLocalAgentStream(
                 allInjectedMessages,
               );
 
+              // After mid-turn compaction, injection indices are based on the
+              // compacted message array (which includes the compaction summary).
+              // The AI SDK's internal messages don't include this summary, so
+              // subsequent steps have a shorter base. Adjust indices now so
+              // future re-injections land at the correct position.
+              if (compactionIndexDelta !== 0) {
+                for (const injection of allInjectedMessages) {
+                  injection.insertAtIndex = Math.max(
+                    0,
+                    injection.insertAtIndex - compactionIndexDelta,
+                  );
+                }
+                // Always reset, even when no injections exist yet — a tool may
+                // add pending messages in a later step and their indices should
+                // not be shifted by a stale delta.
+                compactionIndexDelta = 0;
+              }
+
               // prepareStepMessages returns undefined when it has no additional
               // injections/cleanups to apply. If we already replaced the base
               // message history (e.g., after mid-turn compaction), we still need
@@ -773,6 +937,19 @@ export async function handleLocalAgentStream(
               let result =
                 preparedStep ??
                 (stepOptions === options ? undefined : stepOptions);
+
+              // Defensive: ensure injected user messages don't break
+              // tool_use/tool_result pairing. Catches edge cases where
+              // injection indices become stale after compaction.
+              if (result?.messages) {
+                const fixed = ensureToolResultOrdering(result.messages);
+                if (fixed) {
+                  logger.warn(
+                    `ensureToolResultOrdering fixed misplaced user messages in chat ${req.chatId}`,
+                  );
+                  result = { ...result, messages: fixed };
+                }
+              }
 
               return result;
             },
@@ -857,16 +1034,24 @@ export async function handleLocalAgentStream(
             },
           });
 
+          // Read .fullStream now (not lazily) so the SDK's `teeStream()`
+          // runs synchronously, then cancel the orphaned tee branch
+          // before any chunks are pumped. See `cancelOrphanedBaseStream`
+          // for the underlying SDK behavior and why this is required.
+          const fullStream = streamResult.fullStream;
+          cancelOrphanedBaseStream(streamResult);
+
           let inThinkingBlock = false;
           let streamErrorFromIteration: unknown;
 
           try {
-            for await (const part of streamResult.fullStream) {
+            for await (const part of fullStream) {
               if (abortController.signal.aborted) {
                 logger.log(`Stream aborted for chat ${req.chatId}`);
-                // Clean up pending consent/questionnaire requests to prevent stale UI banners
+                // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
                 clearPendingConsentsForChat(req.chatId);
-                clearPendingQuestionnairesForChat(req.chatId);
+                questionnaireResolver.abortChat(req.chatId);
+                integrationResolver.abortChat(req.chatId);
                 break;
               }
 
@@ -964,6 +1149,9 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-call":
+                  if (isAttachmentAccessToolCall(part.toolName, part.input)) {
+                    usedAttachmentAccessTool = true;
+                  }
                   maybeCaptureRetryReplayEvent(retryReplayEvents, part);
                   // Tool execution happens via execute callbacks
                   break;
@@ -977,14 +1165,7 @@ export async function handleLocalAgentStream(
               if (chunk) {
                 fullResponse += chunk;
                 await updateResponseInDb(placeholderMessageId, fullResponse);
-                sendResponseChunk(
-                  event,
-                  req.chatId,
-                  chat,
-                  fullResponse,
-                  placeholderMessageId,
-                  hiddenMessageIdsForStreaming,
-                );
+                sendChunk(fullResponse);
               }
             }
           } catch (error) {
@@ -1002,6 +1183,7 @@ export async function handleLocalAgentStream(
             const closingThinkBlock = "</think>\n";
             fullResponse += closingThinkBlock;
             await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendChunk(fullResponse);
           }
           activeRetryReplayEvents = null;
 
@@ -1148,11 +1330,16 @@ export async function handleLocalAgentStream(
       }
 
       // Check if the model ended with text only (no tool calls in the final step).
+      // set_chat_summary is metadata, so a summary-only final step should not
+      // suppress the todo safety follow-up when the pass already produced text.
       // This is more reliable than passProducedChatText which is set on any text-delta
       // during the stream (including preambles before tool calls).
       const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
       const passEndedWithText =
-        passProducedChatText && (!lastStep || lastStep.toolCalls.length === 0);
+        passProducedChatText &&
+        (!lastStep ||
+          lastStep.toolCalls.length === 0 ||
+          stepOnlyCalledTool(lastStep, setChatSummaryTool.name));
 
       if (
         !shouldRunTodoFollowUpPass({
@@ -1184,31 +1371,79 @@ export async function handleLocalAgentStream(
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
+    // Collect XML produced by post-turn side-effects (step-limit notice,
+    // Supabase deploy results) so we can persist them into aiMessagesJson.
+    // parseAiMessagesJson reads from aiMessagesJson when present and ignores
+    // the message's `content` column, so anything appended only to fullResponse
+    // would be invisible to subsequent agent turns.
+    const postTurnXmlParts: string[] = [];
+
     // Check if we hit the step limit and append a notice to the response
     if (totalStepsExecuted >= maxToolCallSteps) {
+      hitStepLimit = true;
       logger.info(
         `Chat ${req.chatId} hit step limit of ${maxToolCallSteps} steps`,
       );
-      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${maxToolCallSteps}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
-      fullResponse += stepLimitMessage;
+      const stepLimitXml = `<dyad-step-limit steps="${totalStepsExecuted}" limit="${maxToolCallSteps}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
+      postTurnXmlParts.push(stepLimitXml);
+      fullResponse += `\n\n${stepLimitXml}`;
       await updateResponseInDb(placeholderMessageId, fullResponse);
-      sendResponseChunk(
-        event,
-        req.chatId,
-        chat,
-        fullResponse,
-        placeholderMessageId,
-        hiddenMessageIdsForStreaming,
-      );
+      sendChunk(fullResponse);
+    }
+
+    // In read-only and plan mode, skip the deploy step (commit follows below)
+    if (!readOnly && !planModeOnly) {
+      // Deploy all Supabase functions if shared modules changed
+      const deployResult = await deployAllFunctionsIfNeeded({
+        ...ctx,
+        onXmlComplete: (finalXml) => {
+          postTurnXmlParts.push(finalXml);
+          ctx.onXmlComplete(finalXml);
+        },
+      });
+      if (deployResult.warning) {
+        const warningXml = `<dyad-output type="warning" message="${escapeXmlAttr("Supabase function deploy warning")}">${escapeXmlContent(deployResult.warning)}</dyad-output>`;
+        postTurnXmlParts.push(warningXml);
+        ctx.onXmlComplete(warningXml);
+      }
+      if (!deployResult.success) {
+        const errorXml = `<dyad-output type="error" message="${escapeXmlAttr("Failed to deploy Supabase functions")}">${escapeXmlContent(deployResult.error ?? "Unknown deploy error")}</dyad-output>`;
+        postTurnXmlParts.push(errorXml);
+        ctx.onXmlComplete(errorXml);
+      }
+    }
+
+    // Persist post-turn side-effects as a trailing assistant message so future
+    // agent turns can see them via aiMessagesJson. Done before the
+    // aiMessagesJson write below so deploy/step-limit info is captured even if
+    // a later step (e.g. commit) throws.
+    if (postTurnXmlParts.length > 0) {
+      accumulatedAiMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: postTurnXmlParts.join("\n") }],
+      });
+    }
+
+    if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
+      const unreadAttachmentWarning =
+        "Your model did not reference the attached file. If this was unintended, try a larger model or paste the contents inline.";
+      const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;
+      fullResponse += warningMessage;
+      await updateResponseInDb(placeholderMessageId, fullResponse);
+      sendChunk(fullResponse);
+      sendTelemetryEvent("sandbox.tool.unused_with_attachment", {
+        chatId: req.chatId,
+        appId: ctx.appId,
+      });
     }
 
     // Save the AI SDK messages for multi-turn tool call preservation
@@ -1226,11 +1461,8 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // In read-only and plan mode, skip deploys and commits
+    // In read-only and plan mode, skip commits
     if (!readOnly && !planModeOnly) {
-      // Deploy all Supabase functions if shared modules changed
-      await deployAllFunctionsIfNeeded(ctx);
-
       // Commit all changes
       const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
@@ -1239,6 +1471,18 @@ export async function handleLocalAgentStream(
           .update(messages)
           .set({ commitHash: commitResult.commitHash })
           .where(eq(messages.id, placeholderMessageId));
+      }
+
+      // Store Neon DB timestamp for version tracking / time-travel
+      if (ctx.neonProjectId && ctx.neonActiveBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({ appId: ctx.appId });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+        }
       }
     }
 
@@ -1264,23 +1508,27 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       updatedFiles: !readOnly,
       chatSummary: ctx.chatSummary,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
+      pausePromptQueue: hitStepLimit || undefined,
     } satisfies ChatResponseEnd);
 
     return true; // Success
   } catch (error) {
-    // Clean up any pending consent/questionnaire requests for this chat to prevent
+    // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
-    clearPendingQuestionnairesForChat(req.chatId);
+    questionnaireResolver.abortChat(req.chatId);
+    integrationResolver.abortChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
@@ -1288,6 +1536,8 @@ export async function handleLocalAgentStream(
     safeSend(event?.sender ?? null,"chat:response:error", {
       chatId: req.chatId,
       error: `Error: ${getErrorMessage(error)}`,
+      warningMessages:
+        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
     return false; // Error - don't consume quota
   }
@@ -1397,199 +1647,8 @@ function shouldRetryTransientStreamError(params: {
   );
 }
 
-function maybeCaptureRetryReplayEvent(
-  retryReplayEvents: RetryReplayEvent[],
-  part: unknown,
-): void {
-  if (!isRecord(part) || typeof part.type !== "string") {
-    return;
-  }
-
-  if (
-    part.type === "tool-call" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
-  ) {
-    // Keep one emitted tool-call event per toolCallId.
-    if (
-      retryReplayEvents.some(
-        (event) =>
-          event.type === "tool-call" && event.toolCallId === part.toolCallId,
-      )
-    ) {
-      return;
-    }
-
-    retryReplayEvents.push({
-      type: "tool-call",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      input:
-        typeof part.input === "object" && part.input !== null ? part.input : {},
-    });
-    return;
-  }
-
-  if (
-    part.type === "tool-result" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
-  ) {
-    // Keep one emitted tool-result event per toolCallId.
-    if (
-      retryReplayEvents.some(
-        (event) =>
-          event.type === "tool-result" && event.toolCallId === part.toolCallId,
-      )
-    ) {
-      return;
-    }
-
-    retryReplayEvents.push({
-      type: "tool-result",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      output: part.output,
-    });
-  }
-}
-
-function maybeAppendRetryReplayForRetry(params: {
-  retryReplayEvents: RetryReplayEvent[];
-  currentMessageHistoryRef: ModelMessage[];
-  accumulatedAiMessagesRef: ModelMessage[];
-  onCurrentMessageHistoryUpdate: (next: ModelMessage[]) => void;
-}) {
-  const {
-    retryReplayEvents,
-    currentMessageHistoryRef,
-    accumulatedAiMessagesRef,
-    onCurrentMessageHistoryUpdate,
-  } = params;
-  const replayMessages: ModelMessage[] = [];
-  const pendingAssistantParts: Array<
-    | { type: "text"; text: string }
-    | {
-        type: "tool-call";
-        toolCallId: string;
-        toolName: string;
-        input: unknown;
-      }
-  > = [];
-  const toolCallsWithResult = new Set<string>();
-  const toolResultsWithCall = new Set<string>();
-
-  for (const event of retryReplayEvents) {
-    if (event.type === "tool-call") {
-      toolResultsWithCall.add(event.toolCallId);
-      continue;
-    }
-    if (event.type === "tool-result") {
-      toolCallsWithResult.add(event.toolCallId);
-    }
-  }
-
-  const completedToolExchangeIds = new Set(
-    [...toolCallsWithResult].filter((toolCallId) =>
-      toolResultsWithCall.has(toolCallId),
-    ),
-  );
-
-  const flushPendingAssistantMessage = () => {
-    if (pendingAssistantParts.length === 0) {
-      return;
-    }
-    replayMessages.push({
-      role: "assistant",
-      content: [...pendingAssistantParts],
-    });
-    pendingAssistantParts.length = 0;
-  };
-
-  for (const event of retryReplayEvents) {
-    if (event.type === "assistant-text") {
-      if (!event.text.trim()) {
-        continue;
-      }
-      pendingAssistantParts.push({ type: "text", text: event.text });
-      continue;
-    }
-
-    if (event.type === "tool-call") {
-      if (!completedToolExchangeIds.has(event.toolCallId)) {
-        continue;
-      }
-      pendingAssistantParts.push({
-        type: "tool-call",
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        input: event.input,
-      });
-      continue;
-    }
-
-    if (!completedToolExchangeIds.has(event.toolCallId)) {
-      continue;
-    }
-    flushPendingAssistantMessage();
-    replayMessages.push({
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          output: toToolResultOutput(event.output),
-        },
-      ],
-    });
-  }
-  flushPendingAssistantMessage();
-
-  if (replayMessages.length === 0) {
-    return;
-  }
-
-  onCurrentMessageHistoryUpdate([
-    ...currentMessageHistoryRef,
-    ...replayMessages,
-  ]);
-  accumulatedAiMessagesRef.push(...replayMessages);
-}
-
-function maybeCaptureRetryReplayText(
-  retryReplayEvents: RetryReplayEvent[] | null,
-  text: string,
-): void {
-  if (!retryReplayEvents || text.length === 0) {
-    return;
-  }
-
-  const lastEvent = retryReplayEvents[retryReplayEvents.length - 1];
-  if (lastEvent?.type === "assistant-text") {
-    lastEvent.text += text;
-    return;
-  }
-
-  retryReplayEvents.push({
-    type: "assistant-text",
-    text,
-  });
-}
-
 async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-function toToolResultOutput(value: unknown): { type: "text"; value: string } {
-  if (typeof value === "string") {
-    return { type: "text", value };
-  }
-  try {
-    return { type: "text", value: JSON.stringify(value) };
-  } catch {
-    return { type: "text", value: String(value) };
-  }
 }
 
 async function updateResponseInDb(messageId: number, content: string) {
@@ -1606,9 +1665,11 @@ function sendResponseChunk(
   chat: any,
   fullResponse: string,
   placeholderMessageId: number,
-  hiddenMessageIds?: Set<number>,
+  hiddenMessageIds: Set<number> | undefined,
   /** When true, sends the full messages array instead of an incremental update */
-  sendFullMessages?: boolean,
+  sendFullMessages: boolean | undefined,
+  /** Mutable ref tracking the renderer's last seen placeholder content. */
+  lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
     const currentMessages = [...chat.messages].filter(
@@ -1624,13 +1685,19 @@ function sendResponseChunk(
       chatId,
       messages: currentMessages,
     });
+    // Renderer's placeholder content now matches fullResponse — keep the
+    // tail-diff baseline in sync so the next streaming patch is correct.
+    lastSentRef.value = fullResponse;
   } else {
-    // Send incremental update with only the streaming message content
-    // to reduce IPC overhead during high-frequency streaming
-    safeSend(event?.sender ?? null,"chat:response:chunk", {
+    const patch = computeStreamingPatch(fullResponse, lastSentRef.value);
+    lastSentRef.value = fullResponse;
+    if (!patch) {
+      return;
+    }
+    safeSend(event?.sender ?? null, "chat:response:chunk", {
       chatId,
       streamingMessageId: placeholderMessageId,
-      streamingContent: fullResponse,
+      streamingPatch: patch,
     });
   }
 }
@@ -1677,6 +1744,18 @@ function buildPlanningQuestionnaireReflectionMessage(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function stepOnlyCalledTool(
+  step: { toolCalls: Array<unknown> },
+  toolName: string,
+): boolean {
+  return (
+    step.toolCalls.length > 0 &&
+    step.toolCalls.every(
+      (toolCall) => isRecord(toolCall) && toolCall.toolName === toolName,
+    )
+  );
 }
 
 function shouldRunTodoFollowUpPass(params: {

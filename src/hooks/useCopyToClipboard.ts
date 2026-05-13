@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import { getLanguage } from "@/utils/get_language";
+import { unescapeXmlAttr, unescapeXmlContent } from "../../shared/xmlEscape";
 
 const CUSTOM_TAG_NAMES = [
-  "proteaai-write",
-  "proteaai-rename",
-  "proteaai-delete",
-  "proteaai-add-dependency",
-  "proteaai-execute-sql",
-  "proteaai-add-integration",
-  "proteaai-output",
-  "proteaai-problem-report",
-  "proteaai-chat-summary",
-  "proteaai-edit",
-  "proteaai-codebase-context",
+  "dyad-write",
+  "dyad-rename",
+  "dyad-delete",
+  "dyad-add-dependency",
+  "dyad-execute-sql",
+  "dyad-add-integration",
+  "dyad-output",
+  "dyad-problem-report",
+  "dyad-chat-summary",
+  "dyad-edit",
+  "dyad-codebase-context",
+  "dyad-script",
   "think",
-  "proteaai-command",
+  "dyad-command",
 ];
 export const useCopyToClipboard = () => {
   const [copied, setCopied] = useState(false);
@@ -29,8 +31,8 @@ export const useCopyToClipboard = () => {
 
   const copyMessageContent = async (messageContent: string) => {
     try {
-      // Use the same parsing logic as ProteaAIMarkdownParser but convert to clean text
-      const formattedContent = convertProteaAIContentToMarkdown(messageContent);
+      // Use the same parsing logic as DyadMarkdownParser but convert to clean text
+      const formattedContent = convertDyadContentToMarkdown(messageContent);
 
       // Copy to clipboard
       await navigator.clipboard.writeText(formattedContent);
@@ -50,11 +52,11 @@ export const useCopyToClipboard = () => {
     }
   };
 
-  // Convert ProteaAI content to clean markdown using the same parsing logic as ProteaAIMarkdownParser
-  const convertProteaAIContentToMarkdown = (content: string): string => {
+  // Convert Dyad content to clean markdown using the same parsing logic as DyadMarkdownParser
+  const convertDyadContentToMarkdown = (content: string): string => {
     if (!content) return "";
 
-    // Use the same parsing functions from ProteaAIMarkdownParser
+    // Use the same parsing functions from DyadMarkdownParser
     const contentPieces = parseCustomTags(content);
 
     let result = "";
@@ -76,7 +78,7 @@ export const useCopyToClipboard = () => {
       .trim();
   };
 
-  // Convert individual custom tags to markdown (reuse the same logic from ProteaAIMarkdownParser)
+  // Convert individual custom tags to markdown (reuse the same logic from DyadMarkdownParser)
   const convertCustomTagToMarkdown = (tagInfo: any): string => {
     const { tag, attributes, content } = tagInfo;
 
@@ -84,7 +86,7 @@ export const useCopyToClipboard = () => {
       case "think":
         return `### Thinking\n\n${content}\n\n`;
 
-      case "proteaai-write": {
+      case "dyad-write": {
         const writePath = attributes.path || "file";
         const writeDesc = attributes.description || "";
         const language = getLanguage(writePath);
@@ -97,7 +99,7 @@ export const useCopyToClipboard = () => {
         return writeResult;
       }
 
-      case "proteaai-edit": {
+      case "dyad-edit": {
         const editPath = attributes.path || "file";
         const editDesc = attributes.description || "";
         const editLang = getLanguage(editPath);
@@ -110,23 +112,23 @@ export const useCopyToClipboard = () => {
         return editResult;
       }
 
-      case "proteaai-rename": {
+      case "dyad-rename": {
         const from = attributes.from || "";
         const to = attributes.to || "";
         return `### Rename: ${from} → ${to}\n\n`;
       }
 
-      case "proteaai-delete": {
+      case "dyad-delete": {
         const deletePath = attributes.path || "";
         return `### Delete: ${deletePath}\n\n`;
       }
 
-      case "proteaai-add-dependency": {
+      case "dyad-add-dependency": {
         const packages = attributes.packages || "";
         return `### Add Dependencies\n\n\`\`\`bash\n${packages}\n\`\`\`\n\n`;
       }
 
-      case "proteaai-execute-sql": {
+      case "dyad-execute-sql": {
         const sqlDesc = attributes.description || "";
         let sqlResult = `### Execute SQL\n\n`;
         if (sqlDesc) {
@@ -136,12 +138,11 @@ export const useCopyToClipboard = () => {
         return sqlResult;
       }
 
-      case "proteaai-add-integration": {
-        const provider = attributes.provider || "";
-        return `### Add Integration: ${provider}\n\n`;
+      case "dyad-add-integration": {
+        return `### Add Database Integration\n\n`;
       }
 
-      case "proteaai-codebase-context": {
+      case "dyad-codebase-context": {
         const files = attributes.files || "";
         let contextResult = `### Codebase Context\n\n`;
         if (files) {
@@ -151,7 +152,7 @@ export const useCopyToClipboard = () => {
         return contextResult;
       }
 
-      case "proteaai-output": {
+      case "dyad-output": {
         const outputType = attributes.type || "info";
         const message = attributes.message || "";
         const emoji =
@@ -171,7 +172,20 @@ export const useCopyToClipboard = () => {
         return outputResult + "\n\n";
       }
 
-      case "proteaai-problem-report": {
+      case "dyad-script": {
+        const description = attributes.description || "Script";
+        try {
+          const payload = JSON.parse(content) as {
+            script?: string;
+            output?: string;
+          };
+          return `### ${description}\n\n\`\`\`js\n${payload.script ?? ""}\n\`\`\`\n\n\`\`\`text\n${payload.output ?? ""}\n\`\`\`\n\n`;
+        } catch {
+          return `### ${description}\n\n\`\`\`text\n${content}\n\`\`\`\n\n`;
+        }
+      }
+
+      case "dyad-problem-report": {
         const summary = attributes.summary || "";
         let problemResult = `### Problem Report\n\n`;
         if (summary) {
@@ -183,8 +197,8 @@ export const useCopyToClipboard = () => {
         return problemResult + "\n\n";
       }
 
-      case "proteaai-chat-summary":
-      case "proteaai-command":
+      case "dyad-chat-summary":
+      case "dyad-command":
         // Don't include these in copy
         return "";
 
@@ -193,7 +207,7 @@ export const useCopyToClipboard = () => {
     }
   };
 
-  // Reuse the same parsing functions from ProteaAIMarkdownParser but simplified
+  // Reuse the same parsing functions from DyadMarkdownParser but simplified
   const parseCustomTags = (content: string) => {
     const { processedContent } = preprocessUnclosedTags(content);
 
@@ -220,10 +234,10 @@ export const useCopyToClipboard = () => {
 
       // Parse attributes
       const attributes: Record<string, string> = {};
-      const attrPattern = /(\w+)="([^"]*)"/g;
+      const attrPattern = /([\w-]+)="([^"]*)"/g;
       let attrMatch;
       while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
-        attributes[attrMatch[1]] = attrMatch[2];
+        attributes[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
       }
 
       // Add the tag info
@@ -232,7 +246,7 @@ export const useCopyToClipboard = () => {
         tagInfo: {
           tag,
           attributes,
-          content: tagContent,
+          content: unescapeXmlContent(tagContent),
           fullMatch,
         },
       });

@@ -5,12 +5,11 @@ import * as path from "node:path";
 
 testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
-    // Set up a force-close scenario by creating settings with isRunning: true
-    // and lastKnownPerformance data
+    // Set up a force-close scenario by leaving the session.lock crash sentinel
+    // file behind and providing lastKnownPerformance data in settings.
     const settingsPath = path.join(userDataDir, "user-settings.json");
     const settings = {
       hasRunBefore: true,
-      isRunning: true, // Simulate force-close
       enableAutoUpdate: false,
       releaseChannel: "stable",
       lastKnownPerformance: {
@@ -26,6 +25,10 @@ testWithConfig({
 
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    fs.writeFileSync(
+      path.join(userDataDir, "session.lock"),
+      String(Date.now()),
+    );
   },
 })(
   "force-close detection shows dialog with performance data",
@@ -74,11 +77,11 @@ testWithConfig({
 
 testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
-    // Set up scenario without force-close (proper shutdown)
+    // Set up scenario without force-close (proper shutdown): no session.lock
+    // sentinel file, but lastKnownPerformance is still populated.
     const settingsPath = path.join(userDataDir, "user-settings.json");
     const settings = {
       hasRunBefore: true,
-      isRunning: false, // Proper shutdown - no force-close
       enableAutoUpdate: false,
       releaseChannel: "stable",
       lastKnownPerformance: {

@@ -4,6 +4,7 @@ import { Worker } from "worker_threads";
 import path from "path";
 import { findAvailablePort } from "./port_utils";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("start_proxy_server");
 
@@ -14,16 +15,21 @@ export async function startProxy(
     // port?: number;
     // env?: Record<string, string>;
     onStarted?: (proxyUrl: string) => void;
+    fixedHeaders?: Record<string, string>;
   } = {},
 ) {
   if (!/^https?:\/\//.test(targetOrigin))
-    throw new Error("startProxy: targetOrigin must be absolute http/https URL");
+    throw new DyadError(
+      "startProxy: targetOrigin must be absolute http/https URL",
+      DyadErrorKind.Validation,
+    );
   const port = await findAvailablePort(50_000, 60_000);
   logger.info("Found available port", port);
   const {
     // host = "localhost",
     // env = {}, // additional env vars to pass to the worker
     onStarted,
+    fixedHeaders,
   } = opts;
 
   const worker = new Worker(
@@ -32,6 +38,7 @@ export async function startProxy(
       workerData: {
         targetOrigin,
         port,
+        fixedHeaders,
       },
     },
   );

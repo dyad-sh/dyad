@@ -4,15 +4,25 @@ import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getProteaAIAppPath } from "../../paths/paths";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
+import {
+  getInitialChatModeForNewChat,
+  normalizeStoredChatMode,
+} from "./chat_mode_resolution";
 
 const logger = log.scope("chat_handlers");
 
 export function registerChatHandlers() {
-  createTypedHandler(chatContracts.createChat, async (_, appId) => {
+  createTypedHandler(chatContracts.createChat, async (_, input) => {
+    const { appId, initialChatMode } =
+      typeof input === "number"
+        ? { appId: input, initialChatMode: undefined }
+        : input;
+
     // Get the app's path first
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
@@ -22,7 +32,7 @@ export function registerChatHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     let initialCommitHash = null;
@@ -36,12 +46,15 @@ export function registerChatHandlers() {
       // Continue without the git revision
     }
 
+    const chatMode = await getInitialChatModeForNewChat(initialChatMode);
+
     // Create a new chat
     const [chat] = await db
       .insert(chats)
       .values({
         appId,
         initialCommitHash,
+        chatMode,
       })
       .returning();
     logger.info(
@@ -66,12 +79,13 @@ export function registerChatHandlers() {
     });
 
     if (!chat) {
-      throw new Error("Chat not found");
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
     }
 
     return {
       ...chat,
       title: chat.title ?? "",
+      chatMode: normalizeStoredChatMode(chat.chatMode),
       messages: chat.messages.map((m) => ({
         ...m,
         role: m.role as "user" | "assistant",
@@ -89,6 +103,7 @@ export function registerChatHandlers() {
             title: true,
             createdAt: true,
             appId: true,
+            chatMode: true,
           },
           orderBy: [desc(chats.createdAt)],
         })
@@ -98,12 +113,16 @@ export function registerChatHandlers() {
             title: true,
             createdAt: true,
             appId: true,
+            chatMode: true,
           },
           orderBy: [desc(chats.createdAt)],
         });
 
     const allChats = await query;
-    return allChats as ChatSummary[];
+    return allChats.map((chat) => ({
+      ...chat,
+      chatMode: normalizeStoredChatMode(chat.chatMode),
+    })) satisfies ChatSummary[];
   });
 
   createTypedHandler(chatContracts.deleteChat, async (_, chatId) => {
@@ -111,8 +130,18 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
-    const { chatId, title } = params;
-    await db.update(chats).set({ title }).where(eq(chats.id, chatId));
+    const { chatId, title, chatMode } = params;
+    const updates: Partial<typeof chats.$inferInsert> = {};
+    if (title !== undefined) {
+      updates.title = title;
+    }
+    if (chatMode !== undefined) {
+      updates.chatMode = chatMode;
+    }
+    if (Object.keys(updates).length === 0) {
+      return;
+    }
+    await db.update(chats).set(updates).where(eq(chats.id, chatId));
   });
 
   createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {

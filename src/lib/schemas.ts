@@ -15,6 +15,7 @@ export const ChatSummarySchema = z.object({
   appId: z.number(),
   title: z.string().nullable(),
   createdAt: z.date(),
+  chatMode: z.enum(["build", "ask", "local-agent", "plan"]).nullable(),
 });
 
 /**
@@ -71,6 +72,7 @@ const providers = [
   "azure",
   "xai",
   "bedrock",
+  "minimax",
 ] as const;
 
 export const cloudProviders = providers.filter(
@@ -140,7 +142,7 @@ export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 
-export const RuntimeMode2Schema = z.enum(["host", "docker"]);
+export const RuntimeMode2Schema = z.enum(["host", "docker", "cloud"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
 /**
@@ -160,6 +162,17 @@ export type StoredChatMode = z.infer<typeof StoredChatModeSchema>;
  */
 export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
+
+/**
+ * Modes that stream through the local agent (tool-calling) path rather than
+ * the build-mode path that injects full codebases into the prompt. Keep this
+ * in sync with the chat-stream and token-count handlers: whenever a new mode
+ * routes through the local agent, add it here so the token estimate matches
+ * what's actually sent to the model.
+ */
+export function isLocalAgentBackedMode(mode: ChatMode | undefined): boolean {
+  return mode === "local-agent" || mode === "ask" || mode === "plan";
+}
 
 export const GitHubSecretsSchema = z.object({
   accessToken: SecretSchema.nullable(),
@@ -212,6 +225,8 @@ export const ExperimentsSchema = z.object({
   enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
+  enableCloudSandbox: z.boolean().optional(),
+  enableSandboxScriptExecution: z.boolean().optional(),
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 
@@ -310,6 +325,7 @@ const BaseUserSettingsFields = {
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
   enableProteaAIPro: z.boolean().optional(),
+  enableDyadPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
@@ -332,12 +348,14 @@ const BaseUserSettingsFields = {
   enableAutoFixProblems: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
+  blockUnsafeNpmPackages: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
   customNodePath: z.string().optional().nullable(),
+  customAppsFolder: z.string().optional().nullable(),
   isRunning: z.boolean().optional(),
   lastKnownPerformance: z
     .object({
@@ -353,6 +371,7 @@ const BaseUserSettingsFields = {
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),
   enableSelectAppFromHomeChatInput: z.boolean().optional(),
+  previewIdleTimeoutPolicy: z.enum(["default", "never"]).optional(),
 };
 
 /**
@@ -428,12 +447,16 @@ export function migrateStoredSettings(
 }
 
 export function isProteaAIProEnabled(settings: UserSettings): boolean {
-  return settings.enableProteaAIPro === true && hasProteaAIProKey(settings);
+  return (settings.enableProteaAIPro === true || settings.enableDyadPro === true) && hasProteaAIProKey(settings);
 }
 
 export function hasProteaAIProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
+
+// Backward-compat aliases used by upstream code
+export const isDyadProEnabled = isProteaAIProEnabled;
+export const hasDyadProKey = hasProteaAIProKey;
 
 /**
  * Gets the effective default chat mode based on settings, pro status, and free quota availability.

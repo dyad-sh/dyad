@@ -18,25 +18,21 @@ test("file tree search finds content matches and surfaces line numbers", async (
   const searchInput = po.page.getByTestId("file-tree-search");
   await expect(searchInput).toBeVisible({ timeout: Timeout.MEDIUM });
 
+  // Scope searches to the file tree to avoid matching elements in the chat area
+  const fileTree = po.page.locator(".file-tree");
+
   // Content search should find files whose contents match the query and show line info
   await searchInput.fill("import");
-  const resultItem = po.page.getByText("main.tsx").first();
+  const resultItem = fileTree.getByText("src/main.tsx").first();
   await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });
 
-  // Files are collapsed by default in the new accordion UI, so we need to click to expand
-  // Find the file name container (the clickable div that toggles expansion)
-  const fileContainer = resultItem
-    .locator("xpath=ancestor::div[contains(@class, 'cursor-pointer')]")
-    .first();
-  await expect(fileContainer).toBeVisible({ timeout: Timeout.MEDIUM });
-
-  // Click on the file name to expand the accordion and show snippets
-  await fileContainer.click();
+  // Click on the file path text to expand the accordion and show snippets.
+  // Clicking the text bubbles to the parent div's handleFileClick handler.
+  await resultItem.click();
 
   // Now the snippets should be visible - find the snippet container
   // The snippet is a div with class "ml-12" that contains the code snippet
-  // Find it by looking for text containing "import" in the expanded section
-  const snippetContainer = po.page
+  const snippetContainer = fileTree
     .locator("div.ml-12")
     .filter({ hasText: /import/i })
     .first();

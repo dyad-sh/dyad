@@ -23,6 +23,7 @@ import {
   VercelProject,
   VercelDeployment,
 } from "../types/vercel";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("vercel_handlers");
 
@@ -123,10 +124,13 @@ async function getDefaultTeamId(token: string): Promise<string> {
       return data.teams[0].id;
     }
 
-    throw new Error("No teams found for this user");
+    throw new DyadError("No teams found for this user", DyadErrorKind.NotFound);
   } catch (error) {
     logger.error("Error getting default team ID:", error);
-    throw new Error("Failed to get team information");
+    throw new DyadError(
+      "Failed to get team information",
+      DyadErrorKind.External,
+    );
   }
 }
 
@@ -198,7 +202,7 @@ async function handleSaveVercelToken(
   logger.debug("Saving Vercel access token");
 
   if (!token || token.trim() === "") {
-    throw new Error("Access token is required.");
+    throw new DyadError("Access token is required.", DyadErrorKind.Auth);
   }
 
   try {
@@ -219,7 +223,10 @@ async function handleSaveVercelToken(
     logger.log("Successfully saved Vercel access token.");
   } catch (error: any) {
     logger.error("Error saving Vercel token:", error);
-    throw new Error(`Failed to save access token: ${error.message}`);
+    throw new DyadError(
+      `Failed to save access token: ${error.message}`,
+      DyadErrorKind.Auth,
+    );
   }
 }
 
@@ -229,13 +236,16 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
     const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with Vercel.");
+      throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
     }
 
     const response = await getVercelProjects(accessToken);
 
     if (!response.projects) {
-      throw new Error("Failed to retrieve projects from Vercel.");
+      throw new DyadError(
+        "Failed to retrieve projects from Vercel.",
+        DyadErrorKind.External,
+      );
     }
 
     return response.projects.map((project) => ({
@@ -244,6 +254,7 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
       framework: project.framework || null,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to list projects:", err);
     throw new Error(err.message || "Failed to list Vercel projects.");
   }
@@ -292,7 +303,7 @@ async function handleCreateProject(
   const settings = await readCurrentUserSettings();
   const accessToken = settings.vercelAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with Vercel.");
+    throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
   }
 
   try {
@@ -301,7 +312,7 @@ async function handleCreateProject(
     // Get app details to determine the framework
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app) {
-      throw new Error("App not found.");
+      throw new DyadError("App not found.", DyadErrorKind.NotFound);
     }
 
     // Check if app has GitHub repository configured
@@ -331,7 +342,10 @@ async function handleCreateProject(
       },
     });
     if (!projectData.id) {
-      throw new Error("Failed to create project: No project ID returned.");
+      throw new DyadError(
+        "Failed to create project: No project ID returned.",
+        DyadErrorKind.External,
+      );
     }
 
     // Get the default team ID
@@ -383,6 +397,7 @@ async function handleCreateProject(
       // Don't throw here - project creation was successful, deployment failure is non-critical
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to create project:", err);
     throw new Error(err.message || "Failed to create Vercel project.");
   }
@@ -397,7 +412,7 @@ async function handleConnectToExistingProject(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with Vercel.");
+      throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
     }
 
     logger.info(
@@ -411,7 +426,10 @@ async function handleConnectToExistingProject(
     );
 
     if (!projectData) {
-      throw new Error("Project not found. Please check the project ID.");
+      throw new DyadError(
+        "Project not found. Please check the project ID.",
+        DyadErrorKind.NotFound,
+      );
     }
 
     // Get the default team ID
@@ -430,6 +448,7 @@ async function handleConnectToExistingProject(
 
     logger.info(`Successfully connected to Vercel project: ${projectData.id}`);
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error(
       "[Vercel Handler] Failed to connect to existing project:",
       err,
@@ -447,12 +466,15 @@ async function handleGetVercelDeployments(
     const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with Vercel.");
+      throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.vercelProjectId) {
-      throw new Error("App is not linked to a Vercel project.");
+      throw new DyadError(
+        "App is not linked to a Vercel project.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     logger.info(
@@ -468,7 +490,10 @@ async function handleGetVercelDeployments(
     });
 
     if (!deploymentsResponse.deployments) {
-      throw new Error("Failed to retrieve deployments from Vercel.");
+      throw new DyadError(
+        "Failed to retrieve deployments from Vercel.",
+        DyadErrorKind.External,
+      );
     }
 
     // Find the most recent READY production deployment and update the stored URL
@@ -500,6 +525,7 @@ async function handleGetVercelDeployments(
       readyState: deployment.readyState || "unknown",
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to get deployments:", err);
     throw new Error(err.message || "Failed to get Vercel deployments.");
   }
@@ -516,7 +542,7 @@ async function handleDisconnectVercelProject(
   });
 
   if (!app) {
-    throw new Error("App not found");
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
 
   // Update app in database to remove Vercel project info

@@ -66,7 +66,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 3 file(s)
+- text: "Version 2: wrote 3 file(s)"
 - paragraph: "Fix all of the following errors:"
 - list:
   - listitem: First error in Index
@@ -89,7 +89,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: "Version 3: wrote 1 file(s)"
 - button "Undo":
   - img
   - text: ""

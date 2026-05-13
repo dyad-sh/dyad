@@ -28,6 +28,7 @@ import {
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
 import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
+import { pendingIntegrationAtom } from "./atoms/integrationAtoms";
 import { queryKeys } from "./lib/queryKeys";
 import {
   createExceptionFromTelemetry,
@@ -172,9 +173,27 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = ipc.events.misc.onErrorToast(({ message, action }) => {
+      showError(message, {
+        action: action
+          ? {
+              label: action.label,
+              onClick: () => {
+                ipc.system.openExternalUrl(action.url);
+              },
+            }
+          : undefined,
+      });
+    });
+    void ipc.misc.rendererErrorToastReady(undefined);
+    return () => unsubscribe();
+  }, []);
+
   // Agent v2 tool consent requests - queue consents instead of overwriting
   const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
+  const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
   const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
 
   // Agent todos updates
@@ -230,9 +249,19 @@ function App() {
         next.delete(chatId);
         return next;
       });
+      // Without this, a cancelled/timed-out integration request would leave the
+      // chat card interactive and the Configure panel's Continue button armed
+      // against a backend resolver that no longer exists — clicking it would
+      // silently no-op while still queuing a phantom continuation message.
+      setPendingIntegration((prev) => {
+        if (!prev.has(chatId)) return prev;
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents, setPendingQuestionnaire]);
+  }, [setPendingAgentConsents, setPendingQuestionnaire, setPendingIntegration]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

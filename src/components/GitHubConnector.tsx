@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 import { showSuccess, showError } from "@/lib/toast";
+import { useGithubSyncState } from "@/atoms/githubSyncAtoms";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -79,20 +80,22 @@ function ConnectedGitHubConnector({
   onAutoSyncComplete,
 }: ConnectedGitHubConnectorProps) {
   const { t } = useTranslation(["home", "common"]);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncSuccess, setSyncSuccess] = useState<boolean>(false);
+  // Sync state is stored in a global atom keyed by appId so it survives
+  // unmounts when the user navigates away from the Publish tab while a push
+  // is still running. See githubSyncAtoms.ts.
+  const [syncState, updateSyncState] = useGithubSyncState(appId);
+  const {
+    isSyncing,
+    syncError,
+    syncSuccess,
+    conflicts,
+    rebaseInProgress,
+    rebaseStatusMessage,
+    rebaseAction,
+  } = syncState;
   const [showForceDialog, setShowForceDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
-  const [conflicts, setConflicts] = useState<string[]>([]);
-  const [rebaseStatusMessage, setRebaseStatusMessage] = useState<string | null>(
-    null,
-  );
-  const [rebaseAction, setRebaseAction] = useState<
-    "abort" | "continue" | "safe-push" | null
-  >(null);
-  const [rebaseInProgress, setRebaseInProgress] = useState(false);
   const [isCancellingSync, setIsCancellingSync] = useState(false);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
@@ -101,8 +104,7 @@ function ConnectedGitHubConnector({
     conflicts,
     onStartResolving: () => {
       // Clear conflicts state when starting AI resolution since user will be navigated to chat
-      setConflicts([]);
-      setSyncError(null);
+      updateSyncState({ conflicts: [], syncError: null });
     },
   });
 
@@ -113,15 +115,16 @@ function ConnectedGitHubConnector({
       let aborted = false;
       if (state.rebaseInProgress) {
         await ipc.github.rebaseAbort({ appId });
-        setRebaseInProgress(false);
-        setRebaseStatusMessage("Rebase aborted.");
+        updateSyncState({
+          rebaseInProgress: false,
+          rebaseStatusMessage: "Rebase aborted.",
+        });
         aborted = true;
       } else if (state.mergeInProgress) {
         await ipc.github.mergeAbort({ appId });
         aborted = true;
       }
-      setConflicts([]);
-      setSyncError(null);
+      updateSyncState({ conflicts: [], syncError: null });
       if (aborted) {
         showSuccess("Sync cancelled");
       }
@@ -137,6 +140,17 @@ function ConnectedGitHubConnector({
     setDisconnectError(null);
     try {
       await ipc.github.disconnect({ appId });
+      // Clear stale sync state so reconnecting to a different repo doesn't
+      // show a success/error message from the previous repo.
+      updateSyncState({
+        isSyncing: false,
+        syncError: null,
+        syncSuccess: false,
+        conflicts: [],
+        rebaseInProgress: false,
+        rebaseStatusMessage: null,
+        rebaseAction: null,
+      });
       refreshApp();
     } catch (err: any) {
       setDisconnectError(
@@ -152,12 +166,14 @@ function ConnectedGitHubConnector({
       force = false,
       forceWithLease = false,
     }: GithubSyncOptions = {}): Promise<SyncResult> => {
-      setIsSyncing(true);
-      setSyncError(null);
-      setSyncSuccess(false);
+      updateSyncState({
+        isSyncing: true,
+        syncError: null,
+        syncSuccess: false,
+        rebaseInProgress: false,
+        conflicts: [], // Clear conflicts when starting a new sync
+      });
       setShowForceDialog(false);
-      setRebaseInProgress(false);
-      setConflicts([]); // Clear conflicts when starting a new sync
 
       try {
         await ipc.github.push({
@@ -165,10 +181,15 @@ function ConnectedGitHubConnector({
           force,
           forceWithLease,
         });
-        setSyncSuccess(true);
-        setRebaseInProgress(false);
-        setConflicts([]); // Clear conflicts on successful sync
-        setRebaseStatusMessage(null);
+        updateSyncState({
+          syncSuccess: true,
+          rebaseInProgress: false,
+          conflicts: [], // Clear conflicts on successful sync
+          rebaseStatusMessage: null,
+        });
+        // Toast so the user sees the result even if they navigated away
+        // from the Publish tab while the push was running.
+        showSuccess("Successfully pushed to GitHub!");
         return {};
       } catch (err: any) {
         // Always check for conflicts when sync fails, regardless of error type
@@ -186,10 +207,12 @@ function ConnectedGitHubConnector({
 
         if (conflictsDetected.length > 0) {
           // Conflicts were detected - show resolution buttons below
-          setConflicts(conflictsDetected);
-          setSyncError(
-            "Merge conflicts detected. Use the buttons below to resolve them.",
-          );
+          updateSyncState({
+            conflicts: conflictsDetected,
+            syncError:
+              "Merge conflicts detected. Use the buttons below to resolve them.",
+          });
+          showError("Merge conflicts detected while syncing to GitHub.");
           (err as Error & { handled?: boolean }).handled = true;
           return { error: err, handled: true };
         }
@@ -202,9 +225,10 @@ function ConnectedGitHubConnector({
         if (isConflict) {
           // Conflict error detected but no conflicts found - this shouldn't happen
           // but we'll show an error message
-          setSyncError(
-            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
-          );
+          const msg =
+            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.";
+          updateSyncState({ syncError: msg });
+          showError(msg);
           return { error: err };
         }
 
@@ -243,69 +267,84 @@ function ConnectedGitHubConnector({
               ? " Conflict check failed."
               : "";
         const finalErrorMessage = `${baseErrorMessage}${conflictCheckMessage}`;
-        setSyncError(finalErrorMessage);
-        setRebaseInProgress(rebaseInProgressState);
-        setRebaseStatusMessage(null);
+        updateSyncState({
+          syncError: finalErrorMessage,
+          rebaseInProgress: rebaseInProgressState,
+          rebaseStatusMessage: null,
+        });
+        showError(`Failed to sync to GitHub: ${finalErrorMessage}`);
         return { error: err };
       } finally {
-        setIsSyncing(false);
+        updateSyncState({ isSyncing: false });
       }
     },
-    [appId],
+    [appId, updateSyncState],
   );
 
   const handleAbortRebase = useCallback(async () => {
-    setRebaseAction("abort");
-    setSyncError(null);
-    setRebaseStatusMessage(null);
-    setSyncSuccess(false);
+    updateSyncState({
+      rebaseAction: "abort",
+      syncError: null,
+      rebaseStatusMessage: null,
+      syncSuccess: false,
+    });
     try {
       await ipc.github.rebaseAbort({ appId });
-      setRebaseInProgress(false);
-      setRebaseStatusMessage("Rebase aborted. You can try syncing again.");
+      updateSyncState({
+        rebaseInProgress: false,
+        rebaseStatusMessage: "Rebase aborted. You can try syncing again.",
+      });
     } catch (err: any) {
-      setSyncError(err.message || "Failed to abort rebase.");
-      setRebaseInProgress(true);
+      updateSyncState({
+        syncError: err.message || "Failed to abort rebase.",
+        rebaseInProgress: true,
+      });
     } finally {
-      setRebaseAction(null);
+      updateSyncState({ rebaseAction: null });
     }
-  }, [appId]);
+  }, [appId, updateSyncState]);
 
   const handleContinueRebase = useCallback(async () => {
-    setRebaseAction("continue");
-    setSyncError(null);
-    setRebaseStatusMessage(null);
-    setSyncSuccess(false);
+    updateSyncState({
+      rebaseAction: "continue",
+      syncError: null,
+      rebaseStatusMessage: null,
+      syncSuccess: false,
+    });
     try {
       await ipc.github.rebaseContinue({ appId });
-      setRebaseInProgress(false);
-      setRebaseStatusMessage("Rebase continued. You can sync when ready.");
+      updateSyncState({
+        rebaseInProgress: false,
+        rebaseStatusMessage: "Rebase continued. You can sync when ready.",
+      });
     } catch (err: any) {
-      setSyncError(err.message || "Failed to continue rebase.");
-      setRebaseInProgress(true);
+      updateSyncState({
+        syncError: err.message || "Failed to continue rebase.",
+        rebaseInProgress: true,
+      });
     } finally {
-      setRebaseAction(null);
+      updateSyncState({ rebaseAction: null });
     }
-  }, [appId]);
+  }, [appId, updateSyncState]);
 
   const handleSafeForcePush = useCallback(async () => {
-    setRebaseAction("safe-push");
+    updateSyncState({ rebaseAction: "safe-push" });
     try {
       await handleSyncToGithub({
         force: false,
         forceWithLease: true,
       });
     } finally {
-      setRebaseAction(null);
+      updateSyncState({ rebaseAction: null });
     }
-  }, [handleSyncToGithub]);
+  }, [handleSyncToGithub, updateSyncState]);
 
   const handleRebaseAndSync = useCallback(async () => {
-    setIsSyncing(true);
+    updateSyncState({ isSyncing: true });
     try {
       // First, perform the rebase
       await ipc.github.rebase({ appId });
-      setRebaseStatusMessage(null);
+      updateSyncState({ rebaseStatusMessage: null });
       const syncResult = await handleSyncToGithub();
       if (syncResult?.error) {
         if (!syncResult.handled) {
@@ -313,30 +352,35 @@ function ConnectedGitHubConnector({
         }
         return;
       }
-      setRebaseStatusMessage("Rebase and push completed successfully.");
+      updateSyncState({
+        rebaseStatusMessage: "Rebase and push completed successfully.",
+      });
     } catch (err: any) {
       if (err?.handled) {
         return;
       }
       const errorMessage =
         err?.message || "Failed to rebase and sync to GitHub.";
-      setSyncError(errorMessage);
-      setRebaseInProgress(errorMessage.includes("rebase-merge"));
+      updateSyncState({
+        syncError: errorMessage,
+        rebaseInProgress: errorMessage.includes("rebase-merge"),
+      });
       // If rebase failed, show appropriate message
       if (errorMessage.includes("rebase")) {
-        setRebaseStatusMessage(
-          "Rebase failed. You may need to resolve conflicts or abort the rebase.",
-        );
+        updateSyncState({
+          rebaseStatusMessage:
+            "Rebase failed. You may need to resolve conflicts or abort the rebase.",
+        });
       }
       // Clear any stale rebase success message if sync failed after rebase
       if (errorMessage.includes("sync") || errorMessage.includes("push")) {
-        setRebaseStatusMessage(null);
+        updateSyncState({ rebaseStatusMessage: null });
       }
     } finally {
       // Ensure syncing state is reset whether rebase or sync fails before handleSyncToGithub runs its own cleanup
-      setIsSyncing(false);
+      updateSyncState({ isSyncing: false });
     }
-  }, [appId, handleSyncToGithub]);
+  }, [appId, handleSyncToGithub, updateSyncState]);
 
   // Auto-sync when triggerAutoSync prop is true
   useEffect(() => {

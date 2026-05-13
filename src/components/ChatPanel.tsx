@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
+  chatErrorByIdAtom,
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
@@ -12,7 +13,6 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
-import { ChatError } from "./chat/ChatError";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import {
 import { ArrowDown } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
-import { isBasicAgentMode } from "@/lib/schemas";
+import { useChatMode } from "@/hooks/useChatMode";
+import { isDyadProEnabled } from "@/lib/schemas";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -39,15 +40,20 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation("chat");
   const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const chatErrorById = useAtomValue(chatErrorByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  const { settings, updateSettings } = useSettings();
+  const store = useStore();
+  const { settings } = useSettings();
+  const { selectedMode, setChatMode } = useChatMode(chatId);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
-    settings && isBasicAgentMode(settings) && isQuotaExceeded;
+    settings &&
+    !isDyadProEnabled(settings) &&
+    selectedMode === "local-agent" &&
+    isQuotaExceeded;
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -81,6 +87,7 @@ export function ChatPanel({
   // Scroll to bottom when a new stream starts (user sent a message)
   const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<number | undefined>(undefined);
@@ -118,13 +125,22 @@ export function ChatPanel({
       // no-op when no chat
       return;
     }
+    // Skip IPC fetch entirely when streaming: the patch stream carries fresher
+    // content than the throttled DB snapshot, and overwriting would corrupt the
+    // renderer's base for subsequent patches (offset mismatch). onEnd will do
+    // a correct full sync when the stream finishes.
+    // Read via store.get so both checks see the current atom value regardless
+    // of React batching or commit-to-effect timing.
+    if (store.get(isStreamingByIdAtom).get(chatId)) return;
     const chat = await ipc.chat.getChat(chatId);
+    // Re-check after the async fetch: streaming may have started while in flight.
+    if (store.get(isStreamingByIdAtom).get(chatId)) return;
     setMessagesById((prev) => {
       const next = new Map(prev);
       next.set(chatId, chat.messages);
       return next;
     });
-  }, [chatId, setMessagesById]);
+  }, [chatId, setMessagesById, store]); // store is stable; isStreamingById read via store.get at call time
 
   useEffect(() => {
     fetchChatMessages();
@@ -147,6 +163,49 @@ export function ChatPanel({
       });
     }
   }, [isStreaming, scrollToBottom]);
+
+  // Keep footer actions (including Retry) visible when stream errors render below.
+  useEffect(() => {
+    if (!streamError) return;
+
+    const container = messagesContainerRef.current;
+    const distanceFromBottom = container
+      ? container.scrollHeight - (container.scrollTop + container.clientHeight)
+      : 0;
+    const isNearBottom = distanceFromBottom <= 220;
+    if (!isAtBottomRef.current && !isNearBottom) return;
+
+    let cancelled = false;
+    let firstRafId: number | undefined;
+    let secondRafId: number | undefined;
+    let timeoutId: number | undefined;
+
+    firstRafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      secondRafId = requestAnimationFrame(() => {
+        if (cancelled) return;
+        scrollToBottom("instant");
+        timeoutId = window.setTimeout(() => {
+          if (!cancelled) {
+            scrollToBottom("smooth");
+          }
+        }, 120);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (firstRafId !== undefined) {
+        window.cancelAnimationFrame(firstRafId);
+      }
+      if (secondRafId !== undefined) {
+        window.cancelAnimationFrame(secondRafId);
+      }
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [streamError, scrollToBottom]);
 
   // Test mode only: Track scroll position to update isAtBottom state.
   // In production, Virtuoso's atBottomStateChange handles this.
@@ -218,12 +277,10 @@ export function ChatPanel({
                 </div>
               )}
             </div>
-
-            <ChatError error={error} onDismiss={() => setError(null)} />
             {showFreeAgentQuotaBanner && (
               <FreeAgentQuotaBanner
                 onSwitchToBuildMode={() =>
-                  updateSettings({ selectedChatMode: "build" })
+                  void setChatMode("build").catch(() => {})
                 }
               />
             )}

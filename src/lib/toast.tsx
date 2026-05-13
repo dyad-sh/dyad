@@ -21,7 +21,15 @@ export const showSuccess = (message: string) => {
  * Show an error toast
  * @param message The error message to display
  */
-export const showError = (message: any) => {
+export const showError = (
+  message: any,
+  options?: {
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
+  },
+) => {
   const errorMessage = message.toString();
   console.error(message);
 
@@ -36,6 +44,7 @@ export const showError = (message: any) => {
           toastId={t}
           copied={true}
           onCopy={() => onCopy(t)}
+          action={options?.action}
         />
       ),
       { id: toastId, duration: Infinity },
@@ -50,6 +59,7 @@ export const showError = (message: any) => {
             toastId={t}
             copied={false}
             onCopy={() => onCopy(t)}
+            action={options?.action}
           />
         ),
         { id: toastId, duration: Infinity },
@@ -64,9 +74,10 @@ export const showError = (message: any) => {
         message={errorMessage}
         toastId={t}
         onCopy={() => onCopy(t)}
+        action={options?.action}
       />
     ),
-    { duration: 8_000 },
+    { duration: options?.action ? Infinity : 8_000 },
   );
 
   return toastId;

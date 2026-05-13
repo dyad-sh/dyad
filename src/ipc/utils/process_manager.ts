@@ -2,16 +2,30 @@ import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
 import log from "electron-log";
 import type { Worker } from "node:worker_threads";
+import type { RuntimeMode2 } from "@/lib/schemas";
 import { withLock } from "./lock_utils";
+import {
+  destroyCloudSandbox,
+  stopCloudSandboxFileSync,
+  unregisterRunningCloudSandbox,
+} from "./cloud_sandbox_provider";
+import { readSettings } from "../../main/settings";
 
 const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
-  process: ChildProcess;
+  process: ChildProcess | null;
   processId: number;
-  isDocker: boolean;
+  mode: RuntimeMode2;
+  rendererSender?: Electron.WebContents;
   containerName?: string;
+  cloudSandboxId?: string;
+  cloudPreviewUrl?: string;
+  cloudPreviewAuthToken?: string;
+  proxyAuthToken?: string;
+  cloudSyncErrorMessage?: string;
+  cloudLogAbortController?: AbortController;
   /** Timestamp of when this app was last viewed/selected in the preview panel */
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
@@ -128,17 +142,27 @@ export async function stopAppByInfo(
   appId: number,
   appInfo: RunningAppInfo,
 ): Promise<void> {
+  stopCloudSandboxFileSync(appId);
+
+  if (appInfo.mode === "cloud") {
+    if (appInfo.cloudSandboxId) {
+      await destroyCloudSandbox(appInfo.cloudSandboxId);
+    }
+  } else if (appInfo.mode === "docker") {
+    const containerName = appInfo.containerName || `dyad-app-${appId}`;
+    await stopDockerContainer(containerName);
+  } else if (appInfo.process) {
+    await killProcess(appInfo.process);
+  }
+
   if (appInfo.proxyWorker) {
     await appInfo.proxyWorker.terminate();
     appInfo.proxyWorker = undefined;
   }
 
-  if (appInfo.isDocker) {
-    const containerName = appInfo.containerName || `proteaai-app-${appId}`;
-    await stopDockerContainer(containerName);
-  } else {
-    await killProcess(appInfo.process);
-  }
+  appInfo.cloudLogAbortController?.abort();
+  appInfo.cloudLogAbortController = undefined;
+  unregisterRunningCloudSandbox({ appId });
   runningApps.delete(appId);
 }
 
@@ -157,6 +181,10 @@ export function removeAppIfCurrentProcess(
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
     }
+    currentAppInfo.cloudLogAbortController?.abort();
+    currentAppInfo.cloudLogAbortController = undefined;
+    stopCloudSandboxFileSync(appId);
+    unregisterRunningCloudSandbox({ appId });
     runningApps.delete(appId);
     logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
@@ -217,6 +245,10 @@ export function getCurrentlySelectedAppId(): number | null {
  * and are not the currently selected app.
  */
 export async function garbageCollectIdleApps(): Promise<void> {
+  if (readSettings().previewIdleTimeoutPolicy === "never") {
+    return;
+  }
+
   const now = Date.now();
   const appsToStop: number[] = [];
 
@@ -334,8 +366,23 @@ export function stopAllAppsSync(): void {
       appInfo.proxyWorker = undefined;
     }
 
-    if (appInfo.isDocker) {
-      const containerName = appInfo.containerName || `proteaai-app-${appId}`;
+    if (appInfo.mode === "cloud") {
+      appInfo.cloudLogAbortController?.abort();
+      appInfo.cloudLogAbortController = undefined;
+      stopCloudSandboxFileSync(appId);
+      unregisterRunningCloudSandbox({ appId });
+      if (appInfo.cloudSandboxId) {
+        void destroyCloudSandbox(appInfo.cloudSandboxId).catch((error) => {
+          logger.warn(
+            `Failed to destroy cloud sandbox ${appInfo.cloudSandboxId} for app ${appId} during quit: ${error}`,
+          );
+        });
+      }
+      logger.info(
+        `Cloud sandbox ${appInfo.cloudSandboxId ?? "<unknown>"} for app ${appId} will be reconciled asynchronously after quit if needed.`,
+      );
+    } else if (appInfo.mode === "docker") {
+      const containerName = appInfo.containerName || `dyad-app-${appId}`;
       // Fire-and-forget: spawn docker stop without awaiting
       const stop = spawn("docker", ["stop", containerName], {
         stdio: "ignore",
@@ -346,16 +393,17 @@ export function stopAllAppsSync(): void {
         );
       });
       logger.info(`Sent docker stop for app ${appId} (${containerName})`);
-    } else if (appInfo.process.pid) {
+    } else if (appInfo.process?.pid) {
+      const pid = appInfo.process.pid;
       // treeKill sends SIGTERM synchronously
-      treeKill(appInfo.process.pid, "SIGTERM", (err: Error | undefined) => {
+      treeKill(pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
           logger.warn(
-            `tree-kill error for app ${appId} (PID ${appInfo.process.pid}): ${err.message}`,
+            `tree-kill error for app ${appId} (PID ${pid}): ${err.message}`,
           );
         }
       });
-      logger.info(`Sent SIGTERM to app ${appId} (PID ${appInfo.process.pid})`);
+      logger.info(`Sent SIGTERM to app ${appId} (PID ${pid})`);
     }
     runningApps.delete(appId);
   }

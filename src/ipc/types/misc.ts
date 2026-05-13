@@ -295,7 +295,15 @@ export type { DeepLinkData } from "../deep_link_data";
 // =============================================================================
 
 export const AppOutputSchema = z.object({
-  type: z.enum(["stdout", "stderr", "input-requested", "client-error", "info"]),
+  type: z.enum([
+    "stdout",
+    "stderr",
+    "input-requested",
+    "client-error",
+    "info",
+    "sync-error",
+    "sync-recovered",
+  ]),
   message: z.string(),
   appId: z.number(),
   timestamp: z.number().optional(),
@@ -355,6 +363,12 @@ export const miscContracts = {
     output: z.void(),
   }),
 
+  rendererErrorToastReady: defineContract({
+    channel: "renderer:error-toast-ready",
+    input: z.void(),
+    output: z.void(),
+  }),
+
   // Problems
   checkProblems: defineContract({
     channel: "check-problems",
@@ -383,6 +397,11 @@ export const miscEvents = {
     payload: AppOutputSchema,
   }),
 
+  appOutputBatch: defineEvent({
+    channel: "app:output-batch",
+    payload: z.array(AppOutputSchema),
+  }),
+
   deepLinkReceived: defineEvent({
     channel: "deep-link-received",
     payload: DeepLinkDataSchema,
@@ -396,6 +415,19 @@ export const miscEvents = {
   chatStreamEnd: defineEvent({
     channel: "chat:stream:end",
     payload: z.object({ chatId: z.number() }),
+  }),
+
+  errorToast: defineEvent({
+    channel: "toast:error",
+    payload: z.object({
+      message: z.string(),
+      action: z
+        .object({
+          label: z.string(),
+          url: z.string(),
+        })
+        .optional(),
+    }),
   }),
 } as const;
 

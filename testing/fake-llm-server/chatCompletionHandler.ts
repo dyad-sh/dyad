@@ -59,7 +59,8 @@ export const createChatCompletionHandler =
     if (
       !localAgentFixture &&
       (userTextContent.includes("incomplete todo(s)") ||
-        userTextContent.includes("previous response stream was interrupted"))
+        userTextContent.includes("previous response stream was interrupted") ||
+        userTextContent.includes("did not finish completely"))
     ) {
       for (const msg of userMessages) {
         const textContent = getTextContent(msg);
@@ -84,6 +85,12 @@ export const createChatCompletionHandler =
     }
 
     let messageContent = CANNED_MESSAGE;
+
+    // Route plan comment messages to generate dump for testing
+    if (userTextContent.includes("I have the following comments on the plan")) {
+      messageContent =
+        "I'll update the plan based on your comments.\n\n" + generateDump(req);
+    }
 
     // Handle compaction summary requests (from generateText() in compaction_handler)
     if (
@@ -110,6 +117,13 @@ export const createChatCompletionHandler =
       lastMessage.content.includes("[sleep=medium]")
     ) {
       await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.includes("[sleep=long]")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
     }
 
     // Handle merge conflict resolution prompts (both old and new formats)
@@ -334,11 +348,13 @@ export default Index;
       }
     }
 
+    // Continuation requests: the partial assistant output is in a preceding assistant
+    // message, then a user message asks to continue ("did not finish completely").
+    // Check any message for the marker. See chat_stream_handlers continuation prompt.
     if (
-      lastMessage &&
-      lastMessage.content &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.trim().endsWith("[[STRING_TO_BE_FINISHED]]")
+      messages.some((m: any) =>
+        getTextContent(m).includes("[[STRING_TO_BE_FINISHED]]"),
+      )
     ) {
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);

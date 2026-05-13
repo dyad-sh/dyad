@@ -76,7 +76,7 @@ export function DefaultChatModeSelector() {
                   <span className="text-xs text-muted-foreground">
                     {isProEnabled
                       ? "Better at bigger tasks"
-                      : "Free tier (5 messages/day)"}
+                      : "Free tier (10 messages/day)"}
                   </span>
                 </div>
               </SelectItem>

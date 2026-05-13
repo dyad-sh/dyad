@@ -1,4 +1,5 @@
 import { IpcMainInvokeEvent } from "electron";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readCurrentUserSettings } from "../../main/web-settings";
 import {
   gitMergeAbort,
@@ -19,6 +20,7 @@ import {
   getGitUncommittedFilesWithStatus,
   gitAddAll,
   gitCommit,
+  gitDiscardAllChanges,
 } from "../utils/git_utils";
 import { getProteaAIAppPath } from "../../paths/paths";
 import { db } from "../../db";
@@ -29,6 +31,7 @@ import { withLock } from "../utils/lock_utils";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 import type {
   GitBranchAppIdParams,
   CreateGitBranchParams,
@@ -44,7 +47,7 @@ async function handleAbortMerge(
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   await gitMergeAbort({ path: appPath });
@@ -58,11 +61,14 @@ async function handleFetchFromGithub(
   const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new Error("App is not linked to a GitHub repo.");
+    throw new DyadError(
+      "App is not linked to a GitHub repo.",
+      DyadErrorKind.Precondition,
+    );
   }
   const appPath = getProteaAIAppPath(app.path);
 
@@ -80,10 +86,16 @@ async function handleCreateBranch(
 ): Promise<void> {
   // Validate branch name
   if (!branch || branch.length === 0 || branch.length > 255) {
-    throw new Error("Branch name must be between 1 and 255 characters");
+    throw new DyadError(
+      "Branch name must be between 1 and 255 characters",
+      DyadErrorKind.Validation,
+    );
   }
   if (!/^[a-zA-Z0-9/_.-]+$/.test(branch) || /\.\./.test(branch)) {
-    throw new Error("Branch name contains invalid characters");
+    throw new DyadError(
+      "Branch name contains invalid characters",
+      DyadErrorKind.Validation,
+    );
   }
   if (
     branch.startsWith("-") ||
@@ -94,10 +106,10 @@ async function handleCreateBranch(
     branch.endsWith("/") ||
     branch.includes("@{")
   ) {
-    throw new Error("Invalid branch name");
+    throw new DyadError("Invalid branch name", DyadErrorKind.Validation);
   }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   await gitCreateBranch({
@@ -112,7 +124,7 @@ export async function handleDeleteBranch(
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   // Check if branch exists locally
@@ -136,8 +148,9 @@ export async function handleDeleteBranch(
         `Failed to list remote branches while checking for branch '${branch}' to delete.`,
         error,
       );
-      throw new Error(
+      throw new DyadError(
         `Branch '${branch}' does not exist locally and remote branches could not be checked. Please try again later.`,
+        DyadErrorKind.Conflict,
       );
     }
 
@@ -151,12 +164,14 @@ export async function handleDeleteBranch(
 
     // Branch only exists remotely - inform user they need to delete it on GitHub
     if (app.githubOrg && app.githubRepo) {
-      throw new Error(
+      throw new DyadError(
         `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly. Visit https://github.com/${app.githubOrg}/${app.githubRepo}/branches to manage remote branches.`,
+        DyadErrorKind.Conflict,
       );
     }
-    throw new Error(
+    throw new DyadError(
       `Branch '${branch}' only exists on the remote and cannot be deleted locally. Please delete it from your remote Git hosting provider.`,
+      DyadErrorKind.Conflict,
     );
   }
 }
@@ -166,7 +181,7 @@ async function handleSwitchBranch(
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   // Check for merge or rebase in progress before attempting to switch
@@ -203,9 +218,10 @@ async function handleSwitchBranch(
       lowerMessage.includes("would be overwritten") ||
       lowerMessage.includes("please commit or stash")
     ) {
-      throw new Error(
+      throw new DyadError(
         `Failed to switch branch: uncommitted changes detected. ` +
           "Please commit or stash your changes manually and try again.",
+        DyadErrorKind.Conflict,
       );
     }
     throw checkoutError;
@@ -225,7 +241,7 @@ async function handleRenameBranch(
   { appId, oldBranch, newBranch }: RenameGitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   // Check if we're renaming the current branch BEFORE renaming to avoid race conditions
@@ -250,10 +266,10 @@ async function handleRenameBranch(
   }
 }
 
-// Custom error class for merge conflicts
-class MergeConflictError extends Error {
+// Custom error class for merge conflicts (name kept for UI checks)
+class MergeConflictError extends DyadError {
   constructor(message: string) {
-    super(message);
+    super(message, DyadErrorKind.Conflict);
     this.name = "MergeConflictError";
   }
 }
@@ -263,7 +279,7 @@ async function handleMergeBranch(
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   // Check if branch exists locally, if not, check if it's a remote branch
@@ -308,9 +324,10 @@ async function handleMergeBranch(
       lowerMessage.includes("would be overwritten") ||
       lowerMessage.includes("please commit or stash")
     ) {
-      throw new Error(
+      throw new DyadError(
         `Failed to merge branch: uncommitted changes detected. ` +
           "Please commit or stash your changes manually and try again.",
+        DyadErrorKind.Conflict,
       );
     }
 
@@ -324,7 +341,7 @@ async function handleListLocalBranches(
   { appId }: GitBranchAppIdParams,
 ): Promise<{ branches: string[]; current: string | null }> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   const branches = await gitListBranches({ path: appPath });
@@ -337,7 +354,7 @@ async function handleListRemoteBranches(
   { appId, remote = "origin" }: { appId: number; remote?: string },
 ): Promise<string[]> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   const branches = await gitListRemoteBranches({ path: appPath, remote });
@@ -349,43 +366,57 @@ async function handleGetUncommittedFiles(
   { appId }: GitBranchAppIdParams,
 ): Promise<UncommittedFile[]> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   return getGitUncommittedFilesWithStatus({ path: appPath });
 }
 
-async function handleCommitChanges(
-  event: IpcMainInvokeEvent,
-  { appId, message }: { appId: number; message: string },
-): Promise<string> {
+async function withAppGitOp<T>(
+  appId: number,
+  operation: string,
+  fn: (appPath: string) => Promise<T>,
+): Promise<T> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) throw new Error("App not found");
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getProteaAIAppPath(app.path);
 
   return withLock(appId, async () => {
-    // Check for merge or rebase in progress
     if (isGitMergeInProgress({ path: appPath })) {
       throw GitStateError(
-        "Cannot commit: merge in progress. Please complete or abort the merge first.",
+        `Cannot ${operation}: merge in progress. Please complete or abort the merge first.`,
         GIT_ERROR_CODES.MERGE_IN_PROGRESS,
       );
     }
 
     if (isGitRebaseInProgress({ path: appPath })) {
       throw GitStateError(
-        "Cannot commit: rebase in progress. Please complete or abort the rebase first.",
+        `Cannot ${operation}: rebase in progress. Please complete or abort the rebase first.`,
         GIT_ERROR_CODES.REBASE_IN_PROGRESS,
       );
     }
 
-    // Stage all changes
+    return fn(appPath);
+  });
+}
+
+async function handleCommitChanges(
+  _event: IpcMainInvokeEvent,
+  { appId, message }: { appId: number; message: string },
+): Promise<string> {
+  return withAppGitOp(appId, "commit", async (appPath) => {
+    await ensureDyadGitignored(appPath);
     await gitAddAll({ path: appPath });
+    return gitCommit({ path: appPath, message });
+  });
+}
 
-    // Commit with the provided message
-    const commitHash = await gitCommit({ path: appPath, message });
-
-    return commitHash;
+async function handleDiscardChanges(
+  _event: IpcMainInvokeEvent,
+  { appId }: GitBranchAppIdParams,
+): Promise<void> {
+  return withAppGitOp(appId, "discard changes", async (appPath) => {
+    await gitDiscardAllChanges({ path: appPath });
   });
 }
 
@@ -397,11 +428,14 @@ async function handlePullFromGithub(
   const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new Error("App is not linked to a GitHub repo.");
+    throw new DyadError(
+      "App is not linked to a GitHub repo.",
+      DyadErrorKind.Precondition,
+    );
   }
   const appPath = getProteaAIAppPath(app.path);
   const currentBranch = await gitCurrentBranch({ path: appPath });
@@ -460,4 +494,5 @@ export function registerGithubBranchHandlers() {
     handleGetUncommittedFiles,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
+  createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);
 }

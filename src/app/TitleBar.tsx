@@ -10,7 +10,7 @@ import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useCallback, useEffect, useState } from "react";
-import { ProteaAIProSuccessDialog } from "@/components/ProteaAIProSuccessDialog";
+import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ipc } from "@/ipc/types";
 import { useSystemPlatform } from "@/hooks/useSystemPlatform";
@@ -47,18 +47,18 @@ export const TitleBar = () => {
   const platform = useSystemPlatform();
   const showWindowControls = platform !== null && platform !== "darwin";
 
-  const showProteaAIProSuccessDialog = () => {
+  const showDyadProSuccessDialog = () => {
     setIsSuccessDialogOpen(true);
   };
 
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "proteaai-pro-return") {
+      if (lastDeepLink?.type === "dyad-pro-return") {
         await refreshSettings();
-        // Refetch user budget when ProteaAI Pro key is set via deep link
+        // Refetch user budget when Dyad Pro key is set via deep link
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
-        showProteaAIProSuccessDialog();
+        showDyadProSuccessDialog();
         clearLastDeepLink();
       }
     };
@@ -77,27 +77,36 @@ export const TitleBar = () => {
     }
   };
 
-  const isProteaAIPro = !!settings?.providerSettings?.auto?.apiKey?.value;
-  const isProteaAIProEnabled = Boolean(settings?.enableProteaAIPro);
+  const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
+  const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
   return (
     <>
       <div className="@container z-11 w-full h-11 pt-3 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="ProteaAI Logo" className="w-6 h-6 mr-0.5 ml-2" />
-        <Button
-          data-testid="title-bar-app-name-button"
-          variant="outline"
-          size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
-          onClick={handleAppClick}
-        >
-          {displayText}
-        </Button>
-        {isProteaAIPro && <ProteaAIProButton isProteaAIProEnabled={isProteaAIProEnabled} />}
+        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5 ml-2" />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                data-testid="title-bar-app-name-button"
+                variant="outline"
+                size="sm"
+                className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
+                  selectedApp ? "cursor-pointer" : ""
+                }`}
+                onClick={handleAppClick}
+              />
+            }
+          >
+            {displayText}
+          </TooltipTrigger>
+          <TooltipContent>
+            {selectedApp ? selectedApp.name : "No app selected"}
+          </TooltipContent>
+        </Tooltip>
+        {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
         <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">
           <ChatTabs selectedChatId={selectedChatId} />
@@ -108,7 +117,7 @@ export const TitleBar = () => {
         {showWindowControls && <WindowsControls />}
       </div>
 
-      <ProteaAIProSuccessDialog
+      <DyadProSuccessDialog
         isOpen={isSuccessDialogOpen}
         onClose={() => setIsSuccessDialogOpen(false)}
       />
@@ -200,6 +209,8 @@ function TitleBarActions() {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { restartApp, refreshAppIframe } = useRunApp();
+  const { settings } = useSettings();
+  const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
 
   const onCleanRestart = useCallback(() => {
     restartApp({ removeNodeModules: true });
@@ -225,6 +236,10 @@ function TitleBarActions() {
   const onClearSessionData = useCallback(() => {
     clearSessionData();
   }, [clearSessionData]);
+
+  const onRecreateSandbox = useCallback(() => {
+    restartApp({ recreateSandbox: true });
+  }, [restartApp]);
 
   return (
     <div
@@ -257,16 +272,27 @@ function TitleBarActions() {
               </span>
             </div>
           </DropdownMenuItem>
+          {isCloudSandboxMode && (
+            <DropdownMenuItem onClick={onRecreateSandbox}>
+              <Cog size={16} />
+              <div className="flex flex-col">
+                <span>Recreate Sandbox</span>
+                <span className="text-xs text-muted-foreground">
+                  Destroys the current sandbox and creates a new one
+                </span>
+              </div>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
 }
 
-export function ProteaAIProButton({
-  isProteaAIProEnabled,
+export function DyadProButton({
+  isDyadProEnabled,
 }: {
-  isProteaAIProEnabled: boolean;
+  isDyadProEnabled: boolean;
 }) {
   const { navigate } = useRouter();
   const { userBudget } = useUserBudgetInfo();
@@ -282,16 +308,16 @@ export function ProteaAIProButton({
       variant="outline"
       className={cn(
         "hidden @2xl:block ml-1 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white text-xs px-2 pt-1 pb-1",
-        !isProteaAIProEnabled && "bg-zinc-600 dark:bg-zinc-600",
+        !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
       )}
       size="sm"
     >
-      {isProteaAIProEnabled
+      {isDyadProEnabled
         ? userBudget?.isTrial
           ? "Pro Trial"
           : "Pro"
         : "Pro (off)"}
-      {userBudget && isProteaAIProEnabled && (
+      {userBudget && isDyadProEnabled && (
         <AICreditStatus userBudget={userBudget} />
       )}
     </Button>

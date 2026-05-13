@@ -18,11 +18,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
-
+import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
+import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
@@ -35,6 +36,8 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
+import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
+import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -197,6 +200,47 @@ export default function SettingsPage() {
                   This doesn't require any external Git installation and offers
                   a faster, native-Git performance experience.
                 </div>
+              </div>
+              <div
+                id={SETTING_IDS.enableCloudSandbox}
+                className="space-y-1 mt-4"
+              >
+                <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.enableSandboxScriptExecution}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-sandbox-script-execution"
+                    aria-label="Enable sandbox script execution"
+                    checked={
+                      !!settings?.experiments?.enableSandboxScriptExecution
+                    }
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        experiments: {
+                          ...settings?.experiments,
+                          enableSandboxScriptExecution: checked,
+                        },
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-sandbox-script-execution">
+                    Enable sandbox script execution
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Allow local-agent attachment scripts to inspect files with
+                  execute_sandbox_script.
+                </div>
+              </div>
+              <div
+                id={SETTING_IDS.blockUnsafeNpmPackages}
+                className="space-y-1 mt-4"
+              >
+                <BlockUnsafeNpmPackagesSwitch />
               </div>
               <div
                 id={SETTING_IDS.enableMcpServersForBuildMode}
@@ -401,6 +445,9 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       <div id={SETTING_IDS.nodePath} className="mt-4">
         <NodePathSelector />
       </div>
+      <div id={SETTING_IDS.customAppsFolder} className="mt-4">
+        <CustomAppsFolderSelector />
+      </div>
 
       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-4">
         <span className="mr-2 font-medium">App Version:</span>
@@ -444,6 +491,14 @@ export function WorkflowSettings() {
         <AutoExpandPreviewSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Automatically expand the preview panel when code changes are made.
+        </div>
+      </div>
+
+      <div id={SETTING_IDS.keepPreviewsRunning} className="space-y-1 mt-4">
+        <KeepPreviewsRunningSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Note: this may take more memory but allows faster preview loads when
+          switching apps.
         </div>
       </div>
 

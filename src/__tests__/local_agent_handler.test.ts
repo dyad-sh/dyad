@@ -270,13 +270,25 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   buildAgentToolSet: vi.fn(() => ({})),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),
-  clearPendingQuestionnairesForChat: vi.fn(),
+}));
+
+vi.mock("@/pro/main/ipc/handlers/local_agent/userInputResolvers", () => ({
+  questionnaireResolver: {
+    wait: vi.fn(),
+    resolve: vi.fn(),
+    abortChat: vi.fn(),
+  },
+  integrationResolver: {
+    wait: vi.fn(),
+    resolve: vi.fn(),
+    abortChat: vi.fn(),
+  },
 }));
 
 vi.mock(
   "@/pro/main/ipc/handlers/local_agent/processors/file_operations",
   () => ({
-    deployAllFunctionsIfNeeded: vi.fn(async () => {}),
+    deployAllFunctionsIfNeeded: vi.fn(async () => ({ success: true })),
     commitAllChanges: vi.fn(async () => ({ commitHash: "abc123" })),
   }),
 );
@@ -302,6 +314,12 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 // ============================================================================
 
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import {
+  commitAllChanges,
+  deployAllFunctionsIfNeeded,
+} from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 
 // ============================================================================
 // Tests
@@ -417,6 +435,360 @@ describe("handleLocalAgentStream", () => {
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
+    });
+  });
+
+  describe("Warning propagation", () => {
+    it("includes warning messages in the error payload when a tool fails after warning", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      const warningMessage = "Firewall checks were skipped for this install.";
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        return {
+          warn_then_fail: {
+            execute: async () => {
+              ctx.onWarningMessage?.(warningMessage);
+              throw new Error("Simulated tool failure");
+            },
+          },
+        } as any;
+      });
+
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          yield* [];
+          await options.tools.warn_then_fail.execute();
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(1);
+      expect(errorMessages[0].args[0]).toMatchObject({
+        chatId: 1,
+        error: expect.stringContaining("Simulated tool failure"),
+        warningMessages: [warningMessage],
+      });
+    });
+
+    it("persists successful shared-module Supabase deploy status into aiMessagesJson", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockImplementationOnce(
+        async (ctx) => {
+          ctx.onXmlComplete(
+            '<dyad-status title="Supabase functions deployed: 2/2 complete" state="finished">\n2 succeeded\n0 failed\n</dyad-status>',
+          );
+          return { success: true };
+        },
+      );
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain("<dyad-status");
+      expect(finalContent).toContain(
+        'title="Supabase functions deployed: 2/2 complete"',
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain("<dyad-status");
+      expect(persistedAiMessages).toContain(
+        'title=\\"Supabase functions deployed: 2/2 complete\\"',
+      );
+    });
+
+    it("appends shared-module Supabase deploy warnings as dyad-output", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockResolvedValueOnce({
+        success: true,
+        warning:
+          "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain('<dyad-output type="warning"');
+      expect(finalContent).toContain(
+        'message="Supabase function deploy warning"',
+      );
+      expect(finalContent).toContain(
+        "Some Supabase functions failed to deploy: Failed to bundle get-user-role: Rate limited (429): Too Many Requests",
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+
+      // Persist deploy XML into aiMessagesJson so future agent turns can see it.
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain('<dyad-output type=\\"warning\\"');
+      expect(persistedAiMessages).toContain(
+        'message=\\"Supabase function deploy warning\\"',
+      );
+    });
+
+    it("appends shared-module Supabase deploy failures as dyad-output and still commits", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        supabaseProjectId: "supabase-project-id",
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      vi.mocked(deployAllFunctionsIfNeeded).mockResolvedValueOnce({
+        success: false,
+        error:
+          "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(0);
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+
+      expect(finalContent).toContain('<dyad-output type="error"');
+      expect(finalContent).toContain(
+        'message="Failed to deploy Supabase functions"',
+      );
+      expect(finalContent).toContain(
+        "Failed to redeploy Supabase functions: RateLimitError: Rate limited (429): Too Many Requests",
+      );
+      expect(commitAllChanges).toHaveBeenCalled();
+
+      // Persist deploy XML into aiMessagesJson so future agent turns can see it.
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates.length).toBeGreaterThan(0);
+      const persistedAiMessages = JSON.stringify(
+        (
+          aiMessagesUpdates[aiMessagesUpdates.length - 1].data
+            .aiMessagesJson as { messages: unknown[] }
+        ).messages,
+      );
+      expect(persistedAiMessages).toContain('<dyad-output type=\\"error\\"');
+      expect(persistedAiMessages).toContain(
+        'message=\\"Failed to deploy Supabase functions\\"',
+      );
+    });
+
+    it("warns when a sandbox script does not read the current attachment", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'read_file("src/App.tsx");' },
+        },
+        { type: "text-delta", text: "I checked the project file." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).toContain(
+        "Your model did not reference the attached file",
+      );
+    });
+
+    it("does not warn when a sandbox script reads an attachment path", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'read_file("attachments:notes.txt");' },
+        },
+        { type: "text-delta", text: "I checked the attachment." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).not.toContain(
+        "Your model did not reference the attached file",
+      );
+    });
+
+    it("does not warn when a sandbox script uses the attachments alias", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'const files = await list_files("attachments");' },
+        },
+        { type: "text-delta", text: "I checked the attachment list." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).not.toContain(
+        "Your model did not reference the attached file",
+      );
+    });
+
+    it("warns when a sandbox script only mentions attachments in prose", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        {
+          type: "tool-call",
+          toolName: "execute_sandbox_script",
+          input: { script: 'const message = "No attachments found";' },
+        },
+        { type: "text-delta", text: "I checked the project file." },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          currentTurnHasOnDiskAttachment: true,
+        },
+      );
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")
+        ?.data.content;
+      expect(finalContent).toContain(
+        "Your model did not reference the attached file",
+      );
     });
   });
 
@@ -1042,6 +1414,7 @@ describe("handleLocalAgentStream", () => {
         if (attemptCount === 1) {
           return {
             fullStream: (async function* () {
+              yield* [];
               throw {
                 type: "error",
                 sequence_number: 0,
@@ -1316,6 +1689,161 @@ describe("handleLocalAgentStream", () => {
     });
   });
 
+  describe("Todo follow-up", () => {
+    it("does not stop the stream when set_chat_summary is called", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([]);
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      const streamOptions = vi.mocked(streamText).mock.calls[0]?.[0] as any;
+      expect(streamOptions.stopWhen).not.toContainEqual({
+        toolName: "set_chat_summary",
+      });
+    });
+
+    it("runs a follow-up pass when the first pass ends with set_chat_summary and incomplete todos remain", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+        return {
+          update_todos: {
+            execute: async (args: any) => {
+              if (args.merge) {
+                const todosById = new Map(
+                  ctx.todos.map((todo) => [todo.id, todo]),
+                );
+                for (const todo of args.todos) {
+                  const existing = todosById.get(todo.id);
+                  todosById.set(
+                    todo.id,
+                    existing ? { ...existing, ...todo } : todo,
+                  );
+                }
+                ctx.todos = Array.from(todosById.values());
+              } else {
+                ctx.todos = args.todos;
+              }
+              ctx.onUpdateTodos(ctx.todos);
+              return "Updated todos";
+            },
+          },
+        } as any;
+      });
+
+      const streamMessagesByPass: any[][] = [];
+      let passCount = 0;
+      mockStreamTextImpl = (options) => {
+        passCount += 1;
+        streamMessagesByPass.push(options.messages ?? []);
+
+        if (passCount === 1) {
+          return {
+            fullStream: (async function* () {
+              yield { type: "text-delta", text: "I started the work." };
+              await options.tools.update_todos.execute({
+                merge: false,
+                todos: [
+                  {
+                    id: "todo-1",
+                    content: "Finish the requested work",
+                    status: "pending",
+                  },
+                ],
+              });
+            })(),
+            response: Promise.resolve({
+              messages: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: "I started the work." }],
+                },
+              ],
+            }),
+            steps: Promise.resolve([
+              {
+                toolCalls: [{ toolName: "set_chat_summary" }],
+                response: {
+                  messages: [
+                    {
+                      role: "assistant",
+                      content: [{ type: "text", text: "I started the work." }],
+                    },
+                  ],
+                },
+              },
+            ]),
+          };
+        }
+
+        return {
+          fullStream: (async function* () {
+            await options.tools.update_todos.execute({
+              merge: true,
+              todos: [{ id: "todo-1", status: "completed" }],
+            });
+            yield { type: "text-delta", text: "Finished the work." };
+          })(),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "Finished the work." }],
+              },
+            ],
+          }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(passCount).toBe(2);
+      const secondPassMessages = streamMessagesByPass[1] ?? [];
+      const hasTodoReminder = secondPassMessages.some(
+        (message: any) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "text" &&
+              typeof part.text === "string" &&
+              part.text.includes("incomplete todo(s)") &&
+              part.text.includes("Finish the requested work"),
+          ),
+      );
+      expect(hasTodoReminder).toBe(true);
+    });
+  });
+
   describe("Abort handling", () => {
     it("should stop processing stream chunks when abort signal is triggered", async () => {
       // Arrange
@@ -1361,7 +1889,7 @@ describe("handleLocalAgentStream", () => {
       expect(contentUpdates.length).toBeGreaterThan(0);
       const finalContent = contentUpdates[contentUpdates.length - 1].data
         .content as string;
-      expect(finalContent).toContain("First ");
+      expect(finalContent).toContain("First");
       expect(finalContent).not.toContain("Second");
     });
 
@@ -1378,7 +1906,7 @@ describe("handleLocalAgentStream", () => {
           yield { type: "text-delta", text: "Partial response" };
           abortController.abort();
           // This will not be processed due to abort
-          throw new Error("Simulated abort error");
+          throw new DyadError("Simulated abort error", DyadErrorKind.Internal);
         })(),
         response: Promise.resolve({ messages: [] }),
       };

@@ -106,6 +106,50 @@ export class AppManagement {
     await this.page.getByTestId("connect-supabase-button").click();
   }
 
+  async startDatabaseIntegrationSetup(_provider: "supabase" | "neon") {
+    // The in-chat integration card is now read-only outside the Agent v2
+    // pending-integration flow (which the markdown-driven test fixtures don't
+    // trigger). Navigate to the app details page where the connectors live so
+    // the rest of the setup flow (clickConnect*Button, selectNeonProject, etc.)
+    // can continue against the same UI as before.
+    await this.getTitleBarAppNameButton().click();
+  }
+
+  async clickConnectNeonButton() {
+    await this.page.getByTestId("connect-neon-button").click();
+  }
+
+  async selectNeonProject(projectName: string) {
+    const projectSelect = this.page.getByTestId("neon-project-select");
+    await expect(projectSelect).toBeVisible({ timeout: Timeout.MEDIUM });
+    await projectSelect.click();
+    await this.page
+      .getByRole("option", {
+        name: new RegExp(
+          `^${projectName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          "i",
+        ),
+      })
+      .click();
+    await expect(this.page.getByTestId("neon-branch-select")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
+  async selectNeonBranch(branchName: string) {
+    const branchSelect = this.page.getByTestId("neon-branch-select");
+    await expect(branchSelect).toBeVisible({ timeout: Timeout.MEDIUM });
+    await branchSelect.click();
+    await this.page
+      .getByRole("option", {
+        name: new RegExp(
+          `^${branchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          "i",
+        ),
+      })
+      .click();
+  }
+
   async importApp(appDir: string) {
     await this.page.getByRole("button", { name: "Import App" }).click();
     await eph.stubDialog(this.electronApp, "showOpenDialog", {

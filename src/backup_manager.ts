@@ -4,6 +4,7 @@ import { app } from "electron";
 import * as crypto from "crypto";
 import log from "electron-log";
 import Database from "better-sqlite3";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("backup_manager");
 
@@ -167,7 +168,10 @@ export class BackupManager {
       } catch (cleanupError) {
         logger.error("Failed to clean up backup directory:", cleanupError);
       }
-      throw new Error(`Backup creation failed: ${error}`);
+      throw new DyadError(
+        `Backup creation failed: ${error}`,
+        DyadErrorKind.External,
+      );
     }
   }
 
@@ -263,7 +267,10 @@ export class BackupManager {
       logger.info(`Deleted backup: ${backupName}`);
     } catch (error) {
       logger.error(`Failed to delete backup ${backupName}:`, error);
-      throw new Error(`Failed to delete backup: ${error}`);
+      throw new DyadError(
+        `Failed to delete backup: ${error}`,
+        DyadErrorKind.External,
+      );
     }
   }
 
@@ -289,12 +296,14 @@ export class BackupManager {
   ): Promise<void> {
     logger.debug(`Backing up SQLite database: ${sourcePath} → ${destPath}`);
     const sourceDb = new Database(sourcePath, {
-      readonly: true,
       timeout: 10000,
     });
 
     try {
-      // This is safe even if other connections are active
+      // Flush any pending WAL data into the main database file before backing up.
+      // This ensures the backup captures all committed data, even if a previous
+      // session crashed and left un-checkpointed writes in the WAL.
+      sourceDb.pragma("wal_checkpoint(TRUNCATE)");
       await sourceDb.backup(destPath);
       logger.info("Database backup completed successfully");
     } catch (error) {

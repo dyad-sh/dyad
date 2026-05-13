@@ -5,6 +5,7 @@
 
 import { readSettings } from "@/main/settings";
 import type { AgentContext } from "./types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const PROTEAAI_ENGINE_URL =
   process.env.PROTEAAI_ENGINE_URL ?? "https://engine.proteaai.com/v1";
@@ -33,7 +34,7 @@ export async function engineFetch(
   const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
   if (!apiKey) {
-    throw new Error("ProteaAI Pro API key is required");
+    throw new DyadError("ProteaAI Pro API key is required", DyadErrorKind.Auth);
   }
 
   const { headers: extraHeaders, ...restOptions } = options;

@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { IpcMainInvokeEvent } from "electron";
 import { createTypedHandler, isWebMode, webHandlerRegistry } from "./base";
+import { computeStreamingPatch } from "../utils/stream_text_utils";
 import { chatContracts } from "../types/chat";
 import {
   ModelMessage,
@@ -17,20 +18,28 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import type { SmartContextMode } from "../../lib/schemas";
+import type {
+  ChatMode,
+  SmartContextMode,
+  UserSettings,
+} from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
+import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getProteaAIAppPath } from "../../paths/paths";
+import { getDyadAppPath } from "../../paths/paths";
 import { buildProteaAIMediaUrl } from "../../lib/dyadMediaUrl";
 import { readCurrentUserSettings } from "../../main/web-settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   CodebaseFile,
   extractCodebase,
@@ -40,8 +49,11 @@ import {
   dryRunSearchReplace,
   processFullResponseActions,
 } from "../processors/response_processor";
-import { streamTestResponse } from "./testing_chat_handlers";
-import { getTestResponse } from "./testing_chat_handlers";
+import {
+  streamTestResponse,
+  getTestResponse,
+  noteAck,
+} from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
 import log from "electron-log";
 import { sendTelemetryEvent } from "../utils/telemetry";
@@ -65,6 +77,7 @@ import { requireMcpToolConsent } from "../utils/mcp_consent";
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
+import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { generateProblemReport } from "../processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
@@ -77,7 +90,16 @@ import {
   getProteaAIRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
-import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
+import {
+  extractMentionedAppsCodebases,
+  extractMentionedAppsReferences,
+  type MentionedAppCodebaseEntry,
+  type MentionedAppReference,
+} from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
   parseMediaMentions,
@@ -90,14 +112,24 @@ import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference"
 import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureProteaAIGitignored } from "./gitignoreUtils";
-import { PROTEAAI_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import {
+  appendAttachmentManifestEntriesWithLogicalNames,
+  createUniqueAttachmentLogicalName,
+  PROTEAAI_MEDIA_DIR_NAME,
+  DYAD_MEDIA_DIR_NAME,
+  toAttachmentLogicalPath,
+  type AttachmentManifestEntryInput,
+  type StoredAttachmentInfo,
+} from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isBasicAgentMode,
+  isLocalAgentBackedMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -110,10 +142,62 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
+import { readSettings } from "@/main/settings";
+import { isSandboxSupportedPlatform } from "../utils/sandbox/runner";
+import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
+
+type StoredChatAttachment = StoredAttachmentInfo & {
+  attachmentType: "upload-to-codebase" | "chat-context";
+};
+
+type PendingStoredChatAttachment = Omit<
+  StoredChatAttachment,
+  "logicalName" | "originalName" | "storedFileName" | "mimeType" | "sizeBytes"
+> & {
+  attachmentType: "upload-to-codebase" | "chat-context";
+};
+
+type AttachmentDeliveryConfig = {
+  /**
+   * Whether text-like attachments should be expanded into the model message.
+   * False for local-agent/ask so large files stay on disk and tools read slices.
+   */
+  inlineTextAttachments: boolean;
+  /**
+   * Whether image attachments should be sent as model image parts.
+   * Usually true even when text attachments stay on disk, because tools cannot inspect images semantically.
+   */
+  includeImageParts: boolean;
+  /**
+   * Whether to append the local-agent attachment block listing attachments:<name> paths.
+   * This is the replacement for inline text content in tool-backed modes.
+   */
+  useOnDiskAttachmentBlock: boolean;
+  /**
+   * Whether that on-disk block should mention execute_sandbox_script.
+   * Depends on mode plus sandbox setting/platform availability.
+   */
+  includeSandboxScriptHint: boolean;
+  /**
+   * Whether that on-disk block should tell the model it may copy upload-to-codebase attachments.
+   * Only useful when copy_file is available, not in read-only ask mode.
+   */
+  includeCopyFileHint: boolean;
+  /**
+   * Whether non-local-agent build-mode prompts need legacy <dyad-copy> system instructions.
+   * Local-agent uses copy_file/tool hints instead, so it should not get this.
+   */
+  addSystemCopyInstructions: boolean;
+  /**
+   * Whether the system prompt should include image-analysis guidance.
+   * Kept separate because images can be inline even when text attachments are on disk.
+   */
+  addSystemVisionInstructions: boolean;
+};
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
@@ -132,10 +216,122 @@ const TEXT_FILE_EXTENSIONS = [
   ".html",
   ".css",
 ];
+const INLINE_IMAGE_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+]);
+
+function getInlineImageMimeType(filePath: string): string | null {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!INLINE_IMAGE_EXTENSIONS.has(ext)) {
+    return null;
+  }
+  return ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
+}
+
+function isInlineImageAttachmentPath(filePath: string): boolean {
+  return getInlineImageMimeType(filePath) !== null;
+}
+
+function isInlineImageAttachment(attachment: StoredChatAttachment): boolean {
+  return isInlineImageAttachmentPath(attachment.filePath);
+}
 
 async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
   return TEXT_FILE_EXTENSIONS.includes(ext);
+}
+
+function formatAttachmentSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${Math.round(sizeBytes / 1024)} KB`;
+  }
+  return `${Math.round((sizeBytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
+function buildLocalAgentAttachmentInfo(
+  attachments: StoredChatAttachment[],
+  deliveryConfig: AttachmentDeliveryConfig,
+): string {
+  const diskAttachments = attachments.filter(
+    (attachment) =>
+      !isInlineImageAttachment(attachment) ||
+      (deliveryConfig.includeCopyFileHint &&
+        attachment.attachmentType === "upload-to-codebase"),
+  );
+  if (diskAttachments.length === 0) {
+    return "";
+  }
+
+  const hasReadableAttachment = diskAttachments.some(
+    (attachment) => !isInlineImageAttachment(attachment),
+  );
+  const lines = hasReadableAttachment
+    ? deliveryConfig.includeSandboxScriptHint
+      ? [
+          "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
+        ]
+      : [
+          "Attachments available on disk (use attachments:<name> with read_file):",
+        ]
+    : ["Attachments available on disk for copying into the codebase:"];
+
+  for (const attachment of diskAttachments) {
+    const uploadNote =
+      deliveryConfig.includeCopyFileHint &&
+      attachment.attachmentType === "upload-to-codebase"
+        ? "; if this should become part of the project, use copy_file from this attachment path"
+        : "";
+    lines.push(
+      `- ${toAttachmentLogicalPath(attachment.logicalName)} (${formatAttachmentSize(attachment.sizeBytes)}, ${attachment.mimeType}${uploadNote})`,
+    );
+  }
+
+  return `\n\n${lines.join("\n")}\n`;
+}
+
+function hasScriptReadableAttachment(
+  attachments: StoredChatAttachment[],
+): boolean {
+  return attachments.some((attachment) => !isInlineImageAttachment(attachment));
+}
+
+function resolveAttachmentDeliveryConfig({
+  mode,
+  settings,
+  hasImageAttachments,
+  hasUploadedAttachments,
+}: {
+  mode: ChatMode;
+  settings: Pick<UserSettings, "experiments">;
+  hasImageAttachments: boolean;
+  hasUploadedAttachments: boolean;
+}): AttachmentDeliveryConfig {
+  const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
+  const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
+
+  return {
+    inlineTextAttachments: !useOnDiskAttachmentBlock,
+    includeImageParts: true,
+    useOnDiskAttachmentBlock,
+    includeSandboxScriptHint:
+      useOnDiskAttachmentBlock &&
+      isSandboxScriptExecutionEnabled(settings) &&
+      isSandboxSupportedPlatform(),
+    includeCopyFileHint: mode === "local-agent",
+    addSystemCopyInstructions:
+      !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
+    addSystemVisionInstructions:
+      hasImageAttachments &&
+      (!willUseLocalAgentStream || mode === "plan") &&
+      !(hasUploadedAttachments && mode !== "ask"),
+  };
 }
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
@@ -228,6 +424,13 @@ async function processStreamChunks({
 }
 
 export function registerChatStreamHandlers() {
+  createTypedHandler(
+    chatContracts.responseAck,
+    async (_event, { chatId, lastSeq }) => {
+      noteAck(chatId, lastSeq);
+    },
+  );
+
   const streamHandler = async (event: IpcMainInvokeEvent | null, req: ChatStreamParams): Promise<void> => {
     let attachmentPaths: string[] = [];
     try {
@@ -251,7 +454,10 @@ export function registerChatStreamHandlers() {
       });
 
       if (!chat) {
-        throw new Error(`Chat not found: ${req.chatId}`);
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Handle redo option: remove the most recent messages if needed
@@ -292,37 +498,60 @@ export function registerChatStreamHandlers() {
       let attachmentInfo = "";
       // Display-only attachment info uses <dyad-attachment> tags for inline rendering
       let displayAttachmentInfo = "";
+      let storedAttachments: StoredChatAttachment[] = [];
+      const pendingStoredAttachments: PendingStoredChatAttachment[] = [];
+      const manifestEntries: AttachmentManifestEntryInput[] = [];
+      const usedLogicalNames = new Set<string>();
+      const appPath = getDyadAppPath(chat.app.path);
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
         // Create persistent .proteaai/media directory for this app
-        const appPath = getProteaAIAppPath(chat.app.path);
         const mediaDir = path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
         }
         await ensureProteaAIGitignored(appPath);
 
-        for (let i = 0; i < req.attachments.length; i++) {
-          const attachment = req.attachments[i];
-          // Generate a unique filename (include index to avoid collisions
-          // when multiple attachments share the same name within the same ms)
-          const hash = crypto
-            .createHash("md5")
-            .update(attachment.name + Date.now() + i)
-            .digest("hex");
-          const fileExtension = path.extname(attachment.name);
-          const filename = `${hash}${fileExtension}`;
-
+        for (const attachment of req.attachments) {
           // Extract the base64 data (remove the data:mime/type;base64, prefix)
           const base64Data = attachment.data.split(";base64,").pop() || "";
           const fileBuffer = Buffer.from(base64Data, "base64");
+          const hash = crypto
+            .createHash("sha256")
+            .update(fileBuffer)
+            .digest("hex");
+          const fileExtension = path.extname(attachment.name);
+          const filename = `${hash}${fileExtension}`;
+          const logicalName = createUniqueAttachmentLogicalName(
+            attachment.name,
+            usedLogicalNames,
+          );
 
           // Save to .proteaai/media dir
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
           attachmentPaths.push(persistentPath);
+          pendingStoredAttachments.push({
+            filePath: persistentPath,
+            attachmentType: attachment.attachmentType,
+          });
+          manifestEntries.push({
+            requestedLogicalName: logicalName,
+            originalName: attachment.name,
+            storedFileName: filename,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+            createdAt: new Date().toISOString(),
+          });
+          sendTelemetryEvent("attachment.stored", {
+            appId: chat.app.id,
+            chatId: req.chatId,
+            attachmentType: attachment.attachmentType,
+            mimeType: attachment.type,
+            sizeBytes: fileBuffer.byteLength,
+          });
 
           // Build media URL for display (web mode → HTTP, Electron → custom protocol)
           const mediaUrl = buildProteaAIMediaUrl(chat.app.path, filename);
@@ -332,7 +561,7 @@ export function registerChatStreamHandlers() {
 
           if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the .proteaai/media path so the AI can copy it into the codebase
-            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
+            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool when tools are available, or emit a <dyad-copy> tag otherwise, to copy this file into the codebase at the appropriate location.\n`;
           } else {
             // For chat-context, provide file info for reference (no path to avoid auto-copying)
             attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
@@ -351,7 +580,7 @@ export function registerChatStreamHandlers() {
       }
 
       // Build the full AI prompt (with .proteaai/media paths and copy_file instructions)
-      let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      let userPrompt = req.prompt;
       // Build the display prompt (with <dyad-attachment> tags for inline rendering)
       // This separates what the user sees from what the AI receives.
       let displayUserPrompt: string | undefined;
@@ -411,6 +640,23 @@ export function registerChatStreamHandlers() {
           let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {
             attachmentPaths.push(media.filePath);
+            const logicalName = createUniqueAttachmentLogicalName(
+              media.fileName,
+              usedLogicalNames,
+            );
+            const stat = await fs.promises.stat(media.filePath);
+            pendingStoredAttachments.push({
+              filePath: media.filePath,
+              attachmentType: "chat-context",
+            });
+            manifestEntries.push({
+              requestedLogicalName: logicalName,
+              originalName: media.fileName,
+              storedFileName: media.fileName,
+              mimeType: media.mimeType,
+              sizeBytes: stat.size,
+              createdAt: new Date().toISOString(),
+            });
             const mediaUrl = buildProteaAIMediaUrl(chat.app.path, media.fileName);
             mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
           }
@@ -433,6 +679,17 @@ export function registerChatStreamHandlers() {
           logger.error("Failed to resolve media mentions:", e);
         }
       }
+
+      const finalizedManifestEntries =
+        await appendAttachmentManifestEntriesWithLogicalNames(
+          appPath,
+          manifestEntries,
+        );
+      storedAttachments = finalizedManifestEntries.map((entry, index) => ({
+        ...entry,
+        filePath: pendingStoredAttachments[index].filePath,
+        attachmentType: pendingStoredAttachments[index].attachmentType,
+      }));
 
       // Expand /implement-plan= into full implementation prompt
       // Keep the original short form for display in the UI; the expanded
@@ -514,17 +771,56 @@ ${componentSnippet}
         }
       }
 
+      const defaultAiUserPrompt =
+        userPrompt + (attachmentInfo ? attachmentInfo : "");
+
       const [insertedUserMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content:
-            implementPlanDisplayPrompt ?? displayUserPrompt ?? userPrompt,
+            implementPlanDisplayPrompt ??
+            displayUserPrompt ??
+            defaultAiUserPrompt,
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
-      const settings = await readCurrentUserSettings();
+      const {
+        settings: storedSettings,
+        mode: selectedChatMode,
+        fallbackReason: chatModeFallbackReason,
+      } = await resolveChatModeForTurn({
+        storedChatMode: chat.chatMode,
+        requestedChatMode: req.requestedChatMode,
+      });
+      const settings = {
+        ...storedSettings,
+        selectedChatMode,
+      };
+      const hasImageAttachments = storedAttachments.some((attachment) =>
+        attachment.mimeType.startsWith("image/"),
+      );
+      const hasUploadedAttachments = storedAttachments.some(
+        (attachment) => attachment.attachmentType === "upload-to-codebase",
+      );
+      const attachmentDeliveryConfig = resolveAttachmentDeliveryConfig({
+        mode: selectedChatMode,
+        settings,
+        hasImageAttachments,
+        hasUploadedAttachments,
+      });
+      const localAgentAiUserPrompt =
+        userPrompt +
+        buildLocalAgentAttachmentInfo(
+          storedAttachments,
+          attachmentDeliveryConfig,
+        );
+      safeSend(event?.sender ?? null, "chat:response:chunk", {
+        chatId: req.chatId,
+        effectiveChatMode: selectedChatMode,
+        chatModeFallbackReason,
+      });
       // Only ProteaAI Pro requests have request ids.
       if (settings.enableProteaAIPro) {
         // Generate requestId early so it can be saved with the message
@@ -558,7 +854,10 @@ ${componentSnippet}
       });
 
       if (!updatedChat) {
-        throw new Error(`Chat not found: ${req.chatId}`);
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Send the messages right away so that the loading state is shown for the message.
@@ -580,7 +879,7 @@ ${componentSnippet}
           req.chatId,
           testResponse,
           abortController,
-          updatedChat,
+          placeholderAssistantMessage.id,
         );
       } else {
         // Normal AI processing for non-test prompts
@@ -632,27 +931,52 @@ ${componentSnippet}
         // Parse app mentions from the prompt
         const mentionedAppNames = parseAppMentions(req.prompt);
 
-        // Extract codebases for mentioned apps
-        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-          mentionedAppNames,
-          updatedChat.app.id, // Exclude current app
-        );
+        const isLocalAgentMode = selectedChatMode === "local-agent";
+        const isAskMode = selectedChatMode === "ask";
+        const isPlanMode = selectedChatMode === "plan";
         const willUseLocalAgentStream =
-          (settings.selectedChatMode === "local-agent" ||
-            settings.selectedChatMode === "ask") &&
-          !mentionedAppsCodebases.length;
+          isLocalAgentBackedMode(selectedChatMode);
+
+        // Agent/ask/plan modes reach referenced apps via tool calls (`app_name`
+        // on read-only tools), so we only need name/path pairs — skip the heavy
+        // codebase extraction entirely. Build mode still injects full codebases.
+        let mentionedAppsCodebases: MentionedAppCodebaseEntry[] = [];
+        let referencedAppsForAgent: MentionedAppReference[] = [];
+        if (willUseLocalAgentStream) {
+          referencedAppsForAgent = await extractMentionedAppsReferences(
+            mentionedAppNames,
+            updatedChat.app.id, // Exclude current app
+          );
+        } else {
+          mentionedAppsCodebases = await extractMentionedAppsCodebases(
+            mentionedAppNames,
+            updatedChat.app.id, // Exclude current app
+          );
+          referencedAppsForAgent = mentionedAppsCodebases.map(
+            ({ appName, appPath }) => ({ appName, appPath }),
+          );
+        }
+        const useReferencedAppManifest =
+          willUseLocalAgentStream && referencedAppsForAgent.length > 0;
+        const effectiveAiUserPrompt =
+          attachmentDeliveryConfig.useOnDiskAttachmentBlock
+            ? localAgentAiUserPrompt
+            : defaultAiUserPrompt;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&
           // Anything besides balanced will use deep context.
           settings.proSmartContextOption !== "balanced" &&
-          mentionedAppsCodebases.length === 0;
+          referencedAppsForAgent.length === 0;
         logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
 
-        // Combine current app codebase with mentioned apps' codebases
+        // Combine current app codebase with mentioned apps' codebases.
+        // In agent/ask/plan modes we skip the full codebase injection — the
+        // model can read referenced apps on-demand via tool calls with `app_name`
+        // instead of carrying their full contents in the system prompt.
         let otherAppsCodebaseInfo = "";
-        if (mentionedAppsCodebases.length > 0) {
+        if (mentionedAppsCodebases.length > 0 && !useReferencedAppManifest) {
           const mentionedAppsSection = mentionedAppsCodebases
             .map(
               ({ appName, codebaseInfo }) =>
@@ -676,12 +1000,16 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistory = updatedChat.messages.map((message) => ({
+        const messageHistoryRaw = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
+
+        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
@@ -691,7 +1019,7 @@ ${componentSnippet}
             if (messageHistory[i].role === "user") {
               messageHistory[i] = {
                 ...messageHistory[i],
-                content: userPrompt,
+                content: effectiveAiUserPrompt,
               };
               break;
             }
@@ -750,16 +1078,28 @@ ${componentSnippet}
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
+        const frameworkType = detectFrameworkType(
+          getDyadAppPath(updatedChat.app.path),
+        );
+
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode: settings.selectedChatMode,
+          chatMode: selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
+          frameworkType,
+          hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
         });
 
-        // Add information about mentioned apps if any
+        // Add information about mentioned apps for build mode only.
+        // Full codebase injection (build mode): full file contents already
+        // concatenated into `otherAppsCodebaseInfo`.
+        //
+        // Agent/ask/plan modes don't need anything in the system prompt —
+        // handleLocalAgentStream injects a `<system-reminder>` into the
+        // user's latest message so the system prompt stays static.
         if (otherAppsCodebaseInfo) {
           const mentionedAppsList = mentionedAppsCodebases
             .map(({ appName }) => appName)
@@ -803,19 +1143,29 @@ ${componentSnippet}
             getSupabaseAvailableSystemPrompt(supabaseClientCode) +
             "\n\n" +
             // For local agent, we will explicitly fetch the database context when needed.
-            (settings.selectedChatMode === "local-agent"
+            (selectedChatMode === "local-agent"
               ? ""
               : await getSupabaseContext({
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
+        } else if (updatedChat.app?.neonProjectId) {
+          // Neon is connected — inject Neon prompt instead of Supabase
+          systemPrompt +=
+            "\n\n" +
+            (await buildNeonPromptForApp({
+              appPath: updatedChat.app.path,
+              neonProjectId: updatedChat.app.neonProjectId!,
+              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
+              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
+              selectedChatMode,
+            })) +
+            "\n\n";
         } else if (
-          // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId &&
-          // In local agent mode, we will suggest supabase as part of the add-integration tool
-          settings.selectedChatMode !== "local-agent" &&
-          // If in security review mode, we don't need to mention supabase is available.
+          // In local agent mode, we will suggest integrations as part of the add-integration tool
+          selectedChatMode !== "local-agent" &&
+          // If in security review mode, we don't need to mention integrations are available.
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
@@ -827,48 +1177,19 @@ ${componentSnippet}
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
 
-        // Update the system prompt for images if there are image attachments
-        const hasImageAttachments =
-          req.attachments &&
-          req.attachments.some((attachment) =>
-            attachment.type.startsWith("image/"),
-          );
+        if (attachmentDeliveryConfig.addSystemCopyInstructions) {
+          systemPrompt += `
 
-        const hasUploadedAttachments =
-          req.attachments &&
-          req.attachments.some(
-            (attachment) => attachment.attachmentType === "upload-to-codebase",
-          );
-        // If there's mixed attachments (e.g. some upload to codebase attachments and some upload images as chat context attachemnts)
-        // we will just include the file upload system prompt, otherwise the AI gets confused and doesn't reliably
-        // print out the dyad-write tags.
-        // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
-        // it's not that critical to include the image analysis instructions.
-        const isAskMode = settings.selectedChatMode === "ask";
-        if (hasUploadedAttachments) {
-          if (willUseLocalAgentStream && !isAskMode) {
-            systemPrompt += `
+When files are attached to this conversation for upload to the codebase, copy them into the project using this exact format:
 
-When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
+<dyad-copy from="/absolute/path/to/.dyad/media/source.ext" to="path/to/destination/filename.ext" description="Upload file to codebase"></dyad-copy>
 
-Example:
-\`\`\`
-copy_file(from=".proteaai/media/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
-\`\`\`
+Use the attached file path from the user's message as the \`from\` value. Choose an appropriate project-relative \`to\` path.
 
-The file paths are provided in the attachment information above.
 `;
-          } else if (!isAskMode) {
-            systemPrompt += `
+        }
 
-When files are attached for upload to the codebase, copy them into the project using this format:
-
-<dyad-copy from=".proteaai/media/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
-
-The file paths are provided in the attachment information above.
-`;
-          }
-        } else if (hasImageAttachments) {
+        if (attachmentDeliveryConfig.addSystemVisionInstructions) {
           systemPrompt += `
 
 # Image Analysis Instructions
@@ -917,7 +1238,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Thinking tags are generally not critical for the context
           // and eats up extra tokens.
           content:
-            settings.selectedChatMode === "ask"
+            selectedChatMode === "ask"
               ? removeProteaAITags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
           providerOptions: {
@@ -944,6 +1265,12 @@ This conversation includes one or more image attachments. When the user uploads 
               chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
                 lastUserMessage,
                 attachmentPaths,
+                {
+                  includeImageAttachments:
+                    attachmentDeliveryConfig.includeImageParts,
+                  inlineTextAttachments:
+                    attachmentDeliveryConfig.inlineTextAttachments,
+                },
               );
             }
             // Save aiMessagesJson for modes that use handleLocalAgentStream
@@ -1046,7 +1373,7 @@ This conversation includes one or more image attachments. When the user uploads 
             system: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
-            onFinish: (response) => {
+            onFinish: async (response) => {
               const totalTokens = response.usage?.totalTokens;
 
               if (typeof totalTokens === "number") {
@@ -1055,7 +1382,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 maxTokensUsed = Math.max(maxTokensUsed ?? 0, totalTokens);
 
                 // Persist the aggregated token usage on the placeholder assistant message
-                void db
+                await db
                   .update(messages)
                   .set({ maxTokensUsed: maxTokensUsed })
                   .where(eq(messages.id, placeholderAssistantMessage.id))
@@ -1096,13 +1423,25 @@ This conversation includes one or more image attachments. When the user uploads 
             },
             abortSignal: abortController.signal,
           });
+          // Read .fullStream now (not lazily) so the SDK's `teeStream()`
+          // runs synchronously, then cancel the orphaned tee branch
+          // before any chunks are pumped. See `cancelOrphanedBaseStream`
+          // for the underlying SDK behavior and why this is required.
+          const fullStream = streamResult.fullStream;
+          cancelOrphanedBaseStream(streamResult);
           return {
-            fullStream: streamResult.fullStream,
+            fullStream,
             usage: streamResult.usage,
           };
         };
 
         let lastDbSaveAt = 0;
+        // Tracks what was last sent to the renderer so we can emit only the
+        // tail diff. `cleanFullResponse` may retroactively rewrite earlier
+        // bytes inside an in-progress dyad-tag's attribute values, so we
+        // compute the longest common prefix on each send rather than
+        // assuming pure appends.
+        let lastSentContent = "";
 
         const processResponseChunkUpdate = async ({
           fullResponse,
@@ -1122,12 +1461,15 @@ This conversation includes one or more image attachments. When the user uploads 
             lastDbSaveAt = now;
           }
 
-          // Send incremental update with only the streaming message content
-          // instead of the full messages array to reduce IPC overhead
-          safeSend(event?.sender ?? null,"chat:response:chunk", {
+          const patch = computeStreamingPatch(fullResponse, lastSentContent);
+          lastSentContent = fullResponse;
+          if (!patch) {
+            return fullResponse;
+          }
+          safeSend(event?.sender ?? null, "chat:response:chunk", {
             chatId: req.chatId,
             streamingMessageId: placeholderAssistantMessage.id,
-            streamingContent: fullResponse,
+            streamingPatch: patch,
           });
           return fullResponse;
         };
@@ -1135,10 +1477,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle ask mode: use local-agent in read-only mode
         // This gives users access to code reading tools while in ask mode
         // Ask mode does not consume free agent quota
-        if (
-          settings.selectedChatMode === "ask" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (isAskMode) {
           // Reconstruct system prompt for local-agent read-only mode
           const readOnlySystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1167,6 +1506,10 @@ This conversation includes one or more image attachments. When the user uploads 
               proteaaiRequestId: proteaaiRequestId ?? "[no-request-id]",
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              settingsOverride: settings,
+              referencedApps: referencedAppsForAgent,
+              currentTurnHasOnDiskAttachment:
+                hasScriptReadableAttachment(storedAttachments),
             },
           );
           if (!streamSuccess) {
@@ -1179,10 +1522,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle plan mode: use local-agent with plan tools only
         // Plan mode is for requirements gathering and creating implementation plans
-        if (
-          settings.selectedChatMode === "plan" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (isPlanMode) {
           // Reconstruct system prompt for plan mode
           const planModeSystemPrompt = constructSystemPrompt({
             aiRules,
@@ -1197,17 +1537,20 @@ This conversation includes one or more image attachments. When the user uploads 
             proteaaiRequestId: proteaaiRequestId ?? "[no-request-id]",
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            settingsOverride: settings,
+            referencedApps: referencedAppsForAgent,
+            currentTurnHasOnDiskAttachment: false,
           });
           return;
         }
 
-        // Handle local-agent mode (Agent v2)
-        // Mentioned apps can't be handled by the local agent (defer to balanced smart context
-        // in build mode)
-        if (
-          settings.selectedChatMode === "local-agent" &&
-          !mentionedAppsCodebases.length
-        ) {
+        // Handle local-agent mode (Agent v2).
+        // Referenced apps (from `@app:Name` mentions) are accessed by the
+        // agent via tool calls with an `app_name` parameter — see
+        // resolveTargetAppPath in the local agent tools. handleLocalAgentStream
+        // injects a `<system-reminder>` into the user's latest message telling
+        // the agent which `app_name` values are valid.
+        if (isLocalAgentMode) {
           // Check quota for Basic Agent mode (non-Pro users)
           const isBasicAgentModeRequest = isBasicAgentMode(settings);
           if (isBasicAgentModeRequest) {
@@ -1242,6 +1585,10 @@ This conversation includes one or more image attachments. When the user uploads 
                 systemPrompt,
                 proteaaiRequestId: proteaaiRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
+                settingsOverride: settings,
+                referencedApps: referencedAppsForAgent,
+                currentTurnHasOnDiskAttachment:
+                  hasScriptReadableAttachment(storedAttachments),
               },
             );
           } finally {
@@ -1259,7 +1606,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // 2. Mode is "build" AND there are enabled MCP servers
         if (
           settings.enableMcpServersForBuildMode &&
-          settings.selectedChatMode === "build"
+          selectedChatMode === "build"
         ) {
           const tools = await getMcpTools(event);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;
@@ -1284,6 +1631,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
+                frameworkType,
+                hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
               }),
               files: files,
               proteaaiDisableFiles: true,
@@ -1326,10 +1675,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           fullResponse = result.fullResponse;
 
-          if (
-            settings.selectedChatMode !== "ask" &&
-            isTurboEditsV2Enabled(settings)
-          ) {
+          if (isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getProteaAIAppPath(updatedChat.app.path),
@@ -1428,7 +1774,7 @@ ${formattedSearchReplaceIssues}`,
 
           if (
             !abortController.signal.aborted &&
-            settings.selectedChatMode !== "ask" &&
+            selectedChatMode !== "ask" &&
             hasUnclosedProteaAIWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
@@ -1443,10 +1789,18 @@ ${formattedSearchReplaceIssues}`,
               continuationAttempts++;
 
               const { fullStream: contStream } = await simpleStreamText({
-                // Build messages: replay history then pre-fill assistant with current partial.
+                // Build messages: replay history, then ask the model to continue from the partial response.
                 chatMessages: [
                   ...chatMessages,
-                  { role: "assistant", content: fullResponse },
+                  {
+                    role: "assistant",
+                    content: fullResponse,
+                  },
+                  {
+                    role: "user",
+                    content:
+                      "Your previous response did not finish completely. Continue exactly where you left off without any preamble.",
+                  },
                 ],
                 modelClient,
                 files: files,
@@ -1473,8 +1827,7 @@ ${formattedSearchReplaceIssues}`,
             // because there's going to be type errors since the packages aren't
             // installed yet.
             addDependencies.length === 0 &&
-            settings.enableAutoFixProblems &&
-            settings.selectedChatMode !== "ask"
+            settings.enableAutoFixProblems
           ) {
             try {
               // IF auto-fix is enabled
@@ -1593,34 +1946,49 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId);
-            // If we have a partial response, save it to the database
-            if (partialResponse) {
-              try {
-                // Update the placeholder assistant message with the partial content and cancellation note
-                await db
-                  .update(messages)
-                  .set({
-                    content: `${partialResponse}
+            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            try {
+              // Update the placeholder assistant message with the partial content and cancellation note
+              await db
+                .update(messages)
+                .set({
+                  content: appendCancelledResponseNotice(partialResponse),
+                })
+                .where(eq(messages.id, placeholderAssistantMessage.id));
 
-[Response cancelled by user]`,
-                  })
-                  .where(eq(messages.id, placeholderAssistantMessage.id));
-
-                logger.log(
-                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
-                );
-                partialResponses.delete(req.chatId);
-              } catch (error) {
-                logger.error(
-                  `Error saving partial response for chat ${chatId}:`,
-                  error,
-                );
-              }
+              logger.log(
+                `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
+              );
+              partialResponses.delete(req.chatId);
+            } catch (error) {
+              logger.error(
+                `Error saving partial response for chat ${chatId}:`,
+                error,
+              );
             }
             return req.chatId;
           }
           throw streamError;
+        }
+      }
+
+      // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
+      // save the cancellation notice to the placeholder message.
+      if (abortController.signal.aborted) {
+        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        try {
+          await db
+            .update(messages)
+            .set({
+              content: appendCancelledResponseNotice(partialResponse),
+            })
+            .where(eq(messages.id, placeholderAssistantMessage.id));
+          partialResponses.delete(req.chatId);
+        } catch (error) {
+          logger.error(
+            `Error saving cancelled response for chat ${req.chatId}:`,
+            error,
+          );
         }
       }
 
@@ -1643,11 +2011,7 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        const settings = await readCurrentUserSettings();
-        if (
-          settings.autoApproveChanges &&
-          settings.selectedChatMode !== "ask"
-        ) {
+        if (settings.autoApproveChanges && selectedChatMode !== "ask") {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,
@@ -1675,6 +2039,7 @@ ${problemReport.problems
             safeSend(event?.sender ?? null,"chat:response:error", {
               chatId: req.chatId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+              warningMessages: status.warningMessages,
             });
           }
 
@@ -1684,6 +2049,7 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            warningMessages: status.warningMessages,
             chatSummary,
           } satisfies ChatResponseEnd);
         } else {
@@ -1827,6 +2193,13 @@ async function replaceTextAttachmentWithContent(
 async function prepareMessageWithAttachments(
   message: ModelMessage,
   attachmentPaths: string[],
+  {
+    includeImageAttachments = true,
+    inlineTextAttachments = true,
+  }: {
+    includeImageAttachments?: boolean;
+    inlineTextAttachments?: boolean;
+  } = {},
 ): Promise<ModelMessage> {
   let textContent = message.content;
   // Get the original text content
@@ -1837,14 +2210,16 @@ async function prepareMessageWithAttachments(
     return message;
   }
 
-  // Process text file attachments - replace placeholder tags with full content
-  for (const filePath of attachmentPaths) {
-    const fileName = path.basename(filePath);
-    textContent = await replaceTextAttachmentWithContent(
-      textContent,
-      filePath,
-      fileName,
-    );
+  if (inlineTextAttachments) {
+    // Process text file attachments - replace placeholder tags with full content
+    for (const filePath of attachmentPaths) {
+      const fileName = path.basename(filePath);
+      textContent = await replaceTextAttachmentWithContent(
+        textContent,
+        filePath,
+        fileName,
+      );
+    }
   }
 
   // For user messages with attachments, create a content array
@@ -1856,29 +2231,29 @@ async function prepareMessageWithAttachments(
     text: textContent,
   });
 
-  // Add image parts for any image attachments
-  for (const filePath of attachmentPaths) {
-    const ext = path.extname(filePath).toLowerCase();
-    if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) {
-      try {
-        // Read the file as a buffer and convert to base64 string
-        // Using base64 strings instead of raw Buffers ensures proper JSON serialization
-        // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
-        const imageBuffer = await readFile(filePath);
-        const mimeType =
-          ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
-        const base64Data = imageBuffer.toString("base64");
+  if (includeImageAttachments) {
+    // Add image parts for any image attachments
+    for (const filePath of attachmentPaths) {
+      const mimeType = getInlineImageMimeType(filePath);
+      if (mimeType) {
+        try {
+          // Read the file as a buffer and convert to base64 string
+          // Using base64 strings instead of raw Buffers ensures proper JSON serialization
+          // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
+          const imageBuffer = await readFile(filePath);
+          const base64Data = imageBuffer.toString("base64");
 
-        // Add the image to the content parts with base64 data and mediaType
-        contentParts.push({
-          type: "image",
-          image: base64Data,
-          mediaType: mimeType,
-        });
+          // Add the image to the content parts with base64 data and mediaType
+          contentParts.push({
+            type: "image",
+            image: base64Data,
+            mediaType: mimeType,
+          });
 
-        logger.log(`Added image attachment: ${filePath}`);
-      } catch (error) {
-        logger.error(`Error reading image file: ${error}`);
+          logger.log(`Added image attachment: ${filePath}`);
+        } catch (error) {
+          logger.error(`Error reading image file: ${error}`);
+        }
       }
     }
   }
@@ -1987,7 +2362,11 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
               inputPreview,
             });
 
-            if (!ok) throw new Error(`User declined running tool ${key}`);
+            if (!ok)
+              throw new DyadError(
+                `User declined running tool ${key}`,
+                DyadErrorKind.UserCancelled,
+              );
             const res = await mcpTool.execute(args, execCtx);
 
             return typeof res === "string" ? res : JSON.stringify(res);

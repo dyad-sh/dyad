@@ -1,12 +1,19 @@
 import { z } from "zod";
-import { ToolDefinition, escapeXmlAttr } from "./types";
+import crypto from "node:crypto";
+import log from "electron-log";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { safeSend } from "@/ipc/utils/safe_sender";
+import { integrationResolver } from "../userInputResolvers";
 
-const SUPPORTED_PROVIDERS = ["supabase"] as const;
+const logger = log.scope("add_integration");
 
 const addIntegrationSchema = z.object({
   provider: z
-    .enum(SUPPORTED_PROVIDERS)
-    .describe("The integration provider to add (e.g., 'supabase')"),
+    .enum(["none", "supabase", "neon"])
+    .optional()
+    .describe(
+      "Optional preferred database provider. Use 'none' (or omit) if the user did not explicitly name a provider. Only use 'supabase' or 'neon' if the user specifically mentions that provider name in their prompt.",
+    ),
 });
 
 export const addIntegrationTool: ToolDefinition<
@@ -14,22 +21,46 @@ export const addIntegrationTool: ToolDefinition<
 > = {
   name: "add_integration",
   description:
-    "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+    "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. The tool blocks until the user finishes the setup inside the chat and clicks Continue, then returns; you should then proceed with the next step.",
   inputSchema: addIntegrationSchema,
   defaultConsent: "always",
   modifiesState: true,
-  isEnabled: (ctx) => !ctx.supabaseProjectId,
+  isEnabled: (ctx) => !ctx.supabaseProjectId && !ctx.neonProjectId,
 
-  getConsentPreview: (args) => `Add ${args.provider} integration`,
+  getConsentPreview: () => "Add database integration",
 
   buildXml: (args, _isComplete) => {
-    if (!args.provider) return undefined;
-    return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
+    if (args.provider && args.provider !== "none") {
+      return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
+    }
+    return `<dyad-add-integration></dyad-add-integration>`;
   },
 
-  execute: async (args) => {
-    // The actual integration setup is handled by the UI when user clicks the button
-    // This tool just emits the XML that renders the integration prompt
-    return `Integration prompt for ${args.provider} displayed. User can click to set up the integration.`;
+  execute: async (args, ctx: AgentContext) => {
+    const requestId = `integration:${crypto.randomUUID()}`;
+    const provider =
+      args.provider && args.provider !== "none" ? args.provider : undefined;
+
+    logger.log(
+      `Presenting integration setup (provider: ${provider ?? "user-choice"}), requestId: ${requestId}`,
+    );
+
+    safeSend(ctx.event.sender, "integration:prompt", {
+      chatId: ctx.chatId,
+      requestId,
+      provider,
+    });
+
+    const result = await integrationResolver.wait(
+      requestId,
+      ctx.chatId,
+      ctx.abortSignal,
+    );
+
+    if (!result) {
+      return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
+    }
+
+    return `User completed the ${result.provider} integration. You can now continue with the next step.`;
   },
 };

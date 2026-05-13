@@ -2,7 +2,11 @@ import log from "electron-log";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getProteaAIAppPath } from "@/paths/paths";
-import { PROTEAAI_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import {
+  ATTACHMENTS_MANIFEST_FILE,
+  PROTEAAI_MEDIA_DIR_NAME,
+  pruneAttachmentManifest,
+} from "@/ipc/utils/media_path_utils";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 
@@ -22,10 +26,8 @@ export async function cleanupOldMediaFiles(): Promise<void> {
 
     const counts = await Promise.all(
       allApps.map(async (app) => {
-        const mediaDir = path.join(
-          getProteaAIAppPath(app.path),
-          PROTEAAI_MEDIA_DIR_NAME,
-        );
+        const appPath = getProteaAIAppPath(app.path);
+        const mediaDir = path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
 
         let files: string[];
         try {
@@ -36,6 +38,9 @@ export async function cleanupOldMediaFiles(): Promise<void> {
 
         const results = await Promise.all(
           files.map(async (file) => {
+            if (file === ATTACHMENTS_MANIFEST_FILE) {
+              return 0;
+            }
             const filePath = path.join(mediaDir, file);
             try {
               const stat = await fs.stat(filePath);
@@ -52,6 +57,14 @@ export async function cleanupOldMediaFiles(): Promise<void> {
             return 0;
           }),
         );
+        try {
+          await pruneAttachmentManifest(appPath);
+        } catch (err) {
+          logger.warn(
+            `Failed to prune attachment manifest for ${mediaDir}:`,
+            err,
+          );
+        }
         return results.reduce<number>((sum, n) => sum + n, 0);
       }),
     );

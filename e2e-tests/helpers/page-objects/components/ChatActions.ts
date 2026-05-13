@@ -19,7 +19,7 @@ export class ChatActions {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder^="Ask ProteaAI to build"]',
+      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
     );
   }
 
@@ -52,9 +52,25 @@ export class ChatActions {
     }).toPass({ timeout: Timeout.SHORT });
   }
 
-  clickNewChat({ index = 0 }: { index?: number } = {}) {
-    // There is two new chat buttons...
-    return this.page.getByTestId("new-chat-button").nth(index).click();
+  async clickNewChat({ index = 0 }: { index?: number } = {}) {
+    // There are two new chat buttons.
+    const previousChatId = new URL(this.page.url()).searchParams.get("id");
+
+    await this.page.getByTestId("new-chat-button").nth(index).click();
+
+    await expect(async () => {
+      const currentChatId = new URL(this.page.url()).searchParams.get("id");
+      if (previousChatId === null) {
+        expect(currentChatId).not.toBeNull();
+      } else {
+        expect(currentChatId).not.toBe(previousChatId);
+      }
+
+      const chatInput = this.getChatInput();
+      await expect(chatInput).toBeVisible({ timeout: 1_000 });
+      const text = await chatInput.textContent({ timeout: 1_000 });
+      expect(text?.trim() ?? "").toBe("");
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   private getRetryButton() {
@@ -65,9 +81,11 @@ export class ChatActions {
     return this.page.getByRole("button", { name: "Undo" });
   }
 
-  async waitForChatCompletion() {
+  async waitForChatCompletion({
+    timeout = Timeout.MEDIUM,
+  }: { timeout?: number } = {}) {
     await expect(this.getRetryButton()).toBeVisible({
-      timeout: Timeout.MEDIUM,
+      timeout,
     });
   }
 
@@ -81,13 +99,57 @@ export class ChatActions {
 
   async sendPrompt(
     prompt: string,
-    { skipWaitForCompletion = false }: { skipWaitForCompletion?: boolean } = {},
+    {
+      skipWaitForCompletion = false,
+      timeout,
+    }: { skipWaitForCompletion?: boolean; timeout?: number } = {},
   ) {
-    await this.getChatInput().click();
-    await this.getChatInput().fill(prompt);
-    await this.page.getByRole("button", { name: "Send message" }).click();
+    // Retry fill + assertions to survive Lexical/jotai races during chat
+    // switches: the per-chat input atom is keyed off selectedChatIdAtom and
+    // there's a render window where the editor's onChange writes to the old
+    // chat's slot. In that case ExternalValueSyncPlugin clears the editor on
+    // the next render, so the Send button stays disabled. Re-filling once the
+    // atoms have settled deterministically recovers.
+    const chatInput = this.getChatInput();
+    const sendButton = this.page
+      .locator(
+        '[data-testid="chat-input-container"]:visible, [data-testid="home-chat-input-container"]:visible',
+      )
+      .getByRole("button", { name: "Send message" });
+
+    await expect(chatInput).toBeVisible();
+    await expect(async () => {
+      await chatInput.click();
+      await chatInput.fill(prompt);
+      const visiblePrompt = prompt.replace(/@app:/g, "@");
+      expect(await chatInput.textContent()).toContain(visiblePrompt);
+      await expect(sendButton).toBeEnabled({ timeout: 1_000 });
+      try {
+        await sendButton.click({ timeout: 1_000 });
+      } catch (error) {
+        const promptSubmitted = await this.page
+          .getByTestId("messages-list")
+          .getByText(visiblePrompt)
+          .last()
+          .isVisible({ timeout: 1_000 })
+          .catch(() => false);
+        const generationStarted = await this.page
+          .getByRole("button", { name: "Cancel generation" })
+          .isVisible({ timeout: 500 })
+          .catch(() => false);
+        const inputText = await chatInput
+          .textContent({ timeout: 500 })
+          .catch(() => "");
+
+        if (promptSubmitted || (generationStarted && !inputText?.trim())) {
+          return;
+        }
+        throw error;
+      }
+    }).toPass({ timeout: Timeout.MEDIUM });
+
     if (!skipWaitForCompletion) {
-      await this.waitForChatCompletion();
+      await this.waitForChatCompletion({ timeout });
     }
   }
 

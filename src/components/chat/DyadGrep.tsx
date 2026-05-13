@@ -5,15 +5,15 @@ import { Search } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import {
-  ProteaAICard,
-  ProteaAICardHeader,
-  ProteaAIBadge,
-  ProteaAIExpandIcon,
-  ProteaAIStateIndicator,
-  ProteaAICardContent,
-} from "./ProteaAICardPrimitives";
+  DyadCard,
+  DyadCardHeader,
+  DyadBadge,
+  DyadExpandIcon,
+  DyadStateIndicator,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
 
-interface ProteaAIGrepProps {
+interface DyadGrepProps {
   children?: ReactNode;
   node?: {
     properties?: {
@@ -25,11 +25,12 @@ interface ProteaAIGrepProps {
       count?: string;
       total?: string;
       truncated?: string;
+      appName?: string;
     };
   };
 }
 
-export const ProteaAIGrep: React.FC<ProteaAIGrepProps> = ({ children, node }) => {
+export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   const state = node?.properties?.state as CustomTagState;
@@ -43,6 +44,7 @@ export const ProteaAIGrep: React.FC<ProteaAIGrepProps> = ({ children, node }) =>
   const count = node?.properties?.count || "";
   const total = node?.properties?.total || "";
   const truncated = node?.properties?.truncated === "true";
+  const appName = node?.properties?.appName || "";
 
   let description = `"${query}"`;
   if (includePattern) {
@@ -62,15 +64,16 @@ export const ProteaAIGrep: React.FC<ProteaAIGrepProps> = ({ children, node }) =>
     : "";
 
   return (
-    <ProteaAICard
+    <DyadCard
       state={state}
       accentColor="violet"
       onClick={() => setIsContentVisible(!isContentVisible)}
       isExpanded={isContentVisible}
-      data-testid="proteaai-grep"
+      data-testid="dyad-grep"
     >
-      <ProteaAICardHeader icon={<Search size={15} />} accentColor="violet">
-        <ProteaAIBadge color="violet">GREP</ProteaAIBadge>
+      <DyadCardHeader icon={<Search size={15} />} accentColor="violet">
+        <DyadBadge color="violet">GREP</DyadBadge>
+        {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         <span className="font-medium text-sm text-foreground truncate">
           {description}
         </span>
@@ -80,20 +83,20 @@ export const ProteaAIGrep: React.FC<ProteaAIGrepProps> = ({ children, node }) =>
           </span>
         )}
         {inProgress && (
-          <ProteaAIStateIndicator state="pending" pendingLabel="Searching..." />
+          <DyadStateIndicator state="pending" pendingLabel="Searching..." />
         )}
         {aborted && (
-          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <ProteaAIExpandIcon isExpanded={isContentVisible} />
+          <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
-      </ProteaAICardHeader>
-      <ProteaAICardContent isExpanded={isContentVisible}>
+      </DyadCardHeader>
+      <DyadCardContent isExpanded={isContentVisible}>
         <div className="text-xs" onClick={(e) => e.stopPropagation()}>
           <CodeHighlight className="language-log">{children}</CodeHighlight>
         </div>
-      </ProteaAICardContent>
-    </ProteaAICard>
+      </DyadCardContent>
+    </DyadCard>
   );
 };

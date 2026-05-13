@@ -3,20 +3,22 @@ import { useState, type ReactNode } from "react";
 import { FileCode } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 import {
-  ProteaAICard,
-  ProteaAICardHeader,
-  ProteaAIBadge,
-  ProteaAIExpandIcon,
-  ProteaAIStateIndicator,
-  ProteaAICardContent,
-} from "./ProteaAICardPrimitives";
+  DyadCard,
+  DyadCardHeader,
+  DyadBadge,
+  DyadExpandIcon,
+  DyadStateIndicator,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
 
-interface ProteaAICodeSearchProps {
+interface DyadCodeSearchProps {
   children?: ReactNode;
-  node?: { properties?: { query?: string; state?: CustomTagState } };
+  node?: {
+    properties?: { query?: string; state?: CustomTagState; appName?: string };
+  };
 }
 
-export const ProteaAICodeSearch: React.FC<ProteaAICodeSearchProps> = ({
+export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
   children,
   node,
 }) => {
@@ -24,30 +26,32 @@ export const ProteaAICodeSearch: React.FC<ProteaAICodeSearchProps> = ({
   const query =
     node?.properties?.query || (typeof children === "string" ? children : "");
   const state = node?.properties?.state as CustomTagState;
+  const appName = node?.properties?.appName || "";
   const inProgress = state === "pending";
 
   return (
-    <ProteaAICard
+    <DyadCard
       state={state}
       accentColor="indigo"
       onClick={() => setIsExpanded(!isExpanded)}
       isExpanded={isExpanded}
     >
-      <ProteaAICardHeader icon={<FileCode size={15} />} accentColor="indigo">
-        <ProteaAIBadge color="indigo">Code Search</ProteaAIBadge>
+      <DyadCardHeader icon={<FileCode size={15} />} accentColor="indigo">
+        <DyadBadge color="indigo">Code Search</DyadBadge>
+        {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         {!isExpanded && query && (
           <span className="text-sm text-muted-foreground italic truncate">
             {query}
           </span>
         )}
         {inProgress && (
-          <ProteaAIStateIndicator state="pending" pendingLabel="Searching..." />
+          <DyadStateIndicator state="pending" pendingLabel="Searching..." />
         )}
         <div className="ml-auto">
-          <ProteaAIExpandIcon isExpanded={isExpanded} />
+          <DyadExpandIcon isExpanded={isExpanded} />
         </div>
-      </ProteaAICardHeader>
-      <ProteaAICardContent isExpanded={isExpanded}>
+      </DyadCardHeader>
+      <DyadCardContent isExpanded={isExpanded}>
         <div className="text-sm text-muted-foreground space-y-2">
           {query && (
             <div>
@@ -68,7 +72,7 @@ export const ProteaAICodeSearch: React.FC<ProteaAICodeSearchProps> = ({
             </div>
           )}
         </div>
-      </ProteaAICardContent>
-    </ProteaAICard>
+      </DyadCardContent>
+    </DyadCard>
   );
 };

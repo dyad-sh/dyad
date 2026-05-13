@@ -16,6 +16,8 @@ import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { safeSend } from "../utils/safe_sender";
 import { readCurrentUserSettings, writeCurrentUserSettings } from "../../main/web-settings";
 import { supabaseContracts } from "../types/supabase";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { assertNoNeonProject } from "../utils/neon_utils";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -70,7 +72,10 @@ export function registerSupabaseHandlers() {
       const organizations = { ...settings.supabase?.organizations };
 
       if (!organizations[organizationSlug]) {
-        throw new Error(`Supabase organization ${organizationSlug} not found`);
+        throw new DyadError(
+          `Supabase organization ${organizationSlug} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       delete organizations[organizationSlug];
@@ -159,7 +164,10 @@ export function registerSupabaseHandlers() {
         typeof response.error === "string"
           ? response.error
           : JSON.stringify(response.error);
-      throw new Error(`Failed to fetch logs: ${errorMsg}`);
+      throw new DyadError(
+        `Failed to fetch logs: ${errorMsg}`,
+        DyadErrorKind.External,
+      );
     }
 
     const rawLogs = response.result || [];
@@ -189,6 +197,7 @@ export function registerSupabaseHandlers() {
   // Set app project - links a ProteaAI app to a Supabase project
   createTypedHandler(supabaseContracts.setAppProject, async (_, params) => {
     const { projectId, appId, parentProjectId, organizationSlug } = params;
+    await assertNoNeonProject(appId);
     await db
       .update(apps)
       .set({

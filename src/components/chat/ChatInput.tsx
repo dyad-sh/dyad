@@ -26,7 +26,7 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import {
-  chatInputValueAtom,
+  chatInputValuesByIdAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
@@ -58,7 +58,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo } from "@/lib/toast";
+import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -78,6 +78,12 @@ import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
+import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
+import {
+  chatImageGenerationJobsAtom,
+  dismissedImageGenerationJobIdsAtom,
+} from "@/atoms/imageGenerationAtoms";
+import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -98,15 +104,39 @@ import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { isProteaAIProEnabled } from "@/lib/schemas";
+import { isDyadProEnabled } from "@/lib/schemas";
+import { useChatMode } from "@/hooks/useChatMode";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const { t } = useTranslation("chat");
   const posthog = usePostHog();
-  const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
+  const inputValuesById = useAtomValue(chatInputValuesByIdAtom);
+  const setInputValuesById = useSetAtom(chatInputValuesByIdAtom);
+  const inputValue = chatId ? (inputValuesById.get(chatId) ?? "") : "";
+  const setInputValue = useCallback(
+    (newValue: string | ((prev: string) => string)) => {
+      if (!chatId) return;
+
+      setInputValuesById((currentMap) => {
+        const prev = currentMap.get(chatId) ?? "";
+        const next = typeof newValue === "function" ? newValue(prev) : newValue;
+        const newMap = new Map(currentMap);
+        newMap.set(chatId, next);
+        return newMap;
+      });
+    },
+    [chatId, setInputValuesById],
+  );
   const { settings } = useSettings();
+  const {
+    selectedMode: chatMode,
+    effectiveMode,
+    isLoading: isChatModeLoading,
+  } = useChatMode(chatId);
+  const initialChatMode = useInitialChatMode();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const {
@@ -121,6 +151,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     removeQueuedMessage,
     reorderQueuedMessages,
     clearAllQueuedMessages,
+    isPaused,
+    pauseQueue,
+    clearPauseOnly,
+    resumeQueue,
+    clearCompletionFlag,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -168,6 +203,29 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
+  const handleOpenImageGenerator = useCallback(() => {
+    setImageGeneratorOpen(true);
+  }, []);
+
+  // Image generation jobs for auto-adding to chat on send
+  const chatImageJobs = useAtomValue(chatImageGenerationJobsAtom);
+  const [dismissedImageJobIds, setDismissedImageJobIds] = useAtom(
+    dismissedImageGenerationJobIdsAtom,
+  );
+  const visibleSuccessfulImageJobs = useMemo(() => {
+    const appJobs = appId
+      ? chatImageJobs.filter((job) => job.targetAppId === appId)
+      : chatImageJobs;
+    return appJobs.filter(
+      (job) =>
+        !dismissedImageJobIds.has(job.id) &&
+        job.status === "success" &&
+        job.result,
+    );
+  }, [chatImageJobs, dismissedImageJobIds, appId]);
+  const hasSuccessfulImageJobs = visibleSuccessfulImageJobs.length > 0;
+
   // Use the attachments hook
   const {
     attachments,
@@ -197,7 +255,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
-    settings?.selectedChatMode !== "local-agent" &&
+    effectiveMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -215,7 +273,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, messagesById]);
 
   const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = settings ? isProteaAIProEnabled(settings) : false;
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -235,10 +293,23 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
 
   // Detect transition to plan mode from another mode in a chat with messages
-  const prevModeRef = useRef(settings?.selectedChatMode);
+  const prevModeRef = useRef(chatMode);
+  const prevModeChatIdRef = useRef(chatId);
+  const hasInitializedModeRef = useRef(false);
   useEffect(() => {
+    if (isChatModeLoading) return;
+    if (
+      !hasInitializedModeRef.current ||
+      prevModeChatIdRef.current !== chatId
+    ) {
+      hasInitializedModeRef.current = true;
+      prevModeChatIdRef.current = chatId;
+      prevModeRef.current = chatMode;
+      return;
+    }
+
     const prevMode = prevModeRef.current;
-    const currentMode = settings?.selectedChatMode;
+    const currentMode = chatMode;
     prevModeRef.current = currentMode;
 
     if (prevMode && prevMode !== "plan" && currentMode === "plan") {
@@ -247,7 +318,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         setNeedsFreshPlanChat(true);
       }
     }
-  }, [settings?.selectedChatMode, chatId, messagesById, setNeedsFreshPlanChat]);
+  }, [
+    chatMode,
+    chatId,
+    isChatModeLoading,
+    messagesById,
+    setNeedsFreshPlanChat,
+  ]);
 
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
@@ -329,6 +406,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-clear pause state when queue becomes empty (Users expect that deleting all queued messages returns them to normal send mode)
+
+  useEffect(() => {
+    if (chatId && isPaused && queuedMessages.length === 0) {
+      clearPauseOnly();
+    }
+  }, [chatId, isPaused, queuedMessages.length, clearPauseOnly]);
+
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
@@ -405,7 +490,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleSubmit = async () => {
     if (
-      (!inputValue.trim() && attachments.length === 0) ||
+      (!inputValue.trim() &&
+        attachments.length === 0 &&
+        !hasSuccessfulImageJobs) ||
       !chatId ||
       pendingFiles
     ) {
@@ -416,31 +503,55 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       await toggleRecording();
     }
 
+    // Build prompt with auto-added image mentions
+    const imageMentions = visibleSuccessfulImageJobs
+      .map((job) => `@media:${encodeURIComponent(job.result!.fileName)}`)
+      .join(" ");
+    const promptWithImages = inputValue.trim()
+      ? imageMentions
+        ? `${inputValue} ${imageMentions}`
+        : inputValue
+      : imageMentions;
+
+    // Dismiss image jobs that were auto-added
+    if (visibleSuccessfulImageJobs.length > 0) {
+      setDismissedImageJobIds((prev) => {
+        const next = new Set(prev);
+        for (const job of visibleSuccessfulImageJobs) {
+          next.add(job.id);
+        }
+        return next;
+      });
+    }
+
     // If switching to plan mode from another mode in a chat with messages,
     // create a new chat for a clean context.
-    if (needsFreshPlanChat && settings?.selectedChatMode === "plan" && appId) {
-      const currentInput = inputValue;
+    if (needsFreshPlanChat && chatMode === "plan" && appId) {
       setInputValue("");
       setNeedsFreshPlanChat(false);
 
-      const newChatId = await ipc.chat.createChat(appId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "plan",
+      });
       setSelectedChatId(newChatId);
       navigate({ to: "/chat", search: { id: newChatId } });
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       showInfo("We've switched you to a new chat for a clean context");
 
       await streamMessage({
-        prompt: currentInput,
+        prompt: promptWithImages,
         chatId: newChatId,
         attachments,
         redo: false,
+        requestedChatMode: "plan",
       });
       clearAttachments();
-      posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+      posthog.capture("chat:submit", { chatMode });
       return;
     }
 
-    const currentInput = inputValue;
+    const currentInput = promptWithImages;
 
     // Use all selected components for multi-component editing
     const componentsToSend =
@@ -459,7 +570,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // If streaming, queue the message instead of sending immediately
+    // Queue while actively streaming. If we're paused but currently idle,
+    // send the new message immediately and keep existing queued items paused.
     if (isStreaming) {
       const queued = queueMessage({
         prompt: currentInput,
@@ -504,23 +616,24 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
+      requestedChatMode: isChatModeLoading ? null : chatMode,
     });
     clearAttachments();
-    posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+    posthog.capture("chat:submit", { chatMode });
   };
 
   const handleCancel = () => {
-    // Clear all queued messages first, BEFORE the IPC call, to ensure
-    // the queue is empty even if the backend response arrives quickly.
-    // This prevents race conditions where the queue-processing effect
-    // could potentially run if the backend responds before queue clearing.
-    clearAllQueuedMessages();
-    // Reset editing state so the "Editing queued message" banner is dismissed
-    // and restored attachments/components are cleared
+    // Only clear the queue if NOT paused
+    if (!isPaused) {
+      clearAllQueuedMessages();
+    }
+    // Always reset editing state when cancelling, regardless of pause state
     if (editingQueuedMessageId) {
       resetEditingState();
     }
+    // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {
+      clearCompletionFlag();
       ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);
@@ -533,7 +646,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const newChatId = await ipc.chat.createChat(appId);
+        const newChatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode,
+        });
         setSelectedChatId(newChatId);
         navigate({
           to: "/chat",
@@ -569,6 +685,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           error: result.extraFilesError,
           posthog,
         });
+      }
+      for (const warningMessage of result.warningMessages ?? []) {
+        showWarning(warningMessage);
+      }
+      if (!result.success) {
+        setError(result.error ?? "An error occurred while approving");
       }
     } catch (err) {
       console.error("Error approving proposal:", err);
@@ -623,7 +745,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <ChatErrorBox
           onDismiss={dismissError}
           error={error}
-          isProteaAIProEnabled={settings.enableProteaAIPro ?? false}
+          isDyadProEnabled={settings.enableDyadPro ?? false}
           onStartNewChat={handleNewChat}
         />
       )}
@@ -703,6 +825,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onMoveDown={handleMoveDown}
               isStreaming={isStreaming}
               hasError={!!error}
+              isPaused={isPaused}
+              onPauseQueue={pauseQueue}
+              onResumeQueue={resumeQueue}
             />
           )}
           {/* Show editing indicator when editing a queued message */}
@@ -724,8 +849,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingAgentConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            settings.selectedChatMode !== "ask" &&
-            settings.selectedChatMode !== "local-agent" && (
+            effectiveMode !== "ask" &&
+            effectiveMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}
@@ -775,7 +900,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     render={
                       <button
                         onClick={() => {
-                          ipc.system.openExternalUrl("https://proteaai.com/pro");
+                          ipc.system.openExternalUrl("https://dyad.sh/pro");
                         }}
                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                       />
@@ -800,6 +925,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onRemove={removeAttachment}
           />
 
+          {/* Chat image generation strip */}
+          <ChatImageGenerationStrip
+            onGenerateImage={handleOpenImageGenerator}
+          />
+
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
@@ -816,7 +946,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onPaste={handlePaste}
-              placeholder={t("askProteaAIToBuild")}
+              placeholder={t("askDyadToBuild")}
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
               messageHistory={userMessageHistory}
@@ -868,7 +998,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={() =>
-                        ipc.system.openExternalUrl("https://proteaai.com/pro")
+                        ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
                       aria-label={t("voiceToTextPro", "Voice to text (Pro)")}
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
@@ -906,7 +1036,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <button
                       onClick={handleSubmit}
                       disabled={
-                        (!inputValue.trim() && attachments.length === 0) ||
+                        (!inputValue.trim() &&
+                          attachments.length === 0 &&
+                          !hasSuccessfulImageJobs) ||
                         disableSendButton
                       }
                       aria-label={t("sendMessage")}
@@ -930,12 +1062,21 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               showTokenBar={showTokenBar}
               toggleShowTokenBar={toggleShowTokenBar}
               appId={appId ?? undefined}
+              onGenerateImage={handleOpenImageGenerator}
             />
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}
         </div>
       </div>
+
+      {/* Image Generator Dialog */}
+      <ImageGeneratorDialog
+        open={imageGeneratorOpen}
+        onOpenChange={setImageGeneratorOpen}
+        defaultAppId={appId ?? undefined}
+        source="chat"
+      />
     </>
   );
 }
@@ -947,7 +1088,7 @@ function SuggestionButton({
 }: {
   onClick: () => void;
   children: React.ReactNode;
-  tooltipText: string;
+  tooltipText: string | string[];
 }) {
   const { isStreaming } = useStreamChat();
   return (
@@ -964,7 +1105,11 @@ function SuggestionButton({
       >
         {children}
       </TooltipTrigger>
-      <TooltipContent>{tooltipText}</TooltipContent>
+      <TooltipContent>
+        {Array.isArray(tooltipText)
+          ? tooltipText.map((line) => <div key={line}>{line}</div>)
+          : tooltipText}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -998,7 +1143,10 @@ function RefactorFileButton({ path }: { path: string }) {
     });
   };
   return (
-    <SuggestionButton onClick={onClick} tooltipText={t("refactorDescription")}>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText={[t("refactorDescription"), path]}
+    >
       <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
         {t("refactorFile", { path: path.split("/").slice(-2).join("/") })}
       </span>

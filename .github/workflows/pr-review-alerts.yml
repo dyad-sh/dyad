@@ -1,0 +1,54 @@
+name: PR Review Alerts
+
+on:
+  schedule:
+    # Daily at 15:00 UTC (8 AM Pacific Daylight Time)
+    - cron: "0 15 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: pr-review-alerts
+  cancel-in-progress: true
+
+jobs:
+  send-alert:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          owner: dyad-sh
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Send PR review alert email
+        env:
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          PR_REVIEW_GITHUB_USER: wwwillchen
+          PR_REVIEW_ALERT_EMAILS: ${{ vars.PR_REVIEW_ALERT_EMAILS }}
+          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+          MAILGUN_DOMAIN: ${{ vars.MAILGUN_DOMAIN }}
+          MAILGUN_FROM_EMAIL: ${{ vars.MAILGUN_FROM_EMAIL }}
+        run: node scripts/pr-review-alert.mjs

@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: (1 files changed)
+- text: "Version 2: (1 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""
@@ -32,6 +32,8 @@
 - paragraph: I've generated the hero image and saved it to your project. You can find it in the .dyad/media directory.
 - button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: claude-opus-4-5
 - img

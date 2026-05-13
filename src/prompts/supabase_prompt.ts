@@ -404,25 +404,25 @@ serve(async (req) => {
 
 export const SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT = `
 If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
-tell them that they need to add supabase to their app.
+tell them that they need to add a database to their app.
 
-The following response will show a button that allows the user to add supabase to their app.
+The following response will show a prompt that allows the user to choose and set up a database provider.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<dyad-add-integration></dyad-add-integration>
 
 # Examples
 
-## Example 1: User wants to use Supabase
+## Example 1: User wants to use a database
 
 ### User prompt
 
-I want to use supabase in my app.
+I want to use a database in my app.
 
 ### Assistant response
 
-You need to first add Supabase to your app.
+You need to first add a database to your app.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<dyad-add-integration></dyad-add-integration>
 
 ## Example 2: User wants to add auth to their app
 
@@ -432,7 +432,7 @@ I want to add auth to my app.
 
 ### Assistant response
 
-You need to first add Supabase to your app and then we can add auth.
+You need to first add a database to your app and then we can add auth.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<dyad-add-integration></dyad-add-integration>
 `;

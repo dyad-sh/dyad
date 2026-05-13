@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
 
 describe("shouldFilterTelemetryException", () => {
@@ -33,6 +34,35 @@ describe("shouldFilterTelemetryException", () => {
           "Supabase access token not found for organization acme. Please authenticate first.",
         ),
       ),
+    ).toBe(false);
+  });
+
+  it("filters DyadError kinds that are non-actionable for telemetry", () => {
+    expect(
+      shouldFilterTelemetryException(
+        new DyadError("bad input", DyadErrorKind.Validation),
+      ),
+    ).toBe(true);
+    expect(
+      shouldFilterTelemetryException(
+        new DyadError("missing", DyadErrorKind.NotFound),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not filter DyadError Internal, External, or Unknown", () => {
+    expect(
+      shouldFilterTelemetryException(
+        new DyadError("bug", DyadErrorKind.Internal),
+      ),
+    ).toBe(false);
+    expect(
+      shouldFilterTelemetryException(
+        new DyadError("upstream", DyadErrorKind.External),
+      ),
+    ).toBe(false);
+    expect(
+      shouldFilterTelemetryException(new DyadError("?", DyadErrorKind.Unknown)),
     ).toBe(false);
   });
 });

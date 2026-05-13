@@ -314,6 +314,12 @@ export const gitContracts = {
     input: CommitChangesParamsSchema,
     output: z.string(), // Returns commit hash
   }),
+
+  discardChanges: defineContract({
+    channel: "git:discard-changes",
+    input: GitBranchAppIdParamsSchema,
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================

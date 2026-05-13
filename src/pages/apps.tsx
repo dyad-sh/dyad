@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckSquare, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import {
+  CheckSquare,
+  FolderPlus,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
@@ -26,6 +33,7 @@ import { useCategories, type Category } from "@/hooks/useCategories";
 import { CategoryFolderCard } from "@/components/CategoryFolderCard";
 import { CategoryDetailView } from "@/components/CategoryDetailView";
 import { AddOrEditCategoryDialog } from "@/components/AddOrEditCategoryDialog";
+import { AssignAppsToCategoryDialog } from "@/components/AssignAppsToCategoryDialog";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 
 export default function AppsPage() {
@@ -37,6 +45,8 @@ export default function AppsPage() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+  const [isAssignCategoryDialogOpen, setIsAssignCategoryDialogOpen] =
+    useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const [currentApp, setCurrentApp] = useAtom(currentAppAtom);
@@ -253,6 +263,17 @@ export default function AppsPage() {
                 Cancel
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAssignCategoryDialogOpen(true)}
+                disabled={selectedAppIds.size === 0}
+                data-testid="apps-gallery-bulk-add-to-category-button"
+                className="flex items-center gap-1"
+              >
+                <FolderPlus className="h-4 w-4" />
+                Add to category ({selectedAppIds.size})
+              </Button>
+              <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => setIsBulkDeleteDialogOpen(true)}
@@ -434,6 +455,17 @@ export default function AppsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssignAppsToCategoryDialog
+        open={isAssignCategoryDialogOpen}
+        onOpenChange={setIsAssignCategoryDialogOpen}
+        apps={selectedApps}
+        categories={categories}
+        onAssigned={() => {
+          setSelectedAppIds(new Set());
+          setIsSelectionMode(false);
+        }}
+      />
 
       <AddOrEditCategoryDialog
         open={isAddOrEditCategoryOpen}

@@ -155,66 +155,21 @@ export function AddOrEditCategoryDialog({
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                Apps in this category
-              </span>
-              <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-                <PopoverTrigger
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-(--background-lighter) px-2 py-1 text-xs hover:border-primary/40 disabled:opacity-50"
-                  disabled={isSubmitting || pickableApps.length === 0}
-                  data-testid="category-add-apps-picker-trigger"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add apps
-                </PopoverTrigger>
-                <PopoverContent className="w-72 p-0" align="end">
-                  <div className="max-h-64 overflow-y-auto p-1">
-                    {pickableApps.length === 0 ? (
-                      <div className="text-xs text-muted-foreground p-3 text-center">
-                        All apps already added.
-                      </div>
-                    ) : (
-                      pickableApps.map((app) => {
-                        const inOther = categoryNameByAppId.get(app.id);
-                        return (
-                          <button
-                            key={app.id}
-                            type="button"
-                            onClick={() => toggleApp(app.id, true)}
-                            className="w-full flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            data-testid={`category-picker-app-${app.id}`}
-                          >
-                            <span className="flex-1 min-w-0 truncate">
-                              {app.name}
-                            </span>
-                            {inOther && (
-                              <span className="text-[10px] text-muted-foreground italic shrink-0">
-                                in "{inOther}"
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+            <span className="text-xs font-medium text-muted-foreground block mb-1">
+              Apps in this category
+            </span>
 
-            <div
-              className={cn(
-                "min-h-[80px] max-h-48 overflow-y-auto rounded-md border border-border bg-(--background-lighter) p-2",
-                selectedApps.length === 0 && "flex items-center justify-center",
-              )}
-              data-testid="category-selected-apps"
-            >
-              {selectedApps.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No apps yet. Use "Add apps" to pick some.
-                </p>
-              ) : (
-                <ul className="flex flex-wrap gap-1.5">
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <div
+                className="min-h-[80px] max-h-48 overflow-y-auto rounded-md border border-border bg-(--background-lighter) p-2"
+                data-testid="category-selected-apps"
+              >
+                <ul className="flex flex-wrap gap-1.5 items-center">
+                  {selectedApps.length === 0 && (
+                    <li className="text-xs text-muted-foreground">
+                      No apps yet.
+                    </li>
+                  )}
                   {selectedApps.map((app) => {
                     const inOther = categoryNameByAppId.get(app.id);
                     return (
@@ -245,9 +200,55 @@ export function AddOrEditCategoryDialog({
                       </li>
                     );
                   })}
+                  <li className="inline-flex">
+                    <PopoverTrigger
+                      className={cn(
+                        "inline-flex items-center justify-center h-6 w-6 rounded-full border bg-(--background-lightest) text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50",
+                        selectedApps.length === 0
+                          ? "border-border"
+                          : "border-dashed border-border",
+                      )}
+                      disabled={isSubmitting || pickableApps.length === 0}
+                      data-testid="category-add-apps-picker-trigger"
+                      aria-label="Add apps"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </PopoverTrigger>
+                  </li>
                 </ul>
-              )}
-            </div>
+              </div>
+              <PopoverContent className="w-72 p-0" align="end">
+                <div className="max-h-64 overflow-y-auto p-1">
+                  {pickableApps.length === 0 ? (
+                    <div className="text-xs text-muted-foreground p-3 text-center">
+                      All apps already added.
+                    </div>
+                  ) : (
+                    pickableApps.map((app) => {
+                      const inOther = categoryNameByAppId.get(app.id);
+                      return (
+                        <button
+                          key={app.id}
+                          type="button"
+                          onClick={() => toggleApp(app.id, true)}
+                          className="w-full flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                          data-testid={`category-picker-app-${app.id}`}
+                        >
+                          <span className="flex-1 min-w-0 truncate">
+                            {app.name}
+                          </span>
+                          {inOther && (
+                            <span className="text-[10px] text-muted-foreground italic shrink-0">
+                              in "{inOther}"
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 

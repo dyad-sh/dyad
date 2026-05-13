@@ -26,6 +26,13 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # Strip project Claude settings so the narrow allowed_tools below is authoritative.
+      # Without this, .claude/settings.json's permissions.allow list (Bash(git:*), etc.)
+      # merges in and silently widens the agent's effective allowlist — which matters here
+      # because the triage prompt embeds untrusted issue title/body content.
+      - name: Strip project Claude settings
+        run: rm -f .claude/settings.json .claude/settings.local.json
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

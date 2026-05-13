@@ -1,6 +1,6 @@
 # Claude-driven GitHub Actions Workflows
 
-Guidelines for the LLM-driven workflows in `.github/workflows/` that invoke `anthropics/claude-code-action` (e.g., `closed-issue-comment.yml`, `claude-triage.yml`, `claude-pr-review.yml`).
+Guidelines for the LLM-driven workflows in `.github/workflows/` that invoke `anthropics/claude-code-action` or `anthropics/claude-code-base-action` (e.g., `closed-issue-comment.yml`, `claude-triage.yml`, `claude-pr-review.yml`). Both actions wrap the same `claude` CLI under the hood, so settings/permission behavior is identical between them.
 
 ## Gate deterministic branching in the workflow, not the prompt
 
@@ -20,7 +20,7 @@ When a Claude workflow needs write credentials, prefer a two-job shape: the Clau
 
 ## Harden the agent's permissions — `.claude/settings.json` merges into CI
 
-`claude-code-action` reads `.claude/settings.json` from the workspace after `actions/checkout`, and the project's file is committed (tracked in git). **`permissions.allow` arrays merge across scopes — they do not replace each other.** From the Claude Code docs: _"Array settings merge across scopes. When the same array-valued setting (such as `permissions.allow`) appears in multiple scopes, the arrays are concatenated and deduplicated, not replaced."_ ([source](https://code.claude.com/docs/en/settings)).
+Both `claude-code-action` and `claude-code-base-action` read `.claude/settings.json` from the workspace after `actions/checkout`, and the project's file is committed (tracked in git). **`permissions.allow` arrays merge across scopes — they do not replace each other.** From the Claude Code docs: _"Array settings merge across scopes. When the same array-valued setting (such as `permissions.allow`) appears in multiple scopes, the arrays are concatenated and deduplicated, not replaced."_ ([source](https://code.claude.com/docs/en/settings)).
 
 This has two consequences that bite in CI:
 

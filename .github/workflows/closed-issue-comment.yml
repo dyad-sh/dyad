@@ -48,7 +48,7 @@ jobs:
               }
             }
           claude_args: |
-            --model sonnet --max-turns 1 --json-schema '{"type":"object","additionalProperties":false,"properties":{"should_reopen":{"type":"boolean"},"reason":{"type":"string","maxLength":200}},"required":["should_reopen","reason"]}'
+            --model sonnet --json-schema '{"type":"object","additionalProperties":false,"properties":{"should_reopen":{"type":"boolean"},"reason":{"type":"string","maxLength":200}},"required":["should_reopen","reason"]}'
           prompt: |
             # Closed Issue — Author Follow-up Handler
 

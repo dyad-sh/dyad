@@ -132,7 +132,7 @@ DOUBLE_QUOTED_STRING_PATTERN = re.compile(r'"[^"]*"')
 # Safe pipe destinations - broad whitelist of common text-processing commands
 # Claude Code's own permission system provides the primary security layer
 SAFE_PIPE_PATTERN = re.compile(
-    r'\|\s*('
+    r'\s*\|\s*('
     r'jq|head|tail|grep|egrep|fgrep|wc|sort|uniq|cut|tr'
     r'|base64|cat|column|fmt|fold|paste'
     r'|expand|unexpand|rev|tac|nl|od|xxd|hexdump|strings'

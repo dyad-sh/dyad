@@ -86,7 +86,7 @@ export const TitleBar = () => {
          * tab's flat-bottom edge ends up over the sidebar instead of the white
          * main content area, breaking the "tab merges into content" affordance.
          */}
-        <div className="flex items-center shrink-0 min-w-[var(--sidebar-width)]">
+        <div className="flex items-center shrink-0">
           <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
           <Tooltip>
@@ -109,7 +109,7 @@ export const TitleBar = () => {
             >
               <img src={logo} alt="Dyad" className="w-5 h-5 shrink-0" />
               <span className="hidden @2xl:inline max-w-40 truncate">
-                {displayText}
+                Manage app
               </span>
             </TooltipTrigger>
             <TooltipContent>{displayText}</TooltipContent>

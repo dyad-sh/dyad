@@ -1,4 +1,5 @@
 import {
+  type LucideIcon,
   Home,
   Inbox,
   Settings,
@@ -19,11 +20,10 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
 import { HelpDialog } from "./HelpDialog"; // Import the new dialog
@@ -58,6 +58,80 @@ const items = [
     icon: Store,
   },
 ];
+
+type AppSidebarItemTo = (typeof items)[number]["to"];
+
+function AppSidebarRailButton({
+  icon: Icon,
+  label,
+  isExpanded,
+  isActive = false,
+  to,
+  onClick,
+  onMouseEnter,
+}: {
+  icon: LucideIcon;
+  label: string;
+  isExpanded: boolean;
+  isActive?: boolean;
+  to?: AppSidebarItemTo;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
+}) {
+  const className = cn(
+    "group/rail-button relative mb-1 flex h-10 items-center justify-center rounded-xl outline-none transition-[width,background-color] duration-200 ease-linear focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+    isExpanded ? "w-14" : "w-10",
+    isActive
+      ? "bg-primary/15"
+      : "hover:bg-sidebar-accent active:bg-sidebar-accent",
+  );
+  const content = (
+    <>
+      <span
+        className={cn(
+          "absolute left-1/2 -translate-x-1/2 -translate-y-1/2 transition-[top] duration-200 ease-linear",
+          isExpanded ? "top-[42%]" : "top-1/2",
+        )}
+      >
+        <Icon className={cn("size-5", isActive && "text-primary")} />
+      </span>
+      <span
+        className={cn(
+          "pointer-events-none absolute bottom-0.5 left-1/2 max-w-[calc(100%-0.5rem)] -translate-x-1/2 truncate text-[10px] leading-3 transition-[opacity,transform] duration-200 ease-linear",
+          isExpanded ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
+          isActive ? "font-medium text-primary" : "text-sidebar-foreground/80",
+        )}
+      >
+        {label}
+      </span>
+    </>
+  );
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        aria-label={label}
+        className={className}
+        onMouseEnter={onMouseEnter}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className={className}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+    >
+      {content}
+    </button>
+  );
+}
 
 // Hover state types
 type HoverState =
@@ -134,17 +208,24 @@ export function AppSidebar() {
       <SidebarContent className="overflow-hidden">
         <div className="flex mt-8">
           {/* Left Column: Icon rail */}
-          <div className="px-1">
+          <div
+            className={`px-1 transition-[width] duration-200 ease-linear ${
+              state === "expanded" ? "w-16" : "w-12"
+            }`}
+          >
             <SidebarTrigger
-              className="h-10 w-10 mb-1"
+              // className="h-10 w-10 mb-1"
               onMouseEnter={() => {
                 setHoverState("clear-hover");
               }}
             />
-            <AppIcons onHoverChange={setHoverState} />
+            <AppIcons
+              onHoverChange={setHoverState}
+              isExpanded={state === "expanded"}
+            />
           </div>
           {/* Right Column: Contextual sub-list (only visible when expanded) */}
-          <div className="w-[272px] border-l border-sidebar-border">
+          <div className="w-[224px] border-l border-sidebar-border">
             <AppList show={selectedItem === "Apps"} />
             <ChatList show={selectedItem === "Chat"} />
             <SettingsList show={selectedItem === "Settings"} />
@@ -156,17 +237,12 @@ export function AppSidebar() {
       <SidebarFooter className="px-1 items-start">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              aria-label="Help"
-              tooltip="Help"
-              className="w-10 h-10 mb-1 rounded-xl p-0 justify-center"
+            <AppSidebarRailButton
+              icon={HelpCircle}
+              label="Help"
+              isExpanded={state === "expanded"}
               onClick={() => setIsHelpDialogOpen(true)}
-            >
-              <div className="flex items-center justify-center">
-                <HelpCircle className="size-5" />
-              </div>
-            </SidebarMenuButton>
+            />
             <HelpDialog
               isOpen={isHelpDialogOpen}
               onClose={() => setIsHelpDialogOpen(false)}
@@ -175,15 +251,17 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarFooter>
 
-      <SidebarRail />
+      {/* <SidebarRail /> */}
     </Sidebar>
   );
 }
 
 function AppIcons({
   onHoverChange,
+  isExpanded,
 }: {
   onHoverChange: (state: HoverState) => void;
+  isExpanded: boolean;
 }) {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
@@ -216,20 +294,14 @@ function AppIcons({
 
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  as={Link}
+                <AppSidebarRailButton
+                  icon={item.icon}
+                  label={item.title}
                   to={item.to}
-                  size="sm"
                   isActive={isActive}
-                  aria-label={item.title}
-                  tooltip={item.title}
-                  className="w-10 h-10 mb-1 rounded-xl p-0 justify-center"
+                  isExpanded={isExpanded}
                   onMouseEnter={() => onHoverChange(hoverForTitle(item.title))}
-                >
-                  <div className="flex items-center justify-center">
-                    <item.icon className="size-5" />
-                  </div>
-                </SidebarMenuButton>
+                />
               </SidebarMenuItem>
             );
           })}

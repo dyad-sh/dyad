@@ -598,7 +598,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             setDraggingChatId(null);
                           }}
                           className={cn(
-                            "no-app-region-drag group relative flex h-8 min-w-[160px] max-w-52 items-center gap-1 px-2 transition-transform duration-75 active:scale-[0.97]",
+                            "no-app-region-drag group relative flex h-8 min-w-[160px] max-w-52 items-center gap-1 px-2 py-0.5",
                             isActive
                               ? "z-10 rounded-t-md rounded-b-none border border-b-0 border-border bg-background text-foreground"
                               : "rounded-md bg-transparent text-muted-foreground hover:bg-muted/70",
@@ -627,14 +627,21 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       )}
                       <button
                         type="button"
-                        onClick={() => handleTabClick(chat)}
+                        onPointerDown={(event) => {
+                          if (event.button !== 0) return;
+                          handleTabClick(chat);
+                        }}
+                        onClick={(event) => {
+                          if (event.detail !== 0) return;
+                          handleTabClick(chat);
+                        }}
                         className="min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         aria-current={isActive ? "page" : undefined}
                       >
-                        <div className="flex min-w-0 items-baseline gap-1.5 text-xs">
+                        <div className="flex min-w-0 flex-col justify-center text-xs">
                           <span
                             className={cn(
-                              "max-w-[110px] truncate",
+                              "truncate leading-3",
                               isActive
                                 ? "font-semibold text-foreground"
                                 : "font-medium text-foreground/60",
@@ -644,7 +651,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                           </span>
                           <span
                             className={cn(
-                              "min-w-0 flex-1 truncate",
+                              "truncate text-[11px] leading-3.5",
                               isActive
                                 ? "text-muted-foreground"
                                 : "text-muted-foreground/70",

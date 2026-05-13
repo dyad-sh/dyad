@@ -173,8 +173,8 @@ export function useNotificationHandler() {
         !document.hasFocus();
       if (!shouldNotify) return;
       let currentPermission =
-        typeof Notification !== "undefined"
-          ? Notification.permission
+        typeof window.Notification !== "undefined"
+          ? window.Notification.permission
           : "denied";
 
       if (currentPermission === "default") {

@@ -7,7 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
+import { useIsMac } from "@/hooks/useChatModeToggle";
 import {
   isStreamingByIdAtom,
   recentViewedChatIdsAtom,
@@ -20,6 +20,7 @@ import {
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   closeMultipleTabsAtom,
+  popClosedTabAtom,
   type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -230,10 +232,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
   const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
+  const popClosedTab = useSetAtom(popClosedTabAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { selectChat } = useSelectChat();
-  const { reopenClosedTab, hasClosedTabs } = useReopenClosedTab();
   const navigate = useNavigate();
+  const isMac = useIsMac();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [draggingChatId, setDraggingChatId] = useState<number | null>(null);
@@ -294,6 +297,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const overflowTabsForMenu = useMemo(
     () => overflowTabs.slice(0, MAX_OVERFLOW_MENU_ITEMS),
     [overflowTabs],
+  );
+  const closedHistoryForMenu = useMemo(
+    () => closedTabHistory.filter((record) => closedChatIds.has(record.chatId)),
+    [closedChatIds, closedTabHistory],
   );
 
   // Re-run when orderedChats becomes non-empty so the ResizeObserver attaches
@@ -535,6 +542,15 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     }
   };
 
+  const handleReopenClosedTab = useCallback(() => {
+    const record = popClosedTab();
+    if (!record) return;
+    selectChat({
+      chatId: record.chatId,
+      appId: record.appId,
+    });
+  }, [popClosedTab, selectChat]);
+
   // Check whether tabs span more than one app (used to enable/disable grouping)
   const hasMultipleApps = useMemo(() => {
     const appIds = new Set<number>();
@@ -742,26 +758,20 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     {t("groupTabsByApp")}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <ContextMenuItem
-                          onClick={reopenClosedTab}
-                          disabled={!hasClosedTabs}
-                        >
-                          {closedTabHistory.length > 0 &&
-                          closedTabHistory[0].title
-                            ? t("reopenClosedTabWithTitle", {
-                                title: closedTabHistory[0].title,
-                              })
-                            : t("reopenClosedTab")}
-                        </ContextMenuItem>
-                      }
-                    />
-                    <TooltipContent side="right" align="center">
-                      {t("reopenClosedTabTooltip")}
-                    </TooltipContent>
-                  </Tooltip>
+                  <ContextMenuItem
+                    onClick={handleReopenClosedTab}
+                    disabled={closedHistoryForMenu.length === 0}
+                  >
+                    {closedHistoryForMenu.length > 0 &&
+                    closedHistoryForMenu[0].title
+                      ? t("reopenClosedTabWithTitle", {
+                          title: closedHistoryForMenu[0].title,
+                        })
+                      : t("reopenClosedTab")}
+                    <ContextMenuShortcut>
+                      {isMac ? "Cmd+Shift+T" : "Ctrl+Shift+T"}
+                    </ContextMenuShortcut>
+                  </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
             );

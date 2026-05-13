@@ -179,6 +179,7 @@ describe("closed tab history", () => {
     const first = { chatId: 2, appId: 1, title: "Chat 2" };
     const second = { chatId: 3, appId: 1, title: "Chat 3" };
     store.set(closedTabHistoryAtom, [first, second]);
+    store.set(closedChatIdsAtom, new Set([2, 3]));
     store.set(popClosedTabAtom);
     expect(store.get(closedTabHistoryAtom)).toEqual([second]);
   });

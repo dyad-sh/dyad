@@ -71,7 +71,15 @@ export const popClosedTabAtom = atom(
   (get, set): ClosedTabRecord | null => {
     const history = get(closedTabHistoryAtom);
     if (history.length === 0) return null;
-    const [record, ...rest] = history;
+    const closedIds = get(closedChatIdsAtom);
+    const filtered = history.filter((record) => closedIds.has(record.chatId));
+    if (filtered.length === 0) {
+      if (filtered.length !== history.length) {
+        set(closedTabHistoryAtom, filtered);
+      }
+      return null;
+    }
+    const [record, ...rest] = filtered;
     set(closedTabHistoryAtom, rest);
     return record;
   },

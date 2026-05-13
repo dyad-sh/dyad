@@ -25,6 +25,7 @@ export type CreateCategoryParams = z.infer<typeof CreateCategoryParamsSchema>;
 export const UpdateCategoryParamsSchema = z.object({
   id: z.number(),
   name: z.string().min(1),
+  appIds: z.array(z.number()).optional(),
 });
 
 export type UpdateCategoryParams = z.infer<typeof UpdateCategoryParamsSchema>;

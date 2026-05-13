@@ -38,7 +38,7 @@ export function AddOrEditCategoryDialog({
   categories,
 }: AddOrEditCategoryDialogProps) {
   const isEdit = !!category;
-  const { createCategory, updateCategory, assignApps } = useCategories();
+  const { createCategory, updateCategory } = useCategories();
 
   const [name, setName] = useState("");
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
@@ -92,19 +92,11 @@ export function AddOrEditCategoryDialog({
     try {
       const finalAppIds = Array.from(selectedAppIds);
       if (isEdit && category) {
-        if (trimmed !== category.name) {
-          await updateCategory({ id: category.id, name: trimmed });
-        }
-        const before = new Set(category.appIds);
-        const after = new Set(finalAppIds);
-        const toAdd = finalAppIds.filter((id) => !before.has(id));
-        const toRemove = category.appIds.filter((id) => !after.has(id));
-        if (toAdd.length > 0) {
-          await assignApps({ categoryId: category.id, appIds: toAdd });
-        }
-        if (toRemove.length > 0) {
-          await assignApps({ categoryId: null, appIds: toRemove });
-        }
+        await updateCategory({
+          id: category.id,
+          name: trimmed,
+          appIds: finalAppIds,
+        });
         showSuccess(`Category "${trimmed}" updated`);
       } else {
         await createCategory({ name: trimmed, appIds: finalAppIds });

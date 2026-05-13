@@ -6,4 +6,4 @@ CREATE TABLE `categories` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `categories_name_unique` ON `categories` (`name`);--> statement-breakpoint
-ALTER TABLE `apps` ADD `category_id` integer REFERENCES categories(id);
+ALTER TABLE `apps` ADD `category_id` integer REFERENCES categories(id) ON DELETE SET NULL;

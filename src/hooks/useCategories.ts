@@ -33,7 +33,11 @@ export function useCategories() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (params: { id: number; name: string }): Promise<void> => {
+    mutationFn: async (params: {
+      id: number;
+      name: string;
+      appIds?: number[];
+    }): Promise<void> => {
       return ipc.category.update(params);
     },
     onSuccess: invalidateAll,

@@ -1,12 +1,9 @@
-import log from "electron-log";
 import { db } from "@/db";
 import { apps, categories } from "@/db/schema";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { categoryContracts } from "../types/categories";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-
-const _logger = log.scope("category_handlers");
 
 function buildCategoryDto(
   row: {
@@ -26,9 +23,19 @@ function buildCategoryDto(
   };
 }
 
+function isUniqueNameError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return message.includes("UNIQUE constraint failed: categories.name");
+}
+
 export function registerCategoryHandlers() {
   createTypedHandler(categoryContracts.list, async () => {
-    const rows = db.select().from(categories).all();
+    const rows = db.select().from(categories).orderBy(categories.name).all();
     const appRows = db
       .select({ id: apps.id, categoryId: apps.categoryId })
       .from(apps)
@@ -48,26 +55,45 @@ export function registerCategoryHandlers() {
     const { name, appIds } = params;
     const trimmed = name.trim();
     if (!trimmed) {
-      throw new DyadError("Category name is required", DyadErrorKind.External);
+      throw new DyadError(
+        "Category name is required",
+        DyadErrorKind.Validation,
+      );
     }
 
-    const id = db.transaction((tx) => {
-      const insertResult = tx
-        .insert(categories)
-        .values({ name: trimmed })
-        .run();
-      const newId = Number(insertResult.lastInsertRowid);
-      if (appIds && appIds.length > 0) {
-        tx.update(apps)
-          .set({ categoryId: newId })
-          .where(inArray(apps.id, appIds))
+    let id: number;
+    try {
+      id = db.transaction((tx) => {
+        const insertResult = tx
+          .insert(categories)
+          .values({ name: trimmed })
           .run();
+        const newId = Number(insertResult.lastInsertRowid);
+        if (appIds && appIds.length > 0) {
+          tx.update(apps)
+            .set({ categoryId: newId })
+            .where(inArray(apps.id, appIds))
+            .run();
+        }
+        return newId;
+      });
+    } catch (error) {
+      if (isUniqueNameError(error)) {
+        throw new DyadError(
+          "A category with that name already exists",
+          DyadErrorKind.Conflict,
+        );
       }
-      return newId;
-    });
+      throw error;
+    }
 
     const row = db.select().from(categories).where(eq(categories.id, id)).get();
-    if (!row) throw new Error("Failed to fetch created category");
+    if (!row) {
+      throw new DyadError(
+        "Failed to fetch created category",
+        DyadErrorKind.Internal,
+      );
+    }
     const memberAppRows = db
       .select({ id: apps.id })
       .from(apps)
@@ -80,18 +106,61 @@ export function registerCategoryHandlers() {
   });
 
   createTypedHandler(categoryContracts.update, async (_, params) => {
-    const { id, name } = params;
+    const { id, name, appIds } = params;
     const trimmed = name.trim();
     if (!trimmed) {
-      throw new DyadError("Category name is required", DyadErrorKind.External);
+      throw new DyadError(
+        "Category name is required",
+        DyadErrorKind.Validation,
+      );
     }
-    db.update(categories)
-      .set({ name: trimmed, updatedAt: new Date() })
-      .where(eq(categories.id, id))
-      .run();
+    try {
+      db.transaction((tx) => {
+        tx.update(categories)
+          .set({ name: trimmed, updatedAt: new Date() })
+          .where(eq(categories.id, id))
+          .run();
+        if (appIds) {
+          const existing = tx
+            .select({ id: apps.id })
+            .from(apps)
+            .where(eq(apps.categoryId, id))
+            .all();
+          const before = new Set(existing.map((a) => a.id));
+          const after = new Set(appIds);
+          const toAdd = appIds.filter((appId) => !before.has(appId));
+          const toRemove = existing
+            .map((a) => a.id)
+            .filter((appId) => !after.has(appId));
+          if (toAdd.length > 0) {
+            tx.update(apps)
+              .set({ categoryId: id })
+              .where(inArray(apps.id, toAdd))
+              .run();
+          }
+          if (toRemove.length > 0) {
+            tx.update(apps)
+              .set({ categoryId: null })
+              .where(inArray(apps.id, toRemove))
+              .run();
+          }
+        }
+      });
+    } catch (error) {
+      if (isUniqueNameError(error)) {
+        throw new DyadError(
+          "A category with that name already exists",
+          DyadErrorKind.Conflict,
+        );
+      }
+      throw error;
+    }
   });
 
   createTypedHandler(categoryContracts.delete, async (_, id) => {
+    // ON DELETE SET NULL on apps.category_id handles this at the DB level,
+    // but we null out explicitly first so the operation is robust regardless
+    // of whether foreign_keys pragma is enabled in the current connection.
     db.transaction((tx) => {
       tx.update(apps)
         .set({ categoryId: null })

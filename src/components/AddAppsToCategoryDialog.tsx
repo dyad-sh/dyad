@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { showError, showSuccess } from "@/lib/toast";
 import { useCategories } from "@/hooks/useCategories";
 import type { ListedApp } from "@/ipc/types/app";
@@ -104,12 +105,12 @@ export function AddAppsToCategoryDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <input
+        <Input
           type="text"
           placeholder="Search apps..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-md border border-border bg-(--background-lighter) px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+          className="bg-(--background-lighter)"
           data-testid="add-apps-dialog-search"
         />
 

@@ -34,6 +34,7 @@ export const AppBaseSchema = z.object({
   installCommand: z.string().nullable(),
   startCommand: z.string().nullable(),
   isFavorite: z.boolean(),
+  categoryId: z.number().nullable(),
 });
 
 /**

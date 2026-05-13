@@ -72,7 +72,25 @@ export const apps = sqliteTable("apps", {
   needsAppBlueprint: integer("needs_app_blueprint", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  categoryId: integer("category_id").references((): any => categories.id, {
+    onDelete: "set null",
+  }),
 });
+
+export const categories = sqliteTable(
+  "categories",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("categories_name_unique").on(table.name)],
+);
 
 export const chats = sqliteTable("chats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -148,9 +166,17 @@ export const versions = sqliteTable(
 );
 
 // Define relations
-export const appsRelations = relations(apps, ({ many }) => ({
+export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),
+  category: one(categories, {
+    fields: [apps.categoryId],
+    references: [categories.id],
+  }),
+}));
+
+export const categoriesRelations = relations(categories, ({ many }) => ({
+  apps: many(apps),
 }));
 
 export const chatsRelations = relations(chats, ({ many, one }) => ({

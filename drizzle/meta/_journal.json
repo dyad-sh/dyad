@@ -218,6 +218,13 @@
       "when": 1779757340027,
       "tag": "0030_giant_kitty_pryde",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1779757340028,
+      "tag": "0031_mean_corsair",
+      "breakpoints": true
     }
   ]
 }

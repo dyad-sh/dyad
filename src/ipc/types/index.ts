@@ -55,6 +55,7 @@ export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export { imageGenerationContracts } from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
+export { categoryContracts } from "./categories";
 
 // =============================================================================
 // Client Exports
@@ -89,6 +90,7 @@ export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export { imageGenerationClient } from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
+export { categoryClient } from "./categories";
 
 // =============================================================================
 // Type Exports
@@ -402,6 +404,7 @@ import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
+import { categoryClient } from "./categories";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -462,6 +465,7 @@ export const ipc = {
   media: mediaClient,
   imageGeneration: imageGenerationClient,
   appBlueprint: appBlueprintClient,
+  category: categoryClient,
 
   // Event clients for main->renderer pub/sub
   events: {

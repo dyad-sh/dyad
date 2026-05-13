@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckSquare, Loader2, Search, Trash2 } from "lucide-react";
+import { CheckSquare, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
@@ -21,10 +21,17 @@ import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom, currentAppAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
+import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
+import { useCategories, type Category } from "@/hooks/useCategories";
+import { CategoryFolderCard } from "@/components/CategoryFolderCard";
+import { CategoryDetailView } from "@/components/CategoryDetailView";
+import { AddOrEditCategoryDialog } from "@/components/AddOrEditCategoryDialog";
+import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 
 export default function AppsPage() {
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
+  const { categories, isLoading: categoriesLoading } = useCategories();
   const openApp = useOpenApp();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -33,6 +40,27 @@ export default function AppsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const [currentApp, setCurrentApp] = useAtom(currentAppAtom);
+  const [view, setView] = useState<AppsView>("apps");
+  const [openCategoryId, setOpenCategoryId] = useState<number | null>(null);
+  const [isAddOrEditCategoryOpen, setIsAddOrEditCategoryOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(
+    null,
+  );
+
+  const openCategory = useMemo(
+    () =>
+      openCategoryId == null
+        ? null
+        : (categories.find((c) => c.id === openCategoryId) ?? null),
+    [categories, openCategoryId],
+  );
+
+  const filteredCategories = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter((c) => c.name.toLowerCase().includes(q));
+  }, [categories, searchQuery]);
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -145,7 +173,7 @@ export default function AppsPage() {
 
         <header className="mb-6 flex items-end justify-between gap-3">
           <h1 className="text-3xl font-bold">Apps</h1>
-          {!isSelectionMode && apps.length > 0 && (
+          {view === "apps" && !isSelectionMode && apps.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -170,8 +198,10 @@ export default function AppsPage() {
             <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search apps..."
-              aria-label="Search apps"
+              placeholder={
+                view === "apps" ? "Search apps..." : "Search categories..."
+              }
+              aria-label={view === "apps" ? "Search apps" : "Search categories"}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent py-3 pl-11 pr-4 text-sm outline-none placeholder:text-muted-foreground"
@@ -179,7 +209,21 @@ export default function AppsPage() {
           </div>
         </div>
 
-        {isSelectionMode && (
+        <div className="mb-4">
+          <AppsViewTabs
+            value={view}
+            onChange={(next) => {
+              setView(next);
+              setOpenCategoryId(null);
+              if (next !== "apps") {
+                setIsSelectionMode(false);
+                setSelectedAppIds(new Set());
+              }
+            }}
+          />
+        </div>
+
+        {view === "apps" && isSelectionMode && (
           <div
             data-testid="apps-gallery-selection-toolbar"
             className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-border bg-(--background-lighter) px-3 py-2"
@@ -223,40 +267,109 @@ export default function AppsPage() {
           </div>
         )}
 
-        {loading ? (
-          <div className="text-muted-foreground text-center py-12">
-            Loading apps...
-          </div>
-        ) : filteredApps.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <p className="text-muted-foreground text-center">
-              {searchQuery
-                ? "No apps match your search."
-                : "You haven't created any apps yet."}
-            </p>
-            {!searchQuery && (
-              <Button onClick={() => navigate({ to: "/" })} size="sm">
-                Create your first app
-              </Button>
-            )}
-          </div>
+        {view === "apps" ? (
+          loading ? (
+            <div className="text-muted-foreground text-center py-12">
+              Loading apps...
+            </div>
+          ) : filteredApps.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <p className="text-muted-foreground text-center">
+                {searchQuery
+                  ? "No apps match your search."
+                  : "You haven't created any apps yet."}
+              </p>
+              {!searchQuery && (
+                <Button onClick={() => navigate({ to: "/" })} size="sm">
+                  Create your first app
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div
+              data-testid="apps-grid"
+              className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
+            >
+              {filteredApps.map((app) => (
+                <AppShowcaseCard
+                  key={app.id}
+                  app={app}
+                  thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
+                  onClick={openApp}
+                  isSelectionMode={isSelectionMode}
+                  isSelected={selectedAppIds.has(app.id)}
+                  onToggleSelect={handleToggleSelect}
+                />
+              ))}
+            </div>
+          )
+        ) : openCategory ? (
+          <CategoryDetailView
+            category={openCategory}
+            apps={apps}
+            categories={categories}
+            onBack={() => setOpenCategoryId(null)}
+          />
         ) : (
-          <div
-            data-testid="apps-grid"
-            className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
-          >
-            {filteredApps.map((app) => (
-              <AppShowcaseCard
-                key={app.id}
-                app={app}
-                thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
-                onClick={openApp}
-                isSelectionMode={isSelectionMode}
-                isSelected={selectedAppIds.has(app.id)}
-                onToggleSelect={handleToggleSelect}
-              />
-            ))}
-          </div>
+          <>
+            <div className="mb-4 flex justify-end">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingCategory(null);
+                  setIsAddOrEditCategoryOpen(true);
+                }}
+                className="flex items-center gap-1"
+                data-testid="add-category-button"
+              >
+                <Plus className="h-4 w-4" />
+                Add category
+              </Button>
+            </div>
+            {categoriesLoading ? (
+              <div className="text-muted-foreground text-center py-12">
+                Loading categories...
+              </div>
+            ) : filteredCategories.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <p className="text-muted-foreground text-center">
+                  {searchQuery
+                    ? "No categories match your search."
+                    : "No categories yet. Create one to organize your apps."}
+                </p>
+                {!searchQuery && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingCategory(null);
+                      setIsAddOrEditCategoryOpen(true);
+                    }}
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add category
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div
+                data-testid="categories-grid"
+                className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
+              >
+                {filteredCategories.map((c) => (
+                  <CategoryFolderCard
+                    key={c.id}
+                    category={c}
+                    onOpen={(cat) => setOpenCategoryId(cat.id)}
+                    onRename={(cat) => {
+                      setEditingCategory(cat);
+                      setIsAddOrEditCategoryOpen(true);
+                    }}
+                    onDelete={(cat) => setDeletingCategory(cat)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -321,6 +434,31 @@ export default function AppsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AddOrEditCategoryDialog
+        open={isAddOrEditCategoryOpen}
+        onOpenChange={(next) => {
+          setIsAddOrEditCategoryOpen(next);
+          if (!next) setEditingCategory(null);
+        }}
+        category={editingCategory}
+        allApps={apps}
+        categories={categories}
+      />
+
+      <DeleteCategoryDialog
+        open={deletingCategory !== null}
+        onOpenChange={(next) => {
+          if (!next) setDeletingCategory(null);
+        }}
+        category={deletingCategory}
+        onDeleted={() => {
+          if (openCategoryId === deletingCategory?.id) {
+            setOpenCategoryId(null);
+          }
+          setDeletingCategory(null);
+        }}
+      />
     </div>
   );
 }

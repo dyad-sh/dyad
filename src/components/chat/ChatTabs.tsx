@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import {
   isStreamingByIdAtom,
   recentViewedChatIdsAtom,
@@ -15,9 +16,11 @@ import {
   removeRecentViewedChatIdAtom,
   pushRecentViewedChatIdAtom,
   closedChatIdsAtom,
+  closedTabHistoryAtom,
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   closeMultipleTabsAtom,
+  type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
 import {
@@ -220,6 +223,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
   const closedChatIds = useAtomValue(closedChatIdsAtom);
+  const closedTabHistory = useAtomValue(closedTabHistoryAtom);
   const sessionOpenedChatIds = useAtomValue(sessionOpenedChatIdsAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
   const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
@@ -228,6 +232,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { selectChat } = useSelectChat();
+  const { reopenClosedTab, hasClosedTabs } = useReopenClosedTab();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -424,7 +429,15 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     const closedTab = chatsById.get(chatId);
     const fallbackChatId = getFallbackChatIdAfterClose(orderedChats, chatId);
 
-    removeRecentViewedChatId(chatId);
+    if (closedTab) {
+      removeRecentViewedChatId({
+        chatId: closedTab.id,
+        appId: closedTab.appId,
+        title: closedTab.title,
+      });
+    } else {
+      removeRecentViewedChatId(chatId);
+    }
     clearNotification(chatId);
 
     if (!closedTab || selectedChatId !== chatId) {
@@ -457,7 +470,16 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         clearNotification(id);
       }
 
-      closeMultipleTabs(idsToClose);
+      const records: ClosedTabRecord[] = idsToClose
+        .map((id) => {
+          const chat = chatsById.get(id);
+          return chat
+            ? { chatId: chat.id, appId: chat.appId, title: chat.title }
+            : null;
+        })
+        .filter((record): record is ClosedTabRecord => record !== null);
+
+      closeMultipleTabs({ ids: idsToClose, records });
 
       // Switch to fallback if:
       // - fallback is provided AND
@@ -719,6 +741,27 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   >
                     {t("groupTabsByApp")}
                   </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ContextMenuItem
+                          onClick={reopenClosedTab}
+                          disabled={!hasClosedTabs}
+                        >
+                          {closedTabHistory.length > 0 &&
+                          closedTabHistory[0].title
+                            ? t("reopenClosedTabWithTitle", {
+                                title: closedTabHistory[0].title,
+                              })
+                            : t("reopenClosedTab")}
+                        </ContextMenuItem>
+                      }
+                    />
+                    <TooltipContent side="right" align="center">
+                      {t("reopenClosedTabTooltip")}
+                    </TooltipContent>
+                  </Tooltip>
                 </ContextMenuContent>
               </ContextMenu>
             );

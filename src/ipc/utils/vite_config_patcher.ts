@@ -4,19 +4,13 @@ import * as recast from "recast";
 import * as tsParser from "recast/parsers/babel-ts";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { VITE_CONFIG_FILES } from "@/lib/framework_constants";
 
 const b = recast.types.builders;
 const n = recast.types.namedTypes;
 
 const NITRO_IMPORT_SOURCE = "nitro/vite";
 const NITRO_LOCAL_NAME = "nitro";
-
-const VITE_CONFIG_FILENAMES = [
-  "vite.config.ts",
-  "vite.config.mts",
-  "vite.config.js",
-  "vite.config.mjs",
-] as const;
 
 export interface ViteConfigBackup {
   filePath: string;
@@ -32,7 +26,7 @@ export class ViteConfigPatchError extends DyadError {
 }
 
 async function findViteConfig(appPath: string): Promise<string> {
-  for (const name of VITE_CONFIG_FILENAMES) {
+  for (const name of VITE_CONFIG_FILES) {
     const candidate = path.join(appPath, name);
     try {
       await fs.access(candidate);
@@ -42,7 +36,7 @@ async function findViteConfig(appPath: string): Promise<string> {
     }
   }
   throw new ViteConfigPatchError(
-    `No vite.config.{ts,mts,js,mjs} found in ${appPath}.`,
+    `No vite.config.{ts,mts,cts,js,mjs,cjs} found in ${appPath}.`,
   );
 }
 

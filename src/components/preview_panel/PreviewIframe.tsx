@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ExternalLink,
   Cloud,
+  Cog,
   Loader2,
   X,
   Sparkles,
@@ -27,6 +28,8 @@ import {
   Tablet,
   Smartphone,
   Pen,
+  MoreVertical,
+  Trash2,
   Maximize2,
   Minimize2,
 } from "lucide-react";
@@ -72,7 +75,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
@@ -82,6 +85,7 @@ import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewToolbar } from "./PreviewToolbar";
+import { useTranslation } from "react-i18next";
 
 interface ErrorBannerProps {
   error:
@@ -191,6 +195,7 @@ const SCREENSHOT_CAPTURE_DELAY_MS = 3_000;
 
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
+  const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useAtomValue(appUrlAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
@@ -204,7 +209,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     loading: routesLoading,
     error: routesError,
   } = useParseRouter(selectedAppId);
-  const { restartApp } = useRunApp();
+  const { restartApp, refreshAppIframe } = useRunApp();
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
@@ -427,6 +432,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const isCloudMode = mode === "cloud";
+  const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
+  const { mutate: clearSessionData } = useMutation({
+    mutationFn: () => {
+      return ipc.system.clearSessionData();
+    },
+    onSuccess: async () => {
+      await refreshAppIframe();
+      showSuccess("Preview data cleared");
+    },
+    onError: (error) => {
+      showError(`Error clearing preview data: ${error}`);
+    },
+  });
   const { data: cloudSandboxStatus } = useQuery({
     queryKey: queryKeys.cloudSandboxes.status({ appId: selectedAppId }),
     queryFn: async () => {
@@ -1441,6 +1459,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     restartApp();
   };
 
+  const onCleanRestart = () => {
+    restartApp({ removeNodeModules: true });
+  };
+
+  const onRecreateSandbox = () => {
+    restartApp({ recreateSandbox: true });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Browser-style header - hide when annotator is active */}
@@ -1713,38 +1739,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <TooltipTrigger
                 render={
                   <button
-                    onClick={handleAnnotatorClick}
-                    aria-label={
-                      annotatorMode
-                        ? "Annotator mode active"
-                        : "Activate annotator"
-                    }
-                    aria-pressed={annotatorMode}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      annotatorMode
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      isPicking ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-annotator-button"
-                  />
-                }
-              >
-                <Pen size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
                     onClick={handleActivateComponentSelector}
                     aria-label={
                       isPicking
@@ -1778,6 +1772,38 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <TooltipTrigger
                 render={
                   <button
+                    onClick={handleAnnotatorClick}
+                    aria-label={
+                      annotatorMode
+                        ? "Annotator mode active"
+                        : "Activate annotator"
+                    }
+                    aria-pressed={annotatorMode}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  />
+                }
+              >
+                <Pen size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
                     onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
                     aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
                     aria-pressed={isChatPanelHidden}
@@ -1796,6 +1822,46 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {isChatPanelHidden ? "Show chat" : "Hide chat"}
               </TooltipContent>
             </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                data-testid="preview-more-options-button"
+                aria-label={t("preview.moreOptions")}
+                className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              >
+                <MoreVertical size={16} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuItem onClick={onCleanRestart}>
+                  <Cog size={16} />
+                  <div className="flex flex-col">
+                    <span>{t("preview.rebuild")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("preview.rebuildDescription")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => clearSessionData()}>
+                  <Trash2 size={16} />
+                  <div className="flex flex-col">
+                    <span>{t("preview.clearCache")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("preview.clearCacheDescription")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                {isCloudSandboxMode && (
+                  <DropdownMenuItem onClick={onRecreateSandbox}>
+                    <Cog size={16} />
+                    <div className="flex flex-col">
+                      <span>Recreate Sandbox</span>
+                      <span className="text-xs text-muted-foreground">
+                        Destroys the current sandbox and creates a new one
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </PreviewToolbar>
       )}

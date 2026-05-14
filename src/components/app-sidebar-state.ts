@@ -94,5 +94,8 @@ export function shouldShowSelectedAppChatList({
   selectedAppId: number | null;
   pathname: string;
 }) {
-  return selectedPanel === "Apps" && selectedAppId !== null && pathname !== "/";
+  if (selectedPanel !== "Apps" || selectedAppId === null) {
+    return false;
+  }
+  return pathname.startsWith("/app-details") || pathname === "/chat";
 }

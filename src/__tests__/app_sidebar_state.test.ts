@@ -60,5 +60,19 @@ describe("app sidebar state", () => {
         pathname: "/",
       }),
     ).toBe(false);
+    expect(
+      shouldShowSelectedAppChatList({
+        selectedPanel: "Apps",
+        selectedAppId: 1,
+        pathname: "/apps",
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowSelectedAppChatList({
+        selectedPanel: "Apps",
+        selectedAppId: 1,
+        pathname: "/chat",
+      }),
+    ).toBe(true);
   });
 });

@@ -89,6 +89,12 @@ export default function ChatPage() {
       return;
     }
 
+    // If chatId is already in our loaded chats list, selectedAppId is correct
+    // for this chat (useChats filters by selectedAppId), so skip the IPC fetch.
+    if (chats.some((c) => c.id === chatId)) {
+      return;
+    }
+
     let isCancelled = false;
     ipc.chat
       .getChat(chatId)
@@ -104,7 +110,7 @@ export default function ChatPage() {
     return () => {
       isCancelled = true;
     };
-  }, [chatId, routeAppId, setSelectedAppId]);
+  }, [chatId, routeAppId, chats, setSelectedAppId]);
 
   useEffect(() => {
     if (isPreviewOpen) {

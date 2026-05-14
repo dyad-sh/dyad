@@ -61,6 +61,7 @@ export class Navigation {
         name: "Open in Chat",
       });
       await expect(openInChatButton).toBeVisible({ timeout: 60000 });
+      await expect(openInChatButton).toBeEnabled({ timeout: 60000 });
       await openInChatButton.click();
       await expect(this.page.getByTestId("chat-input-container")).toBeVisible({
         timeout: 60000,

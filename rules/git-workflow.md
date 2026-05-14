@@ -145,6 +145,8 @@ If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is no
 
 ## Rebase workflow and conflict resolution
 
+If `git fetch --all` fails on a contributor remote with `would clobber existing tag`, but the output shows `Fetching upstream` completed first, do not treat the rebase as blocked. Run `git fetch upstream` to confirm the base remote is current, then rebase onto `upstream/main`.
+
 ### Handling unstaged changes during rebase
 
 If `git rebase` fails with "You have unstaged changes" (common with spurious `package-lock.json` changes):

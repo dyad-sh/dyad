@@ -156,7 +156,6 @@
     "otherProviders": "Outros provedores de IA",
     "providerCount_one": "{{count}} provedor",
     "providerCount_other": "{{count}} provedores",
-    "dyadTurbo": "Dyad Turbo",
     "modelCount_one": "{{count}} modelo",
     "modelCount_other": "{{count}} modelos",
     "providerModels": "Modelos {{name}}",

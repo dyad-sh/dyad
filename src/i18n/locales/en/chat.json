@@ -156,7 +156,6 @@
     "otherProviders": "Other AI providers",
     "providerCount_one": "{{count}} provider",
     "providerCount_other": "{{count}} providers",
-    "dyadTurbo": "Dyad Turbo",
     "modelCount_one": "{{count}} model",
     "modelCount_other": "{{count}} models",
     "providerModels": "{{name}} Models",

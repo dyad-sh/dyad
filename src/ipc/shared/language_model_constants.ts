@@ -1,5 +1,3 @@
-import { LanguageModel } from "@/ipc/types";
-
 export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
   "google",
   "vertex",
@@ -356,16 +354,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       tag: "Budget",
       tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
     },
-    {
-      name: "turbo",
-      displayName: "Turbo",
-      description: "Use very fast open-source frontier models",
-      maxOutputTokens: 32_000,
-      contextWindow: 256_000,
-      temperature: 0,
-      tag: "Fast",
-      tagColor: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-    },
   ],
   azure: [
     {
@@ -530,29 +518,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
 };
-
-export const TURBO_MODELS: LanguageModel[] = [
-  {
-    apiName: "glm-4.7:turbo",
-    displayName: "GLM 4.7",
-    description: "Strong coding model (very fast)",
-    maxOutputTokens: 32_000,
-    contextWindow: 131_000,
-    temperature: 0.7,
-    dollarSigns: 3,
-    type: "cloud",
-  },
-  {
-    apiName: "kimi-k2:turbo",
-    displayName: "Kimi K2",
-    description: "Kimi 0905 update (fast)",
-    maxOutputTokens: 16_000,
-    contextWindow: 256_000,
-    temperature: 0,
-    dollarSigns: 2,
-    type: "cloud",
-  },
-];
 
 export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
   .filter(

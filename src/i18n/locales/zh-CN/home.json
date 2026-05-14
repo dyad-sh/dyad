@@ -66,9 +66,7 @@
     "accessLeadingModels": "一个计划即可访问领先的 AI 模型",
     "getDyadPro": "获取 Dyad Pro",
     "upTo3xCheaper": "便宜高达 3 倍",
-    "byUsingSmartContext": "通过使用智能上下文",
-    "generateCode4x": "代码生成速度提升 4-10 倍",
-    "withTurboModels": "使用 Turbo 模型和 Turbo Edits"
+    "byUsingSmartContext": "通过使用智能上下文"
   },
   "setup": {
     "buildNewApp": "构建新应用",

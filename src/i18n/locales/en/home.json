@@ -69,9 +69,7 @@
     "accessLeadingModels": "Access leading AI models with one plan",
     "getDyadPro": "Get Dyad Pro",
     "upTo3xCheaper": "Up to 3x cheaper",
-    "byUsingSmartContext": "by using Smart Context",
-    "generateCode4x": "Generate code 4-10x faster",
-    "withTurboModels": "with Turbo Models & Turbo Edits"
+    "byUsingSmartContext": "by using Smart Context"
   },
   "setup": {
     "buildNewApp": "Build a new app",

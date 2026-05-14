@@ -156,7 +156,6 @@
     "otherProviders": "其他 AI 提供商",
     "providerCount_one": "{{count}} 个提供商",
     "providerCount_other": "{{count}} 个提供商",
-    "dyadTurbo": "Dyad Turbo",
     "modelCount_one": "{{count}} 个模型",
     "modelCount_other": "{{count}} 个模型",
     "providerModels": "{{name}} 模型",

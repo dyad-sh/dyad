@@ -454,13 +454,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
       closeMultipleTabs(records);
 
-      // Switch to fallback if:
-      // - fallback is provided AND
-      // - (selected chat is being closed OR selected chat differs from requested fallback)
+      // Switch to fallback when a fallback is provided and either there is
+      // no selected chat (null) or the currently selected chat is being closed.
       if (
         fallbackChatId !== undefined &&
-        (idsToClose.includes(selectedChatId ?? -1) ||
-          selectedChatId !== fallbackChatId)
+        (selectedChatId === null || idsToClose.includes(selectedChatId ?? -1))
       ) {
         const fallbackTab = chatsById.get(fallbackChatId);
         if (fallbackTab) {

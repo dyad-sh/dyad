@@ -209,7 +209,16 @@ test("right-click context menu: Reopen closed tab", async ({ po }) => {
   // Reopen from context menu
   const tabs = po.page.locator("div[draggable]");
   await tabs.first().click({ button: "right" });
-  await po.page.getByText(/Reopen/).click();
+  const reopenItem = po.page.getByText(/Reopen/);
+  await expect(reopenItem).toBeVisible();
+
+  // Verify shortcut label symbols
+  const shortcut = po.page
+    .locator("span")
+    .filter({ hasText: /⇧⌘T|Ctrl\+⇧\+T|Ctrl\+Shift\+T/ });
+  await expect(shortcut).toBeVisible();
+
+  await reopenItem.click();
 
   await expect(async () => {
     const count = await closeButtons.count();

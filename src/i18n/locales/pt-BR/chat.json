@@ -9,7 +9,7 @@
   "groupTabsByApp": "Agrupar abas por app",
   "reopenClosedTab": "Reabrir aba fechada",
   "reopenClosedTabWithTitle": "Reabrir \"{{title}}\"",
-  "reopenClosedTabTooltip": "Restaurar a aba fechada mais recente (Ctrl+Shift+T / ⌘+Shift+T)",
+  "reopenClosedTabTooltip": "Restaurar a aba fechada mais recente (Ctrl+⇧+T / ⇧⌘T)",
   "chatInProgress": "Chat em andamento",
   "newActivity": "Nova atividade",
   "openOverflowTabs": "Abrir mais abas ({{count}})",

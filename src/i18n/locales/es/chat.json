@@ -9,7 +9,7 @@
   "groupTabsByApp": "Agrupar pestañas por aplicación",
   "reopenClosedTab": "Reabrir pestaña cerrada",
   "reopenClosedTabWithTitle": "Reabrir \"{{title}}\"",
-  "reopenClosedTabTooltip": "Restaurar la pestaña cerrada más reciente (Ctrl+Shift+T / ⌘+Shift+T)",
+  "reopenClosedTabTooltip": "Restaurar la pestaña cerrada más reciente (Ctrl+⇧+T / ⇧⌘T)",
   "chatInProgress": "Chat en curso",
   "newActivity": "Nueva actividad",
   "openOverflowTabs": "Abrir más pestañas ({{count}})",

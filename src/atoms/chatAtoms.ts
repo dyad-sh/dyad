@@ -56,30 +56,19 @@ export interface ClosedTabRecord {
   title: string | null;
 }
 
-// LIFO stack of recently closed tabs (most-recently-closed at index 0).
+// LIFO stack of recently closed tabs
 
 export const closedTabHistoryAtom = atom<ClosedTabRecord[]>([]);
 const MAX_CLOSED_TAB_HISTORY = 10;
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 
-/**
- * Write-only atom: pops the most recently closed tab from the history stack
- * and returns the record
- */
+// Atom to pop the most recent closed tab from history
 export const popClosedTabAtom = atom(
   null,
   (get, set): ClosedTabRecord | null => {
     const history = get(closedTabHistoryAtom);
     if (history.length === 0) return null;
-    const closedIds = get(closedChatIdsAtom);
-    const filtered = history.filter((record) => closedIds.has(record.chatId));
-    if (filtered.length === 0) {
-      if (filtered.length !== history.length) {
-        set(closedTabHistoryAtom, filtered);
-      }
-      return null;
-    }
-    const [record, ...rest] = filtered;
+    const [record, ...rest] = history;
     set(closedTabHistoryAtom, rest);
     return record;
   },
@@ -92,6 +81,36 @@ function removeFromClosedSet(get: Getter, set: Setter, chatId: number): void {
     const newClosedIds = new Set(closedIds);
     newClosedIds.delete(chatId);
     set(closedChatIdsAtom, newClosedIds);
+  }
+}
+
+function pushClosedTabHistory(
+  get: Getter,
+  set: Setter,
+  records: ClosedTabRecord[],
+): void {
+  if (records.length === 0) return;
+  const history = get(closedTabHistoryAtom);
+  const closedSet = new Set(records.map((r) => r.chatId));
+  const deduped = history.filter((record) => !closedSet.has(record.chatId));
+  const next = [...records, ...deduped];
+  if (next.length > MAX_CLOSED_TAB_HISTORY) {
+    next.length = MAX_CLOSED_TAB_HISTORY;
+  }
+  set(closedTabHistoryAtom, next);
+}
+
+function removeFromClosedTabHistory(
+  get: Getter,
+  set: Setter,
+  chatId: number,
+): void {
+  const closedHistory = get(closedTabHistoryAtom);
+  const filteredHistory = closedHistory.filter(
+    (record) => record.chatId !== chatId,
+  );
+  if (filteredHistory.length !== closedHistory.length) {
+    set(closedTabHistoryAtom, filteredHistory);
   }
 }
 export const setRecentViewedChatIdsAtom = atom(
@@ -133,6 +152,8 @@ export const ensureRecentViewedChatIdAtom = atom(
     }
     // Remove from closed set when explicitly selected
     removeFromClosedSet(get, set, chatId);
+    // Remove from history when re-opened
+    removeFromClosedTabHistory(get, set, chatId);
     // Track in session so the tab appears
     addToSessionSet(get, set, chatId);
   },
@@ -148,14 +169,16 @@ export const pushRecentViewedChatIdAtom = atom(
     set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
     removeFromClosedSet(get, set, chatId);
+    // Remove from history when re-opened
+    removeFromClosedTabHistory(get, set, chatId);
     // Track in session so the tab appears (fixes re-open after bulk close)
     addToSessionSet(get, set, chatId);
   },
 );
 export const removeRecentViewedChatIdAtom = atom(
   null,
-  (get, set, payload: number | ClosedTabRecord) => {
-    const chatId = typeof payload === "number" ? payload : payload.chatId;
+  (get, set, record: ClosedTabRecord) => {
+    const { chatId } = record;
     set(
       recentViewedChatIdsAtom,
       get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
@@ -168,15 +191,7 @@ export const removeRecentViewedChatIdAtom = atom(
     // Also remove from session tracking (consistent with closeMultipleTabsAtom)
     removeFromSessionSet(get, set, [chatId]);
 
-    if (typeof payload !== "number") {
-      const history = get(closedTabHistoryAtom);
-      const deduped = history.filter((record) => record.chatId !== chatId);
-      const next = [payload, ...deduped];
-      if (next.length > MAX_CLOSED_TAB_HISTORY) {
-        next.length = MAX_CLOSED_TAB_HISTORY;
-      }
-      set(closedTabHistoryAtom, next);
-    }
+    pushClosedTabHistory(get, set, [record]);
   },
 );
 // Prune closed chat IDs that no longer exist in the chats list
@@ -195,6 +210,14 @@ export const pruneClosedChatIdsAtom = atom(
     }
     if (changed) {
       set(closedChatIdsAtom, pruned);
+    }
+
+    const closedHistory = get(closedTabHistoryAtom);
+    const prunedHistory = closedHistory.filter((record) =>
+      validChatIds.has(record.chatId),
+    );
+    if (prunedHistory.length !== closedHistory.length) {
+      set(closedTabHistoryAtom, prunedHistory);
     }
   },
 );
@@ -225,15 +248,10 @@ function removeFromSessionSet(
 // Close multiple tabs at once (for "Close other tabs" / "Close tabs to the right")
 export const closeMultipleTabsAtom = atom(
   null,
-  (
-    get,
-    set,
-    payload: number[] | { ids: number[]; records: ClosedTabRecord[] },
-  ) => {
-    const chatIdsToClose = Array.isArray(payload) ? payload : payload.ids;
-    const records = Array.isArray(payload) ? [] : payload.records;
+  (get, set, records: ClosedTabRecord[]) => {
+    if (records.length === 0) return;
 
-    if (chatIdsToClose.length === 0) return;
+    const chatIdsToClose = records.map((r) => r.chatId);
 
     // Remove from recent viewed
     const currentIds = get(recentViewedChatIdsAtom);
@@ -254,16 +272,7 @@ export const closeMultipleTabsAtom = atom(
     // Remove from session tracking to prevent unbounded growth
     removeFromSessionSet(get, set, chatIdsToClose);
 
-    if (records.length > 0) {
-      const history = get(closedTabHistoryAtom);
-      const closedSet = new Set(records.map((record) => record.chatId));
-      const deduped = history.filter((record) => !closedSet.has(record.chatId));
-      const next = [...records, ...deduped];
-      if (next.length > MAX_CLOSED_TAB_HISTORY) {
-        next.length = MAX_CLOSED_TAB_HISTORY;
-      }
-      set(closedTabHistoryAtom, next);
-    }
+    pushClosedTabHistory(get, set, records);
   },
 );
 // Remove a chat ID from all tracking (used when chat is deleted)
@@ -278,13 +287,7 @@ export const removeChatIdFromAllTrackingAtom = atom(
     // Also remove from session tracking
     removeFromSessionSet(get, set, [chatId]);
     // Remove from closed-tab history
-    const closedHistory = get(closedTabHistoryAtom);
-    const filteredHistory = closedHistory.filter(
-      (record) => record.chatId !== chatId,
-    );
-    if (filteredHistory.length !== closedHistory.length) {
-      set(closedTabHistoryAtom, filteredHistory);
-    }
+    removeFromClosedTabHistory(get, set, chatId);
     // Clear per-chat input
     const inputs = get(chatInputValuesByIdAtom);
     if (inputs.has(chatId)) {

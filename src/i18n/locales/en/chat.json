@@ -9,7 +9,7 @@
   "groupTabsByApp": "Group tabs by app",
   "reopenClosedTab": "Reopen closed tab",
   "reopenClosedTabWithTitle": "Reopen \"{{title}}\"",
-  "reopenClosedTabTooltip": "Restore the most recently closed tab (Ctrl+Shift+T / ⌘+Shift+T)",
+  "reopenClosedTabTooltip": "Restore the most recently closed tab (Ctrl+⇧+T / ⇧⌘T)",
   "chatInProgress": "Chat in progress",
   "newActivity": "New activity",
   "openOverflowTabs": "Open more tabs ({{count}})",

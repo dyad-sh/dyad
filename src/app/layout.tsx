@@ -23,6 +23,8 @@ import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
+import { useShortcut } from "@/hooks/useShortcut";
+import { useIsMac } from "@/hooks/useChatModeToggle";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
@@ -44,7 +46,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   useZoomShortcuts();
 
   // Reopen closed tab shortcut (Ctrl/Cmd + Shift + T)
-  useReopenClosedTab();
+  const { reopenClosedTab } = useReopenClosedTab();
+  const isMac = useIsMac();
+  useShortcut(
+    "t",
+    { ctrl: !isMac, meta: isMac, shift: true },
+    reopenClosedTab,
+    true,
+  );
 
   // Process queued messages globally (even when not on chat page)
   useQueueProcessor();

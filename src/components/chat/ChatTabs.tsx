@@ -13,16 +13,14 @@ import {
   recentViewedChatIdsAtom,
   selectedChatIdAtom,
   setRecentViewedChatIdsAtom,
-  removeRecentViewedChatIdAtom,
   pushRecentViewedChatIdAtom,
   closedChatIdsAtom,
-  closedTabHistoryAtom,
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   closeMultipleTabsAtom,
-  popClosedTabAtom,
   type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
+import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -225,15 +223,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
   const closedChatIds = useAtomValue(closedChatIdsAtom);
-  const closedTabHistory = useAtomValue(closedTabHistoryAtom);
   const sessionOpenedChatIds = useAtomValue(sessionOpenedChatIdsAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
-  const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
   const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
-  const popClosedTab = useSetAtom(popClosedTabAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const { reopenClosedTab, hasClosedTabs, lastClosedTab } =
+    useReopenClosedTab();
   const { selectChat } = useSelectChat();
   const navigate = useNavigate();
   const isMac = useIsMac();
@@ -297,10 +294,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const overflowTabsForMenu = useMemo(
     () => overflowTabs.slice(0, MAX_OVERFLOW_MENU_ITEMS),
     [overflowTabs],
-  );
-  const closedHistoryForMenu = useMemo(
-    () => closedTabHistory.filter((record) => closedChatIds.has(record.chatId)),
-    [closedChatIds, closedTabHistory],
   );
 
   // Re-run when orderedChats becomes non-empty so the ResizeObserver attaches
@@ -432,40 +425,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   };
 
   const handleCloseTab = (chatId: number) => {
-    // Use orderedChats (all tabs: visible + overflow) instead of just visibleTabs
-    const closedTab = chatsById.get(chatId);
     const fallbackChatId = getFallbackChatIdAfterClose(orderedChats, chatId);
+    closeTabsAndClearNotifications([chatId], fallbackChatId ?? undefined);
 
-    if (closedTab) {
-      removeRecentViewedChatId({
-        chatId: closedTab.id,
-        appId: closedTab.appId,
-        title: closedTab.title,
-      });
-    } else {
-      removeRecentViewedChatId(chatId);
-    }
-    clearNotification(chatId);
-
-    if (!closedTab || selectedChatId !== chatId) {
-      return;
-    }
-
-    // If no fallback tab (last tab closed), navigate to home
-    if (fallbackChatId === null) {
+    if (fallbackChatId === null && selectedChatId === chatId) {
       setSelectedChatId(null);
       navigate({ to: "/" });
-      return;
     }
-
-    const fallbackTab = chatsById.get(fallbackChatId);
-    if (!fallbackTab) return;
-
-    selectChat({
-      chatId: fallbackTab.id,
-      appId: fallbackTab.appId,
-      preserveTabOrder: true,
-    });
   };
 
   // Helper to close multiple tabs and optionally switch to a fallback
@@ -486,7 +452,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         })
         .filter((record): record is ClosedTabRecord => record !== null);
 
-      closeMultipleTabs({ ids: idsToClose, records });
+      closeMultipleTabs(records);
 
       // Switch to fallback if:
       // - fallback is provided AND
@@ -541,15 +507,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       setRecentViewedChatIds(grouped);
     }
   };
-
-  const handleReopenClosedTab = useCallback(() => {
-    const record = popClosedTab();
-    if (!record) return;
-    selectChat({
-      chatId: record.chatId,
-      appId: record.appId,
-    });
-  }, [popClosedTab, selectChat]);
 
   // Check whether tabs span more than one app (used to enable/disable grouping)
   const hasMultipleApps = useMemo(() => {
@@ -759,17 +716,17 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem
-                    onClick={handleReopenClosedTab}
-                    disabled={closedHistoryForMenu.length === 0}
+                    onClick={reopenClosedTab}
+                    disabled={!hasClosedTabs}
+                    title={t("reopenClosedTabTooltip")}
                   >
-                    {closedHistoryForMenu.length > 0 &&
-                    closedHistoryForMenu[0].title
+                    {hasClosedTabs && lastClosedTab?.title
                       ? t("reopenClosedTabWithTitle", {
-                          title: closedHistoryForMenu[0].title,
+                          title: lastClosedTab.title,
                         })
                       : t("reopenClosedTab")}
-                    <ContextMenuShortcut>
-                      {isMac ? "Cmd+Shift+T" : "Ctrl+Shift+T"}
+                    <ContextMenuShortcut title={t("reopenClosedTabTooltip")}>
+                      {isMac ? "⇧⌘T" : "Ctrl+⇧+T"}
                     </ContextMenuShortcut>
                   </ContextMenuItem>
                 </ContextMenuContent>

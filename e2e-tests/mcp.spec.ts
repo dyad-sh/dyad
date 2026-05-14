@@ -6,9 +6,9 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.setUp();
   await po.navigation.goToSettingsTab();
-  await po.page.getByRole("button", { name: "Experiments" }).click();
+  await po.settings.scrollToSettingsSection("experiments");
   await po.settings.toggleEnableMcpServersForBuildMode();
-  await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
+  await po.settings.scrollToSettingsSection("tools-mcp");
 
   await po.page
     .getByRole("textbox", { name: "My MCP Server" })
@@ -89,9 +89,9 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
   try {
     await po.setUp();
     await po.navigation.goToSettingsTab();
-    await po.page.getByRole("button", { name: "Experiments" }).click();
+    await po.settings.scrollToSettingsSection("experiments");
     await po.settings.toggleEnableMcpServersForBuildMode();
-    await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
+    await po.settings.scrollToSettingsSection("tools-mcp");
 
     // Fill in server name
     await po.page
@@ -116,7 +116,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await po.page.getByRole("textbox", { name: "Value" }).fill("testValue1");
     await po.page.getByRole("button", { name: "Save" }).click();
     await po.navigation.goToSettingsTab();
-    await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
+    await po.settings.scrollToSettingsSection("tools-mcp");
     await po.navigation.goToAppsTab();
     await po.chatActions.selectChatMode("build");
     await po.sendPrompt("[call_tool=calculator_add]", {

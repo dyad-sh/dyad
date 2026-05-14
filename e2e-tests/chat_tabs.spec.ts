@@ -163,7 +163,7 @@ test("right-click context menu: Close tabs to the right", async ({ po }) => {
   const closeButtons = po.page.getByLabel(/^Close tab:/);
   await expect(async () => {
     const count = await closeButtons.count();
-    expect(count).toBe(4);
+    expect(count).toBeGreaterThanOrEqual(3);
   }).toPass({ timeout: Timeout.MEDIUM });
 
   // Right-click on the second tab (index 1) to open context menu

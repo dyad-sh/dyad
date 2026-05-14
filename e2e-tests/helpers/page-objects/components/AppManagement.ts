@@ -25,6 +25,13 @@ export class AppManagement {
     return this.page.getByTestId(`app-list-item-${appName}`);
   }
 
+  async showAppList() {
+    await this.page.getByRole("link", { name: "Apps" }).hover();
+    await expect(this.page.getByTestId("app-list-container")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
   async isCurrentAppNameNone() {
     await expect(async () => {
       await expect(this.getTitleBarAppNameButton()).toHaveAttribute(
@@ -61,7 +68,8 @@ export class AppManagement {
   }
 
   async clickAppListItem({ appName }: { appName: string }) {
-    await this.page.getByTestId(`app-list-item-${appName}`).click();
+    await this.showAppList();
+    await this.getAppListItem({ appName }).click();
   }
 
   async clickOpenInChatButton() {

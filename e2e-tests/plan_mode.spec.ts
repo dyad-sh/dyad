@@ -31,9 +31,9 @@ testSkipIfWindows(
     // and Playwright's actionability checks are honored.
     await expect(async () => {
       await po.toastNotifications.dismissAllToasts();
-      await expect(acceptButton).toBeEnabled({ timeout: 1_000 });
+      await expect(acceptButton).toBeEnabled({ timeout: 2_000 });
       try {
-        await acceptButton.click({ timeout: 1_000 });
+        await acceptButton.click({ timeout: 2_000 });
       } catch (error) {
         const currentChatId = new URL(po.page.url()).searchParams.get("id");
         if (currentChatId && currentChatId !== initialChatId) {

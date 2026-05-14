@@ -55,8 +55,23 @@ export class ChatActions {
   async clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There are two new chat buttons.
     const previousChatId = new URL(this.page.url()).searchParams.get("id");
+    const visibleNewChatButtons = this.page.locator(
+      '[data-testid="new-chat-button"]:visible',
+    );
 
-    await this.page.getByTestId("new-chat-button").nth(index).click();
+    await expect(async () => {
+      const visibleCount = await visibleNewChatButtons.count();
+      if (visibleCount <= index) {
+        await this.page.getByRole("link", { name: "Chat" }).hover();
+        await expect(this.page.getByTestId("chat-list-container")).toBeVisible({
+          timeout: 1_000,
+        });
+      }
+      await expect(visibleNewChatButtons.nth(index)).toBeVisible({
+        timeout: 1_000,
+      });
+      await visibleNewChatButtons.nth(index).click({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     await expect(async () => {
       const currentChatId = new URL(this.page.url()).searchParams.get("id");

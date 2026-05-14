@@ -11,6 +11,7 @@ testSkipIfWindows("delete app", async ({ po }) => {
   }
   const appPath = await po.appManagement.getCurrentAppPath();
   await po.appManagement.getTitleBarAppNameButton().click();
+  await po.appManagement.showAppList();
   await expect(po.appManagement.getAppListItem({ appName })).toBeVisible();
 
   // Delete app
@@ -23,5 +24,6 @@ testSkipIfWindows("delete app", async ({ po }) => {
   // Make sure the app is deleted
   await po.appManagement.isCurrentAppNameNone();
   expect(fs.existsSync(appPath)).toBe(false);
+  await po.appManagement.showAppList();
   await expect(po.appManagement.getAppListItem({ appName })).not.toBeVisible();
 });

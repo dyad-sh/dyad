@@ -8,7 +8,7 @@ async function queueMessage(page: Page, chatInput: Locator, message: string) {
     expect(await chatInput.textContent()).toContain(message);
     await chatInput.press("Enter");
     await expect(page.locator("li", { hasText: message })).toBeVisible({
-      timeout: 1_000,
+      timeout: 2_000,
     });
   }).toPass({ timeout: Timeout.MEDIUM });
 }

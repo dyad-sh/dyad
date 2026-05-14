@@ -25,10 +25,11 @@ async function importAppAndSeedMedia({
   await po.navigation.goToAppsTab();
   await po.appManagement.importApp(fixtureName);
 
-  // Wait for the title bar to show the imported app name.
+  // Wait for the title bar to record the imported app name.
   // getCurrentAppName() only checks "not 'no app selected'", which races
   // on subsequent imports where the title bar already shows a previous app.
-  await expect(po.appManagement.getTitleBarAppNameButton()).toContainText(
+  await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
+    "data-app-name",
     fixtureName,
     { timeout: 15000 },
   );

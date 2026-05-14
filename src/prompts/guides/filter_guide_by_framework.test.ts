@@ -97,16 +97,31 @@ real vite content
     expect(out).not.toContain("real vite content");
   });
 
-  it("handles guides that contain only one of the two sections", () => {
+  it("throws if the <nextjs-only> block is missing", () => {
+    const onlyVite = `intro
+<vite-nitro-only>
+only vite
+</vite-nitro-only>
+trailer`;
+
+    for (const fw of ["nextjs", "vite-nitro", "vite", "other", null] as const) {
+      expect(() => filterGuideByFramework(onlyVite, fw)).toThrow(
+        /<nextjs-only>/,
+      );
+    }
+  });
+
+  it("throws if the <vite-nitro-only> block is missing", () => {
     const onlyNext = `intro
 <nextjs-only>
 only next
 </nextjs-only>
 trailer`;
 
-    expect(filterGuideByFramework(onlyNext, "nextjs")).toContain("only next");
-    expect(filterGuideByFramework(onlyNext, "vite-nitro")).not.toContain(
-      "only next",
-    );
+    for (const fw of ["nextjs", "vite-nitro", "vite", "other", null] as const) {
+      expect(() => filterGuideByFramework(onlyNext, fw)).toThrow(
+        /<vite-nitro-only>/,
+      );
+    }
   });
 });

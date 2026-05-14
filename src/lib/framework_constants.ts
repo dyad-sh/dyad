@@ -17,6 +17,9 @@ export const VITE_CONFIG_FILES = [
   "vite.config.js",
   "vite.config.ts",
   "vite.config.mjs",
+  "vite.config.cjs",
+  "vite.config.mts",
+  "vite.config.cts",
 ];
 
 /**

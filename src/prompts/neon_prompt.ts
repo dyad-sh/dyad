@@ -235,12 +235,11 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here
 `;
 }
 
-function getViteNitroNeonPrompt(isLocalAgentMode: boolean): string {
-  const authDecisionSteps = isLocalAgentMode
-    ? `4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication", then follow the Vite + Nitro section. It describes (in prose, not boilerplate) the catch-all proxy at \`server/routes/api/auth/[...all].ts\`, plus \`server/utils/session.ts\`, \`server/middleware/auth.ts\`, and \`src/lib/auth-client.ts\` — write each file yourself from those descriptions.
+const VITE_NITRO_AUTH_DECISION_STEPS_LOCAL_AGENT = `4. **If** user needs auth APIs or sessions → call \`read_guide\` with guide="add-authentication", then follow the Vite + Nitro section. It describes (in prose, not boilerplate) the catch-all proxy at \`server/routes/api/auth/[...all].ts\`, plus \`server/utils/session.ts\`, \`server/middleware/auth.ts\`, and \`src/lib/auth-client.ts\` — write each file yourself from those descriptions.
 5. **If** user wants prebuilt auth or account pages → call \`read_guide\` with guide="add-authentication", then follow the Vite + Nitro section. Wrap the app with \`NeonAuthUIProvider\`, register a \`/auth/:path\` React Router route that renders \`<AuthView>\`, and rely on the catch-all Nitro proxy for \`/api/auth/*\`.
-6. **If** user wants password reset or forgot-password → call \`read_guide\` with guide="add-password-reset", then follow the Vite + Nitro section. The same \`[...all]\` proxy handles reset traffic; UI lives in \`src/pages/auth/\`.`
-    : `4. **If** user needs auth APIs or sessions → follow the Auth guide
+6. **If** user wants password reset or forgot-password → call \`read_guide\` with guide="add-password-reset", then follow the Vite + Nitro section. The same \`[...all]\` proxy handles reset traffic; UI lives in \`src/pages/auth/\`.`;
+
+const VITE_NITRO_AUTH_DECISION_STEPS = `4. **If** user needs auth APIs or sessions → follow the Auth guide
    (Vite + Nitro section). It describes (in prose, not boilerplate) the
    catch-all proxy at \`server/routes/api/auth/[...all].ts\`, plus
    \`server/utils/session.ts\`, \`server/middleware/auth.ts\`, and
@@ -253,6 +252,11 @@ function getViteNitroNeonPrompt(isLocalAgentMode: boolean): string {
 6. **If** user wants password reset or forgot-password → follow the Password
    Reset guide (Vite + Nitro section). The same \`[...all]\` proxy handles
    reset traffic; UI lives in \`src/pages/auth/\`.`;
+
+function getViteNitroNeonPrompt(isLocalAgentMode: boolean): string {
+  const authDecisionSteps = isLocalAgentMode
+    ? VITE_NITRO_AUTH_DECISION_STEPS_LOCAL_AGENT
+    : VITE_NITRO_AUTH_DECISION_STEPS;
 
   return `
 <vite-nitro-instructions>

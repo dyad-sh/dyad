@@ -62,7 +62,7 @@ export class ChatActions {
     await expect(async () => {
       const visibleCount = await visibleNewChatButtons.count();
       if (visibleCount <= index) {
-        await this.page.getByRole("link", { name: "Chat" }).hover();
+        await this.page.getByRole("link", { name: "Apps" }).hover();
         await expect(this.page.getByTestId("chat-list-container")).toBeVisible({
           timeout: 1_000,
         });

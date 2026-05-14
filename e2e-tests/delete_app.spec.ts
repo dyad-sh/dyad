@@ -13,6 +13,7 @@ testSkipIfWindows("delete app", async ({ po }) => {
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.appManagement.showAppList();
   await expect(po.appManagement.getAppListItem({ appName })).toBeVisible();
+  await po.appManagement.getAppListItem({ appName }).click();
 
   // Delete app
   await po.appManagement.clickAppDetailsMoreOptions();

@@ -474,14 +474,27 @@ export default function AppDetailsPage() {
         </div>
 
         {latestScreenshotUrl && !screenshotLoadFailed && (
-          <div className="mb-4 rounded-lg overflow-hidden border border-border bg-muted aspect-video">
+          <button
+            type="button"
+            onClick={handleOpenInChat}
+            disabled={chatsLoading || isOpeningChat}
+            aria-label={`Open ${selectedApp.name} in Chat`}
+            data-testid="app-details-screenshot-open-in-chat"
+            className="group relative mb-4 block aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60"
+          >
             <img
               src={latestScreenshotUrl}
               alt={`Preview of ${selectedApp?.name ?? "app"}`}
               onError={() => setScreenshotLoadFailed(true)}
-              className="w-full h-full object-contain"
+              className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02] group-disabled:scale-100"
             />
-          </div>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/15 group-hover:opacity-100 group-disabled:opacity-0">
+              <span className="flex items-center gap-2 rounded-md bg-background/95 px-3 py-1.5 text-sm font-medium text-foreground shadow-md">
+                Open in Chat
+                <MessageCircle className="h-4 w-4" />
+              </span>
+            </div>
+          </button>
         )}
 
         <div className="grid grid-cols-2 gap-3 text-sm mb-4">

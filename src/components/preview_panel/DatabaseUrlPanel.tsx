@@ -188,7 +188,10 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+              <label
+                htmlFor={`db-url-${appId}`}
+                className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block"
+              >
                 {ENV_META[selectedEnv].title} database URL
               </label>
               <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
@@ -198,6 +201,7 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
               </p>
               <div className="flex items-center gap-2">
                 <Input
+                  id={`db-url-${appId}`}
                   readOnly
                   type="text"
                   value={

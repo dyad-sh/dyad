@@ -208,6 +208,10 @@ export function AppSidebar() {
             }`}
           >
             <SidebarTrigger
+              className={cn(
+                "transition-[width,background-color,color] duration-200 ease-linear focus-visible:ring-0",
+                state === "expanded" ? "w-14" : "w-10",
+              )}
               onMouseEnter={() => {
                 setHoverState("clear-hover");
               }}

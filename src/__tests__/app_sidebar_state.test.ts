@@ -36,7 +36,6 @@ describe("app sidebar state", () => {
       shouldShowSelectedAppChatList({
         selectedPanel: "Apps",
         selectedAppId: 1,
-        isHoveringPanel: false,
         pathname: "/app-details",
       }),
     ).toBe(true);
@@ -44,7 +43,6 @@ describe("app sidebar state", () => {
       shouldShowSelectedAppChatList({
         selectedPanel: "Apps",
         selectedAppId: null,
-        isHoveringPanel: false,
         pathname: "/app-details",
       }),
     ).toBe(false);
@@ -52,7 +50,6 @@ describe("app sidebar state", () => {
       shouldShowSelectedAppChatList({
         selectedPanel: "Settings",
         selectedAppId: 1,
-        isHoveringPanel: false,
         pathname: "/app-details",
       }),
     ).toBe(false);
@@ -60,15 +57,6 @@ describe("app sidebar state", () => {
       shouldShowSelectedAppChatList({
         selectedPanel: "Apps",
         selectedAppId: 1,
-        isHoveringPanel: true,
-        pathname: "/app-details",
-      }),
-    ).toBe(false);
-    expect(
-      shouldShowSelectedAppChatList({
-        selectedPanel: "Apps",
-        selectedAppId: 1,
-        isHoveringPanel: false,
         pathname: "/",
       }),
     ).toBe(false);

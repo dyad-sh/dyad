@@ -88,18 +88,11 @@ export function isSidebarItemActive({
 export function shouldShowSelectedAppChatList({
   selectedPanel,
   selectedAppId,
-  isHoveringPanel,
   pathname,
 }: {
   selectedPanel: AppSidebarPanel | null;
   selectedAppId: number | null;
-  isHoveringPanel: boolean;
   pathname: string;
 }) {
-  return (
-    selectedPanel === "Apps" &&
-    selectedAppId !== null &&
-    !isHoveringPanel &&
-    pathname !== "/"
-  );
+  return selectedPanel === "Apps" && selectedAppId !== null && pathname !== "/";
 }

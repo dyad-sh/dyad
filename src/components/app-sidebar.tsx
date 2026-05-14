@@ -179,7 +179,6 @@ export function AppSidebar() {
   const showSelectedAppChats = shouldShowSelectedAppChatList({
     selectedPanel: selectedItem,
     selectedAppId,
-    isHoveringPanel: hoverState.startsWith("start-hover"),
     pathname: routerState.location.pathname,
   });
 

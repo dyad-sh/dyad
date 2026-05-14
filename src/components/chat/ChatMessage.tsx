@@ -200,6 +200,7 @@ const ChatMessage = ({
                     <DyadMarkdownParser
                       content={assistantTextContent}
                       messageId={message.id}
+                      showStreamingPreview={isLastMessage && isStreaming}
                     />
                     {isLastMessage && isStreaming && (
                       <StreamingLoadingAnimation variant="streaming" />

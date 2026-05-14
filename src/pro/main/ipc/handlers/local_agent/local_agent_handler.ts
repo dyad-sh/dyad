@@ -422,10 +422,7 @@ export async function handleLocalAgentStream(
   const sendPreview = (content: string) => {
     safeSend(event.sender, "chat:response:chunk", {
       chatId: req.chatId,
-      streamingPreview: {
-        messageId: placeholderMessageId,
-        content,
-      },
+      streamingPreview: { content },
     });
   };
   let postMidTurnCompactionStartStep: number | null = null;
@@ -1604,15 +1601,7 @@ export async function handleLocalAgentStream(
       clearTimeout(pendingXmlEmitTimer);
       pendingXmlEmitTimer = null;
     }
-    // If an in-progress tool's XML preview was overlaid in the renderer
-    // and the stream tore down before onXmlComplete could commit and
-    // clear it (cancel, error, abort), explicitly clear the overlay so
-    // a stale XML preview doesn't persist past stream end. Idempotent
-    // when the overlay is already empty.
-    if (streamingPreview.length > 0) {
-      sendPreview("");
-      streamingPreview = "";
-    }
+    streamingPreview = "";
   }
 }
 
@@ -1757,10 +1746,6 @@ function sendResponseChunk(
     safeSend(event.sender, "chat:response:chunk", {
       chatId,
       messages: currentMessages,
-      // Identify the active streaming placeholder so the renderer can
-      // recompute parser state fresh for that message and keep its
-      // parser-backed render path stable across the replacement.
-      streamingMessageId: placeholderMessageId,
     });
     // Renderer's placeholder content now matches fullResponse — keep the
     // tail-diff baseline in sync so the next streaming patch is correct.
@@ -1776,7 +1761,7 @@ function sendResponseChunk(
     // inside the prior tail; applying the patch on the renderer would
     // cleanly shrink visible content with no mismatch, briefly vanishing
     // the response. Escalate to a fullMessages send so the renderer
-    // authoritatively replaces content and recomputes parser state.
+    // authoritatively replaces content.
     if (patch.offset < oldLen) {
       sendResponseChunk(
         event,

@@ -137,13 +137,11 @@ export type StreamingPatch = z.infer<typeof StreamingPatchSchema>;
  * `message.content`. Routing it through the patch protocol forces non-tail
  * escalations to `fullMessages` sends, which are expensive on long turns.
  *
- * Instead, previews ride a dedicated field. The renderer overlays the
- * preview after the message's parsed blocks and clears it when the field
- * is absent / empty (e.g. `onXmlComplete` commits the finalized XML into
- * `fullResponse` and emits an empty preview).
+ * Instead, previews ride a dedicated field. The renderer overlays the preview
+ * on the active streaming assistant message for this chunk's chat and clears it
+ * when content is empty or the stream ends.
  */
 export const StreamingPreviewSchema = z.object({
-  messageId: z.number(),
   content: z.string(),
 });
 export type StreamingPreview = z.infer<typeof StreamingPreviewSchema>;

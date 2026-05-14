@@ -7,7 +7,6 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
-import type { ParserState } from "@/lib/streamingMessageParser";
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -265,22 +264,9 @@ export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
 // Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
 export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());
 
-// Cache of incremental parser state per assistant message id. The renderer
-// reads from this map when present; otherwise it falls back to a one-shot
-// parse from message.content. Updated in the streaming chunk handler so
-// committed blocks keep stable refs across patches and only the open
-// trailing block changes shape per chunk. Cleared on stream end / full
-// message replace so the renderer reparses from the finalized DB content.
-export const streamingBlocksByMessageIdAtom = atom<Map<number, ParserState>>(
-  new Map(),
-);
-
 // Sidecar overlay for tool-input XML preview during Pro/Agent v2 streaming.
-// Lives outside message.content so the patch protocol stays strictly
-// append-only — buildXml output rewrites its prefix each JSON delta, which
-// would otherwise force non-tail patch escalation to fullMessages. Cleared
-// when the server sends an empty preview (onXmlComplete commits the
-// finalized XML into fullResponse) or on stream end.
-export const streamingPreviewByMessageIdAtom = atom<Map<number, string>>(
+// Lives outside message.content so the patch protocol stays strictly append-only.
+// Keyed by chat id; only the last streaming assistant message renders it.
+export const streamingPreviewByChatIdAtom = atom<Map<number, string>>(
   new Map(),
 );

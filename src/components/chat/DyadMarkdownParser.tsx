@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useMemo } from "react";
+import React, { useDeferredValue, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -21,8 +21,7 @@ import { useAtomValue } from "jotai";
 import {
   isStreamingByIdAtom,
   selectedChatIdAtom,
-  streamingBlocksByMessageIdAtom,
-  streamingPreviewByMessageIdAtom,
+  streamingPreviewByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
@@ -55,20 +54,18 @@ import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
 import {
+  advanceParser,
   type Block,
   getOpenBlock,
+  initialParserState,
   parseFullMessage,
+  type ParserState,
 } from "@/lib/streamingMessageParser";
 
 interface DyadMarkdownParserProps {
   content: string;
-  /**
-   * Assistant message id. When present, the renderer reads the incremental
-   * parser state from streamingBlocksByMessageIdAtom so completed blocks
-   * keep referential identity across streaming chunks. Without it the
-   * renderer falls back to a one-shot parse of `content`.
-   */
   messageId?: number;
+  showStreamingPreview?: boolean;
 }
 
 const customLink = ({
@@ -107,55 +104,52 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 /**
  * Custom component to parse markdown content with Dyad-specific tags.
  *
- * The block list is sourced from an incremental parser (see
- * src/lib/streamingMessageParser.ts) so completed blocks keep referential
- * identity across streaming chunks. That lets React.memo skip every prior
- * block, leaving only the open trailing block to re-render per chunk.
+ * The block list is sourced from a component-local incremental parser. Completed
+ * blocks keep referential identity across streaming chunks, so React.memo can
+ * skip prior blocks and leave only the open trailing block to re-render.
  */
 export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,
   messageId,
+  showStreamingPreview = false,
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
   const deferredContent = useDeferredValue(content);
   const contentToParse = isStreaming ? deferredContent : content;
 
-  const streamingStates = useAtomValue(streamingBlocksByMessageIdAtom);
-  const parserState =
-    messageId !== undefined ? streamingStates.get(messageId) : undefined;
+  const parserCacheRef = useRef<{
+    messageId?: number;
+    content: string;
+    state: ParserState;
+  } | null>(null);
 
-  // Sidecar tool-input XML preview (Pro/Agent v2). Lives outside the
-  // message's parsed-block tree so the patch protocol can stay strictly
-  // append-only — buildXml output rewrites its prefix per JSON delta and
-  // would otherwise force escalation to fullMessages.
-  const previewStates = useAtomValue(streamingPreviewByMessageIdAtom);
-  const previewXml =
-    messageId !== undefined ? previewStates.get(messageId) : undefined;
-  const previewBlocks = useMemo<Block[] | null>(() => {
-    if (!previewXml) return null;
-    return parseFullMessage(previewXml).blocks;
-  }, [previewXml]);
+  const parserState = useMemo(() => {
+    const cached = parserCacheRef.current;
+    if (
+      cached &&
+      cached.messageId === messageId &&
+      contentToParse.startsWith(cached.content)
+    ) {
+      const state = advanceParser(cached.state, contentToParse);
+      parserCacheRef.current = { messageId, content: contentToParse, state };
+      return state;
+    }
 
-  // While streaming, closed blocks live in parserState.blocks (immutable-
-  // appended on commit) and the open block comes from getOpenBlock. The
-  // closed-blocks array ref is stable across chunks that don't close a
-  // block, so MemoClosedBlocks skips its subtree entirely on those chunks
-  // (O(1) per chunk).
-  const closedBlocks = parserState?.blocks;
-  const openBlock = parserState ? getOpenBlock(parserState) : null;
+    const state = advanceParser(initialParserState(), contentToParse);
+    parserCacheRef.current = { messageId, content: contentToParse, state };
+    return state;
+  }, [messageId, contentToParse]);
 
-  // Fallback path: no parser state (history, post-DB-restore). One-shot
-  // parse of the full content.
-  const fallbackBlocks = useMemo<Block[] | null>(() => {
-    if (parserState !== undefined) return null;
-    return parseFullMessage(contentToParse).blocks;
-  }, [parserState, contentToParse]);
+  const closedBlocks = parserState.blocks;
+  const openBlock = getOpenBlock(parserState);
 
-  // Aggregate error messages for the FixAllErrorsButton. Recomputes only
-  // when one of the input arrays gets a new ref (closed blocks: on commit;
-  // fallback: on content change).
+  // The button is hidden while streaming, so avoid scanning the block list on
+  // every chunk. Do the full scan only for settled content.
   const { errorMessages, errorCount } = useMemo(() => {
+    if (isStreaming) {
+      return { errorMessages: [], errorCount: 0 };
+    }
     const errors: string[] = [];
     const collectFrom = (block: Block) => {
       if (
@@ -167,36 +161,21 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
         if (msg) errors.push(msg);
       }
     };
-    if (closedBlocks) {
-      for (const block of closedBlocks) collectFrom(block);
-    } else if (fallbackBlocks) {
-      for (const block of fallbackBlocks) collectFrom(block);
-    }
+    for (const block of closedBlocks) collectFrom(block);
+    if (openBlock) collectFrom(openBlock);
     return { errorMessages: errors, errorCount: errors.length };
-  }, [closedBlocks, fallbackBlocks]);
+  }, [closedBlocks, openBlock, isStreaming]);
 
   const showFixAll =
     errorCount > 1 && !isStreaming && chatId !== null && chatId !== undefined;
 
   return (
     <>
-      {closedBlocks ? (
-        <MemoClosedBlocks blocks={closedBlocks} isStreaming={isStreaming} />
-      ) : fallbackBlocks ? (
-        fallbackBlocks.map((block) => (
-          <React.Fragment key={block.id}>
-            {renderBlock(block, isStreaming)}
-          </React.Fragment>
-        ))
-      ) : null}
+      <MemoClosedBlocks blocks={closedBlocks} isStreaming={isStreaming} />
       {openBlock ? renderBlock(openBlock, isStreaming) : null}
-      {previewBlocks
-        ? previewBlocks.map((block) => (
-            <React.Fragment key={`preview-${block.id}`}>
-              {renderBlock(block, isStreaming)}
-            </React.Fragment>
-          ))
-        : null}
+      {showStreamingPreview && chatId !== null && chatId !== undefined && (
+        <StreamingPreviewBlocks chatId={chatId} isStreaming={isStreaming} />
+      )}
       {showFixAll && (
         <div className="mt-3 w-full flex">
           <FixAllErrorsButton errorMessages={errorMessages} chatId={chatId!} />
@@ -205,6 +184,33 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
     </>
   );
 };
+
+function StreamingPreviewBlocks({
+  chatId,
+  isStreaming,
+}: {
+  chatId: number;
+  isStreaming: boolean;
+}) {
+  const previewStates = useAtomValue(streamingPreviewByChatIdAtom);
+  const previewXml = previewStates.get(chatId);
+  const previewBlocks = useMemo<Block[] | null>(() => {
+    if (!previewXml) return null;
+    return parseFullMessage(previewXml).blocks;
+  }, [previewXml]);
+
+  if (!previewBlocks) return null;
+
+  return (
+    <>
+      {previewBlocks.map((block) => (
+        <React.Fragment key={`preview-${block.id}`}>
+          {renderBlock(block, isStreaming)}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
 
 function renderBlock(block: Block, isStreaming: boolean): React.ReactNode {
   if (block.kind === "markdown") {

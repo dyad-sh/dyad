@@ -1,8 +1,11 @@
 {
   "newChat": "Novo Chat",
-  "recentChats": "Chats Recentes",
-  "viewAllApps": "Ver todos os apps",
+  "viewAllApps": "Todos os apps",
   "searchChats": "Pesquisar chats",
+  "groupToday": "Hoje",
+  "groupYesterday": "Ontem",
+  "groupThisWeek": "Esta semana",
+  "groupOlder": "Anteriores",
   "closeChatTab": "Fechar aba: {{title}}",
   "closeTab": "Fechar",
   "closeOtherTabs": "Fechar outras abas",

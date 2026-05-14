@@ -10,6 +10,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -217,13 +218,37 @@ export function AppSidebar() {
             />
           </div>
           {/* Right Column: Contextual sub-list (only visible when expanded) */}
-          <div className="w-[224px] border-l border-sidebar-border">
-            <AppList show={selectedItem === "Apps" && !showSelectedAppChats} />
-            <ChatList
-              show={showSelectedAppChats}
-              showViewAllAppsButton
-              onViewAllApps={handleViewAllApps}
-            />
+          <div className="relative h-[calc(100vh-112px)] w-[224px] overflow-hidden border-l border-sidebar-border">
+            <AnimatePresence initial={false}>
+              {selectedItem === "Apps" && !showSelectedAppChats && (
+                <motion.div
+                  key="apps"
+                  className="absolute inset-0"
+                  initial={{ x: "-100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "-100%" }}
+                  transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  <AppList show />
+                </motion.div>
+              )}
+              {showSelectedAppChats && (
+                <motion.div
+                  key="chats"
+                  className="absolute inset-0"
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  <ChatList
+                    show
+                    showViewAllAppsButton
+                    onViewAllApps={handleViewAllApps}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
             <SettingsList show={selectedItem === "Settings"} />
             <LibraryList show={selectedItem === "Library"} />
           </div>

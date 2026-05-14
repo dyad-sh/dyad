@@ -2,6 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Star } from "lucide-react";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { AppAvatar } from "@/components/AppAvatar";
 import type { ListedApp } from "@/ipc/types/app";
 
 type AppItemProps = {
@@ -17,15 +18,16 @@ export function AppItem({ app, handleAppClick, selectedAppId }: AppItemProps) {
         <Button
           variant="ghost"
           onClick={() => handleAppClick(app.id)}
-          className={`justify-start w-full text-left py-3 hover:bg-sidebar-accent/80 ${
+          className={`flex w-full justify-start gap-2 py-3 text-left hover:bg-sidebar-accent/80 ${
             selectedAppId === app.id
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : ""
           }`}
           data-testid={`app-list-item-${app.name}`}
         >
-          <div className="flex flex-col w-4/5">
-            <div className="flex items-center gap-1">
+          <AppAvatar appId={app.id} name={app.name} />
+          <div className="flex min-w-0 flex-1 flex-col items-start">
+            <div className="flex w-full items-center gap-1">
               <span className="truncate">{app.name}</span>
               {app.isFavorite && (
                 <Star

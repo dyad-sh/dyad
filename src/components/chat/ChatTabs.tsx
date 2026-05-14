@@ -20,6 +20,7 @@ import {
   closeMultipleTabsAtom,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
+import { AppAvatar } from "@/components/AppAvatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -248,8 +249,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     pruneClosedChatIds(chatIdSet);
   }, [chatIdSet, pruneClosedChatIds]);
 
-  const appNameById = useMemo(
-    () => new Map(apps.map((app) => [app.id, app.name])),
+  const appById = useMemo(
+    () => new Map(apps.map((app) => [app.id, app])),
     [apps],
   );
 
@@ -533,7 +534,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           {visibleTabs.map((chat) => {
             const isActive = selectedChatId === chat.id;
             const title = chat.title?.trim() || t("newChat");
-            const appName = appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+            const app = appById.get(chat.appId);
+            const appName = app?.name ?? `App ${chat.appId}`;
             const titleExcerpt = getChatTitleExcerpt(title);
             const isDragging = draggingChatId === chat.id;
             const inProgress = isStreamingById.get(chat.id) === true;
@@ -607,6 +609,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         />
                       }
                     >
+                      <AppAvatar
+                        appId={chat.appId}
+                        name={appName}
+                        className="h-4 w-4 rounded-sm text-[8px]"
+                      />
                       {inProgress && (
                         <span
                           className="flex items-center text-purple-600"
@@ -739,7 +746,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               {overflowTabsForMenu.map((chat) => {
                 const title = chat.title?.trim() || t("newChat");
                 const appName =
-                  appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+                  appById.get(chat.appId)?.name ?? `App ${chat.appId}`;
                 const inProgress = isStreamingById.get(chat.id) === true;
                 const hasNotification =
                   !inProgress && notifiedChatIds.has(chat.id);
@@ -755,6 +762,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     }}
                     className="flex items-center gap-2"
                   >
+                    <AppAvatar
+                      appId={chat.appId}
+                      name={appName}
+                      className="h-5 w-5 rounded text-[9px]"
+                    />
                     {inProgress && (
                       <span
                         className="flex items-center text-purple-600"

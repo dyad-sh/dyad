@@ -1,8 +1,11 @@
 {
   "newChat": "新建聊天",
-  "recentChats": "最近的聊天",
-  "viewAllApps": "查看所有应用",
+  "viewAllApps": "所有应用",
   "searchChats": "搜索聊天",
+  "groupToday": "今天",
+  "groupYesterday": "昨天",
+  "groupThisWeek": "本周",
+  "groupOlder": "更早",
   "closeChatTab": "关闭标签页：{{title}}",
   "closeTab": "关闭",
   "closeOtherTabs": "关闭其他标签页",

@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { test, testWithConfig } from "./helpers/test_helper";
 import { Timeout } from "./helpers/constants";
 
@@ -6,6 +6,16 @@ import { Timeout } from "./helpers/constants";
  * E2E tests for native notifications. We stub window.Notification and validate
  * behavior under two triggers: app hidden and different-chat view.
  */
+
+// Type definitions for page objects
+interface ChatActionsPageObject {
+  clickNewChat(): Promise<void>;
+  sendPrompt(
+    text: string,
+    options?: { skipWaitForCompletion?: boolean },
+  ): Promise<void>;
+  waitForChatCompletion(options?: { timeout?: number }): Promise<void>;
+}
 
 const testWithNotificationsEnabled = testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
@@ -19,15 +29,16 @@ const testWithNotificationsEnabled = testWithConfig({
   },
 });
 
-async function enableNotifications(po: { navigation: any; settings: any }) {
+async function enableNotifications(po: {
+  navigation: any;
+  settings: any;
+}): Promise<void> {
   await po.navigation.goToSettingsTab();
   await po.settings.enableChatEventNotifications();
   await po.navigation.goToChatTab();
 }
 
-async function simulateAppHidden(po: {
-  page: import("@playwright/test").Page;
-}) {
+async function simulateAppHidden(po: { page: Page }): Promise<void> {
   await po.page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
       value: "hidden",
@@ -44,21 +55,21 @@ async function simulateAppHidden(po: {
   });
 }
 
-async function triggerHidden(po: { page: import("@playwright/test").Page }) {
+async function triggerHidden(po: { page: Page }): Promise<void> {
   await simulateAppHidden(po);
 }
 
 async function triggerDifferentChat(
-  po: { chatActions: any; page: any },
+  po: { chatActions: ChatActionsPageObject; page: Page },
   currentChatId: number,
-) {
-  await switchToDifferentChat(po, currentChatId);
+): Promise<number> {
+  return switchToDifferentChat(po, currentChatId);
 }
 
 async function expectNavigatedToChat(
-  po: { page: import("@playwright/test").Page },
+  po: { page: Page },
   chatId: number,
-) {
+): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -70,11 +81,14 @@ async function expectNavigatedToChat(
     .toBe(chatId);
 }
 
-function getChatIdFromUrl(po: { page: import("@playwright/test").Page }) {
+function getChatIdFromUrl(po: { page: Page }): number {
   return Number(po.page.url().match(/\?id=(\d+)/)?.[1]);
 }
 
-async function createChat(po: { chatActions: any; page: any }) {
+async function createChat(po: {
+  chatActions: ChatActionsPageObject;
+  page: Page;
+}): Promise<number> {
   await po.chatActions.clickNewChat();
   const chatId = getChatIdFromUrl(po);
   expect(chatId).toBeTruthy();
@@ -82,9 +96,9 @@ async function createChat(po: { chatActions: any; page: any }) {
 }
 
 async function switchToDifferentChat(
-  po: { chatActions: any; page: any },
+  po: { chatActions: ChatActionsPageObject; page: Page },
   currentChatId: number,
-) {
+): Promise<number> {
   const activeId = getChatIdFromUrl(po);
   if (activeId !== currentChatId) return activeId;
   await po.chatActions.clickNewChat();

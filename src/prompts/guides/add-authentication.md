@@ -283,7 +283,7 @@ Create `src/lib/auth-client.ts`.
 
 `NeonAuthUIProvider`'s default `navigate`/`replace`/`Link` use `window.location.href`, which causes a full page reload after sign-in/sign-up that races the session cookie. Wire React Router in.
 
-- **`src/main.tsx`**: wrap `<App />` in `<BrowserRouter>` from `react-router-dom` (inside `<StrictMode>`).
+- **Router placement**: `AuthProvider` calls `useNavigate()`, so it must be rendered inside a `<BrowserRouter>`. **Check `src/App.tsx` first** — the Dyad scaffold already renders `<BrowserRouter>` there around its `<Routes>`. In that case, do NOT add a second `<BrowserRouter>` in `src/main.tsx` (React Router throws "You cannot render a `<Router>` inside another `<Router>`"); just reuse the existing one. Only if `App.tsx` has no `<BrowserRouter>` should you wrap `<App />` in `<BrowserRouter>` inside `src/main.tsx` (within `<StrictMode>`).
 - **`src/components/AuthProvider.tsx`**: a wrapper component that imports `Link` and `useNavigate` from `react-router-dom`, `NeonAuthUIProvider` from `"@neondatabase/auth/react"`, and `authClient` from `@/lib/auth-client`. Inside, call `useNavigate()` and render `<NeonAuthUIProvider>` with these props:
   - `authClient={authClient}`
   - `defaultTheme="light"` (or `"dark"` / `"system"`) — **inspect the app's theme first** (Tailwind config, theme provider, `<html>` class) and pass the matching value. Do not leave it as the library default.
@@ -291,7 +291,7 @@ Create `src/lib/auth-client.ts`.
   - `replace={(href) => navigate(href, { replace: true })}`
   - `Link={({ href, ...props }) => <Link to={href} {...props} />}`
 - **`src/pages/auth/AuthPage.tsx`**: read `path` from `useParams` (default `'sign-in'`), import `AuthView` from `"@neondatabase/auth/react"`, render `<AuthView path={path} redirectTo="/" />`. `redirectTo` is REQUIRED — without it the user gets stranded on the auth page after a successful sign-in. Also import a scoped `auth.css` for page-level styling (centered card, padding, branded colors); do NOT touch `globals.css`.
-- **`src/App.tsx`**: render `<AuthProvider>` at the top, then a header with `<UserMenu />`, then `<Routes>` with `<Route path="/auth/:path" element={<AuthPage />} />` plus the app's other routes. The `:path` param matches `AuthView`'s URL shape: `/auth/sign-in`, `/auth/sign-up`, `/auth/forgot-password`, `/auth/reset-password`.
+- **`src/App.tsx`**: place `<AuthProvider>` **inside** the existing `<BrowserRouter>` (it needs Router context for `useNavigate`) and wrap it around the header (with `<UserMenu />`) and the existing `<Routes>`. Add `<Route path="/auth/:path" element={<AuthPage />} />` to the existing `<Routes>` alongside the app's other routes. The `:path` param matches `AuthView`'s URL shape: `/auth/sign-in`, `/auth/sign-up`, `/auth/forgot-password`, `/auth/reset-password`.
 
 **IMPORTANT:** If the system prompt says email verification is enabled, do NOT use `AuthView` for the sign-up page — you must build a custom sign-up form (see the email verification guide). You may still use `AuthView` for the sign-in page.
 

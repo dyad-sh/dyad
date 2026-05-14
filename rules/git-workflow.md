@@ -199,3 +199,7 @@ When rebasing causes conflicts in the `engines` field of `package.json` (e.g., n
 ## Resolving package-lock.json version conflicts after a release bump
 
 When rebasing past an upstream release tag, `package-lock.json` may conflict only on the two top-level `"version"` fields (e.g., `0.45.0` vs your branch's older `0.45.0-beta.1`). The lockfile's dependency tree is otherwise identical to upstream. Resolve by taking upstream's tree (`git checkout --ours package-lock.json` when rebasing onto upstream — `ours` is the rebase target during a `git rebase`), then manually edit the two `"version"` entries to match the current `package.json` version. Running `npm install` afterward is unnecessary just for this; only do it if a real dependency change requires regeneration.
+
+## Re-run `npm install` after taking either side of a `package-lock.json` conflict
+
+If a `package-lock.json` conflict during rebase isn't a pure version-bump and you resolve it by taking one side wholesale (`git checkout --ours package-lock.json` or `--theirs`), run `npm install` before `npm run ts` / tests. Otherwise `node_modules` still reflects the *pre-rebase* lockfile, and tsc fails with `Cannot find module '<pkg>'` for any dependency that was added upstream during the rebase window. Symptom: typecheck errors on packages you never touched in your branch.

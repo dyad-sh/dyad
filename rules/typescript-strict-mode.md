@@ -15,3 +15,7 @@ The project's `tsconfig.app.json` targets ES2020 with `lib: ["ES2020"]`. Methods
 ## `response.json()` returns `unknown`
 
 In IPC handlers that use `node-fetch`, `await response.json()` is treated as `unknown` by `tsgo`. If you access fields directly (for example `data.message` or `data.access_token`), add an explicit cast or narrow first (for example `const data = (await response.json()) as { message?: string }`) to avoid `TS18046`.
+
+## i18next `t()` keys are a literal union, not `string`
+
+`useTranslation` returns a `t()` typed against a union of every key in the namespace. Passing a variable whose type widens to `string` (e.g., a `labelKey` field collected into an array) fails with `TS2345: Argument of type '[string]' is not assignable to parameter of type '[key: "added" | "..."]'`. Resolve the label at the call site (`{ label: t("groupToday") }`) instead of storing the key for later lookup (`{ labelKey: "groupToday" }` then `t(group.labelKey)`). If you really need late binding, narrow with `as const` so the literal type survives.

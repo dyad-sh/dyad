@@ -106,6 +106,7 @@ export const McpConsentRequestSchema = z.object({
   toolName: z.string(),
   toolDescription: z.string().nullable().optional(),
   inputPreview: z.string().nullable().optional(),
+  chatId: z.number(),
 });
 
 export type McpConsentRequestPayload = z.infer<typeof McpConsentRequestSchema>;

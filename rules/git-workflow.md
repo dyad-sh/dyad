@@ -14,6 +14,8 @@ git push --force-with-lease -u origin HEAD
 
 This overrides the branch's tracking remote. Always check which remote `origin` points to (`git remote -v`) — for bot workspaces, `origin` is typically the bot's fork, not the upstream repo.
 
+When creating a new worktree branch from `upstream/main` with `git worktree add -b <branch> <path> upstream/main`, Git may set the new branch's upstream to `upstream/main`. Before using push helpers that push to the tracked remote, run `git branch --unset-upstream` or set the upstream to the actual feature branch to avoid treating `main` as the branch target.
+
 If a PR's head branch is on another user's fork and `gh pr view --json maintainerCanModify` returns `false`, bot accounts cannot push fixes to that PR head even if review threads can be resolved. A fallback push to the base repo publishes the commit but does **not** update the original fork PR; call this out in the PR summary and ask the PR author or a maintainer to apply the published commit.
 
 ## `gh pr create` branch detection
@@ -142,6 +144,8 @@ If `git push`, `gh pr view`, and `gh auth status` fail with only `fetch failed`,
 If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, the configured broker URL is returning an HTML error page instead of the token API response. Verify `BROKER_BASE_URL` and broker routes such as `/healthz` or `/mint` before changing remotes or retrying GitHub commands.
 
 ## Rebase workflow and conflict resolution
+
+If `git fetch --all` fails on a contributor remote with `would clobber existing tag`, but the output shows `Fetching upstream` completed first, do not treat the rebase as blocked. Run `git fetch upstream` to confirm the base remote is current, then rebase onto `upstream/main`.
 
 ### Handling unstaged changes during rebase
 

@@ -1609,7 +1609,7 @@ This conversation includes one or more image attachments. When the user uploads 
           settings.enableMcpServersForBuildMode &&
           selectedChatMode === "build"
         ) {
-          const tools = await getMcpTools(event);
+          const tools = await getMcpTools(event, req.chatId);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;
 
           // Only run MCP agent path if build mode has enabled MCP servers
@@ -2318,7 +2318,10 @@ ${otherAppsCodebaseInfo}
 `;
 }
 
-async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
+async function getMcpTools(
+  event: IpcMainInvokeEvent,
+  chatId: number,
+): Promise<ToolSet> {
   const mcpToolSet: ToolSet = {};
   try {
     const servers = await db
@@ -2346,6 +2349,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
               toolName: name,
               toolDescription: mcpTool.description,
               inputPreview,
+              chatId,
             });
 
             if (!ok)

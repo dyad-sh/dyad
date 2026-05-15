@@ -93,6 +93,31 @@ export function registerChatHandlers() {
     };
   });
 
+  createTypedHandler(chatContracts.getChatMetadata, async (_, chatId) => {
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: {
+        id: true,
+        appId: true,
+        title: true,
+        createdAt: true,
+        chatMode: true,
+      },
+    });
+
+    if (!chat) {
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+    }
+
+    return {
+      id: chat.id,
+      appId: chat.appId,
+      title: chat.title,
+      createdAt: chat.createdAt,
+      chatMode: normalizeStoredChatMode(chat.chatMode),
+    };
+  });
+
   createTypedHandler(chatContracts.getChats, async (_, appId) => {
     // If appId is provided, filter chats for that app
     const query = appId

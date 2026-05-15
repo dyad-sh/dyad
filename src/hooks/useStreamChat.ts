@@ -14,13 +14,13 @@ import {
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
   queuePausedByIdAtom,
+  publishChatCompletionEventAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { pendingScreenshotAppIdAtom } from "@/atoms/previewAtoms";
-import type { ChatResponseEnd, App, Chat } from "@/ipc/types";
-import type { ChatSummary } from "@/lib/schemas";
+import type { ChatResponseEnd, Chat } from "@/ipc/types";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
@@ -43,6 +43,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
+import { resolveAppIdForChat } from "@/lib/chatUtils";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -92,6 +93,7 @@ export function useStreamChat({
   const errorById = useAtomValue(chatErrorByIdAtom);
   const setErrorById = useSetAtom(chatErrorByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const publishChatCompletionEvent = useSetAtom(publishChatCompletionEventAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { invalidateChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
@@ -217,22 +219,10 @@ export function useStreamChat({
       // pass one. Falling back to `selectedAppId` is wrong for background
       // queue processing, where the user may have switched to a different
       // app while a queued message streams for the original chat.
-      let resolvedAppIdFromChat: number | null = null;
-      if (appId === undefined) {
-        // queryKeys.chats.all matches detail/search caches too (non-array data),
-        // so guard against non-array entries before calling .find.
-        const chatsCaches = queryClient.getQueriesData<ChatSummary[]>({
-          queryKey: queryKeys.chats.all,
-        });
-        for (const [, cachedChats] of chatsCaches) {
-          if (!Array.isArray(cachedChats)) continue;
-          const found = cachedChats.find((c) => c.id === chatId);
-          if (found) {
-            resolvedAppIdFromChat = found.appId;
-            break;
-          }
-        }
-      }
+      const resolvedAppIdFromChat =
+        appId === undefined
+          ? await resolveAppIdForChat(chatId, queryClient)
+          : null;
       const targetAppId =
         appId ?? resolvedAppIdFromChat ?? selectedAppId ?? null;
       try {
@@ -362,33 +352,9 @@ export function useStreamChat({
                     next.set(chatId, true);
                     return next;
                   });
-                }
-
-                // Show native notification if enabled and window is not focused
-                // Fire-and-forget to avoid blocking UI updates
-                const notificationsEnabled =
-                  settings?.enableChatEventNotifications === true;
-                if (
-                  notificationsEnabled &&
-                  Notification.permission === "granted" &&
-                  !document.hasFocus()
-                ) {
-                  const app = queryClient.getQueryData<App | null>(
-                    queryKeys.apps.detail({ appId: targetAppId ?? null }),
-                  );
-                  const chats = queryClient.getQueryData<ChatSummary[]>(
-                    queryKeys.chats.list({ appId: targetAppId ?? null }),
-                  );
-                  const chat = chats?.find((c) => c.id === chatId);
-                  const appName = app?.name ?? "Dyad";
-                  const rawTitle = response.chatSummary ?? chat?.title;
-                  const body = rawTitle
-                    ? rawTitle.length > 80
-                      ? rawTitle.slice(0, 80) + "…"
-                      : rawTitle
-                    : "Chat response completed";
-                  new Notification(appName, {
-                    body,
+                  publishChatCompletionEvent({
+                    chatId,
+                    title: response.chatSummary,
                   });
                 }
 

@@ -40,6 +40,19 @@ export function registerWindowHandlers() {
     window.close();
   });
 
+  createTypedHandler(systemContracts.focusWindow, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      logger.error("Failed to get BrowserWindow instance for focus command");
+      return;
+    }
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show(); // Ensures window is visible on macOS
+    window.focus();
+  });
+
   createTypedHandler(systemContracts.getSystemPlatform, async () => {
     return platform();
   });

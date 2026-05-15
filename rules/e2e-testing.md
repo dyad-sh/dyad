@@ -109,6 +109,8 @@ Packaged Electron E2E runs may fail inside the Codex sandbox before any test log
 
 The same sandbox issue can appear earlier as a Playwright `config.webServer` startup failure, for example `Error: listen EPERM: operation not permitted 0.0.0.0:3500` from the fake LLM server. Re-run the same E2E command outside the sandbox before treating it as a product regression.
 
+If Playwright's `config.webServer` exits while building `testing/fake-llm-server` with missing `express`/`cors` type declarations (`TS7016`) or implicit `req`/`res` errors, run `npm install` inside `testing/fake-llm-server` before rerunning E2E.
+
 If this happens:
 
 1. Verify whether the failure reproduces on an existing known-good E2E spec.
@@ -127,6 +129,8 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 - **Keyboard navigation events (ArrowUp/ArrowDown)**: Add `await page.waitForTimeout(100)` between sequential keyboard presses to let the UI state settle. Rapid keypresses can cause race conditions in menu navigation.
 - **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: Timeout.EXTRA_LONG })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.
 - **Collapsed sidebar app/chat lists**: App and chat sub-lists may be hidden until the sidebar rail item is hovered. Use page-object helpers such as `po.appManagement.showAppList()` or `po.chatActions.clickNewChat()` instead of asserting list items are visible immediately after navigation.
+- **Imported chat tab state**: Import flows should select the newly created chat through `useSelectChat().selectChat(...)`, not direct `navigate({ to: "/chat" })`, so current-session chat tabs are seeded consistently.
+- **Mention menu item clicks**: Lexical mention menu items can be visible in the accessibility tree but outside Playwright's clickable viewport. Prefer narrowing the typed query and pressing `Enter`, or use a helper that selects the visible active item instead of raw `menuItem.click()`.
 - **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
 - **`expect(...).toPass()` wrappers**: Give inner Playwright actions/assertions short explicit timeouts. Default 30s click/expect timeouts can consume the whole `toPass()` budget, so the retry wrapper never actually retries.
 - **Chat prompt submit retries**: A send-button click can time out after the prompt was already submitted. Before retrying `sendPrompt()` flows, check for the prompt in `messages-list` or an empty input with `Cancel generation`; otherwise the retry can race into an active stream/proposal and leave the next prompt disabled.

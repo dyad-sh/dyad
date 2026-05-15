@@ -107,6 +107,23 @@ export const UpdateNeonEmailVerificationParamsSchema = z.object({
   requireEmailVerification: z.boolean(),
 });
 
+export const GetNeonBranchConnectionUriParamsSchema = z.object({
+  appId: z.number(),
+  branchType: z.enum(["production", "development"]),
+});
+
+export type GetNeonBranchConnectionUriParams = z.infer<
+  typeof GetNeonBranchConnectionUriParamsSchema
+>;
+
+export const GetNeonBranchConnectionUriResponseSchema = z.object({
+  connectionUri: z.string(),
+});
+
+export type GetNeonBranchConnectionUriResponse = z.infer<
+  typeof GetNeonBranchConnectionUriResponseSchema
+>;
+
 // =============================================================================
 // Neon Contracts
 // =============================================================================
@@ -170,6 +187,12 @@ export const neonContracts = {
     channel: "neon:fake-connect",
     input: z.void(),
     output: z.void(),
+  }),
+
+  getBranchConnectionUri: defineContract({
+    channel: "neon:get-branch-connection-uri",
+    input: GetNeonBranchConnectionUriParamsSchema,
+    output: GetNeonBranchConnectionUriResponseSchema,
   }),
 } as const;
 

@@ -2,9 +2,12 @@ import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
 import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useEffect, useState } from "react";
+import { useChats } from "@/hooks/useChats";
+import { useSelectChat } from "@/hooks/useSelectChat";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -55,6 +58,7 @@ import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManage
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 function UnavailableIntegrationCard({
   provider,
@@ -99,6 +103,8 @@ export default function AppDetailsPage() {
     useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isRenamingFolder, setIsRenamingFolder] = useState(false);
+  const [isOpeningChat, setIsOpeningChat] = useState(false);
+  const isOpeningChatRef = useRef(false);
 
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const [newCopyAppName, setNewCopyAppName] = useState("");
@@ -107,6 +113,7 @@ export default function AppDetailsPage() {
 
   const queryClient = useQueryClient();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
 
   const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
   const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
@@ -119,6 +126,9 @@ export default function AppDetailsPage() {
   // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
+  const { chats, loading: chatsLoading, invalidateChats } = useChats(appId);
+  const { selectChat } = useSelectChat();
+  const initialChatMode = useInitialChatMode();
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -132,6 +142,13 @@ export default function AppDetailsPage() {
   }, [latestScreenshotUrl]);
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
+  useEffect(() => {
+    if (appId) {
+      setSelectedAppId(appId);
+      setSelectedChatId(null);
+    }
+  }, [appId, setSelectedAppId, setSelectedChatId]);
+
   const handleDeleteApp = async () => {
     if (!appId) return;
 
@@ -139,6 +156,8 @@ export default function AppDetailsPage() {
       setIsDeleting(true);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
+      setSelectedAppId(null);
+      setSelectedChatId(null);
       await refreshApps();
       navigate({ to: "/", search: {} });
     } catch (error) {
@@ -317,6 +336,38 @@ export default function AppDetailsPage() {
   }
 
   const currentAppPath = selectedApp.resolvedPath || "";
+  const latestChat = chats[0];
+  const handleOpenInChat = async () => {
+    if (isOpeningChatRef.current) {
+      return;
+    }
+
+    if (!appId) {
+      console.error("No app id found");
+      return;
+    }
+
+    try {
+      isOpeningChatRef.current = true;
+      setIsOpeningChat(true);
+      if (latestChat) {
+        selectChat({ chatId: latestChat.id, appId });
+        return;
+      }
+
+      const chatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode,
+      });
+      await invalidateChats();
+      selectChat({ chatId, appId });
+    } catch (error) {
+      showError(error);
+    } finally {
+      isOpeningChatRef.current = false;
+      setIsOpeningChat(false);
+    }
+  };
 
   return (
     <div
@@ -423,14 +474,27 @@ export default function AppDetailsPage() {
         </div>
 
         {latestScreenshotUrl && !screenshotLoadFailed && (
-          <div className="mb-4 rounded-lg overflow-hidden border border-border bg-muted aspect-video">
+          <button
+            type="button"
+            onClick={handleOpenInChat}
+            disabled={chatsLoading || isOpeningChat}
+            aria-label={`Open ${selectedApp.name} in Chat`}
+            data-testid="app-details-screenshot-open-in-chat"
+            className="group relative mb-4 block aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60"
+          >
             <img
               src={latestScreenshotUrl}
               alt={`Preview of ${selectedApp?.name ?? "app"}`}
               onError={() => setScreenshotLoadFailed(true)}
-              className="w-full h-full object-contain"
+              className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02] group-disabled:scale-100"
             />
-          </div>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/15 group-hover:opacity-100 group-disabled:opacity-0">
+              <span className="flex items-center gap-2 rounded-md bg-background/95 px-3 py-1.5 text-sm font-medium text-foreground shadow-md">
+                Open in Chat
+                <MessageCircle className="h-4 w-4" />
+              </span>
+            </div>
+          </button>
         )}
 
         <div className="grid grid-cols-2 gap-3 text-sm mb-4">
@@ -474,13 +538,8 @@ export default function AppDetailsPage() {
         </div>
         <div className="mt-4 flex flex-col gap-2">
           <Button
-            onClick={() => {
-              if (!appId) {
-                console.error("No app id found");
-                return;
-              }
-              navigate({ to: "/chat" });
-            }}
+            onClick={handleOpenInChat}
+            disabled={chatsLoading || isOpeningChat}
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >

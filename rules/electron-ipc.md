@@ -130,6 +130,8 @@ When modifying `ChatResponseChunkSchema` or adding new `safeSend("chat:response:
 
 **Zod schema contract changes:** Making a field optional (e.g., `messages` → `messages.optional()`) causes TypeScript errors in all consumers that assume the field is always present. Search for all destructuring/usage sites and add guards before committing.
 
+**Renderer-visible fields must be in the output schema:** `createTypedHandler` validates handler output through the contract's Zod schema. If the handler returns extra fields that are not declared in the output schema, renderer code cannot type-safely consume them and they may be stripped by parsing. Add any consumed fields (for example `appId` on `ChatSchema`) to the IPC output schema when relying on them in renderer code.
+
 ## End-of-turn warnings
 
 When a main-process workflow needs to show a user-facing warning toast after a turn completes, thread it through every completion path, not just `chat:response:end`. Build-mode auto-approve and local-agent flows use `ChatResponseEndSchema`, while manual proposal approval uses `ApproveProposalResultSchema`; surface the warning in both `useStreamChat` and `ChatInput` so the behavior stays consistent.

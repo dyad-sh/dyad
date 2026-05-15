@@ -3,12 +3,14 @@ import { createStore } from "jotai";
 import {
   recentViewedChatIdsAtom,
   closedChatIdsAtom,
+  closedTabHistoryAtom,
   pushRecentViewedChatIdAtom,
   removeRecentViewedChatIdAtom,
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   addSessionOpenedChatIdAtom,
   closeMultipleTabsAtom,
+  popClosedTabAtom,
 } from "@/atoms/chatAtoms";
 import {
   applySelectionToOrderedChatIds,
@@ -132,14 +134,22 @@ describe("recent viewed chat atoms", () => {
   it("removes closed tab from tab state only", () => {
     const store = createStore();
     store.set(recentViewedChatIdsAtom, [3, 2, 1]);
-    store.set(removeRecentViewedChatIdAtom, 2);
+    store.set(removeRecentViewedChatIdAtom, {
+      chatId: 2,
+      appId: 1,
+      title: "Chat 2",
+    });
     expect(store.get(recentViewedChatIdsAtom)).toEqual([3, 1]);
   });
 
   it("adds chat to closedChatIds when removed", () => {
     const store = createStore();
     store.set(recentViewedChatIdsAtom, [3, 2, 1]);
-    store.set(removeRecentViewedChatIdAtom, 2);
+    store.set(removeRecentViewedChatIdAtom, {
+      chatId: 2,
+      appId: 1,
+      title: "Chat 2",
+    });
     expect(store.get(closedChatIdsAtom).has(2)).toBe(true);
   });
 
@@ -155,11 +165,45 @@ describe("recent viewed chat atoms", () => {
   it("prunes stale IDs from closedChatIds", () => {
     const store = createStore();
     store.set(closedChatIdsAtom, new Set([1, 2, 99]));
+    store.set(closedTabHistoryAtom, [
+      { chatId: 2, appId: 1, title: "Chat 2" },
+      { chatId: 99, appId: 1, title: "Deleted chat" },
+    ]);
     store.set(pruneClosedChatIdsAtom, new Set([1, 2, 3]));
     const pruned = store.get(closedChatIdsAtom);
     expect(pruned.has(1)).toBe(true);
     expect(pruned.has(2)).toBe(true);
     expect(pruned.has(99)).toBe(false);
+    expect(store.get(closedTabHistoryAtom)).toEqual([
+      { chatId: 2, appId: 1, title: "Chat 2" },
+    ]);
+  });
+});
+
+describe("closed tab history", () => {
+  it("stores closed tab records when provided", () => {
+    const store = createStore();
+    const record = { chatId: 2, appId: 1, title: "Chat 2" };
+    store.set(recentViewedChatIdsAtom, [3, 2, 1]);
+    store.set(removeRecentViewedChatIdAtom, record);
+    expect(store.get(closedTabHistoryAtom)).toEqual([record]);
+  });
+
+  it("pops the most recent closed tab", () => {
+    const store = createStore();
+    const first = { chatId: 2, appId: 1, title: "Chat 2" };
+    const second = { chatId: 3, appId: 1, title: "Chat 3" };
+    store.set(closedTabHistoryAtom, [first, second]);
+    store.set(popClosedTabAtom);
+    expect(store.get(closedTabHistoryAtom)).toEqual([second]);
+  });
+
+  it("removes chat from history when re-opened", () => {
+    const store = createStore();
+    const record = { chatId: 2, appId: 1, title: "Chat 2" };
+    store.set(closedTabHistoryAtom, [record]);
+    store.set(pushRecentViewedChatIdAtom, 2);
+    expect(store.get(closedTabHistoryAtom)).toEqual([]);
   });
 });
 
@@ -186,7 +230,10 @@ describe("close multiple tabs", () => {
   it("closes multiple tabs at once", () => {
     const store = createStore();
     store.set(recentViewedChatIdsAtom, [1, 2, 3, 4, 5]);
-    store.set(closeMultipleTabsAtom, [2, 4]);
+    store.set(closeMultipleTabsAtom, [
+      { chatId: 2, appId: 1, title: "Chat 2" },
+      { chatId: 4, appId: 1, title: "Chat 4" },
+    ]);
     expect(store.get(recentViewedChatIdsAtom)).toEqual([1, 3, 5]);
     expect(store.get(closedChatIdsAtom).has(2)).toBe(true);
     expect(store.get(closedChatIdsAtom).has(4)).toBe(true);

@@ -37,7 +37,7 @@ export function useSelectChat() {
       }
       const navigationResult = navigate({
         to: "/chat",
-        search: { id: chatId },
+        search: { id: chatId, appId },
       });
 
       if (prefillInput !== undefined) {

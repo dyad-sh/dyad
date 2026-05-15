@@ -159,7 +159,7 @@ test("right-click context menu: Close tabs to the right", async ({ po }) => {
   await po.sendPrompt("[dump] Right tab two");
   await po.chatActions.waitForChatCompletion();
 
-  // Wait for 4 tabs to appear
+  // Wait for the tabs to appear; one may overflow depending on viewport width.
   const closeButtons = po.page.getByLabel(/^Close tab:/);
   await expect(async () => {
     const count = await closeButtons.count();
@@ -177,6 +177,52 @@ test("right-click context menu: Close tabs to the right", async ({ po }) => {
   await expect(async () => {
     const newCount = await closeButtons.count();
     expect(newCount).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+});
+
+test("right-click context menu: Reopen closed tab", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Chat 1
+  await po.sendPrompt("[dump] Chat one reopen");
+  await po.chatActions.waitForChatCompletion();
+
+  // Chat 2
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Chat two reopen");
+  await po.chatActions.waitForChatCompletion();
+
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Close the first tab
+  await closeButtons.first().click();
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Reopen from context menu
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.first().click({ button: "right" });
+  const reopenItem = po.page.getByText(/Reopen/);
+  await expect(reopenItem).toBeVisible();
+
+  // Verify shortcut label symbols
+  const shortcut = po.page
+    .locator("span")
+    .filter({ hasText: /⇧⌘T|Ctrl\+⇧\+T|Ctrl\+Shift\+T/ });
+  await expect(shortcut).toBeVisible();
+
+  await reopenItem.click();
+
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(2);
   }).toPass({ timeout: Timeout.MEDIUM });
 });
 

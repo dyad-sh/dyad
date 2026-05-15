@@ -7,19 +7,22 @@ import { useNavigate } from "@tanstack/react-router";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import { useIsMac } from "@/hooks/useChatModeToggle";
 import {
   isStreamingByIdAtom,
   recentViewedChatIdsAtom,
   selectedChatIdAtom,
   setRecentViewedChatIdsAtom,
-  removeRecentViewedChatIdAtom,
   pushRecentViewedChatIdAtom,
   closedChatIdsAtom,
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   closeMultipleTabsAtom,
+  type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
+import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { cn } from "@/lib/utils";
+import { AppAvatar } from "@/components/AppAvatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +34,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -222,13 +226,15 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const closedChatIds = useAtomValue(closedChatIdsAtom);
   const sessionOpenedChatIds = useAtomValue(sessionOpenedChatIdsAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
-  const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
   const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const { reopenClosedTab, hasClosedTabs, lastClosedTab } =
+    useReopenClosedTab();
   const { selectChat } = useSelectChat();
   const navigate = useNavigate();
+  const isMac = useIsMac();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [draggingChatId, setDraggingChatId] = useState<number | null>(null);
@@ -248,8 +254,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     pruneClosedChatIds(chatIdSet);
   }, [chatIdSet, pruneClosedChatIds]);
 
-  const appNameById = useMemo(
-    () => new Map(apps.map((app) => [app.id, app.name])),
+  const appById = useMemo(
+    () => new Map(apps.map((app) => [app.id, app])),
     [apps],
   );
 
@@ -420,32 +426,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   };
 
   const handleCloseTab = (chatId: number) => {
-    // Use orderedChats (all tabs: visible + overflow) instead of just visibleTabs
-    const closedTab = chatsById.get(chatId);
     const fallbackChatId = getFallbackChatIdAfterClose(orderedChats, chatId);
+    closeTabsAndClearNotifications([chatId], fallbackChatId ?? undefined);
 
-    removeRecentViewedChatId(chatId);
-    clearNotification(chatId);
-
-    if (!closedTab || selectedChatId !== chatId) {
-      return;
-    }
-
-    // If no fallback tab (last tab closed), navigate to home
-    if (fallbackChatId === null) {
+    if (fallbackChatId === null && selectedChatId === chatId) {
       setSelectedChatId(null);
       navigate({ to: "/" });
-      return;
     }
-
-    const fallbackTab = chatsById.get(fallbackChatId);
-    if (!fallbackTab) return;
-
-    selectChat({
-      chatId: fallbackTab.id,
-      appId: fallbackTab.appId,
-      preserveTabOrder: true,
-    });
   };
 
   // Helper to close multiple tabs and optionally switch to a fallback
@@ -457,15 +444,22 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         clearNotification(id);
       }
 
-      closeMultipleTabs(idsToClose);
+      const records: ClosedTabRecord[] = idsToClose
+        .map((id) => {
+          const chat = chatsById.get(id);
+          return chat
+            ? { chatId: chat.id, appId: chat.appId, title: chat.title }
+            : null;
+        })
+        .filter((record): record is ClosedTabRecord => record !== null);
 
-      // Switch to fallback if:
-      // - fallback is provided AND
-      // - (selected chat is being closed OR selected chat differs from requested fallback)
+      closeMultipleTabs(records);
+
+      // Switch to fallback when a fallback is provided and either there is
+      // no selected chat (null) or the currently selected chat is being closed.
       if (
         fallbackChatId !== undefined &&
-        (idsToClose.includes(selectedChatId ?? -1) ||
-          selectedChatId !== fallbackChatId)
+        (selectedChatId === null || idsToClose.includes(selectedChatId ?? -1))
       ) {
         const fallbackTab = chatsById.get(fallbackChatId);
         if (fallbackTab) {
@@ -533,7 +527,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           {visibleTabs.map((chat) => {
             const isActive = selectedChatId === chat.id;
             const title = chat.title?.trim() || t("newChat");
-            const appName = appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+            const app = appById.get(chat.appId);
+            const appName = app?.name ?? `App ${chat.appId}`;
             const titleExcerpt = getChatTitleExcerpt(title);
             const isDragging = draggingChatId === chat.id;
             const inProgress = isStreamingById.get(chat.id) === true;
@@ -607,6 +602,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         />
                       }
                     >
+                      <AppAvatar
+                        appId={chat.appId}
+                        name={appName}
+                        className="h-4 w-4 rounded-sm text-[8px]"
+                      />
                       {inProgress && (
                         <span
                           className="flex items-center text-purple-600"
@@ -719,6 +719,21 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   >
                     {t("groupTabsByApp")}
                   </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onClick={reopenClosedTab}
+                    disabled={!hasClosedTabs}
+                    title={t("reopenClosedTabTooltip")}
+                  >
+                    {hasClosedTabs && lastClosedTab?.title
+                      ? t("reopenClosedTabWithTitle", {
+                          title: lastClosedTab.title,
+                        })
+                      : t("reopenClosedTab")}
+                    <ContextMenuShortcut title={t("reopenClosedTabTooltip")}>
+                      {isMac ? "⇧⌘T" : "Ctrl+⇧+T"}
+                    </ContextMenuShortcut>
+                  </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
             );
@@ -739,7 +754,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               {overflowTabsForMenu.map((chat) => {
                 const title = chat.title?.trim() || t("newChat");
                 const appName =
-                  appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+                  appById.get(chat.appId)?.name ?? `App ${chat.appId}`;
                 const inProgress = isStreamingById.get(chat.id) === true;
                 const hasNotification =
                   !inProgress && notifiedChatIds.has(chat.id);
@@ -755,6 +770,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     }}
                     className="flex items-center gap-2"
                   >
+                    <AppAvatar
+                      appId={chat.appId}
+                      name={appName}
+                      className="h-5 w-5 rounded text-[9px]"
+                    />
                     {inProgress && (
                       <span
                         className="flex items-center text-purple-600"

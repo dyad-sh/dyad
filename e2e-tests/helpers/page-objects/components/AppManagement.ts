@@ -27,6 +27,12 @@ export class AppManagement {
 
   async showAppList() {
     await this.page.getByRole("link", { name: "Apps" }).hover();
+    const viewAllAppsButton = this.page.getByTestId("view-all-apps-button");
+    if (
+      await viewAllAppsButton.isVisible({ timeout: 1_000 }).catch(() => false)
+    ) {
+      await viewAllAppsButton.click();
+    }
     await expect(this.page.getByTestId("app-list-container")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });

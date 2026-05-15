@@ -59,6 +59,7 @@ function createAgentContext(chatId: number): AgentContext {
     todos: [] as Todo[],
     dyadRequestId: "test-request",
     fileEditTracker: {},
+    referencedApps: new Map<string, string>(),
     isDyadPro: true,
     onXmlStream: vi.fn(),
     onXmlComplete: vi.fn(),

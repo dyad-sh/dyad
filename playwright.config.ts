@@ -5,7 +5,14 @@ import { FAKE_LLM_BASE_PORT } from "./e2e-tests/helpers/test-ports";
 export { FAKE_LLM_BASE_PORT };
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-const parallelism = parseInt(process.env.PLAYWRIGHT_PARALLELISM || "1", 10);
+const parsedParallelism = Number.parseInt(
+  process.env.PLAYWRIGHT_PARALLELISM ?? "1",
+  10,
+);
+const parallelism =
+  Number.isFinite(parsedParallelism) && parsedParallelism > 0
+    ? parsedParallelism
+    : 1;
 
 // Each parallel worker needs its own fake LLM server to avoid test interference.
 function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
@@ -14,8 +21,7 @@ function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
   for (let i = 0; i < parallelism; i++) {
     const port = FAKE_LLM_BASE_PORT + i;
     configs.push({
-      // Servers run build to avoid races when Playwright starts webServer entries concurrently.
-      command: `cd testing/fake-llm-server && npm run build && npm start -- --port=${port}`,
+      command: `cd testing/fake-llm-server && node build-once.cjs ${timestamp} && npm start -- --port=${port}`,
       url: `http://localhost:${port}/health`,
       // In CI, always start a fresh server; locally, reuse if one is already running
       reuseExistingServer: !process.env.CI,

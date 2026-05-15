@@ -116,7 +116,7 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
   };
 
   return (
-    <Card>
+    <Card data-testid="database-url-panel">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           <Database className="w-5 h-5 text-primary" />

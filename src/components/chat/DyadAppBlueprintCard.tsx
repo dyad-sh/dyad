@@ -720,51 +720,53 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
               Primary Color
             </div>
             <div className="flex items-center gap-2">
-              {primaryColor && (
-                <div
-                  className="w-7 h-7 rounded-md border border-border/50 shrink-0"
-                  style={{ backgroundColor: primaryColor }}
-                />
-              )}
               {isApproved ? (
-                <span className="text-sm text-foreground/80 font-mono">
-                  {primaryColor}
-                </span>
+                <>
+                  {primaryColor && (
+                    <div
+                      className="w-7 h-7 rounded-md border border-border/50 shrink-0"
+                      style={{ backgroundColor: primaryColor }}
+                    />
+                  )}
+                  <span className="text-sm text-foreground/80 font-mono">
+                    {primaryColor}
+                  </span>
+                </>
               ) : (
-                <input
-                  id={primaryColorTextFieldId}
-                  type="text"
-                  aria-label="Primary Color Hex Code"
-                  value={colorTextValue}
-                  onChange={(e) => setColorTextValue(e.target.value)}
-                  onBlur={() => {
-                    if (/^#[0-9a-fA-F]{6}$/.test(colorTextValue)) {
-                      handleFieldEdit("primaryColor", colorTextValue);
-                    } else {
-                      setColorTextValue(primaryColor);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      (e.target as HTMLInputElement).blur();
-                    }
-                  }}
-                  className="text-sm font-mono bg-background border border-border/50 rounded-md px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 w-28"
-                  placeholder="#000000"
-                />
-              )}
-              {!isApproved && (
-                <input
-                  id={primaryColorPickerFieldId}
-                  type="color"
-                  aria-label="Primary Color Picker"
-                  value={primaryColor || "#000000"}
-                  onChange={(e) => {
-                    setColorTextValue(e.target.value);
-                    handleFieldEdit("primaryColor", e.target.value);
-                  }}
-                  className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer"
-                />
+                <>
+                  <input
+                    id={primaryColorPickerFieldId}
+                    type="color"
+                    aria-label="Primary Color Picker"
+                    value={primaryColor || "#000000"}
+                    onChange={(e) => {
+                      setColorTextValue(e.target.value);
+                      handleFieldEdit("primaryColor", e.target.value);
+                    }}
+                    className="w-7 h-7 p-0 border border-border/50 rounded-md bg-transparent cursor-pointer shrink-0"
+                  />
+                  <input
+                    id={primaryColorTextFieldId}
+                    type="text"
+                    aria-label="Primary Color Hex Code"
+                    value={colorTextValue}
+                    onChange={(e) => setColorTextValue(e.target.value)}
+                    onBlur={() => {
+                      if (/^#[0-9a-fA-F]{6}$/.test(colorTextValue)) {
+                        handleFieldEdit("primaryColor", colorTextValue);
+                      } else {
+                        setColorTextValue(primaryColor);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                    className="text-sm font-mono bg-background border border-border/50 rounded-md px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 w-28"
+                    placeholder="#000000"
+                  />
+                </>
               )}
             </div>
           </div>

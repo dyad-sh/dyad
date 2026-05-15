@@ -19,7 +19,7 @@ export class ChatActions {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
     );
   }
 
@@ -55,8 +55,23 @@ export class ChatActions {
   async clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There are two new chat buttons.
     const previousChatId = new URL(this.page.url()).searchParams.get("id");
+    const visibleNewChatButtons = this.page.locator(
+      '[data-testid="new-chat-button"]:visible',
+    );
 
-    await this.page.getByTestId("new-chat-button").nth(index).click();
+    await expect(async () => {
+      const visibleCount = await visibleNewChatButtons.count();
+      if (visibleCount <= index) {
+        await this.page.getByRole("link", { name: "Apps" }).hover();
+        await expect(this.page.getByTestId("chat-list-container")).toBeVisible({
+          timeout: 1_000,
+        });
+      }
+      await expect(visibleNewChatButtons.nth(index)).toBeVisible({
+        timeout: 1_000,
+      });
+      await visibleNewChatButtons.nth(index).click({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     await expect(async () => {
       const currentChatId = new URL(this.page.url()).searchParams.get("id");
@@ -111,7 +126,11 @@ export class ChatActions {
     // the next render, so the Send button stays disabled. Re-filling once the
     // atoms have settled deterministically recovers.
     const chatInput = this.getChatInput();
-    const sendButton = this.page.getByRole("button", { name: "Send message" });
+    const sendButton = this.page
+      .locator(
+        '[data-testid="chat-input-container"]:visible, [data-testid="home-chat-input-container"]:visible',
+      )
+      .getByRole("button", { name: "Send message" });
 
     await expect(chatInput).toBeVisible();
     await expect(async () => {
@@ -120,7 +139,28 @@ export class ChatActions {
       const visiblePrompt = prompt.replace(/@app:/g, "@");
       expect(await chatInput.textContent()).toContain(visiblePrompt);
       await expect(sendButton).toBeEnabled({ timeout: 1_000 });
-      await sendButton.click({ timeout: 1_000 });
+      try {
+        await sendButton.click({ timeout: 1_000 });
+      } catch (error) {
+        const promptSubmitted = await this.page
+          .getByTestId("messages-list")
+          .getByText(visiblePrompt)
+          .last()
+          .isVisible({ timeout: 1_000 })
+          .catch(() => false);
+        const generationStarted = await this.page
+          .getByRole("button", { name: "Cancel generation" })
+          .isVisible({ timeout: 500 })
+          .catch(() => false);
+        const inputText = await chatInput
+          .textContent({ timeout: 500 })
+          .catch(() => "");
+
+        if (promptSubmitted || (generationStarted && !inputText?.trim())) {
+          return;
+        }
+        throw error;
+      }
     }).toPass({ timeout: Timeout.MEDIUM });
 
     if (!skipWaitForCompletion) {

@@ -20,7 +20,6 @@ import { ipc, type LanguageModel, LocalModel } from "@/ipc/types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
-import { TURBO_MODELS } from "@/ipc/shared/language_model_constants";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
@@ -161,11 +160,7 @@ export function ModelPicker() {
   const autoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
       ? modelsByProviders["auto"].filter((model) => {
-          if (
-            settings &&
-            !dyadProEnabled &&
-            ["turbo", "value"].includes(model.apiName)
-          ) {
+          if (settings && !dyadProEnabled && model.apiName === "value") {
             return false;
           }
           if (settings && dyadProEnabled && model.apiName === "free") {
@@ -200,9 +195,7 @@ export function ModelPicker() {
       return !(provider && provider.secondary);
     },
   );
-  const primaryProviders: [string, LanguageModel[]][] = dyadProEnabled
-    ? [["auto", TURBO_MODELS], ...primaryProviderEntries]
-    : primaryProviderEntries;
+  const primaryProviders: [string, LanguageModel[]][] = primaryProviderEntries;
   const secondaryProviders = providerEntries.filter(([providerId, models]) => {
     if (models.length === 0) return false;
     const provider = providers?.find((p) => p.id === providerId);
@@ -240,9 +233,7 @@ export function ModelPicker() {
 
   const getProviderDisplayName = (providerId: string) => {
     const provider = providers?.find((p) => p.id === providerId);
-    return provider?.id === "auto"
-      ? "Dyad Turbo"
-      : (provider?.name ?? providerId);
+    return provider?.name ?? providerId;
   };
 
   const handleCloudModelSelect = (providerId: string, model: LanguageModel) => {

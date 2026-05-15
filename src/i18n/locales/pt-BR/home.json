@@ -66,9 +66,7 @@
     "accessLeadingModels": "Acesse os melhores modelos de IA com um único plano",
     "getDyadPro": "Obtenha o Dyad Pro",
     "upTo3xCheaper": "Até 3x mais barato",
-    "byUsingSmartContext": "usando o Contexto Inteligente",
-    "generateCode4x": "Gere código 4-10x mais rápido",
-    "withTurboModels": "com Turbo Models e Turbo Edits"
+    "byUsingSmartContext": "usando o Contexto Inteligente"
   },
   "setup": {
     "buildNewApp": "Criar um novo app",
@@ -198,6 +196,7 @@
     "configure": "Configurar",
     "security": "Segurança",
     "publish": "Publicar",
+    "plan": "Plano",
     "moreOptions": "Mais opções",
     "rebuild": "Reconstruir",
     "rebuildDescription": "Reinstala o node_modules e reinicia",
@@ -615,9 +614,12 @@
       "connectedToProject": "Este app está conectado ao projeto {{provider}}:",
       "continue": "Continuar",
       "continuing": "Continuando...",
+      "completePrompt": "Conclua a conexão com o {{provider}} acima para continuar.",
+      "next": "Próximo",
+      "back": "Voltar",
       "chooseProvider": "Escolha um provedor de banco de dados",
-      "setUpProvider": "Configurar {{provider}}",
-      "setUpDatabase": "Configurar banco de dados",
+      "configureInPanelTitle": "Conclua a configuração no painel Configurar",
+      "configureInPanelDescription": "Conclua a configuração do {{provider}} no painel à direita e depois volte aqui.",
       "experimental": "Experimental",
       "providers": {
         "supabase": {
@@ -635,6 +637,7 @@
       "description": "Copie o schema da sua branch de desenvolvimento ativa para a branch de produção.",
       "descriptionWithBranches": "Copie o schema em {{projectName}} de {{sourceBranchName}} para {{targetBranchName}}.",
       "migrateToProduction": "Migrar para Produção",
+      "migrateToProductionDestructive": "Entendi, migrar para produção",
       "migrating": "Migrando...",
       "installingDependencies": "Instalando dependências e migrando...",
       "installDependenciesNote": "A primeira migração instalará drizzle-kit e drizzle-orm. Isso pode levar alguns minutos.",
@@ -647,7 +650,38 @@
       "confirmDescription": "Isso modificará o schema do seu banco de dados de produção. Tem certeza de que deseja continuar?",
       "confirmDescriptionWithBranches": "Isso modificará o schema de {{targetBranchName}} em {{projectName}} usando o schema de {{sourceBranchName}}. Tem certeza de que deseja continuar?",
       "cancel": "Cancelar",
-      "backupWarning": "Certifique-se de ter os backups do banco de dados habilitados, caso contrário, você não poderá desfazer esta ação."
+      "backToReview": "Voltar para revisão",
+      "backupWarning": "Certifique-se de ter os backups do banco de dados habilitados, caso contrário, você não poderá desfazer esta ação.",
+      "computingMigrationPlan": "Calculando plano de migração...",
+      "preview": {
+        "title": "Revisar SQL da migração",
+        "subtitle": "Estas instruções serão executadas em {{targetBranchName}}.",
+        "subtitleNoTarget": "Estas instruções serão executadas no seu banco de dados de produção.",
+        "loading": "Calculando plano de migração...",
+        "loadingError": "Não foi possível calcular o plano de migração.",
+        "noChanges": "Os bancos de desenvolvimento e produção já estão sincronizados. Nada para migrar.",
+        "continue": "Continuar",
+        "continueWithDataLoss": "Entendi, continuar",
+        "cancel": "Cancelar",
+        "close": "Fechar",
+        "retry": "Tentar novamente",
+        "sqlStatementsRegionLabel": "Instruções SQL a serem executadas",
+        "destructiveStatementLabel": "Instrução destrutiva",
+        "reviewAdvisory": "As instruções com risco de causar perda de dados são marcadas com um ícone de alerta e destacadas em vermelho. A detecção é aproximada — revise cada instrução antes de continuar.",
+        "destructive": {
+          "title": "Alterações destrutivas detectadas",
+          "subtitle_one": "{{count}} instrução removerá ou alterará permanentemente dados existentes.",
+          "subtitle_other": "{{count}} instruções removerão ou alterarão permanentemente dados existentes.",
+          "reasons": {
+            "drop_table": "Uma tabela será excluída.",
+            "drop_column": "Uma coluna será excluída.",
+            "alter_column_type": "O tipo de uma coluna será alterado (conversão de dados).",
+            "truncate": "Uma tabela será truncada.",
+            "drop_schema": "Um schema será excluído."
+          }
+        }
+      },
+      "confirmDestructiveWarning": "Esta migração inclui alterações destrutivas que podem resultar em perda de dados."
     },
     "mutualExclusion": {
       "supabaseUnavailable": "O Supabase não está disponível porque um banco de dados Neon já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",

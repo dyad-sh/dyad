@@ -36,6 +36,7 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
+  enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableSelectAppFromHomeChatInput:
@@ -233,7 +234,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.ai,
     sectionLabel: "AI",
   },
-
   // Provider Settings
   {
     id: SECTION_IDS.providers,
@@ -376,6 +376,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "pro",
       "credits",
       "secure",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableSandboxScriptExecution,
+    label: "Enable sandbox script execution",
+    description:
+      "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
+    keywords: [
+      "script",
+      "scripts",
+      "sandbox",
+      "attachments",
+      "mustard",
+      "agent",
+      "experiment",
     ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",

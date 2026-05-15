@@ -17,8 +17,8 @@ import {
   Loader2,
   X,
   Sparkles,
-  ChevronDown,
   Lightbulb,
+  ChevronDown,
   ChevronRight,
   MousePointerClick,
   Power,
@@ -81,6 +81,7 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
+import { PreviewToolbar } from "./PreviewToolbar";
 
 interface ErrorBannerProps {
   error:
@@ -1427,24 +1428,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [appUrl, reloadKey, selectedAppId]);
 
-  // Display loading state
-  if (loading) {
-    return (
-      <div className="flex flex-col h-full relative">
-        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-          <div className="relative w-5 h-5 animate-spin">
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
-            <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
-            <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
-          </div>
-          <p className="text-gray-600 dark:text-gray-300">
-            Preparing app preview...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Display message if no app is selected
   if (selectedAppId === null) {
     return (
@@ -1462,9 +1445,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     <div className="flex flex-col h-full">
       {/* Browser-style header - hide when annotator is active */}
       {!annotatorMode && (
-        <div className="flex items-center p-2 border-b space-x-2">
-          {/* Navigation Buttons */}
-          <div className="flex space-x-1">
+        <PreviewToolbar>
+          {/* Browser navigation group */}
+          <div className="flex items-center space-x-2 ml-auto">
             {isCloudMode && (
               <Tooltip>
                 <TooltipTrigger
@@ -1482,203 +1465,44 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <TooltipContent>Running in a Cloud sandbox</TooltipContent>
               </Tooltip>
             )}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    data-testid="preview-toggle-chat-panel-button"
-                  />
-                }
-              >
-                {isChatPanelHidden ? (
-                  <Maximize2 size={16} />
-                ) : (
-                  <Minimize2 size={16} />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>
-                {isChatPanelHidden ? "Show chat" : "Hide chat"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleActivateComponentSelector}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isPicking
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-pick-element-button"
-                  />
-                }
-              >
-                <MousePointerClick size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {isPicking
-                  ? "Deactivate component selector"
-                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleAnnotatorClick}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      annotatorMode
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      isPicking ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-annotator-button"
-                  />
-                }
-              >
-                <Pen size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
-              </TooltipContent>
-            </Tooltip>
-            <button
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-              disabled={!canGoBack || loading || !selectedAppId}
-              onClick={handleNavigateBack}
-              data-testid="preview-navigate-back-button"
-            >
-              <ArrowLeft size={16} />
-            </button>
-            <button
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-              disabled={!canGoForward || loading || !selectedAppId}
-              onClick={handleNavigateForward}
-              data-testid="preview-navigate-forward-button"
-            >
-              <ArrowRight size={16} />
-            </button>
-            <button
-              onClick={handleReload}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-              disabled={loading || !selectedAppId}
-              data-testid="preview-refresh-button"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-
-          {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
-          <div className="relative flex-grow min-w-20">
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                <span
-                  className="truncate flex-1 mr-2 min-w-0"
-                  data-testid="preview-address-bar-path"
+            <div className="flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full p-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                      disabled={!canGoBack || loading || !selectedAppId}
+                      onClick={handleNavigateBack}
+                      data-testid="preview-navigate-back-button"
+                      aria-label="Navigate back"
+                    />
+                  }
                 >
-                  {(() => {
-                    try {
-                      return new URL(navigationHistory[currentHistoryPosition])
-                        .pathname;
-                    } catch {
-                      return "/";
-                    }
-                  })()}
-                </span>
-                <ChevronDown size={14} className="flex-shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                {routesLoading ? (
-                  <DropdownMenuItem disabled>
-                    Loading routes...
-                  </DropdownMenuItem>
-                ) : routesError ? (
-                  <DropdownMenuItem disabled>
-                    Unable to load routes
-                  </DropdownMenuItem>
-                ) : availableRoutes.length > 0 ? (
-                  availableRoutes.map((route) => (
-                    <DropdownMenuItem
-                      key={route.path}
-                      onClick={() => navigateToRoute(route.path)}
-                      className="flex justify-between"
-                    >
-                      <span>{route.label}</span>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs">
-                        {route.path}
-                      </span>
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    No routes detected
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <ArrowLeft size={16} />
+                </TooltipTrigger>
+                <TooltipContent>Navigate back</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                      disabled={!canGoForward || loading || !selectedAppId}
+                      onClick={handleNavigateForward}
+                      data-testid="preview-navigate-forward-button"
+                      aria-label="Navigate forward"
+                    />
+                  }
+                >
+                  <ArrowRight size={16} />
+                </TooltipTrigger>
+                <TooltipContent>Navigate forward</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex space-x-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={onRestart}
-                    className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-                  />
-                }
-              >
-                <Power size={16} />
-                <span>{isCloudMode ? "Restart Sandbox" : "Restart"}</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
-              </TooltipContent>
-            </Tooltip>
-            <button
-              data-testid="preview-open-browser-button"
-              onClick={async () => {
-                try {
-                  const url = await resolvePreviewBrowserUrl({
-                    isCloudMode,
-                    selectedAppId,
-                    originalUrl,
-                    createCloudSandboxShareLink,
-                  });
-                  await ipc.system.openExternalUrl(url);
-                } catch (error) {
-                  showError(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to open cloud sandbox share link.",
-                  );
-                }
-              }}
-              disabled={
-                isCloudMode
-                  ? selectedAppId === null || isCreatingCloudSandboxShareLink
-                  : !originalUrl
-              }
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            >
-              <ExternalLink size={16} />
-            </button>
-
-            {/* Device Mode Button */}
+          {/* Address Bar - white pill with device mode, refresh + external inside */}
+          <div className="relative w-1/2 min-w-20 flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
             <Popover open={isDevicePopoverOpen} modal={false}>
               <Tooltip>
                 <TooltipTrigger
@@ -1692,14 +1516,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                         setIsDevicePopoverOpen(!isDevicePopoverOpen);
                       }}
                       className={cn(
-                        "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                        "flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300",
                         deviceMode !== "desktop" &&
                           "bg-gray-200 dark:bg-gray-700",
                       )}
                     />
                   }
                 >
-                  <MonitorSmartphone size={16} />
+                  <MonitorSmartphone size={14} />
                 </TooltipTrigger>
                 <TooltipContent>Device Mode</TooltipContent>
               </Tooltip>
@@ -1760,99 +1584,326 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 </ToggleGroup>
               </PopoverContent>
             </Popover>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center flex-1 min-w-[2rem] py-1 pl-2 pr-1 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+                <span
+                  className="truncate flex-1 min-w-0 text-left"
+                  data-testid="preview-address-bar-path"
+                >
+                  {(() => {
+                    try {
+                      return new URL(navigationHistory[currentHistoryPosition])
+                        .pathname;
+                    } catch {
+                      return "/";
+                    }
+                  })()}
+                </span>
+                <ChevronDown
+                  size={12}
+                  className="flex-shrink-0 ml-1 opacity-50"
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-full">
+                {routesLoading ? (
+                  <DropdownMenuItem disabled>
+                    Loading routes...
+                  </DropdownMenuItem>
+                ) : routesError ? (
+                  <DropdownMenuItem disabled>
+                    Unable to load routes
+                  </DropdownMenuItem>
+                ) : availableRoutes.length > 0 ? (
+                  availableRoutes.map((route) => (
+                    <DropdownMenuItem
+                      key={route.path}
+                      onClick={() => navigateToRoute(route.path)}
+                      className="flex justify-between"
+                    >
+                      <span>{route.label}</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-xs">
+                        {route.path}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>
+                    No routes detected
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleReload}
+                    className="flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                    disabled={loading || !selectedAppId}
+                    data-testid="preview-refresh-button"
+                    aria-label="Refresh preview"
+                  />
+                }
+              >
+                <RefreshCw size={14} />
+              </TooltipTrigger>
+              <TooltipContent>Refresh preview</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    data-testid="preview-open-browser-button"
+                    aria-label="Open in browser"
+                    onClick={async () => {
+                      try {
+                        const url = await resolvePreviewBrowserUrl({
+                          isCloudMode,
+                          selectedAppId,
+                          originalUrl,
+                          createCloudSandboxShareLink,
+                        });
+                        await ipc.system.openExternalUrl(url);
+                      } catch (error) {
+                        showError(
+                          error instanceof Error
+                            ? error.message
+                            : "Failed to open cloud sandbox share link.",
+                        );
+                      }
+                    }}
+                    disabled={
+                      isCloudMode
+                        ? selectedAppId === null ||
+                          isCreatingCloudSandboxShareLink
+                        : !originalUrl
+                    }
+                    className="flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                  />
+                }
+              >
+                <ExternalLink size={14} />
+              </TooltipTrigger>
+              <TooltipContent>Open in browser</TooltipContent>
+            </Tooltip>
           </div>
-        </div>
+
+          {/* Right action group - restart, editing tools, panel toggle */}
+          <div className="flex items-center space-x-1 ml-auto pl-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onRestart}
+                    data-testid="preview-restart-button"
+                    aria-label={
+                      isCloudMode ? "Restart Cloud Sandbox" : "Restart"
+                    }
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                  />
+                }
+              >
+                <Power size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleAnnotatorClick}
+                    aria-label={
+                      annotatorMode
+                        ? "Annotator mode active"
+                        : "Activate annotator"
+                    }
+                    aria-pressed={annotatorMode}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  />
+                }
+              >
+                <Pen size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    aria-label={
+                      isPicking
+                        ? "Deactivate component selector"
+                        : "Select component"
+                    }
+                    aria-pressed={isPicking}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-pick-element-button"
+                  />
+                }
+              >
+                <MousePointerClick size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isPicking
+                  ? "Deactivate component selector"
+                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
+                    aria-pressed={isChatPanelHidden}
+                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    data-testid="preview-toggle-chat-panel-button"
+                  />
+                }
+              >
+                {isChatPanelHidden ? (
+                  <Maximize2 size={16} />
+                ) : (
+                  <Minimize2 size={16} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {isChatPanelHidden ? "Show chat" : "Hide chat"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </PreviewToolbar>
       )}
 
       <div className="relative flex-grow overflow-hidden">
-        <ErrorBanner
-          error={errorMessage}
-          onDismiss={() => setErrorMessage(undefined)}
-          onAIFix={() => {
-            if (selectedChatId) {
-              streamMessage({
-                prompt: `Fix error: ${errorMessage?.message}`,
-                chatId: selectedChatId,
-              });
-            }
-          }}
-        />
-
-        {!appUrl ? (
+        {loading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
+            <div className="relative w-5 h-5 animate-spin">
+              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
+              <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
+              <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
+            </div>
             <p className="text-gray-600 dark:text-gray-300">
-              Starting your app server...
+              Preparing app preview...
             </p>
           </div>
         ) : (
-          <div
-            className={cn(
-              "w-full h-full",
-              deviceMode !== "desktop" && "flex justify-center",
-            )}
-          >
-            {annotatorMode && screenshotDataUrl ? (
-              <div
-                className="w-full h-full bg-white dark:bg-gray-950"
-                style={
-                  deviceMode == "desktop"
-                    ? {}
-                    : { width: `${deviceWidthConfig[deviceMode]}px` }
+          <>
+            <ErrorBanner
+              error={errorMessage}
+              onDismiss={() => setErrorMessage(undefined)}
+              onAIFix={() => {
+                if (selectedChatId) {
+                  streamMessage({
+                    prompt: `Fix error: ${errorMessage?.message}`,
+                    chatId: selectedChatId,
+                  });
                 }
-              >
-                {userBudget ? (
-                  <Annotator
-                    screenshotUrl={screenshotDataUrl}
-                    onSubmit={addAttachments}
-                    handleAnnotatorClick={handleAnnotatorClick}
-                  />
-                ) : (
-                  <AnnotatorOnlyForPro
-                    onGoBack={() => setAnnotatorMode(false)}
-                  />
-                )}
+              }}
+            />
+
+            {!appUrl ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
+                <p className="text-gray-600 dark:text-gray-300">
+                  Starting your app server...
+                </p>
               </div>
             ) : (
-              <>
-                <iframe
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-                  data-testid="preview-iframe-element"
-                  onLoad={() => {
-                    setErrorMessage(undefined);
-                    // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
-                    // This prevents re-renders from accidentally changing the iframe src
-                    requestCommitScreenshot();
-                  }}
-                  ref={iframeRef}
-                  key={reloadKey}
-                  title={`Preview for App ${selectedAppId}`}
-                  className="w-full h-full border-none bg-white dark:bg-gray-950"
-                  style={
-                    deviceMode == "desktop"
-                      ? {}
-                      : { width: `${deviceWidthConfig[deviceMode]}px` }
-                  }
-                  src={iframeSrc}
-                  allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-                />
-                {/* Visual Editing Toolbar */}
-                {isProMode &&
-                  visualEditingSelectedComponent &&
-                  selectedAppId && (
-                    <VisualEditingToolbar
-                      selectedComponent={visualEditingSelectedComponent}
-                      iframeRef={iframeRef}
-                      isDynamic={isDynamicComponent}
-                      hasStaticText={hasStaticText}
-                      hasImage={hasImage}
-                      isDynamicImage={isDynamicImage}
-                      currentImageSrc={currentImageSrc}
+              <div
+                className={cn(
+                  "w-full h-full",
+                  deviceMode !== "desktop" && "flex justify-center",
+                )}
+              >
+                {annotatorMode && screenshotDataUrl ? (
+                  <div
+                    className="w-full h-full bg-white dark:bg-gray-950"
+                    style={
+                      deviceMode == "desktop"
+                        ? {}
+                        : { width: `${deviceWidthConfig[deviceMode]}px` }
+                    }
+                  >
+                    {userBudget ? (
+                      <Annotator
+                        screenshotUrl={screenshotDataUrl}
+                        onSubmit={addAttachments}
+                        handleAnnotatorClick={handleAnnotatorClick}
+                      />
+                    ) : (
+                      <AnnotatorOnlyForPro
+                        onGoBack={() => setAnnotatorMode(false)}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <iframe
+                      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                      data-testid="preview-iframe-element"
+                      onLoad={() => {
+                        setErrorMessage(undefined);
+                        // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
+                        // This prevents re-renders from accidentally changing the iframe src
+                        requestCommitScreenshot();
+                      }}
+                      ref={iframeRef}
+                      key={reloadKey}
+                      title={`Preview for App ${selectedAppId}`}
+                      className="w-full h-full border-none bg-white dark:bg-gray-950"
+                      style={
+                        deviceMode == "desktop"
+                          ? {}
+                          : { width: `${deviceWidthConfig[deviceMode]}px` }
+                      }
+                      src={iframeSrc}
+                      allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                     />
-                  )}
-              </>
+                    {/* Visual Editing Toolbar */}
+                    {isProMode &&
+                      visualEditingSelectedComponent &&
+                      selectedAppId && (
+                        <VisualEditingToolbar
+                          selectedComponent={visualEditingSelectedComponent}
+                          iframeRef={iframeRef}
+                          isDynamic={isDynamicComponent}
+                          hasStaticText={hasStaticText}
+                          hasImage={hasImage}
+                          isDynamicImage={isDynamicImage}
+                          currentImageSrc={currentImageSrc}
+                        />
+                      )}
+                  </>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

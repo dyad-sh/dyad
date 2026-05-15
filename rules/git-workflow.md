@@ -14,6 +14,8 @@ git push --force-with-lease -u origin HEAD
 
 This overrides the branch's tracking remote. Always check which remote `origin` points to (`git remote -v`) — for bot workspaces, `origin` is typically the bot's fork, not the upstream repo.
 
+When creating a new worktree branch from `upstream/main` with `git worktree add -b <branch> <path> upstream/main`, Git may set the new branch's upstream to `upstream/main`. Before using push helpers that push to the tracked remote, run `git branch --unset-upstream` or set the upstream to the actual feature branch to avoid treating `main` as the branch target.
+
 If a PR's head branch is on another user's fork and `gh pr view --json maintainerCanModify` returns `false`, bot accounts cannot push fixes to that PR head even if review threads can be resolved. A fallback push to the base repo publishes the commit but does **not** update the original fork PR; call this out in the PR summary and ask the PR author or a maintainer to apply the published commit.
 
 ## `gh pr create` branch detection
@@ -52,6 +54,12 @@ gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
 
+## Formatter Touching Unrelated Skill Files
+
+`npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After
+formatting, check `git status` and revert unrelated skill-file churn before
+committing unless the task intentionally changes those skill docs.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:
@@ -69,11 +77,12 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 - To rebase onto the base repo's main, you must add an `upstream` remote: `git remote add upstream https://github.com/<base-repo>.git`
 - Remote setup for cross-repo PRs: `origin` → fork (push here), `upstream` → base repo (rebase from here)
 - The `GITHUB_TOKEN` can push to the fork if the PR author enabled "Allow edits from maintainers"
-- **`claude-code-action` overwrites origin's fetch URL** to point to the base repo (using `GITHUB_REPOSITORY`). Any workflow that needs to push to the fork must set `pushurl` separately via `git remote set-url --push origin <fork-url>`, because git uses `pushurl` over `url` when both are configured. See `pr-review-responder.yml` and `claude-rebase.yml` for examples.
+- **`claude-code-action` overwrites origin's fetch URL** to point to the base repo (using `GITHUB_REPOSITORY`). Any workflow that needs to push to the fork must set `pushurl` separately via `git remote set-url --push origin <fork-url>`, because git uses `pushurl` over `url` when both are configured.
+- **Fork checkouts also ship the fork's `.claude/settings.json`**, which merges its `permissions.allow` list into the agent's effective allowlist. Strip it after checkout (or skip checkout) — see [rules/claude-github-workflows.md](claude-github-workflows.md) for hardening guidance.
 
 ## GITHUB_TOKEN and workflow chaining
 
-Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow (e.g., `label-rebase-prs.yml` adds `cc:rebase` to trigger `claude-rebase.yml`), the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
+Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow, the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
 
 ## Bash `case` allowlists in workflows
 
@@ -132,7 +141,11 @@ In some Codex shells, pushing to fork remotes can fail immediately with `Repo <o
 
 If `git push`, `gh pr view`, and `gh auth status` fail with only `fetch failed`, but unauthenticated `git ls-remote https://github.com/dyad-sh/dyad HEAD` works, the local `gh-broker` credential helper is unreachable rather than GitHub being down. Check the broker health/token path before retrying pushes; SSH is not a fallback unless `ssh -T git@github.com` succeeds.
 
+If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, the configured broker URL is returning an HTML error page instead of the token API response. Verify `BROKER_BASE_URL` and broker routes such as `/healthz` or `/mint` before changing remotes or retrying GitHub commands.
+
 ## Rebase workflow and conflict resolution
+
+If `git fetch --all` fails on a contributor remote with `would clobber existing tag`, but the output shows `Fetching upstream` completed first, do not treat the rebase as blocked. Run `git fetch upstream` to confirm the base remote is current, then rebase onto `upstream/main`.
 
 ### Handling unstaged changes during rebase
 
@@ -184,3 +197,7 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+
+## Resolving package-lock.json version conflicts after a release bump
+
+When rebasing past an upstream release tag, `package-lock.json` may conflict only on the two top-level `"version"` fields (e.g., `0.45.0` vs your branch's older `0.45.0-beta.1`). The lockfile's dependency tree is otherwise identical to upstream. Resolve by taking upstream's tree (`git checkout --ours package-lock.json` when rebasing onto upstream — `ours` is the rebase target during a `git rebase`), then manually edit the two `"version"` entries to match the current `package.json` version. Running `npm install` afterward is unnecessary just for this; only do it if a real dependency change requires regeneration.

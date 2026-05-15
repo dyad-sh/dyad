@@ -44,6 +44,7 @@ export const NullableChatModeSchema = StoredChatModeSchema.nullable().transform(
  */
 export const ChatSchema = z.object({
   id: z.number(),
+  appId: z.number(),
   title: z.string(),
   messages: z.array(MessageSchema),
   initialCommitHash: z.string().nullable().optional(),

@@ -88,6 +88,11 @@ export async function refreshNeonToken(): Promise<void> {
   }
 }
 
+// Stable timestamp for mock branches so the apply-time staleness check in
+// migration_handlers can run unconditionally (preview and apply observe the
+// same value instead of two fresh `new Date()` calls reading as drift).
+const MOCK_BRANCH_TIMESTAMP = "2024-01-01T00:00:00.000Z";
+
 // Function to get the Neon API client
 export async function getNeonClient(): Promise<Api<unknown>> {
   if (IS_TEST_BUILD) {
@@ -175,8 +180,8 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               id: "test-main-branch-id",
               name: "main",
               project_id: projectId,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              created_at: MOCK_BRANCH_TIMESTAMP,
+              updated_at: MOCK_BRANCH_TIMESTAMP,
               default: true,
             },
             {
@@ -184,8 +189,8 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               name: "development",
               project_id: projectId,
               parent_id: "test-main-branch-id",
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              created_at: MOCK_BRANCH_TIMESTAMP,
+              updated_at: MOCK_BRANCH_TIMESTAMP,
               default: false,
             },
             {
@@ -193,8 +198,8 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               name: "preview",
               project_id: projectId,
               parent_id: "test-development-branch-id",
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              created_at: MOCK_BRANCH_TIMESTAMP,
+              updated_at: MOCK_BRANCH_TIMESTAMP,
               default: false,
             },
           ],

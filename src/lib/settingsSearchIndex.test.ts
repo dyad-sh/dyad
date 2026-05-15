@@ -44,4 +44,28 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       sectionLabel: "Experiments",
     });
   });
+
+  it("includes the sandbox script execution experiment", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.enableSandboxScriptExecution,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.enableSandboxScriptExecution,
+      label: "Enable sandbox script execution",
+      description:
+        "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
+      keywords: [
+        "script",
+        "scripts",
+        "sandbox",
+        "attachments",
+        "mustard",
+        "agent",
+        "experiment",
+      ],
+      sectionId: SECTION_IDS.experiments,
+      sectionLabel: "Experiments",
+    });
+  });
 });

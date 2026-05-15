@@ -18,10 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { GithubRepository } from "@/ipc/types";
 import { useGithubRepos } from "@/hooks/useGithubRepos";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
@@ -52,8 +52,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const [installCommand, setInstallCommand] = useState("");
   const [startCommand, setStartCommand] = useState("");
   const [copyToDyadApps, setCopyToDyadApps] = useState(true);
-  const navigate = useNavigate();
   const { streamMessage } = useStreamChat({ hasChatId: false });
+  const { selectChat } = useSelectChat();
   const { refreshApps } = useLoadApps();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   // GitHub import state
@@ -125,7 +125,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setSelectedAppId(result.app.id);
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
-      navigate({ to: "/chat", search: { id: chatId } });
+      selectChat({ chatId, appId: result.app.id });
       if (!result.hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
@@ -162,7 +162,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setSelectedAppId(result.app.id);
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
-      navigate({ to: "/chat", search: { id: chatId } });
+      selectChat({ chatId, appId: result.app.id });
       if (!result.hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
@@ -262,7 +262,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       );
       onClose();
 
-      navigate({ to: "/chat", search: { id: result.chatId } });
+      selectChat({ chatId: result.chatId, appId: result.appId });
       if (!hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,

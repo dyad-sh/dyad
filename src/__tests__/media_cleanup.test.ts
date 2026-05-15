@@ -21,6 +21,10 @@ const dbMocks = vi.hoisted(() => {
   return { select: mockSelect, from: mockFrom };
 });
 
+const mediaPathMocks = vi.hoisted(() => ({
+  pruneAttachmentManifest: vi.fn(),
+}));
+
 vi.mock("node:fs/promises", () => ({
   default: fsMocks,
   ...fsMocks,
@@ -49,7 +53,9 @@ vi.mock("@/db/schema", () => ({
 }));
 
 vi.mock("@/ipc/utils/media_path_utils", () => ({
+  ATTACHMENTS_MANIFEST_FILE: "attachments-manifest.json",
   DYAD_MEDIA_DIR_NAME: ".dyad/media",
+  pruneAttachmentManifest: mediaPathMocks.pruneAttachmentManifest,
 }));
 
 import {
@@ -66,6 +72,8 @@ describe("cleanupOldMediaFiles", () => {
     logMocks.warn.mockClear();
     dbMocks.select.mockClear();
     dbMocks.from.mockReset();
+    mediaPathMocks.pruneAttachmentManifest.mockReset();
+    mediaPathMocks.pruneAttachmentManifest.mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -113,6 +121,9 @@ describe("cleanupOldMediaFiles", () => {
     expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
     expect(fsMocks.unlink).toHaveBeenCalledWith(
       "/home/user/dyad-apps/my-app/.dyad/media/old-image.png",
+    );
+    expect(mediaPathMocks.pruneAttachmentManifest).toHaveBeenCalledWith(
+      "/home/user/dyad-apps/my-app",
     );
     expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 1 old media files");
     expect(logMocks.warn).not.toHaveBeenCalled();
@@ -175,6 +186,54 @@ describe("cleanupOldMediaFiles", () => {
       return Promise.resolve({ isFile: () => true, mtimeMs: oldMtimeMs });
     });
 
+    fsMocks.unlink.mockResolvedValue(undefined);
+
+    await cleanupOldMediaFiles();
+
+    expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
+    expect(fsMocks.unlink).toHaveBeenCalledWith(
+      expect.stringContaining("old-file.png"),
+    );
+    expect(mediaPathMocks.pruneAttachmentManifest).toHaveBeenCalledWith(
+      "/home/user/dyad-apps/my-app",
+    );
+  });
+
+  it("should keep cleanup going when attachment manifest pruning fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
+
+    const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    const pruneError = new Error("manifest busy");
+
+    dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+    fsMocks.readdir.mockResolvedValue(["old-file.png"]);
+    fsMocks.stat.mockResolvedValue({ isFile: () => true, mtimeMs: oldMtimeMs });
+    fsMocks.unlink.mockResolvedValue(undefined);
+    mediaPathMocks.pruneAttachmentManifest.mockRejectedValue(pruneError);
+
+    await cleanupOldMediaFiles();
+
+    expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
+    expect(logMocks.warn).toHaveBeenCalledWith(
+      "Failed to prune attachment manifest for /home/user/dyad-apps/my-app/.dyad/media:",
+      pruneError,
+    );
+    expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 1 old media files");
+  });
+
+  it("should keep the attachments manifest", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
+
+    const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
+
+    dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+    fsMocks.readdir.mockResolvedValue([
+      "attachments-manifest.json",
+      "old-file.png",
+    ]);
+    fsMocks.stat.mockResolvedValue({ isFile: () => true, mtimeMs: oldMtimeMs });
     fsMocks.unlink.mockResolvedValue(undefined);
 
     await cleanupOldMediaFiles();

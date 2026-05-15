@@ -1,28 +1,34 @@
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { migrationContracts } from "../types/migration";
-import {
-  getConnectionUri,
-  executeNeonSql,
-} from "../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getAppWithNeonBranch } from "../utils/neon_utils";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
-import { gitAdd, gitCommit } from "../utils/git_utils";
 import {
   logger,
-  getProductionBranchId,
-  createTempDrizzleConfig,
-  spawnDrizzleKit,
+  prepareMigrationContext,
   areMigrationDepsInstalled,
-  installMigrationDeps,
+  introspectProdWithCache,
+  introspectBranch,
+  runBaselineGenerate,
+  runDiffGenerate,
+  readPendingMigrationFiles,
+  parseDrizzleMigrationFile,
+  detectDestructiveStatements,
+  deriveDestructiveReasons,
+  invalidateProdIntrospectCache,
+  cleanupWorkDir,
+  getProductionBranchId,
 } from "../utils/migration_utils";
+import { getAppWithNeonBranch } from "../utils/neon_utils";
+import { executeNeonStatementsInTransaction } from "../../neon_admin/neon_context";
+import {
+  storePreview,
+  peekPreview,
+  deletePreview,
+} from "../utils/migration_plan_store";
 
 // =============================================================================
 // Handler Registration
@@ -56,196 +62,161 @@ export function registerMigrationHandlers() {
   );
 
   // -------------------------------------------------------------------------
-  // migration:push
+  // migration:preview
+  //
+  // 1. Resolve dev/prod branches, ensure deps, wipe+recreate work dir.
+  // 2. Introspect prod (cached, 5 min TTL) → write a baseline snapshot.
+  // 3. Introspect dev (always fresh) → run diff generate.
+  // 4. Read pending migration files; the baseline file is hidden from the UI.
+  // 5. Stash the SQL statements in the in-memory plan store keyed by a fresh
+  //    migrationId; the work dir is then discarded — apply will execute
+  //    statements directly via Neon's HTTP transaction.
   // -------------------------------------------------------------------------
-  createTypedHandler(migrationContracts.push, async (_, params) => {
+  createTypedHandler(migrationContracts.preview, async (_, params) => {
     const { appId } = params;
-    logger.info(`Pushing migration for app ${appId}`);
+    logger.info(`Computing migration preview for app ${appId}`);
 
-    // 1. Get app data and resolve branches
-    const { appData, branchId: devBranchId } =
-      await getAppWithNeonBranch(appId);
-    const projectId = appData.neonProjectId!;
-    const { branchId: prodBranchId } = await getProductionBranchId(projectId);
+    const ctx = await prepareMigrationContext({ appId });
+    try {
+      const prodSchemaPath = await introspectProdWithCache({
+        appId,
+        prodBranchId: ctx.prodBranchId,
+        prodUpdatedAt: ctx.prodUpdatedAt,
+        appPath: ctx.appPath,
+        workDir: ctx.workDir,
+        prodConnectionUri: ctx.prodUri,
+      });
 
-    logger.info(
-      `Resolved branches — dev: ${devBranchId}, prod: ${prodBranchId}, project: ${projectId}`,
-    );
+      await runBaselineGenerate({
+        workDir: ctx.workDir,
+        appPath: ctx.appPath,
+        prodSchemaPath,
+        prodConnectionUri: ctx.prodUri,
+      });
 
-    // 2. Guard: dev and prod must be different branches
-    if (devBranchId === prodBranchId) {
-      throw new DyadError(
-        "Active branch is the production branch. Create a development branch first.",
-        DyadErrorKind.Precondition,
-      );
-    }
+      const devSchemaPath = await introspectBranch({
+        appPath: ctx.appPath,
+        workDir: ctx.workDir,
+        subDir: "dev-schema-out",
+        connectionUri: ctx.devUri,
+      });
 
-    // 3. Get connection URIs for both branches
-    const devUri = await getConnectionUri({
-      projectId,
-      branchId: devBranchId,
-    });
-    const prodUri = await getConnectionUri({
-      projectId,
-      branchId: prodBranchId,
-    });
+      await runDiffGenerate({
+        workDir: ctx.workDir,
+        appPath: ctx.appPath,
+        devSchemaPath,
+        devConnectionUri: ctx.devUri,
+      });
 
-    logger.info(
-      `Connection URIs — dev host: ${new URL(devUri).hostname}, prod host: ${new URL(prodUri).hostname}`,
-    );
+      const pending = await readPendingMigrationFiles(ctx.workDir);
+      const userVisible = pending.filter((p) => !p.isBaseline);
 
-    // 4. Validate dev schema has at least one table
-    let tableCount: number;
-    if (IS_TEST_BUILD) {
-      tableCount = 1;
-    } else {
-      let parsed;
-      try {
-        parsed = JSON.parse(
-          await executeNeonSql({
-            projectId,
-            branchId: devBranchId,
-            query:
-              "SELECT count(*) as cnt FROM information_schema.tables WHERE table_schema = 'public'",
-          }),
-        );
-      } catch {
-        throw new DyadError(
-          "Unable to verify development table count",
-          DyadErrorKind.Precondition,
-        );
+      const statements: string[] = [];
+      for (const entry of userVisible) {
+        statements.push(...parseDrizzleMigrationFile(entry.sql));
       }
-      tableCount = parseInt(parsed?.[0]?.cnt ?? "0", 10);
-    }
-    if (!tableCount || tableCount === 0) {
-      throw new DyadError(
-        "Development database has no tables. Create at least one table before migrating.",
-        DyadErrorKind.Precondition,
-      );
-    }
 
-    // 5. Ensure drizzle-kit + drizzle-orm are installed in the user's app
-    const appPath = getDyadAppPath(appData.path);
-    if (!(await areMigrationDepsInstalled(appPath))) {
+      const destructiveStatements = detectDestructiveStatements(statements);
+      const warningReasons = deriveDestructiveReasons(destructiveStatements);
+      const hasDataLoss = destructiveStatements.length > 0;
+
+      const migrationId = storePreview(appId, statements, {
+        projectId: ctx.projectId,
+        prodBranchId: ctx.prodBranchId,
+        prodUpdatedAt: ctx.prodUpdatedAt,
+      });
+
       logger.info(
-        `Migration dependencies not installed in ${appPath}; installing now.`,
+        `Migration preview ${migrationId} for app ${appId}: ${statements.length} statements, ${destructiveStatements.length} destructive`,
       );
-      await installMigrationDeps(appPath);
 
-      try {
-        // Stage only the files modified by the dependency install so we don't
-        // sweep unrelated user changes into the commit.
-        await gitAdd({ path: appPath, filepath: "package.json" });
-        for (const lockfile of [
-          "package-lock.json",
-          "pnpm-lock.yaml",
-          "yarn.lock",
-        ]) {
-          await gitAdd({ path: appPath, filepath: lockfile }).catch(() => {});
-        }
-        await gitCommit({
-          path: appPath,
-          message: "[dyad] install drizzle-kit and drizzle-orm for migrations",
-        });
-        logger.info(`Committed migration dependency install in ${appPath}`);
-      } catch (err) {
-        logger.warn(
-          `Failed to commit migration dependency install. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
-          err,
-        );
-      }
+      return {
+        migrationId,
+        statements,
+        hasDataLoss,
+        warningReasons,
+        destructiveStatements,
+      };
+    } finally {
+      await cleanupWorkDir(ctx.workDir);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // migration:migrate
+  //
+  // Looks up the previously-previewed plan by migrationId and executes its
+  // statements directly against prod inside a single Neon HTTP transaction.
+  // -------------------------------------------------------------------------
+  createTypedHandler(migrationContracts.migrate, async (_, params) => {
+    const { appId, migrationId } = params;
+    logger.info(`Applying migration ${migrationId} for app ${appId}`);
+
+    // Peek first so a failed apply (e.g., transient network error during the
+    // Neon HTTP transaction) leaves the plan in the store; the user can retry
+    // without redoing the preview workflow. We only delete after the
+    // transaction commits successfully (or after we determine the plan is a
+    // no-op / does not belong to this app).
+    const stored = peekPreview(migrationId);
+    if (!stored) {
+      throw new DyadError(
+        "Migration plan expired or already applied. Please start a new migration preview.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    if (stored.appId !== appId) {
+      throw new DyadError(
+        "Migration plan does not belong to this app.",
+        DyadErrorKind.Precondition,
+      );
     }
 
-    // 6. Create temp directory with restricted permissions
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-migration-"));
+    if (stored.statements.length === 0) {
+      logger.info(
+        `Schemas already in sync for app ${appId}, nothing to migrate.`,
+      );
+      deletePreview(migrationId);
+      return { success: true, noChanges: true };
+    }
+
+    const { appData } = await getAppWithNeonBranch(appId);
+    const projectId = appData.neonProjectId!;
+    const { branchId: prodBranchId, updatedAt: prodUpdatedAt } =
+      await getProductionBranchId(projectId);
+
+    // Reject the apply if the production target drifted between preview and
+    // confirm: a different Neon project, a different default branch, or a
+    // newer `updated_at` on that branch all mean the SQL the user reviewed
+    // may not match what would run now.
+    const target = stored.target;
+    const projectChanged = target.projectId !== projectId;
+    const branchChanged = target.prodBranchId !== prodBranchId;
+    const branchAdvanced = target.prodUpdatedAt !== prodUpdatedAt;
+    if (projectChanged || branchChanged || branchAdvanced) {
+      logger.warn(
+        `Migration ${migrationId} for app ${appId} rejected: production target changed since preview (` +
+          `project ${target.projectId}→${projectId}, branch ${target.prodBranchId}→${prodBranchId}, ` +
+          `updatedAt ${target.prodUpdatedAt}→${prodUpdatedAt})`,
+      );
+      throw new DyadError(
+        "The production database changed since this migration was previewed. Please regenerate the preview before applying.",
+        DyadErrorKind.Precondition,
+      );
+    }
 
     try {
-      if (process.platform !== "win32") {
-        await fs.chmod(tmpDir, 0o700);
-      }
-
-      // 6. Write introspect config pointing at dev branch
-      const introspectConfigPath = await createTempDrizzleConfig({
-        tmpDir,
-        configName: "drizzle-introspect.config.js",
+      await executeNeonStatementsInTransaction({
+        projectId,
+        branchId: prodBranchId,
+        statements: stored.statements,
       });
-
-      // 7. Run drizzle-kit introspect to generate schema files
-      const introspectResult = await spawnDrizzleKit({
-        args: ["introspect", `--config=${introspectConfigPath}`],
-        cwd: tmpDir,
-        appPath,
-        connectionUri: devUri,
-      });
-
-      if (introspectResult.exitCode !== 0) {
-        throw new DyadError(
-          `Schema introspection failed: ${introspectResult.stderr || introspectResult.stdout}`,
-          DyadErrorKind.External,
-        );
-      }
-
-      // 8. Find the generated schema file
-      const schemaOutDir = path.join(tmpDir, "schema-out");
-      let schemaFiles: string[];
-      try {
-        schemaFiles = await fs.readdir(schemaOutDir);
-      } catch {
-        throw new DyadError(
-          "drizzle-kit introspect did not generate output. Your development database may have an unsupported schema.",
-          DyadErrorKind.Internal,
-        );
-      }
-
-      const tsSchemaFile =
-        schemaFiles.find((f) => f === "schema.ts") ??
-        schemaFiles.find((f) => f.endsWith(".ts") && f !== "relations.ts");
-      if (!tsSchemaFile) {
-        throw new DyadError(
-          "drizzle-kit introspect did not generate any schema files.",
-          DyadErrorKind.Internal,
-        );
-      }
-
-      logger.info(`Using introspected schema file: ${tsSchemaFile}`);
-
-      // 9. Write push config pointing introspected schema at prod branch
-      const pushConfigPath = await createTempDrizzleConfig({
-        tmpDir,
-        configName: "drizzle-push.config.js",
-        schemaPath: path.join(schemaOutDir, tsSchemaFile),
-      });
-
-      // 10. Run drizzle-kit push directly against production (--force skips
-      //    interactive prompts).
-      // TODO: In a follow-up PR, we should add a warning for destructive changes.
-      const pushResult = await spawnDrizzleKit({
-        args: ["push", "--force", `--config=${pushConfigPath}`],
-        cwd: tmpDir,
-        appPath,
-        connectionUri: prodUri,
-      });
-
-      if (pushResult.exitCode !== 0) {
-        throw new DyadError(
-          `Migration push failed: ${pushResult.stderr || pushResult.stdout}`,
-          DyadErrorKind.External,
-        );
-      }
-
-      // drizzle-kit does not expose a machine-readable "already in sync" flag.
-      const noChanges = /no\s+changes\s+detected/i.test(pushResult.stdout);
+      deletePreview(migrationId);
       logger.info(
-        noChanges
-          ? `Schemas already in sync for app ${appId}, nothing to migrate.`
-          : `Migration push completed successfully for app ${appId}`,
+        `Migration ${migrationId} applied successfully for app ${appId}`,
       );
-      return { success: true, noChanges };
+      return { success: true };
     } finally {
-      // 11. Always clean up temp directory
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
-        logger.warn(`Failed to clean up temp directory ${tmpDir}: ${err}`);
-      });
+      invalidateProdIntrospectCache({ appId, prodBranchId });
     }
   });
 }

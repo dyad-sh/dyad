@@ -35,6 +35,7 @@ import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
+import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -94,6 +95,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   updateTodosTool,
   runTypeChecksTool,
   readGuideTool,
+  executeSandboxScriptTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,
@@ -147,69 +149,6 @@ export function clearPendingConsentsForChat(chatId: number): void {
       pendingConsentResolvers.delete(requestId);
       // Resolve with decline so the tool execution fails gracefully
       entry.resolve("decline");
-    }
-  }
-}
-
-// ============================================================================
-// Questionnaire Response Management
-// ============================================================================
-
-interface PendingQuestionnaireEntry {
-  chatId: number;
-  resolve: (answers: Record<string, string> | null) => void;
-}
-
-const pendingQuestionnaireResolvers = new Map<
-  string,
-  PendingQuestionnaireEntry
->();
-
-const QUESTIONNAIRE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
-export function waitForQuestionnaireResponse(
-  requestId: string,
-  chatId: number,
-): Promise<Record<string, string> | null> {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      const entry = pendingQuestionnaireResolvers.get(requestId);
-      if (entry) {
-        pendingQuestionnaireResolvers.delete(requestId);
-        entry.resolve(null);
-      }
-    }, QUESTIONNAIRE_TIMEOUT_MS);
-
-    pendingQuestionnaireResolvers.set(requestId, {
-      chatId,
-      resolve: (answers) => {
-        clearTimeout(timeout);
-        resolve(answers);
-      },
-    });
-  });
-}
-
-export function resolveQuestionnaireResponse(
-  requestId: string,
-  answers: Record<string, string> | null,
-) {
-  const entry = pendingQuestionnaireResolvers.get(requestId);
-  if (entry) {
-    pendingQuestionnaireResolvers.delete(requestId);
-    entry.resolve(answers);
-  }
-}
-
-/**
- * Clean up all pending questionnaire requests for a given chat.
- * Called when a stream is cancelled/aborted to prevent orphaned promises.
- */
-export function clearPendingQuestionnairesForChat(chatId: number): void {
-  for (const [requestId, entry] of pendingQuestionnaireResolvers) {
-    if (entry.chatId === chatId) {
-      pendingQuestionnaireResolvers.delete(requestId);
-      entry.resolve(null);
     }
   }
 }

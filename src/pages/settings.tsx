@@ -205,6 +205,35 @@ export default function SettingsPage() {
                 <CloudSandboxExperimentSwitch />
               </div>
               <div
+                id={SETTING_IDS.enableSandboxScriptExecution}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-sandbox-script-execution"
+                    aria-label="Enable sandbox script execution"
+                    checked={
+                      !!settings?.experiments?.enableSandboxScriptExecution
+                    }
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        experiments: {
+                          ...settings?.experiments,
+                          enableSandboxScriptExecution: checked,
+                        },
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-sandbox-script-execution">
+                    Enable sandbox script execution
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Allow local-agent attachment scripts to inspect files with
+                  execute_sandbox_script.
+                </div>
+              </div>
+              <div
                 id={SETTING_IDS.blockUnsafeNpmPackages}
                 className="space-y-1 mt-4"
               >

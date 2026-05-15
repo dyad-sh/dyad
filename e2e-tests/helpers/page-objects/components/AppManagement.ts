@@ -25,10 +25,24 @@ export class AppManagement {
     return this.page.getByTestId(`app-list-item-${appName}`);
   }
 
+  async showAppList() {
+    await this.page.getByRole("link", { name: "Apps" }).hover();
+    const viewAllAppsButton = this.page.getByTestId("view-all-apps-button");
+    if (
+      await viewAllAppsButton.isVisible({ timeout: 1_000 }).catch(() => false)
+    ) {
+      await viewAllAppsButton.click();
+    }
+    await expect(this.page.getByTestId("app-list-container")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
   async isCurrentAppNameNone() {
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).toContainText(
-        "no app selected",
+      await expect(this.getTitleBarAppNameButton()).toHaveAttribute(
+        "data-app-name",
+        "",
       );
     }).toPass();
   }
@@ -36,13 +50,14 @@ export class AppManagement {
   async getCurrentAppName() {
     // Make sure to wait for the app to be set to avoid a race condition.
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).not.toContainText(
-        "no app selected",
+      await expect(this.getTitleBarAppNameButton()).not.toHaveAttribute(
+        "data-app-name",
+        "",
       );
     }).toPass();
-    return (await this.getTitleBarAppNameButton().textContent())?.replace(
-      "App: ",
-      "",
+    return (
+      (await this.getTitleBarAppNameButton().getAttribute("data-app-name")) ??
+      undefined
     );
   }
 
@@ -59,7 +74,8 @@ export class AppManagement {
   }
 
   async clickAppListItem({ appName }: { appName: string }) {
-    await this.page.getByTestId(`app-list-item-${appName}`).click();
+    await this.showAppList();
+    await this.getAppListItem({ appName }).click();
   }
 
   async clickOpenInChatButton() {
@@ -106,17 +122,13 @@ export class AppManagement {
     await this.page.getByTestId("connect-supabase-button").click();
   }
 
-  async startDatabaseIntegrationSetup(provider: "supabase" | "neon") {
-    const providerLabel = provider === "supabase" ? "Supabase" : "Neon";
-    await this.page.getByText(providerLabel, { exact: true }).click();
-
-    const setupButton = this.page.getByRole("button", {
-      name: `Set up ${providerLabel}`,
-    });
-    await expect(setupButton).toBeEnabled({
-      timeout: Timeout.MEDIUM,
-    });
-    await setupButton.click();
+  async startDatabaseIntegrationSetup(_provider: "supabase" | "neon") {
+    // The in-chat integration card is now read-only outside the Agent v2
+    // pending-integration flow (which the markdown-driven test fixtures don't
+    // trigger). Navigate to the app details page where the connectors live so
+    // the rest of the setup flow (clickConnect*Button, selectNeonProject, etc.)
+    // can continue against the same UI as before.
+    await this.getTitleBarAppNameButton().click();
   }
 
   async clickConnectNeonButton() {

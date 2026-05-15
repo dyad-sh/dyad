@@ -3,12 +3,11 @@
 - img
 - text: Integration Choose a database provider
 - radiogroup "Choose a database provider":
-  - 'radio "Supabase Visit Supabase website Complete backend as a service: Postgres database, storage and edge functions." [checked]':
+  - 'radio "Supabase Visit Supabase website Complete backend as a service: Postgres database, storage and edge functions." [checked][disabled]':
     - text: ""
     - link "Visit Supabase website":
       - img
     - paragraph: "Complete backend as a service: Postgres database, storage and edge functions."
-- button "Set up Supabase"
 - button "Copy":
   - img
 - img

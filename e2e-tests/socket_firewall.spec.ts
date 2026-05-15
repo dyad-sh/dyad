@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type TestInfo } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -10,6 +10,12 @@ import {
 const originalNpmCache = process.env.npm_config_cache;
 const originalNpmStoreDir = process.env.npm_config_store_dir;
 const originalPnpmStoreDir = process.env.pnpm_config_store_dir;
+const SOCKET_FIREWALL_VERDICT_TIMEOUT = process.env.CI
+  ? 240_000
+  : Timeout.EXTRA_LONG;
+const SOCKET_FIREWALL_TEST_TIMEOUT = process.env.CI
+  ? 360_000
+  : Timeout.EXTRA_LONG * 2;
 
 const testSkipIfWindows = testWithConfigSkipIfWindows({
   preLaunchHook: async ({ userDataDir }) => {
@@ -46,6 +52,15 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
 
 async function openMinimalBuildChat(po: PageObject) {
   await po.setUp();
+  await po.page.evaluate(async (nodeBinDir) => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      customNodePath: nodeBinDir,
+    });
+    await (window as any).electron.ipcRenderer.invoke(
+      "reload-env-path",
+      undefined,
+    );
+  }, path.dirname(process.execPath));
 
   await po.navigation.goToSettingsTab();
   await expect(
@@ -65,9 +80,15 @@ async function openMinimalBuildChat(po: PageObject) {
   };
 }
 
+function extendSocketFirewallTestTimeout(testInfo: TestInfo) {
+  testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
+}
+
 testSkipIfWindows(
   "build mode - safe npm package installs through the real socket firewall path",
-  async ({ po }) => {
+  async ({ po }, testInfo) => {
+    extendSocketFirewallTestTimeout(testInfo);
+
     const { packageJsonPath, pnpmLockPath } = await openMinimalBuildChat(po);
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
@@ -100,7 +121,9 @@ testSkipIfWindows(
 
 testSkipIfWindows(
   "build mode - blocked unsafe npm package shows the real socket verdict and preserves app files",
-  async ({ po }) => {
+  async ({ po }, testInfo) => {
+    extendSocketFirewallTestTimeout(testInfo);
+
     const { packageJsonPath, pnpmLockPath } = await openMinimalBuildChat(po);
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
@@ -116,7 +139,7 @@ testSkipIfWindows(
       name: /Failed to add dependencies: axois\./i,
     });
     await expect(errorCard).toBeVisible({
-      timeout: Timeout.EXTRA_LONG,
+      timeout: SOCKET_FIREWALL_VERDICT_TIMEOUT,
     });
 
     await errorCard.click();

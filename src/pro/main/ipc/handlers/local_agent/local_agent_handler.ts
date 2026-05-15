@@ -41,8 +41,11 @@ import {
   buildAgentToolSet,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
-  clearPendingQuestionnairesForChat,
 } from "./tool_definitions";
+import {
+  questionnaireResolver,
+  integrationResolver,
+} from "./userInputResolvers";
 import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
@@ -287,6 +290,45 @@ function getMidTurnCompactionSummaryIds(
   return hiddenIds;
 }
 
+function getMessageText(message: ModelMessage): string {
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+  return message.content
+    .map((part) =>
+      part && typeof part === "object" && "text" in part
+        ? String(part.text)
+        : "",
+    )
+    .join("\n");
+}
+
+function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
+  if (!isRecord(input)) {
+    return false;
+  }
+
+  if (
+    toolName === "execute_sandbox_script" &&
+    typeof input.script === "string"
+  ) {
+    return (
+      /\b(?:read_file|file_stats)\s*\(\s*["']attachments:/.test(input.script) ||
+      /\blist_files\s*\(\s*["']attachments:?["']\s*\)/.test(input.script)
+    );
+  }
+  if (toolName === "read_file" && typeof input.path === "string") {
+    return input.path.startsWith("attachments:");
+  }
+  if (toolName === "copy_file" && typeof input.from === "string") {
+    return input.from.startsWith("attachments:");
+  }
+  return false;
+}
+
 /**
  * Handle a chat stream in local-agent mode
  */
@@ -303,6 +345,7 @@ export async function handleLocalAgentStream(
     messageOverride,
     settingsOverride,
     referencedApps = [],
+    currentTurnHasOnDiskAttachment,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -331,6 +374,7 @@ export async function handleLocalAgentStream(
       appName: string;
       appPath: string;
     }[];
+    currentTurnHasOnDiskAttachment?: boolean;
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
@@ -609,6 +653,10 @@ export async function handleLocalAgentStream(
       onWarningMessage: (message) => {
         warningMessages.push(message);
       },
+      onAttachmentAccess: () => {
+        usedAttachmentAccessTool = true;
+      },
+      abortSignal: abortController.signal,
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -631,6 +679,15 @@ export async function handleLocalAgentStream(
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
       : buildChatMessageHistory(chat.messages);
+    const latestUserMessage = [...messageHistory]
+      .reverse()
+      .find((message) => message.role === "user");
+    const shouldWarnIfAttachmentUnread =
+      currentTurnHasOnDiskAttachment ??
+      (latestUserMessage != null &&
+        getMessageText(latestUserMessage).includes(
+          "Attachments available on disk",
+        ));
 
     // Inject the referenced-apps manifest into the user's latest message as a
     // `<system-reminder>` block (instead of appending it to the system prompt)
@@ -660,6 +717,7 @@ export async function handleLocalAgentStream(
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+    let usedAttachmentAccessTool = false;
     // Track total steps across all passes to detect step limit
     let totalStepsExecuted = 0;
     let hitStepLimit = false;
@@ -763,7 +821,10 @@ export async function handleLocalAgentStream(
             tools: allTools,
             stopWhen: [
               stepCountIs(maxToolCallSteps),
-              // User needs to explicitly set up integration before AI can continue.
+              // Stop after the integration tool so the next stream is started
+              // with a freshly built system prompt that includes the new
+              // Supabase/Neon context. The frontend auto-triggers a hidden
+              // continuation message once the user clicks Continue.
               hasToolCall(addIntegrationTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
               ...(planModeOnly
@@ -987,9 +1048,10 @@ export async function handleLocalAgentStream(
             for await (const part of fullStream) {
               if (abortController.signal.aborted) {
                 logger.log(`Stream aborted for chat ${req.chatId}`);
-                // Clean up pending consent/questionnaire requests to prevent stale UI banners
+                // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
                 clearPendingConsentsForChat(req.chatId);
-                clearPendingQuestionnairesForChat(req.chatId);
+                questionnaireResolver.abortChat(req.chatId);
+                integrationResolver.abortChat(req.chatId);
                 break;
               }
 
@@ -1087,6 +1149,9 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-call":
+                  if (isAttachmentAccessToolCall(part.toolName, part.input)) {
+                    usedAttachmentAccessTool = true;
+                  }
                   maybeCaptureRetryReplayEvent(retryReplayEvents, part);
                   // Tool execution happens via execute callbacks
                   break;
@@ -1368,6 +1433,19 @@ export async function handleLocalAgentStream(
       });
     }
 
+    if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
+      const unreadAttachmentWarning =
+        "Your model did not reference the attached file. If this was unintended, try a larger model or paste the contents inline.";
+      const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;
+      fullResponse += warningMessage;
+      await updateResponseInDb(placeholderMessageId, fullResponse);
+      sendChunk(fullResponse);
+      sendTelemetryEvent("sandbox.tool.unused_with_attachment", {
+        chatId: req.chatId,
+        appId: ctx.appId,
+      });
+    }
+
     // Save the AI SDK messages for multi-turn tool call preservation
     try {
       const aiMessagesJson = getAiMessagesJsonIfWithinLimit(
@@ -1437,10 +1515,11 @@ export async function handleLocalAgentStream(
 
     return true; // Success
   } catch (error) {
-    // Clean up any pending consent/questionnaire requests for this chat to prevent
+    // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
-    clearPendingQuestionnairesForChat(req.chatId);
+    questionnaireResolver.abortChat(req.chatId);
+    integrationResolver.abortChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation

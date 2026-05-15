@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("send button disabled during pending proposal", async ({ po }) => {
@@ -8,7 +8,9 @@ test("send button disabled during pending proposal", async ({ po }) => {
   await po.sendPrompt("Create a simple React component");
 
   // Wait for proposal buttons to appear (ensuring proposal is rendered)
-  await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible();
+  await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Type something in the input to ensure it's not disabled due to empty input
   await po.chatActions.getChatInput().fill("test message");
@@ -33,7 +35,9 @@ test("send button disabled during pending proposal - reject", async ({
   await po.sendPrompt("Create a simple React component");
 
   // Wait for proposal buttons to appear (ensuring proposal is rendered)
-  await expect(po.page.getByTestId("reject-proposal-button")).toBeVisible();
+  await expect(po.page.getByTestId("reject-proposal-button")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Type something in the input to ensure it's not disabled due to empty input
   await po.chatActions.getChatInput().fill("test message");

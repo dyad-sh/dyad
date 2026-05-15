@@ -32,6 +32,12 @@ export const pendingQuestionnaireAtom = atom<
   Map<number, PlanQuestionnairePayload>
 >(new Map());
 
+// Transient flag: chatIds that just had a questionnaire submitted (for brief confirmation)
+// "visible" = showing, "fading" = fade-out in progress
+export const questionnaireSubmittedChatIdsAtom = atom<
+  Map<number, "visible" | "fading">
+>(new Map());
+
 export interface PlanAnnotation {
   id: string;
   chatId: number;
@@ -97,9 +103,3 @@ export function clearPlanAnnotations(
   next.delete(chatId);
   return next;
 }
-
-// Transient flag: chatIds that just had a questionnaire submitted (for brief confirmation)
-// "visible" = showing, "fading" = fade-out in progress
-export const questionnaireSubmittedChatIdsAtom = atom<
-  Map<number, "visible" | "fading">
->(new Map());

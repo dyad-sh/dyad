@@ -35,6 +35,12 @@ jobs:
         with:
           fetch-depth: 200
 
+      # Strip project Claude settings so the narrow allowed_tools below is authoritative.
+      # Without this, .claude/settings.json's permissions.allow list (Bash(git:*), etc.)
+      # merges in and silently widens the agent's effective allowlist.
+      - name: Strip project Claude settings
+        run: rm -f .claude/settings.json .claude/settings.local.json
+
       - name: Review AGENTS.md and rules/
         uses: anthropics/claude-code-action@v1.0.96
         env:

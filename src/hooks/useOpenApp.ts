@@ -11,6 +11,6 @@ export function useOpenApp() {
   return (appId: number) => {
     setSelectedAppId(appId);
     setSelectedChatId(null);
-    navigate({ to: "/", search: { appId } });
+    navigate({ to: "/app-details", search: { appId } });
   };
 }

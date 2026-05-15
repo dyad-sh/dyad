@@ -26,8 +26,22 @@ testSkipIfWindows(
     const acceptButton = po.page.getByRole("button", { name: "Accept Plan" });
     await expect(acceptButton).toBeVisible({ timeout: Timeout.MEDIUM });
 
-    // Accept the plan (plans are now always saved to .dyad/plans/)
-    await acceptButton.click();
+    // The "We've switched you to a new chat" sonner toast at the bottom-right
+    // can overlap the Accept Plan button. Dismiss it so a normal click works
+    // and Playwright's actionability checks are honored.
+    await expect(async () => {
+      await po.toastNotifications.dismissAllToasts();
+      await expect(acceptButton).toBeEnabled({ timeout: 2_000 });
+      try {
+        await acceptButton.click({ timeout: 2_000 });
+      } catch (error) {
+        const currentChatId = new URL(po.page.url()).searchParams.get("id");
+        if (currentChatId && currentChatId !== initialChatId) {
+          return;
+        }
+        throw error;
+      }
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     // Wait for navigation to a different chat
     await expect(async () => {
@@ -216,7 +230,9 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/accept-plan");
 
     // Wait for the "View Plan" button to appear
-    const viewPlanButton = po.page.getByRole("button", { name: "View Plan" });
+    const viewPlanButton = po.page
+      .getByRole("button", { name: "View Plan" })
+      .last();
     await expect(viewPlanButton).toBeVisible({ timeout: Timeout.MEDIUM });
 
     // Verify plan content is visible

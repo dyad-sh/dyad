@@ -26,6 +26,12 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
   // Click the migrate button
   await migrateButton.click();
 
+  // Approve the SQL preview dialog before reaching the confirm dialog
+  await expect(
+    po.page.getByRole("heading", { name: "Review migration SQL" }),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await po.page.getByRole("button", { name: "Continue" }).click();
+
   await expect(
     po.page.getByText(
       "This will modify the main schema in Test Project using the schema from development.",

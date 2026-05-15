@@ -40,6 +40,7 @@ import { securityContracts } from "../types/security";
 import { miscContracts, miscEvents } from "../types/misc";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import { planEvents, planContracts } from "../types/plan";
+import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";
@@ -98,6 +99,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(miscContracts),
   ...getInvokeChannels(freeAgentQuotaContracts),
   ...getInvokeChannels(planContracts),
+  ...getInvokeChannels(integrationContracts),
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
@@ -126,6 +128,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
+  ...getReceiveChannels(integrationEvents),
 ] as const;
 
 // =============================================================================

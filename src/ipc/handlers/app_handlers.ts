@@ -1205,6 +1205,61 @@ async function searchAppFilesWithRipgrep({
   });
 }
 
+async function deleteAppById(appId: number): Promise<void> {
+  return withLock(appId, async () => {
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    if (runningApps.has(appId)) {
+      const appInfo = runningApps.get(appId)!;
+      try {
+        logger.log(`Stopping app ${appId} before deletion.`);
+        await stopAppByInfo(appId, appInfo);
+      } catch (error: any) {
+        logger.error(`Error stopping app ${appId} before deletion:`, error);
+        // Continue with deletion even if stopping fails
+      }
+    }
+
+    // Clear logs for this app to prevent memory leak
+    clearLogs(appId);
+
+    try {
+      await db.delete(apps).where(eq(apps.id, appId));
+      // Note: Associated chats will cascade delete
+    } catch (error: any) {
+      logger.error(`Error deleting app ${appId} from database:`, error);
+      throw new DyadError(
+        `Failed to delete app from database: ${error.message}`,
+        DyadErrorKind.External,
+      );
+    }
+
+    const appPath = getDyadAppPath(app.path);
+    try {
+      // Use built-in retries because a dev server we just killed may still be
+      // flushing writes to `.next/` or node_modules for a brief window — that
+      // races with rm and surfaces as ENOTEMPTY/EBUSY without retries.
+      await fsPromises.rm(appPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      });
+    } catch (error: any) {
+      logger.error(`Error deleting app files for app ${appId}:`, error);
+      throw new Error(
+        `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+      );
+    }
+  });
+}
+
 export function registerAppHandlers() {
   registerCloudSandboxSyncUpdateListener();
 
@@ -1915,57 +1970,33 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.deleteApp, async (_, params) => {
-    const { appId } = params;
-    // Static server worker is NOT terminated here anymore
+    await deleteAppById(params.appId);
+  });
 
-    return withLock(appId, async () => {
-      // Check if app exists
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+  createTypedHandler(appContracts.deleteApps, async (_, params) => {
+    const results: {
+      appId: number;
+      success: boolean;
+      error?: string;
+    }[] = [];
 
-      if (!app) {
-        throw new DyadError("App not found", DyadErrorKind.NotFound);
-      }
-
-      // Stop the app if it's running
-      if (runningApps.has(appId)) {
-        const appInfo = runningApps.get(appId)!;
+    await Promise.all(
+      params.appIds.map(async (appId) => {
         try {
-          logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
-          await stopAppByInfo(appId, appInfo);
+          await deleteAppById(appId);
+          results.push({ appId, success: true });
         } catch (error: any) {
-          logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
-          // Continue with deletion even if stopping fails
+          logger.error(`Error deleting app ${appId} in bulk delete:`, error);
+          results.push({
+            appId,
+            success: false,
+            error: error?.message ?? String(error),
+          });
         }
-      }
+      }),
+    );
 
-      // Clear logs for this app to prevent memory leak
-      clearLogs(appId);
-
-      // Delete app from database
-      try {
-        await db.delete(apps).where(eq(apps.id, appId));
-        // Note: Associated chats will cascade delete
-      } catch (error: any) {
-        logger.error(`Error deleting app ${appId} from database:`, error);
-        throw new DyadError(
-          `Failed to delete app from database: ${error.message}`,
-          DyadErrorKind.External,
-        );
-      }
-
-      // Delete app files
-      const appPath = getDyadAppPath(app.path);
-      try {
-        await fsPromises.rm(appPath, { recursive: true, force: true });
-      } catch (error: any) {
-        logger.error(`Error deleting app files for app ${appId}:`, error);
-        throw new Error(
-          `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
-        );
-      }
-    });
+    return { results };
   });
 
   createTypedHandler(appContracts.addToFavorite, async (_, params) => {

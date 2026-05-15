@@ -17,9 +17,7 @@ test("concurrent chat", async ({ po }) => {
   // Find the tab that contains the "Chat in progress" indicator and click it
   const chat1TabContainer = po.page
     .locator('[aria-label="Chat in progress"]')
-    .locator(
-      "xpath=ancestor::div[contains(@class, 'flex') and contains(@class, 'h-10')]",
-    );
+    .locator("xpath=ancestor::div[@draggable][1]");
   await expect(chat1TabContainer).toBeVisible();
 
   // Click the button inside the tab to select it

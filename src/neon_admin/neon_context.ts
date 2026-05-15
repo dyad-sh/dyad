@@ -160,6 +160,64 @@ export async function executeNeonSql({
   }
 }
 
+/**
+ * Execute a list of SQL statements against a Neon database in a single
+ * non-interactive Postgres transaction over HTTP. Either every statement
+ * commits or the whole batch rolls back. PostgreSQL DDL is transactional, so
+ * this is safe for migration apply.
+ *
+ * Caveat: a small set of statements (e.g. `CREATE INDEX CONCURRENTLY`) cannot
+ * run inside a transaction. drizzle-kit's default output does not produce
+ * those, but the error message surfaces the failing statement index so the
+ * user can act on it.
+ */
+export async function executeNeonStatementsInTransaction({
+  projectId,
+  branchId,
+  statements,
+}: {
+  projectId: string;
+  branchId: string;
+  statements: string[];
+}): Promise<{ executed: number }> {
+  if (IS_TEST_BUILD) {
+    return { executed: statements.length };
+  }
+
+  if (statements.length === 0) {
+    return { executed: 0 };
+  }
+
+  let connectionUri: string;
+  try {
+    connectionUri = await getConnectionUri({ projectId, branchId });
+  } catch (error) {
+    logger.error("Failed to resolve Neon connection URI:", error);
+    throw new DyadError(
+      `Failed to resolve Neon connection: ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.External,
+    );
+  }
+
+  const sql = neon(connectionUri);
+  try {
+    // Returning an array of unawaited query promises is intentional: the
+    // `@neondatabase/serverless` HTTP driver collects them into a single
+    // batched POST wrapped in `BEGIN`/`COMMIT`. A socket-based driver (e.g.
+    // `pg`) would expect the callback to `await` each query sequentially —
+    // do not swap drivers without revisiting this call.
+    await sql.transaction((txn) => statements.map((s) => txn.query(s, [])));
+    return { executed: statements.length };
+  } catch (error) {
+    logger.error("Error applying migration transaction on Neon:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new DyadError(
+      `Failed to apply migration on Neon (transaction rolled back): ${message}`,
+      DyadErrorKind.External,
+    );
+  }
+}
+
 // =============================================================================
 // Schema Introspection Queries
 // =============================================================================

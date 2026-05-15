@@ -55,6 +55,11 @@ interface GitHubBranch {
   commit: { sha: string };
 }
 
+interface LinkedGitHubRepo {
+  org: string;
+  repo: string;
+}
+
 interface ConnectedGitHubConnectorProps {
   appId: number;
   app: any;
@@ -70,6 +75,7 @@ export interface UnconnectedGitHubConnectorProps {
   refreshSettings: () => void;
   handleRepoSetupComplete: () => void;
   expanded?: boolean;
+  linkedRepo?: LinkedGitHubRepo;
 }
 
 function ConnectedGitHubConnector({
@@ -664,6 +670,7 @@ export function UnconnectedGitHubConnector({
   refreshSettings,
   handleRepoSetupComplete,
   expanded,
+  linkedRepo,
 }: UnconnectedGitHubConnectorProps) {
   // --- Collapsible State ---
   const [isExpanded, setIsExpanded] = useState(expanded || false);
@@ -917,6 +924,15 @@ export function UnconnectedGitHubConnector({
   if (!settings?.githubAccessToken) {
     return (
       <div className="mt-1 w-full" data-testid="github-unconnected-repo">
+        {linkedRepo && (
+          <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="font-medium">Reconnect your GitHub account</p>
+            <p className="mt-1">
+              This app is linked to {linkedRepo.org}/{linkedRepo.repo}, but
+              GitHub credentials are missing from settings.
+            </p>
+          </div>
+        )}
         <Button
           onClick={handleConnectToGithub}
           className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
@@ -1267,6 +1283,11 @@ export function GitHubConnector({
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
   const [pendingAutoSync, setPendingAutoSync] = useState(false);
+  const linkedRepo =
+    app?.githubOrg && app?.githubRepo
+      ? { org: app.githubOrg, repo: app.githubRepo }
+      : undefined;
+  const hasGitHubCredentials = !!settings?.githubAccessToken;
 
   const handleRepoSetupComplete = useCallback(() => {
     setPendingAutoSync(true);
@@ -1277,7 +1298,7 @@ export function GitHubConnector({
     setPendingAutoSync(false);
   }, []);
 
-  if (app?.githubOrg && app?.githubRepo && appId) {
+  if (linkedRepo && hasGitHubCredentials && appId) {
     return (
       <ConnectedGitHubConnector
         appId={appId}
@@ -1296,6 +1317,7 @@ export function GitHubConnector({
         refreshSettings={refreshSettings}
         handleRepoSetupComplete={handleRepoSetupComplete}
         expanded={expanded}
+        linkedRepo={linkedRepo}
       />
     );
   }

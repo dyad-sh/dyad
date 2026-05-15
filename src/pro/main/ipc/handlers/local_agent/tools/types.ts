@@ -99,6 +99,16 @@ export interface AgentContext {
    * Queues a warning toast to be shown to the user when the turn completes.
    */
   onWarningMessage?: (message: string) => void;
+  /**
+   * Marks that the current turn actually accessed an attachment path.
+   */
+  onAttachmentAccess?: () => void;
+  /**
+   * Stream-scoped abort signal. Tools that block on user-driven async work
+   * (e.g. waiting for an integration response) should race their wait against
+   * this signal so they don't keep the stream alive after a cancel.
+   */
+  abortSignal?: AbortSignal;
 }
 
 // ============================================================================

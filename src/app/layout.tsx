@@ -16,8 +16,10 @@ import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
+import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
+import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 
@@ -35,12 +37,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Initialize plan events listener
   usePlanEvents();
+  useIntegrationEvents();
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();
 
   // Process queued messages globally (even when not on chat page)
   useQueueProcessor();
+
+  // Auto-send integration continuation messages and clean up stale integration
+  // state at the root level — keeps the dispatch alive even if the in-chat
+  // card unmounts (e.g. virtualized scroll-out).
+  useIntegrationContinuation();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
@@ -106,12 +114,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <>
       <ThemeProvider>
         <DeepLinkProvider>
-          <SidebarProvider>
+          <SidebarProvider defaultOpen={false}>
             <TitleBar />
             <AppSidebar />
             <div
               id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background"
+              className="flex h-screenish w-full overflow-x-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background"
             >
               {children}
             </div>

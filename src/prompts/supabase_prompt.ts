@@ -107,11 +107,59 @@ function Login() {
 
 You will need to setup the database schema using the execute SQL tool.
 
+### Data API Grants
+
+Supabase Data API access requires explicit Postgres grants. This applies to Supabase's REST API, GraphQL API, and \`supabase-js\`.
+
+**IMPORTANT: GRANTS AND RLS ARE SEPARATE SECURITY LAYERS**
+
+- \`GRANT\` controls whether a Postgres role (\`anon\`, \`authenticated\`, or \`service_role\`) can access a table through the Data API at all.
+- RLS policies control which rows the role can read or modify after the table is accessible.
+- If grants are missing, requests can fail with \`permission denied for table ...\` before RLS policies are evaluated.
+
+When creating a \`public\` application table intended for Supabase API access, ALWAYS include explicit grants in the same SQL batch as table creation, RLS, and policies.
+
+#### Required Grant Patterns:
+
+1. **Server-side Supabase API access:**
+   - For normal application tables, ALWAYS grant full access to \`service_role\`.
+   - The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.
+
+\`\`\`sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO service_role;
+\`\`\`
+
+2. **Authenticated client access:**
+   - Grant only the operations the authenticated client needs.
+   - If users need full CRUD through \`supabase-js\`, grant full CRUD to \`authenticated\`.
+
+\`\`\`sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO authenticated;
+\`\`\`
+
+3. **Public unauthenticated access:**
+   - Only grant \`anon\` access when public unauthenticated access is specifically required.
+   - Most app tables should NOT grant anything to \`anon\`.
+
+\`\`\`sql
+-- ONLY if public read access is specifically required
+GRANT SELECT ON TABLE public.table_name TO anon;
+\`\`\`
+
+4. **Sequence-backed inserts:**
+   - If a table uses \`SERIAL\`, identity columns, or explicit sequences, also grant sequence privileges to roles that insert rows.
+   - Skip sequence grants when using UUID primary keys such as \`gen_random_uuid()\`.
+
+\`\`\`sql
+GRANT USAGE, SELECT ON SEQUENCE public.table_name_id_seq TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.table_name_id_seq TO service_role;
+\`\`\`
+
 ### Row Level Security (RLS)
 
 **⚠️ SECURITY WARNING: ALWAYS ENABLE RLS ON ALL TABLES**
 
-Row Level Security (RLS) is MANDATORY for all tables in Supabase. Without RLS policies, ANY user can read, insert, update, or delete ANY data in your database, creating massive security vulnerabilities.
+Row Level Security (RLS) is MANDATORY for all tables exposed through Supabase. If a table is granted to \`anon\` or \`authenticated\` without proper RLS policies, users can read, insert, update, or delete data they should not access, creating massive security vulnerabilities.
 
 #### RLS Best Practices (REQUIRED):
 
@@ -154,37 +202,48 @@ When creating any table, ALWAYS follow this pattern:
 
 \`\`\`sql
 -- Create table
-CREATE TABLE table_name (
+CREATE TABLE public.table_name (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   -- other columns
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Enable Data API Grants (REQUIRED)
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO service_role;
+-- Grant only the operations the authenticated client actually needs
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.table_name TO authenticated;
+-- ONLY if public unauthenticated read access is specifically required
+-- GRANT SELECT ON TABLE public.table_name TO anon;
+
 -- Enable RLS (REQUIRED)
-ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.table_name ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for each operation needed
-CREATE POLICY "policy_name_select" ON table_name
+CREATE POLICY "policy_name_select" ON public.table_name
 FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
-CREATE POLICY "policy_name_insert" ON table_name
+CREATE POLICY "policy_name_insert" ON public.table_name
 FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "policy_name_update" ON table_name
+CREATE POLICY "policy_name_update" ON public.table_name
 FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
-CREATE POLICY "policy_name_delete" ON table_name
+CREATE POLICY "policy_name_delete" ON public.table_name
 FOR DELETE TO authenticated USING (auth.uid() = user_id);
 \`\`\`
 
-**REMINDER: If you create a table without proper RLS policies, any user can access, modify, or delete ALL data in that table.**
+**REMINDER: If you grant client API access to a table without proper RLS policies, users can access, modify, or delete data they should not access.**
 
 #### Security Checklist for Every Database Operation:
 
 Before creating any table or database schema, verify:
 
 - ✅ RLS is enabled on the table
+- ✅ Explicit Data API grants are added for each intended API role
+- ✅ \`service_role\` has full access for normal application tables
+- ✅ \`anon\` grants are avoided unless public unauthenticated access is specifically required
+- ✅ Sequence grants are included only when sequence-backed inserts are used
 - ✅ Appropriate SELECT policies are defined
 - ✅ Appropriate INSERT policies are defined
 - ✅ Appropriate UPDATE policies are defined  
@@ -193,7 +252,7 @@ Before creating any table or database schema, verify:
 - ✅ User can only access their own data (unless public access is specifically required)
 - ✅ All user-specific policies include \`TO authenticated\` for additional security
 
-**Remember: Without proper RLS policies, your database is completely exposed to unauthorized access.**
+**Remember: Without proper RLS policies, your database is exposed to unauthorized access.**
 
 ## Creating User Profiles
 
@@ -211,6 +270,10 @@ CREATE TABLE public.profiles (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (id)
 );
+
+-- Grant Data API access
+GRANT SELECT, UPDATE ON TABLE public.profiles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO service_role;
 
 -- Enable RLS (REQUIRED for security)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -233,6 +296,8 @@ FOR DELETE TO authenticated USING (auth.uid() = id);
 
 \`\`\`sql
 -- ONLY add this policy if public profile viewing is specifically required
+GRANT SELECT ON TABLE public.profiles TO anon;
+
 CREATE POLICY "profiles_public_read_policy" ON public.profiles
 FOR SELECT USING (true);
 \`\`\`

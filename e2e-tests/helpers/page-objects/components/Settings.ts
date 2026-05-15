@@ -119,8 +119,13 @@ export class Settings {
       telemetryUserId: "[UUID]",
       lastShownReleaseNotesVersion: "[scrubbed]",
     };
+    const ignoredKeys = new Set(["lastKnownPerformance"]);
 
     for (const key of sortedKeys) {
+      if (ignoredKeys.has(key)) {
+        continue;
+      }
+
       const beforeValue = beforeSettings[key];
       const afterValue = afterSettings[key];
       const beforeExists = key in beforeSettings;
@@ -150,6 +155,12 @@ export class Settings {
     }
 
     expect(diffLines.join("\n")).toMatchSnapshot();
+  }
+
+  async scrollToSettingsSection(sectionId: string) {
+    const section = this.page.locator(`#${sectionId}`);
+    await expect(section).toBeVisible();
+    await section.scrollIntoViewIfNeeded();
   }
 
   async setUpTestProvider() {

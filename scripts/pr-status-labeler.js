@@ -1,5 +1,5 @@
 // Shared logic for applying needs-human:* labels to PRs based on CI status and code review results.
-// Used by both pr-review-responder.yml (for cc:request PRs) and pr-status-labeler.yml (for all other PRs).
+// Used by pr-status-labeler.yml.
 
 const LABEL_REVIEW_ISSUE = "needs-human:review-issue";
 const LABEL_FINAL_CHECK = "needs-human:final-check";

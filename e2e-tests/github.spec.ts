@@ -135,6 +135,42 @@ test("disconnect from repo", async ({ po }) => {
   await po.githubConnector.snapshotSetupRepo();
 });
 
+test("shows reconnect prompt for a linked repo when GitHub credentials are missing", async ({
+  po,
+}) => {
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+  const appName = await po.appManagement.getCurrentAppName();
+  expect(appName).toBeDefined();
+
+  await po.appManagement.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+  await po.githubConnector.fillCreateRepoName("test-new-repo-reconnect");
+  await po.githubConnector.clickCreateRepoButton();
+
+  await po.navigation.goToSettingsTab();
+  await po.page.getByRole("button", { name: "Disconnect from GitHub" }).click();
+
+  await po.navigation.goToAppsTab();
+  await po.appManagement.clickAppListItem({ appName: appName! });
+
+  await expect(po.page.getByTestId("github-unconnected-repo")).toBeVisible();
+  await expect(
+    po.page.getByText("Reconnect your GitHub account"),
+  ).toBeVisible();
+  await expect(
+    po.page.getByText(
+      "This app is linked to testuser/test-new-repo-reconnect, but GitHub credentials are missing from settings.",
+    ),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Connect to GitHub" }),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Sync to GitHub" }),
+  ).toBeHidden();
+});
+
 test("create and sync to existing repo", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");

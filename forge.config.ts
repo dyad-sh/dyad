@@ -46,6 +46,12 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/node-pty")) {
     return false;
   }
+  if (file.startsWith("/node_modules/mustardscript")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/@mustardscript")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/node-addon-api")) {
     return false;
   }
@@ -118,14 +124,15 @@ const config: ForgeConfig = {
         },
     asar: {
       // node-pty loads helper binaries like spawn-helper and winpty-agent from disk.
-      unpackDir: "node_modules/node-pty",
+      unpackDir:
+        "{node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
     },
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {
-    extraModules: ["better-sqlite3", "node-pty"],
+    extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
     force: true,
   },
   makers: [
@@ -194,6 +201,11 @@ const config: ForgeConfig = {
         {
           entry: "workers/tsc/tsc_worker.ts",
           config: "vite.worker.config.mts",
+          target: "main",
+        },
+        {
+          entry: "src/ipc/utils/sandbox/sandbox_worker.ts",
+          config: "vite.sandbox-worker.config.mts",
           target: "main",
         },
       ],

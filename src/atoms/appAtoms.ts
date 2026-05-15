@@ -5,15 +5,16 @@ import type { RuntimeMode2, UserSettings } from "@/lib/schemas";
 export const currentAppAtom = atom<App | null>(null);
 export const selectedAppIdAtom = atom<number | null>(null);
 export const versionsListAtom = atom<Version[]>([]);
-export const previewModeAtom = atom<
+export type PreviewMode =
   | "preview"
   | "code"
   | "problems"
   | "configure"
   | "publish"
   | "security"
-  | "plan"
->("preview");
+  | "plan";
+
+export const previewModeAtom = atom<PreviewMode>("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 
 export const appConsoleEntriesAtom = atom<ConsoleEntry[]>([]);

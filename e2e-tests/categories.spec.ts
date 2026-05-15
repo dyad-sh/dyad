@@ -31,11 +31,12 @@ testSkipIfWindows(
 
     // Open the add-category dialog and create a category with the first app.
     await po.page.getByTestId("add-category-button").click();
-    await po.page
-      .getByTestId("category-name-input")
-      .fill("My Test Category");
+    await po.page.getByTestId("category-name-input").fill("My Test Category");
     await po.page.getByTestId("category-add-apps-picker-trigger").click();
-    await po.page.getByTestId(/^category-picker-app-\d+$/).first().click();
+    await po.page
+      .getByTestId(/^category-picker-app-\d+$/)
+      .first()
+      .click();
     // Close the picker popover before clicking submit.
     await po.page.keyboard.press("Escape");
     await po.page.getByTestId("category-submit-button").click();
@@ -54,9 +55,7 @@ testSkipIfWindows(
       .getByTestId("category-apps-grid")
       .getByTestId(/^app-showcase-card-/);
     await expect(memberCards).toHaveCount(1);
-    const memberTestId = await memberCards
-      .first()
-      .getAttribute("data-testid");
+    const memberTestId = await memberCards.first().getAttribute("data-testid");
     const memberAppName = memberTestId?.replace("app-showcase-card-", "");
     expect([appName1, appName2]).toContain(memberAppName);
 
@@ -64,9 +63,7 @@ testSkipIfWindows(
     await po.page.getByTestId("category-detail-back-button").click();
 
     // Rename the category via its menu.
-    await folderCard
-      .getByTestId(/^category-folder-\d+-menu$/)
-      .click();
+    await folderCard.getByTestId(/^category-folder-\d+-menu$/).click();
     await po.page.getByRole("menuitem", { name: "Rename" }).click();
     const nameInput = po.page.getByTestId("category-name-input");
     await nameInput.fill("Renamed Category");
@@ -83,9 +80,7 @@ testSkipIfWindows(
     ).toHaveCount(0);
 
     // Delete the category and confirm.
-    await renamedCard
-      .getByTestId(/^category-folder-\d+-menu$/)
-      .click();
+    await renamedCard.getByTestId(/^category-folder-\d+-menu$/).click();
     await po.page.getByRole("menuitem", { name: "Delete" }).click();
     await po.page.getByTestId("category-delete-confirm-button").click();
 

@@ -81,6 +81,12 @@ async function expectNavigatedToChat(
     .toBe(chatId);
 }
 
+async function waitForGenerationToStart(po: { page: Page }): Promise<void> {
+  await expect(
+    po.page.getByRole("button", { name: "Cancel generation" }),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+}
+
 function getChatIdFromUrl(po: { page: Page }): number {
   return Number(po.page.url().match(/\?id=(\d+)/)?.[1]);
 }
@@ -154,6 +160,7 @@ testWithNotificationsEnabled(
     await po.browserNotifications.injectFakeNotifications();
 
     await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
+    await waitForGenerationToStart(po);
     await triggerDifferentChat(po, chatId);
 
     const notification =
@@ -230,6 +237,7 @@ testWithNotificationsEnabled(
     await po.browserNotifications.injectFakeNotifications();
 
     await po.chatActions.sendPrompt("test", { skipWaitForCompletion: true });
+    await waitForGenerationToStart(po);
     await triggerDifferentChat(po, initialChatId);
 
     const tag = `dyad-chat-complete-${initialChatId}`;

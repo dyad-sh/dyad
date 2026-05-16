@@ -200,7 +200,7 @@ export function AppSidebar() {
       }}
     >
       <SidebarContent className="overflow-hidden">
-        <div className="flex mt-8">
+        <div className="flex mt-[calc(var(--layout-title-bar-offset)+0.25rem)]">
           {/* Left Column: Icon rail */}
           <div
             className={`px-1 transition-[width] duration-200 ease-linear ${

@@ -24,6 +24,7 @@ import {
   getRemoteDesktopConfig,
   type RemoteDesktopConfig,
 } from "@/ipc/shared/remote_desktop_config";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("settings");
 
@@ -338,7 +339,19 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     );
   } catch (error) {
     logger.error("Error writing settings:", error);
+    throw toSettingsWriteError(error);
   }
+}
+
+function toSettingsWriteError(error: unknown): DyadError {
+  if (error instanceof DyadError) {
+    return error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new DyadError(
+    `Failed to write settings: ${message}`,
+    DyadErrorKind.External,
+  );
 }
 
 function readExistingSettingsFile(filePath: string): UserSettings {

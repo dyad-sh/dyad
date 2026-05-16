@@ -803,6 +803,26 @@ describe("writeSettings", () => {
       mockSettingsPath,
     );
   });
+
+  it("throws a classified error when the settings file cannot be written", () => {
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    let thrown: unknown;
+    try {
+      writeSettings({ enableAutoUpdate: false });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(DyadError);
+    expect((thrown as DyadError).kind).toBe(DyadErrorKind.External);
+    expect((thrown as Error).message).toContain(
+      "Failed to write settings: disk full",
+    );
+  });
 });
 
 describe("encrypt", () => {

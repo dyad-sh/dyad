@@ -95,6 +95,12 @@ describe("safeJoin", () => {
       );
     });
 
+    it("should reject traversal to a sibling with the same path prefix", () => {
+      expect(() =>
+        safeJoin("/app/workspace", "../workspace-2/file.txt"),
+      ).toThrow(/would escape the base directory/);
+    });
+
     it("should throw on mixed traversal with valid components", () => {
       expect(() =>
         safeJoin(

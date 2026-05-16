@@ -108,6 +108,7 @@ import {
 import { safeSend } from "../utils/safe_sender";
 import type { AppOutput } from "../types/misc";
 import { normalizePath } from "../../../shared/normalizePath";
+import { safeJoin } from "../utils/path_utils";
 import {
   isServerFunction,
   isSharedServerModule,
@@ -1503,12 +1504,7 @@ export function registerAppHandlers() {
     }
 
     const appPath = getDyadAppPath(app.path);
-    const fullPath = path.join(appPath, filePath);
-
-    // Check if the path is within the app directory (security check)
-    if (!fullPath.startsWith(appPath)) {
-      throw new DyadError("Invalid file path", DyadErrorKind.Validation);
-    }
+    const fullPath = safeJoin(appPath, filePath);
 
     if (!fs.existsSync(fullPath)) {
       throw new DyadError("File not found", DyadErrorKind.NotFound);
@@ -1869,12 +1865,7 @@ export function registerAppHandlers() {
     }
 
     const appPath = getDyadAppPath(app.path);
-    const fullPath = path.join(appPath, filePath);
-
-    // Check if the path is within the app directory (security check)
-    if (!fullPath.startsWith(appPath)) {
-      throw new DyadError("Invalid file path", DyadErrorKind.Validation);
-    }
+    const fullPath = safeJoin(appPath, filePath);
 
     if (app.neonProjectId && app.neonDevelopmentBranchId) {
       try {

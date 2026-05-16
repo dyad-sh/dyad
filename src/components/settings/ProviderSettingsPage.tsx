@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useRouter } from "@tanstack/react-router";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +10,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import {} from "@/components/ui/accordion";
 
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { showError } from "@/lib/toast";
 import {
@@ -63,7 +62,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   // Use fetched data (or defaults for Dyad)
@@ -229,15 +227,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     return (
       <div className="min-h-screen px-8 py-4">
         <div className="max-w-4xl mx-auto">
-          <Button
-            onClick={() => router.history.back()}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Go Back
-          </Button>
+          <BackButton />
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
             Configure Provider
           </h1>
@@ -258,15 +248,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     return (
       <div className="min-h-screen px-8 py-4">
         <div className="max-w-4xl mx-auto">
-          <Button
-            onClick={() => router.history.back()}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Go Back
-          </Button>
+          <BackButton />
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
             Provider Not Found
           </h1>
@@ -292,7 +274,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           hasFreeTier={hasFreeTier}
           providerWebsiteUrl={providerWebsiteUrl}
           isDyad={isDyad}
-          onBackClick={() => router.history.back()}
         />
 
         {settingsLoading ? (

@@ -1,4 +1,4 @@
-import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
 import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -10,13 +10,13 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  ArrowLeft,
   MoreVertical,
   MessageCircle,
   Pencil,
   Folder,
   Star,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Popover,
   PopoverContent,
@@ -88,7 +88,6 @@ function UnavailableIntegrationCard({
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
-  const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
   const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
@@ -319,15 +318,7 @@ export default function AppDetailsPage() {
   if (!selectedApp) {
     return (
       <div className="relative min-h-screen p-8">
-        <Button
-          onClick={() => router.history.back()}
-          variant="outline"
-          size="sm"
-          className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-3 w-4" />
-          Back
-        </Button>
+        <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
         <div className="flex flex-col items-center justify-center h-full">
           <h2 className="text-xl font-bold">App not found</h2>
         </div>
@@ -374,15 +365,7 @@ export default function AppDetailsPage() {
       className="relative min-h-screen p-4 w-full"
       data-testid="app-details-page"
     >
-      <Button
-        onClick={() => router.history.back()}
-        variant="outline"
-        size="sm"
-        className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-2"
-      >
-        <ArrowLeft className="h-3 w-4" />
-        Back
-      </Button>
+      <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
 
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
         <div className="flex items-center mb-3">

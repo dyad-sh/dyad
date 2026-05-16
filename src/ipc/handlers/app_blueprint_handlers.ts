@@ -46,7 +46,9 @@ export function registerAppBlueprintHandlers() {
   createTypedHandler(appBlueprintContracts.approve, async (event, params) => {
     const plan = appBlueprintStore.get(params.chatId);
     if (!plan) {
-      logger.warn(`No app blueprint found for chat ${params.chatId} on approve`);
+      logger.warn(
+        `No app blueprint found for chat ${params.chatId} on approve`,
+      );
       return;
     }
 

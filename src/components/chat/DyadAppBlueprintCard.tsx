@@ -461,8 +461,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         plan.visuals.length > 0
           ? plan.visuals
               .map(
-                (v) =>
-                  `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
+                (v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
               )
               .join("\n")
           : "No visuals planned";

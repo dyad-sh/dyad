@@ -78,6 +78,8 @@ await po.openChatHistoryMenu();
 
 **NEVER update snapshot files (e.g. `.txt`, `.yml`) by hand.** Always use `--update-snapshots` to regenerate them.
 
+For smart-context snapshot drift caused by scaffold changes, update the scaffold source files first (for example `scaffold/package.json` or `scaffold/AI_RULES.md`), then regenerate every affected `smart_context_*` snapshot with Playwright. Do not make one snapshot match by hand while leaving other smart-context snapshots stale.
+
 Snapshots must be **deterministic** and **platform-agnostic**. They must not contain:
 
 - Timestamps
@@ -134,6 +136,7 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 - **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
 - **`expect(...).toPass()` wrappers**: Give inner Playwright actions/assertions short explicit timeouts. Default 30s click/expect timeouts can consume the whole `toPass()` budget, so the retry wrapper never actually retries.
 - **Chat prompt submit retries**: A send-button click can time out after the prompt was already submitted. Before retrying `sendPrompt()` flows, check for the prompt in `messages-list` or an empty input with `Cancel generation`; otherwise the retry can race into an active stream/proposal and leave the next prompt disabled.
+- **Completion notifications after navigating away**: When a test calls `sendPrompt(..., { skipWaitForCompletion: true })` and then switches chats, first wait for `Cancel generation` to be visible. Navigating away before the stream has visibly started can race notification emission and make completion-notification assertions time out.
 - **Setup-screen tests and provider env vars**: E2E worker processes reuse `process.env`, so tests that set fake provider keys (for example `OPENAI_API_KEY`) can affect later tests in the same worker. When a fixture intentionally shows the setup screen, explicitly clear any env key that would make the provider appear configured.
 - **Custom model setup dialog**: When adding a custom model in Settings helpers, scope inputs to the "Add Custom Model" dialog, assert `#model-id` and `#model-name` values before clicking `Add Model`, and wrap the fill/click in `expect.toPass()`. Fast repeats can otherwise leave the name field empty or append text to the wrong field.
 - **Local model picker assertions**: Ollama/LM Studio menu items can expose accessible names that combine display name and model id (for example `Testollama testollama` or `lmstudio-model-1 lmstudio-model-1`). Exact test locators should account for this duplicated label/id shape.

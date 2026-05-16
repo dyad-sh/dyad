@@ -43,6 +43,17 @@ export const localTemplatesData: Template[] = [
     isOfficial: true,
   },
   {
+    id: "react-vite-nitro",
+    title: "Fullstack Vite+Nitro Template",
+    description:
+      "Full-stack React + Vite + Nitro backend with Shadcn, Tailwind, TypeScript.",
+    imageUrl:
+      "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
+    githubUrl: "https://github.com/dyad-sh/react-vite-nitro",
+    isOfficial: true,
+    isExperimental: true,
+  },
+  {
     id: PORTAL_MINI_STORE_ID,
     title: "Portal: Mini Store Template",
     description: "Uses Neon DB, Payload CMS, Next.js",

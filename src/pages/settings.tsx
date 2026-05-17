@@ -40,6 +40,7 @@ import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimen
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
+import { PageContainer } from "@/components/PageContainer";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -70,8 +71,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen px-8 py-4">
-      <div className="max-w-5xl mx-auto">
+    <PageContainer size="lg">
         <Button
           onClick={() => router.history.back()}
           variant="outline"
@@ -324,7 +324,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </div>
 
       <ConfirmationDialog
         isOpen={isResetDialogOpen}
@@ -336,7 +335,7 @@ export default function SettingsPage() {
         onConfirm={handleResetEverything}
         onCancel={() => setIsResetDialogOpen(false)}
       />
-    </div>
+    </PageContainer>
   );
 }
 

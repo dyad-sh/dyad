@@ -20,6 +20,7 @@ import {
   hasDyadProKey,
 } from "@/lib/schemas";
 
+import { PageContainer } from "@/components/PageContainer";
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
 import { ModelsSection } from "./ModelsSection";
@@ -58,7 +59,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 
-  const isDyad = provider === "auto";
+  const isIronIDE = provider === "auto";
 
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -66,13 +67,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  // Use fetched data (or defaults for Dyad)
-  const providerDisplayName = isDyad
-    ? "Dyad"
+  // Use fetched data (or defaults for Iron IDE)
+  const providerDisplayName = isIronIDE
+    ? "Iron IDE"
     : (providerData?.name ?? "Unknown Provider");
   const providerWebsiteUrl = providerData?.websiteUrl;
-  const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
-  const envVarName = isDyad ? undefined : providerData?.envVarName;
+  const hasFreeTier = isIronIDE ? false : providerData?.hasFreeTier;
+  const envVarName = isIronIDE ? undefined : providerData?.envVarName;
 
   // Use provider ID (which is the 'provider' prop)
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
@@ -128,8 +129,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      // Check if this is the first time user is setting up Dyad Pro
-      const isNewDyadProSetup = isDyad && settings && !hasDyadProKey(settings);
+      // Check if this is the first time user is setting up Pro
+      const isNewProSetup = isIronIDE && settings && !hasDyadProKey(settings);
 
       const settingsUpdate: Partial<UserSettings> = {
         providerSettings: {
@@ -142,18 +143,18 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           },
         },
       };
-      if (isDyad) {
+      if (isIronIDE) {
         settingsUpdate.enableDyadPro = true;
         // Set default chat mode to local-agent when user upgrades to pro
-        if (isNewDyadProSetup) {
+        if (isNewProSetup) {
           settingsUpdate.defaultChatMode = "local-agent";
         }
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
 
-      // Refetch user budget when Dyad Pro key is saved
-      if (isDyad) {
+      // Refetch user budget when Pro key is saved
+      if (isIronIDE) {
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
       }
     } catch (error: any) {
@@ -187,15 +188,15 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     }
   };
 
-  // --- Toggle Dyad Pro Handler ---
-  const handleToggleDyadPro = async (enabled: boolean) => {
+  // --- Toggle Pro Handler ---
+  const handleTogglePro = async (enabled: boolean) => {
     setIsSaving(true);
     try {
       await updateSettings({
         enableDyadPro: enabled,
       });
     } catch (error: any) {
-      showError(`Error toggling Dyad Pro: ${error}`);
+      showError(`Error toggling Pro: ${error}`);
     } finally {
       setIsSaving(false);
     }
@@ -211,24 +212,21 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   // --- Loading State for Providers ---
   if (providersLoading) {
     return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+      <PageContainer size="md">
           <Skeleton className="h-8 w-24 mb-4" />
           <Skeleton className="h-10 w-1/2 mb-6" />
           <Skeleton className="h-10 w-48 mb-4" />
           <div className="space-y-4 mt-6">
             <Skeleton className="h-40 w-full" />
           </div>
-        </div>
-      </div>
+      </PageContainer>
     );
   }
 
   // --- Error State for Providers ---
   if (providersError) {
     return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+      <PageContainer size="md">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
@@ -248,16 +246,14 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               Could not load provider data: {providersError.message}
             </AlertDescription>
           </Alert>
-        </div>
-      </div>
+      </PageContainer>
     );
   }
 
   // Handle case where provider is not found (e.g., invalid ID in URL)
-  if (!providerData && !isDyad) {
+  if (!providerData && !isIronIDE) {
     return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+      <PageContainer size="md">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
@@ -277,21 +273,19 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               The provider with ID "{provider}" could not be found.
             </AlertDescription>
           </Alert>
-        </div>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="min-h-screen px-8 py-4">
-      <div className="max-w-4xl mx-auto">
+    <PageContainer size="md">
         <ProviderSettingsHeader
           providerDisplayName={providerDisplayName}
           isConfigured={isConfigured}
           isLoading={settingsLoading}
           hasFreeTier={hasFreeTier}
           providerWebsiteUrl={providerWebsiteUrl}
-          isDyad={isDyad}
+          isIronIDE={isIronIDE}
           onBackClick={() => router.history.back()}
         />
 
@@ -319,23 +313,23 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             onApiKeyInputChange={setApiKeyInput}
             onSaveKey={handleSaveKey}
             onDeleteKey={handleDeleteKey}
-            isDyad={isDyad}
+            isIronIDE={isIronIDE}
             updateSettings={updateSettings}
           />
         )}
 
-        {isDyad && !settingsLoading && (
+        {isIronIDE && !settingsLoading && (
           <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
             <div>
-              <h3 className="font-medium">Enable Dyad Pro</h3>
+              <h3 className="font-medium">Enable Pro</h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Toggle to enable Dyad Pro
+                Toggle to enable Pro
               </p>
             </div>
             <Switch
-              aria-label="Enable Dyad Pro"
+              aria-label="Enable Pro"
               checked={settings?.enableDyadPro}
-              onCheckedChange={handleToggleDyadPro}
+              onCheckedChange={handleTogglePro}
               disabled={isSaving}
             />
           </div>
@@ -345,8 +339,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         {supportsCustomModels && providerData && (
           <ModelsSection providerId={providerData.id} />
         )}
-        <div className="h-24"></div>
-      </div>
-    </div>
+        <div className="h-24" />
+    </PageContainer>
   );
 }

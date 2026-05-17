@@ -39,7 +39,6 @@ import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import {
-  ProBanner,
   ManageDyadProButton,
   SetupDyadProButton,
 } from "@/components/ProBanner";
@@ -259,7 +258,8 @@ export default function HomePage() {
   // Loading overlay for app creation
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
+      <div className="flex w-full flex-col items-center justify-center p-8">
+        <div className="w-full max-w-3xl mx-auto">
         <div className="w-full flex flex-col items-center">
           {/* Loading Spinner */}
           <div className="relative w-24 h-24 mb-8">
@@ -280,14 +280,15 @@ export default function HomePage() {
             )}
           </p>
         </div>
+        </div>
       </div>
     );
   }
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col w-full">
-      <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
+    <div className="flex w-full flex-col">
+      <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center p-8 relative">
         <div className="fixed top-16 right-8 z-50">
           {settings && hasDyadProKey(settings) ? (
             <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
@@ -364,7 +365,6 @@ export default function HomePage() {
               </span>
             </button>
           </div>
-          <ProBanner />
         </div>
         <PrivacyBanner />
 

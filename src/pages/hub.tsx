@@ -6,6 +6,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import { TemplateCard } from "@/components/TemplateCard";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
+import { PageContainer } from "@/components/PageContainer";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
@@ -28,8 +29,7 @@ const HubPage: React.FC = () => {
     templates?.filter((template) => !template.isOfficial) || [];
 
   return (
-    <div className="min-h-screen px-8 py-4">
-      <div className="max-w-5xl mx-auto pb-12">
+    <PageContainer size="lg" innerClassName="pb-12">
         <Button
           onClick={() => router.history.back()}
           variant="outline"
@@ -88,14 +88,13 @@ const HubPage: React.FC = () => {
             </div>
           </section>
         )}
-      </div>
 
       <CreateAppDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
         template={templates?.find((t) => t.id === settings?.selectedTemplateId)}
       />
-    </div>
+    </PageContainer>
   );
 };
 

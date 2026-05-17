@@ -22,7 +22,6 @@ import { Label } from "@/components/ui/label";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { AiAccessBanner } from "./ProBanner";
 import { AppSearchSelect } from "./AppSearchSelect";
 import type { ImageThemeMode } from "@/ipc/types";
 
@@ -150,7 +149,6 @@ export function ImageGeneratorDialog({
                   Pro-only feature
                 </p>
               </div>
-              <AiAccessBanner />
             </div>
           ) : (
             <>

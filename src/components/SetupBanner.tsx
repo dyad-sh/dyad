@@ -34,7 +34,6 @@ import logo from "../../assets/logo.svg";
 import googleIcon from "../../assets/ai-logos/google-g-icon.svg";
 // @ts-ignore
 import openrouterLogo from "../../assets/ai-logos/openrouter-logo.png";
-import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
 import { DyadProTrialDialog } from "./DyadProTrialDialog";
@@ -49,7 +48,6 @@ export function SetupBanner() {
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
@@ -71,7 +69,7 @@ export function SetupBanner() {
   }, [setNodeSystemInfo, setNodeCheckError]);
   const [showManualConfig, setShowManualConfig] = useState(false);
   const [isSelectingPath, setIsSelectingPath] = useState(false);
-  const [showDyadProTrialDialog, setShowDyadProTrialDialog] = useState(false);
+  const [showProTrialDialog, setShowProTrialDialog] = useState(false);
   const { updateSettings } = useSettings();
 
   // Add handler for manual path selection
@@ -121,9 +119,9 @@ export function SetupBanner() {
       params: { provider: "openrouter" },
     });
   };
-  const handleDyadProSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:dyad:click");
-    setShowDyadProTrialDialog(true);
+  const handleProSetupClick = () => {
+    posthog.capture("setup-flow:ai-provider-setup:iron-ide:click");
+    setShowProTrialDialog(true);
   };
 
   const handleOtherProvidersClick = () => {
@@ -185,10 +183,6 @@ export function SetupBanner() {
       <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4 pt-6">
         {t("setup.setupDyad")}
       </p>
-      <OnboardingBanner
-        isVisible={isOnboardingVisible}
-        setIsVisible={setIsOnboardingVisible}
-      />
       <div className={bannerClasses}>
         <Accordion multiple className="w-full" defaultValue={itemsNeedAction}>
           <AccordionItem
@@ -320,19 +314,19 @@ export function SetupBanner() {
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-4 pt-2 pb-4 bg-white dark:bg-zinc-900 border-t border-inherit">
-              <p className="text-[15px] mb-3">
-                Not sure what to do? Watch the Get Started video above ☝️
-              </p>
-
               <SetupProviderCard
                 variant="dyad"
-                onClick={handleDyadProSetupClick}
+                onClick={handleProSetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
                 leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
+                  <img
+                    src={logo}
+                    alt="Iron IDE Logo"
+                    className="w-6 h-6 mr-0.5"
+                  />
                 }
-                title="Start with Dyad Pro free trial"
-                subtitle="Unlock the full power of Dyad"
+                title="Start with Pro free trial"
+                subtitle="Unlock the full power of Iron IDE"
                 chip={<>Recommended</>}
               />
               <div className="mt-2 flex gap-2">
@@ -394,8 +388,8 @@ export function SetupBanner() {
       </div>
 
       <DyadProTrialDialog
-        isOpen={showDyadProTrialDialog}
-        onClose={() => setShowDyadProTrialDialog(false)}
+        isOpen={showProTrialDialog}
+        onClose={() => setShowProTrialDialog(false)}
       />
     </>
   );
@@ -460,7 +454,8 @@ function NodeInstallButton({
     case "finished-checking":
       return (
         <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-          Node.js not detected. Closing and re-opening Dyad usually fixes this.
+          Node.js not detected. Closing and re-opening Iron IDE usually fixes
+          this.
         </div>
       );
     default:

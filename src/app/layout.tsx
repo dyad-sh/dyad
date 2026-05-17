@@ -132,9 +132,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <AppSidebar />
             <div
               id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background"
+              className="flex h-screenish w-full min-w-0 flex-1 overflow-x-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background"
             >
-              {children}
+              <div className="w-full min-w-0">{children}</div>
             </div>
             <Toaster
               richColors

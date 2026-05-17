@@ -318,7 +318,7 @@ export default function AppDetailsPage() {
 
   if (!selectedApp) {
     return (
-      <div className="relative min-h-screen p-8">
+      <div className="relative min-h-screen w-full p-8">
         <Button
           onClick={() => router.history.back()}
           variant="outline"

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { AppShowcaseCard } from "@/components/AppShowcaseCard";
+import { PageContainer } from "@/components/PageContainer";
 import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
@@ -147,8 +148,7 @@ export default function AppsPage() {
   };
 
   return (
-    <div className="min-h-screen w-full px-8 py-4">
-      <div className="max-w-6xl mx-auto pb-12">
+    <PageContainer size="xl" innerClassName="pb-12">
         <Button
           onClick={handleGoBack}
           variant="outline"
@@ -274,7 +274,6 @@ export default function AppsPage() {
             ))}
           </div>
         )}
-      </div>
 
       <Dialog
         open={isBulkDeleteDialogOpen}
@@ -337,6 +336,6 @@ export default function AppsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

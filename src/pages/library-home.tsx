@@ -9,6 +9,7 @@ import { CreateOrEditPromptDialog } from "@/components/CreatePromptDialog";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
 import { NewLibraryItemMenu } from "@/components/NewLibraryItemMenu";
 import { LibraryCard, type LibraryItem } from "@/components/LibraryCard";
+import { PageContainer } from "@/components/PageContainer";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
 import {
   LibraryFilterTabs,
@@ -120,9 +121,7 @@ export default function LibraryHomePage() {
     filteredItems.length === 0 && filteredMediaApps.length === 0;
 
   return (
-    <div className="min-h-screen w-full">
-      <div className="px-8 py-6">
-        <div className="max-w-6xl mx-auto">
+    <PageContainer size="xl" className="py-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold">
@@ -202,7 +201,6 @@ export default function LibraryHomePage() {
               ))}
             </div>
           )}
-        </div>
 
         <CustomThemeDialog
           open={createThemeDialogOpen}
@@ -213,7 +211,6 @@ export default function LibraryHomePage() {
           open={imageGeneratorOpen}
           onOpenChange={setImageGeneratorOpen}
         />
-      </div>
-    </div>
+    </PageContainer>
   );
 }

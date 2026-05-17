@@ -12,5 +12,11 @@ export function sanitizeAppFolderName(name: string): string {
     .trim()
     .replace(/^-+|-+$/g, "")
     .trim();
-  return sanitized || "untitled-app";
+  // `.` and `..` are special filesystem names that `path.join` resolves to the
+  // parent directory — accepting them as the app folder would let an app name
+  // escape the apps directory.
+  if (!sanitized || sanitized === "." || sanitized === "..") {
+    return "untitled-app";
+  }
+  return sanitized;
 }

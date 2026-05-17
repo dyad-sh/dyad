@@ -52,11 +52,10 @@ export function registerAppBlueprintHandlers() {
       return;
     }
 
-    plan.approved = true;
-    logger.info(`App blueprint approved for chat ${params.chatId}`);
-
     // Flip the per-app needs_app_blueprint flag so future chats in this app
-    // skip the blueprint flow.
+    // skip the blueprint flow. Persist DB state BEFORE flipping the in-memory
+    // `plan.approved` flag — if the DB write throws, the blueprint stays
+    // unapproved in memory and the user can retry.
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, params.chatId),
       columns: { appId: true },
@@ -71,6 +70,9 @@ export function registerAppBlueprintHandlers() {
         `Chat ${params.chatId} not found when clearing needsAppBlueprint`,
       );
     }
+
+    plan.approved = true;
+    logger.info(`App blueprint approved for chat ${params.chatId}`);
 
     // Notify renderer that approval is confirmed
     safeSend(event.sender, "app-blueprint:approved", {
@@ -88,10 +90,10 @@ export function registerAppBlueprintHandlers() {
     }
 
     if (plan.approved) {
-      logger.warn(
+      throw new DyadError(
         `Cannot edit approved app blueprint for chat ${params.chatId}`,
+        DyadErrorKind.Precondition,
       );
-      return;
     }
 
     switch (params.field) {
@@ -125,10 +127,10 @@ export function registerAppBlueprintHandlers() {
     }
 
     if (plan.approved) {
-      logger.warn(
+      throw new DyadError(
         `Cannot edit approved app blueprint for chat ${params.chatId}`,
+        DyadErrorKind.Precondition,
       );
-      return;
     }
 
     const visual = plan.visuals.find((v) => v.id === params.visualId);
@@ -179,10 +181,10 @@ export function registerAppBlueprintHandlers() {
     }
 
     if (plan.approved) {
-      logger.warn(
+      throw new DyadError(
         `Cannot remove visual from approved app blueprint for chat ${params.chatId}`,
+        DyadErrorKind.Precondition,
       );
-      return;
     }
 
     plan.visuals = plan.visuals.filter((v) => v.id !== params.visualId);

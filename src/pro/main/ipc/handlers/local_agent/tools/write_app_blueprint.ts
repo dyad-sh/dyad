@@ -6,8 +6,26 @@ import { setAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import { AppBlueprintVisualTypeSchema } from "@/ipc/types/app_blueprint";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { readSettings } from "@/main/settings";
+import type { UserSettings } from "@/lib/schemas";
 
 const logger = log.scope("write_app_blueprint");
+
+// `buildXml` runs once per streaming chunk, so reading settings (sync disk I/O)
+// inside it would re-read the file dozens of times for a single blueprint.
+// Cache the read for a short window — long enough to cover one streaming pass
+// but short enough that toggles from Settings take effect quickly.
+let cachedSettings: { value: UserSettings; expiresAt: number } | null = null;
+const SETTINGS_CACHE_MS = 500;
+
+function getCachedSettings(): UserSettings {
+  const now = Date.now();
+  if (cachedSettings && cachedSettings.expiresAt > now) {
+    return cachedSettings.value;
+  }
+  const value = readSettings();
+  cachedSettings = { value, expiresAt: now + SETTINGS_CACHE_MS };
+  return value;
+}
 
 const VisualEntrySchema = z.object({
   type: AppBlueprintVisualTypeSchema.describe(
@@ -128,7 +146,7 @@ export const writeAppBlueprintTool: ToolDefinition<
   buildXml: (args, isComplete) => {
     if (!args.app_name) return undefined;
 
-    const settings = readSettings();
+    const settings = getCachedSettings();
     const appName = escapeXmlAttr(args.app_name);
     const template = escapeXmlAttr(
       args.template_id ?? settings.selectedTemplateId,

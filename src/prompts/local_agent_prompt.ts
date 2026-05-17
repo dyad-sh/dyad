@@ -388,7 +388,7 @@ export function constructLocalAgentPrompt(
     enableAppBlueprint?: boolean;
   },
 ): string {
-  const enableAppBlueprint = options?.enableAppBlueprint ?? false;
+  const enableAppBlueprint = options?.enableAppBlueprint !== false;
 
   // Select the appropriate base prompt
   let basePrompt: string;

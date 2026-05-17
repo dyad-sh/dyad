@@ -351,7 +351,10 @@ const BaseUserSettingsFields = {
   previewDeviceMode: DeviceModeSchema.optional(),
 
   enableAutoFixProblems: z.boolean().optional(),
-  enableAppBlueprint: z.boolean().default(true),
+  // `enableAppBlueprint` was previously named `enableMiniPlan`. It's optional
+  // here so the migration step can preserve users' explicit opt-outs from the
+  // old name. The runtime default of `true` is applied in `migrateStoredSettings`.
+  enableAppBlueprint: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
@@ -393,6 +396,8 @@ export const StoredUserSettingsSchema = z
     defaultChatMode: StoredChatModeSchema.optional(),
     // Deprecated: renamed to enableChatEventNotifications
     enableChatCompletionNotifications: z.boolean().optional(),
+    // Deprecated: renamed to enableAppBlueprint
+    enableMiniPlan: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -450,6 +455,12 @@ export function migrateStoredSettings(
     enableChatEventNotifications:
       stored.enableChatEventNotifications ??
       stored.enableChatCompletionNotifications,
+    // `enableMiniPlan` was the prior name for this toggle. Preserve users'
+    // explicit choice (especially opt-outs) across the rename — otherwise the
+    // `.default(true)` would silently re-enable the feature for users who had
+    // turned it off.
+    enableAppBlueprint:
+      stored.enableAppBlueprint ?? stored.enableMiniPlan ?? true,
   };
 }
 

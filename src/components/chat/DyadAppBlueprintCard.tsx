@@ -325,6 +325,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
     try {
       const applyErrors: string[] = [];
       let templateApplyFailed = false;
+      let renameFailed = false;
       const recordApplyError = (message: string, error: unknown) => {
         console.error(message, error);
         const detail =
@@ -370,21 +371,28 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                 appPath: desiredFolder,
               });
             } catch (error) {
+              // A rename failure for a user-editable field (name conflict,
+              // invalid path) means the agent would later build under the old
+              // name/path. Treat it as fatal so the user can fix the
+              // blueprint and re-approve.
+              renameFailed = true;
               recordApplyError("Could not rename the app.", error);
             }
           }
         }
 
-        try {
-          const { needsRestart } = await ipc.template.applyAppTemplate({
-            appId: selectedAppId,
-            templateId: plan.templateId,
-            chatId: chatId ?? undefined,
-          });
-          templateNeedsRestart = needsRestart;
-        } catch (error) {
-          templateApplyFailed = true;
-          recordApplyError("Could not apply the selected template.", error);
+        if (!renameFailed) {
+          try {
+            const { needsRestart } = await ipc.template.applyAppTemplate({
+              appId: selectedAppId,
+              templateId: plan.templateId,
+              chatId: chatId ?? undefined,
+            });
+            templateNeedsRestart = needsRestart;
+          } catch (error) {
+            templateApplyFailed = true;
+            recordApplyError("Could not apply the selected template.", error);
+          }
         }
 
         // Set the theme if it differs
@@ -428,16 +436,20 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         ]);
       }
 
-      // Template application is the critical step — if it failed, don't
-      // unblock the agent so the user can fix the plan and re-approve.
-      // The agent would otherwise build for the wrong framework.
-      if (templateApplyFailed) {
+      // Template application and rename are critical — if either failed,
+      // don't unblock the agent so the user can fix the plan and re-approve.
+      // Otherwise the agent would build for the wrong framework or under the
+      // wrong app name/path.
+      if (templateApplyFailed || renameFailed) {
         setAppBlueprintState((prev) => {
           const nextApproved = new Set(prev.approvedChatIds);
           nextApproved.delete(chatId);
           return { ...prev, approvedChatIds: nextApproved };
         });
-        const errorMessage = `Could not apply the selected template. Please review the plan and try again:\n- ${applyErrors.join("\n- ")}`;
+        const errorPrefix = renameFailed
+          ? "Could not rename the app. Please choose a different name and try again"
+          : "Could not apply the selected template. Please review the plan and try again";
+        const errorMessage = `${errorPrefix}:\n- ${applyErrors.join("\n- ")}`;
         setApprovalError(errorMessage);
         showError(errorMessage);
         return;
@@ -481,7 +493,20 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         `Original Prompt: ${plan.userPrompt}`,
       ].join("\n");
 
-      await streamMessage({ chatId, prompt: followUpPrompt });
+      // Send the follow-up message in its own try/catch — the blueprint is
+      // already approved and persisted at this point, so a failure here is a
+      // separate "follow-up message failed" condition. Rolling back approval
+      // would be misleading (the rename, template, theme, and DB flag have
+      // all succeeded) and would block the user from continuing.
+      try {
+        await streamMessage({ chatId, prompt: followUpPrompt });
+      } catch (error) {
+        console.error("Failed to send app blueprint follow-up message:", error);
+        const followUpError =
+          "Blueprint approved, but the follow-up message could not be sent. You can type your next message to continue building.";
+        setApprovalError(followUpError);
+        showError(followUpError);
+      }
     } catch (error) {
       console.error("Failed to approve app blueprint:", error);
       setAppBlueprintState((prev) => {
@@ -786,7 +811,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         )}
 
         {/* Visuals */}
-        {(visuals.length > 0 || !isReady) && (
+        {(visuals.length > 0 || !isReady || !isApproved) && (
           <div className="space-y-1">
             <AppBlueprintVisuals
               visuals={visuals}

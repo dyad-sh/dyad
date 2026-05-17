@@ -463,6 +463,12 @@ export function buildAgentToolSet(
           // the flow can progress to approval. Skip entirely when the
           // blueprint feature is disabled — otherwise a plan left over from
           // before the toggle would permanently block the agent.
+          //
+          // When the feature is enabled, also block if NO plan exists yet —
+          // the prompt instructs the model to call write_app_blueprint first,
+          // but the prompt isn't an enforcement boundary. Without this check,
+          // a model that skips write_app_blueprint can still call e.g.
+          // write_file and bypass the required blueprint approval flow.
           if (
             options.enableAppBlueprint !== false &&
             tool.modifiesState &&
@@ -470,7 +476,13 @@ export function buildAgentToolSet(
             !PLANNING_SPECIFIC_TOOLS.has(tool.name)
           ) {
             const plan = getAppBlueprintForChat(ctx.chatId);
-            if (plan && !plan.approved) {
+            if (!plan) {
+              throw new DyadError(
+                `App blueprint must be created and approved before running ${tool.name}. Call write_app_blueprint first to present the blueprint for approval.`,
+                DyadErrorKind.Precondition,
+              );
+            }
+            if (!plan.approved) {
               throw new DyadError(
                 `App blueprint must be approved before running ${tool.name}. Call write_app_blueprint to present the blueprint for approval.`,
                 DyadErrorKind.Precondition,

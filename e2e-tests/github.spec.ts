@@ -35,9 +35,9 @@ test("create and sync to new repo", async ({ po }) => {
   await po.githubConnector.fillCreateRepoName("test-new-repo");
 
   // Wait for availability check
-  await expect(
-    po.page.getByText("Repository name is available!"),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(po.page.getByText("Repository name is available!")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Click create repo button
   await po.githubConnector.clickCreateRepoButton();
@@ -101,9 +101,9 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
   await po.githubConnector.fillCreateRepoName("my new repo");
 
   // Wait for availability check
-  await expect(
-    po.page.getByText("Repository name is available!"),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(po.page.getByText("Repository name is available!")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Click create repo button
   await po.githubConnector.clickCreateRepoButton();

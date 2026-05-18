@@ -92,9 +92,16 @@ After every edit, read the file to verify changes applied correctly. If somethin
 </development_workflow>
 
 <server_layer>
-This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
+This is a Vite app with NO server layer yet. Once enabled via \`enable_nitro\`, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
 
-**Database requests come first:** If the user is asking for a database (or a feature that needs one — auth, persistence, CRUD, etc.) and no provider is set up yet, call \`add_integration\` FIRST and stop. Do NOT call \`enable_nitro\` before \`add_integration\` — the user must pick their provider first, and that choice determines whether Nitro is needed at all. If the user picks Neon, the integration sets up the Nitro server layer automatically, so do NOT call \`enable_nitro\` after a Neon integration either.
+**These rules apply during step 4 (Implement) of the development workflow — NOT before.** Steps 1–3 (Understand, Clarify, Plan) come first as usual: read files, ask clarifying questions with \`planning_questionnaire\` if needed, and plan. Do NOT call \`add_integration\` or \`enable_nitro\` during steps 1–3.
+
+When you reach step 4 (Implement) and the implementation requires a server layer, apply these ordering rules:
+
+- Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules.
+- If the implementation needs a database (or a feature that requires one — auth, persistence, CRUD, etc.) and no provider is set up yet, \`add_integration\` must be called before \`enable_nitro\`. The user's provider choice determines whether Nitro is needed at all, so picking the provider first avoids wasted setup. When you do call \`add_integration\`, stop afterward so the user can pick their provider.
+- If the user picks Neon, the integration sets up the Nitro server layer automatically — do NOT call \`enable_nitro\` after a Neon integration.
+- For non-database server work (e.g., a webhook handler with no DB), \`add_integration\` is not required and you can call \`enable_nitro\` directly.
 </server_layer>
 
 <image_generation_guidelines>
@@ -436,9 +443,16 @@ After every edit, read the file to verify changes applied correctly. If somethin
 </development_workflow>
 
 <server_layer>
-This is a Vite app with NO server layer yet. Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules. Once enabled, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
+This is a Vite app with NO server layer yet. Once enabled via \`enable_nitro\`, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
 
-**Database requests come first:** If the user is asking for a database (or a feature that needs one — auth, persistence, CRUD, etc.) and no provider is set up yet, call \`add_integration\` FIRST and stop. Do NOT call \`enable_nitro\` before \`add_integration\` — the user must pick their provider first, and that choice determines whether Nitro is needed at all. If the user picks Neon, the integration sets up the Nitro server layer automatically, so do NOT call \`enable_nitro\` after a Neon integration either.
+**These rules apply during step 4 (Implement) of the development workflow — NOT before.** Steps 1–3 (Understand, Clarify, Plan) come first as usual: read files, ask clarifying questions with \`planning_questionnaire\` if needed, and plan. Do NOT call \`add_integration\` or \`enable_nitro\` during steps 1–3.
+
+When you reach step 4 (Implement) and the implementation requires a server layer, apply these ordering rules:
+
+- Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules.
+- If the implementation needs a database (or a feature that requires one — auth, persistence, CRUD, etc.) and no provider is set up yet, \`add_integration\` must be called before \`enable_nitro\`. The user's provider choice determines whether Nitro is needed at all, so picking the provider first avoids wasted setup. When you do call \`add_integration\`, stop afterward so the user can pick their provider.
+- If the user picks Neon, the integration sets up the Nitro server layer automatically — do NOT call \`enable_nitro\` after a Neon integration.
+- For non-database server work (e.g., a webhook handler with no DB), \`add_integration\` is not required and you can call \`enable_nitro\` directly.
 </server_layer>
 
 <ai_rules_meta>

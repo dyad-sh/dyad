@@ -47,7 +47,9 @@ testSkipIfWindows(
         .getByTestId("cloud-snapshot-digest")
         .textContent({ timeout: Timeout.SHORT });
       const digest = digestText?.split(": ").at(-1)?.trim();
-      expect(digest).toBeTruthy();
+      if (!digest) {
+        throw new Error("Cloud snapshot digest not found");
+      }
       return digest;
     };
     const getCurrentAppId = async () => {
@@ -68,6 +70,37 @@ testSkipIfWindows(
       }, appId);
       return status?.syncRevision ?? 0;
     };
+    const waitForCloudSyncRevisionToAdvance = async (
+      appId: number,
+      revision: number,
+    ) => {
+      await expect(async () => {
+        expect(await getCloudSyncRevision(appId)).toBeGreaterThan(revision);
+      }).toPass({ timeout: Timeout.EXTRA_LONG });
+    };
+    const waitForCloudSyncRevisionToSettle = async (appId: number) => {
+      let revision = await getCloudSyncRevision(appId);
+      await expect(async () => {
+        await po.page.waitForTimeout(1_000);
+        const nextRevision = await getCloudSyncRevision(appId);
+        if (nextRevision !== revision) {
+          revision = nextRevision;
+          throw new Error("Cloud sync revision changed; waiting to settle");
+        }
+      }).toPass({ timeout: Timeout.EXTRA_LONG });
+      return revision;
+    };
+    const refreshPreviewAndReadDigest = async (
+      assertDigest?: (digest: string) => void,
+    ) => {
+      await po.previewPanel.clickPreviewRefresh();
+      let digest = "";
+      await expect(async () => {
+        digest = await getCloudSnapshotDigest();
+        assertDigest?.(digest);
+      }).toPass({ timeout: Timeout.EXTRA_LONG });
+      return digest;
+    };
 
     await po.navigation.goToAppsTab();
     await po.sendPrompt("tc=write-index");
@@ -77,25 +110,16 @@ testSkipIfWindows(
     await expect(async () => {
       expect(await getCloudSyncRevision(appId)).toBeGreaterThanOrEqual(1);
     }).toPass({ timeout: Timeout.EXTRA_LONG });
-
-    await expect(async () => {
-      await po.previewPanel.clickPreviewRefresh();
-      await getCloudSnapshotDigest();
-    }).toPass({ timeout: Timeout.EXTRA_LONG });
-    const updatedRevision = await getCloudSyncRevision(appId);
-    const updatedDigest = await getCloudSnapshotDigest();
+    const updatedRevision = await waitForCloudSyncRevisionToSettle(appId);
+    const updatedDigest = await refreshPreviewAndReadDigest();
 
     await po.chatActions.clickUndo();
 
-    await expect(async () => {
-      expect(await getCloudSyncRevision(appId)).toBeGreaterThan(
-        updatedRevision,
-      );
-    }).toPass({ timeout: Timeout.EXTRA_LONG });
+    await waitForCloudSyncRevisionToAdvance(appId, updatedRevision);
+    await waitForCloudSyncRevisionToSettle(appId);
 
-    await po.previewPanel.clickPreviewRefresh();
-    await expect(async () => {
-      await expect(await getCloudSnapshotDigest()).not.toBe(updatedDigest);
-    }).toPass({ timeout: Timeout.EXTRA_LONG });
+    await refreshPreviewAndReadDigest((digest) => {
+      expect(digest).not.toBe(updatedDigest);
+    });
   },
 );

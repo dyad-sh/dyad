@@ -210,6 +210,40 @@ describe("PtySessionManager", () => {
     expect(controllers[0].pty.write).not.toHaveBeenCalled();
   });
 
+  it("allows follow-up IPC calls from the same renderer id", async () => {
+    const { manager, controllers } = createManager();
+    const session = await manager.openSession({
+      appId: 1,
+      sender: webContents(1),
+    });
+    controllers[0].emitData("prompt");
+
+    const sameRenderer = webContents(1);
+    expect(manager.serialize(session.sessionId, sameRenderer)).toBe("prompt");
+    manager.write(session.sessionId, "echo ok\n", sameRenderer);
+
+    expect(controllers[0].pty.write).toHaveBeenCalledWith("echo ok\n");
+  });
+
+  it("keeps a newer same-window attachment when stale open cleanup closes", async () => {
+    const { manager, controllers } = createManager();
+    const staleSender = webContents(1);
+    const currentSender = webContents(1);
+    const session = await manager.openSession({
+      appId: 1,
+      sender: staleSender,
+    });
+    controllers[0].emitData("prompt");
+
+    await manager.openSession({
+      appId: 1,
+      sender: currentSender,
+    });
+    manager.closeSession(session.sessionId, staleSender);
+
+    expect(manager.serialize(session.sessionId, currentSender)).toBe("prompt");
+  });
+
   it("prunes destroyed subscribers before sending output", async () => {
     vi.useFakeTimers();
     let destroyed = false;
@@ -224,6 +258,41 @@ describe("PtySessionManager", () => {
     await vi.advanceTimersByTimeAsync(8);
 
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not send pre-attach pending output to new subscribers", async () => {
+    vi.useFakeTimers();
+    const { manager, controllers, send } = createManager();
+    const firstSender = webContents(1);
+    const secondSender = webContents(2);
+    const session = await manager.openSession({
+      appId: 1,
+      sender: firstSender,
+    });
+
+    controllers[0].emitData("early");
+    const reattach = await manager.openSession({
+      appId: 1,
+      sender: secondSender,
+    });
+    expect(manager.serialize(reattach.sessionId, secondSender)).toBe("early");
+
+    controllers[0].emitData("late");
+    await vi.advanceTimersByTimeAsync(8);
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenNthCalledWith(
+      1,
+      firstSender,
+      `terminal:data:${session.sessionId}`,
+      { sessionId: session.sessionId, chunk: "earlylate" },
+    );
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      secondSender,
+      `terminal:data:${session.sessionId}`,
+      { sessionId: session.sessionId, chunk: "late" },
+    );
   });
 
   it("keeps exited sessions available for scrollback and restart UI", async () => {

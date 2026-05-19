@@ -64,6 +64,12 @@ interface TerminalExit {
   signal?: number | null;
 }
 
+interface TerminalSubscriber {
+  webContents: WebContents;
+  pendingOutputOffset: number;
+  attachmentCount: number;
+}
+
 interface PtySession {
   appId: number;
   appName: string;
@@ -74,7 +80,7 @@ interface PtySession {
   pty: TerminalPtyProcess | null;
   dataSubscription: { dispose(): void };
   exitSubscription: { dispose(): void };
-  subscribers: Map<number, WebContents>;
+  subscribers: Map<number, TerminalSubscriber>;
   scrollback: string;
   pendingOutput: string;
   flushTimer: ReturnType<typeof setTimeout> | null;
@@ -299,7 +305,13 @@ export class PtySessionManager {
   closeSession(sessionId: string, sender?: WebContents): void {
     const session = this.findSession(sessionId);
     if (!session || !sender) return;
-    session.subscribers.delete(sender.id);
+    const subscriber = session.subscribers.get(sender.id);
+    if (subscriber) {
+      subscriber.attachmentCount -= 1;
+      if (subscriber.attachmentCount <= 0) {
+        session.subscribers.delete(sender.id);
+      }
+    }
     if (session.exited) {
       this.scheduleExitedSessionReap(session);
     }
@@ -334,6 +346,12 @@ export class PtySessionManager {
     if (!session) {
       throw new DyadError("Terminal session not found", DyadErrorKind.NotFound);
     }
+    if (sender) {
+      const subscriber = session.subscribers.get(sender.id);
+      if (subscriber) {
+        subscriber.pendingOutputOffset = session.pendingOutput.length;
+      }
+    }
     return session.scrollback;
   }
 
@@ -366,7 +384,18 @@ export class PtySessionManager {
 
   private attach(sender: WebContents | undefined, session: PtySession): void {
     if (!sender || sender.isDestroyed()) return;
-    session.subscribers.set(sender.id, sender);
+    const existingSubscriber = session.subscribers.get(sender.id);
+    if (existingSubscriber) {
+      existingSubscriber.webContents = sender;
+      existingSubscriber.attachmentCount += 1;
+      return;
+    }
+
+    session.subscribers.set(sender.id, {
+      webContents: sender,
+      pendingOutputOffset: session.pendingOutput.length,
+      attachmentCount: 1,
+    });
   }
 
   private findSession(sessionId: string): PtySession | undefined {
@@ -385,7 +414,7 @@ export class PtySessionManager {
     }
 
     this.removeDestroyedSubscribers(session);
-    if (sender.isDestroyed() || session.subscribers.get(sender.id) !== sender) {
+    if (sender.isDestroyed() || !session.subscribers.has(sender.id)) {
       throw new DyadError(
         "Terminal session is not attached to this window",
         DyadErrorKind.Precondition,
@@ -396,7 +425,7 @@ export class PtySessionManager {
 
   private removeDestroyedSubscribers(session: PtySession): void {
     for (const [id, subscriber] of session.subscribers) {
-      if (subscriber.isDestroyed()) {
+      if (subscriber.webContents.isDestroyed()) {
         session.subscribers.delete(id);
       }
     }
@@ -409,7 +438,7 @@ export class PtySessionManager {
   ): void {
     this.removeDestroyedSubscribers(session);
     for (const subscriber of session.subscribers.values()) {
-      this.deps.send(subscriber, channel, payload);
+      this.deps.send(subscriber.webContents, channel, payload);
     }
   }
 
@@ -431,14 +460,18 @@ export class PtySessionManager {
     if (!session.pendingOutput) return;
     const chunk = session.pendingOutput;
     session.pendingOutput = "";
-    this.sendToSubscribers(
-      session,
-      buildTerminalDataChannel(session.sessionId),
-      {
+    this.removeDestroyedSubscribers(session);
+    const channel = buildTerminalDataChannel(session.sessionId);
+    for (const subscriber of session.subscribers.values()) {
+      const offset = Math.min(subscriber.pendingOutputOffset, chunk.length);
+      subscriber.pendingOutputOffset = 0;
+      const visibleChunk = chunk.slice(offset);
+      if (!visibleChunk) continue;
+      this.deps.send(subscriber.webContents, channel, {
         sessionId: session.sessionId,
-        chunk,
-      },
-    );
+        chunk: visibleChunk,
+      });
+    }
   }
 
   private markExited(session: PtySession, exit: TerminalExit): void {

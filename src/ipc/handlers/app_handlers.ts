@@ -1,5 +1,5 @@
 import { ipcMain, app, dialog } from "electron";
-import { db, getDatabasePath } from "../../db";
+import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, inArray, like } from "drizzle-orm";
 import { createTypedHandler } from "./base";
@@ -2257,15 +2257,14 @@ export function registerAppHandlers() {
     // To resolve app paths later
     const basePath = getDyadAppsBaseDirectory();
     logger.log("deleting database...");
-    // 1. Drop the database by deleting the SQLite file
-    const dbPath = getDatabasePath();
-    if (fs.existsSync(dbPath)) {
-      // Close database connections first
-      if (db.$client) {
-        db.$client.close();
+    // 1. Drop the database by closing the singleton and deleting SQLite files
+    const dbFilePaths = getDatabaseFilePaths();
+    closeDatabase();
+    for (const dbFilePath of dbFilePaths) {
+      if (fs.existsSync(dbFilePath)) {
+        await fsPromises.unlink(dbFilePath);
+        logger.log(`Database file deleted: ${dbFilePath}`);
       }
-      await fsPromises.unlink(dbPath);
-      logger.log(`Database file deleted: ${dbPath}`);
     }
     logger.log("database deleted.");
     logger.log("deleting settings...");

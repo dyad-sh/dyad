@@ -23,6 +23,11 @@ export function getDatabasePath(): string {
   return path.join(getUserDataPath(), "sqlite.db");
 }
 
+export function getDatabaseFilePaths(): string[] {
+  const dbPath = getDatabasePath();
+  return [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
+}
+
 /**
  * Initialize the database connection
  */
@@ -78,6 +83,18 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   }
 
   return _db as any;
+}
+
+export function closeDatabase(): void {
+  if (!_db) {
+    return;
+  }
+
+  const database = _db as BetterSQLite3Database<typeof schema> & {
+    $client: Database.Database;
+  };
+  _db = null;
+  database.$client.close();
 }
 
 /**

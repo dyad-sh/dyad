@@ -194,7 +194,11 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
 
     execute: async (args: ExecuteSandboxScriptArgs, ctx: AgentContext) => {
       try {
-        const defs = await collectMcpToolDefs();
+        // Only inject MCP host functions when the caller has opted in for
+        // this turn (set by `local_agent_handler`). Skipping here keeps
+        // read-only and plan-mode turns from exposing MCP tools through
+        // the sandbox even if the model invents a host-function name.
+        const defs = ctx.mcpToolsEnabled ? await collectMcpToolDefs() : [];
         const fileCaps = buildSandboxCapabilitiesWithObserver(
           ctx.appPath,
           ({ path }) => {

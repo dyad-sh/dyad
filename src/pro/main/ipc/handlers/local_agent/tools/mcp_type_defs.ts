@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import { sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 
 const MCP_RESULT_TYPE = `type McpResult = {
@@ -53,6 +54,12 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
   }
 
   const defs: McpToolDef[] = [];
+  // `toJsIdentifier` replaces any character outside [A-Za-z0-9_$] with `_`,
+  // which is not one-to-one — two distinct tool keys (e.g. `srv-foo__t` and
+  // `srv_foo__t`) can collapse to the same JS identifier. Disambiguate by
+  // appending a numeric suffix on collision so each MCP tool maps to a
+  // unique sandbox capability.
+  const seenJsNames = new Set<string>();
   for (const s of servers) {
     let toolSet: Record<string, any>;
     try {
@@ -65,8 +72,16 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
     for (const [toolName, mcpTool] of Object.entries(toolSet)) {
       const sanitizedToolName = sanitizeMcpName(toolName);
       const toolKey = `${serverNameSanitized}__${sanitizedToolName}`;
+      const baseJsName = toJsIdentifier(toolKey);
+      let jsName = baseJsName;
+      let suffix = 2;
+      while (seenJsNames.has(jsName)) {
+        jsName = `${baseJsName}_${suffix}`;
+        suffix += 1;
+      }
+      seenJsNames.add(jsName);
       defs.push({
-        jsName: toJsIdentifier(toolKey),
+        jsName,
         toolKey,
         serverId: s.id,
         serverName: s.name || "",
@@ -185,7 +200,7 @@ export function jsonSchemaToTs(schema: any, indent = 0): string {
           ? key
           : JSON.stringify(key);
         const docLine = desc
-          ? `${pad}/** ${String(desc).replace(/\*\//g, "*\\/")} */\n`
+          ? `${pad}/** ${String(desc).replace(/\s+/g, " ").trim().replace(/\*\//g, "*\\/")} */\n`
           : "";
         return `${docLine}${pad}${safeKey}${optional}: ${typeStr};`;
       });
@@ -227,14 +242,20 @@ export function buildMcpCapabilityMap(params: {
         chatId: params.ctx.chatId,
       });
       if (!ok) {
-        throw new Error(`User declined running tool ${def.toolKey}`);
+        throw new DyadError(
+          `User declined running tool ${def.toolKey}`,
+          DyadErrorKind.UserCancelled,
+        );
       }
 
       const client = await mcpManager.getClient(def.serverId);
       const toolSet = await client.tools();
       const mcpTool = toolSet[def.toolName];
       if (!mcpTool || typeof mcpTool.execute !== "function") {
-        throw new Error(`MCP tool ${def.toolKey} not found at runtime`);
+        throw new DyadError(
+          `MCP tool ${def.toolKey} not found at runtime`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       const contentPretty = JSON.stringify(args, null, 2);

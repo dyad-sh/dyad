@@ -7,6 +7,7 @@ import {
 } from "./mcp_type_defs";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
@@ -78,6 +79,24 @@ describe("jsonSchemaToTs", () => {
     });
     expect(out).toContain("/** Target URL */");
     expect(out).toContain("url: string;");
+  });
+
+  it("collapses multi-line property descriptions into a single line", () => {
+    const out = jsonSchemaToTs({
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Target URL\n  to fetch\n\n  (must be HTTPS)",
+        },
+      },
+      required: ["url"],
+    });
+    // Newlines in a JSDoc body break out of the `/** ... */` envelope when
+    // rendered, so the property description must be flattened to a single
+    // line like the tool-level description is.
+    expect(out).toContain("/** Target URL to fetch (must be HTTPS) */");
+    expect(out).not.toMatch(/\/\*\*[^*]*\n[^*]*\*\//);
   });
 
   it("renders enum and const", () => {
@@ -304,7 +323,7 @@ describe("buildMcpCapabilityMap", () => {
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-result"))).toBe(true);
   });
 
-  it("throws and skips execution when consent is denied", async () => {
+  it("throws a DyadError(UserCancelled) and skips execution when consent is denied", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue(false);
     const execute = vi.fn();
     vi.mocked(mcpManager.getClient).mockResolvedValue({
@@ -318,14 +337,22 @@ describe("buildMcpCapabilityMap", () => {
       defs: [makeDef()],
     });
 
-    await expect(map.srv__hello({})).rejects.toThrow(
+    let rejection: unknown;
+    try {
+      await map.srv__hello({});
+    } catch (e) {
+      rejection = e;
+    }
+    expect(rejection).toBeInstanceOf(DyadError);
+    expect((rejection as DyadError).kind).toBe(DyadErrorKind.UserCancelled);
+    expect((rejection as DyadError).message).toBe(
       "User declined running tool srv__hello",
     );
     expect(execute).not.toHaveBeenCalled();
     expect(ctx.onXmlComplete).not.toHaveBeenCalled();
   });
 
-  it("throws when the live client no longer exposes the tool", async () => {
+  it("throws a DyadError(NotFound) when the live client no longer exposes the tool", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue(true);
     vi.mocked(mcpManager.getClient).mockResolvedValue({
       tools: async () => ({}),
@@ -338,7 +365,15 @@ describe("buildMcpCapabilityMap", () => {
       defs: [makeDef()],
     });
 
-    await expect(map.srv__hello({})).rejects.toThrow(
+    let rejection: unknown;
+    try {
+      await map.srv__hello({});
+    } catch (e) {
+      rejection = e;
+    }
+    expect(rejection).toBeInstanceOf(DyadError);
+    expect((rejection as DyadError).kind).toBe(DyadErrorKind.NotFound);
+    expect((rejection as DyadError).message).toBe(
       "MCP tool srv__hello not found at runtime",
     );
   });

@@ -109,6 +109,15 @@ export interface AgentContext {
    * this signal so they don't keep the stream alive after a cancel.
    */
   abortSignal?: AbortSignal;
+  /**
+   * Whether MCP tools should be exposed as host functions inside the
+   * `execute_sandbox_script` sandbox this turn. Set by the local-agent
+   * handler based on read-only / plan-mode status and effective
+   * sandbox-tool availability. When false or undefined, `execute_sandbox_script`
+   * skips MCP capability injection — preventing sandboxed scripts from
+   * calling MCP tools in modes where MCP is intentionally not exposed.
+   */
+  mcpToolsEnabled?: boolean;
 }
 
 // ============================================================================

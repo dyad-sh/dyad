@@ -82,10 +82,7 @@ import {
   parseAiMessagesJson,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
-import {
-  buildExecuteSandboxScriptDescription,
-  isSandboxScriptExecutionEnabled,
-} from "./tools/execute_sandbox_script";
+import { buildExecuteSandboxScriptDescription } from "./tools/execute_sandbox_script";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -695,30 +692,33 @@ export async function handleLocalAgentStream(
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     });
-    // MCP tool exposure depends on the sandbox-script experiment:
-    //   - Experiment ON: MCP tools are NOT registered individually with the
-    //     LLM. Instead, they're exposed as host functions inside
-    //     `execute_sandbox_script`'s MustardScript sandbox so the model can
-    //     chain MCP calls and file reads in one script. The tool's
-    //     description is built per-turn so the type declarations reflect
-    //     the currently enabled MCP servers.
-    //   - Experiment OFF: fall back to the pre-branch behavior of
-    //     registering each MCP tool individually with the LLM, so users who
-    //     enabled MCP without opting into the sandbox experiment do not
-    //     lose access to their MCP servers.
-    const sandboxExperimentOn = isSandboxScriptExecutionEnabled(settings);
-    const mcpToolsForRegistration: ToolSet =
-      !readOnly && !planModeOnly && !sandboxExperimentOn
-        ? await getMcpTools(event, ctx)
-        : {};
-    if (
+    // MCP tool exposure depends on whether `execute_sandbox_script` is
+    // available this turn (which already accounts for the sandbox-script
+    // experiment AND `isSandboxSupportedPlatform()` via the tool's
+    // `isEnabled` check):
+    //   - Sandbox tool present and not read-only/plan-mode: MCP tools are
+    //     NOT registered individually with the LLM. Instead, they're
+    //     exposed as host functions inside `execute_sandbox_script`'s
+    //     MustardScript sandbox so the model can chain MCP calls and file
+    //     reads in one script. The tool's description is built per-turn so
+    //     the type declarations reflect the currently enabled MCP servers.
+    //   - Otherwise (experiment off, platform unsupported, read-only, or
+    //     plan mode): fall back to the pre-branch behavior of registering
+    //     each MCP tool individually with the LLM, so users do not lose
+    //     access to their MCP servers on a platform that cannot run the
+    //     sandbox.
+    const mcpInSandboxEnabled =
       !readOnly &&
       !planModeOnly &&
-      sandboxExperimentOn &&
-      agentTools.execute_sandbox_script !== undefined
-    ) {
+      agentTools.execute_sandbox_script !== undefined;
+    ctx.mcpToolsEnabled = mcpInSandboxEnabled;
+    const mcpToolsForRegistration: ToolSet =
+      !readOnly && !planModeOnly && !mcpInSandboxEnabled
+        ? await getMcpTools(event, ctx)
+        : {};
+    if (mcpInSandboxEnabled) {
       try {
-        agentTools.execute_sandbox_script.description =
+        agentTools.execute_sandbox_script!.description =
           await buildExecuteSandboxScriptDescription();
       } catch (e) {
         logger.warn(

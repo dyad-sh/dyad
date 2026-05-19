@@ -70,9 +70,8 @@ export class AppManagement {
         "",
       );
     }).toPass();
-    const appPath = await this.getTitleBarAppNameButton().getAttribute(
-      "data-app-path",
-    );
+    const appPath =
+      await this.getTitleBarAppNameButton().getAttribute("data-app-path");
     if (!appPath) {
       throw new Error("No current app path found");
     }

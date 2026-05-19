@@ -39,7 +39,7 @@ export function BackButton({
       variant="ghost"
       size="sm"
       className={cn(
-        "group mb-4 inline-flex items-center gap-2 h-9 pl-3 pr-4 rounded-full bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary active:scale-[0.97] transition-[colors,transform] duration-150 ease-out",
+        "group mb-4 inline-flex items-center gap-2 h-9 pl-3 pr-4 rounded-full text-muted-foreground hover:text-foreground active:scale-[0.97] transition-[colors,transform] duration-150 ease-out",
         className,
       )}
       {...rest}

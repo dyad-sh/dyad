@@ -172,7 +172,10 @@ export default function TerminalPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [hasFitSignal, setHasFitSignal] = useState(false);
   const terminalTheme = useMemo(
-    () => getTerminalTheme(isDarkMode),
+    () => ({
+      ...getTerminalTheme(isDarkMode),
+      background: "rgba(0, 0, 0, 0)",
+    }),
     [isDarkMode],
   );
   const terminalElementRef = useRef<HTMLDivElement | null>(null);
@@ -441,15 +444,17 @@ export default function TerminalPanel({
       </div>
       <div className="relative min-h-0 flex-1">
         <ContextMenu>
-          <ContextMenuTrigger className="h-full">
-            <div className="h-full bg-background p-2">
-              <div
-                ref={terminalElementRef}
-                role="application"
-                aria-label={t("terminal.ariaLabel", { appName: appLabel })}
-                data-testid="terminal-xterm"
-                className="h-full overflow-hidden rounded-md border bg-background p-2 [&_.xterm]:h-full [&_.xterm-viewport]:scrollbar-on-hover"
-              />
+          <ContextMenuTrigger className="block h-full min-h-0">
+            <div className="box-border h-full bg-background p-2">
+              <div className="box-border h-full overflow-hidden bg-background p-2">
+                <div
+                  ref={terminalElementRef}
+                  role="application"
+                  aria-label={t("terminal.ariaLabel", { appName: appLabel })}
+                  data-testid="terminal-xterm"
+                  className="h-full min-h-0 overflow-hidden bg-background [&_.xterm-rows]:!bg-background [&_.xterm-screen]:!bg-background [&_.xterm-viewport]:!bg-background [&_.xterm-viewport]:scrollbar-on-hover [&_.xterm]:!bg-background [&_.xterm]:h-full"
+                />
+              </div>
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent>

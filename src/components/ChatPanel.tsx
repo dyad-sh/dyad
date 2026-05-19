@@ -290,8 +290,10 @@ export function ChatPanel({
     ? { duration: 0.12 }
     : { duration: 0.22, ease: drawerEase };
 
+  const showTerminalDrawer = isTerminalOpen && chatId && !isVersionPaneOpen;
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex h-full flex-col overflow-hidden">
       <ChatHeader
         isVersionPaneOpen={isVersionPaneOpen}
         isPreviewOpen={isPreviewOpen}
@@ -302,36 +304,7 @@ export function ChatPanel({
         {!isVersionPaneOpen && (
           <div className="relative flex-1 min-w-0 overflow-hidden">
             <AnimatePresence initial={false}>
-              {isTerminalOpen && chatId ? (
-                <motion.div
-                  key="terminal"
-                  className="absolute inset-0 z-20 flex min-h-0 flex-col"
-                  initial={reducedMotion ? { opacity: 0 } : { y: "100%" }}
-                  animate={reducedMotion ? { opacity: 1 } : { y: 0 }}
-                  exit={reducedMotion ? { opacity: 0 } : { y: "100%" }}
-                  transition={terminalLayerTransition}
-                  onAnimationComplete={() => {
-                    setTerminalFitSignal((value) => value + 1);
-                  }}
-                >
-                  <Suspense
-                    fallback={
-                      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                        {t("terminal.loading")}
-                      </div>
-                    }
-                  >
-                    <TerminalPanel
-                      appId={selectedAppId}
-                      chatId={chatId}
-                      appName={currentApp?.name}
-                      onExit={closeTerminal}
-                      fitSignal={terminalFitSignal}
-                      size="full"
-                    />
-                  </Suspense>
-                </motion.div>
-              ) : (
+              {!showTerminalDrawer && (
                 <motion.div
                   key="chat"
                   className="absolute inset-0 flex min-h-0 flex-col"
@@ -392,6 +365,39 @@ export function ChatPanel({
           onClose={() => setIsVersionPaneOpen(false)}
         />
       </div>
+      <AnimatePresence initial={false}>
+        {showTerminalDrawer && (
+          <motion.div
+            key="terminal"
+            data-testid="terminal-drawer"
+            className="absolute inset-0 z-20 flex min-h-0 flex-col"
+            initial={reducedMotion ? { opacity: 0 } : { y: "100%" }}
+            animate={reducedMotion ? { opacity: 1 } : { y: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { y: "100%" }}
+            transition={terminalLayerTransition}
+            onAnimationComplete={() => {
+              setTerminalFitSignal((value) => value + 1);
+            }}
+          >
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  {t("terminal.loading")}
+                </div>
+              }
+            >
+              <TerminalPanel
+                appId={selectedAppId}
+                chatId={chatId}
+                appName={currentApp?.name}
+                onExit={closeTerminal}
+                fitSignal={terminalFitSignal}
+                size="full"
+              />
+            </Suspense>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

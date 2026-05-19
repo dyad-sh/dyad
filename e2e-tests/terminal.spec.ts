@@ -22,11 +22,18 @@ test("in-chat terminal runs commands, persists visibility, and exits with chord"
 
   const toggle = po.page.getByTestId("toggle-terminal-button");
   await expect(toggle).toBeVisible({ timeout: Timeout.MEDIUM });
+  const toggleBox = await toggle.boundingBox();
+  expect(toggleBox).not.toBeNull();
   await toggle.click();
 
-  await expect(po.page.getByText("Terminal mode")).toBeVisible({
+  await expect(po.page.getByText("Terminal", { exact: true })).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
+  const drawer = po.page.getByTestId("terminal-drawer");
+  await expect(drawer).toBeVisible();
+  const drawerBox = await drawer.boundingBox();
+  expect(drawerBox).not.toBeNull();
+  expect(drawerBox!.y).toBeLessThanOrEqual(toggleBox!.y + 1);
   await expect(po.page.getByTestId("terminal-xterm")).toBeVisible();
 
   await po.page.keyboard.type("echo hello dyad");
@@ -37,7 +44,7 @@ test("in-chat terminal runs commands, persists visibility, and exits with chord"
     .toContain("hello dyad");
 
   await po.page.keyboard.press("Escape");
-  await expect(po.page.getByText("Terminal mode")).toBeVisible();
+  await expect(po.page.getByText("Terminal", { exact: true })).toBeVisible();
 
   const closeChord = process.platform === "darwin" ? "Meta+K" : "Control+K";
   await po.page.keyboard.press(closeChord);

@@ -5,7 +5,7 @@
 
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
-import { readSettings, tryWriteSettings, writeSettings } from "@/main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -240,10 +240,7 @@ export async function requireAgentToolConsent(
   const response = await waitForAgentToolConsent(requestId, params.chatId);
 
   if (response === "accept-always") {
-    tryWriteSettings(
-      getAgentToolConsentSettings(params.toolName, "always"),
-      "persisting accepted agent tool consent",
-    );
+    setAgentToolConsent(params.toolName, "always");
     return true;
   }
   if (response === "decline") {

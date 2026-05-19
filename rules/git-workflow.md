@@ -30,6 +30,10 @@ gh pr create --head <owner>:<branch> ...
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
 
+## Finding existing PRs by head branch
+
+This repo's installed `gh pr view` may fail with `unknown flag: --head`. To check whether a fork branch already has a PR, use the branch argument from the matching local checkout (`gh pr view <branch> --repo dyad-sh/dyad`) or use `gh pr list --head <owner>:<branch> --json number,url` instead of passing `--head` to `gh pr view`.
+
 ## GH auth allowlist and git push
 
 If `gh auth status` succeeds but `git push` fails with `Repo <owner>/<repo> is not allowlisted` followed by `fatal: could not read Username for 'https://github.com/...': Device not configured`, run `gh auth setup-git` first and then push to an allowlisted remote. In some bot workspaces, fork remotes are not allowlisted even when `upstream` is, so retry the push against `upstream` if project policy permits it.

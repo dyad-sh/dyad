@@ -33,6 +33,13 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
 } from "./lib/posthogTelemetry";
+import * as Sentry from "@sentry/electron";
+
+Sentry.init({
+  dsn: "https://a49616de3b0cfaefdc467a39bb249256@o1401755.ingest.us.sentry.io/4511418333003776",
+});
+
+// myUndefinedFunction();
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);

@@ -59,6 +59,11 @@ import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import * as Sentry from "@sentry/electron";
+
+Sentry.init({
+  dsn: "https://a49616de3b0cfaefdc467a39bb249256@o1401755.ingest.us.sentry.io/4511418333003776",
+});
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();

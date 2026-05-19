@@ -66,7 +66,7 @@ interface SpawnedProcessLike {
   unref(): void;
 }
 
-type PtySpawner = (
+export type PtySpawner = (
   file: string,
   args: string[],
   options: {
@@ -150,7 +150,7 @@ function buildExitMessage(
   return `Command '${displayedCommand}' exited with code ${exitCode}`;
 }
 
-function terminatePtyProcess(
+export function terminatePtyProcess(
   ptyProcess: PtyProcessLike,
   platform: NodeJS.Platform = process.platform,
   processSpawner: ProcessSpawner = spawnProcess,

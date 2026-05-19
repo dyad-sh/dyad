@@ -36,6 +36,7 @@ export async function resolveChatSummary(
       title: chat.title,
       createdAt: chat.createdAt,
       chatMode: chat.chatMode,
+      terminalOpen: chat.terminalOpen,
     };
   } catch (error) {
     console.warn(

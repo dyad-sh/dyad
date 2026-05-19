@@ -50,6 +50,7 @@ export const ChatSchema = z.object({
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
   chatMode: NullableChatModeSchema,
+  terminalOpen: z.boolean(),
 });
 
 export type Chat = z.infer<typeof ChatSchema>;
@@ -218,6 +219,13 @@ export const UpdateChatParamsSchema = z.object({
 
 export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;
 
+export const SetTerminalOpenParamsSchema = z.object({
+  chatId: z.number(),
+  open: z.boolean(),
+});
+
+export type SetTerminalOpenParams = z.infer<typeof SetTerminalOpenParamsSchema>;
+
 /**
  * Schema for token count params.
  */
@@ -265,6 +273,7 @@ export const chatContracts = {
         title: z.string().nullable(),
         createdAt: z.date(),
         chatMode: NullableChatModeSchema,
+        terminalOpen: z.boolean(),
       }),
     ),
   }),
@@ -278,6 +287,7 @@ export const chatContracts = {
       title: z.string().nullable(),
       createdAt: z.date(),
       chatMode: NullableChatModeSchema,
+      terminalOpen: z.boolean(),
     }),
   }),
 
@@ -297,6 +307,12 @@ export const chatContracts = {
     channel: "update-chat",
     input: UpdateChatParamsSchema,
     output: z.void(),
+  }),
+
+  setTerminalOpen: defineContract({
+    channel: "chat:set-terminal-open",
+    input: SetTerminalOpenParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
   }),
 
   deleteChat: defineContract({

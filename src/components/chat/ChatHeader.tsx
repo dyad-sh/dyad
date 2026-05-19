@@ -4,6 +4,7 @@ import {
   PlusCircle,
   GitBranch,
   Info,
+  SquareTerminal,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +33,8 @@ import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
+import { cn } from "@/lib/utils";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -51,6 +54,9 @@ export function ChatHeader({
   const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
   const [selectedChatId] = useAtom(selectedChatIdAtom);
+  const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
+    terminalOpenByChatIdAtom,
+  );
   const { invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
   const { isStreaming } = useStreamChat();
@@ -110,6 +116,37 @@ export function ChatHeader({
   const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
 
   const currentBranchName = branchInfo?.branch;
+  const isTerminalOpen = selectedChatId
+    ? (terminalOpenByChatId.get(selectedChatId) ?? false)
+    : false;
+  const isTerminalDisabled = !appId || !selectedChatId;
+
+  const handleToggleTerminal = async () => {
+    if (!appId || !selectedChatId) return;
+
+    const nextOpen = !isTerminalOpen;
+    setTerminalOpenByChatId((prev) => {
+      const next = new Map(prev);
+      next.set(selectedChatId, nextOpen);
+      return next;
+    });
+
+    try {
+      await ipc.chat.setTerminalOpen({
+        chatId: selectedChatId,
+        open: nextOpen,
+      });
+    } catch (error) {
+      setTerminalOpenByChatId((prev) => {
+        const next = new Map(prev);
+        next.set(selectedChatId, isTerminalOpen);
+        return next;
+      });
+      showError(
+        t("terminal.failedToggle", { error: (error as Error).message }),
+      );
+    }
+  };
 
   return (
     <div className="flex flex-col w-full @container">
@@ -214,17 +251,46 @@ export function ChatHeader({
           </Button>
         </div>
 
-        <button
-          data-testid="toggle-preview-panel-button"
-          onClick={onTogglePreview}
-          className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
-        >
-          {isPreviewOpen ? (
-            <PanelRightClose size={20} />
-          ) : (
-            <PanelRightOpen size={20} />
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-testid="toggle-terminal-button"
+                    onClick={handleToggleTerminal}
+                    disabled={isTerminalDisabled}
+                    aria-label={t("terminal.toggleAriaLabel")}
+                    aria-pressed={isTerminalOpen}
+                    className={cn(
+                      "cursor-pointer rounded-md p-2 hover:bg-(--background-lightest) disabled:cursor-not-allowed disabled:opacity-50",
+                      isTerminalOpen && "bg-primary/10 text-primary",
+                    )}
+                  />
+                }
+              >
+                <SquareTerminal size={20} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isTerminalDisabled
+                  ? t("terminal.toggleDisabledTooltip")
+                  : t("terminal.toggleTooltip")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <button
+            data-testid="toggle-preview-panel-button"
+            onClick={onTogglePreview}
+            className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
+          >
+            {isPreviewOpen ? (
+              <PanelRightClose size={20} />
+            ) : (
+              <PanelRightOpen size={20} />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

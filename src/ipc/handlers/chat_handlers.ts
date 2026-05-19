@@ -102,6 +102,7 @@ export function registerChatHandlers() {
         title: true,
         createdAt: true,
         chatMode: true,
+        terminalOpen: true,
       },
     });
 
@@ -115,6 +116,7 @@ export function registerChatHandlers() {
       title: chat.title,
       createdAt: chat.createdAt,
       chatMode: normalizeStoredChatMode(chat.chatMode),
+      terminalOpen: chat.terminalOpen,
     };
   });
 
@@ -129,6 +131,7 @@ export function registerChatHandlers() {
             createdAt: true,
             appId: true,
             chatMode: true,
+            terminalOpen: true,
           },
           orderBy: [desc(chats.createdAt)],
         })
@@ -139,6 +142,7 @@ export function registerChatHandlers() {
             createdAt: true,
             appId: true,
             chatMode: true,
+            terminalOpen: true,
           },
           orderBy: [desc(chats.createdAt)],
         });
@@ -167,6 +171,20 @@ export function registerChatHandlers() {
       return;
     }
     await db.update(chats).set(updates).where(eq(chats.id, chatId));
+  });
+
+  createTypedHandler(chatContracts.setTerminalOpen, async (_, params) => {
+    const result = await db
+      .update(chats)
+      .set({ terminalOpen: params.open })
+      .where(eq(chats.id, params.chatId))
+      .returning({ id: chats.id });
+
+    if (result.length === 0) {
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+    }
+
+    return { ok: true as const };
   });
 
   createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {

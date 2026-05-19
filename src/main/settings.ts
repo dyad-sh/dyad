@@ -343,6 +343,19 @@ export function writeSettings(settings: Partial<UserSettings>): void {
   }
 }
 
+export function tryWriteSettings(
+  settings: Partial<UserSettings>,
+  context: string,
+): boolean {
+  try {
+    writeSettings(settings);
+    return true;
+  } catch (error) {
+    logger.error(`Failed to write settings while ${context}:`, error);
+    return false;
+  }
+}
+
 function toSettingsWriteError(error: unknown): DyadError {
   if (error instanceof DyadError) {
     return error;

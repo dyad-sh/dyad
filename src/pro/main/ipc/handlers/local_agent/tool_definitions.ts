@@ -5,7 +5,7 @@
 
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
-import { readSettings, writeSettings } from "@/main/settings";
+import { readSettings, tryWriteSettings, writeSettings } from "@/main/settings";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -47,7 +47,7 @@ import {
   type FileEditToolName,
   FILE_EDIT_TOOL_NAMES,
 } from "./tools/types";
-import { AgentToolConsent } from "@/lib/schemas";
+import type { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -110,6 +110,19 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
 // ============================================================================
 
 export type AgentToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
+
+function getAgentToolConsentSettings(
+  toolName: AgentToolName,
+  consent: AgentToolConsent,
+) {
+  const settings = readSettings();
+  return {
+    agentToolConsents: {
+      ...settings.agentToolConsents,
+      [toolName]: consent,
+    },
+  };
+}
 
 // ============================================================================
 // Agent Tool Consent Management
@@ -175,13 +188,7 @@ export function setAgentToolConsent(
   toolName: AgentToolName,
   consent: AgentToolConsent,
 ): void {
-  const settings = readSettings();
-  writeSettings({
-    agentToolConsents: {
-      ...settings.agentToolConsents,
-      [toolName]: consent,
-    },
-  });
+  writeSettings(getAgentToolConsentSettings(toolName, consent));
 }
 
 export function getAllAgentToolConsents(): Record<
@@ -233,7 +240,10 @@ export async function requireAgentToolConsent(
   const response = await waitForAgentToolConsent(requestId, params.chatId);
 
   if (response === "accept-always") {
-    setAgentToolConsent(params.toolName, "always");
+    tryWriteSettings(
+      getAgentToolConsentSettings(params.toolName, "always"),
+      "persisting accepted agent tool consent",
+    );
     return true;
   }
   if (response === "decline") {

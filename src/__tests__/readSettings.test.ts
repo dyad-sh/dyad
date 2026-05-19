@@ -8,6 +8,7 @@ import {
   readEffectiveSettings,
   getSettingsFilePath,
   writeSettings,
+  tryWriteSettings,
   encrypt,
   decrypt,
   notifyRendererErrorToastListenerReady,
@@ -822,6 +823,17 @@ describe("writeSettings", () => {
     expect((thrown as Error).message).toContain(
       "Failed to write settings: disk full",
     );
+  });
+
+  it("returns false instead of throwing for best-effort settings writes", () => {
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    expect(
+      tryWriteSettings({ enableAutoUpdate: false }, "test best-effort write"),
+    ).toBe(false);
   });
 });
 

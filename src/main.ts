@@ -16,7 +16,7 @@ import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
 import {
   getSettingsFilePath,
-  writeSettings,
+  tryWriteSettings,
   readSettings,
   readEffectiveSettings,
   writeCrashSentinel,
@@ -237,7 +237,10 @@ export async function onReady() {
   // TODO: Remove legacyIsRunningCrash migration path after a few releases
   // once existing users have launched at least once on the sentinel build.
   if (legacyIsRunningCrash) {
-    writeSettings({ isRunning: false });
+    tryWriteSettings(
+      { isRunning: false },
+      "clearing the legacy isRunning crash flag",
+    );
   }
 
   writeCrashSentinel();
@@ -329,14 +332,10 @@ export async function onFirstRunMaybe(settings: UserSettings) {
 
   if (isFirstSession) {
     await promptMoveToApplicationsFolder();
-    writeSettings({
-      hasRunBefore: true,
-    });
+    tryWriteSettings({ hasRunBefore: true }, "marking first run complete");
   }
   if (IS_TEST_BUILD) {
-    writeSettings({
-      isTestMode: true,
-    });
+    tryWriteSettings({ isTestMode: true }, "marking test mode");
   }
 }
 
@@ -723,6 +722,18 @@ function startAppWhenReady() {
   app.whenReady().then(onReady);
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function showDeepLinkSettingsError(action: string, error: unknown): void {
+  logger.error(`Failed to ${action}:`, error);
+  dialog.showErrorBox(
+    "Unable to Save Settings",
+    `Failed to ${action}: ${getErrorMessage(error)}`,
+  );
+}
+
 async function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
   let parsed: URL;
@@ -758,7 +769,12 @@ async function handleDeepLinkReturn(url: string) {
       );
       return;
     }
-    handleNeonOAuthReturn({ token, refreshToken, expiresIn });
+    try {
+      handleNeonOAuthReturn({ token, refreshToken, expiresIn });
+    } catch (error) {
+      showDeepLinkSettingsError("save Neon credentials", error);
+      return;
+    }
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
@@ -776,7 +792,12 @@ async function handleDeepLinkReturn(url: string) {
       );
       return;
     }
-    await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+    try {
+      await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+    } catch (error) {
+      showDeepLinkSettingsError("save Supabase credentials", error);
+      return;
+    }
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
@@ -790,9 +811,14 @@ async function handleDeepLinkReturn(url: string) {
       dialog.showErrorBox("Invalid URL", "Expected key");
       return;
     }
-    handleDyadProReturn({
-      apiKey,
-    });
+    try {
+      handleDyadProReturn({
+        apiKey,
+      });
+    } catch (error) {
+      showDeepLinkSettingsError("save Dyad Pro settings", error);
+      return;
+    }
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,

@@ -15,8 +15,11 @@ import {
 import log from "electron-log";
 
 import { db } from "@/db";
-import { chats, messages } from "@/db/schema";
+import { chats, messages, mcpServers } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { mcpManager } from "@/ipc/utils/mcp_manager";
+import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 
 import {
   isDyadProEnabled,
@@ -51,9 +54,6 @@ import {
   commitAllChanges,
 } from "./processors/file_operations";
 import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
-import { mcpManager } from "@/ipc/utils/mcp_manager";
-import { mcpServers } from "@/db/schema";
-import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 
@@ -82,7 +82,10 @@ import {
   parseAiMessagesJson,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
-import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
+import {
+  buildExecuteSandboxScriptDescription,
+  isSandboxScriptExecutionEnabled,
+} from "./tools/execute_sandbox_script";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -692,9 +695,39 @@ export async function handleLocalAgentStream(
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     });
-    const mcpTools =
-      readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
-    const allTools: ToolSet = { ...agentTools, ...mcpTools };
+    // MCP tool exposure depends on the sandbox-script experiment:
+    //   - Experiment ON: MCP tools are NOT registered individually with the
+    //     LLM. Instead, they're exposed as host functions inside
+    //     `execute_sandbox_script`'s MustardScript sandbox so the model can
+    //     chain MCP calls and file reads in one script. The tool's
+    //     description is built per-turn so the type declarations reflect
+    //     the currently enabled MCP servers.
+    //   - Experiment OFF: fall back to the pre-branch behavior of
+    //     registering each MCP tool individually with the LLM, so users who
+    //     enabled MCP without opting into the sandbox experiment do not
+    //     lose access to their MCP servers.
+    const sandboxExperimentOn = isSandboxScriptExecutionEnabled(settings);
+    const mcpToolsForRegistration: ToolSet =
+      !readOnly && !planModeOnly && !sandboxExperimentOn
+        ? await getMcpTools(event, ctx)
+        : {};
+    if (
+      !readOnly &&
+      !planModeOnly &&
+      sandboxExperimentOn &&
+      agentTools.execute_sandbox_script !== undefined
+    ) {
+      try {
+        agentTools.execute_sandbox_script.description =
+          await buildExecuteSandboxScriptDescription();
+      } catch (e) {
+        logger.warn(
+          "Failed to build dynamic execute_sandbox_script description",
+          e,
+        );
+      }
+    }
+    const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
 
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
@@ -1849,6 +1882,18 @@ function shouldRunTodoFollowUpPass(params: {
   );
 }
 
+/**
+ * Build a ToolSet from the user's enabled MCP servers, exposing each MCP
+ * tool to the LLM as an individually-registered tool. Used only when the
+ * sandbox-script experiment is OFF — when ON, MCP tools are instead
+ * exposed as host functions inside `execute_sandbox_script` (see the
+ * caller for the branching logic).
+ *
+ * Mirrors the consent flow + XML emission of the sandbox capability
+ * map: every call requires user consent, emits a
+ * `<dyad-mcp-tool-call>` / `<dyad-mcp-tool-result>` pair for the UI,
+ * and surfaces tool errors as `<dyad-output type="error">`.
+ */
 async function getMcpTools(
   event: IpcMainInvokeEvent,
   ctx: AgentContext,

@@ -1,8 +1,9 @@
 import { z } from "zod";
 import {
-  runSandboxScript,
+  executeSandboxScriptInProcess,
   isSandboxSupportedPlatform,
-} from "@/ipc/utils/sandbox/runner";
+} from "@/ipc/utils/sandbox/execution";
+import { buildSandboxCapabilitiesWithObserver } from "@/ipc/utils/sandbox/capabilities";
 import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
@@ -15,6 +16,11 @@ import {
   escapeXmlContent,
   ToolDefinition,
 } from "./types";
+import {
+  collectMcpToolDefs,
+  buildMcpTypeDefsBlock,
+  buildMcpCapabilityMap,
+} from "./mcp_type_defs";
 
 const executeSandboxScriptSchema = z.object({
   script: z
@@ -25,7 +31,7 @@ const executeSandboxScriptSchema = z.object({
     .string()
     .max(160)
     .optional()
-    .describe("One-line human-readable summary of what the script reads."),
+    .describe("One-line human-readable summary of what the script does."),
 });
 
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
@@ -96,17 +102,14 @@ function buildScriptXml(params: {
   return `<dyad-script ${attrs.join(" ")}>${escapeXmlContent(payload)}</dyad-script>`;
 }
 
-export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
-  {
-    name: "execute_sandbox_script",
-    description: `Run a small read-only program written in a strict, sandboxed subset of JavaScript to inspect attached files or project files without loading all contents into context.
+const STATIC_PREAMBLE = `Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files and/or invoke MCP tools.
 
-Use this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.
+Use this when you need to slice, search, count, aggregate, summarize file contents, OR call one or more MCP tools (optionally chaining their results) before answering. Return only the concise value you need.
 
 Supported language surface:
 - let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
 - Top-level await is not supported because scripts are not modules. When calling async host functions, wrap the script body in an async function and call it, e.g. \`async function main() { const text = await read_file("attachments:data.csv"); return text.length; } main();\`.
-- The script has no ambient authority. It can only inspect files through the host functions below.
+- The script has no ambient authority. It can only act through the host functions below.
 
 Recommendations:
 - Avoid defining nested helper functions in the main function.
@@ -132,6 +135,8 @@ return {
 };
 \`\`\`
 
+Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
+
 Host functions:
 \`\`\`ts
 type ReadFileOptions = {
@@ -156,7 +161,27 @@ declare function list_files(dir?: "." | "attachments:" | string): Promise<string
 declare function file_stats(path: string): Promise<FileStats>;
 \`\`\`
 
-Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
+Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.
+
+MCP host functions (TypeScript declarations):
+`;
+
+/**
+ * Build the full tool description including the dynamic MCP type defs block.
+ * Called per-turn so the description reflects the currently enabled MCP
+ * servers.
+ */
+export async function buildExecuteSandboxScriptDescription(): Promise<string> {
+  const defs = await collectMcpToolDefs();
+  const typeDefsBlock = buildMcpTypeDefsBlock(defs);
+  return `${STATIC_PREAMBLE}\n\`\`\`ts\n${typeDefsBlock}\n\`\`\``;
+}
+
+export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
+  {
+    name: "execute_sandbox_script",
+    description:
+      "Run a MustardScript program in a sandbox. Supports file inspection and MCP tool calls. (Dynamic description with MCP type defs is built per-turn.)",
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
 
@@ -165,18 +190,32 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
       isSandboxScriptExecutionEnabled(readSettings()),
 
     getConsentPreview: (args) =>
-      args.description?.trim() || "Run a read-only script",
+      args.description?.trim() || "Run a sandboxed script",
 
     execute: async (args: ExecuteSandboxScriptArgs, ctx: AgentContext) => {
       try {
-        const result = await runSandboxScript({
-          appPath: ctx.appPath,
-          script: args.script,
-          onHostCall: ({ path }) => {
+        const defs = await collectMcpToolDefs();
+        const fileCaps = buildSandboxCapabilitiesWithObserver(
+          ctx.appPath,
+          ({ path }) => {
             if (isAttachmentHostCallPath(path)) {
               ctx.onAttachmentAccess?.();
             }
           },
+        );
+        const mcpCaps = buildMcpCapabilityMap({ event: ctx.event, ctx, defs });
+        const capabilities = {
+          ...(fileCaps as unknown as Record<
+            string,
+            (...args: unknown[]) => unknown
+          >),
+          ...mcpCaps,
+        };
+
+        const result = await executeSandboxScriptInProcess({
+          appPath: ctx.appPath,
+          script: args.script,
+          capabilities,
         });
 
         ctx.onXmlComplete(

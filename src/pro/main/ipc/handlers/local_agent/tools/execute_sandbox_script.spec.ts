@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
+import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
 import {
@@ -8,9 +8,13 @@ import {
 } from "./execute_sandbox_script";
 import type { AgentContext } from "./types";
 
-vi.mock("@/ipc/utils/sandbox/runner", () => ({
+vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
-  runSandboxScript: vi.fn(),
+  executeSandboxScriptInProcess: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/sandbox/capabilities", () => ({
+  buildSandboxCapabilitiesWithObserver: vi.fn(() => ({})),
 }));
 
 vi.mock("@/ipc/utils/telemetry", () => ({
@@ -77,7 +81,7 @@ describe("executeSandboxScriptTool", () => {
       "}",
       "main();",
     ].join("\n");
-    vi.mocked(runSandboxScript).mockRejectedValue(
+    vi.mocked(executeSandboxScriptInProcess).mockRejectedValue(
       new Error("Unexpected token ?."),
     );
 
@@ -99,7 +103,7 @@ describe("executeSandboxScriptTool", () => {
     expect((thrown as Error).message).toContain(
       "Original error:\nUnexpected token ?.",
     );
-    expect(runSandboxScript).toHaveBeenCalledWith(
+    expect(executeSandboxScriptInProcess).toHaveBeenCalledWith(
       expect.objectContaining({
         appPath: "/tmp/app",
         script,

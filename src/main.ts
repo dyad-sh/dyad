@@ -182,7 +182,18 @@ export async function onReady() {
   } catch (e) {
     logger.error("Error initializing backup manager", e);
   }
-  initializeDatabase();
+  try {
+    initializeDatabase();
+  } catch (error) {
+    logger.error("Failed to initialize database", error);
+    const message = error instanceof Error ? error.message : String(error);
+    dialog.showErrorBox(
+      "Database Migration Failed",
+      `Dyad could not initialize its local database. ${message}`,
+    );
+    app.quit();
+    return;
+  }
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();

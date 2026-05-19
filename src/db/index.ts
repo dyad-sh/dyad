@@ -66,13 +66,15 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   try {
     const migrationsFolder = path.join(__dirname, "..", "..", "drizzle");
     if (!fs.existsSync(migrationsFolder)) {
-      logger.error("Migrations folder not found:", migrationsFolder);
-    } else {
-      logger.log("Running migrations from:", migrationsFolder);
-      migrate(_db, { migrationsFolder });
+      throw new Error(`Migrations folder not found: ${migrationsFolder}`);
     }
+    logger.log("Running migrations from:", migrationsFolder);
+    migrate(_db, { migrationsFolder });
   } catch (error) {
     logger.error("Migration error:", error);
+    _db = null;
+    sqlite.close();
+    throw error;
   }
 
   return _db as any;

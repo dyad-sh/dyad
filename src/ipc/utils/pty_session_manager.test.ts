@@ -53,10 +53,10 @@ function createMockPtyController(pid: number): MockPtyController {
   };
 }
 
-function webContents(id: number) {
+function webContents(id: number, isDestroyed = () => false) {
   return {
     id,
-    isDestroyed: () => false,
+    isDestroyed,
   } as WebContents;
 }
 
@@ -197,6 +197,35 @@ describe("PtySessionManager", () => {
     expect(manager.getSessionCount()).toBe(0);
   });
 
+  it("rejects control calls from renderers that are not attached", async () => {
+    const { manager, controllers } = createManager();
+    const session = await manager.openSession({
+      appId: 1,
+      sender: webContents(1),
+    });
+
+    expect(() =>
+      manager.write(session.sessionId, "echo nope\n", webContents(2)),
+    ).toThrow("Terminal session is not attached to this window");
+    expect(controllers[0].pty.write).not.toHaveBeenCalled();
+  });
+
+  it("prunes destroyed subscribers before sending output", async () => {
+    vi.useFakeTimers();
+    let destroyed = false;
+    const { manager, controllers, send } = createManager();
+    await manager.openSession({
+      appId: 1,
+      sender: webContents(1, () => destroyed),
+    });
+
+    destroyed = true;
+    controllers[0].emitData("lost\n");
+    await vi.advanceTimersByTimeAsync(8);
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("keeps exited sessions available for scrollback and restart UI", async () => {
     const { manager, controllers, send } = createManager();
     const session = await manager.openSession({
@@ -219,6 +248,38 @@ describe("PtySessionManager", () => {
       `terminal:exit:${session.sessionId}`,
       { sessionId: session.sessionId, exitCode: 7, signal: null },
     );
+  });
+
+  it("reaps detached exited sessions after the retention TTL", async () => {
+    vi.useFakeTimers();
+    const { manager, controllers } = createManager();
+    const sender = webContents(1);
+    const session = await manager.openSession({
+      appId: 1,
+      sender,
+    });
+
+    controllers[0].emitExit({ exitCode: 0 });
+    manager.closeSession(session.sessionId, sender);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+
+    expect(manager.getSessionCount()).toBe(0);
+  });
+
+  it("trims scrollback to the byte cap without splitting multibyte output", async () => {
+    const { manager, controllers } = createManager();
+    const session = await manager.openSession({
+      appId: 1,
+      sender: webContents(1),
+    });
+
+    controllers[0].emitData("😀".repeat(600_000));
+
+    const scrollback = manager.serialize(session.sessionId);
+    expect(Buffer.byteLength(scrollback, "utf8")).toBeLessThanOrEqual(
+      2 * 1024 * 1024,
+    );
+    expect(scrollback).not.toContain("\uFFFD");
   });
 
   it("LRU-evicts the oldest live session when the cap is exceeded", async () => {

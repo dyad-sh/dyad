@@ -18,6 +18,7 @@ const MAX_LIVE_SESSIONS = 5;
 const OUTPUT_FLUSH_DELAY_MS = 8;
 const MAX_SCROLLBACK_BYTES = 2 * 1024 * 1024;
 const MAX_SCROLLBACK_LINES = 10_000;
+const EXITED_SESSION_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
@@ -77,7 +78,9 @@ interface PtySession {
   scrollback: string;
   pendingOutput: string;
   flushTimer: ReturnType<typeof setTimeout> | null;
+  exitReapTimer: ReturnType<typeof setTimeout> | null;
   lastUsedAt: number;
+  exitedAt?: number;
   exited?: TerminalExit;
 }
 
@@ -131,7 +134,24 @@ export function getDefaultShell(
 function trimScrollback(value: string): string {
   let next = value;
   if (Buffer.byteLength(next, "utf8") > MAX_SCROLLBACK_BYTES) {
-    next = next.slice(-MAX_SCROLLBACK_BYTES);
+    let low = 0;
+    let high = next.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (Buffer.byteLength(next.slice(mid), "utf8") > MAX_SCROLLBACK_BYTES) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    if (low < next.length) {
+      const codeUnit = next.charCodeAt(low);
+      if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+        low += 1;
+      }
+    }
+    next = next.slice(low);
   }
 
   const lines = next.split(/\r?\n/);
@@ -246,6 +266,7 @@ export class PtySessionManager {
       scrollback: "",
       pendingOutput: "",
       flushTimer: null,
+      exitReapTimer: null,
       lastUsedAt: this.deps.now(),
     };
 
@@ -279,10 +300,13 @@ export class PtySessionManager {
     const session = this.findSession(sessionId);
     if (!session || !sender) return;
     session.subscribers.delete(sender.id);
+    if (session.exited) {
+      this.scheduleExitedSessionReap(session);
+    }
   }
 
-  write(sessionId: string, data: string): void {
-    const session = this.findSession(sessionId);
+  write(sessionId: string, data: string, sender?: WebContents): void {
+    const session = this.findAuthorizedSession(sessionId, sender);
     if (!session?.pty) {
       throw new DyadError(
         "Terminal session is not running",
@@ -293,23 +317,28 @@ export class PtySessionManager {
     session.pty.write(data);
   }
 
-  resize(sessionId: string, cols: number, rows: number): void {
-    const session = this.findSession(sessionId);
+  resize(
+    sessionId: string,
+    cols: number,
+    rows: number,
+    sender?: WebContents,
+  ): void {
+    const session = this.findAuthorizedSession(sessionId, sender);
     if (!session?.pty) return;
     session.lastUsedAt = this.deps.now();
     session.pty.resize(cols, rows);
   }
 
-  serialize(sessionId: string): string {
-    const session = this.findSession(sessionId);
+  serialize(sessionId: string, sender?: WebContents): string {
+    const session = this.findAuthorizedSession(sessionId, sender);
     if (!session) {
       throw new DyadError("Terminal session not found", DyadErrorKind.NotFound);
     }
     return session.scrollback;
   }
 
-  killSession(sessionId: string): void {
-    const session = this.findSession(sessionId);
+  killSession(sessionId: string, sender?: WebContents): void {
+    const session = this.findAuthorizedSession(sessionId, sender);
     if (!session) return;
     this.disposeSession(session, { remove: true, notifyExit: true });
   }
@@ -346,6 +375,44 @@ export class PtySessionManager {
     );
   }
 
+  private findAuthorizedSession(
+    sessionId: string,
+    sender?: WebContents,
+  ): PtySession | undefined {
+    const session = this.findSession(sessionId);
+    if (!session || !sender) {
+      return session;
+    }
+
+    this.removeDestroyedSubscribers(session);
+    if (sender.isDestroyed() || session.subscribers.get(sender.id) !== sender) {
+      throw new DyadError(
+        "Terminal session is not attached to this window",
+        DyadErrorKind.Precondition,
+      );
+    }
+    return session;
+  }
+
+  private removeDestroyedSubscribers(session: PtySession): void {
+    for (const [id, subscriber] of session.subscribers) {
+      if (subscriber.isDestroyed()) {
+        session.subscribers.delete(id);
+      }
+    }
+  }
+
+  private sendToSubscribers(
+    session: PtySession,
+    channel: string,
+    payload: unknown,
+  ): void {
+    this.removeDestroyedSubscribers(session);
+    for (const subscriber of session.subscribers.values()) {
+      this.deps.send(subscriber, channel, payload);
+    }
+  }
+
   private enqueueOutput(session: PtySession, chunk: string): void {
     session.pendingOutput += chunk;
     if (session.flushTimer) return;
@@ -364,34 +431,63 @@ export class PtySessionManager {
     if (!session.pendingOutput) return;
     const chunk = session.pendingOutput;
     session.pendingOutput = "";
-    for (const subscriber of session.subscribers.values()) {
-      this.deps.send(subscriber, buildTerminalDataChannel(session.sessionId), {
+    this.sendToSubscribers(
+      session,
+      buildTerminalDataChannel(session.sessionId),
+      {
         sessionId: session.sessionId,
         chunk,
-      });
-    }
+      },
+    );
   }
 
   private markExited(session: PtySession, exit: TerminalExit): void {
     if (session.exited) return;
     this.flushOutput(session);
     session.exited = exit;
+    session.exitedAt = this.deps.now();
     session.pty = null;
     session.dataSubscription.dispose();
     session.exitSubscription.dispose();
-    for (const subscriber of session.subscribers.values()) {
-      this.deps.send(subscriber, buildTerminalExitChannel(session.sessionId), {
+    this.sendToSubscribers(
+      session,
+      buildTerminalExitChannel(session.sessionId),
+      {
         sessionId: session.sessionId,
         exitCode: exit.exitCode,
         signal: exit.signal ?? null,
-      });
-    }
+      },
+    );
+    this.scheduleExitedSessionReap(session);
+  }
+
+  private clearExitedSessionReapTimer(session: PtySession): void {
+    if (!session.exitReapTimer) return;
+    clearTimeout(session.exitReapTimer);
+    session.exitReapTimer = null;
+  }
+
+  private scheduleExitedSessionReap(session: PtySession): void {
+    if (!session.exited) return;
+    this.clearExitedSessionReapTimer(session);
+    session.exitReapTimer = setTimeout(() => {
+      session.exitReapTimer = null;
+      this.removeDestroyedSubscribers(session);
+      if (!session.exited) return;
+      if (session.subscribers.size > 0) {
+        this.scheduleExitedSessionReap(session);
+        return;
+      }
+      this.disposeSession(session, { remove: true, notifyExit: false });
+    }, EXITED_SESSION_TTL_MS);
+    session.exitReapTimer.unref?.();
   }
 
   private disposeSession(
     session: PtySession,
     options: { remove: boolean; notifyExit: boolean },
   ): void {
+    this.clearExitedSessionReapTimer(session);
     this.flushOutput(session);
     if (session.pty) {
       try {
@@ -404,21 +500,20 @@ export class PtySessionManager {
     session.exitSubscription.dispose();
 
     if (options.notifyExit && !session.exited) {
-      for (const subscriber of session.subscribers.values()) {
-        this.deps.send(
-          subscriber,
-          buildTerminalExitChannel(session.sessionId),
-          {
-            sessionId: session.sessionId,
-            exitCode: null,
-            signal: null,
-          },
-        );
-      }
+      this.sendToSubscribers(
+        session,
+        buildTerminalExitChannel(session.sessionId),
+        {
+          sessionId: session.sessionId,
+          exitCode: null,
+          signal: null,
+        },
+      );
     }
 
     session.pty = null;
     session.exited = { exitCode: null, signal: null };
+    session.exitedAt = this.deps.now();
     if (options.remove) {
       this.sessions.delete(session.appId);
     }

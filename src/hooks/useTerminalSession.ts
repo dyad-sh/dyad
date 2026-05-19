@@ -32,6 +32,19 @@ function terminalExitChannel(sessionId: string): string {
   return `terminal:exit:${sessionId}`;
 }
 
+function getBufferedSuffixMissingFromReplay(
+  replay: string,
+  buffered: string,
+): string {
+  const maxOverlap = Math.min(replay.length, buffered.length);
+  for (let overlap = maxOverlap; overlap > 0; overlap--) {
+    if (replay.endsWith(buffered.slice(0, overlap))) {
+      return buffered.slice(overlap);
+    }
+  }
+  return buffered;
+}
+
 function getIpcRenderer():
   | {
       on(channel: string, listener: (payload: unknown) => void): () => void;
@@ -51,7 +64,7 @@ export function useTerminalSession({
   const { t } = useTranslation("chat");
   const onDataRef = useRef(onData);
   const onExitRef = useRef(onExit);
-  const initialSizeRef = useRef({ cols, rows });
+  const latestSizeRef = useRef({ cols, rows });
   const [restartNonce, setRestartNonce] = useState(0);
   const [session, setSession] = useState<TerminalOpenResult | null>(null);
   const [status, setStatus] = useState<TerminalStatus>("idle");
@@ -67,6 +80,10 @@ export function useTerminalSession({
   }, [onExit]);
 
   useEffect(() => {
+    latestSizeRef.current = { cols, rows };
+  }, [cols, rows]);
+
+  useEffect(() => {
     if (!enabled || appId === null) {
       setStatus("idle");
       setSession(null);
@@ -79,6 +96,9 @@ export function useTerminalSession({
     let activeSessionId: string | null = null;
     let unsubscribeData: (() => void) | undefined;
     let unsubscribeExit: (() => void) | undefined;
+    let hydrating = true;
+    let bufferedDuringHydration = "";
+    let latestExit: TerminalExitState | null = null;
 
     setStatus("connecting");
     setError(null);
@@ -87,10 +107,10 @@ export function useTerminalSession({
     ipc.terminal
       .open({
         appId,
-        cols: initialSizeRef.current.cols,
-        rows: initialSizeRef.current.rows,
+        cols: latestSizeRef.current.cols,
+        rows: latestSizeRef.current.rows,
       })
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) {
           void ipc.terminal.close({ sessionId: result.sessionId });
           return;
@@ -98,12 +118,74 @@ export function useTerminalSession({
 
         activeSessionId = result.sessionId;
         setSession(result);
-        if (result.scrollback) {
-          onDataRef.current(result.scrollback);
+        const ipcRenderer = getIpcRenderer();
+        if (!ipcRenderer) {
+          if (result.scrollback) {
+            onDataRef.current(result.scrollback);
+          }
+          if (result.exited) {
+            setExit(result.exited);
+            setStatus("exited");
+          } else {
+            setStatus("ready");
+          }
+          return;
         }
 
-        if (result.exited) {
-          setExit(result.exited);
+        unsubscribeData = ipcRenderer.on(
+          terminalDataChannel(result.sessionId),
+          (payload) => {
+            const parsed = TerminalDataPayloadSchema.safeParse(payload);
+            if (parsed.success && parsed.data.sessionId === result.sessionId) {
+              if (hydrating) {
+                bufferedDuringHydration += parsed.data.chunk;
+              } else {
+                onDataRef.current(parsed.data.chunk);
+              }
+            }
+          },
+        );
+
+        unsubscribeExit = ipcRenderer.on(
+          terminalExitChannel(result.sessionId),
+          (payload) => {
+            const parsed = TerminalExitPayloadSchema.safeParse(payload);
+            if (!parsed.success || parsed.data.sessionId !== result.sessionId) {
+              return;
+            }
+            latestExit = {
+              exitCode: parsed.data.exitCode,
+              signal: parsed.data.signal ?? null,
+            };
+            setExit(latestExit);
+            setStatus("exited");
+            onExitRef.current?.();
+          },
+        );
+
+        try {
+          const { scrollback } = await ipc.terminal.serialize({
+            sessionId: result.sessionId,
+          });
+          if (cancelled) return;
+          if (scrollback) {
+            onDataRef.current(scrollback);
+          }
+          const missedChunk = getBufferedSuffixMissingFromReplay(
+            scrollback,
+            bufferedDuringHydration,
+          );
+          if (missedChunk) {
+            onDataRef.current(missedChunk);
+          }
+        } finally {
+          hydrating = false;
+        }
+
+        if (cancelled) return;
+        const resolvedExit = latestExit ?? result.exited;
+        if (resolvedExit) {
+          setExit(resolvedExit);
           setStatus("exited");
         } else {
           setStatus("ready");
@@ -117,37 +199,6 @@ export function useTerminalSession({
             t("terminal.evictedToast", { appName: result.evicted.appName }),
           );
         }
-
-        const ipcRenderer = getIpcRenderer();
-        if (!ipcRenderer) {
-          return;
-        }
-
-        unsubscribeData = ipcRenderer.on(
-          terminalDataChannel(result.sessionId),
-          (payload) => {
-            const parsed = TerminalDataPayloadSchema.safeParse(payload);
-            if (parsed.success && parsed.data.sessionId === result.sessionId) {
-              onDataRef.current(parsed.data.chunk);
-            }
-          },
-        );
-
-        unsubscribeExit = ipcRenderer.on(
-          terminalExitChannel(result.sessionId),
-          (payload) => {
-            const parsed = TerminalExitPayloadSchema.safeParse(payload);
-            if (!parsed.success || parsed.data.sessionId !== result.sessionId) {
-              return;
-            }
-            setExit({
-              exitCode: parsed.data.exitCode,
-              signal: parsed.data.signal ?? null,
-            });
-            setStatus("exited");
-            onExitRef.current?.();
-          },
-        );
       })
       .catch((err: Error) => {
         if (cancelled) return;

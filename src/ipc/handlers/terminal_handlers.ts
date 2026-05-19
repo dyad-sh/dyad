@@ -24,23 +24,23 @@ export function registerTerminalHandlers() {
     return { ok: true as const };
   });
 
-  createTypedHandler(terminalContracts.kill, async (_, params) => {
-    manager.killSession(params.sessionId);
+  createTypedHandler(terminalContracts.kill, async (event, params) => {
+    manager.killSession(params.sessionId, event.sender);
     return { ok: true as const };
   });
 
-  createTypedHandler(terminalContracts.write, async (_, params) => {
-    manager.write(params.sessionId, params.data);
+  createTypedHandler(terminalContracts.write, async (event, params) => {
+    manager.write(params.sessionId, params.data, event.sender);
     return { ok: true as const };
   });
 
-  createTypedHandler(terminalContracts.resize, async (_, params) => {
-    manager.resize(params.sessionId, params.cols, params.rows);
+  createTypedHandler(terminalContracts.resize, async (event, params) => {
+    manager.resize(params.sessionId, params.cols, params.rows, event.sender);
     return { ok: true as const };
   });
 
-  createTypedHandler(terminalContracts.serialize, async (_, params) => {
-    return { scrollback: manager.serialize(params.sessionId) };
+  createTypedHandler(terminalContracts.serialize, async (event, params) => {
+    return { scrollback: manager.serialize(params.sessionId, event.sender) };
   });
 
   if (!registeredBeforeQuitCleanup) {

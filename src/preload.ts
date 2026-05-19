@@ -20,6 +20,8 @@ function isValidReceiveChannel(
 }
 
 function isValidDynamicReceiveChannel(channel: string): boolean {
+  // Terminal stream suffixes must stay server-generated, unpredictable session
+  // IDs. Do not extend this pattern to renderer-controlled channel names.
   return (
     channel.startsWith("terminal:data:") || channel.startsWith("terminal:exit:")
   );

@@ -17,6 +17,7 @@ import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
+import { ZodError } from "zod";
 
 const mockSend = vi.fn();
 const mockWebContents = {
@@ -820,9 +821,28 @@ describe("writeSettings", () => {
 
     expect(thrown).toBeInstanceOf(DyadError);
     expect((thrown as DyadError).kind).toBe(DyadErrorKind.External);
+    expect((thrown as DyadError).cause).toBeInstanceOf(Error);
     expect((thrown as Error).message).toContain(
       "Failed to write settings: disk full",
     );
+  });
+
+  it("classifies settings validation failures and preserves the cause", () => {
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => {});
+
+    let thrown: unknown;
+    try {
+      writeSettings({
+        selectedModel: null,
+      } as unknown as Partial<UserSettings>);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(DyadError);
+    expect((thrown as DyadError).kind).toBe(DyadErrorKind.Validation);
+    expect((thrown as DyadError).cause).toBeInstanceOf(ZodError);
   });
 
   it("returns false instead of throwing for best-effort settings writes", () => {

@@ -41,11 +41,17 @@ export function isDyadErrorKindFilteredFromTelemetry(
 
 export class DyadError extends Error {
   readonly kind: DyadErrorKind;
+  readonly cause?: unknown;
 
-  constructor(message: string, kind: DyadErrorKind) {
+  constructor(
+    message: string,
+    kind: DyadErrorKind,
+    options?: { cause?: unknown },
+  ) {
     super(message);
     this.name = "DyadError";
     this.kind = kind;
+    this.cause = options?.cause;
   }
 }
 

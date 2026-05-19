@@ -60,6 +60,7 @@ const HELP_STREAM_CHANNELS = getStreamChannels(helpStreamContract);
 const TEST_INVOKE_CHANNELS = [
   "test:simulateQuotaTimeElapsed",
   "test:set-node-mock",
+  "test:set-needs-app-blueprint",
 ] as const;
 
 /**

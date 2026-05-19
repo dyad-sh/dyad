@@ -35,6 +35,7 @@ import {
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 import { addLog, clearLogs } from "../../lib/log_store";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 import {
   DYAD_SCREENSHOT_DIR_NAME,
   MAX_SCREENSHOTS_PER_APP,
@@ -2892,6 +2893,24 @@ export function registerAppHandlers() {
   void reconcileCloudSandboxes().catch((error) => {
     logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
   });
+
+  // Test-only: flip needs_app_blueprint for an imported app so E2E tests can
+  // exercise the blueprint flow (imports default to 0; only createApp sets it).
+  if (IS_TEST_BUILD) {
+    ipcMain.handle(
+      "test:set-needs-app-blueprint",
+      async (_, { appName, value }: { appName: string; value: boolean }) => {
+        const result = await db
+          .update(apps)
+          .set({ needsAppBlueprint: value })
+          .where(eq(apps.name, appName))
+          .returning({ id: apps.id });
+        if (result.length === 0) {
+          throw new Error(`No app found for name=${appName}`);
+        }
+      },
+    );
+  }
 
   // Start the garbage collection for idle apps
   startAppGarbageCollection();

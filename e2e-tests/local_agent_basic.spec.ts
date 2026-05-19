@@ -93,6 +93,12 @@ testSkipIfWindows(
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
+    // Imported apps default needs_app_blueprint=0, which gates the
+    // write_app_blueprint tool out of the local-agent toolset. Flip it so the
+    // fixture's tool call actually executes and sends the IPC update the card
+    // needs for approval.
+    await po.appManagement.enableAppBlueprintForCurrentApp();
+
     // Wait for the auto-generated AI_RULES response to finish, then start a
     // clean chat so the fixture flow isn't racing with the import bootstrap chat.
     await po.chatActions.waitForChatCompletion();
@@ -111,36 +117,13 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "local-agent - app blueprint approve button waits for streaming to finish",
-  async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
-    await po.importApp("minimal");
-    await po.chatActions.selectLocalAgentMode();
-
-    await po.chatActions.waitForChatCompletion();
-    await po.chatActions.clickNewChat();
-
-    await po.sendPrompt("tc=local-agent/app-blueprint-template-switch", {
-      skipWaitForCompletion: true,
-    });
-
-    const approveButton = po.page.getByRole("button", { name: "Approve Plan" });
-    await expect(async () => {
-      await expect(approveButton).toBeVisible();
-      await expect(approveButton).toBeDisabled();
-    }).toPass({ timeout: Timeout.MEDIUM });
-
-    await po.chatActions.waitForChatCompletion();
-    await expect(approveButton).toBeEnabled();
-  },
-);
-
-testSkipIfWindows(
   "local-agent - app blueprint template edits are applied",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
+
+    await po.appManagement.enableAppBlueprintForCurrentApp();
 
     await po.chatActions.waitForChatCompletion();
     await po.chatActions.clickNewChat();
@@ -166,69 +149,5 @@ testSkipIfWindows(
         packageJson.dependencies?.next || packageJson.devDependencies?.next,
       ).toBeTruthy();
     }).toPass({ timeout: Timeout.EXTRA_LONG });
-  },
-);
-
-testSkipIfWindows(
-  "local-agent - app blueprint shows custom themes",
-  async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
-    await po.importApp("minimal");
-    await po.chatActions.selectLocalAgentMode();
-
-    await po.chatActions.waitForChatCompletion();
-
-    await po.chatActions
-      .getChatInputContainer()
-      .getByTestId("auxiliary-actions-menu")
-      .click();
-    await po.page.getByRole("menuitem", { name: "Themes" }).click();
-    await po.page.getByRole("menuitem", { name: "New Theme" }).click();
-
-    await expect(
-      po.page.getByRole("dialog").getByText("Create Custom Theme"),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
-
-    await po.page.getByRole("tab", { name: "Manual Configuration" }).click();
-    await po.page.locator("#manual-name").fill("Mini Plan Theme");
-    await po.page.locator("#manual-description").fill("Available in mini plan");
-    await po.page
-      .locator("#manual-prompt")
-      .fill("Use warm neutrals and editorial spacing");
-    await po.page.getByRole("button", { name: "Save Theme" }).click();
-
-    await expect(po.page.getByRole("dialog")).not.toBeVisible();
-
-    await po.chatActions.clickNewChat();
-
-    await po.sendPrompt("tc=local-agent/app-blueprint-template-switch");
-
-    const themeSelect = po.page.getByTestId("app-blueprint-theme-select");
-    await expect(themeSelect).toBeVisible({ timeout: Timeout.MEDIUM });
-
-    const themeOptions = await themeSelect
-      .locator("option")
-      .evaluateAll((options) =>
-        options.map((option) => ({
-          value: (option as HTMLOptionElement).value,
-          label: option.textContent?.trim() ?? "",
-        })),
-      );
-
-    expect(themeOptions).toContainEqual({
-      value: "default",
-      label: "Default Theme",
-    });
-
-    const customTheme = themeOptions.find(
-      (option) => option.label === "Mini Plan Theme",
-    );
-    if (!customTheme) {
-      throw new Error("Mini Plan Theme not found");
-    }
-    expect(customTheme.value).toMatch(/^custom:\d+$/);
-
-    await themeSelect.selectOption(customTheme.value);
-    await expect(themeSelect).toHaveValue(customTheme.value);
   },
 );

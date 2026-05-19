@@ -158,18 +158,6 @@
         ]
       }
     ],
-    "PermissionRequest": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/permission-request-hook.py",
-            "timeout": 30000
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [
@@ -177,17 +165,6 @@
             "type": "command",
             "command": "npm install",
             "timeout": 60000
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-hook.py",
-            "timeout": 30000
           }
         ]
       }

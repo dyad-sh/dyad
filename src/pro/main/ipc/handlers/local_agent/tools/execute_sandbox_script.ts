@@ -20,6 +20,7 @@ import {
   collectMcpToolDefs,
   buildMcpTypeDefsBlock,
   buildMcpCapabilityMap,
+  type McpToolDef,
 } from "./mcp_type_defs";
 
 const executeSandboxScriptSchema = z.object({
@@ -169,10 +170,14 @@ MCP host functions (TypeScript declarations):
 /**
  * Build the full tool description including the dynamic MCP type defs block.
  * Called per-turn so the description reflects the currently enabled MCP
- * servers.
+ * servers. When the caller has already collected the MCP tool defs for
+ * this turn (e.g. to cache them on `AgentContext.mcpToolDefsCache`), it
+ * can pass them in to avoid a second DB + MCP-client walk.
  */
-export async function buildExecuteSandboxScriptDescription(): Promise<string> {
-  const defs = await collectMcpToolDefs();
+export async function buildExecuteSandboxScriptDescription(
+  precomputedDefs?: McpToolDef[],
+): Promise<string> {
+  const defs = precomputedDefs ?? (await collectMcpToolDefs());
   const typeDefsBlock = buildMcpTypeDefsBlock(defs);
   return `${STATIC_PREAMBLE}\n\`\`\`ts\n${typeDefsBlock}\n\`\`\``;
 }
@@ -198,7 +203,15 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
         // this turn (set by `local_agent_handler`). Skipping here keeps
         // read-only and plan-mode turns from exposing MCP tools through
         // the sandbox even if the model invents a host-function name.
-        const defs = ctx.mcpToolsEnabled ? await collectMcpToolDefs() : [];
+        //
+        // Prefer the per-turn cache populated by the handler when it built
+        // the dynamic tool description. Falling back to a fresh
+        // `collectMcpToolDefs()` keeps the call paths working in isolation
+        // (tests, callers that don't go through the handler).
+        const cachedDefs = ctx.mcpToolDefsCache as McpToolDef[] | undefined;
+        const defs: McpToolDef[] = ctx.mcpToolsEnabled
+          ? (cachedDefs ?? (await collectMcpToolDefs()))
+          : [];
         const fileCaps = buildSandboxCapabilitiesWithObserver(
           ctx.appPath,
           ({ path }) => {

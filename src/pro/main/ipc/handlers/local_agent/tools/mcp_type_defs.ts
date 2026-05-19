@@ -279,7 +279,7 @@ export function buildMcpCapabilityMap(params: {
         const errorStack =
           error instanceof Error && error.stack ? error.stack : "";
         params.ctx.onXmlComplete(
-          `<dyad-output type="error" message="MCP tool '${def.toolKey}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+          `<dyad-output type="error" message="MCP tool '${escapeXmlAttr(def.toolKey)}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
         );
         throw error;
       }

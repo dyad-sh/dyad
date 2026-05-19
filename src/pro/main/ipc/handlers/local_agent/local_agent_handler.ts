@@ -83,6 +83,7 @@ import {
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
 import { buildExecuteSandboxScriptDescription } from "./tools/execute_sandbox_script";
+import { collectMcpToolDefs } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -718,8 +719,14 @@ export async function handleLocalAgentStream(
         : {};
     if (mcpInSandboxEnabled) {
       try {
+        // Collect MCP tool defs once per turn and reuse them for both the
+        // dynamic tool description and the sandbox capability map (read
+        // by `execute_sandbox_script.execute()` via `ctx.mcpToolDefsCache`).
+        // Skips a second DB + MCP-client walk per sandbox invocation.
+        const defs = await collectMcpToolDefs();
+        ctx.mcpToolDefsCache = defs;
         agentTools.execute_sandbox_script!.description =
-          await buildExecuteSandboxScriptDescription();
+          await buildExecuteSandboxScriptDescription(defs);
       } catch (e) {
         logger.warn(
           "Failed to build dynamic execute_sandbox_script description",

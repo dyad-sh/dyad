@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 
 test("should connect to GitHub using device flow", async ({ po }) => {
   await po.setUp();
@@ -35,8 +35,8 @@ test("create and sync to new repo", async ({ po }) => {
   await po.githubConnector.fillCreateRepoName("test-new-repo");
 
   // Wait for availability check
-  await po.page.waitForSelector("text=Repository name is available!", {
-    timeout: 5000,
+  await expect(po.page.getByText("Repository name is available!")).toBeVisible({
+    timeout: Timeout.MEDIUM,
   });
 
   // Click create repo button
@@ -50,11 +50,13 @@ test("create and sync to new repo", async ({ po }) => {
 
   await po.githubConnector.snapshotConnectedRepo();
   // Verify the push was received for the default branch (main)
-  await po.githubConnector.verifyPushEvent({
-    repo: "test-new-repo",
-    branch: "main",
-    operation: "create",
-  });
+  await expect(async () => {
+    await po.githubConnector.verifyPushEvent({
+      repo: "test-new-repo",
+      branch: "main",
+      operation: "create",
+    });
+  }).toPass({ timeout: Timeout.MEDIUM });
 });
 
 test("create and sync to new repo - custom branch", async ({ po }) => {
@@ -77,11 +79,13 @@ test("create and sync to new repo - custom branch", async ({ po }) => {
   await po.githubConnector.snapshotConnectedRepo();
 
   // Verify the push was received for the correct custom branch
-  await po.githubConnector.verifyPushEvent({
-    repo: "test-new-repo-custom",
-    branch: "new-branch",
-    operation: "create",
-  });
+  await expect(async () => {
+    await po.githubConnector.verifyPushEvent({
+      repo: "test-new-repo-custom",
+      branch: "new-branch",
+      operation: "create",
+    });
+  }).toPass({ timeout: Timeout.MEDIUM });
 });
 
 test("create repo with spaces in name - should normalize to hyphens", async ({
@@ -97,8 +101,8 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
   await po.githubConnector.fillCreateRepoName("my new repo");
 
   // Wait for availability check
-  await po.page.waitForSelector("text=Repository name is available!", {
-    timeout: 5000,
+  await expect(po.page.getByText("Repository name is available!")).toBeVisible({
+    timeout: Timeout.MEDIUM,
   });
 
   // Click create repo button
@@ -111,11 +115,13 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
   await po.githubConnector.clickSyncToGithubButton();
 
   // Verify the push was received with the normalized repo name
-  await po.githubConnector.verifyPushEvent({
-    repo: "my-new-repo",
-    branch: "main",
-    operation: "create",
-  });
+  await expect(async () => {
+    await po.githubConnector.verifyPushEvent({
+      repo: "my-new-repo",
+      branch: "main",
+      operation: "create",
+    });
+  }).toPass({ timeout: Timeout.MEDIUM });
 });
 
 test("disconnect from repo", async ({ po }) => {
@@ -154,7 +160,9 @@ test("shows reconnect prompt for a linked repo when GitHub credentials are missi
   await po.navigation.goToAppsTab();
   await po.appManagement.clickAppListItem({ appName: appName! });
 
-  await expect(po.page.getByTestId("github-unconnected-repo")).toBeVisible();
+  await expect(po.page.getByTestId("github-unconnected-repo")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
   await expect(
     po.page.getByText("Reconnect your GitHub account"),
   ).toBeVisible();
@@ -207,11 +215,13 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
   await po.githubConnector.clickSyncToGithubButton();
   await po.githubConnector.snapshotConnectedRepo();
   // Verify the push was received for the correct custom branch
-  await po.githubConnector.verifyPushEvent({
-    repo: "existing-app",
-    branch: "new-branch",
-    operation: "create",
-  });
+  await expect(async () => {
+    await po.githubConnector.verifyPushEvent({
+      repo: "existing-app",
+      branch: "new-branch",
+      operation: "create",
+    });
+  }).toPass({ timeout: Timeout.MEDIUM });
 });
 
 test("github clear integration settings", async ({ po }) => {

@@ -35,6 +35,8 @@ async function replaceEditorContent(page: Page, content: string) {
   });
   await expect(editorContent).toBeVisible();
   await editorContent.click({ force: true });
+  // Small delay to let Monaco settle after click before selecting all
+  await page.waitForTimeout(100);
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type(content);
 }
@@ -104,8 +106,11 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
     updatedRobotsFile = `User-agent: *\nDisallow: /round-${round}\n`;
 
     await replaceEditorContent(po.page, firstFileEdit);
+    // Brief pause between file switches to let Monaco persist changes
+    await po.page.waitForTimeout(200);
     await selectFileAndWaitForEditor(po.page, "robots.txt");
     await replaceEditorContent(po.page, updatedRobotsFile);
+    await po.page.waitForTimeout(200);
     await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
   }
 

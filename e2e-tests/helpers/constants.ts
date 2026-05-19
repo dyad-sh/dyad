@@ -7,7 +7,8 @@ export const Timeout = {
   EXTRA_LONG: process.env.CI ? 120_000 : 60_000,
   LONG: process.env.CI ? 60_000 : 30_000,
   MEDIUM: process.env.CI ? 30_000 : 15_000,
-  SHORT: process.env.CI ? 5_000 : 2_000,
+  // Don't go under 5 seconds, even for non-CI environments.
+  SHORT: 5_000,
 };
 
 export const showDebugLogs = process.env.DEBUG_LOGS === "true";

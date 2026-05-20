@@ -201,8 +201,24 @@ export class PreviewPanel {
     return this.page.getByText("Preparing app preview...");
   }
 
-  locateStartingAppPreview() {
-    return this.page.getByText("Starting your app server...");
+  locatePreviewLoadingScreen() {
+    return this.page.getByTestId("preview-loading-screen");
+  }
+
+  locatePreviewLoadingLogList() {
+    return this.page.getByTestId("preview-loading-log-list");
+  }
+
+  locatePreviewLoadingErrorBanner() {
+    return this.page.getByTestId("preview-loading-error-banner");
+  }
+
+  async clickPreviewLoadingErrorToggle() {
+    await this.page.getByTestId("preview-loading-error-toggle").click();
+  }
+
+  async clickPreviewLoadingFixErrors() {
+    await this.page.getByTestId("preview-loading-fix-errors-button").click();
   }
 
   getPreviewIframeElement() {

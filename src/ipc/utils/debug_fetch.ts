@@ -29,9 +29,7 @@ export async function debugFetch(
     url,
     method: fetchOptions.method || "GET",
     headers: fetchOptions.headers,
-    // body: fetchOptions.body,
   });
-  console.log("BODY", fetchOptions.body);
 
   if (fetchOptions.body && options.includeUsageInStream) {
     fetchOptions.body = JSON.stringify({

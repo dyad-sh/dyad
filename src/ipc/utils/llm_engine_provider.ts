@@ -8,7 +8,7 @@ import {
 
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getExtraProviderOptions } from "./thinking_utils";
+import { getExtraProviderOptionsForEngine } from "./thinking_utils";
 import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
@@ -118,9 +118,8 @@ export function createDyadEngine(
         // Parse the request body to manipulate it
         const parsedBody = {
           ...JSON.parse(init.body),
-          ...getExtraProviderOptions(providerId, options.settings),
+          ...getExtraProviderOptionsForEngine(providerId, options.settings),
         };
-        console.log("******parsedBody", parsedBody);
 
         const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
         if ("dyadVersionedFiles" in parsedBody) {

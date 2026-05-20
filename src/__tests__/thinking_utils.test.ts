@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getAnthropicProviderOptions,
-  getExtraProviderOptions,
+  getExtraProviderOptionsForEngine,
   getOpenAIProviderOptions,
   getThinkingBudgetEffort,
 } from "@/ipc/utils/thinking_utils";
@@ -49,7 +49,7 @@ describe("getOpenAIProviderOptions", () => {
 describe("getExtraProviderOptions", () => {
   it("returns OpenAI engine body reasoning options", () => {
     expect(
-      getExtraProviderOptions("openai", {
+      getExtraProviderOptionsForEngine("openai", {
         ...baseSettings,
         thinkingBudget: "low",
       }),
@@ -59,18 +59,20 @@ describe("getExtraProviderOptions", () => {
   });
 
   it("returns Anthropic engine body thinking options", () => {
-    expect(getExtraProviderOptions("anthropic", baseSettings)).toEqual({
-      thinking: {
-        type: "adaptive",
-        display: "summarized",
+    expect(getExtraProviderOptionsForEngine("anthropic", baseSettings)).toEqual(
+      {
+        thinking: {
+          type: "adaptive",
+          display: "summarized",
+        },
+        reasoning_effort: "medium",
       },
-      reasoning_effort: "medium",
-    });
+    );
   });
 
   it("maps Anthropic thinking budget settings to effort", () => {
     expect(
-      getExtraProviderOptions("anthropic", {
+      getExtraProviderOptionsForEngine("anthropic", {
         ...baseSettings,
         thinkingBudget: "low",
       }),
@@ -83,7 +85,7 @@ describe("getExtraProviderOptions", () => {
     });
 
     expect(
-      getExtraProviderOptions("anthropic", {
+      getExtraProviderOptionsForEngine("anthropic", {
         ...baseSettings,
         thinkingBudget: "high",
       }),
@@ -97,7 +99,7 @@ describe("getExtraProviderOptions", () => {
   });
 
   it("keeps Gemini gateway thinking options unchanged", () => {
-    expect(getExtraProviderOptions("google", baseSettings)).toEqual({
+    expect(getExtraProviderOptionsForEngine("google", baseSettings)).toEqual({
       thinking: {
         type: "enabled",
         include_thoughts: true,

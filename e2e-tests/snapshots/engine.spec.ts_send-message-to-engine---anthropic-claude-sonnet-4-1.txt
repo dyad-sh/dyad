@@ -18,9 +18,7 @@
       "type": "adaptive",
       "display": "summarized"
     },
-    "output_config": {
-      "effort": "medium"
-    },
+    "reasoning_effort": "medium",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

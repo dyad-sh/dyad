@@ -14,6 +14,13 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { cn } from "@/lib/utils";
 
+const STARTUP_LOG_MESSAGES = new Set([
+  "Connecting to app...",
+  "Restarting app...",
+]);
+const MAX_ERRORS_FOR_AI_FIX = 10;
+const MAX_ERROR_CHARS_FOR_AI_FIX = 2_000;
+
 function formatTime(ts: number) {
   const d = new Date(ts);
   return d.toTimeString().slice(0, 8);
@@ -39,6 +46,38 @@ const EXIT_ANIMATION_MS = 400;
 const PREVIEW_STARTUP_FIX_INTRO = (errorCount: number) =>
   `The app failed to start. We ran into ${errorCount} error(s) either while installing node modules or running the dev script. Please review package.json to identify and fix the issue(s). Focus on critical errors and do not try to fix non-critical errors like deprecation warnings.`;
 
+export function getPreviewLoadingSessionStartedAt({
+  consoleEntries,
+  fallbackStartedAt,
+}: {
+  consoleEntries: ConsoleEntry[];
+  fallbackStartedAt: number;
+}) {
+  for (let i = consoleEntries.length - 1; i >= 0; i--) {
+    const entry = consoleEntries[i];
+    if (
+      entry.type === "server" &&
+      entry.level === "info" &&
+      STARTUP_LOG_MESSAGES.has(entry.message)
+    ) {
+      return entry.timestamp;
+    }
+  }
+  return fallbackStartedAt;
+}
+
+export function sanitizePreviewErrorForPrompt(message: string) {
+  const withoutAnsi = message.replace(/\x1B\[[0-9;]*[A-Za-z]/g, "");
+  const withoutControlChars = withoutAnsi.replace(
+    // Keep newlines and tabs because stack traces are more useful with shape.
+    /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g,
+    "",
+  );
+  return withoutControlChars.length > MAX_ERROR_CHARS_FOR_AI_FIX
+    ? `${withoutControlChars.slice(0, MAX_ERROR_CHARS_FOR_AI_FIX)}\n[truncated]`
+    : withoutControlChars;
+}
+
 interface PreviewLoadingScreenProps {
   // True while the app is being spawned/restarted (useRunApp).
   loading: boolean;
@@ -63,18 +102,23 @@ export function PreviewLoadingScreen({
   const [isExiting, setIsExiting] = useState(false);
   const [isErrorsExpanded, setIsErrorsExpanded] = useState(false);
   const [errorsDismissed, setErrorsDismissed] = useState(false);
-  const loadingStartedAtRef = useRef<number>(Date.now());
+  const [visibleStartedAt, setVisibleStartedAt] = useState(Date.now());
   const wasVisibleRef = useRef<boolean>(isVisible);
   const logListRef = useRef<HTMLDivElement>(null);
 
+  const sessionStartedAt = useMemo(
+    () =>
+      getPreviewLoadingSessionStartedAt({
+        consoleEntries,
+        fallbackStartedAt: visibleStartedAt,
+      }),
+    [consoleEntries, visibleStartedAt],
+  );
+
   useEffect(() => {
     if (isVisible) {
-      // New loading session started (or continuing one). Reset the
-      // error collection window on the false→true transition only.
       if (!wasVisibleRef.current) {
-        loadingStartedAtRef.current = Date.now();
-        setErrorsDismissed(false);
-        setIsErrorsExpanded(false);
+        setVisibleStartedAt(Date.now());
       }
       wasVisibleRef.current = true;
       setShouldRender(true);
@@ -91,27 +135,28 @@ export function PreviewLoadingScreen({
     return () => clearTimeout(timer);
   }, [isVisible, shouldRender]);
 
+  useEffect(() => {
+    setErrorsDismissed(false);
+    setIsErrorsExpanded(false);
+  }, [sessionStartedAt]);
+
   const sessionEntries = useMemo(
     () =>
       consoleEntries.filter(
         (entry) =>
-          entry.timestamp >= loadingStartedAtRef.current &&
+          entry.timestamp >= sessionStartedAt &&
           (entry.type === "server" ||
             entry.level === "error" ||
             entry.level === "warn"),
       ),
-    [consoleEntries],
+    [consoleEntries, sessionStartedAt],
   );
 
   const errorMessages = useMemo(() => {
     const seen = new Set<string>();
     const result: string[] = [];
-    for (const entry of consoleEntries) {
-      if (
-        entry.timestamp < loadingStartedAtRef.current ||
-        entry.level !== "error" ||
-        isDeprecationWarning(entry.message)
-      ) {
+    for (const entry of sessionEntries) {
+      if (entry.level !== "error" || isDeprecationWarning(entry.message)) {
         continue;
       }
       const key = entry.message;
@@ -120,7 +165,7 @@ export function PreviewLoadingScreen({
       result.push(entry.message);
     }
     return result;
-  }, [consoleEntries]);
+  }, [sessionEntries]);
 
   const latestServerLine = useMemo(() => {
     for (let i = sessionEntries.length - 1; i >= 0; i--) {
@@ -140,11 +185,18 @@ export function PreviewLoadingScreen({
 
   const handleFixAllErrors = () => {
     if (!selectedChatId || errorMessages.length === 0) return;
-    const count = errorMessages.length;
+    const includedErrorMessages = errorMessages.slice(0, MAX_ERRORS_FOR_AI_FIX);
+    const count = includedErrorMessages.length;
     const intro = PREVIEW_STARTUP_FIX_INTRO(count);
-    const body = `Error(s):\n${errorMessages
-      .map((msg, i) => `${i + 1}. ${msg}`)
-      .join("\n\n")}`;
+    const omittedCount = errorMessages.length - includedErrorMessages.length;
+    const body = `Error log excerpts (JSON):\n${JSON.stringify(
+      includedErrorMessages.map((msg, i) => ({
+        index: i + 1,
+        message: sanitizePreviewErrorForPrompt(msg),
+      })),
+      null,
+      2,
+    )}${omittedCount > 0 ? `\n\n${omittedCount} additional error(s) omitted.` : ""}`;
     streamMessage({ prompt: `${intro}\n\n${body}`, chatId: selectedChatId });
   };
 

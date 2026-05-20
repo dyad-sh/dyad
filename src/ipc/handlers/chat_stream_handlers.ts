@@ -306,7 +306,7 @@ function resolveAttachmentDeliveryConfig({
   hasUploadedAttachments,
 }: {
   mode: ChatMode;
-  settings: Pick<UserSettings, "experiments">;
+  settings: Pick<UserSettings, "enableSandboxScriptExecution">;
   hasImageAttachments: boolean;
   hasUploadedAttachments: boolean;
 }): AttachmentDeliveryConfig {

@@ -27,8 +27,11 @@ import {
 
 const logger = log.scope("settings");
 
-// IF YOU NEED TO UPDATE THIS, YOU'RE PROBABLY DOING SOMETHING WRONG!
-// Need to maintain backwards compatibility!
+// WARNING: Do not change values once it's been
+// set in DEFAULT_SETTINGS.
+//
+// It is OK to add new fields to DEFAULT_SETTINGS.
+// However, be VERY careful about removing fields from DEFAULT_SETTINGS.
 const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",
@@ -51,6 +54,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   lastKnownPerformance: undefined,
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
+  enableSandboxScriptExecution: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   previewIdleTimeoutPolicy: "default",

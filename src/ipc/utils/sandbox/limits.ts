@@ -3,11 +3,14 @@ export const SANDBOX_LLM_OUTPUT_LIMIT_BYTES = 256 * 1024;
 export const SANDBOX_UI_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024;
 export const SANDBOX_READ_FILE_LIMIT_BYTES = 20 * 1024 * 1024;
 
-export const DEFAULT_SANDBOX_TIMEOUT_MS = 5_000;
-export const MAX_SANDBOX_TIMEOUT_MS = 30_000;
+export const DEFAULT_SANDBOX_TIMEOUT_MS = 30_000;
+export const MAX_SANDBOX_TIMEOUT_MS = 60_000;
 export const SANDBOX_HOST_CALL_TIMEOUT_MS = 2_000;
 
-export const SANDBOX_INSTRUCTION_BUDGET = 250_000_000;
+// Avoid running out of instructions (e.g. parsing large CSV file)
+// Note: we have a sandbox timeout and run it off main thread, so
+// this is not too problematic.
+export const SANDBOX_INSTRUCTION_BUDGET = Number.MAX_SAFE_INTEGER;
 export const SANDBOX_HEAP_LIMIT_BYTES = 128 * 1024 * 1024;
 export const SANDBOX_ALLOCATION_BUDGET = 1_000_000;
 export const SANDBOX_CALL_DEPTH_LIMIT = 512;

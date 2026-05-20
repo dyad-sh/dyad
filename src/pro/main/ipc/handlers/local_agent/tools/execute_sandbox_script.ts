@@ -6,6 +6,7 @@ import {
 import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { readSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
 import {
@@ -30,16 +31,26 @@ const executeSandboxScriptSchema = z.object({
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
 
 export function isSandboxScriptExecutionEnabled(
-  settings: Pick<UserSettings, "experiments"> | undefined,
+  settings: Pick<UserSettings, "enableSandboxScriptExecution"> | undefined,
 ): boolean {
-  return !!settings?.experiments?.enableSandboxScriptExecution;
+  return !!settings?.enableSandboxScriptExecution;
 }
 
 function isAttachmentHostCallPath(path: string | undefined): boolean {
-  return (
+  if (!path) {
+    return false;
+  }
+  if (
     path === "attachments" ||
     path === "attachments:" ||
-    path?.startsWith("attachments:") === true
+    path.startsWith("attachments:")
+  ) {
+    return true;
+  }
+  const normalized = path.replace(/\\/g, "/");
+  return (
+    normalized === DYAD_MEDIA_DIR_NAME ||
+    normalized.startsWith(`${DYAD_MEDIA_DIR_NAME}/`)
   );
 }
 
@@ -97,9 +108,29 @@ Supported language surface:
 - Top-level await is not supported because scripts are not modules. When calling async host functions, wrap the script body in an async function and call it, e.g. \`async function main() { const text = await read_file("attachments:data.csv"); return text.length; } main();\`.
 - The script has no ambient authority. It can only inspect files through the host functions below.
 
+Recommendations:
+- Avoid defining nested helper functions in the main function.
+
 Unsupported / unavailable:
 - No import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, timers, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.
+- String.prototype.localeCompare is not supported; compare with <, >, or === instead.
 - Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.
+
+Avoid returning shared references:
+
+\`\`\`
+const row = { key: "x", total: 1 };
+return { a: row, b: row }; // rejected
+\`\`\`
+
+Return cloned/plain rows instead:
+
+\`\`\`
+return {
+  a: { key: row.key, total: row.total },
+  b: { key: row.key, total: row.total }
+};
+\`\`\`
 
 Host functions:
 \`\`\`ts
@@ -125,7 +156,7 @@ declare function list_files(dir?: "." | "attachments:" | string): Promise<string
 declare function file_stats(path: string): Promise<FileStats>;
 \`\`\`
 
-Paths are app-relative, or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
+Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
 

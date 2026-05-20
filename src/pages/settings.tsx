@@ -212,15 +212,10 @@ export default function SettingsPage() {
                   <Switch
                     id="enable-sandbox-script-execution"
                     aria-label="Enable sandbox script execution"
-                    checked={
-                      !!settings?.experiments?.enableSandboxScriptExecution
-                    }
+                    checked={!!settings?.enableSandboxScriptExecution}
                     onCheckedChange={(checked) => {
                       updateSettings({
-                        experiments: {
-                          ...settings?.experiments,
-                          enableSandboxScriptExecution: checked,
-                        },
+                        enableSandboxScriptExecution: checked,
                       });
                     }}
                   />

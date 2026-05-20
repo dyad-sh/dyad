@@ -45,7 +45,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
     });
   });
 
-  it("includes the sandbox script execution experiment", () => {
+  it("includes the sandbox script execution setting", () => {
     expect(
       SETTINGS_SEARCH_INDEX.find(
         (item) => item.id === SETTING_IDS.enableSandboxScriptExecution,

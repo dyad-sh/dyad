@@ -220,13 +220,19 @@ export const NeonSchema = z.object({
 });
 export type Neon = z.infer<typeof NeonSchema>;
 
+// IMPORTANT: Do NOT add any new experiments here. Instead, add them to BaseUserSettingsFields.
+// It's hard to turn experiments on by default when you put them in
+// ExperimentsSchema.
 export const ExperimentsSchema = z.object({
-  // Deprecated
+  enableCloudSandbox: z.boolean().optional(),
+  //////////////////////////////////////////////////////////////////////////////
+  // Deprecated experiments
+  //////////////////////////////////////////////////////////////////////////////
   enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
-  enableCloudSandbox: z.boolean().optional(),
-  enableSandboxScriptExecution: z.boolean().optional(),
+  // do NOT read off these property, instead use BaseUserSettingsFields#enableSandboxScriptExecution
+  enableSandboxScriptExecution: z.boolean("DEPRECATED").optional(),
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 
@@ -349,6 +355,7 @@ const BaseUserSettingsFields = {
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
+  enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,

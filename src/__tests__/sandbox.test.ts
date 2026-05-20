@@ -111,11 +111,20 @@ describe("sandbox capabilities", () => {
     await expect(
       sandboxReadFile(appPath, path.join(appPath, "src", "data.txt")),
     ).rejects.toThrow("Absolute paths");
+  });
+
+  it("allows reading and listing under .dyad/", async () => {
+    await expect(
+      sandboxReadFile(appPath, ".dyad/media/stored-log.txt"),
+    ).resolves.toBe("line1\nline2\n");
     await expect(
       sandboxReadFile(appPath, ".dyad/media/attachments-manifest.json"),
-    ).rejects.toThrow("protected path");
-    await expect(sandboxListFiles(appPath, ".dyad")).rejects.toThrow(
-      "protected path",
+    ).resolves.toContain("server.log");
+    await expect(sandboxListFiles(appPath, ".dyad/media")).resolves.toEqual(
+      expect.arrayContaining([
+        ".dyad/media/attachments-manifest.json",
+        ".dyad/media/stored-log.txt",
+      ]),
     );
   });
 

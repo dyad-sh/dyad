@@ -58,6 +58,19 @@ testSkipIfWindows(
     const errorList = errorBanner.locator("ul li");
     await expect(errorList.first()).toBeVisible();
 
+    const rebuildButton = po.previewPanel.locatePreviewLoadingRebuildButton();
+    await expect(rebuildButton).toBeVisible();
+    await expect(rebuildButton).toContainText("Rebuild");
+
+    await po.previewPanel.clickPreviewLoadingRebuild();
+    const logList = po.previewPanel.locatePreviewLoadingLogList();
+    await expect(logList.getByText("Restarting app...")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    // Rebuild still fails with broken package.json; errors return to the banner.
+    await expect(errorBanner).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+
     // Fix-with-AI button should reflect the error count and trigger a chat.
     const fixButton = po.page.getByTestId("preview-loading-fix-errors-button");
     await expect(fixButton).toBeVisible();

@@ -121,7 +121,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 6,
     },
     // https://docs.anthropic.com/en/docs/about-claude/models/overview
@@ -133,7 +133,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 5,
     },
     {
@@ -144,7 +144,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 5,
     },
     {
@@ -155,7 +155,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 5,
     },
     {
@@ -165,7 +165,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 5,
     },
   ],
@@ -467,15 +467,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
-    },
-    {
-      name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-      displayName: "Claude 4 Sonnet",
-      description: "Excellent coder (note: >200k tokens is very expensive!)",
-      maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
     },
   ],
   // https://platform.minimax.io/docs/api-reference/text-anthropic-api

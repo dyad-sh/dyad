@@ -120,6 +120,7 @@ export function createDyadEngine(
           ...JSON.parse(init.body),
           ...getExtraProviderOptions(providerId, options.settings),
         };
+        console.log("******parsedBody", parsedBody);
 
         const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
         if ("dyadVersionedFiles" in parsedBody) {

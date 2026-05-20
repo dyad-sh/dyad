@@ -29,6 +29,7 @@ import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { debugFetch } from "./debug_fetch";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -294,7 +295,7 @@ function getRegularModelClient(
       };
     }
     case "anthropic": {
-      const provider = createAnthropic({ apiKey });
+      const provider = createAnthropic({ apiKey, fetch: debugFetch });
       return {
         modelClient: {
           model: provider(model.name),

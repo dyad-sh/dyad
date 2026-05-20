@@ -11,8 +11,10 @@ import { defineContract, createClient } from "../contracts/core";
 export const FreeAgentQuotaStatusSchema = z.object({
   /** Number of messages used in the current 24-hour window */
   messagesUsed: z.number(),
-  /** Maximum messages allowed (always 5) */
+  /** Maximum messages allowed in the current quota window */
   messagesLimit: z.number(),
+  /** Bonus messages currently included in messagesLimit */
+  bonusMessages: z.number().optional(),
   /** Whether the quota has been exceeded */
   isQuotaExceeded: z.boolean(),
   /** Unix timestamp of the first message in the current window (null if no messages) */
@@ -36,6 +38,12 @@ export const freeAgentQuotaContracts = {
    */
   getFreeAgentQuotaStatus: defineContract({
     channel: "free-agent-quota:get-status",
+    input: z.void(),
+    output: FreeAgentQuotaStatusSchema,
+  }),
+
+  claimGithubStarBonus: defineContract({
+    channel: "free-agent-quota:claim-github-star-bonus",
     input: z.void(),
     output: FreeAgentQuotaStatusSchema,
   }),
@@ -63,4 +71,9 @@ export const freeAgentQuotaClient = createClient(freeAgentQuotaContracts);
 /** Output type for getFreeAgentQuotaStatus */
 export type GetFreeAgentQuotaStatusOutput = z.infer<
   (typeof freeAgentQuotaContracts)["getFreeAgentQuotaStatus"]["output"]
+>;
+
+/** Output type for claimGithubStarBonus */
+export type ClaimGithubStarBonusOutput = z.infer<
+  (typeof freeAgentQuotaContracts)["claimGithubStarBonus"]["output"]
 >;

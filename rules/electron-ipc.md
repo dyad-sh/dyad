@@ -28,6 +28,8 @@ This project uses a **contract-driven IPC architecture**. Contracts in `src/ipc/
 5. Register the handler in `src/ipc/handlers/<domain>_handlers.ts` using `createTypedHandler(contract, handler)`.
 6. Import and call the registration function in `src/ipc/ipc_host.ts`.
 
+`src/ipc/types/*.ts` files are imported by the preload allowlist bundle. Prefer relative imports from shared schema/helper files there; an alias import like `@/lib/foo` can pass `npm run ts` but fail `npm run build` with Rollup unable to resolve the import from `src/preload.ts`.
+
 ## Renderer usage
 
 ```ts

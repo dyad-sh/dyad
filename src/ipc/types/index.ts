@@ -54,6 +54,7 @@ export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export { imageGenerationContracts } from "./image_generation";
+export { productNudgeContracts } from "./product_nudges";
 
 // =============================================================================
 // Client Exports
@@ -87,6 +88,7 @@ export { freeAgentQuotaClient } from "./free_agent_quota";
 export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export { imageGenerationClient } from "./image_generation";
+export { productNudgeClient } from "./product_nudges";
 
 // =============================================================================
 // Type Exports
@@ -309,6 +311,10 @@ export type {
 
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";
+export type {
+  ProductNudge,
+  ProductNudgesResponse,
+} from "../../lib/productNudges";
 
 // Pro types
 export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
@@ -388,6 +394,7 @@ import { freeAgentQuotaClient } from "./free_agent_quota";
 import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
+import { productNudgeClient } from "./product_nudges";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -447,6 +454,7 @@ export const ipc = {
   audio: audioClient,
   media: mediaClient,
   imageGeneration: imageGenerationClient,
+  productNudges: productNudgeClient,
 
   // Event clients for main->renderer pub/sub
   events: {

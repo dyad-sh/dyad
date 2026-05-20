@@ -83,7 +83,10 @@ describe("readSettings", () => {
       );
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
+          "actionedProductNudgeIds": [],
           "autoExpandPreviewPanel": true,
+          "disableProductTips": false,
+          "dismissedProductNudgeIds": [],
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -476,7 +479,10 @@ describe("readSettings", () => {
 
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
+          "actionedProductNudgeIds": [],
           "autoExpandPreviewPanel": true,
+          "disableProductTips": false,
+          "dismissedProductNudgeIds": [],
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,

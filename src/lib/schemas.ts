@@ -369,6 +369,11 @@ const BaseUserSettingsFields = {
   hideLocalAgentNewChatToast: z.boolean().optional(),
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),
+  disableProductTips: z.boolean().optional(),
+  dismissedProductNudgeIds: z.array(z.string()).optional(),
+  actionedProductNudgeIds: z.array(z.string()).optional(),
+  lastShownProductNudgeAt: z.number().optional(),
+  freeAgentGithubStarBonusClaimedAt: z.number().optional(),
   enableSelectAppFromHomeChatInput: z.boolean().optional(),
   previewIdleTimeoutPolicy: z.enum(["default", "never"]).optional(),
 };

@@ -44,6 +44,7 @@ import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";
+import { productNudgeContracts } from "../types/product_nudges";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -103,6 +104,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
+  ...getInvokeChannels(productNudgeContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

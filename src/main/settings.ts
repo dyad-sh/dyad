@@ -54,6 +54,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   previewIdleTimeoutPolicy: "default",
+  disableProductTips: false,
+  dismissedProductNudgeIds: [],
+  actionedProductNudgeIds: [],
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";

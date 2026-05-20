@@ -13,30 +13,10 @@ testSkipIfWindows(
     await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
-    // Debug: dump element with the spinner text and its ancestors
-    const dump = await po.page.evaluate(() => {
-      const para = Array.from(document.querySelectorAll("p")).find((p) =>
-        p.textContent?.includes("Preparing app preview"),
-      );
-      if (!para) return "spinner paragraph not found";
-      const chain: string[] = [];
-      let el: HTMLElement | null = para as HTMLElement;
-      for (let i = 0; i < 6 && el; i++) {
-        chain.push(
-          `${el.tagName}.${el.className.slice(0, 60)} testid=${
-            (el as HTMLElement).dataset.testid
-          }`,
-        );
-        el = el.parentElement;
-      }
-      return chain.join("\n  -> ");
-    });
-    console.log("[DEBUG] spinner ancestor chain:\n  ", dump);
     const loadingScreen = po.previewPanel.locatePreviewLoadingScreen();
     await expect(loadingScreen).toBeVisible({ timeout: Timeout.MEDIUM });
 
-    // Log strip renders the "Server logs" header and the log list container.
-    await expect(loadingScreen.getByText("Server logs")).toBeVisible();
+    await expect(loadingScreen.getByText("Preparing preview")).toBeVisible();
     await expect(po.previewPanel.locatePreviewLoadingLogList()).toBeVisible();
 
     // The loading screen animates out once the iframe is ready.

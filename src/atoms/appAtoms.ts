@@ -18,6 +18,7 @@ export const previewModeAtom = atom<PreviewMode>("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 
 export const appConsoleEntriesAtom = atom<ConsoleEntry[]>([]);
+export const previewRunStartedAtAtom = atom<number | null>(null);
 export const appUrlAtom = atom<
   | {
       appUrl: string;

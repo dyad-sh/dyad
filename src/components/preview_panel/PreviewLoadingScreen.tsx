@@ -9,7 +9,10 @@ import {
   X,
 } from "lucide-react";
 import type { ConsoleEntry } from "@/ipc/types";
-import { appConsoleEntriesAtom } from "@/atoms/appAtoms";
+import {
+  appConsoleEntriesAtom,
+  previewRunStartedAtAtom,
+} from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { cn } from "@/lib/utils";
@@ -48,22 +51,23 @@ const PREVIEW_STARTUP_FIX_INTRO = (errorCount: number) =>
 
 export function getPreviewLoadingSessionStartedAt({
   consoleEntries,
-  fallbackStartedAt,
+  runStartedAt,
 }: {
   consoleEntries: ConsoleEntry[];
-  fallbackStartedAt: number;
+  runStartedAt: number;
 }) {
   for (let i = consoleEntries.length - 1; i >= 0; i--) {
     const entry = consoleEntries[i];
     if (
       entry.type === "server" &&
       entry.level === "info" &&
+      entry.timestamp >= runStartedAt &&
       STARTUP_LOG_MESSAGES.has(entry.message)
     ) {
       return entry.timestamp;
     }
   }
-  return fallbackStartedAt;
+  return runStartedAt;
 }
 
 export function sanitizePreviewErrorForPrompt(message: string) {
@@ -93,6 +97,7 @@ export function PreviewLoadingScreen({
   isAppUrlReady,
 }: PreviewLoadingScreenProps) {
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
+  const previewRunStartedAt = useAtomValue(previewRunStartedAtAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
 
@@ -106,13 +111,15 @@ export function PreviewLoadingScreen({
   const wasVisibleRef = useRef<boolean>(isVisible);
   const logListRef = useRef<HTMLDivElement>(null);
 
+  const runStartedAt = previewRunStartedAt ?? visibleStartedAt;
+
   const sessionStartedAt = useMemo(
     () =>
       getPreviewLoadingSessionStartedAt({
         consoleEntries,
-        fallbackStartedAt: visibleStartedAt,
+        runStartedAt,
       }),
-    [consoleEntries, visibleStartedAt],
+    [consoleEntries, runStartedAt],
   );
 
   useEffect(() => {

@@ -29,18 +29,30 @@ describe("PreviewLoadingScreen helpers", () => {
     expect(
       getPreviewLoadingSessionStartedAt({
         consoleEntries,
-        fallbackStartedAt: 50,
+        runStartedAt: 50,
       }),
     ).toBe(200);
   });
 
-  it("falls back to the visible timestamp before a startup log exists", () => {
+  it("falls back to the run timestamp before a startup log exists", () => {
     expect(
       getPreviewLoadingSessionStartedAt({
         consoleEntries: [entry("Preparing package manager...", 120)],
-        fallbackStartedAt: 75,
+        runStartedAt: 75,
       }),
     ).toBe(75);
+  });
+
+  it("ignores startup logs before the current run started", () => {
+    expect(
+      getPreviewLoadingSessionStartedAt({
+        consoleEntries: [
+          entry("Connecting to app...", 100),
+          entry("old error", 110, "error"),
+        ],
+        runStartedAt: 200,
+      }),
+    ).toBe(200);
   });
 
   it("removes control characters and caps error excerpts sent to AI", () => {

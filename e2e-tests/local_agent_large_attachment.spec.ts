@@ -20,19 +20,6 @@ testSkipIfWindows(
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
-    await po.page.evaluate(async () => {
-      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-        enableSandboxScriptExecution: true,
-      });
-      await (window as any).electron.ipcRenderer.invoke(
-        "agent-tool:set-consent",
-        {
-          toolName: "execute_sandbox_script",
-          consent: "always",
-        },
-      );
-    });
-
     await po.chatActions
       .getChatInputContainer()
       .getByTestId("auxiliary-actions-menu")

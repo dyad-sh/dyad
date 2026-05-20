@@ -137,7 +137,7 @@ describe("app blueprint tools", () => {
     uuidSpy.mockRestore();
   });
 
-  it("falls back to user's selectedTemplateId when template_id is omitted", async () => {
+  it("uses templateId and themeId from user settings when omitted", async () => {
     const chatId = 1002;
     const ctx = createAgentContext(chatId);
 
@@ -148,6 +148,36 @@ describe("app blueprint tools", () => {
         attachments: [],
         design_direction: "Simple and professional with strong readability.",
         primary_color: "#2563EB",
+        visuals: [
+          {
+            type: "logo",
+            description: "App logo",
+            prompt: "Minimal logo",
+          },
+        ],
+      },
+      ctx,
+    );
+
+    expect(getAppBlueprintForChat(chatId)).toMatchObject({
+      templateId: "react",
+      themeId: "default",
+    });
+  });
+
+  it("falls back to settings when template_id or theme_id are not in the known catalog", async () => {
+    const chatId = 1003;
+    const ctx = createAgentContext(chatId);
+
+    await writeAppBlueprintTool.execute(
+      {
+        app_name: "Hallucinated IDs",
+        user_prompt: "Build me an app",
+        attachments: [],
+        template_id: "vue",
+        theme_id: "modern",
+        design_direction: "Clean and minimal.",
+        primary_color: "#10B981",
         visuals: [
           {
             type: "logo",

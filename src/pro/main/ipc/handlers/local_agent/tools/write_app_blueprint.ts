@@ -6,7 +6,37 @@ import { setAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import { AppBlueprintVisualTypeSchema } from "@/ipc/types/app_blueprint";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { readSettings } from "@/main/settings";
+import { localTemplatesData } from "@/shared/templates";
+import { themesData } from "@/shared/themes";
 import type { UserSettings } from "@/lib/schemas";
+
+// Only accept template/theme IDs the model could plausibly know about — the
+// built-in catalogs. Unknown IDs (hallucinated names, API-only template IDs,
+// stale custom:N IDs) silently fall back to the user's settings so the
+// blueprint card never has to render "Unknown template/theme (X)".
+const VALID_TEMPLATE_IDS = new Set(localTemplatesData.map((t) => t.id));
+const VALID_THEME_IDS = new Set(themesData.map((t) => t.id));
+
+const formatIdList = (ids: Iterable<string>) =>
+  Array.from(ids, (id) => `"${id}"`).join(", ");
+const VALID_TEMPLATE_IDS_LIST = formatIdList(VALID_TEMPLATE_IDS);
+const VALID_THEME_IDS_LIST = formatIdList(VALID_THEME_IDS);
+
+function resolveTemplateId(
+  provided: string | undefined,
+  settings: UserSettings,
+): string {
+  if (provided && VALID_TEMPLATE_IDS.has(provided)) return provided;
+  return settings.selectedTemplateId;
+}
+
+function resolveThemeId(
+  provided: string | undefined,
+  settings: UserSettings,
+): string {
+  if (provided && VALID_THEME_IDS.has(provided)) return provided;
+  return settings.selectedThemeId ?? "default";
+}
 
 const logger = log.scope("write_app_blueprint");
 
@@ -61,13 +91,13 @@ const writeAppBlueprintSchema = z.object({
     .string()
     .optional()
     .describe(
-      'The template/tech stack to use (e.g. "react", "next"). If omitted, the user\'s default template (set in the Hub / settings) is used.',
+      `The template/tech stack to use. ONLY set this when the user explicitly asks for a specific stack by name (e.g. "use Next.js" → "next"). Otherwise OMIT it and the user's default template from settings will be used. Valid values: ${VALID_TEMPLATE_IDS_LIST}.`,
     ),
   theme_id: z
     .string()
     .optional()
     .describe(
-      "The theme to apply. If omitted, the user's default theme (set in settings) is used. Use the default unless the user specifies a preference.",
+      `The theme to apply. ONLY set this when the user explicitly asks for a specific built-in theme by name. Otherwise OMIT it and the user's default theme from settings will be used. Valid values: ${VALID_THEME_IDS_LIST}.`,
     ),
   design_direction: z
     .string()
@@ -94,7 +124,7 @@ const writeAppBlueprintSchema = z.object({
 
 const DESCRIPTION = `Create or update the app blueprint for the user to review before building begins.
 
-The app blueprint is a lightweight configuration step — it captures key decisions about the app (name, design, color, template/theme) AND the visual assets the app needs (with detailed image generation prompts) before implementation starts. The user can modify any field directly in the card or ask you to update it.
+The app blueprint is a lightweight configuration step — it captures key decisions about the app (name, design, color, optionally template/theme) AND the visual assets the app needs (with detailed image generation prompts) before implementation starts. The user can modify any field directly in the card or ask you to update it. Template and theme default to the user's settings; only override them when the user explicitly asks for a specific one by name.
 
 This tool returns immediately and ends the current turn. The user reviews the blueprint card and, on approval, the system applies the chosen name/template/theme and starts a new turn with a follow-up message that contains the approved blueprint — that's when you proceed with implementation.
 
@@ -104,8 +134,8 @@ Use this tool AFTER gathering any needed preferences (via planning_questionnaire
 
 <guidelines>
 - app_name: Generate a creative, memorable name that reflects the app's purpose. Keep it short (1-3 words).
-- template_id: Omit unless the user specifically requested a framework (e.g. "next" for Next.js). The user's Hub selection will be used by default.
-- theme_id: Omit unless the user has a specific theme preference. The user's default theme will be used.
+- template_id: Omit by default — the user's settings choice is used. ONLY set when the user explicitly names a tech stack (e.g. "use Next.js" → "next", "use React" → "react"). Don't infer from the app idea.
+- theme_id: Omit by default — the user's settings choice is used. ONLY set when the user explicitly names a built-in theme. Don't infer from the design direction.
 - design_direction: Analyze the industry, target users, and purpose to determine the right visual approach. Be specific but concise (1-2 sentences).
 - primary_color: Pick a color that fits the industry and design direction. Use hex format.
 - visuals: 3-6 is typical. Common types: "logo", "photo" (hero images, products), "illustration" (empty states, onboarding), "icon" (custom icons), "background" (decorative), "other". Write detailed prompts that specify subject, style, colors, composition, and mood.
@@ -148,12 +178,8 @@ export const writeAppBlueprintTool: ToolDefinition<
 
     const settings = getCachedSettings();
     const appName = escapeXmlAttr(args.app_name);
-    const template = escapeXmlAttr(
-      args.template_id ?? settings.selectedTemplateId,
-    );
-    const theme = escapeXmlAttr(
-      args.theme_id ?? settings.selectedThemeId ?? "default",
-    );
+    const template = escapeXmlAttr(resolveTemplateId(args.template_id, settings));
+    const theme = escapeXmlAttr(resolveThemeId(args.theme_id, settings));
     const designDirection = args.design_direction
       ? escapeXmlAttr(args.design_direction)
       : "";
@@ -180,8 +206,8 @@ export const writeAppBlueprintTool: ToolDefinition<
       appName: args.app_name,
       userPrompt: args.user_prompt,
       attachments: args.attachments ?? [],
-      templateId: args.template_id ?? settings.selectedTemplateId,
-      themeId: args.theme_id ?? settings.selectedThemeId ?? "default",
+      templateId: resolveTemplateId(args.template_id, settings),
+      themeId: resolveThemeId(args.theme_id, settings),
       designDirection: args.design_direction,
       primaryColor: args.primary_color,
       visuals,

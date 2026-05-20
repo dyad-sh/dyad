@@ -226,6 +226,14 @@ export class PreviewPanel {
     await this.page.getByTestId("preview-loading-fix-errors-button").click();
   }
 
+  locatePreviewLoadingRebuildButton() {
+    return this.page.getByTestId("preview-loading-rebuild-button");
+  }
+
+  async clickPreviewLoadingRebuild() {
+    await this.locatePreviewLoadingRebuildButton().click();
+  }
+
   getPreviewIframeElement() {
     return this.page.getByTestId("preview-iframe-element");
   }

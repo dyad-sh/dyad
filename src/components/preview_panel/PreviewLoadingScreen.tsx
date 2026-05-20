@@ -4,16 +4,18 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Cog,
   Loader2,
   Sparkles,
-  X,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
   appConsoleEntriesAtom,
   previewRunStartedAtAtom,
 } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useRunApp } from "@/hooks/useRunApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { cn } from "@/lib/utils";
 
@@ -96,17 +98,18 @@ export function PreviewLoadingScreen({
   loading,
   isAppUrlReady,
 }: PreviewLoadingScreenProps) {
+  const { t } = useTranslation("home");
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
   const previewRunStartedAt = useAtomValue(previewRunStartedAtAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
+  const { restartApp } = useRunApp();
 
   const isVisible = loading || !isAppUrlReady;
 
   const [shouldRender, setShouldRender] = useState(isVisible);
   const [isExiting, setIsExiting] = useState(false);
   const [isErrorsExpanded, setIsErrorsExpanded] = useState(false);
-  const [errorsDismissed, setErrorsDismissed] = useState(false);
   const [visibleStartedAt, setVisibleStartedAt] = useState(Date.now());
   const wasVisibleRef = useRef<boolean>(isVisible);
   const logListRef = useRef<HTMLDivElement>(null);
@@ -143,7 +146,6 @@ export function PreviewLoadingScreen({
   }, [isVisible, shouldRender]);
 
   useEffect(() => {
-    setErrorsDismissed(false);
     setIsErrorsExpanded(false);
   }, [sessionStartedAt]);
 
@@ -190,6 +192,10 @@ export function PreviewLoadingScreen({
     el.scrollTop = el.scrollHeight;
   }, [sessionEntries.length]);
 
+  const handleRebuild = () => {
+    void restartApp({ removeNodeModules: true });
+  };
+
   const handleFixAllErrors = () => {
     if (!selectedChatId || errorMessages.length === 0) return;
     const includedErrorMessages = errorMessages.slice(0, MAX_ERRORS_FOR_AI_FIX);
@@ -209,7 +215,7 @@ export function PreviewLoadingScreen({
 
   if (!shouldRender) return null;
 
-  const showErrorBanner = errorMessages.length > 0 && !errorsDismissed;
+  const showErrorBanner = errorMessages.length > 0;
   const errorCount = errorMessages.length;
 
   return (
@@ -316,16 +322,17 @@ export function PreviewLoadingScreen({
                   <ChevronDown size={14} className="flex-shrink-0" />
                 )}
               </button>
+              <div className="flex-1" />
               <button
                 type="button"
-                onClick={() => setErrorsDismissed(true)}
-                className="p-1 rounded text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 flex-shrink-0 cursor-pointer"
-                aria-label="Dismiss errors"
-                data-testid="preview-loading-error-dismiss"
+                onClick={handleRebuild}
+                disabled={loading}
+                className="cursor-pointer flex items-center gap-1 px-2.5 py-1 border border-border text-foreground hover:bg-muted rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                data-testid="preview-loading-rebuild-button"
               >
-                <X size={14} />
+                <Cog size={14} />
+                <span>{t("preview.rebuild")}</span>
               </button>
-              <div className="flex-1" />
               <button
                 type="button"
                 onClick={handleFixAllErrors}

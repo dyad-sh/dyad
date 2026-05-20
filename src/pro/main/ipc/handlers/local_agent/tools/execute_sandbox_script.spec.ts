@@ -19,7 +19,7 @@ vi.mock("@/ipc/utils/telemetry", () => ({
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({
-    experiments: { enableSandboxScriptExecution: true },
+    enableSandboxScriptExecution: true,
   })),
 }));
 
@@ -53,17 +53,17 @@ describe("executeSandboxScriptTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(readSettings).mockReturnValue({
-      experiments: { enableSandboxScriptExecution: true },
+      enableSandboxScriptExecution: true,
     } as ReturnType<typeof readSettings>);
   });
 
-  it("treats an unset sandbox script experiment as disabled", () => {
+  it("treats an unset sandbox script setting as disabled", () => {
     vi.mocked(readSettings).mockReturnValue({
-      experiments: {},
+      enableSandboxScriptExecution: false,
     } as ReturnType<typeof readSettings>);
 
     expect(isSandboxScriptExecutionEnabled(undefined)).toBe(false);
-    expect(isSandboxScriptExecutionEnabled({ experiments: {} })).toBe(false);
+    expect(isSandboxScriptExecutionEnabled({})).toBe(false);
     expect(executeSandboxScriptTool.isEnabled?.(createMockContext())).toBe(
       false,
     );

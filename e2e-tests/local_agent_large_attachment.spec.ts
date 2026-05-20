@@ -22,7 +22,7 @@ testSkipIfWindows(
 
     await po.page.evaluate(async () => {
       await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-        experiments: { enableSandboxScriptExecution: true },
+        enableSandboxScriptExecution: true,
       });
       await (window as any).electron.ipcRenderer.invoke(
         "agent-tool:set-consent",

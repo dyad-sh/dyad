@@ -30,9 +30,9 @@ const executeSandboxScriptSchema = z.object({
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
 
 export function isSandboxScriptExecutionEnabled(
-  settings: Pick<UserSettings, "experiments"> | undefined,
+  settings: Pick<UserSettings, "enableSandboxScriptExecution"> | undefined,
 ): boolean {
-  return !!settings?.experiments?.enableSandboxScriptExecution;
+  return !!settings?.enableSandboxScriptExecution;
 }
 
 function isAttachmentHostCallPath(path: string | undefined): boolean {
@@ -97,9 +97,29 @@ Supported language surface:
 - Top-level await is not supported because scripts are not modules. When calling async host functions, wrap the script body in an async function and call it, e.g. \`async function main() { const text = await read_file("attachments:data.csv"); return text.length; } main();\`.
 - The script has no ambient authority. It can only inspect files through the host functions below.
 
+Recommendations:
+- Avoid defining nested helper functions in the main function.
+
 Unsupported / unavailable:
 - No import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, timers, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.
+- String.prototype.localeCompare is not supported; compare with <, >, or === instead.
 - Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.
+
+Avoid returning shared references:
+
+\`\`\`
+const row = { key: "x", total: 1 };
+return { a: row, b: row }; // rejected
+\`\`\`
+
+Return cloned/plain rows instead:
+
+\`\`\`
+return {
+  a: { key: row.key, total: row.total },
+  b: { key: row.key, total: row.total }
+};
+\`\`\`
 
 Host functions:
 \`\`\`ts

@@ -55,6 +55,7 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
+import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -85,6 +86,7 @@ import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
@@ -687,6 +689,8 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
+      enableAppBlueprint:
+        settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     });
     const mcpTools =
       readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
@@ -846,6 +850,11 @@ export async function handleLocalAgentStream(
               // Supabase/Neon context. The frontend auto-triggers a hidden
               // continuation message once the user clicks Continue.
               hasToolCall(addIntegrationTool.name),
+              // End the turn after the blueprint tool returns: approval may have
+              // renamed the app folder, so `ctx.appPath` is now stale. The
+              // renderer queues a follow-up user message that starts a fresh
+              // turn with a refreshed ctx (see pendingAppBlueprintImplementationAtom).
+              hasToolCall(writeAppBlueprintTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
               ...(planModeOnly
                 ? [
@@ -1072,6 +1081,7 @@ export async function handleLocalAgentStream(
                 clearPendingConsentsForChat(req.chatId);
                 questionnaireResolver.abortChat(req.chatId);
                 integrationResolver.abortChat(req.chatId);
+                deleteAppBlueprintForChat(req.chatId);
                 break;
               }
 
@@ -1540,6 +1550,12 @@ export async function handleLocalAgentStream(
     clearPendingConsentsForChat(req.chatId);
     questionnaireResolver.abortChat(req.chatId);
     integrationResolver.abortChat(req.chatId);
+    // Only drop the app blueprint itself on explicit cancellation — a transient
+    // stream error should leave the plan around so the user can retry from
+    // the same approval state instead of losing their edits.
+    if (abortController.signal.aborted) {
+      deleteAppBlueprintForChat(req.chatId);
+    }
 
     if (abortController.signal.aborted) {
       // Handle cancellation

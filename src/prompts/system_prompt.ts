@@ -527,6 +527,7 @@ export const constructSystemPrompt = ({
   basicAgentMode,
   frameworkType,
   hasSupabaseProject,
+  enableAppBlueprint,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -548,6 +549,8 @@ export const constructSystemPrompt = ({
    * (Supabase Edge Functions vs. Nitro routes).
    */
   hasSupabaseProject?: boolean;
+  /** If false, omit the app blueprint block from the local-agent prompt. */
+  enableAppBlueprint?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -559,6 +562,7 @@ export const constructSystemPrompt = ({
       basicAgentMode,
       frameworkType,
       hasSupabaseProject,
+      enableAppBlueprint,
     });
   }
 

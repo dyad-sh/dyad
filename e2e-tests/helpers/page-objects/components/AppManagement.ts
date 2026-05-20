@@ -62,11 +62,22 @@ export class AppManagement {
   }
 
   async getCurrentAppPath() {
-    const currentAppName = await this.getCurrentAppName();
-    if (!currentAppName) {
-      throw new Error("No current app name found");
+    // Prefer data-app-path: after a template path-swap, the on-disk folder is
+    // a slugified name that differs from the display name.
+    await expect(async () => {
+      await expect(this.getTitleBarAppNameButton()).not.toHaveAttribute(
+        "data-app-path",
+        "",
+      );
+    }).toPass();
+    const appPath =
+      await this.getTitleBarAppNameButton().getAttribute("data-app-path");
+    if (!appPath) {
+      throw new Error("No current app path found");
     }
-    return this.getAppPath({ appName: currentAppName });
+    return path.isAbsolute(appPath)
+      ? appPath
+      : path.join(this.userDataDir, "dyad-apps", appPath);
   }
 
   getAppPath({ appName }: { appName: string }) {
@@ -164,6 +175,21 @@ export class AppManagement {
         ),
       })
       .click();
+  }
+
+  // Imported apps default to needs_app_blueprint=0; flip it so tests can
+  // exercise the blueprint approval flow against an imported fixture.
+  async enableAppBlueprintForCurrentApp() {
+    const appName = await this.getCurrentAppName();
+    if (!appName) {
+      throw new Error("No current app to enable blueprint for");
+    }
+    await this.page.evaluate(async (appName) => {
+      await (window as any).electron.ipcRenderer.invoke(
+        "test:set-needs-app-blueprint",
+        { appName, value: true },
+      );
+    }, appName);
   }
 
   async importApp(appDir: string) {

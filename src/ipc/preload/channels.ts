@@ -44,6 +44,10 @@ import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";
+import {
+  appBlueprintContracts,
+  appBlueprintEvents,
+} from "../types/app_blueprint";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -56,6 +60,7 @@ const HELP_STREAM_CHANNELS = getStreamChannels(helpStreamContract);
 const TEST_INVOKE_CHANNELS = [
   "test:simulateQuotaTimeElapsed",
   "test:set-node-mock",
+  "test:set-needs-app-blueprint",
 ] as const;
 
 /**
@@ -103,6 +108,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
+  ...getInvokeChannels(appBlueprintContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -129,6 +135,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
   ...getReceiveChannels(integrationEvents),
+  ...getReceiveChannels(appBlueprintEvents),
 ] as const;
 
 // =============================================================================

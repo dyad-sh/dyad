@@ -351,6 +351,7 @@ const BaseUserSettingsFields = {
   previewDeviceMode: DeviceModeSchema.optional(),
 
   enableAutoFixProblems: z.boolean().optional(),
+  enableAppBlueprint: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
@@ -449,6 +450,7 @@ export function migrateStoredSettings(
     enableChatEventNotifications:
       stored.enableChatEventNotifications ??
       stored.enableChatCompletionNotifications,
+    enableAppBlueprint: stored.enableAppBlueprint ?? true,
   };
 }
 

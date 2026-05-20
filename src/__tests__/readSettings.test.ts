@@ -84,6 +84,7 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -478,6 +479,7 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,

@@ -1092,6 +1092,8 @@ ${componentSnippet}
           basicAgentMode: isBasicAgentMode(settings),
           frameworkType,
           hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
+          enableAppBlueprint:
+            settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
         });
 
         // Add information about mentioned apps for build mode only.

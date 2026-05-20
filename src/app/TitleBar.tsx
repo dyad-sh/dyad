@@ -85,6 +85,7 @@ export const TitleBar = () => {
                 <Button
                   data-testid="title-bar-app-name-button"
                   data-app-name={selectedApp?.name ?? ""}
+                  data-app-path={selectedApp?.path ?? ""}
                   aria-label={
                     selectedApp
                       ? `Manage ${selectedApp.name}`

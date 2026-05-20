@@ -93,17 +93,28 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
 </file_editing_tool_selection>`;
 
-const PRO_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
-1. **Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.
-2. **Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
-   **Use when:** creating a new app/project, the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
+const APP_BLUEPRINT_WORKFLOW_STEP = `**App Blueprint (new apps only):** If the user is creating a NEW app or project, follow the app blueprint flow described in the \`<app_blueprint>\` section FIRST. Do not proceed to implementation until the app blueprint is approved.`;
+
+function proDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
+  const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
+  const steps: string[] = [];
+  if (enableAppBlueprint) {
+    steps.push(APP_BLUEPRINT_WORKFLOW_STEP);
+  }
+  steps.push(
+    `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`,
+    `**Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
+   **Use when:** the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
-   The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.
-3. **Plan:** Build a coherent and grounded (based on the understanding in steps 1-2) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.
-4. **Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
-5. **Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.
-6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
-</development_workflow>`;
+   The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
+    `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
+    `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.`,
+    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.`,
+    `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
+  );
+  const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  return `<development_workflow>\n${numbered}\n</development_workflow>`;
+}
 
 // ============================================================================
 // Basic Agent Mode Specific Blocks
@@ -131,17 +142,26 @@ You have two tools for editing files. Choose based on the scope of your change:
 After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
 </file_editing_tool_selection>`;
 
-const BASIC_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
-1. **Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.
-2. **Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
-   **Use when:** creating a new app/project, the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
+function basicDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
+  const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
+  const steps: string[] = [];
+  if (enableAppBlueprint) {
+    steps.push(APP_BLUEPRINT_WORKFLOW_STEP);
+  }
+  steps.push(
+    `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`,
+    `**Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
+   **Use when:** the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
-   The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.
-3. **Plan:** Build a coherent and grounded (based on the understanding in steps 1-2) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.
-4. **Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
-5. **Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.
-6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
-</development_workflow>`;
+   The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
+    `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
+    `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.`,
+    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.`,
+    `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
+  );
+  const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  return `<development_workflow>\n${numbered}\n</development_workflow>`;
+}
 
 // ============================================================================
 // AI Rules Block
@@ -242,6 +262,27 @@ When you reach step 4 (Implement) and the implementation requires a server layer
 </server_layer>`;
 
 // ============================================================================
+// App Blueprint Block (shared by Pro and Basic Agent modes)
+// ============================================================================
+
+const APP_BLUEPRINT_BLOCK = `<app_blueprint>
+When the user asks you to create a NEW app or project (not modify an existing one), you MUST present an app blueprint before starting any implementation. The app blueprint is a lightweight configuration step that lets the user review and customize key decisions.
+
+**App Blueprint Flow:**
+1. **Clarify first** with \`planning_questionnaire\` (1-3 quick questions about design preferences, colors, target audience — NOT technical questions). You MUST use this tool before creating the app blueprint to ensure you capture the user's preferences accurately.
+2. **Create the app blueprint** with \`write_app_blueprint\`: generate a creative app name, determine design direction, pick a fitting primary color, AND include the visual assets the app needs (logo, photography, illustrations, icons, backgrounds) with detailed image prompts. Template and theme default to the user's settings — only set \`template_id\` / \`theme_id\` when the user explicitly named a specific stack or theme. The tool returns immediately and ends your turn — the user reviews the blueprint card and, when approved, the system sends you a follow-up message with the approved blueprint that you should then use to begin implementation.
+
+**Important:**
+- ALWAYS use \`planning_questionnaire\` BEFORE \`write_app_blueprint\` — this is required to gather the user's preferences.
+- The app blueprint should be generated quickly — keep it lightweight.
+- Generate a creative, memorable app name based on the user's prompt and their questionnaire answers.
+- Choose a primary color that fits the industry and design direction.
+- Design direction should be specific but concise (1-2 sentences).
+- Do NOT start writing code or creating files until the user approves the app blueprint — your turn will end automatically after calling \`write_app_blueprint\`.
+- When the next user message contains the approved blueprint (e.g. "The app blueprint has been approved..."), use all the information in it to guide your implementation.
+</app_blueprint>`;
+
+// ============================================================================
 // Image Generation Block (Pro mode only)
 // ============================================================================
 
@@ -262,7 +303,8 @@ When a user explicitly requests custom images, illustrations, or visual media fo
  * System prompt for Local Agent v2 in Pro mode
  * Full access to all tools including code_search, web_search, web_crawl
  */
-export const LOCAL_AGENT_SYSTEM_PROMPT = `
+function buildLocalAgentSystemPrompt(enableAppBlueprint: boolean): string {
+  return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
@@ -275,18 +317,20 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
+${proDevelopmentWorkflowBlock(enableAppBlueprint)}
 [[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
-
+${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
 ${AI_RULES_BLOCK}
 `;
+}
 
 /**
  * System prompt for Local Agent v2 in Basic Agent mode (free tier)
  * Limited tools - no code_search, web_search, web_crawl
  */
-export const LOCAL_AGENT_BASIC_SYSTEM_PROMPT = `
+function buildLocalAgentBasicSystemPrompt(enableAppBlueprint: boolean): string {
+  return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
@@ -299,10 +343,12 @@ ${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${BASIC_DEVELOPMENT_WORKFLOW_BLOCK}
+${basicDevelopmentWorkflowBlock(enableAppBlueprint)}
 [[SERVER_LAYER]]
+${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
 ${AI_RULES_BLOCK}
 `;
+}
 
 // ============================================================================
 // Default AI Rules
@@ -339,16 +385,19 @@ export function constructLocalAgentPrompt(
     basicAgentMode?: boolean;
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
+    enableAppBlueprint?: boolean;
   },
 ): string {
+  const enableAppBlueprint = options?.enableAppBlueprint !== false;
+
   // Select the appropriate base prompt
   let basePrompt: string;
   if (options?.readOnly) {
     basePrompt = LOCAL_AGENT_ASK_SYSTEM_PROMPT;
   } else if (options?.basicAgentMode) {
-    basePrompt = LOCAL_AGENT_BASIC_SYSTEM_PROMPT;
+    basePrompt = buildLocalAgentBasicSystemPrompt(enableAppBlueprint);
   } else {
-    basePrompt = LOCAL_AGENT_SYSTEM_PROMPT;
+    basePrompt = buildLocalAgentSystemPrompt(enableAppBlueprint);
   }
 
   // The Nitro nudge only applies to Vite apps without Nitro yet. `vite-nitro`

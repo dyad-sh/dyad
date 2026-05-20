@@ -36,6 +36,7 @@ import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
 import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
+import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -51,6 +52,7 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -100,6 +102,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   planningQuestionnaireTool,
   writePlanTool,
   exitPlanTool,
+  // App blueprint tools
+  writeAppBlueprintTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
@@ -337,6 +341,10 @@ export interface BuildAgentToolSetOptions {
    * Used for basic agent mode where some tools may not be available.
    */
   basicAgentMode?: boolean;
+  /**
+   * If false, exclude app blueprint tools (write_app_blueprint).
+   */
+  enableAppBlueprint?: boolean;
 }
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
@@ -387,6 +395,13 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
 const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
 /**
+ * Tools that are part of the app blueprint flow. Excluded when the feature
+ * is disabled via the Workflow setting or once the per-app blueprint flag is
+ * cleared.
+ */
+const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
 export function buildAgentToolSet(
@@ -420,6 +435,14 @@ export function buildAgentToolSet(
       continue;
     }
 
+    // Skip app blueprint tools when the feature is disabled
+    if (
+      options.enableAppBlueprint === false &&
+      APP_BLUEPRINT_TOOLS.has(tool.name)
+    ) {
+      continue;
+    }
+
     // In read-only mode, skip tools that modify state
     if (options.readOnly && tool.modifiesState) {
       continue;
@@ -434,6 +457,39 @@ export function buildAgentToolSet(
       inputSchema: tool.inputSchema,
       execute: async (args: any) => {
         try {
+          // Guard against state-modifying tools running before the app
+          // blueprint approval is resolved. `write_app_blueprint` owns the
+          // approval gate; blueprint tools themselves are allowed through so
+          // the flow can progress to approval. Skip entirely when the
+          // blueprint feature is disabled — otherwise a plan left over from
+          // before the toggle would permanently block the agent.
+          //
+          // When the feature is enabled, also block if NO plan exists yet —
+          // the prompt instructs the model to call write_app_blueprint first,
+          // but the prompt isn't an enforcement boundary. Without this check,
+          // a model that skips write_app_blueprint can still call e.g.
+          // write_file and bypass the required blueprint approval flow.
+          if (
+            options.enableAppBlueprint !== false &&
+            tool.modifiesState &&
+            !APP_BLUEPRINT_TOOLS.has(tool.name) &&
+            !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+          ) {
+            const plan = getAppBlueprintForChat(ctx.chatId);
+            if (!plan) {
+              throw new DyadError(
+                `App blueprint must be created and approved before running ${tool.name}. Call write_app_blueprint first to present the blueprint for approval.`,
+                DyadErrorKind.Precondition,
+              );
+            }
+            if (!plan.approved) {
+              throw new DyadError(
+                `App blueprint must be approved before running ${tool.name}. Call write_app_blueprint to present the blueprint for approval.`,
+                DyadErrorKind.Precondition,
+              );
+            }
+          }
+
           const processedArgs = await processArgPlaceholders(args, ctx);
 
           // Check consent before executing the tool

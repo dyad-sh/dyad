@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `needs_app_blueprint` integer DEFAULT 0 NOT NULL;

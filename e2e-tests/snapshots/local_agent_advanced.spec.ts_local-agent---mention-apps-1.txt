@@ -606,6 +606,33 @@
       {
         "type": "function",
         "function": {
+          "name": "execute_sandbox_script",
+          "description": "Run a small read-only program written in a strict, sandboxed subset of JavaScript to inspect attached files or project files without loading all contents into context.\n\nUse this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.\n\nSupported language surface:\n- let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.\n- Top-level await is not supported because scripts are not modules. When calling async host functions, wrap the script body in an async function and call it, e.g. `async function main() { const text = await read_file(\"attachments:data.csv\"); return text.length; } main();`.\n- The script has no ambient authority. It can only inspect files through the host functions below.\n\nRecommendations:\n- Avoid defining nested helper functions in the main function.\n\nUnsupported / unavailable:\n- No import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, timers, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.\n- String.prototype.localeCompare is not supported; compare with <, >, or === instead.\n- Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.\n\nAvoid returning shared references:\n\n```\nconst row = { key: \"x\", total: 1 };\nreturn { a: row, b: row }; // rejected\n```\n\nReturn cloned/plain rows instead:\n\n```\nreturn {\n  a: { key: row.key, total: row.total },\n  b: { key: row.key, total: row.total }\n};\n```\n\nHost functions:\n```ts\ntype ReadFileOptions = {\n  start?: number; // zero-indexed byte offset\n  length?: number; // max bytes to read\n  encoding?: \"utf8\" | \"base64\";\n};\n\ntype FileStats = {\n  size: number;\n  isText: boolean;\n  mtime: string; // ISO timestamp\n};\n\ndeclare function read_file(\n  path: string,\n  options?: ReadFileOptions,\n): Promise<string>;\n\ndeclare function list_files(dir?: \".\" | \"attachments:\" | string): Promise<string[]>;\n\ndeclare function file_stats(path: string): Promise<FileStats>;\n```\n\nPaths are app-relative (including `.dyad/media/<stored-name>`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "script": {
+                "type": "string",
+                "maxLength": 131072,
+                "description": "Sandboxed JavaScript subset source code to execute."
+              },
+              "description": {
+                "description": "One-line human-readable summary of what the script reads.",
+                "type": "string",
+                "maxLength": 160
+              }
+            },
+            "required": [
+              "script"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "planning_questionnaire",
           "description": "Present a structured questionnaire to gather requirements from the user. The tool displays questions in the UI and waits for the user's responses, returning them as the tool result.\n\n<when_to_use>\nUse this tool when:\n- The user wants to create a NEW app or project\n- The request is vague or open-ended\n- There are multiple reasonable interpretations\nSkip when the request is a specific, concrete change.\n</when_to_use>\n\n<input_schema>\nThe tool accepts ONLY a \"questions\" array.\n\nEach question object has these fields:\n- \"question\" (string, REQUIRED): The question text shown to the user\n- \"type\" (string, REQUIRED): One of \"text\", \"radio\", or \"checkbox\"\n- \"options\" (string array, REQUIRED for radio/checkbox, OMIT for text): 1-3 predefined choices\n- \"id\" (string, optional): Unique identifier, auto-generated if omitted\n- \"required\" (boolean, optional): Defaults to true\n- \"placeholder\" (string, optional): Placeholder for text inputs\n</input_schema>\n\n<correct_example>\nReasoning: The user asked to \"build me a todo app\". I need to clarify the tech stack and key features. I'll use radio for single-choice and checkbox for multi-choice.\n\n{\n  \"questions\": [\n    {\n      \"type\": \"radio\",\n      \"question\": \"What visual style do you prefer?\",\n      \"options\": [\"Minimal & clean\", \"Colorful & playful\", \"Dark & modern\"]\n    },\n    {\n      \"type\": \"checkbox\",\n      \"question\": \"Which features do you want?\",\n      \"options\": [\"Due dates\", \"Categories/tags\", \"Priority levels\"]\n    }\n  ]\n}\n</correct_example>\n\n<incorrect_examples>\nWRONG — Empty questions array:\n{ \"questions\": [] }\n\nWRONG — options on text type:\n{ \"type\": \"text\", \"question\": \"...\", \"options\": [\"a\"] }\n\nWRONG — Empty options array:\n{ \"type\": \"radio\", \"question\": \"...\", \"options\": [] }\n\nWRONG — Missing options for radio:\n{ \"type\": \"radio\", \"question\": \"...\" }\n\nWRONG — More than 3 questions or more than 3 options\n\nWRONG — Array with empty object (missing required \"question\" and \"type\" fields):\n{ \"questions\": [{}] }\n</incorrect_examples>",
           "parameters": {

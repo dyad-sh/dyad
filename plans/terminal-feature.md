@@ -49,8 +49,8 @@ output into chat) become cheap.
 - **Cross-platform shell**: respect `$SHELL` (mac/Linux) and `%COMSPEC%`
   (Windows). Platform fallbacks: `/bin/zsh`, `/bin/bash`, `cmd.exe`. No
   PowerShell auto-detection in v1.
-- **Per-chat visibility persistence**: `chats.terminalOpen` boolean column
-  (default false). Controls the drawer's open/closed state per chat. PTY
+- **Per-chat visibility state**: `terminalOpenByChatIdAtom` stores the
+  drawer's open/closed state per chat for the current renderer session. PTY
   lifetime is a separate concern.
 - **Drawer animation**: vertical slide-up from the bottom via framer-motion
   `AnimatePresence`. Spring-like tween, ~220ms. Reverse on exit.
@@ -175,7 +175,7 @@ output into chat) become cheap.
   per-app PTY).
 - **Switching chats across different apps**: the previous chat's PTY keeps
   running in the background. The new chat shows whatever its own
-  `terminalOpen` flag says.
+  `terminalOpenByChatIdAtom` entry says.
 - **Narrow width (<480px)**: hide the path string in the banner, keep the
   exit affordance always visible.
 
@@ -270,7 +270,7 @@ PtySession>`. Each session wraps a `node-pty` process, an in-memory
 
 | File                                           | Change                                                                                                                                                                            |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `src/components/chat/ChatHeader.tsx`           | Add `SquareTerminal` toggle button at line ~217, left of preview-toggle. Wire to `terminalOpenByChatIdAtom`. Update DB via `ipc.chat.setTerminalOpen`.                            |
+| `src/components/chat/ChatHeader.tsx`           | Add `SquareTerminal` toggle button at line ~217, left of preview-toggle. Wire to `terminalOpenByChatIdAtom`.                                                                      |
 | `src/components/ChatPanel.tsx`                 | Conditionally render lazy `TerminalPanel` instead of MessagesList+ChatInput. Wrap both branches in `AnimatePresence` for the drawer.                                              |
 | `src/components/chat/TerminalPanel.tsx`        | **New**. xterm.js + addons; subscribes to PTY stream; sends user input back; handles resize, theme, focus. Props: `appId`, `chatId`, `onExit`, `size: "full"                      | "split-bottom"`(only`"full"` used in v1). |
 | `src/components/chat/TerminalEscapeBanner.tsx` | **New**. Slim banner with click-to-exit + chord shortcut display.                                                                                                                 |
@@ -281,32 +281,18 @@ PtySession>`. Each session wraps a `node-pty` process, an in-memory
 | `src/ipc/handlers/terminal_handlers.ts`        | **New**. Typed handlers: `terminal:open`, `terminal:close`, `terminal:kill`, `terminal:write`, `terminal:resize`, `terminal:serialize`. Registers streaming channels per session. |
 | `src/ipc/contracts/terminal_contracts.ts`      | **New**. Zod schemas for the control-plane RPCs above.                                                                                                                            |
 | `src/ipc/ipc_host.ts`                          | Register `registerTerminalHandlers()`.                                                                                                                                            |
-| `src/ipc/handlers/chat_handlers.ts`            | Add `setTerminalOpen({ chatId, open })` handler.                                                                                                                                  |
 | `src/ipc/handlers/app_handlers.ts`             | On app delete, call `PtySessionManager.killForApp(appId)`.                                                                                                                        |
 | `src/preload.ts`                               | Expose terminal namespace + stream channel subscription helpers.                                                                                                                  |
-| `src/db/schema.ts`                             | Add `terminalOpen` boolean to `chats`.                                                                                                                                            |
-| `drizzle/0029_terminal.sql`                    | Generated migration.                                                                                                                                                              |
 | `src/i18n/locales/*.json`                      | New strings: toggle button, banner, empty states, errors.                                                                                                                         |
 | `package.json`                                 | Add `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-search`, `@xterm/addon-web-links`, `@xterm/addon-unicode11`, `@xterm/addon-clipboard`, `@xterm/addon-serialize`.            |
 | `forge.config.ts`                              | Verify no extra native build steps (xterm is renderer-only; node-pty already builds).                                                                                             |
 
 ### Data model changes
 
-Single boolean column. **Push back on richer state for v1** (cwd override,
-shell preference, scrollback dump): YAGNI; we don't yet know what users
-will want.
-
-```sql
--- drizzle/0029_terminal.sql
-ALTER TABLE `chats` ADD `terminal_open` integer DEFAULT 0 NOT NULL;
-```
-
-```ts
-// src/db/schema.ts — add to the chats table definition (next to chatMode)
-terminalOpen: integer("terminal_open", { mode: "boolean" })
-  .notNull()
-  .default(sql`0`),
-```
+None for drawer visibility. It is renderer UI state tracked by
+`terminalOpenByChatIdAtom`, not persisted chat data. **Push back on richer
+state for v1** (cwd override, shell preference, scrollback dump): YAGNI; we
+don't yet know what users will want.
 
 **Per-chat persistence + per-app PTY is consistent**: this column records
 "should the drawer be visible when this chat is selected." The PTY itself
@@ -333,8 +319,6 @@ ipc.terminal.write({ sessionId, data: string })
   -> { ok: true }                              // user keystrokes only
 ipc.terminal.serialize({ sessionId })
   -> { scrollback: string }                    // for replay on reattach
-ipc.chat.setTerminalOpen({ chatId, open })
-  -> { ok: true }
 ```
 
 **Data plane (untyped fire-and-forget, high-throughput)**:
@@ -368,13 +352,13 @@ State machine (per-app PTY session):
 - **Survives chat switch within the same app**: yes — same PTY, same
   scrollback.
 - **Survives chat switch across apps**: yes — the previous app's PTY
-  keeps running in the background. The new chat's terminal flag
+  keeps running in the background. The new chat's Jotai visibility state
   determines whether its own app's terminal is shown.
 - **Survives Dyad quit**: NO. All PTYs killed on `before-quit` (via the
   same platform-specific termination already in `pty_command_runner.ts`:
   `taskkill /F /T` on Windows, `kill()` elsewhere).
 - **Explicit "Exit terminal"** (banner / shortcut / toggle button): sets
-  `terminalOpen=false` on the chat. Does **not** kill the PTY (so your
+  the chat's atom entry to `false`. Does **not** kill the PTY (so your
   dev server isn't accidentally killed).
 - **Explicit "Kill terminal"** (right-click menu / overflow): kills the
   PTY for that app.
@@ -499,7 +483,6 @@ their own machine. But two non-obvious invariants must hold from day 1:
 - [ ] Add deps: `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-search`,
       `@xterm/addon-web-links`, `@xterm/addon-unicode11`,
       `@xterm/addon-clipboard`, `@xterm/addon-serialize`.
-- [ ] Add `terminalOpen` column to `chats`; generate + apply migration 0029.
 - [ ] Build `PtySessionManager` in
       `src/ipc/utils/pty_session_manager.ts`. Reuse `spawnPty` from
       `pty_command_runner.ts`. Unit tests with injectable spawner.
@@ -528,7 +511,7 @@ their own machine. But two non-obvious invariants must hold from day 1:
 - [ ] `ChatPanel.tsx`: conditional render with `AnimatePresence`. Drawer
       animation. `onAnimationComplete` → `fit()`. Respect
       `prefers-reduced-motion`.
-- [ ] Persist toggle via `setTerminalOpen` IPC.
+- [ ] Store toggle state in `terminalOpenByChatIdAtom`.
 - [ ] Right-click context menu (Copy / Paste / Clear / Restart / Exit /
       Kill).
 

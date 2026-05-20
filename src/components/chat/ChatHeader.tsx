@@ -121,7 +121,7 @@ export function ChatHeader({
     : false;
   const isTerminalDisabled = !appId || !selectedChatId;
 
-  const handleToggleTerminal = async () => {
+  const handleToggleTerminal = () => {
     if (!appId || !selectedChatId) return;
 
     const nextOpen = !isTerminalOpen;
@@ -130,22 +130,6 @@ export function ChatHeader({
       next.set(selectedChatId, nextOpen);
       return next;
     });
-
-    try {
-      await ipc.chat.setTerminalOpen({
-        chatId: selectedChatId,
-        open: nextOpen,
-      });
-    } catch (error) {
-      setTerminalOpenByChatId((prev) => {
-        const next = new Map(prev);
-        next.set(selectedChatId, isTerminalOpen);
-        return next;
-      });
-      showError(
-        t("terminal.failedToggle", { error: (error as Error).message }),
-      );
-    }
   };
 
   return (

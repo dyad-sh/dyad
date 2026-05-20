@@ -158,17 +158,12 @@ export function ChatPanel({
     const chat = await ipc.chat.getChat(chatId);
     // Re-check after the async fetch: streaming may have started while in flight.
     if (store.get(isStreamingByIdAtom).get(chatId)) return;
-    setTerminalOpenByChatId((prev) => {
-      const next = new Map(prev);
-      next.set(chatId, chat.terminalOpen);
-      return next;
-    });
     setMessagesById((prev) => {
       const next = new Map(prev);
       next.set(chatId, chat.messages);
       return next;
     });
-  }, [chatId, setMessagesById, setTerminalOpenByChatId, store]); // store is stable; isStreamingById read via store.get at call time
+  }, [chatId, setMessagesById, store]); // store is stable; isStreamingById read via store.get at call time
 
   useEffect(() => {
     fetchChatMessages();
@@ -272,7 +267,6 @@ export function ChatPanel({
       next.set(chatId, false);
       return next;
     });
-    void ipc.chat.setTerminalOpen({ chatId, open: false });
     requestAnimationFrame(() => {
       document
         .querySelector<HTMLButtonElement>(

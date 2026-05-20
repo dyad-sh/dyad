@@ -136,7 +136,6 @@ export type {
   TokenCountParams,
   TokenCountResult,
   StreamingPatch,
-  SetTerminalOpenParams,
 } from "./chat";
 
 export type {

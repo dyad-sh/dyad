@@ -24,10 +24,7 @@ export async function resolveChatSummary(
     if (!Array.isArray(cachedChats)) continue;
     const found = cachedChats.find((c) => c.id === chatId);
     if (found) {
-      return {
-        ...found,
-        terminalOpen: found.terminalOpen ?? false,
-      };
+      return found;
     }
   }
 
@@ -41,7 +38,6 @@ export async function resolveChatSummary(
       title: chat.title,
       createdAt: chat.createdAt,
       chatMode: chat.chatMode,
-      terminalOpen: chat.terminalOpen,
     };
   } catch (error) {
     console.warn(

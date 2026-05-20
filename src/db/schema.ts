@@ -107,9 +107,6 @@ export const chats = sqliteTable("chats", {
   compactionBackupPath: text("compaction_backup_path"),
   pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
   chatMode: text("chat_mode").$type<StoredChatMode | null>(),
-  terminalOpen: integer("terminal_open", { mode: "boolean" })
-    .notNull()
-    .default(sql`0`),
 });
 
 export const messages = sqliteTable("messages", {

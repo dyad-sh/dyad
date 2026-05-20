@@ -30,7 +30,6 @@ function chat(id: number, appId = 1): ChatSummary {
     title: `Chat ${id}`,
     createdAt: new Date(),
     chatMode: null,
-    terminalOpen: false,
   };
 }
 

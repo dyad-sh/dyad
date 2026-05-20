@@ -14,7 +14,7 @@ async function terminalText(page: Page) {
   });
 }
 
-test("in-chat terminal runs commands, persists visibility, and exits with chord", async ({
+test("in-chat terminal runs commands, reopens previous session, and exits with chord", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });

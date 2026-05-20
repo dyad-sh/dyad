@@ -178,7 +178,9 @@ export const writeAppBlueprintTool: ToolDefinition<
 
     const settings = getCachedSettings();
     const appName = escapeXmlAttr(args.app_name);
-    const template = escapeXmlAttr(resolveTemplateId(args.template_id, settings));
+    const template = escapeXmlAttr(
+      resolveTemplateId(args.template_id, settings),
+    );
     const theme = escapeXmlAttr(resolveThemeId(args.theme_id, settings));
     const designDirection = args.design_direction
       ? escapeXmlAttr(args.design_direction)

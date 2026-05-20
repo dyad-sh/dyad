@@ -27,6 +27,11 @@ import {
 
 const logger = log.scope("settings");
 
+// WARNING: Do not change values once it's been
+// set in DEFAULT_SETTINGS.
+//
+// It is OK to add new fields to DEFAULT_SETTINGS.
+// However, be VERY careful about removing fields from DEFAULT_SETTINGS.
 const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",

@@ -6,6 +6,7 @@ import {
 import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { readSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
 import {
@@ -36,10 +37,20 @@ export function isSandboxScriptExecutionEnabled(
 }
 
 function isAttachmentHostCallPath(path: string | undefined): boolean {
-  return (
+  if (!path) {
+    return false;
+  }
+  if (
     path === "attachments" ||
     path === "attachments:" ||
-    path?.startsWith("attachments:") === true
+    path.startsWith("attachments:")
+  ) {
+    return true;
+  }
+  const normalized = path.replace(/\\/g, "/");
+  return (
+    normalized === DYAD_MEDIA_DIR_NAME ||
+    normalized.startsWith(`${DYAD_MEDIA_DIR_NAME}/`)
   );
 }
 
@@ -145,7 +156,7 @@ declare function list_files(dir?: "." | "attachments:" | string): Promise<string
 declare function file_stats(path: string): Promise<FileStats>;
 \`\`\`
 
-Paths are app-relative, or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
+Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
 

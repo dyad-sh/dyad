@@ -36,7 +36,6 @@ export type SandboxHostCallObserver = (params: {
 
 const DENIED_PATH_PATTERNS = [
   /(^|[/\\])(?:\.env(?:\.[^/\\]+)*|\.envrc)(?:[/\\]|$)/i,
-  /(^|[/\\])\.dyad([/\\]|$)/i,
   /(^|[/\\])\.git([/\\]|$)/i,
   /(^|[/\\])\.npmrc$/i,
   /(^|[/\\])\.yarnrc(?:\.yml)?$/i,

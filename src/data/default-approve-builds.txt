@@ -95,8 +95,8 @@
 @splunk/otel
 @strapi/strapi
 @sveltejs/kit
-@syncfusion/ej2-angular-base
 @swc/core
+@syncfusion/ej2-angular-base
 @taquito/taquito
 @temporalio/core-bridge
 @tensorflow/tfjs-node
@@ -135,7 +135,7 @@ cldr-data
 clevertap-react-native
 clientjs
 cmark-gfm
-compresion
+compression
 contentlayer
 contextify
 cordova.plugins.diagnostic

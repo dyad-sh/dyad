@@ -135,6 +135,15 @@ export function registerNodeHandlers() {
 
   createTypedHandler(systemContracts.installPnpm, async () => {
     try {
+      const testInstallPnpmVersion = IS_TEST_BUILD
+        ? process.env.DYAD_TEST_INSTALL_PNPM_VERSION
+        : undefined;
+      if (testInstallPnpmVersion) {
+        process.env.DYAD_TEST_PNPM_VERSION = testInstallPnpmVersion;
+        reloadNodePath();
+        return { pnpmVersion: testInstallPnpmVersion };
+      }
+
       await runCommand("npm", ["install", "-g", PNPM_GLOBAL_INSTALL_PACKAGE]);
       reloadNodePath();
 

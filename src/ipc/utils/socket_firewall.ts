@@ -9,6 +9,7 @@ import log from "electron-log";
 import defaultApproveBuildsText from "@/data/default-approve-builds.txt?raw";
 import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
+import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -493,6 +494,20 @@ export async function getPnpmMinimumReleaseAgeSupport(
   version?: string;
   warningMessage?: string;
 }> {
+  const testPnpmVersion = IS_TEST_BUILD
+    ? process.env.DYAD_TEST_PNPM_VERSION
+    : undefined;
+  if (testPnpmVersion) {
+    if (isVersionAtLeast(testPnpmVersion, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
+      return { supported: true, version: testPnpmVersion };
+    }
+    return {
+      supported: false,
+      version: testPnpmVersion,
+      warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
+    };
+  }
+
   try {
     const result = await runner("pnpm", ["--version"], {
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,

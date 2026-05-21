@@ -270,6 +270,7 @@ export function useAppOutputSubscription() {
       processProxyServerOutput,
       rebuildAppAfterPnpmInstall,
       setPreviewErrorMessage,
+      settings,
       settings?.hidePnpmMinimumReleaseAgeWarning,
       updateSettings,
     ],

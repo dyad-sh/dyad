@@ -167,6 +167,7 @@ export function useStreamChat({
     },
     [
       refreshAppIframe,
+      settings,
       settings?.hidePnpmMinimumReleaseAgeWarning,
       updateSettings,
     ],

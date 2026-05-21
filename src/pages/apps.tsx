@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, CheckSquare, Loader2, Search, Trash2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { CheckSquare, Loader2, Search, Trash2 } from "lucide-react";
 import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,6 @@ import { selectedAppIdAtom, currentAppAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 
 export default function AppsPage() {
-  const router = useRouter();
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const openApp = useOpenApp();
@@ -59,14 +59,6 @@ export default function AppsPage() {
   const allVisibleSelected =
     visibleFilteredIds.length > 0 &&
     visibleFilteredIds.every((id) => selectedAppIds.has(id));
-
-  const handleGoBack = () => {
-    if (router.history.length > 1) {
-      router.history.back();
-    } else {
-      navigate({ to: "/" });
-    }
-  };
 
   const handleEnterSelectionMode = () => {
     setIsSelectionMode(true);
@@ -149,15 +141,7 @@ export default function AppsPage() {
   return (
     <div className="min-h-screen w-full px-8 py-4">
       <div className="max-w-6xl mx-auto pb-12">
-        <Button
-          onClick={handleGoBack}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
-        </Button>
+        <BackButton />
 
         <header className="mb-6 flex items-end justify-between gap-3">
           <h1 className="text-3xl font-bold">Apps</h1>

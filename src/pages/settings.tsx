@@ -11,9 +11,7 @@ import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector"
 import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import { useRouter } from "@tanstack/react-router";
+import { BackButton } from "@/components/ui/back-button";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
@@ -47,7 +45,6 @@ export default function SettingsPage() {
   const [isResetting, setIsResetting] = useState(false);
   const appVersion = useAppVersion();
   const { settings, updateSettings } = useSettings();
-  const router = useRouter();
   const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
 
   useEffect(() => {
@@ -73,15 +70,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen px-8 py-4">
       <div className="max-w-5xl mx-auto">
-        <Button
-          onClick={() => router.history.back()}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
-        </Button>
+        <BackButton />
         <div className="flex justify-between mb-4">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Settings

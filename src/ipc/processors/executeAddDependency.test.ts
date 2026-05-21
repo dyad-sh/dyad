@@ -10,15 +10,15 @@ import {
 } from "./executeAddDependency";
 
 const {
-  detectPreferredPackageManagerMock,
   ensureSocketFirewallInstalledMock,
+  getPnpmMinimumReleaseAgeSupportMock,
   runCommandMock,
   readEffectiveSettingsMock,
   dbUpdateSetMock,
   dbUpdateWhereMock,
 } = vi.hoisted(() => ({
-  detectPreferredPackageManagerMock: vi.fn(),
   ensureSocketFirewallInstalledMock: vi.fn(),
+  getPnpmMinimumReleaseAgeSupportMock: vi.fn(),
   runCommandMock: vi.fn(),
   readEffectiveSettingsMock: vi.fn(),
   dbUpdateSetMock: vi.fn(),
@@ -48,8 +48,8 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
 
   return {
     ...actual,
-    detectPreferredPackageManager: detectPreferredPackageManagerMock,
     ensureSocketFirewallInstalled: ensureSocketFirewallInstalledMock,
+    getPnpmMinimumReleaseAgeSupport: getPnpmMinimumReleaseAgeSupportMock,
     runCommand: runCommandMock,
   };
 });
@@ -61,7 +61,10 @@ describe("executeAddDependency", () => {
       where: dbUpdateWhereMock,
     });
     dbUpdateWhereMock.mockResolvedValue(undefined);
-    detectPreferredPackageManagerMock.mockResolvedValue("pnpm");
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      supported: true,
+      version: "10.16.0",
+    });
     readEffectiveSettingsMock.mockResolvedValue({
       blockUnsafeNpmPackages: true,
     });
@@ -330,8 +333,11 @@ describe("executeAddDependency", () => {
     expect(runCommandMock).toHaveBeenCalledTimes(1);
   });
 
-  it("uses npm directly when pnpm is unavailable", async () => {
-    detectPreferredPackageManagerMock.mockResolvedValue("npm");
+  it("uses npm directly when pnpm cannot enforce the release-age policy", async () => {
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      supported: false,
+      warningMessage: "Install pnpm 10.16.0 or newer.",
+    });
     ensureSocketFirewallInstalledMock.mockResolvedValue({
       available: false,
       warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
@@ -352,7 +358,7 @@ describe("executeAddDependency", () => {
 
     expect(runCommandMock).toHaveBeenCalledWith(
       "npm",
-      ["install", "--legacy-peer-deps", "react"],
+      ["install", "--legacy-peer-deps", "--min-release-age=1", "react"],
       {
         cwd: "/tmp/app",
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
@@ -361,7 +367,10 @@ describe("executeAddDependency", () => {
     expect(runCommandMock).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       installResults: "installed via npm",
-      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+      warningMessages: [
+        SOCKET_FIREWALL_WARNING_MESSAGE,
+        "Install pnpm 10.16.0 or newer.",
+      ],
     });
   });
 

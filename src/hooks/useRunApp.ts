@@ -12,8 +12,13 @@ import {
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { showError, showInputRequest } from "@/lib/toast";
+import {
+  showError,
+  showInputRequest,
+  showPnpmMinimumReleaseAgeWarning,
+} from "@/lib/toast";
 import type { RuntimeMode2 } from "@/lib/schemas";
+import { useSettings } from "./useSettings";
 
 const useRunAppLoadingAtom = atom(false);
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
@@ -24,6 +29,7 @@ const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
  * to avoid duplicate event subscriptions causing duplicate log entries.
  */
 export function useAppOutputSubscription() {
+  const { settings, updateSettings } = useSettings();
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
@@ -116,6 +122,23 @@ export function useAppOutputSubscription() {
         );
       }
 
+      if (
+        output.type === "package-manager-warning" &&
+        !settings?.hidePnpmMinimumReleaseAgeWarning
+      ) {
+        showPnpmMinimumReleaseAgeWarning({
+          message: output.message,
+          onInstallPnpm: () => {
+            void ipc.system.openExternalUrl("https://pnpm.io/installation");
+          },
+          onNeverShowAgain: () => {
+            void updateSettings({
+              hidePnpmMinimumReleaseAgeWarning: true,
+            });
+          },
+        });
+      }
+
       // Handle HMR updates
       if (
         output.message.includes("hmr update") &&
@@ -148,7 +171,13 @@ export function useAppOutputSubscription() {
 
       return logEntry;
     },
-    [onHotModuleReload, processProxyServerOutput, setPreviewErrorMessage],
+    [
+      onHotModuleReload,
+      processProxyServerOutput,
+      setPreviewErrorMessage,
+      settings?.hidePnpmMinimumReleaseAgeWarning,
+      updateSettings,
+    ],
   );
 
   // Subscribe to immediate app output events (input-requested)

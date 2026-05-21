@@ -519,7 +519,8 @@ describe("cloud_sandbox_provider sandbox creation", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       appId: 42,
       appPath: "/tmp/app",
-      installCommand: "pnpm install",
+      installCommand:
+        "pnpm --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true install",
       startCommand: "pnpm run dev",
     });
   });
@@ -537,7 +538,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       appId: 42,
       appPath: "/tmp/app",
-      installCommand: "npm ci",
+      installCommand: "npm ci --min-release-age=1",
       startCommand: "npm run dev -- --port 3000",
     });
   });

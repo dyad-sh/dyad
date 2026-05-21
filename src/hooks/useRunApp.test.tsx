@@ -16,6 +16,8 @@ const {
   respondToAppInputMock,
   showErrorMock,
   showInputRequestMock,
+  showPnpmMinimumReleaseAgeWarningMock,
+  updateSettingsMock,
 } = vi.hoisted(() => ({
   addLogMock: vi.fn(),
   appOutputBatchListeners: new Set<(outputs: unknown[]) => void>(),
@@ -23,6 +25,8 @@ const {
   respondToAppInputMock: vi.fn(),
   showErrorMock: vi.fn(),
   showInputRequestMock: vi.fn(),
+  showPnpmMinimumReleaseAgeWarningMock: vi.fn(),
+  updateSettingsMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -51,6 +55,14 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("@/lib/toast", () => ({
   showError: showErrorMock,
   showInputRequest: showInputRequestMock,
+  showPnpmMinimumReleaseAgeWarning: showPnpmMinimumReleaseAgeWarningMock,
+}));
+
+vi.mock("./useSettings", () => ({
+  useSettings: () => ({
+    settings: {},
+    updateSettings: updateSettingsMock,
+  }),
 }));
 
 function makeWrapper(appId: number) {
@@ -74,6 +86,8 @@ describe("useAppOutputSubscription", () => {
     respondToAppInputMock.mockReset();
     showErrorMock.mockReset();
     showInputRequestMock.mockReset();
+    showPnpmMinimumReleaseAgeWarningMock.mockReset();
+    updateSettingsMock.mockReset();
   });
 
   afterEach(() => {

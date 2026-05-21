@@ -6,6 +6,11 @@ import {
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
+export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
+export const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
+export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
+  MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
+export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `Install pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer. Dyad uses npm fallback with a 1-day package release age gate, but pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION}+ gives the best protection for app installs.`;
 const SOCKET_FIREWALL_PACKAGE = "sfw@2.0.4";
 const SOCKET_FIREWALL_NPX_ARGS = [
   "--prefer-offline",
@@ -64,6 +69,34 @@ export type CommandRunner = (
 ) => Promise<CommandExecutionResult>;
 
 export type PackageManager = "pnpm" | "npm";
+
+function parseVersionParts(version: string): [number, number, number] | null {
+  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) {
+    return null;
+  }
+
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+export function isVersionAtLeast(version: string, minimum: string): boolean {
+  const parsedVersion = parseVersionParts(version);
+  const parsedMinimum = parseVersionParts(minimum);
+  if (!parsedVersion || !parsedMinimum) {
+    return false;
+  }
+
+  for (let index = 0; index < parsedVersion.length; index += 1) {
+    if (parsedVersion[index] > parsedMinimum[index]) {
+      return true;
+    }
+    if (parsedVersion[index] < parsedMinimum[index]) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 export function resolveExecutableName(
   command: string,
@@ -194,13 +227,35 @@ export async function ensureSocketFirewallInstalled(
 export async function detectPreferredPackageManager(
   runner: CommandRunner = runCommand,
 ): Promise<PackageManager> {
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport(runner);
+  return pnpmSupport.supported ? "pnpm" : "npm";
+}
+
+export async function getPnpmMinimumReleaseAgeSupport(
+  runner: CommandRunner = runCommand,
+): Promise<{
+  supported: boolean;
+  version?: string;
+  warningMessage?: string;
+}> {
   try {
-    await runner("pnpm", ["--version"], {
+    const result = await runner("pnpm", ["--version"], {
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
-    return "pnpm";
+    const version = result.stdout.trim();
+    if (isVersionAtLeast(version, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
+      return { supported: true, version };
+    }
+    return {
+      supported: false,
+      version,
+      warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
+    };
   } catch {
-    return "npm";
+    return {
+      supported: false,
+      warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
+    };
   }
 }
 
@@ -211,12 +266,20 @@ export function buildAddDependencyCommand(
   options: { dev?: boolean } = {},
 ): { command: string; args: string[] } {
   const { dev = false } = options;
+  const pnpmAgeGateArgs = [
+    `--config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES}`,
+    "--config.minimumReleaseAgeStrict=true",
+  ];
+  const npmAgeGateArgs = [
+    `--min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
+  ];
   const packageManagerArgs =
     packageManager === "pnpm"
-      ? ["add", ...(dev ? ["-D"] : []), ...packages]
+      ? [...pnpmAgeGateArgs, "add", ...(dev ? ["-D"] : []), ...packages]
       : [
           "install",
           "--legacy-peer-deps",
+          ...npmAgeGateArgs,
           ...(dev ? ["--save-dev"] : []),
           ...packages,
         ];

@@ -58,7 +58,7 @@ describe("detectPreferredPackageManager", () => {
   it("prefers pnpm when available", async () => {
     const runner = vi
       .fn<CommandRunner>()
-      .mockResolvedValue({ stdout: "10.0.0", stderr: "" });
+      .mockResolvedValue({ stdout: "10.16.0", stderr: "" });
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
@@ -70,6 +70,17 @@ describe("detectPreferredPackageManager", () => {
     const runner = vi
       .fn<CommandRunner>()
       .mockRejectedValue(new Error("ENOENT"));
+
+    await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
+    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
+  });
+
+  it("falls back to npm when pnpm is too old for minimumReleaseAge", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValue({ stdout: "10.15.0", stderr: "" });
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
@@ -90,6 +101,8 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
+          "--config.minimumReleaseAge=1440",
+          "--config.minimumReleaseAgeStrict=true",
           "add",
           "react",
           "zod",
@@ -108,18 +121,38 @@ describe("buildAddDependencyCommand", () => {
           "npm",
           "install",
           "--legacy-peer-deps",
+          "--min-release-age=1",
           "react",
           "zod",
         ],
       },
     ],
-    ["pnpm", false, { command: "pnpm", args: ["add", "react", "zod"] }],
+    [
+      "pnpm",
+      false,
+      {
+        command: "pnpm",
+        args: [
+          "--config.minimumReleaseAge=1440",
+          "--config.minimumReleaseAgeStrict=true",
+          "add",
+          "react",
+          "zod",
+        ],
+      },
+    ],
     [
       "npm",
       false,
       {
         command: "npm",
-        args: ["install", "--legacy-peer-deps", "react", "zod"],
+        args: [
+          "install",
+          "--legacy-peer-deps",
+          "--min-release-age=1",
+          "react",
+          "zod",
+        ],
       },
     ],
   ])(
@@ -132,13 +165,32 @@ describe("buildAddDependencyCommand", () => {
   );
 
   it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
-    ["pnpm", false, { command: "pnpm", args: ["add", "-D", "nitro"] }],
+    [
+      "pnpm",
+      false,
+      {
+        command: "pnpm",
+        args: [
+          "--config.minimumReleaseAge=1440",
+          "--config.minimumReleaseAgeStrict=true",
+          "add",
+          "-D",
+          "nitro",
+        ],
+      },
+    ],
     [
       "npm",
       false,
       {
         command: "npm",
-        args: ["install", "--legacy-peer-deps", "--save-dev", "nitro"],
+        args: [
+          "install",
+          "--legacy-peer-deps",
+          "--min-release-age=1",
+          "--save-dev",
+          "nitro",
+        ],
       },
     ],
     [
@@ -151,6 +203,8 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
+          "--config.minimumReleaseAge=1440",
+          "--config.minimumReleaseAgeStrict=true",
           "add",
           "-D",
           "nitro",

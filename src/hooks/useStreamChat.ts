@@ -36,7 +36,11 @@ import {
 } from "@/lib/resyncChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
-import { showExtraFilesToast, showWarning } from "@/lib/toast";
+import {
+  showExtraFilesToast,
+  showPnpmMinimumReleaseAgeWarning,
+  showWarning,
+} from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -109,7 +113,7 @@ export function useStreamChat({
   const { refreshAppIframe } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
   const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
@@ -124,6 +128,31 @@ export function useStreamChat({
   const posthog = usePostHog();
   const queryClient = useQueryClient();
   let chatId: number | undefined;
+
+  const showWarningMessage = useCallback(
+    (warningMessage: string) => {
+      if (
+        warningMessage.startsWith("Install pnpm 10.16.0 or newer.") &&
+        !settings?.hidePnpmMinimumReleaseAgeWarning
+      ) {
+        showPnpmMinimumReleaseAgeWarning({
+          message: warningMessage,
+          onInstallPnpm: () => {
+            void ipc.system.openExternalUrl("https://pnpm.io/installation");
+          },
+          onNeverShowAgain: () => {
+            void updateSettings({
+              hidePnpmMinimumReleaseAgeWarning: true,
+            });
+          },
+        });
+        return;
+      }
+
+      showWarning(warningMessage);
+    },
+    [settings?.hidePnpmMinimumReleaseAgeWarning, updateSettings],
+  );
 
   if (hasChatId) {
     const { id } = useSearch({ from: "/chat" });
@@ -401,7 +430,7 @@ export function useStreamChat({
                   });
                 }
                 for (const warningMessage of response.warningMessages ?? []) {
-                  showWarning(warningMessage);
+                  showWarningMessage(warningMessage);
                 }
                 // Use queryClient directly with the chatId parameter to avoid stale closure issues
                 queryClient.invalidateQueries({
@@ -488,7 +517,7 @@ export function useStreamChat({
               finalizeStream(chatId);
 
               for (const warningMessage of warningMessages ?? []) {
-                showWarning(warningMessage);
+                showWarningMessage(warningMessage);
               }
               console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
               setErrorById((prev) => {

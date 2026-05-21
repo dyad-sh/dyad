@@ -7,9 +7,9 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
-  detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
   getCommandExecutionDisplayDetails,
+  getPnpmMinimumReleaseAgeSupport,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
@@ -191,7 +191,15 @@ export async function installPackages({
     }
   }
 
-  const packageManager = await detectPreferredPackageManager();
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  if (
+    !pnpmSupport.supported &&
+    pnpmSupport.warningMessage &&
+    !settings.hidePnpmMinimumReleaseAgeWarning
+  ) {
+    warningMessages.push(pnpmSupport.warningMessage);
+  }
+  const packageManager = pnpmSupport.supported ? "pnpm" : "npm";
   const { succeeded, installResults, lastError } =
     await runAddDependencyCommand(
       buildAddDependencyCommand(packages, packageManager, useSocketFirewall, {

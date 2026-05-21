@@ -29,6 +29,12 @@ import {
   removeAppIfCurrentProcess,
   runningApps,
 } from "@/ipc/utils/process_manager";
+import {
+  getPnpmMinimumReleaseAgeSupport,
+  MINIMUM_PACKAGE_RELEASE_AGE_DAYS,
+  MINIMUM_PACKAGE_RELEASE_AGE_MINUTES,
+  PNPM_MINIMUM_RELEASE_AGE_VERSION,
+} from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("app_runtime_service");
 
@@ -66,24 +72,113 @@ export function formatCloudSandboxError(error: unknown) {
   }
 }
 
-function getDefaultCommand(appId: number): string {
-  const port = getAppPort(appId);
-  return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
+function getPnpmInstallCommand(): string {
+  return `pnpm --config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES} --config.minimumReleaseAgeStrict=true install`;
 }
 
-function getCommand({
+function getNpmInstallCommand(): string {
+  return `npm install --legacy-peer-deps --min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`;
+}
+
+async function getDefaultCommand({
+  appId,
+  onPnpmMinimumReleaseAgeWarning,
+}: {
+  appId: number;
+  onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
+}): Promise<string> {
+  const port = getAppPort(appId);
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  const npmCommand = `(${getNpmInstallCommand()} && npm run dev -- --port ${port})`;
+
+  if (!pnpmSupport.supported) {
+    if (pnpmSupport.warningMessage) {
+      onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
+    }
+    return npmCommand;
+  }
+
+  return `(${getPnpmInstallCommand()} && pnpm run dev --port ${port}) || ${npmCommand}`;
+}
+
+async function applyInstallPolicyToCustomCommand({
+  installCommand,
+  onPnpmMinimumReleaseAgeWarning,
+}: {
+  installCommand: string;
+  onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
+}): Promise<string> {
+  const trimmedCommand = installCommand.trim();
+
+  if (/^pnpm\s+(?:install|i)(?:\s|$)/.test(trimmedCommand)) {
+    const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+    if (!pnpmSupport.supported) {
+      if (pnpmSupport.warningMessage) {
+        onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
+      }
+      throw new DyadError(
+        `This app is configured to install with pnpm, but Dyad requires pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer to enforce the 1-day package release age gate.`,
+        DyadErrorKind.Precondition,
+      );
+    }
+    return trimmedCommand.replace(
+      /^pnpm\s+/,
+      `pnpm --config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES} --config.minimumReleaseAgeStrict=true `,
+    );
+  }
+
+  if (/^npm\s+(?:install|i|ci)(?:\s|$)/.test(trimmedCommand)) {
+    return trimmedCommand.replace(
+      /^npm\s+(install|i|ci)/,
+      `npm $1 --min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
+    );
+  }
+
+  return trimmedCommand;
+}
+
+async function getCommand({
   appId,
   installCommand,
   startCommand,
+  onPnpmMinimumReleaseAgeWarning,
 }: {
   appId: number;
   installCommand?: string | null;
   startCommand?: string | null;
-}) {
+  onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
+}): Promise<string> {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
-  return hasCustomCommands
-    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : getDefaultCommand(appId);
+  if (hasCustomCommands) {
+    const policyInstallCommand = await applyInstallPolicyToCustomCommand({
+      installCommand: installCommand!,
+      onPnpmMinimumReleaseAgeWarning,
+    });
+    return `${policyInstallCommand} && ${startCommand!.trim()}`;
+  }
+
+  return getDefaultCommand({ appId, onPnpmMinimumReleaseAgeWarning });
+}
+
+function emitPnpmMinimumReleaseAgeWarning({
+  appId,
+  event,
+  message,
+}: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  message: string;
+}) {
+  const settings = readSettings();
+  if (settings.hidePnpmMinimumReleaseAgeWarning) {
+    return;
+  }
+
+  safeSend(event.sender, "app:output", {
+    type: "package-manager-warning",
+    message,
+    appId,
+  });
 }
 
 export async function executeApp({
@@ -242,7 +337,13 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const command = getCommand({ appId, installCommand, startCommand });
+  const command = await getCommand({
+    appId,
+    installCommand,
+    startCommand,
+    onPnpmMinimumReleaseAgeWarning: (message) =>
+      emitPnpmMinimumReleaseAgeWarning({ appId, event, message }),
+  });
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,
@@ -628,7 +729,13 @@ RUN npm install -g pnpm
       `dyad-app-${appId}`,
       "sh",
       "-c",
-      getCommand({ appId, installCommand, startCommand }),
+      await getCommand({
+        appId,
+        installCommand,
+        startCommand,
+        onPnpmMinimumReleaseAgeWarning: (message) =>
+          emitPnpmMinimumReleaseAgeWarning({ appId, event, message }),
+      }),
     ],
     {
       stdio: "pipe",

@@ -301,6 +301,7 @@ export const AppOutputSchema = z.object({
     "input-requested",
     "client-error",
     "info",
+    "package-manager-warning",
     "sync-error",
     "sync-recovered",
   ]),

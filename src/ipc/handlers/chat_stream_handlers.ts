@@ -18,11 +18,7 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import type {
-  ChatMode,
-  SmartContextMode,
-  UserSettings,
-} from "../../lib/schemas";
+import type { SmartContextMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -114,9 +110,7 @@ import {
   appendAttachmentManifestEntriesWithLogicalNames,
   createUniqueAttachmentLogicalName,
   DYAD_MEDIA_DIR_NAME,
-  toAttachmentLogicalPath,
   type AttachmentManifestEntryInput,
-  type StoredAttachmentInfo,
 } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
@@ -140,196 +134,25 @@ import {
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings } from "@/main/settings";
-import { isSandboxSupportedPlatform } from "../utils/sandbox/runner";
-import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
+import {
+  buildLocalAgentAttachmentInfo,
+  getInlineImageMimeType,
+  hasScriptReadableAttachment,
+  isTextFile,
+  resolveAttachmentDeliveryConfig,
+  type PendingStoredChatAttachment,
+  type StoredChatAttachment,
+} from "../utils/chat_attachment_utils";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
-
-type StoredChatAttachment = StoredAttachmentInfo & {
-  attachmentType: "upload-to-codebase" | "chat-context";
-};
-
-type PendingStoredChatAttachment = Omit<
-  StoredChatAttachment,
-  "logicalName" | "originalName" | "storedFileName" | "mimeType" | "sizeBytes"
-> & {
-  attachmentType: "upload-to-codebase" | "chat-context";
-};
-
-type AttachmentDeliveryConfig = {
-  /**
-   * Whether text-like attachments should be expanded into the model message.
-   * False for local-agent/ask so large files stay on disk and tools read slices.
-   */
-  inlineTextAttachments: boolean;
-  /**
-   * Whether image attachments should be sent as model image parts.
-   * Usually true even when text attachments stay on disk, because tools cannot inspect images semantically.
-   */
-  includeImageParts: boolean;
-  /**
-   * Whether to append the local-agent attachment block listing attachments:<name> paths.
-   * This is the replacement for inline text content in tool-backed modes.
-   */
-  useOnDiskAttachmentBlock: boolean;
-  /**
-   * Whether that on-disk block should mention execute_sandbox_script.
-   * Depends on mode plus sandbox setting/platform availability.
-   */
-  includeSandboxScriptHint: boolean;
-  /**
-   * Whether that on-disk block should tell the model it may copy upload-to-codebase attachments.
-   * Only useful when copy_file is available, not in read-only ask mode.
-   */
-  includeCopyFileHint: boolean;
-  /**
-   * Whether non-local-agent build-mode prompts need legacy <dyad-copy> system instructions.
-   * Local-agent uses copy_file/tool hints instead, so it should not get this.
-   */
-  addSystemCopyInstructions: boolean;
-  /**
-   * Whether the system prompt should include image-analysis guidance.
-   * Kept separate because images can be inline even when text attachments are on disk.
-   */
-  addSystemVisionInstructions: boolean;
-};
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
 
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
-
-// Common helper functions
-const TEXT_FILE_EXTENSIONS = [
-  ".md",
-  ".txt",
-  ".json",
-  ".csv",
-  ".js",
-  ".ts",
-  ".html",
-  ".css",
-];
-const INLINE_IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-]);
-
-function getInlineImageMimeType(filePath: string): string | null {
-  const ext = path.extname(filePath).toLowerCase();
-  if (!INLINE_IMAGE_EXTENSIONS.has(ext)) {
-    return null;
-  }
-  return ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
-}
-
-function isInlineImageAttachmentPath(filePath: string): boolean {
-  return getInlineImageMimeType(filePath) !== null;
-}
-
-function isInlineImageAttachment(attachment: StoredChatAttachment): boolean {
-  return isInlineImageAttachmentPath(attachment.filePath);
-}
-
-async function isTextFile(filePath: string): Promise<boolean> {
-  const ext = path.extname(filePath).toLowerCase();
-  return TEXT_FILE_EXTENSIONS.includes(ext);
-}
-
-function formatAttachmentSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`;
-  }
-  if (sizeBytes < 1024 * 1024) {
-    return `${Math.round(sizeBytes / 1024)} KB`;
-  }
-  return `${Math.round((sizeBytes / (1024 * 1024)) * 10) / 10} MB`;
-}
-
-function buildLocalAgentAttachmentInfo(
-  attachments: StoredChatAttachment[],
-  deliveryConfig: AttachmentDeliveryConfig,
-): string {
-  const diskAttachments = attachments.filter(
-    (attachment) =>
-      !isInlineImageAttachment(attachment) ||
-      (deliveryConfig.includeCopyFileHint &&
-        attachment.attachmentType === "upload-to-codebase"),
-  );
-  if (diskAttachments.length === 0) {
-    return "";
-  }
-
-  const hasReadableAttachment = diskAttachments.some(
-    (attachment) => !isInlineImageAttachment(attachment),
-  );
-  const lines = hasReadableAttachment
-    ? deliveryConfig.includeSandboxScriptHint
-      ? [
-          "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
-        ]
-      : [
-          "Attachments available on disk (use attachments:<name> with read_file):",
-        ]
-    : ["Attachments available on disk for copying into the codebase:"];
-
-  for (const attachment of diskAttachments) {
-    const uploadNote =
-      deliveryConfig.includeCopyFileHint &&
-      attachment.attachmentType === "upload-to-codebase"
-        ? "; if this should become part of the project, use copy_file from this attachment path"
-        : "";
-    lines.push(
-      `- ${toAttachmentLogicalPath(attachment.logicalName)} (${formatAttachmentSize(attachment.sizeBytes)}, ${attachment.mimeType}${uploadNote})`,
-    );
-  }
-
-  return `\n\n${lines.join("\n")}\n`;
-}
-
-function hasScriptReadableAttachment(
-  attachments: StoredChatAttachment[],
-): boolean {
-  return attachments.some((attachment) => !isInlineImageAttachment(attachment));
-}
-
-function resolveAttachmentDeliveryConfig({
-  mode,
-  settings,
-  hasImageAttachments,
-  hasUploadedAttachments,
-}: {
-  mode: ChatMode;
-  settings: Pick<UserSettings, "enableSandboxScriptExecution">;
-  hasImageAttachments: boolean;
-  hasUploadedAttachments: boolean;
-}): AttachmentDeliveryConfig {
-  const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
-  const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
-
-  return {
-    inlineTextAttachments: !useOnDiskAttachmentBlock,
-    includeImageParts: true,
-    useOnDiskAttachmentBlock,
-    includeSandboxScriptHint:
-      useOnDiskAttachmentBlock &&
-      isSandboxScriptExecutionEnabled(settings) &&
-      isSandboxSupportedPlatform(),
-    includeCopyFileHint: mode === "local-agent",
-    addSystemCopyInstructions:
-      !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
-    addSystemVisionInstructions:
-      hasImageAttachments &&
-      (!willUseLocalAgentStream || mode === "plan") &&
-      !(hasUploadedAttachments && mode !== "ask"),
-  };
-}
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
 

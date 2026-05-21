@@ -1,12 +1,14 @@
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
-  selectedAppIdAtom,
-  appUrlAtom,
-  appConsoleEntriesAtom,
-  previewErrorMessageAtom,
+  appendConsoleEntriesForAppAtom,
+  currentAppUrlAtom,
+  currentPreviewErrorAtom,
   previewCurrentUrlAtom,
-} from "@/atoms/appAtoms";
+  setPreviewErrorForAppAtom,
+  type PreviewErrorMessage,
+} from "@/atoms/previewRuntimeAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -197,11 +199,30 @@ const SCREENSHOT_CAPTURE_DELAY_MS = 3_000;
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl, mode } = useAtomValue(appUrlAtom);
-  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const { appUrl, originalUrl, mode } = useAtomValue(currentAppUrlAtom);
+  const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
-  const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
+  const errorMessage = useAtomValue(currentPreviewErrorAtom);
+  const setPreviewErrorForApp = useSetAtom(setPreviewErrorForAppAtom);
+  const setErrorMessage = useCallback(
+    (
+      update:
+        | PreviewErrorMessage
+        | undefined
+        | ((
+            current: PreviewErrorMessage | undefined,
+          ) => PreviewErrorMessage | undefined),
+    ) => {
+      if (selectedAppId === null) {
+        return;
+      }
+      const error =
+        typeof update === "function" ? update(errorMessage) : update;
+      setPreviewErrorForApp({ appId: selectedAppId, error });
+    },
+    [errorMessage, selectedAppId, setPreviewErrorForApp],
+  );
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
   const {
@@ -703,7 +724,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -723,7 +744,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -745,7 +766,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -766,7 +787,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -1042,7 +1063,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
@@ -1059,7 +1080,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
       } else if (type === "pushState" || type === "replaceState") {
         // Resolve relative URLs against the app's base URL so that all
         // entries in navigationHistory are always absolute URLs.
@@ -1156,6 +1177,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     currentHistoryPosition,
     selectedAppId,
     appUrl,
+    appendConsoleEntries,
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,

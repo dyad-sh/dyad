@@ -233,6 +233,8 @@ export const queryKeys = {
     byProviders: ["language-models-by-providers"] as const,
     forProvider: ({ providerId }: { providerId: string }) =>
       ["language-models", providerId] as const,
+    ollamaLocal: ["language-models", "ollama-local"] as const,
+    lmStudioLocal: ["language-models", "lmstudio-local"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

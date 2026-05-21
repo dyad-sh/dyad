@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useEffect, useRef } from "react";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
-import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { appendConsoleEntriesForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   ipc,
   ConsoleEntry,
@@ -38,7 +39,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const { settings } = useSettings();
   const isConnected = isSupabaseConnected(settings);
 
-  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 
@@ -185,7 +186,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     newLogs.forEach((log) => {
       ipc.misc.addLog(log);
     });
-    setConsoleEntries((prev) => [...prev, ...newLogs]);
+    appendConsoleEntries({ appId: selectedAppId!, entries: newLogs });
 
     const latestLog = newLogs.reduce((latest, log) =>
       log.timestamp > latest.timestamp ? log : latest,

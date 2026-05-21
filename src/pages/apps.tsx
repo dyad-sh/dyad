@@ -8,7 +8,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import {
@@ -26,7 +26,8 @@ import { AppShowcaseCard } from "@/components/AppShowcaseCard";
 import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
-import { selectedAppIdAtom, currentAppAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -52,7 +53,6 @@ export default function AppsPage() {
     useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
-  const [currentApp, setCurrentApp] = useAtom(currentAppAtom);
   const [view, setView] = useState<AppsView>("apps");
   const [openCollectionId, setOpenCollectionId] = useState<number | null>(null);
   const [isAddOrEditCollectionOpen, setIsAddOrEditCollectionOpen] =
@@ -75,6 +75,7 @@ export default function AppsPage() {
     if (!q) return collections;
     return collections.filter((c) => c.name.toLowerCase().includes(q));
   }, [collections, searchQuery]);
+  const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -152,10 +153,9 @@ export default function AppsPage() {
       if (selectedAppId != null && succeededIds.has(selectedAppId)) {
         setSelectedAppId(null);
       }
-      if (currentApp && succeededIds.has(currentApp.id)) {
-        setCurrentApp(null);
+      for (const appId of succeededIds) {
+        clearPreviewRuntimeForApp(appId);
       }
-
       if (failed.length > 0) {
         const failedNames = failed
           .map((r) => apps.find((a) => a.id === r.appId)?.name ?? `#${r.appId}`)

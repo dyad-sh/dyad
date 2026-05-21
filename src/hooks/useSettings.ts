@@ -1,6 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
-import { useAtom } from "jotai";
-import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
+import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
@@ -29,18 +27,14 @@ let initialLoadTelemetryState: "idle" | "sent" = "idle";
 
 export function useSettings() {
   const posthog = usePostHog();
-  const [, setSettingsAtom] = useAtom(userSettingsAtom);
-  const [, setEnvVarsAtom] = useAtom(envVarsAtom);
   const appVersion = useAppVersion();
   const queryClient = useQueryClient();
 
-  // Query for user settings
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.user,
     queryFn: () => ipc.settings.getUserSettings(),
   });
 
-  // Query for env vars
   const envVarsQuery = useQuery({
     queryKey: queryKeys.settings.envVars,
     queryFn: () => ipc.misc.getEnvVars(),
@@ -65,7 +59,6 @@ export function useSettings() {
     staleTime: Infinity,
   });
 
-  // Process telemetry side effects when settings load/change
   useEffect(() => {
     if (!settingsQuery.data) {
       return;
@@ -74,7 +67,6 @@ export function useSettings() {
     processSettingsForTelemetry(settingsQuery.data);
     const isPro = hasDyadProKey(settingsQuery.data);
     posthog?.people?.set({ isPro });
-    setSettingsAtom(settingsQuery.data);
 
     if (
       initialLoadTelemetryState !== "idle" ||
@@ -94,11 +86,10 @@ export function useSettings() {
       );
     }
 
-    const settings = settingsQuery.data;
     posthog.capture(
       "app:initial-load",
       getInitialLoadTelemetryProperties({
-        settings,
+        settings: settingsQuery.data,
         appVersion,
         platform: platform ?? null,
         isFirstSession: initialLoadTelemetryContext.isFirstSession,
@@ -114,17 +105,8 @@ export function useSettings() {
     platform,
     platformError,
     initialLoadTelemetryContext,
-    setSettingsAtom,
   ]);
 
-  // Sync env vars to Jotai atom
-  useEffect(() => {
-    if (envVarsQuery.data) {
-      setEnvVarsAtom(envVarsQuery.data);
-    }
-  }, [envVarsQuery.data, setEnvVarsAtom]);
-
-  // Mutation for updating settings
   const updateSettingsMutation = useMutation({
     mutationFn: async (newSettings: Partial<UserSettings>) => {
       return ipc.settings.setUserSettings(newSettings);
@@ -133,7 +115,6 @@ export function useSettings() {
       queryClient.setQueryData(queryKeys.settings.user, updatedSettings);
       processSettingsForTelemetry(updatedSettings);
       posthog?.people?.set({ isPro: hasDyadProKey(updatedSettings) });
-      setSettingsAtom(updatedSettings);
     },
     meta: { showErrorToast: true },
   });
@@ -183,7 +164,6 @@ function processSettingsForTelemetry(settings: UserSettings) {
   } else {
     window.localStorage.removeItem(TELEMETRY_USER_ID_KEY);
   }
-  // Store Pro status for telemetry sampling
   window.localStorage.setItem(
     DYAD_PRO_STATUS_KEY,
     hasDyadProKey(settings) ? "true" : "false",

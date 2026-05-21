@@ -380,7 +380,6 @@ describe("buildAddDependencyCommand", () => {
           "sfw@2.0.4",
           "npm",
           "install",
-          "--min-release-age=1",
           "--legacy-peer-deps",
           "react",
           "zod",
@@ -406,13 +405,7 @@ describe("buildAddDependencyCommand", () => {
       false,
       {
         command: "npm",
-        args: [
-          "install",
-          "--min-release-age=1",
-          "--legacy-peer-deps",
-          "react",
-          "zod",
-        ],
+        args: ["install", "--legacy-peer-deps", "react", "zod"],
       },
     ],
   ])(
@@ -444,13 +437,7 @@ describe("buildAddDependencyCommand", () => {
       false,
       {
         command: "npm",
-        args: [
-          "install",
-          "--min-release-age=1",
-          "--legacy-peer-deps",
-          "--save-dev",
-          "nitro",
-        ],
+        args: ["install", "--legacy-peer-deps", "--save-dev", "nitro"],
       },
     ],
     [

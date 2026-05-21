@@ -22,10 +22,8 @@ export const PNPM_INSTALL_POLICY_ARGS = [
   "--config.confirmModulesPurge=false",
   "--config.strictDepBuilds=false",
 ];
-export const NPM_INSTALL_POLICY_ARGS = [
-  `--min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
-];
-export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `${PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX}${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer. Dyad uses npm fallback when pnpm cannot enforce the 1-day package release age gate, but pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION}+ gives the best protection for app installs.`;
+
+export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `${PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX}${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer for the strongest protection`;
 const SOCKET_FIREWALL_PACKAGE = "sfw@2.0.4";
 const SOCKET_FIREWALL_NPX_ARGS = [
   "--prefer-offline",
@@ -768,7 +766,6 @@ export function buildAddDependencyCommand(
         ]
       : [
           "install",
-          ...NPM_INSTALL_POLICY_ARGS,
           "--legacy-peer-deps",
           ...(dev ? ["--save-dev"] : []),
           ...packages,

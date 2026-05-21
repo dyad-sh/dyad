@@ -67,7 +67,8 @@ export function useRebuildAppAfterPnpmInstall() {
     async (rebuildAppId: number) => {
       const startedAt = Date.now();
       const isActiveApp = () => selectedAppIdRef.current === rebuildAppId;
-      if (isActiveApp()) {
+      const wasActiveAppAtStart = isActiveApp();
+      if (wasActiveAppAtStart) {
         setPreviewRunStartedAt(startedAt);
         setLoading(true);
       }
@@ -129,6 +130,8 @@ export function useRebuildAppAfterPnpmInstall() {
       } finally {
         if (isActiveApp()) {
           setPreviewPanelKey((prevKey) => prevKey + 1);
+        }
+        if (wasActiveAppAtStart) {
           setLoading(false);
         }
       }

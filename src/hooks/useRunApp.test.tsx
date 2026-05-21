@@ -7,7 +7,7 @@ import {
   previewErrorMessageAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
-import { useAppOutputSubscription } from "@/hooks/useRunApp";
+import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
 
 const {
   addLogMock,
@@ -229,7 +229,7 @@ describe("useAppOutputSubscription", () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "package-manager-warning",
-          message: "Install pnpm 10.16.0 or newer.",
+          message: "Install pnpm 10.16.0 or newer for the strongest protection",
           appId: 1,
         });
       }
@@ -268,7 +268,7 @@ describe("useAppOutputSubscription", () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "package-manager-warning",
-          message: "Install pnpm 10.16.0 or newer.",
+          message: "Install pnpm 10.16.0 or newer for the strongest protection",
           appId: 1,
         });
       }
@@ -298,6 +298,58 @@ describe("useAppOutputSubscription", () => {
     expect(
       store.get(appConsoleEntriesAtom).map((entry) => entry.message),
     ).toEqual(["Current app log"]);
+
+    unmount();
+  });
+
+  it("clears pnpm rebuild loading when the selected app changes mid-rebuild", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    let finishRestartApp: () => void = () => {};
+    restartAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRestartApp = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(
+      () => {
+        useAppOutputSubscription();
+        return useRunApp();
+      },
+      {
+        wrapper: Wrapper,
+      },
+    );
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "package-manager-warning",
+          message: "Install pnpm 10.16.0 or newer for the strongest protection",
+          appId: 1,
+        });
+      }
+    });
+
+    const toastArgs = showPnpmMinimumReleaseAgeWarningMock.mock.calls[0][0];
+    let installPromise = Promise.resolve();
+    await act(async () => {
+      installPromise = toastArgs.onInstallPnpm();
+      await Promise.resolve();
+    });
+
+    expect(result.current.loading).toBe(true);
+
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+
+    await act(async () => {
+      finishRestartApp();
+      await installPromise;
+    });
+
+    expect(result.current.loading).toBe(false);
 
     unmount();
   });

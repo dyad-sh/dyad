@@ -144,7 +144,14 @@ export function registerNodeHandlers() {
         return { pnpmVersion: testInstallPnpmVersion };
       }
 
-      await runCommand("npm", ["install", "-g", PNPM_GLOBAL_INSTALL_PACKAGE]);
+      // Use --force in case pnpm is already installed, but user
+      // wants to upgrade.
+      await runCommand("npm", [
+        "install",
+        "-g",
+        "--force",
+        PNPM_GLOBAL_INSTALL_PACKAGE,
+      ]);
       reloadNodePath();
 
       const result = await runCommand("pnpm", ["--version"]);

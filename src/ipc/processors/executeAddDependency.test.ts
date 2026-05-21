@@ -344,7 +344,8 @@ describe("executeAddDependency", () => {
   it("uses npm directly when pnpm cannot enforce the release-age policy", async () => {
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       supported: false,
-      warningMessage: "Install pnpm 10.16.0 or newer.",
+      warningMessage:
+        "Install pnpm 10.16.0 or newer for the strongest protection",
     });
     ensureSocketFirewallInstalledMock.mockResolvedValue({
       available: false,
@@ -378,7 +379,7 @@ describe("executeAddDependency", () => {
       installResults: "installed via npm",
       warningMessages: [
         SOCKET_FIREWALL_WARNING_MESSAGE,
-        "Install pnpm 10.16.0 or newer.",
+        "Install pnpm 10.16.0 or newer for the strongest protection",
       ],
     });
   });

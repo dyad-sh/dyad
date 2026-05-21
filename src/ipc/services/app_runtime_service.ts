@@ -32,7 +32,6 @@ import {
 import {
   commitPnpmAllowBuildsConfigIfChanged,
   getPnpmMinimumReleaseAgeSupport,
-  NPM_INSTALL_POLICY_ARGS,
   PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
 
@@ -77,7 +76,7 @@ function getPnpmInstallCommand(): string {
 }
 
 function getNpmInstallCommand(): string {
-  return `npm install ${NPM_INSTALL_POLICY_ARGS.join(" ")} --legacy-peer-deps`;
+  return "npm install --legacy-peer-deps";
 }
 
 async function getDefaultCommand({

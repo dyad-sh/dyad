@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 
 interface PnpmMinimumReleaseAgeToastProps {
   toastId: string | number;
+  message: string;
   onInstallPnpm: () => Promise<void>;
   onOpenDocs: () => void;
   onNeverShowAgain: () => void;
@@ -32,6 +33,7 @@ function getInstallErrorMessage(error: unknown): string {
 
 export function PnpmMinimumReleaseAgeToast({
   toastId,
+  message,
   onInstallPnpm,
   onOpenDocs,
   onNeverShowAgain,
@@ -67,7 +69,7 @@ export function PnpmMinimumReleaseAgeToast({
       ? "pnpm successfully installed"
       : installStatus === "error"
         ? `${installErrorMessage}. Please read pnpm docs for other installation options.`
-        : DEFAULT_MESSAGE;
+        : message || DEFAULT_MESSAGE;
 
   const isInstalling = installStatus === "installing";
   const isError = installStatus === "error";

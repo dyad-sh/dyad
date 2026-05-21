@@ -53,6 +53,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 import { resolveAppIdForChat } from "@/lib/chatUtils";
+import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -130,15 +131,25 @@ export function useStreamChat({
   let chatId: number | undefined;
 
   const showWarningMessage = useCallback(
-    (warningMessage: string) => {
-      if (
-        warningMessage.startsWith("Install pnpm 10.16.0 or newer.") &&
-        !settings?.hidePnpmMinimumReleaseAgeWarning
-      ) {
+    (warningMessage: string, warningAppId: number | null) => {
+      if (warningMessage.startsWith(PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX)) {
+        if (!settings || settings.hidePnpmMinimumReleaseAgeWarning) {
+          return;
+        }
+
         showPnpmMinimumReleaseAgeWarning({
           message: warningMessage,
           onInstallPnpm: async () => {
             await ipc.system.installPnpm();
+            if (warningAppId !== null) {
+              await ipc.misc.clearLogs({ appId: warningAppId });
+              await ipc.app.restartApp({
+                appId: warningAppId,
+                removeNodeModules: true,
+                recreateSandbox: false,
+              });
+              await refreshAppIframe();
+            }
           },
           onOpenDocs: () => {
             void ipc.system.openExternalUrl("https://pnpm.io/installation");
@@ -154,7 +165,11 @@ export function useStreamChat({
 
       showWarning(warningMessage);
     },
-    [settings?.hidePnpmMinimumReleaseAgeWarning, updateSettings],
+    [
+      refreshAppIframe,
+      settings?.hidePnpmMinimumReleaseAgeWarning,
+      updateSettings,
+    ],
   );
 
   if (hasChatId) {
@@ -433,7 +448,7 @@ export function useStreamChat({
                   });
                 }
                 for (const warningMessage of response.warningMessages ?? []) {
-                  showWarningMessage(warningMessage);
+                  showWarningMessage(warningMessage, targetAppId);
                 }
                 // Use queryClient directly with the chatId parameter to avoid stale closure issues
                 queryClient.invalidateQueries({
@@ -520,7 +535,7 @@ export function useStreamChat({
               finalizeStream(chatId);
 
               for (const warningMessage of warningMessages ?? []) {
-                showWarningMessage(warningMessage);
+                showWarningMessage(warningMessage, targetAppId);
               }
               console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
               setErrorById((prev) => {
@@ -582,6 +597,7 @@ export function useStreamChat({
       selectedAppId,
       refetchUserBudget,
       settings,
+      showWarningMessage,
       queryClient,
       store,
     ],

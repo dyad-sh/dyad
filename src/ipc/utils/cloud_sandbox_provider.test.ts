@@ -543,6 +543,25 @@ describe("cloud_sandbox_provider sandbox creation", () => {
     });
   });
 
+  it("applies install policy to custom commands with leading package-manager options", async () => {
+    await createCloudSandbox({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: "  pnpm -C apps/web install  ",
+      startCommand: "  pnpm -C apps/web dev  ",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand:
+        "pnpm -C apps/web --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+      startCommand: "pnpm -C apps/web dev",
+    });
+  });
+
   it("throws when the engine response is missing sandboxId", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(

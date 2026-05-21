@@ -25,6 +25,7 @@ describe("PnpmMinimumReleaseAgeToast", () => {
     render(
       <PnpmMinimumReleaseAgeToast
         toastId="pnpm-toast"
+        message="Install pnpm 10.16.0 or newer."
         onInstallPnpm={onInstallPnpm}
         onOpenDocs={vi.fn()}
         onNeverShowAgain={vi.fn()}
@@ -62,6 +63,7 @@ describe("PnpmMinimumReleaseAgeToast", () => {
     render(
       <PnpmMinimumReleaseAgeToast
         toastId="pnpm-toast"
+        message="Install pnpm 10.16.0 or newer."
         onInstallPnpm={onInstallPnpm}
         onOpenDocs={onOpenDocs}
         onNeverShowAgain={vi.fn()}

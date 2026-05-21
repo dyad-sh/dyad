@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { useAtom } from "jotai";
 import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -82,12 +82,14 @@ export function useSettings() {
     },
     meta: { showErrorToast: true },
   });
+  const updateSettingsMutationRef = useRef(updateSettingsMutation);
+  updateSettingsMutationRef.current = updateSettingsMutation;
 
   const updateSettings = useCallback(
     async (newSettings: Partial<UserSettings>) => {
-      return updateSettingsMutation.mutateAsync(newSettings);
+      return updateSettingsMutationRef.current.mutateAsync(newSettings);
     },
-    [updateSettingsMutation],
+    [],
   );
 
   const refreshSettings = useCallback(() => {

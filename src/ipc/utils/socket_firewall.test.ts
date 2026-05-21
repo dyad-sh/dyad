@@ -21,6 +21,7 @@ vi.mock("@/ipc/utils/pty_command_runner", async () => {
 
 import {
   buildPtyInvocation,
+  applyMinimumReleaseAgeInstallPolicy,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensurePnpmAllowBuildsConfigured,
@@ -227,6 +228,7 @@ describe("buildAddDependencyCommand", () => {
           "sfw@2.0.4",
           "npm",
           "install",
+          "--min-release-age=1",
           "--legacy-peer-deps",
           "react",
           "zod",
@@ -254,7 +256,13 @@ describe("buildAddDependencyCommand", () => {
       false,
       {
         command: "npm",
-        args: ["install", "--legacy-peer-deps", "react", "zod"],
+        args: [
+          "install",
+          "--min-release-age=1",
+          "--legacy-peer-deps",
+          "react",
+          "zod",
+        ],
       },
     ],
   ])(
@@ -288,7 +296,13 @@ describe("buildAddDependencyCommand", () => {
       false,
       {
         command: "npm",
-        args: ["install", "--legacy-peer-deps", "--save-dev", "nitro"],
+        args: [
+          "install",
+          "--min-release-age=1",
+          "--legacy-peer-deps",
+          "--save-dev",
+          "nitro",
+        ],
       },
     ],
     [
@@ -319,6 +333,27 @@ describe("buildAddDependencyCommand", () => {
       ).toEqual(expected);
     },
   );
+});
+
+describe("applyMinimumReleaseAgeInstallPolicy", () => {
+  it.each([
+    [
+      "pnpm --filter web install",
+      "pnpm --filter web --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+    ],
+    [
+      "pnpm -C apps/foo i --frozen-lockfile",
+      "pnpm -C apps/foo --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false i --frozen-lockfile",
+    ],
+    ["npm --silent install", "npm --silent --min-release-age=1 install"],
+    ["npm --silent ci", "npm --silent ci"],
+    [
+      "pnpm --config.minimumReleaseAge=1440 install",
+      "pnpm --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+    ],
+  ])("applies release-age policy to %s", (command, expected) => {
+    expect(applyMinimumReleaseAgeInstallPolicy(command)).toBe(expected);
+  });
 });
 
 describe("ensureSocketFirewallInstalled", () => {

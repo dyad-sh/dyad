@@ -8,6 +8,7 @@ import path from "node:path";
 import log from "electron-log";
 import defaultApproveBuildsText from "@/data/default-approve-builds.txt?raw";
 import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
+import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -22,7 +23,10 @@ export const PNPM_INSTALL_POLICY_ARGS = [
   "--config.confirmModulesPurge=false",
   "--config.strictDepBuilds=false",
 ];
-export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `Install pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer. Dyad uses npm fallback when pnpm cannot enforce the 1-day package release age gate, but pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION}+ gives the best protection for app installs.`;
+export const NPM_INSTALL_POLICY_ARGS = [
+  `--min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
+];
+export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `${PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX}${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer. Dyad uses npm fallback when pnpm cannot enforce the 1-day package release age gate, but pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION}+ gives the best protection for app installs.`;
 const SOCKET_FIREWALL_PACKAGE = "sfw@2.0.4";
 const SOCKET_FIREWALL_NPX_ARGS = [
   "--prefer-offline",
@@ -86,6 +90,13 @@ export type CommandRunner = (
 ) => Promise<CommandExecutionResult>;
 
 export type PackageManager = "pnpm" | "npm";
+
+export type PackageInstallCommand = {
+  packageManager: PackageManager;
+  subcommand: string;
+  subcommandStart: number;
+  existingArgs: string[];
+};
 
 function parseDefaultAllowBuilds(text = defaultApproveBuildsText): string[] {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
@@ -301,13 +312,21 @@ export async function commitPnpmAllowBuildsConfigIfChanged(
   }
 }
 
-function parseVersionParts(version: string): [number, number, number] | null {
-  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+function parseVersionParts(version: string): {
+  parts: [number, number, number];
+  hasPrerelease: boolean;
+} | null {
+  const match = version
+    .trim()
+    .match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
   if (!match) {
     return null;
   }
 
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
+  return {
+    parts: [Number(match[1]), Number(match[2]), Number(match[3])],
+    hasPrerelease: match[4] !== undefined,
+  };
 }
 
 export function isVersionAtLeast(version: string, minimum: string): boolean {
@@ -317,16 +336,183 @@ export function isVersionAtLeast(version: string, minimum: string): boolean {
     return false;
   }
 
-  for (let index = 0; index < parsedVersion.length; index += 1) {
-    if (parsedVersion[index] > parsedMinimum[index]) {
+  for (let index = 0; index < parsedVersion.parts.length; index += 1) {
+    if (parsedVersion.parts[index] > parsedMinimum.parts[index]) {
       return true;
     }
-    if (parsedVersion[index] < parsedMinimum[index]) {
+    if (parsedVersion.parts[index] < parsedMinimum.parts[index]) {
       return false;
     }
   }
 
-  return true;
+  return !parsedVersion.hasPrerelease || parsedMinimum.hasPrerelease;
+}
+
+function tokenizeCommand(command: string): Array<{
+  value: string;
+  start: number;
+}> {
+  const tokens: Array<{ value: string; start: number }> = [];
+  let current = "";
+  let tokenStart: number | null = null;
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      if (tokenStart === null) {
+        tokenStart = index;
+      }
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      if (tokenStart === null) {
+        tokenStart = index;
+      }
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (tokenStart !== null) {
+        tokens.push({ value: current, start: tokenStart });
+        current = "";
+        tokenStart = null;
+      }
+      continue;
+    }
+
+    if (tokenStart === null) {
+      tokenStart = index;
+    }
+    current += char;
+  }
+
+  if (tokenStart !== null) {
+    tokens.push({ value: current, start: tokenStart });
+  }
+
+  return tokens;
+}
+
+function resolvePackageInstallCommand(
+  command: string,
+): PackageInstallCommand | null {
+  const tokens = tokenizeCommand(command);
+  const executable = tokens[0]?.value;
+  if (executable !== "pnpm" && executable !== "npm") {
+    return null;
+  }
+
+  const installAliases =
+    executable === "pnpm"
+      ? new Set(["install", "i"])
+      : new Set(["install", "i", "in", "ins", "inst", "insta", "instal"]);
+  const optionsWithValues =
+    executable === "pnpm"
+      ? new Set(["--filter", "-F", "--dir", "-C", "--workspace", "-w"])
+      : new Set(["--workspace", "-w", "--prefix"]);
+
+  let skipNextOptionValue = false;
+  for (const token of tokens.slice(1)) {
+    if (token.value === "--") {
+      return null;
+    }
+    if (skipNextOptionValue) {
+      skipNextOptionValue = false;
+      continue;
+    }
+    if (token.value.startsWith("-")) {
+      if (!token.value.includes("=") && optionsWithValues.has(token.value)) {
+        skipNextOptionValue = true;
+      }
+      continue;
+    }
+    if (installAliases.has(token.value) || token.value === "ci") {
+      return {
+        packageManager: executable,
+        subcommand: token.value,
+        subcommandStart: token.start,
+        existingArgs: tokens.map((item) => item.value),
+      };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+function hasInstallPolicyArg(existingArgs: string[], policyArg: string) {
+  const optionName = policyArg.split("=")[0];
+  return existingArgs.some(
+    (arg) => arg === optionName || arg.startsWith(`${optionName}=`),
+  );
+}
+
+function insertArgsBeforeSubcommand(
+  command: string,
+  parsedCommand: PackageInstallCommand,
+  args: string[],
+): string {
+  const missingArgs = args.filter(
+    (arg) => !hasInstallPolicyArg(parsedCommand.existingArgs, arg),
+  );
+  if (missingArgs.length === 0) {
+    return command;
+  }
+
+  return `${command.slice(0, parsedCommand.subcommandStart)}${missingArgs.join(" ")} ${command.slice(parsedCommand.subcommandStart)}`;
+}
+
+export function getPackageInstallCommandPolicy(
+  command: string,
+): PackageInstallCommand | null {
+  return resolvePackageInstallCommand(command.trim());
+}
+
+export function applyMinimumReleaseAgeInstallPolicy(command: string): string {
+  const trimmedCommand = command.trim();
+  const parsedCommand = resolvePackageInstallCommand(trimmedCommand);
+  if (!parsedCommand) {
+    return trimmedCommand;
+  }
+
+  if (parsedCommand.packageManager === "pnpm") {
+    return insertArgsBeforeSubcommand(
+      trimmedCommand,
+      parsedCommand,
+      PNPM_INSTALL_POLICY_ARGS,
+    );
+  }
+
+  if (parsedCommand.subcommand === "ci") {
+    return trimmedCommand;
+  }
+
+  return insertArgsBeforeSubcommand(
+    trimmedCommand,
+    parsedCommand,
+    NPM_INSTALL_POLICY_ARGS,
+  );
 }
 
 export function resolveExecutableName(
@@ -507,6 +693,7 @@ export function buildAddDependencyCommand(
         ]
       : [
           "install",
+          ...NPM_INSTALL_POLICY_ARGS,
           "--legacy-peer-deps",
           ...(dev ? ["--save-dev"] : []),
           ...packages,

@@ -109,6 +109,7 @@ export const showPnpmMinimumReleaseAgeWarning = ({
     (t) => (
       <PnpmMinimumReleaseAgeToast
         toastId={t}
+        message={message}
         onInstallPnpm={onInstallPnpm}
         onOpenDocs={onOpenDocs}
         onNeverShowAgain={onNeverShowAgain}

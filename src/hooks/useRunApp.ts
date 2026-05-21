@@ -193,13 +193,14 @@ export function useAppOutputSubscription() {
 
       if (
         output.type === "package-manager-warning" &&
+        settings &&
         !settings?.hidePnpmMinimumReleaseAgeWarning
       ) {
         showPnpmMinimumReleaseAgeWarning({
           message: output.message,
           onInstallPnpm: async () => {
             await ipc.system.installPnpm();
-            void rebuildAppAfterPnpmInstall(output.appId);
+            await rebuildAppAfterPnpmInstall(output.appId);
           },
           onOpenDocs: () => {
             void ipc.system.openExternalUrl("https://pnpm.io/installation");

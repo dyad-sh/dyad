@@ -3,7 +3,10 @@ import { normalizePath } from "../../../shared/normalizePath";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { PNPM_INSTALL_POLICY_ARGS } from "@/ipc/utils/socket_firewall";
+import {
+  applyMinimumReleaseAgeInstallPolicy,
+  PNPM_INSTALL_POLICY_ARGS,
+} from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
 import { gitIsIgnoredIso } from "./git_utils";
@@ -170,18 +173,7 @@ function resolveCloudSandboxCommands(input: {
 }
 
 function applyMinimumReleaseAgeToCloudInstallCommand(command: string): string {
-  if (/^pnpm\s+(?:install|i)(?:\s|$)/.test(command)) {
-    return command.replace(
-      /^pnpm\s+/,
-      `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} `,
-    );
-  }
-
-  if (/^npm\s+(?:install|i|ci)(?:\s|$)/.test(command)) {
-    return command;
-  }
-
-  return command;
+  return applyMinimumReleaseAgeInstallPolicy(command);
 }
 
 export interface CloudSandboxProvider {

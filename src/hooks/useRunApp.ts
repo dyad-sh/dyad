@@ -17,37 +17,53 @@ import {
   showInputRequest,
   showPnpmMinimumReleaseAgeWarning,
 } from "@/lib/toast";
-import type { RuntimeMode2 } from "@/lib/schemas";
+import type { RuntimeMode2, UserSettings } from "@/lib/schemas";
 import { useSettings } from "./useSettings";
 
 const useRunAppLoadingAtom = atom(false);
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
 
-/**
- * Hook to subscribe to app output events from the main process.
- * IMPORTANT: This hook should only be called ONCE in the app (in layout.tsx)
- * to avoid duplicate event subscriptions causing duplicate log entries.
- */
-export function useAppOutputSubscription() {
-  const { settings, updateSettings } = useSettings();
+type UpdateSettings = (newSettings: Partial<UserSettings>) => Promise<unknown>;
+
+export function showPnpmMinimumReleaseAgeWarningToast({
+  message,
+  onInstallPnpm,
+  updateSettings,
+}: {
+  message: string;
+  onInstallPnpm: () => Promise<void>;
+  updateSettings: UpdateSettings;
+}) {
+  showPnpmMinimumReleaseAgeWarning({
+    message,
+    onInstallPnpm,
+    onOpenDocs: () => {
+      void ipc.system.openExternalUrl("https://pnpm.io/installation");
+    },
+    onNeverShowAgain: () => {
+      void updateSettings({
+        hidePnpmMinimumReleaseAgeWarning: true,
+      });
+    },
+  });
+}
+
+export function useRebuildAppAfterPnpmInstall() {
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
-  const [, setAppUrlObj] = useAtom(appUrlAtom);
-  const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
+  const setAppUrlObj = useSetAtom(appUrlAtom);
+  const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
   const setPreviewRunStartedAt = useSetAtom(previewRunStartedAtAtom);
   const setLoading = useSetAtom(useRunAppLoadingAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const selectedAppIdRef = useRef(appId);
-  const syncErrorToastRef = useRef(
-    new Map<number, { message: string; shownAt: number }>(),
-  );
 
   useEffect(() => {
     selectedAppIdRef.current = appId;
   }, [appId]);
 
-  const rebuildAppAfterPnpmInstall = useCallback(
+  return useCallback(
     async (rebuildAppId: number) => {
       const startedAt = Date.now();
       const isActiveApp = () => selectedAppIdRef.current === rebuildAppId;
@@ -127,6 +143,35 @@ export function useAppOutputSubscription() {
       setPreviewRunStartedAt,
     ],
   );
+}
+
+/**
+ * Hook to subscribe to app output events from the main process.
+ * IMPORTANT: This hook should only be called ONCE in the app (in layout.tsx)
+ * to avoid duplicate event subscriptions causing duplicate log entries.
+ */
+export function useAppOutputSubscription() {
+  const { settings, updateSettings } = useSettings();
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const [, setAppUrlObj] = useAtom(appUrlAtom);
+  const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
+  const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
+  const appId = useAtomValue(selectedAppIdAtom);
+  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
+  const pnpmWarningSettingRef = useRef({
+    hasSettings: Boolean(settings),
+    hideWarning: settings?.hidePnpmMinimumReleaseAgeWarning,
+  });
+  const syncErrorToastRef = useRef(
+    new Map<number, { message: string; shownAt: number }>(),
+  );
+
+  useEffect(() => {
+    pnpmWarningSettingRef.current = {
+      hasSettings: Boolean(settings),
+      hideWarning: settings?.hidePnpmMinimumReleaseAgeWarning,
+    };
+  }, [settings, settings?.hidePnpmMinimumReleaseAgeWarning]);
 
   const processProxyServerOutput = useCallback(
     (output: AppOutput) => {
@@ -213,23 +258,16 @@ export function useAppOutputSubscription() {
 
       if (
         output.type === "package-manager-warning" &&
-        settings &&
-        !settings?.hidePnpmMinimumReleaseAgeWarning
+        pnpmWarningSettingRef.current.hasSettings &&
+        !pnpmWarningSettingRef.current.hideWarning
       ) {
-        showPnpmMinimumReleaseAgeWarning({
+        showPnpmMinimumReleaseAgeWarningToast({
           message: output.message,
           onInstallPnpm: async () => {
             await ipc.system.installPnpm();
             await rebuildAppAfterPnpmInstall(output.appId);
           },
-          onOpenDocs: () => {
-            void ipc.system.openExternalUrl("https://pnpm.io/installation");
-          },
-          onNeverShowAgain: () => {
-            void updateSettings({
-              hidePnpmMinimumReleaseAgeWarning: true,
-            });
-          },
+          updateSettings,
         });
       }
 
@@ -270,8 +308,6 @@ export function useAppOutputSubscription() {
       processProxyServerOutput,
       rebuildAppAfterPnpmInstall,
       setPreviewErrorMessage,
-      settings,
-      settings?.hidePnpmMinimumReleaseAgeWarning,
       updateSettings,
     ],
   );

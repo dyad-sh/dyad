@@ -12,12 +12,15 @@ import { useAppOutputSubscription } from "@/hooks/useRunApp";
 const {
   addLogMock,
   appOutputBatchListeners,
+  appOutputBatchSubscribeMock,
   appOutputListeners,
+  appOutputSubscribeMock,
   clearLogsMock,
   installPnpmMock,
   openExternalUrlMock,
   respondToAppInputMock,
   restartAppMock,
+  settingsMock,
   showErrorMock,
   showInputRequestMock,
   showPnpmMinimumReleaseAgeWarningMock,
@@ -25,12 +28,17 @@ const {
 } = vi.hoisted(() => ({
   addLogMock: vi.fn(),
   appOutputBatchListeners: new Set<(outputs: unknown[]) => void>(),
+  appOutputBatchSubscribeMock: vi.fn(),
   appOutputListeners: new Set<(output: unknown) => void>(),
+  appOutputSubscribeMock: vi.fn(),
   clearLogsMock: vi.fn(),
   installPnpmMock: vi.fn(),
   openExternalUrlMock: vi.fn(),
   respondToAppInputMock: vi.fn(),
   restartAppMock: vi.fn(),
+  settingsMock: {
+    current: {} as { hidePnpmMinimumReleaseAgeWarning?: boolean } | undefined,
+  },
   showErrorMock: vi.fn(),
   showInputRequestMock: vi.fn(),
   showPnpmMinimumReleaseAgeWarningMock: vi.fn(),
@@ -54,10 +62,12 @@ vi.mock("@/ipc/types", () => ({
     events: {
       misc: {
         onAppOutput: (listener: (output: unknown) => void) => {
+          appOutputSubscribeMock();
           appOutputListeners.add(listener);
           return () => appOutputListeners.delete(listener);
         },
         onAppOutputBatch: (listener: (outputs: unknown[]) => void) => {
+          appOutputBatchSubscribeMock();
           appOutputBatchListeners.add(listener);
           return () => appOutputBatchListeners.delete(listener);
         },
@@ -74,7 +84,7 @@ vi.mock("@/lib/toast", () => ({
 
 vi.mock("./useSettings", () => ({
   useSettings: () => ({
-    settings: {},
+    settings: settingsMock.current,
     updateSettings: updateSettingsMock,
   }),
 }));
@@ -97,11 +107,14 @@ describe("useAppOutputSubscription", () => {
     addLogMock.mockReset();
     appOutputListeners.clear();
     appOutputBatchListeners.clear();
+    appOutputSubscribeMock.mockReset();
+    appOutputBatchSubscribeMock.mockReset();
     clearLogsMock.mockReset();
     installPnpmMock.mockReset();
     openExternalUrlMock.mockReset();
     respondToAppInputMock.mockReset();
     restartAppMock.mockReset();
+    settingsMock.current = {};
     showErrorMock.mockReset();
     showInputRequestMock.mockReset();
     showPnpmMinimumReleaseAgeWarningMock.mockReset();
@@ -184,6 +197,26 @@ describe("useAppOutputSubscription", () => {
 
     expect(appOutputListeners.size).toBe(0);
     expect(appOutputBatchListeners.size).toBe(0);
+  });
+
+  it("does not resubscribe to app output events when settings change", () => {
+    const { Wrapper } = makeWrapper(1);
+    const { rerender, unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    expect(appOutputSubscribeMock).toHaveBeenCalledTimes(1);
+    expect(appOutputBatchSubscribeMock).toHaveBeenCalledTimes(1);
+
+    settingsMock.current = { hidePnpmMinimumReleaseAgeWarning: true };
+    rerender();
+
+    expect(appOutputSubscribeMock).toHaveBeenCalledTimes(1);
+    expect(appOutputBatchSubscribeMock).toHaveBeenCalledTimes(1);
+    expect(appOutputListeners.size).toBe(1);
+    expect(appOutputBatchListeners.size).toBe(1);
+
+    unmount();
   });
 
   it("shows pnpm warning toast with install and docs actions", async () => {

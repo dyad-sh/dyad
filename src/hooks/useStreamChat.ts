@@ -36,13 +36,13 @@ import {
 } from "@/lib/resyncChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
-import {
-  showExtraFilesToast,
-  showPnpmMinimumReleaseAgeWarning,
-  showWarning,
-} from "@/lib/toast";
+import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
-import { useRunApp } from "./useRunApp";
+import {
+  showPnpmMinimumReleaseAgeWarningToast,
+  useRebuildAppAfterPnpmInstall,
+  useRunApp,
+} from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
@@ -128,6 +128,7 @@ export function useStreamChat({
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
+  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   let chatId: number | undefined;
 
   const showWarningMessage = useCallback(
@@ -137,28 +138,15 @@ export function useStreamChat({
           return;
         }
 
-        showPnpmMinimumReleaseAgeWarning({
+        showPnpmMinimumReleaseAgeWarningToast({
           message: warningMessage,
           onInstallPnpm: async () => {
             await ipc.system.installPnpm();
             if (warningAppId !== null) {
-              await ipc.misc.clearLogs({ appId: warningAppId });
-              await ipc.app.restartApp({
-                appId: warningAppId,
-                removeNodeModules: true,
-                recreateSandbox: false,
-              });
-              await refreshAppIframe();
+              await rebuildAppAfterPnpmInstall(warningAppId);
             }
           },
-          onOpenDocs: () => {
-            void ipc.system.openExternalUrl("https://pnpm.io/installation");
-          },
-          onNeverShowAgain: () => {
-            void updateSettings({
-              hidePnpmMinimumReleaseAgeWarning: true,
-            });
-          },
+          updateSettings,
         });
         return;
       }
@@ -166,7 +154,7 @@ export function useStreamChat({
       showWarning(warningMessage);
     },
     [
-      refreshAppIframe,
+      rebuildAppAfterPnpmInstall,
       settings,
       settings?.hidePnpmMinimumReleaseAgeWarning,
       updateSettings,

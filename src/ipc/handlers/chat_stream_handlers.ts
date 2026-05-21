@@ -142,7 +142,7 @@ import {
   resolveAttachmentDeliveryConfig,
   type PendingStoredChatAttachment,
   type StoredChatAttachment,
-} from "../services/chat_attachment_service";
+} from "../utils/chat_attachment_utils";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 

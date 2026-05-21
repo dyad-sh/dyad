@@ -32,6 +32,7 @@ import { queryKeys } from "./lib/queryKeys";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
+  shouldBypassNonProTelemetrySampling,
 } from "./lib/posthogTelemetry";
 
 // @ts-ignore
@@ -97,15 +98,13 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
-      // For non-Pro users, only send 10% of events (but always send errors)
+      // For non-Pro users, only send 10% of events (but always send errors and
+      // sandbox.script.* instrumentation — see shouldBypassNonProTelemetrySampling).
       if (!isDyadProUser()) {
-        const isErrorEvent =
-          event?.event === "$exception" ||
-          event?.event?.toLowerCase().includes("error") ||
-          event?.properties?.$exception_type ||
-          event?.properties?.error;
-
-        if (!isErrorEvent && Math.random() > 0.1) {
+        if (
+          !shouldBypassNonProTelemetrySampling(event) &&
+          Math.random() > 0.1
+        ) {
           console.debug("Non-Pro user: sampling out event", event?.event);
           return null;
         }

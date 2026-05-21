@@ -1,5 +1,33 @@
 type TelemetryProperties = Record<string, unknown> | undefined;
 
+/** PostHog event shape used by renderer `before_send` sampling. */
+export type PostHogTelemetryEvent = {
+  event?: string;
+  properties?: TelemetryProperties;
+};
+
+/**
+ * Non-Pro telemetry sends only ~10% of events. These events are always sent.
+ * Keep `sandbox.script.*` here so script instrumentation is never sampled out.
+ */
+export function shouldBypassNonProTelemetrySampling(
+  event: PostHogTelemetryEvent | null | undefined,
+): boolean {
+  const eventName = event?.event;
+  const properties = event?.properties;
+
+  if (eventName?.startsWith("sandbox.script.")) {
+    return true;
+  }
+
+  return (
+    eventName === "$exception" ||
+    eventName?.toLowerCase().includes("error") === true ||
+    !!properties?.$exception_type ||
+    !!properties?.error
+  );
+}
+
 export function createExceptionFromTelemetry(properties: TelemetryProperties) {
   const exception = new Error(
     typeof properties?.exception_message === "string"

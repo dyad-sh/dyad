@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
+  shouldBypassNonProTelemetrySampling,
 } from "@/lib/posthogTelemetry";
 
 describe("createExceptionFromTelemetry", () => {
@@ -23,6 +24,74 @@ describe("createExceptionFromTelemetry", () => {
 
     expect(error.name).toBe("Error");
     expect(error.message).toBe("Unknown IPC exception");
+  });
+});
+
+describe("shouldBypassNonProTelemetrySampling", () => {
+  it("always sends sandbox.script.* events for non-Pro sampling", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "sandbox.script.completed",
+        properties: { chatId: 1, appId: 2 },
+      }),
+    ).toBe(true);
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "sandbox.script.truncated",
+        properties: { chatId: 1 },
+      }),
+    ).toBe(true);
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "sandbox.script.failed",
+        properties: { error: "Unexpected token" },
+      }),
+    ).toBe(true);
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "sandbox.script.timeout",
+        properties: { error: "Script timed out" },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not bypass unrelated sandbox telemetry", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "sandbox.tool.unused_with_attachment",
+        properties: { chatId: 1 },
+      }),
+    ).toBe(false);
+  });
+
+  it("still bypasses sampling for error-shaped events", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "$exception",
+        properties: { exception_message: "boom" },
+      }),
+    ).toBe(true);
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "extra-files:error",
+        properties: {},
+      }),
+    ).toBe(true);
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "app:crash_detected",
+        properties: { error: true },
+      }),
+    ).toBe(true);
+  });
+
+  it("allows routine events to be sampled", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "chat:submit",
+        properties: { chatMode: "build" },
+      }),
+    ).toBe(false);
   });
 });
 

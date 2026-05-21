@@ -21,7 +21,6 @@ vi.mock("@/ipc/utils/pty_command_runner", async () => {
 
 import {
   buildPtyInvocation,
-  applyMinimumReleaseAgeInstallPolicy,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
   ensurePnpmAllowBuildsConfigured,
@@ -348,27 +347,6 @@ describe("buildAddDependencyCommand", () => {
       ).toEqual(expected);
     },
   );
-});
-
-describe("applyMinimumReleaseAgeInstallPolicy", () => {
-  it.each([
-    [
-      "pnpm --filter web install",
-      "pnpm --filter web --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
-    ],
-    [
-      "pnpm -C apps/foo i --frozen-lockfile",
-      "pnpm -C apps/foo --config.confirmModulesPurge=false --config.strictDepBuilds=false i --frozen-lockfile",
-    ],
-    ["npm --silent install", "npm --silent --min-release-age=1 install"],
-    ["npm --silent ci", "npm --silent ci"],
-    [
-      "pnpm --config.minimumReleaseAge=1440 install",
-      "pnpm --config.minimumReleaseAge=1440 --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
-    ],
-  ])("applies release-age policy to %s", (command, expected) => {
-    expect(applyMinimumReleaseAgeInstallPolicy(command)).toBe(expected);
-  });
 });
 
 describe("ensureSocketFirewallInstalled", () => {

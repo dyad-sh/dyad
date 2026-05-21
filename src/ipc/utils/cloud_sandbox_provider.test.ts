@@ -500,6 +500,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
   let fetchSpy: { mockRestore: () => void };
 
   beforeEach(() => {
+    commitPnpmAllowBuildsConfigIfChangedMock.mockReset();
     fetchMock = vi.fn(async () => {
       return new Response(
         JSON.stringify({
@@ -537,6 +538,9 @@ describe("cloud_sandbox_provider sandbox creation", () => {
         "pnpm --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
       startCommand: "pnpm run dev",
     });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
+      "/tmp/app",
+    );
   });
 
   it("preserves explicit custom commands after trimming", async () => {
@@ -555,9 +559,10 @@ describe("cloud_sandbox_provider sandbox creation", () => {
       installCommand: "npm ci",
       startCommand: "npm run dev -- --port 3000",
     });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
   });
 
-  it("applies install policy to custom commands with leading package-manager options", async () => {
+  it("preserves custom pnpm commands with leading package-manager options", async () => {
     await createCloudSandbox({
       appId: 42,
       appPath: "/tmp/app",
@@ -570,10 +575,10 @@ describe("cloud_sandbox_provider sandbox creation", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       appId: 42,
       appPath: "/tmp/app",
-      installCommand:
-        "pnpm -C apps/web --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+      installCommand: "pnpm -C apps/web install",
       startCommand: "pnpm -C apps/web dev",
     });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
   });
 
   it("throws when the engine response is missing sandboxId", async () => {

@@ -30,13 +30,10 @@ import {
   runningApps,
 } from "@/ipc/utils/process_manager";
 import {
-  applyMinimumReleaseAgeInstallPolicy,
   commitPnpmAllowBuildsConfigIfChanged,
-  getPackageInstallCommandPolicy,
   getPnpmMinimumReleaseAgeSupport,
   NPM_INSTALL_POLICY_ARGS,
   PNPM_INSTALL_POLICY_ARGS,
-  PNPM_MINIMUM_RELEASE_AGE_VERSION,
 } from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("app_runtime_service");
@@ -114,47 +111,6 @@ async function getDefaultCommand({
   return `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`;
 }
 
-async function applyInstallPolicyToCustomCommand({
-  runtimeMode,
-  appPath,
-  installCommand,
-  onPnpmMinimumReleaseAgeWarning,
-}: {
-  runtimeMode: RuntimeMode2;
-  appPath: string;
-  installCommand: string;
-  onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
-}): Promise<string> {
-  const trimmedCommand = installCommand.trim();
-  const parsedCommand = getPackageInstallCommandPolicy(trimmedCommand);
-
-  if (parsedCommand?.packageManager === "pnpm") {
-    if (runtimeMode === "docker") {
-      await commitPnpmAllowBuildsConfigIfChanged(appPath);
-      return applyMinimumReleaseAgeInstallPolicy(trimmedCommand);
-    }
-
-    const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
-    if (!pnpmSupport.supported) {
-      if (pnpmSupport.warningMessage) {
-        onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
-      }
-      throw new DyadError(
-        `This app is configured to install with pnpm, but Dyad requires pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer to enforce the 1-day package release age gate.`,
-        DyadErrorKind.Precondition,
-      );
-    }
-    await commitPnpmAllowBuildsConfigIfChanged(appPath);
-    return applyMinimumReleaseAgeInstallPolicy(trimmedCommand);
-  }
-
-  if (parsedCommand?.packageManager === "npm") {
-    return applyMinimumReleaseAgeInstallPolicy(trimmedCommand);
-  }
-
-  return trimmedCommand;
-}
-
 async function getCommand({
   runtimeMode,
   appId,
@@ -172,13 +128,7 @@ async function getCommand({
 }): Promise<string> {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   if (hasCustomCommands) {
-    const policyInstallCommand = await applyInstallPolicyToCustomCommand({
-      runtimeMode,
-      appPath,
-      installCommand: installCommand!,
-      onPnpmMinimumReleaseAgeWarning,
-    });
-    return `${policyInstallCommand} && ${startCommand!.trim()}`;
+    return `${installCommand!.trim()} && ${startCommand!.trim()}`;
   }
 
   return getDefaultCommand({

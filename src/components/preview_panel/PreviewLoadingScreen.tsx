@@ -118,6 +118,10 @@ export function PreviewLoadingScreen({
   const [visibleStartedAt, setVisibleStartedAt] = useState(Date.now());
   const wasVisibleRef = useRef<boolean>(isVisible);
   const logListRef = useRef<HTMLDivElement>(null);
+  // Tail-follow: keep pinning to the bottom as new logs stream in, but only
+  // while the user is already there. Once they scroll up to read earlier
+  // output, stop auto-scrolling so they don't get yanked back down.
+  const isAtBottomRef = useRef(true);
 
   const runStartedAt = previewRunStartedAt ?? visibleStartedAt;
 
@@ -152,6 +156,7 @@ export function PreviewLoadingScreen({
 
   useEffect(() => {
     setIsErrorsExpanded(false);
+    isAtBottomRef.current = true;
   }, [sessionStartedAt]);
 
   const sessionEntries = useMemo(
@@ -193,9 +198,16 @@ export function PreviewLoadingScreen({
 
   useEffect(() => {
     const el = logListRef.current;
-    if (!el) return;
+    if (!el || !isAtBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [sessionEntries.length]);
+
+  const handleLogScroll = () => {
+    const el = logListRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isAtBottomRef.current = distanceFromBottom < 8;
+  };
 
   const handleRebuild = () => {
     void restartApp({ removeNodeModules: true });
@@ -227,7 +239,7 @@ export function PreviewLoadingScreen({
     <div
       data-testid="preview-loading-screen"
       className={cn(
-        "absolute inset-0 flex items-center justify-center p-4 sm:p-6",
+        "absolute inset-0 flex flex-col items-center overflow-hidden p-4 sm:p-6",
         "bg-gradient-to-br from-background/70 via-background/75 to-background/85 backdrop-blur-sm",
         "transition-all ease-in-out",
         isExiting
@@ -239,7 +251,7 @@ export function PreviewLoadingScreen({
       <div
         data-testid="preview-loading-card"
         className={cn(
-          "w-full max-w-2xl max-h-full flex flex-col",
+          "flex min-h-0 flex-1 w-full max-w-2xl flex-col",
           "bg-[var(--background-darkest)] rounded-xl shadow-2xl ring-1 ring-border/70 overflow-hidden",
           "transition-transform ease-out",
           isExiting ? "scale-95" : "scale-100",
@@ -275,7 +287,8 @@ export function PreviewLoadingScreen({
           />
           <div
             ref={logListRef}
-            className="h-full overflow-y-auto px-3 py-2 font-mono text-xs"
+            onScroll={handleLogScroll}
+            className="h-full overflow-y-auto overscroll-contain px-3 py-2 font-mono text-xs"
             data-testid="preview-loading-log-list"
           >
             {sessionEntries.length === 0 ? (

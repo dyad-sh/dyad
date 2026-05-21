@@ -3,10 +3,7 @@ import { normalizePath } from "../../../shared/normalizePath";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import {
-  MINIMUM_PACKAGE_RELEASE_AGE_DAYS,
-  MINIMUM_PACKAGE_RELEASE_AGE_MINUTES,
-} from "@/ipc/utils/socket_firewall";
+import { PNPM_INSTALL_POLICY_ARGS } from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
 import { gitIsIgnoredIso } from "./git_utils";
@@ -131,7 +128,7 @@ type ActiveCloudSandbox = {
 };
 
 function getDefaultInstallCommand(): string {
-  return `pnpm --config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES} --config.minimumReleaseAgeStrict=true install`;
+  return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
 }
 
 function getDefaultStartCommand(): string {
@@ -176,15 +173,12 @@ function applyMinimumReleaseAgeToCloudInstallCommand(command: string): string {
   if (/^pnpm\s+(?:install|i)(?:\s|$)/.test(command)) {
     return command.replace(
       /^pnpm\s+/,
-      `pnpm --config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES} --config.minimumReleaseAgeStrict=true `,
+      `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} `,
     );
   }
 
   if (/^npm\s+(?:install|i|ci)(?:\s|$)/.test(command)) {
-    return command.replace(
-      /^npm\s+(install|i|ci)/,
-      `npm $1 --min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
-    );
+    return command;
   }
 
   return command;

@@ -34,9 +34,78 @@ export function useAppOutputSubscription() {
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
+  const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
+  const setPreviewRunStartedAt = useSetAtom(previewRunStartedAtAtom);
+  const setLoading = useSetAtom(useRunAppLoadingAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const syncErrorToastRef = useRef(
     new Map<number, { message: string; shownAt: number }>(),
+  );
+
+  const rebuildAppAfterPnpmInstall = useCallback(
+    async (rebuildAppId: number) => {
+      const startedAt = Date.now();
+      setPreviewRunStartedAt(startedAt);
+      setLoading(true);
+
+      try {
+        setAppUrlObj({
+          appUrl: null,
+          appId: null,
+          originalUrl: null,
+          mode: null,
+        });
+
+        setPreservedUrls((prev) => {
+          const next = { ...prev };
+          delete next[rebuildAppId];
+          return next;
+        });
+
+        await ipc.misc.clearLogs({ appId: rebuildAppId });
+        setConsoleEntries([]);
+
+        const logEntry = {
+          level: "info" as const,
+          type: "server" as const,
+          message: "Rebuilding app after pnpm install...",
+          appId: rebuildAppId,
+          timestamp: startedAt,
+        };
+
+        ipc.misc.addLog(logEntry);
+        setConsoleEntries((prev) => [...prev, logEntry]);
+
+        await ipc.app.restartApp({
+          appId: rebuildAppId,
+          removeNodeModules: true,
+          recreateSandbox: false,
+        });
+        setPreviewErrorMessage(undefined);
+      } catch (error) {
+        console.error(`Error rebuilding app ${rebuildAppId}:`, error);
+        setPreviewErrorMessage(
+          error instanceof Error
+            ? { message: error.message, source: "dyad-app" }
+            : {
+                message: error?.toString() || "Unknown error",
+                source: "dyad-app",
+              },
+        );
+      } finally {
+        setPreviewPanelKey((prevKey) => prevKey + 1);
+        setLoading(false);
+      }
+    },
+    [
+      setAppUrlObj,
+      setConsoleEntries,
+      setLoading,
+      setPreservedUrls,
+      setPreviewErrorMessage,
+      setPreviewPanelKey,
+      setPreviewRunStartedAt,
+    ],
   );
 
   const processProxyServerOutput = useCallback(
@@ -128,7 +197,11 @@ export function useAppOutputSubscription() {
       ) {
         showPnpmMinimumReleaseAgeWarning({
           message: output.message,
-          onInstallPnpm: () => {
+          onInstallPnpm: async () => {
+            await ipc.system.installPnpm();
+            void rebuildAppAfterPnpmInstall(output.appId);
+          },
+          onOpenDocs: () => {
             void ipc.system.openExternalUrl("https://pnpm.io/installation");
           },
           onNeverShowAgain: () => {
@@ -174,6 +247,7 @@ export function useAppOutputSubscription() {
     [
       onHotModuleReload,
       processProxyServerOutput,
+      rebuildAppAfterPnpmInstall,
       setPreviewErrorMessage,
       settings?.hidePnpmMinimumReleaseAgeWarning,
       updateSettings,

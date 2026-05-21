@@ -96,19 +96,21 @@ export const showWarning = (message: string) => {
 export const showPnpmMinimumReleaseAgeWarning = ({
   message,
   onInstallPnpm,
+  onOpenDocs,
   onNeverShowAgain,
 }: {
   message: string;
-  onInstallPnpm: () => void;
+  onInstallPnpm: () => Promise<void>;
+  onOpenDocs: () => void;
   onNeverShowAgain: () => void;
 }) => {
   console.warn(message);
   return toast.custom(
     (t) => (
       <PnpmMinimumReleaseAgeToast
-        message={message}
         toastId={t}
         onInstallPnpm={onInstallPnpm}
+        onOpenDocs={onOpenDocs}
         onNeverShowAgain={onNeverShowAgain}
       />
     ),

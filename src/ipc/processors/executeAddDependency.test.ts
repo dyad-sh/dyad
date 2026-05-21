@@ -10,6 +10,7 @@ import {
 } from "./executeAddDependency";
 
 const {
+  commitPnpmAllowBuildsConfigIfChangedMock,
   ensureSocketFirewallInstalledMock,
   getPnpmMinimumReleaseAgeSupportMock,
   runCommandMock,
@@ -17,6 +18,7 @@ const {
   dbUpdateSetMock,
   dbUpdateWhereMock,
 } = vi.hoisted(() => ({
+  commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
   ensureSocketFirewallInstalledMock: vi.fn(),
   getPnpmMinimumReleaseAgeSupportMock: vi.fn(),
   runCommandMock: vi.fn(),
@@ -48,6 +50,8 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
 
   return {
     ...actual,
+    commitPnpmAllowBuildsConfigIfChanged:
+      commitPnpmAllowBuildsConfigIfChangedMock,
     ensureSocketFirewallInstalled: ensureSocketFirewallInstalledMock,
     getPnpmMinimumReleaseAgeSupport: getPnpmMinimumReleaseAgeSupportMock,
     runCommand: runCommandMock,
@@ -65,6 +69,7 @@ describe("executeAddDependency", () => {
       supported: true,
       version: "10.16.0",
     });
+    commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue(undefined);
     readEffectiveSettingsMock.mockResolvedValue({
       blockUnsafeNpmPackages: true,
     });
@@ -97,6 +102,9 @@ describe("executeAddDependency", () => {
       warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
       message: "pnpm failed",
     });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
+      "/tmp/app",
+    );
   });
 
   it("uses the most relevant combined PTY output line as the display summary", async () => {
@@ -358,13 +366,14 @@ describe("executeAddDependency", () => {
 
     expect(runCommandMock).toHaveBeenCalledWith(
       "npm",
-      ["install", "--legacy-peer-deps", "--min-release-age=1", "react"],
+      ["install", "--legacy-peer-deps", "react"],
       {
         cwd: "/tmp/app",
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
       },
     );
     expect(runCommandMock).toHaveBeenCalledTimes(1);
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       installResults: "installed via npm",
       warningMessages: [

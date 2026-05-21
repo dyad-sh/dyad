@@ -137,7 +137,10 @@ export function useStreamChat({
       ) {
         showPnpmMinimumReleaseAgeWarning({
           message: warningMessage,
-          onInstallPnpm: () => {
+          onInstallPnpm: async () => {
+            await ipc.system.installPnpm();
+          },
+          onOpenDocs: () => {
             void ipc.system.openExternalUrl("https://pnpm.io/installation");
           },
           onNeverShowAgain: () => {

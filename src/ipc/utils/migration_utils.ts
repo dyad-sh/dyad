@@ -22,6 +22,7 @@ import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
   CommandExecutionError,
+  commitPnpmAllowBuildsConfigIfChanged,
   detectPreferredPackageManager,
   ensureSocketFirewallInstalled,
   runCommand,
@@ -122,6 +123,9 @@ export async function installMigrationDeps(appPath: string): Promise<void> {
   }
 
   const packageManager = await detectPreferredPackageManager();
+  if (packageManager === "pnpm") {
+    await commitPnpmAllowBuildsConfigIfChanged(appPath);
+  }
   const command = buildAddDependencyCommand(
     [...MIGRATION_DEPS],
     packageManager,

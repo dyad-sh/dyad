@@ -3,14 +3,26 @@ import {
   PtyCommandExecutionError,
   runPtyCommand,
 } from "@/ipc/utils/pty_command_runner";
+import fs from "node:fs/promises";
+import path from "node:path";
+import log from "electron-log";
+import defaultApproveBuildsText from "@/data/default-approve-builds.txt?raw";
+import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
 export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
-export const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
+export const PNPM_GLOBAL_INSTALL_PACKAGE = "pnpm@latest-11";
+const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
   MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
-export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `Install pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer. Dyad uses npm fallback with a 1-day package release age gate, but pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION}+ gives the best protection for app installs.`;
+export const PNPM_INSTALL_POLICY_ARGS = [
+  `--config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES}`,
+  "--config.minimumReleaseAgeStrict=true",
+  "--config.confirmModulesPurge=false",
+  "--config.strictDepBuilds=false",
+];
+export const PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE = `Install pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION} or newer. Dyad uses npm fallback when pnpm cannot enforce the 1-day package release age gate, but pnpm ${PNPM_MINIMUM_RELEASE_AGE_VERSION}+ gives the best protection for app installs.`;
 const SOCKET_FIREWALL_PACKAGE = "sfw@2.0.4";
 const SOCKET_FIREWALL_NPX_ARGS = [
   "--prefer-offline",
@@ -22,6 +34,11 @@ const WINDOWS_CMD_NEEDS_QUOTING_PATTERN = /[\s"&|<>^%!()]/u;
 export const SOCKET_FIREWALL_PROBE_TIMEOUT_MS = 30 * 1000;
 export const PACKAGE_MANAGER_PROBE_TIMEOUT_MS = 30 * 1000;
 export const ADD_DEPENDENCY_INSTALL_TIMEOUT_MS = DEFAULT_PTY_COMMAND_TIMEOUT_MS;
+const logger = log.scope("socket_firewall");
+const DYAD_ALLOW_BUILDS_SENTINEL = "# dyad-default-allow-builds=v1";
+const DYAD_ALLOW_BUILDS_BEGIN = `${DYAD_ALLOW_BUILDS_SENTINEL} begin`;
+const DYAD_ALLOW_BUILDS_END = `${DYAD_ALLOW_BUILDS_SENTINEL} end`;
+const DYAD_ALLOW_BUILDS_MARKER_PATTERN = /dyad-default-allow-builds=/;
 
 export interface CommandExecutionOptions {
   cwd?: string;
@@ -69,6 +86,220 @@ export type CommandRunner = (
 ) => Promise<CommandExecutionResult>;
 
 export type PackageManager = "pnpm" | "npm";
+
+function parseDefaultAllowBuilds(text = defaultApproveBuildsText): string[] {
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const sentinelLine = lines.find((line) => line.length > 0);
+  if (sentinelLine !== DYAD_ALLOW_BUILDS_SENTINEL) {
+    throw new Error(
+      `Invalid default pnpm allow-builds list. Expected first non-empty line to be "${DYAD_ALLOW_BUILDS_SENTINEL}".`,
+    );
+  }
+
+  return Array.from(
+    new Set(
+      lines
+        .slice(lines.indexOf(sentinelLine) + 1)
+        .filter((line) => line && !line.startsWith("#")),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function quoteYamlMapKey(key: string): string {
+  if (/^[A-Za-z0-9._/-]+$/.test(key)) {
+    return key;
+  }
+
+  return JSON.stringify(key);
+}
+
+function buildAllowBuildsManagedBlock(
+  packages: string[],
+  indent: string,
+): string[] {
+  return [
+    `${indent}${DYAD_ALLOW_BUILDS_BEGIN}`,
+    ...packages.map((pkg) => `${indent}${quoteYamlMapKey(pkg)}: true`),
+    `${indent}${DYAD_ALLOW_BUILDS_END}`,
+  ];
+}
+
+function getTopLevelAllowBuildsRange(lines: string[]): {
+  start: number;
+  end: number;
+} | null {
+  const start = lines.findIndex((line) =>
+    /^allowBuilds:\s*(?:#.*)?$/.test(line),
+  );
+  if (start === -1) {
+    return null;
+  }
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() && !/^\s/.test(line)) {
+      end = index;
+      break;
+    }
+  }
+
+  return { start, end };
+}
+
+function parseAllowBuildsExistingKeys(lines: string[]): Set<string> {
+  const keys = new Set<string>();
+  for (const line of lines) {
+    const match = line.match(
+      /^\s{2}((?:"(?:[^"\\]|\\.)+"|'[^']+'|[^:#]+)):\s*/,
+    );
+    if (!match) {
+      continue;
+    }
+
+    const rawKey = match[1].trim();
+    try {
+      keys.add(
+        rawKey.startsWith('"')
+          ? JSON.parse(rawKey)
+          : rawKey.replace(/^'|'$/g, ""),
+      );
+    } catch {
+      keys.add(rawKey);
+    }
+  }
+  return keys;
+}
+
+export function updatePnpmAllowBuildsConfigContent(
+  existingContent: string,
+  allowBuildsText = defaultApproveBuildsText,
+): string {
+  const packages = parseDefaultAllowBuilds(allowBuildsText);
+  const lines = existingContent ? existingContent.split(/\r?\n/) : [];
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+
+  const beginIndexes = lines
+    .map((line, index) =>
+      line.trim() === DYAD_ALLOW_BUILDS_BEGIN ? index : -1,
+    )
+    .filter((index) => index !== -1);
+  const endIndexes = lines
+    .map((line, index) => (line.trim() === DYAD_ALLOW_BUILDS_END ? index : -1))
+    .filter((index) => index !== -1);
+
+  if (beginIndexes.length === 1 && endIndexes.length === 1) {
+    const beginIndex = beginIndexes[0];
+    const endIndex = endIndexes[0];
+    if (beginIndex >= endIndex) {
+      throw new Error("Malformed Dyad pnpm allow-builds markers.");
+    }
+
+    const indent = lines[beginIndex].match(/^\s*/)?.[0] ?? "  ";
+    const range = getTopLevelAllowBuildsRange(lines);
+    const existingKeys = range
+      ? parseAllowBuildsExistingKeys([
+          ...lines.slice(range.start + 1, beginIndex),
+          ...lines.slice(endIndex + 1, range.end),
+        ])
+      : new Set<string>();
+    const filteredPackages = packages.filter((pkg) => !existingKeys.has(pkg));
+
+    lines.splice(
+      beginIndex,
+      endIndex - beginIndex + 1,
+      ...buildAllowBuildsManagedBlock(filteredPackages, indent),
+    );
+    return `${lines.join("\n")}\n`;
+  }
+
+  if (beginIndexes.length !== endIndexes.length || beginIndexes.length > 1) {
+    throw new Error("Malformed Dyad pnpm allow-builds markers.");
+  }
+
+  if (lines.some((line) => DYAD_ALLOW_BUILDS_MARKER_PATTERN.test(line))) {
+    throw new Error("Unsupported Dyad pnpm allow-builds marker version.");
+  }
+
+  const range = getTopLevelAllowBuildsRange(lines);
+  if (range) {
+    const existingKeys = parseAllowBuildsExistingKeys(
+      lines.slice(range.start + 1, range.end),
+    );
+    const filteredPackages = packages.filter((pkg) => !existingKeys.has(pkg));
+    lines.splice(
+      range.start + 1,
+      0,
+      ...buildAllowBuildsManagedBlock(filteredPackages, "  "),
+    );
+    return `${lines.join("\n")}\n`;
+  }
+
+  const prefix = lines.length > 0 ? [...lines, ""] : [];
+  return `${[
+    ...prefix,
+    "allowBuilds:",
+    ...buildAllowBuildsManagedBlock(packages, "  "),
+  ].join("\n")}\n`;
+}
+
+export async function ensurePnpmAllowBuildsConfigured({
+  appPath,
+  allowBuildsText = defaultApproveBuildsText,
+}: {
+  appPath: string;
+  allowBuildsText?: string;
+}): Promise<{ changed: boolean }> {
+  const configPath = path.join(appPath, "pnpm-workspace.yaml");
+  try {
+    let existingContent = "";
+    try {
+      existingContent = await fs.readFile(configPath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    const nextContent = updatePnpmAllowBuildsConfigContent(
+      existingContent,
+      allowBuildsText,
+    );
+    if (nextContent === existingContent) {
+      return { changed: false };
+    }
+
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    const tempPath = `${configPath}.tmp`;
+    await fs.writeFile(tempPath, nextContent);
+    await fs.rename(tempPath, configPath);
+    return { changed: true };
+  } catch (error) {
+    logger.warn("Failed to update pnpm allowBuilds config:", error);
+    return { changed: false };
+  }
+}
+
+export async function commitPnpmAllowBuildsConfigIfChanged(
+  appPath: string,
+): Promise<void> {
+  const result = await ensurePnpmAllowBuildsConfigured({ appPath });
+  if (!result.changed) {
+    return;
+  }
+
+  try {
+    await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
+    await gitCommit({
+      path: appPath,
+      message: "[dyad] approve pnpm dependency builds",
+    });
+  } catch (error) {
+    logger.warn("Failed to commit pnpm allowBuilds config:", error);
+  }
+}
 
 function parseVersionParts(version: string): [number, number, number] | null {
   const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -266,20 +497,17 @@ export function buildAddDependencyCommand(
   options: { dev?: boolean } = {},
 ): { command: string; args: string[] } {
   const { dev = false } = options;
-  const pnpmAgeGateArgs = [
-    `--config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES}`,
-    "--config.minimumReleaseAgeStrict=true",
-  ];
-  const npmAgeGateArgs = [
-    `--min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
-  ];
   const packageManagerArgs =
     packageManager === "pnpm"
-      ? [...pnpmAgeGateArgs, "add", ...(dev ? ["-D"] : []), ...packages]
+      ? [
+          ...PNPM_INSTALL_POLICY_ARGS,
+          "add",
+          ...(dev ? ["-D"] : []),
+          ...packages,
+        ]
       : [
           "install",
           "--legacy-peer-deps",
-          ...npmAgeGateArgs,
           ...(dev ? ["--save-dev"] : []),
           ...packages,
         ];

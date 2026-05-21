@@ -13,7 +13,11 @@ const {
   addLogMock,
   appOutputBatchListeners,
   appOutputListeners,
+  clearLogsMock,
+  installPnpmMock,
+  openExternalUrlMock,
   respondToAppInputMock,
+  restartAppMock,
   showErrorMock,
   showInputRequestMock,
   showPnpmMinimumReleaseAgeWarningMock,
@@ -22,7 +26,11 @@ const {
   addLogMock: vi.fn(),
   appOutputBatchListeners: new Set<(outputs: unknown[]) => void>(),
   appOutputListeners: new Set<(output: unknown) => void>(),
+  clearLogsMock: vi.fn(),
+  installPnpmMock: vi.fn(),
+  openExternalUrlMock: vi.fn(),
   respondToAppInputMock: vi.fn(),
+  restartAppMock: vi.fn(),
   showErrorMock: vi.fn(),
   showInputRequestMock: vi.fn(),
   showPnpmMinimumReleaseAgeWarningMock: vi.fn(),
@@ -33,9 +41,15 @@ vi.mock("@/ipc/types", () => ({
   ipc: {
     app: {
       respondToAppInput: respondToAppInputMock,
+      restartApp: restartAppMock,
     },
     misc: {
       addLog: addLogMock,
+      clearLogs: clearLogsMock,
+    },
+    system: {
+      installPnpm: installPnpmMock,
+      openExternalUrl: openExternalUrlMock,
     },
     events: {
       misc: {
@@ -83,7 +97,11 @@ describe("useAppOutputSubscription", () => {
     addLogMock.mockReset();
     appOutputListeners.clear();
     appOutputBatchListeners.clear();
+    clearLogsMock.mockReset();
+    installPnpmMock.mockReset();
+    openExternalUrlMock.mockReset();
     respondToAppInputMock.mockReset();
+    restartAppMock.mockReset();
     showErrorMock.mockReset();
     showInputRequestMock.mockReset();
     showPnpmMinimumReleaseAgeWarningMock.mockReset();
@@ -166,5 +184,44 @@ describe("useAppOutputSubscription", () => {
 
     expect(appOutputListeners.size).toBe(0);
     expect(appOutputBatchListeners.size).toBe(0);
+  });
+
+  it("shows pnpm warning toast with install and docs actions", async () => {
+    const { Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "package-manager-warning",
+          message: "Install pnpm 10.16.0 or newer.",
+          appId: 1,
+        });
+      }
+    });
+
+    expect(showPnpmMinimumReleaseAgeWarningMock).toHaveBeenCalledTimes(1);
+    const toastArgs = showPnpmMinimumReleaseAgeWarningMock.mock.calls[0][0];
+
+    await act(async () => {
+      await toastArgs.onInstallPnpm();
+      await Promise.resolve();
+    });
+    expect(installPnpmMock).toHaveBeenCalledTimes(1);
+    expect(clearLogsMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(restartAppMock).toHaveBeenCalledWith({
+      appId: 1,
+      removeNodeModules: true,
+      recreateSandbox: false,
+    });
+
+    toastArgs.onOpenDocs();
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://pnpm.io/installation",
+    );
+
+    unmount();
   });
 });

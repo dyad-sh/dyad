@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 
 const { runPtyCommandMock } = vi.hoisted(() => ({
   runPtyCommandMock: vi.fn(),
@@ -20,12 +23,14 @@ import {
   buildPtyInvocation,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
+  ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   resolveExecutableName,
   runCommand,
   SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
+  updatePnpmAllowBuildsConfigContent,
   type CommandRunner,
   type PackageManager,
 } from "./socket_firewall";
@@ -89,6 +94,106 @@ describe("detectPreferredPackageManager", () => {
   });
 });
 
+describe("updatePnpmAllowBuildsConfigContent", () => {
+  const allowBuildsText = [
+    "# dyad-default-allow-builds=v1",
+    "sharp",
+    "@swc/core",
+    "sharp",
+    "",
+  ].join("\n");
+
+  it("creates allowBuilds config when no config exists", () => {
+    expect(updatePnpmAllowBuildsConfigContent("", allowBuildsText)).toBe(
+      [
+        "allowBuilds:",
+        "  # dyad-default-allow-builds=v1 begin",
+        '  "@swc/core": true',
+        "  sharp: true",
+        "  # dyad-default-allow-builds=v1 end",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("inserts a managed block into existing allowBuilds without duplicating user entries", () => {
+    expect(
+      updatePnpmAllowBuildsConfigContent(
+        ["storeDir: /tmp/pnpm-store", "allowBuilds:", "  sharp: false"].join(
+          "\n",
+        ),
+        allowBuildsText,
+      ),
+    ).toBe(
+      [
+        "storeDir: /tmp/pnpm-store",
+        "allowBuilds:",
+        "  # dyad-default-allow-builds=v1 begin",
+        '  "@swc/core": true',
+        "  # dyad-default-allow-builds=v1 end",
+        "  sharp: false",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("replaces an existing managed block", () => {
+    expect(
+      updatePnpmAllowBuildsConfigContent(
+        [
+          "allowBuilds:",
+          "  # dyad-default-allow-builds=v1 begin",
+          "  old-package: true",
+          "  # dyad-default-allow-builds=v1 end",
+        ].join("\n"),
+        allowBuildsText,
+      ),
+    ).toBe(
+      [
+        "allowBuilds:",
+        "  # dyad-default-allow-builds=v1 begin",
+        '  "@swc/core": true',
+        "  sharp: true",
+        "  # dyad-default-allow-builds=v1 end",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("rejects a source list without the expected sentinel", () => {
+    expect(() =>
+      updatePnpmAllowBuildsConfigContent("", "sharp\n@swc/core\n"),
+    ).toThrow("Invalid default pnpm allow-builds list");
+  });
+
+  it("writes project pnpm-workspace.yaml atomically", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-config-"));
+    try {
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: tempDir,
+          allowBuildsText,
+        }),
+      ).resolves.toEqual({ changed: true });
+
+      await expect(
+        readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
+      ).resolves.toBe(
+        [
+          "allowBuilds:",
+          "  # dyad-default-allow-builds=v1 begin",
+          '  "@swc/core": true',
+          "  sharp: true",
+          "  # dyad-default-allow-builds=v1 end",
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("buildAddDependencyCommand", () => {
   it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
     [
@@ -103,6 +208,8 @@ describe("buildAddDependencyCommand", () => {
           "pnpm",
           "--config.minimumReleaseAge=1440",
           "--config.minimumReleaseAgeStrict=true",
+          "--config.confirmModulesPurge=false",
+          "--config.strictDepBuilds=false",
           "add",
           "react",
           "zod",
@@ -121,7 +228,6 @@ describe("buildAddDependencyCommand", () => {
           "npm",
           "install",
           "--legacy-peer-deps",
-          "--min-release-age=1",
           "react",
           "zod",
         ],
@@ -135,6 +241,8 @@ describe("buildAddDependencyCommand", () => {
         args: [
           "--config.minimumReleaseAge=1440",
           "--config.minimumReleaseAgeStrict=true",
+          "--config.confirmModulesPurge=false",
+          "--config.strictDepBuilds=false",
           "add",
           "react",
           "zod",
@@ -146,13 +254,7 @@ describe("buildAddDependencyCommand", () => {
       false,
       {
         command: "npm",
-        args: [
-          "install",
-          "--legacy-peer-deps",
-          "--min-release-age=1",
-          "react",
-          "zod",
-        ],
+        args: ["install", "--legacy-peer-deps", "react", "zod"],
       },
     ],
   ])(
@@ -173,6 +275,8 @@ describe("buildAddDependencyCommand", () => {
         args: [
           "--config.minimumReleaseAge=1440",
           "--config.minimumReleaseAgeStrict=true",
+          "--config.confirmModulesPurge=false",
+          "--config.strictDepBuilds=false",
           "add",
           "-D",
           "nitro",
@@ -184,13 +288,7 @@ describe("buildAddDependencyCommand", () => {
       false,
       {
         command: "npm",
-        args: [
-          "install",
-          "--legacy-peer-deps",
-          "--min-release-age=1",
-          "--save-dev",
-          "nitro",
-        ],
+        args: ["install", "--legacy-peer-deps", "--save-dev", "nitro"],
       },
     ],
     [
@@ -205,6 +303,8 @@ describe("buildAddDependencyCommand", () => {
           "pnpm",
           "--config.minimumReleaseAge=1440",
           "--config.minimumReleaseAgeStrict=true",
+          "--config.confirmModulesPurge=false",
+          "--config.strictDepBuilds=false",
           "add",
           "-D",
           "nitro",

@@ -30,9 +30,9 @@ import {
   runningApps,
 } from "@/ipc/utils/process_manager";
 import {
+  commitPnpmAllowBuildsConfigIfChanged,
   getPnpmMinimumReleaseAgeSupport,
-  MINIMUM_PACKAGE_RELEASE_AGE_DAYS,
-  MINIMUM_PACKAGE_RELEASE_AGE_MINUTES,
+  PNPM_INSTALL_POLICY_ARGS,
   PNPM_MINIMUM_RELEASE_AGE_VERSION,
 } from "@/ipc/utils/socket_firewall";
 
@@ -73,18 +73,20 @@ export function formatCloudSandboxError(error: unknown) {
 }
 
 function getPnpmInstallCommand(): string {
-  return `pnpm --config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES} --config.minimumReleaseAgeStrict=true install`;
+  return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
 }
 
 function getNpmInstallCommand(): string {
-  return `npm install --legacy-peer-deps --min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`;
+  return "npm install --legacy-peer-deps";
 }
 
 async function getDefaultCommand({
   appId,
+  appPath,
   onPnpmMinimumReleaseAgeWarning,
 }: {
   appId: number;
+  appPath: string;
   onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
 }): Promise<string> {
   const port = getAppPort(appId);
@@ -98,13 +100,16 @@ async function getDefaultCommand({
     return npmCommand;
   }
 
-  return `(${getPnpmInstallCommand()} && pnpm run dev --port ${port}) || ${npmCommand}`;
+  await commitPnpmAllowBuildsConfigIfChanged(appPath);
+  return `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`;
 }
 
 async function applyInstallPolicyToCustomCommand({
+  appPath,
   installCommand,
   onPnpmMinimumReleaseAgeWarning,
 }: {
+  appPath: string;
   installCommand: string;
   onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
 }): Promise<string> {
@@ -121,17 +126,15 @@ async function applyInstallPolicyToCustomCommand({
         DyadErrorKind.Precondition,
       );
     }
+    await commitPnpmAllowBuildsConfigIfChanged(appPath);
     return trimmedCommand.replace(
       /^pnpm\s+/,
-      `pnpm --config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES} --config.minimumReleaseAgeStrict=true `,
+      `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} `,
     );
   }
 
   if (/^npm\s+(?:install|i|ci)(?:\s|$)/.test(trimmedCommand)) {
-    return trimmedCommand.replace(
-      /^npm\s+(install|i|ci)/,
-      `npm $1 --min-release-age=${MINIMUM_PACKAGE_RELEASE_AGE_DAYS}`,
-    );
+    return trimmedCommand;
   }
 
   return trimmedCommand;
@@ -139,11 +142,13 @@ async function applyInstallPolicyToCustomCommand({
 
 async function getCommand({
   appId,
+  appPath,
   installCommand,
   startCommand,
   onPnpmMinimumReleaseAgeWarning,
 }: {
   appId: number;
+  appPath: string;
   installCommand?: string | null;
   startCommand?: string | null;
   onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
@@ -151,13 +156,14 @@ async function getCommand({
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   if (hasCustomCommands) {
     const policyInstallCommand = await applyInstallPolicyToCustomCommand({
+      appPath,
       installCommand: installCommand!,
       onPnpmMinimumReleaseAgeWarning,
     });
     return `${policyInstallCommand} && ${startCommand!.trim()}`;
   }
 
-  return getDefaultCommand({ appId, onPnpmMinimumReleaseAgeWarning });
+  return getDefaultCommand({ appId, appPath, onPnpmMinimumReleaseAgeWarning });
 }
 
 function emitPnpmMinimumReleaseAgeWarning({
@@ -339,6 +345,7 @@ async function executeAppLocalNode({
 }): Promise<void> {
   const command = await getCommand({
     appId,
+    appPath,
     installCommand,
     startCommand,
     onPnpmMinimumReleaseAgeWarning: (message) =>
@@ -731,6 +738,7 @@ RUN npm install -g pnpm
       "-c",
       await getCommand({
         appId,
+        appPath,
         installCommand,
         startCommand,
         onPnpmMinimumReleaseAgeWarning: (message) =>

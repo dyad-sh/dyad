@@ -15,6 +15,8 @@ const originalPath = process.env.PATH;
 const originalTestPnpmVersion = process.env.DYAD_TEST_PNPM_VERSION;
 const originalTestInstallPnpmVersion =
   process.env.DYAD_TEST_INSTALL_PNPM_VERSION;
+const originalDefaultApproveBuildsUrl =
+  process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL;
 const SOCKET_FIREWALL_VERDICT_TIMEOUT = process.env.CI
   ? 240_000
   : Timeout.EXTRA_LONG;
@@ -136,32 +138,42 @@ async function restorePackageManagerCache() {
   } else {
     process.env.DYAD_TEST_INSTALL_PNPM_VERSION = originalTestInstallPnpmVersion;
   }
+
+  if (originalDefaultApproveBuildsUrl === undefined) {
+    delete process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL;
+  } else {
+    process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL =
+      originalDefaultApproveBuildsUrl;
+  }
 }
 
 const testSkipIfWindows = testWithConfigSkipIfWindows({
-  preLaunchHook: async ({ userDataDir }) => {
+  preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
     await configurePackageManagerCache(userDataDir);
     await createSupportedPnpmShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
+    process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
   },
   postLaunchHook: restorePackageManagerCache,
 });
 
 const oldPnpmTestSkipIfWindows = testWithConfigSkipIfWindows({
-  preLaunchHook: async ({ userDataDir }) => {
+  preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
     await configurePackageManagerCache(userDataDir);
     await createOldPnpmShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "10.15.0";
+    process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
   },
   postLaunchHook: restorePackageManagerCache,
 });
 
 const upgradePnpmTestSkipIfWindows = testWithConfigSkipIfWindows({
-  preLaunchHook: async ({ userDataDir }) => {
+  preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
     await configurePackageManagerCache(userDataDir);
     await createUpgradeablePnpmShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "10.15.0";
     process.env.DYAD_TEST_INSTALL_PNPM_VERSION = "11.1.2";
+    process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
   },
   postLaunchHook: restorePackageManagerCache,
 });
@@ -240,10 +252,17 @@ testSkipIfWindows(
     });
     const pnpmWorkspaceConfig = await fs.readFile(pnpmWorkspacePath, "utf8");
     expect(pnpmWorkspaceConfig).toContain("minimumReleaseAge: 1440");
+    expect(pnpmWorkspaceConfig).toContain("# dyad-default-allow-builds begin");
     expect(pnpmWorkspaceConfig).toContain(
-      "# dyad-default-allow-builds=v1 begin",
+      "# dyad-default-allow-builds-schema=v1",
     );
-    expect(pnpmWorkspaceConfig).toContain("# dyad-default-allow-builds=v1 end");
+    expect(pnpmWorkspaceConfig).toContain(
+      "# dyad-default-allow-builds-data-version=2026-05-21.2",
+    );
+    expect(pnpmWorkspaceConfig).toContain(
+      "# dyad-default-allow-builds-channel=remote",
+    );
+    expect(pnpmWorkspaceConfig).toContain("# dyad-default-allow-builds end");
 
     await expect(
       po.page.getByText(/Failed to add dependencies:/),

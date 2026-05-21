@@ -38,10 +38,22 @@ export const SOCKET_FIREWALL_PROBE_TIMEOUT_MS = 30 * 1000;
 export const PACKAGE_MANAGER_PROBE_TIMEOUT_MS = 30 * 1000;
 export const ADD_DEPENDENCY_INSTALL_TIMEOUT_MS = DEFAULT_PTY_COMMAND_TIMEOUT_MS;
 const logger = log.scope("socket_firewall");
-const DYAD_ALLOW_BUILDS_SENTINEL = "# dyad-default-allow-builds=v1";
-const DYAD_ALLOW_BUILDS_BEGIN = `${DYAD_ALLOW_BUILDS_SENTINEL} begin`;
-const DYAD_ALLOW_BUILDS_END = `${DYAD_ALLOW_BUILDS_SENTINEL} end`;
-const DYAD_ALLOW_BUILDS_MARKER_PATTERN = /dyad-default-allow-builds=/;
+const DYAD_ALLOW_BUILDS_SCHEMA = "v1";
+const DYAD_ALLOW_BUILDS_SCHEMA_KEY = "dyad-default-allow-builds-schema";
+const DYAD_ALLOW_BUILDS_DATA_VERSION_KEY =
+  "dyad-default-allow-builds-data-version";
+const DYAD_ALLOW_BUILDS_CHANNEL_KEY = "dyad-default-allow-builds-channel";
+const DYAD_ALLOW_BUILDS_BEGIN = "# dyad-default-allow-builds begin";
+const DYAD_ALLOW_BUILDS_END = "# dyad-default-allow-builds end";
+const LEGACY_DYAD_ALLOW_BUILDS_BEGIN = "# dyad-default-allow-builds=v1 begin";
+const LEGACY_DYAD_ALLOW_BUILDS_END = "# dyad-default-allow-builds=v1 end";
+const DYAD_ALLOW_BUILDS_METADATA_PATTERN =
+  /^#\s*(dyad-default-allow-builds-(?:schema|data-version|channel))=(.+)$/;
+const DYAD_ALLOW_BUILDS_REMOTE_URL =
+  process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL ??
+  "https://api.dyad.sh/v1/default-approve-builds.txt";
+const DYAD_ALLOW_BUILDS_FETCH_TIMEOUT_MS = 2_000;
+const DYAD_ALLOW_BUILDS_MAX_BYTES = 256 * 1024;
 
 export interface CommandExecutionOptions {
   cwd?: string;
@@ -89,23 +101,72 @@ export type CommandRunner = (
 ) => Promise<CommandExecutionResult>;
 
 export type PackageManager = "pnpm" | "npm";
+type AllowBuildsChannel = "local" | "remote";
 
-function parseDefaultAllowBuilds(text = defaultApproveBuildsText): string[] {
+type AllowBuildsSource = {
+  schema: typeof DYAD_ALLOW_BUILDS_SCHEMA;
+  dataVersion: string;
+  channel: AllowBuildsChannel;
+  packages: string[];
+};
+type AllowBuildsMetadataKey =
+  | typeof DYAD_ALLOW_BUILDS_SCHEMA_KEY
+  | typeof DYAD_ALLOW_BUILDS_DATA_VERSION_KEY
+  | typeof DYAD_ALLOW_BUILDS_CHANNEL_KEY;
+
+type AllowBuildsTextFetcher = (
+  url: string,
+  init: { signal: AbortSignal },
+) => Promise<{
+  ok: boolean;
+  text: () => Promise<string>;
+}>;
+
+function parseAllowBuildsMetadata(
+  lines: string[],
+): Partial<Record<AllowBuildsMetadataKey, string>> {
+  const metadata: Partial<Record<AllowBuildsMetadataKey, string>> = {};
+  for (const line of lines) {
+    const match = line.trim().match(DYAD_ALLOW_BUILDS_METADATA_PATTERN);
+    if (!match) {
+      continue;
+    }
+    metadata[match[1] as AllowBuildsMetadataKey] = match[2].trim();
+  }
+  return metadata;
+}
+
+function parseDefaultAllowBuilds(
+  text = defaultApproveBuildsText,
+): AllowBuildsSource {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
-  const sentinelLine = lines.find((line) => line.length > 0);
-  if (sentinelLine !== DYAD_ALLOW_BUILDS_SENTINEL) {
+  const metadata = parseAllowBuildsMetadata(lines);
+  if (metadata[DYAD_ALLOW_BUILDS_SCHEMA_KEY] !== DYAD_ALLOW_BUILDS_SCHEMA) {
     throw new Error(
-      `Invalid default pnpm allow-builds list. Expected first non-empty line to be "${DYAD_ALLOW_BUILDS_SENTINEL}".`,
+      `Invalid default pnpm allow-builds list. Expected "${DYAD_ALLOW_BUILDS_SCHEMA_KEY}=${DYAD_ALLOW_BUILDS_SCHEMA}".`,
+    );
+  }
+  const dataVersion = metadata[DYAD_ALLOW_BUILDS_DATA_VERSION_KEY];
+  if (!dataVersion) {
+    throw new Error(
+      `Invalid default pnpm allow-builds list. Expected "${DYAD_ALLOW_BUILDS_DATA_VERSION_KEY}".`,
+    );
+  }
+  const channel = metadata[DYAD_ALLOW_BUILDS_CHANNEL_KEY];
+  if (channel !== "local" && channel !== "remote") {
+    throw new Error(
+      `Invalid default pnpm allow-builds list. Expected "${DYAD_ALLOW_BUILDS_CHANNEL_KEY}" to be local or remote.`,
     );
   }
 
-  return Array.from(
-    new Set(
-      lines
-        .slice(lines.indexOf(sentinelLine) + 1)
-        .filter((line) => line && !line.startsWith("#")),
-    ),
-  ).sort((a, b) => a.localeCompare(b));
+  return {
+    schema: DYAD_ALLOW_BUILDS_SCHEMA,
+    dataVersion,
+    channel,
+    packages: Array.from(
+      new Set(lines.filter((line) => line && !line.startsWith("#"))),
+    ).sort((a, b) => a.localeCompare(b)),
+  };
 }
 
 function quoteYamlMapKey(key: string): string {
@@ -117,14 +178,99 @@ function quoteYamlMapKey(key: string): string {
 }
 
 function buildAllowBuildsManagedBlock(
-  packages: string[],
+  source: AllowBuildsSource,
   indent: string,
 ): string[] {
   return [
     `${indent}${DYAD_ALLOW_BUILDS_BEGIN}`,
-    ...packages.map((pkg) => `${indent}${quoteYamlMapKey(pkg)}: true`),
+    `${indent}# ${DYAD_ALLOW_BUILDS_SCHEMA_KEY}=${source.schema}`,
+    `${indent}# ${DYAD_ALLOW_BUILDS_DATA_VERSION_KEY}=${source.dataVersion}`,
+    `${indent}# ${DYAD_ALLOW_BUILDS_CHANNEL_KEY}=${source.channel}`,
+    ...source.packages.map((pkg) => `${indent}${quoteYamlMapKey(pkg)}: true`),
     `${indent}${DYAD_ALLOW_BUILDS_END}`,
   ];
+}
+
+function findAllowBuildsManagedBlock(lines: string[]): {
+  beginIndex: number;
+  endIndex: number;
+} | null {
+  const beginIndexes = lines
+    .map((line, index) =>
+      line.trim() === DYAD_ALLOW_BUILDS_BEGIN ||
+      line.trim() === LEGACY_DYAD_ALLOW_BUILDS_BEGIN
+        ? index
+        : -1,
+    )
+    .filter((index) => index !== -1);
+  const endIndexes = lines
+    .map((line, index) =>
+      line.trim() === DYAD_ALLOW_BUILDS_END ||
+      line.trim() === LEGACY_DYAD_ALLOW_BUILDS_END
+        ? index
+        : -1,
+    )
+    .filter((index) => index !== -1);
+
+  if (beginIndexes.length === 1 && endIndexes.length === 1) {
+    const beginIndex = beginIndexes[0];
+    const endIndex = endIndexes[0];
+    if (beginIndex >= endIndex) {
+      throw new Error("Malformed Dyad pnpm allow-builds markers.");
+    }
+    return { beginIndex, endIndex };
+  }
+
+  if (beginIndexes.length !== endIndexes.length || beginIndexes.length > 1) {
+    throw new Error("Malformed Dyad pnpm allow-builds markers.");
+  }
+
+  if (
+    lines.some((line) => {
+      const trimmedLine = line.trim();
+      return (
+        trimmedLine.startsWith("# dyad-default-allow-builds=") &&
+        trimmedLine !== LEGACY_DYAD_ALLOW_BUILDS_BEGIN &&
+        trimmedLine !== LEGACY_DYAD_ALLOW_BUILDS_END
+      );
+    })
+  ) {
+    throw new Error("Unsupported Dyad pnpm allow-builds marker version.");
+  }
+
+  return null;
+}
+
+function getExistingManagedAllowBuildsMetadata(
+  existingContent: string,
+): Partial<
+  Pick<AllowBuildsSource, "schema" | "dataVersion" | "channel">
+> | null {
+  const lines = existingContent ? existingContent.split(/\r?\n/) : [];
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+
+  const range = findAllowBuildsManagedBlock(lines);
+  if (!range) {
+    return null;
+  }
+
+  const metadata = parseAllowBuildsMetadata(
+    lines.slice(range.beginIndex + 1, range.endIndex),
+  );
+  return {
+    schema:
+      metadata[DYAD_ALLOW_BUILDS_SCHEMA_KEY] === DYAD_ALLOW_BUILDS_SCHEMA
+        ? DYAD_ALLOW_BUILDS_SCHEMA
+        : undefined,
+    dataVersion: metadata[DYAD_ALLOW_BUILDS_DATA_VERSION_KEY],
+    channel:
+      metadata[DYAD_ALLOW_BUILDS_CHANNEL_KEY] === "local" ||
+      metadata[DYAD_ALLOW_BUILDS_CHANNEL_KEY] === "remote"
+        ? metadata[DYAD_ALLOW_BUILDS_CHANNEL_KEY]
+        : undefined,
+  };
 }
 
 function getTopLevelAllowBuildsRange(lines: string[]): {
@@ -192,28 +338,24 @@ export function updatePnpmAllowBuildsConfigContent(
   existingContent: string,
   allowBuildsText = defaultApproveBuildsText,
 ): string {
-  const packages = parseDefaultAllowBuilds(allowBuildsText);
+  return updatePnpmAllowBuildsConfigContentWithSource(
+    existingContent,
+    parseDefaultAllowBuilds(allowBuildsText),
+  );
+}
+
+function updatePnpmAllowBuildsConfigContentWithSource(
+  existingContent: string,
+  source: AllowBuildsSource,
+): string {
   const lines = existingContent ? existingContent.split(/\r?\n/) : [];
   if (lines.at(-1) === "") {
     lines.pop();
   }
 
-  const beginIndexes = lines
-    .map((line, index) =>
-      line.trim() === DYAD_ALLOW_BUILDS_BEGIN ? index : -1,
-    )
-    .filter((index) => index !== -1);
-  const endIndexes = lines
-    .map((line, index) => (line.trim() === DYAD_ALLOW_BUILDS_END ? index : -1))
-    .filter((index) => index !== -1);
-
-  if (beginIndexes.length === 1 && endIndexes.length === 1) {
-    const beginIndex = beginIndexes[0];
-    const endIndex = endIndexes[0];
-    if (beginIndex >= endIndex) {
-      throw new Error("Malformed Dyad pnpm allow-builds markers.");
-    }
-
+  const managedBlock = findAllowBuildsManagedBlock(lines);
+  if (managedBlock) {
+    const { beginIndex, endIndex } = managedBlock;
     const indent = lines[beginIndex].match(/^\s*/)?.[0] ?? "  ";
     const range = getTopLevelAllowBuildsRange(lines);
     const existingKeys = range
@@ -222,22 +364,17 @@ export function updatePnpmAllowBuildsConfigContent(
           ...lines.slice(endIndex + 1, range.end),
         ])
       : new Set<string>();
-    const filteredPackages = packages.filter((pkg) => !existingKeys.has(pkg));
+    const filteredSource = {
+      ...source,
+      packages: source.packages.filter((pkg) => !existingKeys.has(pkg)),
+    };
 
     lines.splice(
       beginIndex,
       endIndex - beginIndex + 1,
-      ...buildAllowBuildsManagedBlock(filteredPackages, indent),
+      ...buildAllowBuildsManagedBlock(filteredSource, indent),
     );
     return formatPnpmWorkspaceConfigContent(lines);
-  }
-
-  if (beginIndexes.length !== endIndexes.length || beginIndexes.length > 1) {
-    throw new Error("Malformed Dyad pnpm allow-builds markers.");
-  }
-
-  if (lines.some((line) => DYAD_ALLOW_BUILDS_MARKER_PATTERN.test(line))) {
-    throw new Error("Unsupported Dyad pnpm allow-builds marker version.");
   }
 
   const range = getTopLevelAllowBuildsRange(lines);
@@ -245,11 +382,14 @@ export function updatePnpmAllowBuildsConfigContent(
     const existingKeys = parseAllowBuildsExistingKeys(
       lines.slice(range.start + 1, range.end),
     );
-    const filteredPackages = packages.filter((pkg) => !existingKeys.has(pkg));
+    const filteredSource = {
+      ...source,
+      packages: source.packages.filter((pkg) => !existingKeys.has(pkg)),
+    };
     lines.splice(
       range.start + 1,
       0,
-      ...buildAllowBuildsManagedBlock(filteredPackages, "  "),
+      ...buildAllowBuildsManagedBlock(filteredSource, "  "),
     );
     return formatPnpmWorkspaceConfigContent(lines);
   }
@@ -258,16 +398,85 @@ export function updatePnpmAllowBuildsConfigContent(
   return formatPnpmWorkspaceConfigContent([
     ...prefix,
     "allowBuilds:",
-    ...buildAllowBuildsManagedBlock(packages, "  "),
+    ...buildAllowBuildsManagedBlock(source, "  "),
   ]);
+}
+
+async function fetchRemoteAllowBuildsSource(
+  fetcher: AllowBuildsTextFetcher = fetch,
+): Promise<AllowBuildsSource | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    DYAD_ALLOW_BUILDS_FETCH_TIMEOUT_MS,
+  );
+
+  try {
+    const response = await fetcher(DYAD_ALLOW_BUILDS_REMOTE_URL, {
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const text = await response.text();
+    if (text.length > DYAD_ALLOW_BUILDS_MAX_BYTES) {
+      return null;
+    }
+
+    const source = parseDefaultAllowBuilds(text);
+    if (source.channel !== "remote") {
+      return null;
+    }
+    return source;
+  } catch (error) {
+    logger.debug("Failed to fetch remote pnpm allowBuilds list:", error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveAllowBuildsSource({
+  existingContent,
+  allowBuildsText,
+  remoteAllowBuildsTextFetcher,
+}: {
+  existingContent: string;
+  allowBuildsText?: string;
+  remoteAllowBuildsTextFetcher?: AllowBuildsTextFetcher;
+}): Promise<AllowBuildsSource | null> {
+  if (allowBuildsText !== undefined) {
+    return parseDefaultAllowBuilds(allowBuildsText);
+  }
+
+  const remoteSource = await fetchRemoteAllowBuildsSource(
+    remoteAllowBuildsTextFetcher,
+  );
+  if (remoteSource) {
+    return remoteSource;
+  }
+
+  const existingMetadata =
+    getExistingManagedAllowBuildsMetadata(existingContent);
+  if (
+    existingMetadata?.schema === DYAD_ALLOW_BUILDS_SCHEMA &&
+    existingMetadata.channel === "remote"
+  ) {
+    return null;
+  }
+
+  return parseDefaultAllowBuilds(defaultApproveBuildsText);
 }
 
 export async function ensurePnpmAllowBuildsConfigured({
   appPath,
-  allowBuildsText = defaultApproveBuildsText,
+  allowBuildsText,
+  remoteAllowBuildsTextFetcher,
 }: {
   appPath: string;
   allowBuildsText?: string;
+  remoteAllowBuildsTextFetcher?: AllowBuildsTextFetcher;
 }): Promise<{ changed: boolean }> {
   const configPath = path.join(appPath, "pnpm-workspace.yaml");
   try {
@@ -280,10 +489,23 @@ export async function ensurePnpmAllowBuildsConfigured({
       }
     }
 
-    const nextContent = updatePnpmAllowBuildsConfigContent(
+    const allowBuildsSource = await resolveAllowBuildsSource({
       existingContent,
       allowBuildsText,
-    );
+      remoteAllowBuildsTextFetcher,
+    });
+    const nextContent = allowBuildsSource
+      ? updatePnpmAllowBuildsConfigContentWithSource(
+          existingContent,
+          allowBuildsSource,
+        )
+      : formatPnpmWorkspaceConfigContent(
+          existingContent
+            ? existingContent.split(/\r?\n/).filter((_, index, lines) => {
+                return index !== lines.length - 1 || lines[index] !== "";
+              })
+            : [],
+        );
     if (nextContent === existingContent) {
       return { changed: false };
     }

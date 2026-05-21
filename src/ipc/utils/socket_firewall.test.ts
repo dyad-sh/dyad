@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
@@ -96,7 +96,9 @@ describe("detectPreferredPackageManager", () => {
 
 describe("updatePnpmAllowBuildsConfigContent", () => {
   const allowBuildsText = [
-    "# dyad-default-allow-builds=v1",
+    "# dyad-default-allow-builds-schema=v1",
+    "# dyad-default-allow-builds-data-version=2026-05-21.1",
+    "# dyad-default-allow-builds-channel=local",
     "sharp",
     "@swc/core",
     "sharp",
@@ -107,10 +109,13 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
     expect(updatePnpmAllowBuildsConfigContent("", allowBuildsText)).toBe(
       [
         "allowBuilds:",
-        "  # dyad-default-allow-builds=v1 begin",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=local",
         '  "@swc/core": true',
         "  sharp: true",
-        "  # dyad-default-allow-builds=v1 end",
+        "  # dyad-default-allow-builds end",
         "minimumReleaseAge: 1440",
         "",
       ].join("\n"),
@@ -129,9 +134,12 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       [
         "storeDir: /tmp/pnpm-store",
         "allowBuilds:",
-        "  # dyad-default-allow-builds=v1 begin",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=local",
         '  "@swc/core": true',
-        "  # dyad-default-allow-builds=v1 end",
+        "  # dyad-default-allow-builds end",
         "  sharp: false",
         "minimumReleaseAge: 1440",
         "",
@@ -149,9 +157,12 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       [
         "minimumReleaseAge: 60",
         "allowBuilds:",
-        "  # dyad-default-allow-builds=v1 begin",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=local",
         '  "@swc/core": true',
-        "  # dyad-default-allow-builds=v1 end",
+        "  # dyad-default-allow-builds end",
         "  sharp: false",
         "",
       ].join("\n"),
@@ -159,6 +170,36 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
   });
 
   it("replaces an existing managed block", () => {
+    expect(
+      updatePnpmAllowBuildsConfigContent(
+        [
+          "allowBuilds:",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-20.1",
+          "  # dyad-default-allow-builds-channel=local",
+          "  old-package: true",
+          "  # dyad-default-allow-builds end",
+        ].join("\n"),
+        allowBuildsText,
+      ),
+    ).toBe(
+      [
+        "allowBuilds:",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=local",
+        '  "@swc/core": true',
+        "  sharp: true",
+        "  # dyad-default-allow-builds end",
+        "minimumReleaseAge: 1440",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("migrates an existing legacy managed block", () => {
     expect(
       updatePnpmAllowBuildsConfigContent(
         [
@@ -172,10 +213,13 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
     ).toBe(
       [
         "allowBuilds:",
-        "  # dyad-default-allow-builds=v1 begin",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=local",
         '  "@swc/core": true',
         "  sharp: true",
-        "  # dyad-default-allow-builds=v1 end",
+        "  # dyad-default-allow-builds end",
         "minimumReleaseAge: 1440",
         "",
       ].join("\n"),
@@ -203,14 +247,102 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       ).resolves.toBe(
         [
           "allowBuilds:",
-          "  # dyad-default-allow-builds=v1 begin",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+          "  # dyad-default-allow-builds-channel=local",
           '  "@swc/core": true',
           "  sharp: true",
-          "  # dyad-default-allow-builds=v1 end",
+          "  # dyad-default-allow-builds end",
           "minimumReleaseAge: 1440",
           "",
         ].join("\n"),
       );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a valid fetched remote list", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-remote-"));
+    const remoteAllowBuildsText = [
+      "# dyad-default-allow-builds-schema=v1",
+      "# dyad-default-allow-builds-data-version=2026-05-21.2",
+      "# dyad-default-allow-builds-channel=remote",
+      "esbuild",
+      "@swc/core",
+      "",
+    ].join("\n");
+    try {
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: tempDir,
+          remoteAllowBuildsTextFetcher: vi.fn().mockResolvedValue({
+            ok: true,
+            text: () => Promise.resolve(remoteAllowBuildsText),
+          }),
+        }),
+      ).resolves.toEqual({ changed: true });
+
+      await expect(
+        readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
+      ).resolves.toContain("  # dyad-default-allow-builds-channel=remote");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an existing remote block when the remote list is unavailable", async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-existing-remote-"),
+    );
+    const configPath = path.join(tempDir, "pnpm-workspace.yaml");
+    const existingConfig = [
+      "allowBuilds:",
+      "  # dyad-default-allow-builds begin",
+      "  # dyad-default-allow-builds-schema=v1",
+      "  # dyad-default-allow-builds-data-version=2026-05-21.2",
+      "  # dyad-default-allow-builds-channel=remote",
+      "  esbuild: true",
+      "  # dyad-default-allow-builds end",
+      "minimumReleaseAge: 1440",
+      "",
+    ].join("\n");
+    try {
+      await writeFile(configPath, existingConfig);
+
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: tempDir,
+          remoteAllowBuildsTextFetcher: vi.fn().mockResolvedValue({
+            ok: false,
+            text: () => Promise.resolve(""),
+          }),
+        }),
+      ).resolves.toEqual({ changed: false });
+
+      await expect(readFile(configPath, "utf8")).resolves.toBe(existingConfig);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the bundled local list when no remote block exists", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-local-"));
+    try {
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: tempDir,
+          remoteAllowBuildsTextFetcher: vi.fn().mockResolvedValue({
+            ok: false,
+            text: () => Promise.resolve(""),
+          }),
+        }),
+      ).resolves.toEqual({ changed: true });
+
+      await expect(
+        readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
+      ).resolves.toContain("  # dyad-default-allow-builds-channel=local");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

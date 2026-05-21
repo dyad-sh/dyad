@@ -1,4 +1,6 @@
-# dyad-default-allow-builds=v1
+# dyad-default-allow-builds-schema=v1
+# dyad-default-allow-builds-data-version=2026-05-21.1
+# dyad-default-allow-builds-channel=local
 @airbnb/node-memwatch
 @anthropic-ai/claude-code
 @apollo/protobufjs

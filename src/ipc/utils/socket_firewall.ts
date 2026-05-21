@@ -50,7 +50,8 @@ const DYAD_ALLOW_BUILDS_METADATA_PATTERN =
 const DYAD_ALLOW_BUILDS_REMOTE_URL =
   process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL ??
   "https://api.dyad.sh/v1/default-approve-builds.txt";
-const DYAD_ALLOW_BUILDS_FETCH_TIMEOUT_MS = 2_000;
+const DYAD_ALLOW_BUILDS_FETCH_TIMEOUT_MS = 5_000;
+export const DYAD_ALLOW_BUILDS_CACHE_TTL_MS = 60 * 60 * 1000;
 const DYAD_ALLOW_BUILDS_MAX_BYTES = 256 * 1024;
 
 export interface CommandExecutionOptions {
@@ -119,6 +120,19 @@ type AllowBuildsTextFetcher = (
   ok: boolean;
   text: () => Promise<string>;
 }>;
+type RemoteAllowBuildsCacheEntry = {
+  source: AllowBuildsSource;
+  expiresAtMs: number;
+};
+
+const remoteAllowBuildsCache = new WeakMap<
+  AllowBuildsTextFetcher,
+  RemoteAllowBuildsCacheEntry
+>();
+const pendingRemoteAllowBuildsFetches = new WeakMap<
+  AllowBuildsTextFetcher,
+  Promise<AllowBuildsSource | null>
+>();
 
 function parseAllowBuildsMetadata(
   lines: string[],
@@ -403,6 +417,28 @@ function updatePnpmAllowBuildsConfigContentWithSource(
 async function fetchRemoteAllowBuildsSource(
   fetcher: AllowBuildsTextFetcher = fetch,
 ): Promise<AllowBuildsSource | null> {
+  const cachedSource = remoteAllowBuildsCache.get(fetcher);
+  if (cachedSource && cachedSource.expiresAtMs > Date.now()) {
+    return cachedSource.source;
+  }
+
+  const pendingFetch = pendingRemoteAllowBuildsFetches.get(fetcher);
+  if (pendingFetch) {
+    return pendingFetch;
+  }
+
+  const fetchPromise = fetchRemoteAllowBuildsSourceFromNetwork(fetcher).finally(
+    () => {
+      pendingRemoteAllowBuildsFetches.delete(fetcher);
+    },
+  );
+  pendingRemoteAllowBuildsFetches.set(fetcher, fetchPromise);
+  return fetchPromise;
+}
+
+async function fetchRemoteAllowBuildsSourceFromNetwork(
+  fetcher: AllowBuildsTextFetcher,
+): Promise<AllowBuildsSource | null> {
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -426,6 +462,10 @@ async function fetchRemoteAllowBuildsSource(
     if (source.channel !== "remote") {
       return null;
     }
+    remoteAllowBuildsCache.set(fetcher, {
+      source,
+      expiresAtMs: Date.now() + DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
+    });
     return source;
   } catch (error) {
     logger.debug("Failed to fetch remote pnpm allowBuilds list:", error);

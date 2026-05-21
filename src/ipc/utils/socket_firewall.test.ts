@@ -23,6 +23,7 @@ import {
   buildPtyInvocation,
   buildAddDependencyCommand,
   detectPreferredPackageManager,
+  DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
@@ -289,6 +290,113 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       ).resolves.toContain("  # dyad-default-allow-builds-channel=remote");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses a fetched remote list for one hour", async () => {
+    const firstTempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-remote-cache-"),
+    );
+    const secondTempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-remote-cache-"),
+    );
+    const remoteAllowBuildsText = [
+      "# dyad-default-allow-builds-schema=v1",
+      "# dyad-default-allow-builds-data-version=2026-05-21.2",
+      "# dyad-default-allow-builds-channel=remote",
+      "esbuild",
+      "",
+    ].join("\n");
+    const remoteAllowBuildsTextFetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(remoteAllowBuildsText),
+    });
+
+    try {
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: firstTempDir,
+          remoteAllowBuildsTextFetcher,
+        }),
+      ).resolves.toEqual({ changed: true });
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: secondTempDir,
+          remoteAllowBuildsTextFetcher,
+        }),
+      ).resolves.toEqual({ changed: true });
+
+      expect(remoteAllowBuildsTextFetcher).toHaveBeenCalledTimes(1);
+      await expect(
+        readFile(path.join(secondTempDir, "pnpm-workspace.yaml"), "utf8"),
+      ).resolves.toContain("  esbuild: true");
+    } finally {
+      await rm(firstTempDir, { recursive: true, force: true });
+      await rm(secondTempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refetches the remote list after the one-hour cache TTL", async () => {
+    const firstTempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-remote-cache-expiry-"),
+    );
+    const secondTempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-remote-cache-expiry-"),
+    );
+    const firstRemoteAllowBuildsText = [
+      "# dyad-default-allow-builds-schema=v1",
+      "# dyad-default-allow-builds-data-version=2026-05-21.2",
+      "# dyad-default-allow-builds-channel=remote",
+      "esbuild",
+      "",
+    ].join("\n");
+    const secondRemoteAllowBuildsText = [
+      "# dyad-default-allow-builds-schema=v1",
+      "# dyad-default-allow-builds-data-version=2026-05-21.3",
+      "# dyad-default-allow-builds-channel=remote",
+      "sharp",
+      "",
+    ].join("\n");
+    const remoteAllowBuildsTextFetcher = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(firstRemoteAllowBuildsText),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(secondRemoteAllowBuildsText),
+      });
+    const startMs = 1_000;
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(startMs);
+
+    try {
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: firstTempDir,
+          remoteAllowBuildsTextFetcher,
+        }),
+      ).resolves.toEqual({ changed: true });
+
+      dateNowSpy.mockReturnValue(startMs + DYAD_ALLOW_BUILDS_CACHE_TTL_MS + 1);
+
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: secondTempDir,
+          remoteAllowBuildsTextFetcher,
+        }),
+      ).resolves.toEqual({ changed: true });
+
+      expect(remoteAllowBuildsTextFetcher).toHaveBeenCalledTimes(2);
+      await expect(
+        readFile(path.join(secondTempDir, "pnpm-workspace.yaml"), "utf8"),
+      ).resolves.toContain(
+        "  # dyad-default-allow-builds-data-version=2026-05-21.3",
+      );
+    } finally {
+      dateNowSpy.mockRestore();
+      await rm(firstTempDir, { recursive: true, force: true });
+      await rm(secondTempDir, { recursive: true, force: true });
     }
   });
 

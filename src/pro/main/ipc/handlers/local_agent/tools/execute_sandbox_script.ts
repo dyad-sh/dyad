@@ -168,11 +168,6 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
       args.description?.trim() || "Run a read-only script",
 
     execute: async (args: ExecuteSandboxScriptArgs, ctx: AgentContext) => {
-      sendTelemetryEvent("sandbox.script.run", {
-        chatId: ctx.chatId,
-        appId: ctx.appId,
-      });
-
       try {
         const result = await runSandboxScript({
           appPath: ctx.appPath,

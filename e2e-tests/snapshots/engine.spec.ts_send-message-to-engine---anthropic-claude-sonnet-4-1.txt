@@ -14,6 +14,11 @@
       }
     ],
     "stream": true,
+    "thinking": {
+      "type": "adaptive",
+      "display": "summarized"
+    },
+    "reasoning_effort": "medium",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

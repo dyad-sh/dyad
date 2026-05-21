@@ -3,7 +3,10 @@ import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
-import { getExtraProviderOptions } from "./thinking_utils";
+import {
+  getAnthropicProviderOptions,
+  getThinkingBudgetEffort,
+} from "./thinking_utils";
 
 export interface MentionedAppCodebase {
   appName: string;
@@ -24,7 +27,7 @@ export interface GetProviderOptionsParams {
 
 /**
  * Builds provider options for the AI SDK streamText call.
- * Handles provider-specific configuration including thinking configs for Google/Vertex.
+ * Handles provider-specific configuration including thinking configs for Google/Vertex/Anthropic.
  */
 export function getProviderOptions({
   dyadAppId,
@@ -50,9 +53,9 @@ export function getProviderOptions({
         files,
       })),
     },
-    "dyad-gateway": getExtraProviderOptions(builtinProviderId, settings),
     openai: {
       reasoningSummary: "auto",
+      reasoningEffort: getThinkingBudgetEffort(settings.thinkingBudget),
     } satisfies OpenAIResponsesProviderOptions,
   };
 
@@ -81,6 +84,10 @@ export function getProviderOptions({
         includeThoughts: true,
       },
     } satisfies GoogleGenerativeAIProviderOptions;
+  }
+
+  if (providerId === "anthropic") {
+    providerOptions.anthropic = getAnthropicProviderOptions(settings);
   }
 
   return providerOptions;

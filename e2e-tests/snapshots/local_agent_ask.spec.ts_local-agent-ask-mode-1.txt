@@ -388,7 +388,12 @@
       }
     ],
     "tool_choice": "auto",
-    "stream": true
+    "stream": true,
+    "thinking": {
+      "type": "adaptive",
+      "display": "summarized"
+    },
+    "reasoning_effort": "medium"
   },
   "headers": {
     "authorization": "Bearer testdyadkey"

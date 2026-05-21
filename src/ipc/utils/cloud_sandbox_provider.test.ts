@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const { gitIsIgnoredIsoMock } = vi.hoisted(() => ({
-  gitIsIgnoredIsoMock: vi.fn(),
-}));
+const { commitPnpmAllowBuildsConfigIfChangedMock, gitIsIgnoredIsoMock } =
+  vi.hoisted(() => ({
+    commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
+    gitIsIgnoredIsoMock: vi.fn(),
+  }));
 
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
@@ -26,6 +28,18 @@ vi.mock("./test_utils", () => ({
 vi.mock("./git_utils", () => ({
   gitIsIgnoredIso: gitIsIgnoredIsoMock,
 }));
+
+vi.mock("@/ipc/utils/socket_firewall", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/socket_firewall")
+  >("@/ipc/utils/socket_firewall");
+
+  return {
+    ...actual,
+    commitPnpmAllowBuildsConfigIfChanged:
+      commitPnpmAllowBuildsConfigIfChangedMock,
+  };
+});
 
 import {
   CloudSandboxApiError,
@@ -520,7 +534,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
       appId: 42,
       appPath: "/tmp/app",
       installCommand:
-        "pnpm --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+        "pnpm --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
       startCommand: "pnpm run dev",
     });
   });
@@ -557,7 +571,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
       appId: 42,
       appPath: "/tmp/app",
       installCommand:
-        "pnpm -C apps/web --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+        "pnpm -C apps/web --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
       startCommand: "pnpm -C apps/web dev",
     });
   });

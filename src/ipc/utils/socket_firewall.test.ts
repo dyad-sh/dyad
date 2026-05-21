@@ -112,12 +112,13 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
         '  "@swc/core": true',
         "  sharp: true",
         "  # dyad-default-allow-builds=v1 end",
+        "minimumReleaseAge: 1440",
         "",
       ].join("\n"),
     );
   });
 
-  it("inserts a managed block into existing allowBuilds without duplicating user entries", () => {
+  it("inserts a managed block and minimumReleaseAge into existing config", () => {
     expect(
       updatePnpmAllowBuildsConfigContent(
         ["storeDir: /tmp/pnpm-store", "allowBuilds:", "  sharp: false"].join(
@@ -128,6 +129,26 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
     ).toBe(
       [
         "storeDir: /tmp/pnpm-store",
+        "allowBuilds:",
+        "  # dyad-default-allow-builds=v1 begin",
+        '  "@swc/core": true',
+        "  # dyad-default-allow-builds=v1 end",
+        "  sharp: false",
+        "minimumReleaseAge: 1440",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("preserves an existing minimumReleaseAge value", () => {
+    expect(
+      updatePnpmAllowBuildsConfigContent(
+        ["minimumReleaseAge: 60", "allowBuilds:", "  sharp: false"].join("\n"),
+        allowBuildsText,
+      ),
+    ).toBe(
+      [
+        "minimumReleaseAge: 60",
         "allowBuilds:",
         "  # dyad-default-allow-builds=v1 begin",
         '  "@swc/core": true',
@@ -156,6 +177,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
         '  "@swc/core": true',
         "  sharp: true",
         "  # dyad-default-allow-builds=v1 end",
+        "minimumReleaseAge: 1440",
         "",
       ].join("\n"),
     );
@@ -186,6 +208,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
           '  "@swc/core": true',
           "  sharp: true",
           "  # dyad-default-allow-builds=v1 end",
+          "minimumReleaseAge: 1440",
           "",
         ].join("\n"),
       );
@@ -207,8 +230,6 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
-          "--config.minimumReleaseAge=1440",
-          "--config.minimumReleaseAgeStrict=true",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -241,8 +262,6 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
-          "--config.minimumReleaseAge=1440",
-          "--config.minimumReleaseAgeStrict=true",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -281,8 +300,6 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
-          "--config.minimumReleaseAge=1440",
-          "--config.minimumReleaseAgeStrict=true",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -315,8 +332,6 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
-          "--config.minimumReleaseAge=1440",
-          "--config.minimumReleaseAgeStrict=true",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -339,17 +354,17 @@ describe("applyMinimumReleaseAgeInstallPolicy", () => {
   it.each([
     [
       "pnpm --filter web install",
-      "pnpm --filter web --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+      "pnpm --filter web --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
     ],
     [
       "pnpm -C apps/foo i --frozen-lockfile",
-      "pnpm -C apps/foo --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false i --frozen-lockfile",
+      "pnpm -C apps/foo --config.confirmModulesPurge=false --config.strictDepBuilds=false i --frozen-lockfile",
     ],
     ["npm --silent install", "npm --silent --min-release-age=1 install"],
     ["npm --silent ci", "npm --silent ci"],
     [
       "pnpm --config.minimumReleaseAge=1440 install",
-      "pnpm --config.minimumReleaseAge=1440 --config.minimumReleaseAgeStrict=true --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+      "pnpm --config.minimumReleaseAge=1440 --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
     ],
   ])("applies release-age policy to %s", (command, expected) => {
     expect(applyMinimumReleaseAgeInstallPolicy(command)).toBe(expected);

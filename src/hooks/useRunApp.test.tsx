@@ -224,4 +224,48 @@ describe("useAppOutputSubscription", () => {
 
     unmount();
   });
+
+  it("does not clear visible app logs when a stale pnpm toast rebuilds another app", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "package-manager-warning",
+          message: "Install pnpm 10.16.0 or newer.",
+          appId: 1,
+        });
+      }
+      store.set(selectedAppIdAtom, 2);
+      store.set(appConsoleEntriesAtom, [
+        {
+          level: "info",
+          type: "server",
+          message: "Current app log",
+          appId: 2,
+          timestamp: Date.now(),
+        },
+      ]);
+    });
+
+    const toastArgs = showPnpmMinimumReleaseAgeWarningMock.mock.calls[0][0];
+    await act(async () => {
+      await toastArgs.onInstallPnpm();
+    });
+
+    expect(clearLogsMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(restartAppMock).toHaveBeenCalledWith({
+      appId: 1,
+      removeNodeModules: true,
+      recreateSandbox: false,
+    });
+    expect(
+      store.get(appConsoleEntriesAtom).map((entry) => entry.message),
+    ).toEqual(["Current app log"]);
+
+    unmount();
+  });
 });

@@ -18,8 +18,6 @@ const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
   MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
 export const PNPM_INSTALL_POLICY_ARGS = [
-  `--config.minimumReleaseAge=${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES}`,
-  "--config.minimumReleaseAgeStrict=true",
   "--config.confirmModulesPurge=false",
   "--config.strictDepBuilds=false",
 ];
@@ -182,6 +180,20 @@ function parseAllowBuildsExistingKeys(lines: string[]): Set<string> {
   return keys;
 }
 
+function hasTopLevelConfigKey(lines: string[], key: string): boolean {
+  return lines.some((line) =>
+    new RegExp(`^${key}:\\s*(?:#.*)?$|^${key}:\\s+`).test(line),
+  );
+}
+
+function formatPnpmWorkspaceConfigContent(lines: string[]): string {
+  if (!hasTopLevelConfigKey(lines, "minimumReleaseAge")) {
+    lines.push(`minimumReleaseAge: ${MINIMUM_PACKAGE_RELEASE_AGE_MINUTES}`);
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 export function updatePnpmAllowBuildsConfigContent(
   existingContent: string,
   allowBuildsText = defaultApproveBuildsText,
@@ -223,7 +235,7 @@ export function updatePnpmAllowBuildsConfigContent(
       endIndex - beginIndex + 1,
       ...buildAllowBuildsManagedBlock(filteredPackages, indent),
     );
-    return `${lines.join("\n")}\n`;
+    return formatPnpmWorkspaceConfigContent(lines);
   }
 
   if (beginIndexes.length !== endIndexes.length || beginIndexes.length > 1) {
@@ -245,15 +257,15 @@ export function updatePnpmAllowBuildsConfigContent(
       0,
       ...buildAllowBuildsManagedBlock(filteredPackages, "  "),
     );
-    return `${lines.join("\n")}\n`;
+    return formatPnpmWorkspaceConfigContent(lines);
   }
 
   const prefix = lines.length > 0 ? [...lines, ""] : [];
-  return `${[
+  return formatPnpmWorkspaceConfigContent([
     ...prefix,
     "allowBuilds:",
     ...buildAllowBuildsManagedBlock(packages, "  "),
-  ].join("\n")}\n`;
+  ]);
 }
 
 export async function ensurePnpmAllowBuildsConfigured({

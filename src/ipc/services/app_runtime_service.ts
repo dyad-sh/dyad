@@ -130,6 +130,7 @@ async function applyInstallPolicyToCustomCommand({
 
   if (parsedCommand?.packageManager === "pnpm") {
     if (runtimeMode === "docker") {
+      await commitPnpmAllowBuildsConfigIfChanged(appPath);
       return applyMinimumReleaseAgeInstallPolicy(trimmedCommand);
     }
 

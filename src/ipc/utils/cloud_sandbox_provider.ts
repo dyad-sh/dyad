@@ -5,6 +5,8 @@ import path from "node:path";
 import log from "electron-log";
 import {
   applyMinimumReleaseAgeInstallPolicy,
+  commitPnpmAllowBuildsConfigIfChanged,
+  getPackageInstallCommandPolicy,
   PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
@@ -174,6 +176,19 @@ function resolveCloudSandboxCommands(input: {
 
 function applyMinimumReleaseAgeToCloudInstallCommand(command: string): string {
   return applyMinimumReleaseAgeInstallPolicy(command);
+}
+
+function shouldConfigurePnpmWorkspaceForCloudSandbox(
+  installCommand?: string | null,
+): boolean {
+  const trimmedCommand = installCommand?.trim();
+  if (!trimmedCommand) {
+    return true;
+  }
+
+  return (
+    getPackageInstallCommandPolicy(trimmedCommand)?.packageManager === "pnpm"
+  );
 }
 
 export interface CloudSandboxProvider {
@@ -708,6 +723,10 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     installCommand?: string | null;
     startCommand?: string | null;
   }) {
+    if (shouldConfigurePnpmWorkspaceForCloudSandbox(input.installCommand)) {
+      await commitPnpmAllowBuildsConfigIfChanged(input.appPath);
+    }
+
     const { installCommand, startCommand } = resolveCloudSandboxCommands(input);
     const response = await cloudSandboxFetch("/sandboxes", {
       method: "POST",

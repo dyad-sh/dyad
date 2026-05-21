@@ -328,6 +328,7 @@ export function useRunApp() {
         const app = await ipc.app.getApp(appId);
         setApp(app);
         await ipc.app.restartApp({ appId, removeNodeModules, recreateSandbox });
+        setPreviewErrorMessage(undefined);
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(

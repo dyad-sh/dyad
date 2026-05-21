@@ -92,11 +92,16 @@ interface PreviewLoadingScreenProps {
   // logs and any errors that surface after spawn but before the server
   // is ready (e.g. a malformed package.json that fails npm).
   isAppUrlReady: boolean;
+  // True when the preview failed before startup logs could explain the issue.
+  // In that case the regular preview error banner is more actionable than a
+  // persistent "waiting for logs" loading state.
+  hasStartupError: boolean;
 }
 
 export function PreviewLoadingScreen({
   loading,
   isAppUrlReady,
+  hasStartupError,
 }: PreviewLoadingScreenProps) {
   const { t } = useTranslation("home");
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
@@ -105,7 +110,7 @@ export function PreviewLoadingScreen({
   const { streamMessage, isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();
 
-  const isVisible = loading || !isAppUrlReady;
+  const isVisible = loading || (!isAppUrlReady && !hasStartupError);
 
   const [shouldRender, setShouldRender] = useState(isVisible);
   const [isExiting, setIsExiting] = useState(false);

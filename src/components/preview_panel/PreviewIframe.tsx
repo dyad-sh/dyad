@@ -1881,7 +1881,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             }}
           />
         )}
-        <PreviewLoadingScreen loading={loading} isAppUrlReady={!!appUrl} />
+        <PreviewLoadingScreen
+          loading={loading}
+          isAppUrlReady={!!appUrl}
+          hasStartupError={!loading && errorMessage?.source === "dyad-app"}
+        />
         {!loading && appUrl && (
           <div
             className={cn(

@@ -98,16 +98,21 @@ export class PreviewPanel {
     // `security` move into an overflow dropdown. Open the dropdown first if
     // the direct button isn't visible.
     const directButton = this.page.getByTestId(`${mode}-mode-button`);
-    const isInOverflow =
-      (mode === "security" || mode === "problems" || mode === "configure") &&
-      (await directButton
-        .first()
-        .isVisible()
-        .catch(() => false)) === false;
-    if (isInOverflow) {
-      await this.page.getByTestId("preview-mode-overflow-button").click();
-    }
-    await directButton.click();
+    await expect(async () => {
+      const isInOverflow =
+        (mode === "security" || mode === "problems" || mode === "configure") &&
+        (await directButton
+          .first()
+          .isVisible()
+          .catch(() => false)) === false;
+      if (isInOverflow) {
+        await this.page
+          .getByTestId("preview-mode-overflow-button")
+          .click({ timeout: 1_000 });
+      }
+      await expect(directButton.first()).toBeVisible({ timeout: 1_000 });
+      await directButton.first().click({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async clickRecheckProblems() {
@@ -198,11 +203,35 @@ export class PreviewPanel {
   }
 
   locateLoadingAppPreview() {
-    return this.page.getByText("Preparing app preview...");
+    return this.locatePreviewLoadingScreen();
   }
 
-  locateStartingAppPreview() {
-    return this.page.getByText("Starting your app server...");
+  locatePreviewLoadingScreen() {
+    return this.page.getByTestId("preview-loading-screen");
+  }
+
+  locatePreviewLoadingLogList() {
+    return this.page.getByTestId("preview-loading-log-list");
+  }
+
+  locatePreviewLoadingErrorBanner() {
+    return this.page.getByTestId("preview-loading-error-banner");
+  }
+
+  async clickPreviewLoadingErrorToggle() {
+    await this.page.getByTestId("preview-loading-error-toggle").click();
+  }
+
+  async clickPreviewLoadingFixErrors() {
+    await this.page.getByTestId("preview-loading-fix-errors-button").click();
+  }
+
+  locatePreviewLoadingRebuildButton() {
+    return this.page.getByTestId("preview-loading-rebuild-button");
+  }
+
+  async clickPreviewLoadingRebuild() {
+    await this.locatePreviewLoadingRebuildButton().click();
   }
 
   getPreviewIframeElement() {

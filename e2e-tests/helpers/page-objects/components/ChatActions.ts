@@ -109,7 +109,23 @@ export class ChatActions {
   }
 
   async clickUndo() {
-    await this.getUndoButton().click();
+    const undoButton = this.getUndoButton().last();
+    await expect(undoButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await undoButton.click();
+
+    await expect(undoButton)
+      .toBeDisabled({ timeout: 1_000 })
+      .catch(() => {
+        // The operation may finish before Playwright observes the disabled
+        // state. The enabled/hidden wait below is the completion signal.
+      });
+    await expect(async () => {
+      const buttons = this.getUndoButton();
+      if ((await buttons.count()) === 0) {
+        return;
+      }
+      await expect(buttons.last()).toBeEnabled({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async sendPrompt(

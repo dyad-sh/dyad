@@ -15,7 +15,6 @@ import {
   ExternalLink,
   Cloud,
   Cog,
-  Loader2,
   X,
   Sparkles,
   Lightbulb,
@@ -85,6 +84,7 @@ import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewToolbar } from "./PreviewToolbar";
+import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
 
 interface ErrorBannerProps {
@@ -1867,109 +1867,93 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       )}
 
       <div className="relative flex-grow overflow-hidden">
-        {loading ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-            <div className="relative w-5 h-5 animate-spin">
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
-              <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
-              <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
-            </div>
-            <p className="text-gray-600 dark:text-gray-300">
-              Preparing app preview...
-            </p>
-          </div>
-        ) : (
-          <>
-            <ErrorBanner
-              error={errorMessage}
-              onDismiss={() => setErrorMessage(undefined)}
-              onAIFix={() => {
-                if (selectedChatId) {
-                  streamMessage({
-                    prompt: `Fix error: ${errorMessage?.message}`,
-                    chatId: selectedChatId,
-                  });
+        {!loading && (
+          <ErrorBanner
+            error={errorMessage}
+            onDismiss={() => setErrorMessage(undefined)}
+            onAIFix={() => {
+              if (selectedChatId) {
+                streamMessage({
+                  prompt: `Fix error: ${errorMessage?.message}`,
+                  chatId: selectedChatId,
+                });
+              }
+            }}
+          />
+        )}
+        <PreviewLoadingScreen
+          loading={loading}
+          isAppUrlReady={!!appUrl}
+          hasStartupError={!loading && errorMessage?.source === "dyad-app"}
+        />
+        {!loading && appUrl && (
+          <div
+            className={cn(
+              "w-full h-full",
+              deviceMode !== "desktop" && "flex justify-center",
+            )}
+          >
+            {annotatorMode && screenshotDataUrl ? (
+              <div
+                className="w-full h-full bg-white dark:bg-gray-950"
+                style={
+                  deviceMode == "desktop"
+                    ? {}
+                    : { width: `${deviceWidthConfig[deviceMode]}px` }
                 }
-              }}
-            />
-
-            {!appUrl ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
-                <p className="text-gray-600 dark:text-gray-300">
-                  Starting your app server...
-                </p>
+              >
+                {userBudget ? (
+                  <Annotator
+                    screenshotUrl={screenshotDataUrl}
+                    onSubmit={addAttachments}
+                    handleAnnotatorClick={handleAnnotatorClick}
+                  />
+                ) : (
+                  <AnnotatorOnlyForPro
+                    onGoBack={() => setAnnotatorMode(false)}
+                  />
+                )}
               </div>
             ) : (
-              <div
-                className={cn(
-                  "w-full h-full",
-                  deviceMode !== "desktop" && "flex justify-center",
-                )}
-              >
-                {annotatorMode && screenshotDataUrl ? (
-                  <div
-                    className="w-full h-full bg-white dark:bg-gray-950"
-                    style={
-                      deviceMode == "desktop"
-                        ? {}
-                        : { width: `${deviceWidthConfig[deviceMode]}px` }
-                    }
-                  >
-                    {userBudget ? (
-                      <Annotator
-                        screenshotUrl={screenshotDataUrl}
-                        onSubmit={addAttachments}
-                        handleAnnotatorClick={handleAnnotatorClick}
-                      />
-                    ) : (
-                      <AnnotatorOnlyForPro
-                        onGoBack={() => setAnnotatorMode(false)}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <iframe
-                      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-                      data-testid="preview-iframe-element"
-                      onLoad={() => {
-                        setErrorMessage(undefined);
-                        // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
-                        // This prevents re-renders from accidentally changing the iframe src
-                        requestCommitScreenshot();
-                      }}
-                      ref={iframeRef}
-                      key={reloadKey}
-                      title={`Preview for App ${selectedAppId}`}
-                      className="w-full h-full border-none bg-white dark:bg-gray-950"
-                      style={
-                        deviceMode == "desktop"
-                          ? {}
-                          : { width: `${deviceWidthConfig[deviceMode]}px` }
-                      }
-                      src={iframeSrc}
-                      allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+              <>
+                <iframe
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                  data-testid="preview-iframe-element"
+                  onLoad={() => {
+                    setErrorMessage(undefined);
+                    // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
+                    // This prevents re-renders from accidentally changing the iframe src
+                    requestCommitScreenshot();
+                  }}
+                  ref={iframeRef}
+                  key={reloadKey}
+                  title={`Preview for App ${selectedAppId}`}
+                  className="w-full h-full border-none bg-white dark:bg-gray-950"
+                  style={
+                    deviceMode == "desktop"
+                      ? {}
+                      : { width: `${deviceWidthConfig[deviceMode]}px` }
+                  }
+                  src={iframeSrc}
+                  allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+                />
+                {/* Visual Editing Toolbar */}
+                {isProMode &&
+                  visualEditingSelectedComponent &&
+                  selectedAppId && (
+                    <VisualEditingToolbar
+                      selectedComponent={visualEditingSelectedComponent}
+                      iframeRef={iframeRef}
+                      isDynamic={isDynamicComponent}
+                      hasStaticText={hasStaticText}
+                      hasImage={hasImage}
+                      isDynamicImage={isDynamicImage}
+                      currentImageSrc={currentImageSrc}
                     />
-                    {/* Visual Editing Toolbar */}
-                    {isProMode &&
-                      visualEditingSelectedComponent &&
-                      selectedAppId && (
-                        <VisualEditingToolbar
-                          selectedComponent={visualEditingSelectedComponent}
-                          iframeRef={iframeRef}
-                          isDynamic={isDynamicComponent}
-                          hasStaticText={hasStaticText}
-                          hasImage={hasImage}
-                          isDynamicImage={isDynamicImage}
-                          currentImageSrc={currentImageSrc}
-                        />
-                      )}
-                  </>
-                )}
-              </div>
+                  )}
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -7,6 +7,7 @@ import {
   currentAppAtom,
   previewPanelKeyAtom,
   previewErrorMessageAtom,
+  previewRunStartedAtAtom,
   previewCurrentUrlAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
@@ -196,10 +197,13 @@ export function useRunApp() {
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
+  const setPreviewRunStartedAt = useSetAtom(previewRunStartedAtAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
   const runApp = useCallback(async (appId: number) => {
+    const startedAt = Date.now();
+    setPreviewRunStartedAt(startedAt);
     setLoading(true);
     try {
       console.debug("Running app", appId);
@@ -217,7 +221,7 @@ export function useRunApp() {
         type: "server" as const,
         message: "Connecting to app...",
         appId,
-        timestamp: Date.now(),
+        timestamp: startedAt,
       };
 
       // Send to central log store
@@ -277,6 +281,8 @@ export function useRunApp() {
       if (appId === null) {
         return;
       }
+      const startedAt = Date.now();
+      setPreviewRunStartedAt(startedAt);
       setLoading(true);
       try {
         console.debug(
@@ -310,7 +316,7 @@ export function useRunApp() {
           type: "server" as const,
           message: "Restarting app...",
           appId: appId!,
-          timestamp: Date.now(),
+          timestamp: startedAt,
         };
 
         // Send to central log store
@@ -322,6 +328,7 @@ export function useRunApp() {
         const app = await ipc.app.getApp(appId);
         setApp(app);
         await ipc.app.restartApp({ appId, removeNodeModules, recreateSandbox });
+        setPreviewErrorMessage(undefined);
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(
@@ -343,6 +350,7 @@ export function useRunApp() {
       setConsoleEntries,
       setAppUrlObj,
       setPreviewPanelKey,
+      setPreviewRunStartedAt,
       setPreservedUrls,
     ],
   );

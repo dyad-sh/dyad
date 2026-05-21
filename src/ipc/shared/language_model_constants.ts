@@ -136,38 +136,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 1,
       dollarSigns: 5,
     },
-    {
-      name: "claude-opus-4-5",
-      displayName: "Claude Opus 4.5",
-      description:
-        "Anthropic's best model for coding (note: this model is very expensive!)",
-      // Set to 32k since context window is 1M tokens
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-      temperature: 1,
-      dollarSigns: 5,
-    },
-    {
-      name: "claude-sonnet-4-5-20250929",
-      displayName: "Claude Sonnet 4.5",
-      description:
-        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
-      maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
-      temperature: 1,
-      dollarSigns: 5,
-    },
-    {
-      name: "claude-sonnet-4-20250514",
-      displayName: "Claude Sonnet 4",
-      description: "Excellent coder (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
-      maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
-      temperature: 1,
-      dollarSigns: 5,
-    },
   ],
   google: [
     // https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview

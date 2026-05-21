@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
   getPreviewLoadingSessionStartedAt,
+  isWarningMessage,
   sanitizePreviewErrorForPrompt,
 } from "./PreviewLoadingScreen";
 
@@ -53,6 +54,26 @@ describe("PreviewLoadingScreen helpers", () => {
         runStartedAt: 200,
       }),
     ).toBe(200);
+  });
+
+  describe("isWarningMessage", () => {
+    it.each([
+      "(node:1234) [DEP0123] DeprecationWarning: Buffer() is deprecated",
+      "Deprecation: The `punycode` module is deprecated.",
+      "npm warn deprecated inflight@1.0.6",
+      "NPM WARN deprecated glob@7.2.3",
+    ])("returns true for non-actionable stderr: %s", (message) => {
+      expect(isWarningMessage(message)).toBe(true);
+    });
+
+    it.each([
+      "Error: Cannot find module 'react'",
+      "ELIFECYCLE Command failed with exit code 1",
+      "Failed to compile",
+      "Deprecation without colon suffix",
+    ])("returns false for actionable errors: %s", (message) => {
+      expect(isWarningMessage(message)).toBe(false);
+    });
   });
 
   it("removes control characters and caps error excerpts sent to AI", () => {

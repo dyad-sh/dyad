@@ -31,16 +31,19 @@ function formatTime(ts: number) {
   return d.toTimeString().slice(0, 8);
 }
 
-// Node prints DeprecationWarnings to stderr (e.g. "(node:1234) [DEP0123]
-// DeprecationWarning: ..."), so they surface here as level="error" even
-// though they aren't actionable failures. Treat them as warnings: don't
-// count them in the error banner, and render them with warn styling.
-function isDeprecationWarning(message: string): boolean {
-  return /DeprecationWarning/i.test(message);
+// Node/npm print deprecations and warnings to stderr, so they surface here as
+// level="error" even though they aren't actionable failures. Treat them as
+// warnings: don't count them in the error banner, and render with warn styling.
+export function isWarningMessage(message: string): boolean {
+  return (
+    /DeprecationWarning/i.test(message) ||
+    /Deprecation:\s/i.test(message) ||
+    /npm warn/i.test(message)
+  );
 }
 
 function displayLevel(entry: ConsoleEntry): ConsoleEntry["level"] {
-  if (entry.level === "error" && isDeprecationWarning(entry.message)) {
+  if (entry.level === "error" && isWarningMessage(entry.message)) {
     return "warn";
   }
   return entry.level;
@@ -170,7 +173,7 @@ export function PreviewLoadingScreen({
     const seen = new Set<string>();
     const result: string[] = [];
     for (const entry of sessionEntries) {
-      if (entry.level !== "error" || isDeprecationWarning(entry.message)) {
+      if (entry.level !== "error" || isWarningMessage(entry.message)) {
         continue;
       }
       const key = entry.message;

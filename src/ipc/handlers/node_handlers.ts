@@ -69,16 +69,16 @@ function getNodeDownloadUrl(): string {
   }
 
   // Default to mac download url.
-  let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
+  let nodeDownloadUrl = "https://nodejs.org/dist/v22.22.3/node-v22.22.3.pkg";
   if (platform() == "win32") {
     if (arch() === "arm64" || arch() === "arm") {
       nodeDownloadUrl =
-        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
+        "https://nodejs.org/dist/v22.22.3/node-v22.22.3-arm64.msi";
     } else {
       // x64 is the most common architecture for Windows so it's the
       // default download url.
       nodeDownloadUrl =
-        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
+        "https://nodejs.org/dist/v22.22.3/node-v22.22.3-x64.msi";
     }
   }
   return nodeDownloadUrl;
@@ -112,7 +112,7 @@ export function registerNodeHandlers() {
       logger.log("Using mock Node.js status:", mockNodeInstalled);
       if (mockNodeInstalled) {
         return {
-          nodeVersion: "v22.14.0",
+          nodeVersion: "v22.22.3",
           pnpmVersion: "9.0.0",
           nodeDownloadUrl,
         };

@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import {
   ExternalLink,
   Loader2,
+  Download,
   PackageCheck,
   Shield,
   X,
@@ -9,6 +10,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
+import { isVersionAtLeast } from "@/shared/version_utils";
 
 interface PnpmMinimumReleaseAgeToastProps {
   toastId: string | number;
@@ -20,6 +25,7 @@ interface PnpmMinimumReleaseAgeToastProps {
 
 const DEFAULT_MESSAGE =
   "Get the latest pnpm for the safest development experience.";
+const PNPM_11_MINIMUM_NODE_VERSION = "22.13.0";
 
 type InstallStatus = "idle" | "installing" | "success" | "error";
 
@@ -40,6 +46,10 @@ export function PnpmMinimumReleaseAgeToast({
 }: PnpmMinimumReleaseAgeToastProps) {
   const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
   const [installErrorMessage, setInstallErrorMessage] = useState<string>();
+  const { data: nodeSystemInfo } = useQuery({
+    queryKey: queryKeys.system.nodejsStatus,
+    queryFn: () => ipc.system.getNodejsStatus(),
+  });
 
   const handleClose = () => {
     toast.dismiss(toastId);
@@ -64,20 +74,36 @@ export function PnpmMinimumReleaseAgeToast({
     }
   };
 
+  const isInstalling = installStatus === "installing";
+  const isError = installStatus === "error";
+  const isSuccess = installStatus === "success";
+  const showBenefits = !isSuccess && !isError;
+  const needsNodeUpgrade =
+    nodeSystemInfo !== undefined &&
+    (!nodeSystemInfo.nodeVersion ||
+      !isVersionAtLeast(
+        nodeSystemInfo.nodeVersion,
+        PNPM_11_MINIMUM_NODE_VERSION,
+      ));
   const displayMessage =
     installStatus === "success"
       ? "pnpm successfully installed"
       : installStatus === "error"
         ? `${installErrorMessage}. Please read pnpm docs for other installation options.`
-        : message || DEFAULT_MESSAGE;
-
-  const isInstalling = installStatus === "installing";
-  const isError = installStatus === "error";
-  const isSuccess = installStatus === "success";
-  const showBenefits = !isSuccess && !isError;
+        : needsNodeUpgrade
+          ? `pnpm v11 requires Node.js ${PNPM_11_MINIMUM_NODE_VERSION} or newer. Download and install the latest Node.js first.`
+          : message || DEFAULT_MESSAGE;
 
   const handleOpenDocs = () => {
     onOpenDocs();
+  };
+
+  const handleDownloadNode = () => {
+    if (!nodeSystemInfo) {
+      return;
+    }
+
+    void ipc.system.openExternalUrl(nodeSystemInfo.nodeDownloadUrl);
   };
 
   return (
@@ -137,6 +163,16 @@ export function PnpmMinimumReleaseAgeToast({
                 <Button onClick={handleOpenDocs} size="sm" variant="default">
                   <ExternalLink className="w-3.5 h-3.5" />
                   Open docs
+                </Button>
+              ) : needsNodeUpgrade ? (
+                <Button
+                  onClick={handleDownloadNode}
+                  size="sm"
+                  variant="default"
+                  disabled={isSuccess}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Node.js
                 </Button>
               ) : (
                 <Button

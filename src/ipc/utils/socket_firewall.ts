@@ -10,6 +10,7 @@ import defaultApproveBuildsText from "@/data/default-approve-builds.txt?raw";
 import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import { isVersionAtLeast } from "@/shared/version_utils";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -576,42 +577,6 @@ export async function commitPnpmAllowBuildsConfigIfChanged(
   } catch (error) {
     logger.warn("Failed to commit pnpm allowBuilds config:", error);
   }
-}
-
-function parseVersionParts(version: string): {
-  parts: [number, number, number];
-  hasPrerelease: boolean;
-} | null {
-  const match = version
-    .trim()
-    .match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    parts: [Number(match[1]), Number(match[2]), Number(match[3])],
-    hasPrerelease: match[4] !== undefined,
-  };
-}
-
-export function isVersionAtLeast(version: string, minimum: string): boolean {
-  const parsedVersion = parseVersionParts(version);
-  const parsedMinimum = parseVersionParts(minimum);
-  if (!parsedVersion || !parsedMinimum) {
-    return false;
-  }
-
-  for (let index = 0; index < parsedVersion.parts.length; index += 1) {
-    if (parsedVersion.parts[index] > parsedMinimum.parts[index]) {
-      return true;
-    }
-    if (parsedVersion.parts[index] < parsedMinimum.parts[index]) {
-      return false;
-    }
-  }
-
-  return !parsedVersion.hasPrerelease || parsedMinimum.hasPrerelease;
 }
 
 export function resolveExecutableName(

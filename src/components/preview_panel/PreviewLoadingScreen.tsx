@@ -52,8 +52,6 @@ function displayLevel(entry: ConsoleEntry): ConsoleEntry["level"] {
   return entry.level;
 }
 
-const EXIT_ANIMATION_MS = 400;
-
 const PREVIEW_STARTUP_FIX_INTRO = (errorCount: number) =>
   `The app failed to start. We ran into ${errorCount} error(s) either while installing node modules or running the dev script. Please review package.json to identify and fix the issue(s). Focus on critical errors and do not try to fix non-critical errors like deprecation warnings.`;
 
@@ -155,8 +153,6 @@ export function PreviewLoadingScreen({
 
   const isVisible = loading || (!isAppUrlReady && !hasStartupError);
 
-  const [shouldRender, setShouldRender] = useState(isVisible);
-  const [isExiting, setIsExiting] = useState(false);
   const [isErrorsExpanded, setIsErrorsExpanded] = useState(false);
   const [visibleStartedAt, setVisibleStartedAt] = useState(Date.now());
   const wasVisibleRef = useRef<boolean>(isVisible);
@@ -183,19 +179,10 @@ export function PreviewLoadingScreen({
         setVisibleStartedAt(Date.now());
       }
       wasVisibleRef.current = true;
-      setShouldRender(true);
-      setIsExiting(false);
       return;
     }
     wasVisibleRef.current = false;
-    if (!shouldRender) return;
-    setIsExiting(true);
-    const timer = setTimeout(() => {
-      setShouldRender(false);
-      setIsExiting(false);
-    }, EXIT_ANIMATION_MS);
-    return () => clearTimeout(timer);
-  }, [isVisible, shouldRender]);
+  }, [isVisible]);
 
   useEffect(() => {
     setIsErrorsExpanded(false);
@@ -273,7 +260,7 @@ export function PreviewLoadingScreen({
     streamMessage({ prompt: `${intro}\n\n${body}`, chatId: selectedChatId });
   };
 
-  if (!shouldRender) return null;
+  if (!isVisible) return null;
 
   const showErrorBanner = shouldShowPreviewErrorBanner({
     errorMessages,
@@ -289,22 +276,14 @@ export function PreviewLoadingScreen({
       className={cn(
         "absolute inset-0 flex flex-col items-center overflow-hidden p-4 sm:p-6",
         "bg-gradient-to-br from-background/70 via-background/75 to-background/85 backdrop-blur-sm",
-        "transition-all ease-in-out",
-        isExiting
-          ? "translate-y-full opacity-0 pointer-events-none"
-          : "translate-y-0 opacity-100",
       )}
-      style={{ transitionDuration: `${EXIT_ANIMATION_MS}ms` }}
     >
       <div
         data-testid="preview-loading-card"
         className={cn(
           "flex min-h-0 flex-1 w-full max-w-2xl flex-col",
           "bg-[var(--background-darkest)] rounded-xl shadow-2xl ring-1 ring-border/70 overflow-hidden",
-          "transition-transform ease-out",
-          isExiting ? "scale-95" : "scale-100",
         )}
-        style={{ transitionDuration: `${EXIT_ANIMATION_MS}ms` }}
       >
         {/* Sticky status bar */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-[var(--background-darkest)] flex-shrink-0">

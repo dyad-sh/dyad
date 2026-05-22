@@ -574,6 +574,12 @@ function listenToProcess({
       `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
     );
     flushAllAppOutputs();
+    const currentAppInfo = runningApps.get(appId);
+    if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
+      removeAppIfCurrentProcess(appId, spawnedProcess);
+      return;
+    }
+
     safeSend(event.sender, "app:output", {
       type: "app-exit",
       message: `App process exited with code ${code ?? "null"}`,

@@ -94,6 +94,7 @@ describe("PreviewLoadingScreen helpers", () => {
         didPreviewCommandFail({
           previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
           sessionStartedAt: 100,
+          currentAppId: 1,
         }),
       ).toBe(true);
 
@@ -101,6 +102,7 @@ describe("PreviewLoadingScreen helpers", () => {
         didPreviewCommandFail({
           previewAppExit: { appId: 1, exitCode: 0, timestamp: 200 },
           sessionStartedAt: 100,
+          currentAppId: 1,
         }),
       ).toBe(false);
 
@@ -108,6 +110,7 @@ describe("PreviewLoadingScreen helpers", () => {
         didPreviewCommandFail({
           previewAppExit: { appId: 1, exitCode: 1, timestamp: 50 },
           sessionStartedAt: 100,
+          currentAppId: 1,
         }),
       ).toBe(false);
 
@@ -115,6 +118,17 @@ describe("PreviewLoadingScreen helpers", () => {
         didPreviewCommandFail({
           previewAppExit: { appId: 1, exitCode: null, timestamp: 200 },
           sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(false);
+    });
+
+    it("returns false when the exit belongs to a different app", () => {
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 2,
         }),
       ).toBe(false);
     });
@@ -127,6 +141,7 @@ describe("PreviewLoadingScreen helpers", () => {
           errorMessages: ["Error: still compiling"],
           previewAppExit: null,
           sessionStartedAt: 100,
+          currentAppId: 1,
         }),
       ).toBe(false);
     });
@@ -137,6 +152,7 @@ describe("PreviewLoadingScreen helpers", () => {
           errorMessages: ["Error: noisy stderr"],
           previewAppExit: { appId: 1, exitCode: 0, timestamp: 200 },
           sessionStartedAt: 100,
+          currentAppId: 1,
         }),
       ).toBe(false);
     });
@@ -147,8 +163,20 @@ describe("PreviewLoadingScreen helpers", () => {
           errorMessages: ["Error: Cannot find module 'react'"],
           previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
           sessionStartedAt: 100,
+          currentAppId: 1,
         }),
       ).toBe(true);
+    });
+
+    it("hides the banner when the exit belongs to a different app", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: Cannot find module 'react'"],
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 2,
+        }),
+      ).toBe(false);
     });
   });
 });

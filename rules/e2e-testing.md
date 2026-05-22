@@ -144,8 +144,10 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 - **Monaco race repros**: If a file-editor bug only appears during quick tab/file changes, alternate between the affected files several times in one test before declaring it non-reproducible. A single switch often misses save-vs-switch timing bugs that show up immediately under `--repeat-each`.
 - **GitHub sync success assertions**: Scope "Successfully pushed to GitHub!" assertions to `getByTestId("github-connected-repo")`; the same text can also appear in a toast, causing Playwright strict-mode failures.
 - **Uncommitted-files banner after manual commit**: Commit-triggered app screenshots write under `.dyad/screenshot`. If native-git banner tests still show one uncommitted change after a successful commit, inspect whether Dyad-managed `.dyad/` files are being excluded from Git status before blaming query invalidation.
+- **Toast-obscured clicks**: Sonner toasts can intercept clicks after settings saves. Prefer waiting for the expected toast/state transition and clicking a scoped stable target; avoid relying on forced DOM removal when app state may re-render immediately afterward.
 - **Visual image swap URLs**: Use a reachable fake-server image URL for visual editing URL-swap tests. Broken external URLs (for example `example.com/*.png`) trigger `dyad-image-load-error`, remove the pending image change, and make "component modified" assertions time out.
 - **Preview loading screen assertions**: Use `po.previewPanel.locatePreviewLoadingScreen()` / `locateLoadingAppPreview()` test IDs instead of asserting exact loading copy. The user-facing status text can change independently of the loading state contract.
+- **Preview error fixtures**: If a fixture only needs to remove the dev script, use targeted `dyad-search-replace` against `package.json`; rewriting the whole file can create `ERR_PNPM_OUTDATED_LOCKFILE` and mask the intended preview error.
 - **Cloud sandbox snapshot assertions**: Preview iframe visibility can happen before the fake cloud sandbox has accepted the latest upload. When asserting remote snapshot changes, poll `get-cloud-sandbox-status` and wait for `syncRevision` to advance before reading the iframe digest; if the next action can trigger a full sync or cancel pending work (for example Undo), wait for the revision to settle first so a debounced upload is not skipped. The first full sync can be revision `1` even when it already includes the prompt change.
 
 ## Real Socket Firewall E2E tests
@@ -153,6 +155,7 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 - If you change the add-dependency/socket-firewall command launch path (for example `spawn` vs PTY execution), proactively run `npm run e2e e2e-tests/package_manager.spec.ts` after `npm run build`. Unit tests and package builds do not cover the real packaged-Electron Socket Firewall flow.
 - When exercising the real `sfw` binary in E2E, set fresh per-test `npm_config_cache`, `npm_config_store_dir`, and `pnpm_config_store_dir` in the launch hooks. Reused caches/stores can make Socket Firewall report that it did not detect package fetches, which turns blocked-package tests into false negatives.
 - For real-path blocked-package coverage, prefer `axois` over `lodahs`. `lodahs` can resolve to `0.0.1-security` and install successfully under `pnpm`, so it does not reliably reach the blocked-package UI.
+- In package-manager E2E shims, execute the resolved `pnpm` path directly. CI setup can provide a shell wrapper, and running that wrapper through `process.execPath` makes Node parse shell syntax instead of invoking pnpm.
 
 ## Waiting for button state transitions
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
   didPreviewCommandFail,
+  getPreviewLoadingRenderDelayMs,
   getPreviewLoadingSessionStartedAt,
   isWarningMessage,
   sanitizePreviewErrorForPrompt,
@@ -21,6 +22,48 @@ const entry = (
 });
 
 describe("PreviewLoadingScreen helpers", () => {
+  describe("getPreviewLoadingRenderDelayMs", () => {
+    it("delays transient loading when an app URL is already ready", () => {
+      expect(
+        getPreviewLoadingRenderDelayMs({
+          loading: true,
+          isAppUrlReady: true,
+          hasStartupError: false,
+        }),
+      ).toBeGreaterThan(0);
+    });
+
+    it("shows immediately when there is no app URL yet", () => {
+      expect(
+        getPreviewLoadingRenderDelayMs({
+          loading: true,
+          isAppUrlReady: false,
+          hasStartupError: false,
+        }),
+      ).toBe(0);
+    });
+
+    it("stays hidden when the URL is ready and loading has finished", () => {
+      expect(
+        getPreviewLoadingRenderDelayMs({
+          loading: false,
+          isAppUrlReady: true,
+          hasStartupError: false,
+        }),
+      ).toBeNull();
+    });
+
+    it("stays hidden for startup errors so the error banner can show", () => {
+      expect(
+        getPreviewLoadingRenderDelayMs({
+          loading: false,
+          isAppUrlReady: false,
+          hasStartupError: true,
+        }),
+      ).toBeNull();
+    });
+  });
+
   it("uses the latest startup log as the loading session boundary", () => {
     const consoleEntries = [
       entry("Connecting to app...", 100),

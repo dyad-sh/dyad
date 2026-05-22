@@ -53,6 +53,7 @@ function displayLevel(entry: ConsoleEntry): ConsoleEntry["level"] {
 }
 
 const EXIT_ANIMATION_MS = 400;
+const READY_URL_LOADING_RENDER_DELAY_MS = 200;
 
 const PREVIEW_STARTUP_FIX_INTRO = (errorCount: number) =>
   `The app failed to start. We ran into ${errorCount} error(s) either while installing node modules or running the dev script. Please review package.json to identify and fix the issue(s). Focus on critical errors and do not try to fix non-critical errors like deprecation warnings.`;
@@ -125,6 +126,24 @@ export function shouldShowPreviewErrorBanner({
   );
 }
 
+export function getPreviewLoadingRenderDelayMs({
+  loading,
+  isAppUrlReady,
+  hasStartupError,
+}: {
+  loading: boolean;
+  isAppUrlReady: boolean;
+  hasStartupError: boolean;
+}) {
+  if (!loading && (isAppUrlReady || hasStartupError)) {
+    return null;
+  }
+  if (loading && isAppUrlReady) {
+    return READY_URL_LOADING_RENDER_DELAY_MS;
+  }
+  return 0;
+}
+
 interface PreviewLoadingScreenProps {
   // True while the app is being spawned/restarted (useRunApp).
   loading: boolean;
@@ -153,9 +172,16 @@ export function PreviewLoadingScreen({
   const { streamMessage, isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();
 
-  const isVisible = loading || (!isAppUrlReady && !hasStartupError);
+  const renderDelayMs = getPreviewLoadingRenderDelayMs({
+    loading,
+    isAppUrlReady,
+    hasStartupError,
+  });
+  const isVisible = renderDelayMs !== null;
 
-  const [shouldRender, setShouldRender] = useState(isVisible);
+  const [shouldRender, setShouldRender] = useState(
+    () => isVisible && renderDelayMs === 0,
+  );
   const [isExiting, setIsExiting] = useState(false);
   const [isErrorsExpanded, setIsErrorsExpanded] = useState(false);
   const [visibleStartedAt, setVisibleStartedAt] = useState(Date.now());
@@ -183,8 +209,18 @@ export function PreviewLoadingScreen({
         setVisibleStartedAt(Date.now());
       }
       wasVisibleRef.current = true;
-      setShouldRender(true);
       setIsExiting(false);
+      if (renderDelayMs === 0) {
+        setShouldRender(true);
+        return;
+      }
+      if (!shouldRender) {
+        const timer = setTimeout(() => {
+          setVisibleStartedAt(Date.now());
+          setShouldRender(true);
+        }, renderDelayMs);
+        return () => clearTimeout(timer);
+      }
       return;
     }
     wasVisibleRef.current = false;
@@ -195,7 +231,7 @@ export function PreviewLoadingScreen({
       setIsExiting(false);
     }, EXIT_ANIMATION_MS);
     return () => clearTimeout(timer);
-  }, [isVisible, shouldRender]);
+  }, [isVisible, renderDelayMs, shouldRender]);
 
   useEffect(() => {
     setIsErrorsExpanded(false);

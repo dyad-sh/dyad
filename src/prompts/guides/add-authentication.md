@@ -241,6 +241,7 @@ The handler must:
     "origin",
     "referer",
     "user-agent",
+    "x-forwarded-for",
   ]);
 
   const forwardedHeaders = new Headers();

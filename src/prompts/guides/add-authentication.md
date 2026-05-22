@@ -215,7 +215,6 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 - Do NOT use `createAuthClient(import.meta.env.VITE_NEON_AUTH_URL)` — that exposes the auth URL in the client bundle and bypasses the proxy.
 - Do NOT create a transparent proxy by forwarding all request headers upstream. In hosted Neon Auth, proxy transport headers like `x-forwarded-host` are actively harmful because Neon Auth / Better Auth may use them as the auth server hostname.
 - Do NOT synthesize or set `host`, `x-forwarded-host`, `x-forwarded-proto`, or `x-forwarded-port` on the upstream Neon Auth request. Let `fetch(upstreamUrl, ...)` set the real upstream host from `NEON_AUTH_BASE_URL`; use the browser's `origin` / `referer` headers for trusted-origin checks.
-- Do NOT add a Vercel catch-all rewrite like `/(.*)` → `/index.html` for this integration. The required catch-all is the Nitro route file `server/routes/api/auth/[...all].ts`; Nitro's Vercel output generates API routes and SPA fallback routing.
 - Do NOT use Next.js patterns (`'use client'`, `next/navigation`, `app/auth/[path]/page.tsx`, server components, `dynamic = 'force-dynamic'`). This is a Vite + React Router project.
 - Do NOT rely on `NEON_AUTH_COOKIE_SECRET` in this path. The cookie that holds the session is issued and signed by Neon Auth itself; the secret is only used by the Next.js `createNeonAuth` integration to sign an optional `session_data` cache cookie. The proxy approach does not need it.
 </anti-patterns>

@@ -4,6 +4,7 @@ import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appConsoleEntriesAtom,
+  previewAppExitAtom,
   previewErrorMessageAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
@@ -215,6 +216,34 @@ describe("useAppOutputSubscription", () => {
     expect(appOutputBatchSubscribeMock).toHaveBeenCalledTimes(1);
     expect(appOutputListeners.size).toBe(1);
     expect(appOutputBatchListeners.size).toBe(1);
+
+    unmount();
+  });
+
+  it("tracks app process exit without adding an extra console log", () => {
+    const { store, Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "app-exit",
+          message: "App process exited with code 1",
+          appId: 1,
+          exitCode: 1,
+          timestamp: 123,
+        });
+      }
+    });
+
+    expect(store.get(previewAppExitAtom)).toEqual({
+      appId: 1,
+      exitCode: 1,
+      timestamp: 123,
+    });
+    expect(store.get(appConsoleEntriesAtom)).toEqual([]);
 
     unmount();
   });

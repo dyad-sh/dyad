@@ -12,8 +12,10 @@ import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
   appConsoleEntriesAtom,
+  previewAppExitAtom,
   previewRunStartedAtAtom,
 } from "@/atoms/appAtoms";
+import type { PreviewAppExit } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -87,6 +89,21 @@ export function sanitizePreviewErrorForPrompt(message: string) {
     : withoutControlChars;
 }
 
+export function didPreviewCommandFail({
+  previewAppExit,
+  sessionStartedAt,
+}: {
+  previewAppExit: PreviewAppExit | null;
+  sessionStartedAt: number;
+}) {
+  return (
+    previewAppExit !== null &&
+    previewAppExit.timestamp >= sessionStartedAt &&
+    previewAppExit.exitCode !== null &&
+    previewAppExit.exitCode !== 0
+  );
+}
+
 interface PreviewLoadingScreenProps {
   // True while the app is being spawned/restarted (useRunApp).
   loading: boolean;
@@ -108,6 +125,7 @@ export function PreviewLoadingScreen({
 }: PreviewLoadingScreenProps) {
   const { t } = useTranslation("home");
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
+  const previewAppExit = useAtomValue(previewAppExitAtom);
   const previewRunStartedAt = useAtomValue(previewRunStartedAtAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
@@ -236,6 +254,10 @@ export function PreviewLoadingScreen({
   if (!shouldRender) return null;
 
   const showErrorBanner = errorMessages.length > 0;
+  const showFixErrorsWithAi = didPreviewCommandFail({
+    previewAppExit,
+    sessionStartedAt,
+  });
   const errorCount = errorMessages.length;
 
   return (
@@ -354,16 +376,18 @@ export function PreviewLoadingScreen({
                 <Cog size={14} />
                 <span>{t("preview.rebuild")}</span>
               </button>
-              <button
-                type="button"
-                onClick={handleFixAllErrors}
-                disabled={isStreaming || !selectedChatId}
-                className="cursor-pointer flex items-center gap-1 px-2.5 py-1 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500 text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                data-testid="preview-loading-fix-errors-button"
-              >
-                <Sparkles size={14} />
-                <span>Fix {errorCount} error(s) with AI</span>
-              </button>
+              {showFixErrorsWithAi && (
+                <button
+                  type="button"
+                  onClick={handleFixAllErrors}
+                  disabled={isStreaming || !selectedChatId}
+                  className="cursor-pointer flex items-center gap-1 px-2.5 py-1 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500 text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  data-testid="preview-loading-fix-errors-button"
+                >
+                  <Sparkles size={14} />
+                  <span>Fix {errorCount} error(s) with AI</span>
+                </button>
+              )}
             </div>
           </div>
         )}

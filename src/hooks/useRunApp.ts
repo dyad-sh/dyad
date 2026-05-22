@@ -5,6 +5,7 @@ import {
   appConsoleEntriesAtom,
   appUrlAtom,
   currentAppAtom,
+  previewAppExitAtom,
   previewPanelKeyAtom,
   previewErrorMessageAtom,
   previewRunStartedAtAtom,
@@ -55,6 +56,7 @@ export function useRebuildAppAfterPnpmInstall() {
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
   const setPreviewRunStartedAt = useSetAtom(previewRunStartedAtAtom);
+  const setPreviewAppExit = useSetAtom(previewAppExitAtom);
   const setLoading = useSetAtom(useRunAppLoadingAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const selectedAppIdRef = useRef(appId);
@@ -70,6 +72,7 @@ export function useRebuildAppAfterPnpmInstall() {
       const wasActiveAppAtStart = isActiveApp();
       if (wasActiveAppAtStart) {
         setPreviewRunStartedAt(startedAt);
+        setPreviewAppExit(null);
         setLoading(true);
       }
 
@@ -144,6 +147,7 @@ export function useRebuildAppAfterPnpmInstall() {
       setPreviewErrorMessage,
       setPreviewPanelKey,
       setPreviewRunStartedAt,
+      setPreviewAppExit,
     ],
   );
 }
@@ -159,6 +163,7 @@ export function useAppOutputSubscription() {
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
+  const setPreviewAppExit = useSetAtom(previewAppExitAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   const pnpmWarningSettingRef = useRef({
@@ -259,6 +264,15 @@ export function useAppOutputSubscription() {
         );
       }
 
+      if (output.type === "app-exit") {
+        setPreviewAppExit({
+          appId: output.appId,
+          exitCode: output.exitCode ?? null,
+          timestamp: output.timestamp ?? Date.now(),
+        });
+        return null;
+      }
+
       if (
         output.type === "package-manager-warning" &&
         pnpmWarningSettingRef.current.hasSettings &&
@@ -310,6 +324,7 @@ export function useAppOutputSubscription() {
       onHotModuleReload,
       processProxyServerOutput,
       rebuildAppAfterPnpmInstall,
+      setPreviewAppExit,
       setPreviewErrorMessage,
       updateSettings,
     ],
@@ -362,12 +377,14 @@ export function useRunApp() {
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
   const setPreviewRunStartedAt = useSetAtom(previewRunStartedAtAtom);
+  const setPreviewAppExit = useSetAtom(previewAppExitAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
   const runApp = useCallback(async (appId: number) => {
     const startedAt = Date.now();
     setPreviewRunStartedAt(startedAt);
+    setPreviewAppExit(null);
     setLoading(true);
     try {
       console.debug("Running app", appId);
@@ -447,6 +464,7 @@ export function useRunApp() {
       }
       const startedAt = Date.now();
       setPreviewRunStartedAt(startedAt);
+      setPreviewAppExit(null);
       setLoading(true);
       try {
         console.debug(
@@ -515,6 +533,7 @@ export function useRunApp() {
       setAppUrlObj,
       setPreviewPanelKey,
       setPreviewRunStartedAt,
+      setPreviewAppExit,
       setPreservedUrls,
     ],
   );

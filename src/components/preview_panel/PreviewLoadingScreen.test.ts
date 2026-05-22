@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
+  didPreviewCommandFail,
   getPreviewLoadingSessionStartedAt,
   isWarningMessage,
   sanitizePreviewErrorForPrompt,
@@ -84,5 +85,37 @@ describe("PreviewLoadingScreen helpers", () => {
     expect(sanitized).not.toContain("\u0000");
     expect(sanitized).toContain("[truncated]");
     expect(sanitized.length).toBeLessThan(message.length);
+  });
+
+  describe("didPreviewCommandFail", () => {
+    it("returns true only for a non-zero exit in the current loading session", () => {
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+        }),
+      ).toBe(true);
+
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 0, timestamp: 200 },
+          sessionStartedAt: 100,
+        }),
+      ).toBe(false);
+
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 50 },
+          sessionStartedAt: 100,
+        }),
+      ).toBe(false);
+
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: null, timestamp: 200 },
+          sessionStartedAt: 100,
+        }),
+      ).toBe(false);
+    });
   });
 });

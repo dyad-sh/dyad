@@ -13,6 +13,7 @@ import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { isVersionAtLeast } from "@/shared/version_utils";
 
 interface PnpmMinimumReleaseAgeToastProps {
   toastId: string | number;
@@ -27,34 +28,6 @@ const DEFAULT_MESSAGE =
 const PNPM_11_MINIMUM_NODE_VERSION = "22.13.0";
 
 type InstallStatus = "idle" | "installing" | "success" | "error";
-
-function parseVersionParts(version: string): [number, number, number] | null {
-  const match = version.trim().match(/^v?(\d+)\.(\d+)\.(\d+)/);
-  if (!match) {
-    return null;
-  }
-
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function isVersionAtLeast(version: string, minimum: string): boolean {
-  const versionParts = parseVersionParts(version);
-  const minimumParts = parseVersionParts(minimum);
-  if (!versionParts || !minimumParts) {
-    return false;
-  }
-
-  for (let index = 0; index < versionParts.length; index += 1) {
-    if (versionParts[index] > minimumParts[index]) {
-      return true;
-    }
-    if (versionParts[index] < minimumParts[index]) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 function getInstallErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {

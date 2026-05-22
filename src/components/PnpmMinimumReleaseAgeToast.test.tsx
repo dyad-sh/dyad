@@ -136,4 +136,22 @@ describe("PnpmMinimumReleaseAgeToast", () => {
     );
     expect(onInstallPnpm).not.toHaveBeenCalled();
   });
+
+  it("treats a Node prerelease as below the final pnpm v11 minimum", async () => {
+    vi.useRealTimers();
+    getNodejsStatusMock.mockResolvedValue({
+      nodeVersion: "v22.13.0-rc.1",
+      pnpmVersion: "10.15.0",
+      nodeDownloadUrl: "https://example.com/node.pkg",
+    });
+    const onInstallPnpm = vi.fn();
+
+    renderToast({ onInstallPnpm });
+
+    await screen.findByRole("button", {
+      name: /download node\.js/i,
+    });
+
+    expect(onInstallPnpm).not.toHaveBeenCalled();
+  });
 });

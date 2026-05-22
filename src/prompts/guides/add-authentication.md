@@ -199,6 +199,7 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 - **must-use-server-proxy**: The React app MUST call `/api/auth/*` (the Nitro proxy), NOT `NEON_AUTH_BASE_URL`. Do NOT pass `import.meta.env.VITE_NEON_AUTH_URL` (or any other Vite-prefixed Neon URL) to `createAuthClient`. Keep `NEON_AUTH_BASE_URL` server-only.
 - **must-use-same-origin-baseURL**: When constructing `createAuthClient`, pass an **absolute URL pointing at the same origin** — e.g. `${window.location.origin}/api/auth`. Better Auth's `assertHasProtocol` validator throws `Invalid base URL: /api/auth` for bare paths (a relative `'/api/auth'` is rejected at runtime), so the protocol is required.
 - **must-mount-catchall-route**: The Nitro proxy MUST be a catch-all so every Better Auth path (sign-in, sign-up, get-session, sign-out, callback, etc.) reaches the handler. Use `server/routes/api/auth/[...all].ts` — a single file. Do NOT hand-write per-endpoint files.
+- **must-strip-proxy-transport-headers**: The Nitro `/api/auth/*` proxy is an application-level proxy to hosted Neon Auth, not a transparent reverse proxy. When forwarding to `${NEON_AUTH_BASE_URL}`, do NOT forward `host`, `content-length`, `forwarded`, `x-forwarded-*`, `x-real-ip`, or `x-vercel-*` headers. These headers describe the browser → Vercel/app hop, not the app → Neon Auth hop. Better Auth gives `x-forwarded-host` precedence when resolving the request host, so forwarding Vercel's `x-forwarded-host` can make hosted Neon Auth validate the app hostname as if it were the Neon Auth server hostname and fail with invalid hostname. Forward only browser/auth headers such as `accept`, `accept-language`, `authorization`, `content-type`, `cookie`, `origin`, `referer`, and `user-agent`.
 - **must-rewrite-secure-cookies-for-http-dev**: Neon Auth's session cookie is named `__Secure-neon-auth.session_token`. The browser enforces a hard rule: any cookie whose name starts with `__Secure-` or `__Host-` MUST carry the `Secure` attribute AND can only be set over HTTPS. The Vite dev server and Dyad preview run over plain HTTP, so the browser silently drops every session cookie — sign-in returns 200, the next `get-session` finds no cookie, and the user appears to never sign in. The proxy MUST therefore rewrite cookies in HTTP dev (see template below): on the way down rename `__Secure-` → `__Secure_` and `__Host-` → `__Host_`, strip `Secure`, strip `Partitioned`, strip `Domain=...`, and rewrite `SameSite=None` → `SameSite=Lax`; on the way up, undo the rename in the incoming `Cookie` header before forwarding upstream. Without this rewrite, sign-in is silently broken in every HTTP preview.
 - **must-wire-react-router-into-provider**: `NeonAuthUIProvider` defaults its `navigate`/`replace`/`Link` to `window.location.href`, which causes a full page reload after sign-in/sign-up. The reload races the session cookie write and frequently leaves the user stuck on the auth page. You MUST pass `navigate`, `replace`, and `Link` from `react-router-dom` into `NeonAuthUIProvider`, AND pass `redirectTo="/"` (or the app's home route) on `<AuthView>`.
 - **no-nitro-auto-imports-in-templates**: Always write explicit `import` statements in server code. Nitro's auto-import is opt-in and not enabled in the default Dyad scaffolding; relying on it will fail type-checking and (often) runtime.
@@ -212,6 +213,8 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 - Do NOT call `auth.getSession({ headers })` from server code in a Vite + Nitro project — there is no `auth` instance to call. Read the session by fetching `${NEON_AUTH_BASE_URL}/get-session` directly with the user's cookie.
 - Do NOT import `@neondatabase/serverless` (or any `@neondatabase/auth/next/*` server-only subpath) from any file under `src/`. The browser-safe entry points used by this guide — `@neondatabase/auth` (for `createAuthClient`), `@neondatabase/auth/react`, and `@neondatabase/auth/react/adapters` — ARE allowed in `src/` and are required by the templates below.
 - Do NOT use `createAuthClient(import.meta.env.VITE_NEON_AUTH_URL)` — that exposes the auth URL in the client bundle and bypasses the proxy.
+- Do NOT create a transparent proxy by forwarding all request headers upstream. In hosted Neon Auth, proxy transport headers like `x-forwarded-host` are actively harmful because Neon Auth / Better Auth may use them as the auth server hostname.
+- Do NOT synthesize or set `host`, `x-forwarded-host`, `x-forwarded-proto`, or `x-forwarded-port` on the upstream Neon Auth request. Let `fetch(upstreamUrl, ...)` set the real upstream host from `NEON_AUTH_BASE_URL`; use the browser's `origin` / `referer` headers for trusted-origin checks.
 - Do NOT use Next.js patterns (`'use client'`, `next/navigation`, `app/auth/[path]/page.tsx`, server components, `dynamic = 'force-dynamic'`). This is a Vite + React Router project.
 - Do NOT rely on `NEON_AUTH_COOKIE_SECRET` in this path. The cookie that holds the session is issued and signed by Neon Auth itself; the secret is only used by the Next.js `createNeonAuth` integration to sign an optional `session_data` cache cookie. The proxy approach does not need it.
 </anti-patterns>
@@ -225,7 +228,35 @@ The handler must:
 - Use `defineHandler` from `"nitro"` and the h3 utilities `getRequestHeaders`, `getRequestURL`, and `readRawBody` from `"nitro/h3"`. Read `process.env.NEON_AUTH_BASE_URL` at module scope.
 - **Do not** use `event.request` — h3 in this Nitro version does not expose a Web `Request`. Use `getRequestURL(event)` for the URL and `event.method` for the HTTP method.
 - Compute the upstream path by stripping the `/api/auth` prefix from `url.pathname` using `pathname.startsWith('/api/auth') ? pathname.slice('/api/auth'.length) || '/' : pathname` — **do NOT use a regex** (LLM-emitted regexes like `/^/api/auth/` are broken because the embedded `/` ends the literal). Then build the upstream URL as `${NEON_AUTH_BASE_URL}${upstreamPath}${url.search}`.
-- Build `forwardedHeaders` (a `Headers` object) from `getRequestHeaders(event)`, skipping `host` and `content-length` and any `undefined` values. **On the way up**, restore upstream cookie names in the `cookie` header by calling `cookieHeader.replaceAll('__Secure_', '__Secure-').replaceAll('__Host_', '__Host-')` — string literals only, **no regex**. The `_` placeholder is unique enough that no false positive can occur in normal cookie values. If no cookie remains, delete the header.
+- Build `forwardedHeaders` (a `Headers` object) from an explicit allowlist, not by copying all incoming headers. Allow only `accept`, `accept-language`, `authorization`, `content-type`, `cookie`, `origin`, `referer`, `user-agent`, and `x-forwarded-for`. Preserve `x-forwarded-for` only when it is present from trusted ingress so Better Auth can derive the real client IP for upstream rate limiting; production ingress must strip user-supplied values and set/normalize this header itself. Do NOT forward `host`, `content-length`, `forwarded`, other `x-forwarded-*` headers, `x-real-ip`, or `x-vercel-*`. Do NOT synthesize or set `host`, `x-forwarded-host`, `x-forwarded-proto`, or `x-forwarded-port` for the upstream Neon Auth request. Let `fetch(upstreamUrl, ...)` set the real upstream host from `NEON_AUTH_BASE_URL`. **On the way up**, restore upstream cookie names in the `cookie` header by calling `cookieHeader.replaceAll('__Secure_', '__Secure-').replaceAll('__Host_', '__Host-')` — string literals only, **no regex**. The `_` placeholder is unique enough that no false positive can occur in normal cookie values. If no cookie remains, delete the header.
+- Use this exact allowlist pattern before the cookie-name restore:
+
+  ```ts
+  const FORWARDED_REQUEST_HEADERS = new Set([
+    "accept",
+    "accept-language",
+    "authorization",
+    "content-type",
+    "cookie",
+    "origin",
+    "referer",
+    "user-agent",
+    "x-forwarded-for",
+  ]);
+
+  const forwardedHeaders = new Headers();
+  const incomingHeaders = getRequestHeaders(event);
+
+  for (const [key, value] of Object.entries(incomingHeaders)) {
+    const headerName = key.toLowerCase();
+
+    if (!value || !FORWARDED_REQUEST_HEADERS.has(headerName)) {
+      continue;
+    }
+
+    forwardedHeaders.set(headerName, value);
+  }
+  ```
 - Read the body via `readRawBody(event, false)` (returns `Buffer`) for everything except `GET` and `HEAD`; pass it to `fetch` as `BodyInit`.
 - `fetch` the upstream with `method`, `forwardedHeaders`, `body`, and `redirect: 'manual'`.
 - Build the response `Headers` by copying every upstream header **except** `set-cookie`. For `set-cookie`, call `upstream.headers.getSetCookie?.() ?? []` to get the array (the standard `forEach` collapses duplicates).

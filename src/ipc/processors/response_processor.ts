@@ -614,6 +614,9 @@ export async function processFullResponseActions(
       for (const file of writtenFiles) {
         await gitAdd({ path: appPath, filepath: file });
       }
+      if (fs.existsSync(safeJoin(appPath, "pnpm-workspace.yaml"))) {
+        await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
+      }
 
       // Create commit with details of all changes
       const changes = [];

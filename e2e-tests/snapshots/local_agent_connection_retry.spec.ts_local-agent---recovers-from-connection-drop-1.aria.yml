@@ -1,10 +1,10 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- paragraph: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
 - button "file1.txt file1.txt Edit":
   - img
-  - text: ""
+  - text: file1.txt file1.txt
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -19,17 +19,17 @@
 - text: "Version 2: (1 files changed)"
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - paragraph: tc=local-agent/connection-drop
 - paragraph: I'll create a file for you.
 - 'button "recovered.ts src/recovered.ts Edit Summary: File created after connection recovery"':
   - img
-  - text: ""
+  - text: recovered.ts src/recovered.ts
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
-  - text: ""
+  - text: "Summary: File created after connection recovery"
 - paragraph: Successfully created the file after automatic retry.
 - button "Copy":
   - img
@@ -40,13 +40,13 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 3: (1 files changed)"
+- text: "/Version 3: \\([12] files changed\\)/"
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - button "Undo":
   - img
-  - text: ""
+  - text: Undo
 - button "Retry":
   - img
-  - text: ""
+  - text: Retry

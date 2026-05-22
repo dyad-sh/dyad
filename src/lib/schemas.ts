@@ -355,6 +355,7 @@ const BaseUserSettingsFields = {
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
+  hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),

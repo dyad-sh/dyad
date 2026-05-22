@@ -12,11 +12,141 @@ import {
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { showError, showInputRequest } from "@/lib/toast";
-import type { RuntimeMode2 } from "@/lib/schemas";
+import {
+  showError,
+  showInputRequest,
+  showPnpmMinimumReleaseAgeWarning,
+} from "@/lib/toast";
+import type { RuntimeMode2, UserSettings } from "@/lib/schemas";
+import { useSettings } from "./useSettings";
 
 const useRunAppLoadingAtom = atom(false);
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
+
+type UpdateSettings = (newSettings: Partial<UserSettings>) => Promise<unknown>;
+
+export function showPnpmMinimumReleaseAgeWarningToast({
+  message,
+  onInstallPnpm,
+  updateSettings,
+}: {
+  message: string;
+  onInstallPnpm: () => Promise<void>;
+  updateSettings: UpdateSettings;
+}) {
+  showPnpmMinimumReleaseAgeWarning({
+    message,
+    onInstallPnpm,
+    onOpenDocs: () => {
+      void ipc.system.openExternalUrl("https://pnpm.io/installation");
+    },
+    onNeverShowAgain: () => {
+      void updateSettings({
+        hidePnpmMinimumReleaseAgeWarning: true,
+      });
+    },
+  });
+}
+
+export function useRebuildAppAfterPnpmInstall() {
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const setAppUrlObj = useSetAtom(appUrlAtom);
+  const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
+  const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
+  const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
+  const setPreviewRunStartedAt = useSetAtom(previewRunStartedAtAtom);
+  const setLoading = useSetAtom(useRunAppLoadingAtom);
+  const appId = useAtomValue(selectedAppIdAtom);
+  const selectedAppIdRef = useRef(appId);
+
+  useEffect(() => {
+    selectedAppIdRef.current = appId;
+  }, [appId]);
+
+  return useCallback(
+    async (rebuildAppId: number) => {
+      const startedAt = Date.now();
+      const isActiveApp = () => selectedAppIdRef.current === rebuildAppId;
+      const wasActiveAppAtStart = isActiveApp();
+      if (wasActiveAppAtStart) {
+        setPreviewRunStartedAt(startedAt);
+        setLoading(true);
+      }
+
+      try {
+        if (isActiveApp()) {
+          setAppUrlObj({
+            appUrl: null,
+            appId: null,
+            originalUrl: null,
+            mode: null,
+          });
+
+          setPreservedUrls((prev) => {
+            const next = { ...prev };
+            delete next[rebuildAppId];
+            return next;
+          });
+        }
+
+        await ipc.misc.clearLogs({ appId: rebuildAppId });
+        if (isActiveApp()) {
+          setConsoleEntries([]);
+        }
+
+        const logEntry = {
+          level: "info" as const,
+          type: "server" as const,
+          message: "Rebuilding app after pnpm install...",
+          appId: rebuildAppId,
+          timestamp: startedAt,
+        };
+
+        ipc.misc.addLog(logEntry);
+        if (isActiveApp()) {
+          setConsoleEntries((prev) => [...prev, logEntry]);
+        }
+
+        await ipc.app.restartApp({
+          appId: rebuildAppId,
+          removeNodeModules: true,
+          recreateSandbox: false,
+        });
+        if (isActiveApp()) {
+          setPreviewErrorMessage(undefined);
+        }
+      } catch (error) {
+        console.error(`Error rebuilding app ${rebuildAppId}:`, error);
+        if (isActiveApp()) {
+          setPreviewErrorMessage(
+            error instanceof Error
+              ? { message: error.message, source: "dyad-app" }
+              : {
+                  message: error?.toString() || "Unknown error",
+                  source: "dyad-app",
+                },
+          );
+        }
+      } finally {
+        if (isActiveApp()) {
+          setPreviewPanelKey((prevKey) => prevKey + 1);
+        }
+        if (wasActiveAppAtStart) {
+          setLoading(false);
+        }
+      }
+    },
+    [
+      setAppUrlObj,
+      setConsoleEntries,
+      setLoading,
+      setPreservedUrls,
+      setPreviewErrorMessage,
+      setPreviewPanelKey,
+      setPreviewRunStartedAt,
+    ],
+  );
+}
 
 /**
  * Hook to subscribe to app output events from the main process.
@@ -24,14 +154,27 @@ const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
  * to avoid duplicate event subscriptions causing duplicate log entries.
  */
 export function useAppOutputSubscription() {
+  const { settings, updateSettings } = useSettings();
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const [, setPreviewErrorMessage] = useAtom(previewErrorMessageAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
+  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
+  const pnpmWarningSettingRef = useRef({
+    hasSettings: Boolean(settings),
+    hideWarning: settings?.hidePnpmMinimumReleaseAgeWarning,
+  });
   const syncErrorToastRef = useRef(
     new Map<number, { message: string; shownAt: number }>(),
   );
+
+  useEffect(() => {
+    pnpmWarningSettingRef.current = {
+      hasSettings: Boolean(settings),
+      hideWarning: settings?.hidePnpmMinimumReleaseAgeWarning,
+    };
+  }, [settings, settings?.hidePnpmMinimumReleaseAgeWarning]);
 
   const processProxyServerOutput = useCallback(
     (output: AppOutput) => {
@@ -116,6 +259,21 @@ export function useAppOutputSubscription() {
         );
       }
 
+      if (
+        output.type === "package-manager-warning" &&
+        pnpmWarningSettingRef.current.hasSettings &&
+        !pnpmWarningSettingRef.current.hideWarning
+      ) {
+        showPnpmMinimumReleaseAgeWarningToast({
+          message: output.message,
+          onInstallPnpm: async () => {
+            await ipc.system.installPnpm();
+            await rebuildAppAfterPnpmInstall(output.appId);
+          },
+          updateSettings,
+        });
+      }
+
       // Handle HMR updates
       if (
         output.message.includes("hmr update") &&
@@ -148,7 +306,13 @@ export function useAppOutputSubscription() {
 
       return logEntry;
     },
-    [onHotModuleReload, processProxyServerOutput, setPreviewErrorMessage],
+    [
+      onHotModuleReload,
+      processProxyServerOutput,
+      rebuildAppAfterPnpmInstall,
+      setPreviewErrorMessage,
+      updateSettings,
+    ],
   );
 
   // Subscribe to immediate app output events (input-requested)

@@ -40,3 +40,7 @@ const second = renderHook(() => useMyAtomHook(id), { wrapper });
 The symptom when you get this wrong is assertions like `expected false to be true` on the remounted hook's state, even though the setter clearly ran against the first hook.
 
 See `src/atoms/githubSyncAtoms.test.tsx` for a complete example covering unmount/remount, cross-unmount completion, and per-key isolation.
+
+## Hooks That Indirectly Use React Query
+
+If a `renderHook` test starts failing with `No QueryClient set, use QueryClientProvider to set one`, check whether the hook now calls another hook such as `useSettings()` or `useAppVersion()` that uses TanStack Query internally. Either wrap the test in a `QueryClientProvider` or mock the indirect hook when the test is only exercising Jotai/event behavior.

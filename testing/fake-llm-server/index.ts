@@ -230,6 +230,22 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
+app.get("/api/default-approve-builds.txt", (req, res) => {
+  res
+    .type("text/plain")
+    .send(
+      [
+        "# dyad-default-allow-builds-schema=v1",
+        "# dyad-default-allow-builds-data-version=2026-05-21.2",
+        "# dyad-default-allow-builds-channel=remote",
+        "@swc/core",
+        "esbuild",
+        "sharp",
+        "",
+      ].join("\n"),
+    );
+});
+
 app.get("/api/language-model-catalog", (req, res) => {
   res.json({
     version: "e2e-test-catalog-v1",

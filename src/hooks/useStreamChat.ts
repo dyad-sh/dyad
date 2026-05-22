@@ -38,7 +38,11 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
-import { useRunApp } from "./useRunApp";
+import {
+  showPnpmMinimumReleaseAgeWarningToast,
+  useRebuildAppAfterPnpmInstall,
+  useRunApp,
+} from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
@@ -49,6 +53,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 import { resolveAppIdForChat } from "@/lib/chatUtils";
+import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -109,7 +114,7 @@ export function useStreamChat({
   const { refreshAppIframe } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
   const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
@@ -123,7 +128,38 @@ export function useStreamChat({
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
+  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   let chatId: number | undefined;
+
+  const showWarningMessage = useCallback(
+    (warningMessage: string, warningAppId: number | null) => {
+      if (warningMessage.startsWith(PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX)) {
+        if (!settings || settings.hidePnpmMinimumReleaseAgeWarning) {
+          return;
+        }
+
+        showPnpmMinimumReleaseAgeWarningToast({
+          message: warningMessage,
+          onInstallPnpm: async () => {
+            await ipc.system.installPnpm();
+            if (warningAppId !== null) {
+              await rebuildAppAfterPnpmInstall(warningAppId);
+            }
+          },
+          updateSettings,
+        });
+        return;
+      }
+
+      showWarning(warningMessage);
+    },
+    [
+      rebuildAppAfterPnpmInstall,
+      settings,
+      settings?.hidePnpmMinimumReleaseAgeWarning,
+      updateSettings,
+    ],
+  );
 
   if (hasChatId) {
     const { id } = useSearch({ from: "/chat" });
@@ -401,7 +437,7 @@ export function useStreamChat({
                   });
                 }
                 for (const warningMessage of response.warningMessages ?? []) {
-                  showWarning(warningMessage);
+                  showWarningMessage(warningMessage, targetAppId);
                 }
                 // Use queryClient directly with the chatId parameter to avoid stale closure issues
                 queryClient.invalidateQueries({
@@ -488,7 +524,7 @@ export function useStreamChat({
               finalizeStream(chatId);
 
               for (const warningMessage of warningMessages ?? []) {
-                showWarning(warningMessage);
+                showWarningMessage(warningMessage, targetAppId);
               }
               console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
               setErrorById((prev) => {
@@ -550,6 +586,7 @@ export function useStreamChat({
       selectedAppId,
       refetchUserBudget,
       settings,
+      showWarningMessage,
       queryClient,
       store,
     ],

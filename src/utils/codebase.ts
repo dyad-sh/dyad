@@ -66,7 +66,11 @@ const EXCLUDED_DIRS = [
 ];
 
 // Files to always exclude
-const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
+const EXCLUDED_FILES = [
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "pnpm-workspace.yaml",
+];
 
 // Files to always include, regardless of extension
 const ALWAYS_INCLUDE_FILES = [".gitignore"];

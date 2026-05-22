@@ -924,7 +924,11 @@ describe("processFullResponse", () => {
 
   it("should process mixed operations (write, rename, delete) in one response", async () => {
     // Set up fs mocks to succeed
-    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.existsSync).mockImplementation(
+      (filePath) =>
+        String(filePath) !==
+        "/mock/user/data/path/mock-app-path/pnpm-workspace.yaml",
+    );
     vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
     vi.mocked(fs.renameSync).mockImplementation(() => undefined);
@@ -971,6 +975,35 @@ describe("processFullResponse", () => {
       }),
     );
 
+    expect(result).toEqual({ updatedFiles: true });
+  });
+
+  it("should stage pnpm-workspace.yaml when it exists alongside response changes", async () => {
+    vi.mocked(fs.existsSync).mockImplementation(
+      (filePath) =>
+        String(filePath) ===
+        "/mock/user/data/path/mock-app-path/pnpm-workspace.yaml",
+    );
+    vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+    vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+    const response = `<dyad-write path="src/file1.js">console.log('Hello');</dyad-write>`;
+
+    const result = await processFullResponseActions(response, 1, {
+      chatSummary: undefined,
+      messageId: 1,
+    });
+
+    expect(gitAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filepath: "src/file1.js",
+      }),
+    );
+    expect(gitAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filepath: "pnpm-workspace.yaml",
+      }),
+    );
     expect(result).toEqual({ updatedFiles: true });
   });
 });

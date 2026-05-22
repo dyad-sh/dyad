@@ -3,6 +3,10 @@ import { normalizePath } from "../../../shared/normalizePath";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
+import {
+  commitPnpmAllowBuildsConfigIfChanged,
+  PNPM_INSTALL_POLICY_ARGS,
+} from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
 import { gitIsIgnoredIso } from "./git_utils";
@@ -127,7 +131,7 @@ type ActiveCloudSandbox = {
 };
 
 function getDefaultInstallCommand(): string {
-  return "pnpm install";
+  return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
 }
 
 function getDefaultStartCommand(): string {
@@ -159,8 +163,9 @@ function resolveCloudSandboxCommands(input: {
   installCommand?: string | null;
   startCommand?: string | null;
 }): { installCommand: string; startCommand: string } {
+  const installCommand = input.installCommand?.trim();
   return {
-    installCommand: input.installCommand?.trim() || getDefaultInstallCommand(),
+    installCommand: installCommand || getDefaultInstallCommand(),
     startCommand: input.startCommand?.trim() || getDefaultStartCommand(),
   };
 }
@@ -697,6 +702,10 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     installCommand?: string | null;
     startCommand?: string | null;
   }) {
+    if (!input.installCommand?.trim()) {
+      await commitPnpmAllowBuildsConfigIfChanged(input.appPath);
+    }
+
     const { installCommand, startCommand } = resolveCloudSandboxCommands(input);
     const response = await cloudSandboxFetch("/sandboxes", {
       method: "POST",

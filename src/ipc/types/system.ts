@@ -18,6 +18,12 @@ export const NodeSystemInfoSchema = z.object({
 
 export type NodeSystemInfo = z.infer<typeof NodeSystemInfoSchema>;
 
+export const InstallPnpmResultSchema = z.object({
+  pnpmVersion: z.string(),
+});
+
+export type InstallPnpmResult = z.infer<typeof InstallPnpmResultSchema>;
+
 export const SystemDebugInfoSchema = z.object({
   nodeVersion: z.string().nullable(),
   pnpmVersion: z.string().nullable(),
@@ -160,6 +166,12 @@ export const systemContracts = {
     channel: "nodejs-status",
     input: z.void(),
     output: NodeSystemInfoSchema,
+  }),
+
+  installPnpm: defineContract({
+    channel: "install-pnpm",
+    input: z.void(),
+    output: InstallPnpmResultSchema,
   }),
 
   selectNodeFolder: defineContract({

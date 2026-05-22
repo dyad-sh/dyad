@@ -4,6 +4,7 @@ import React from "react";
 import { CustomErrorToast } from "../components/CustomErrorToast";
 import { InputRequestToast } from "../components/InputRequestToast";
 import { McpConsentToast } from "../components/McpConsentToast";
+import { PnpmMinimumReleaseAgeToast } from "@/components/PnpmMinimumReleaseAgeToast";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -90,6 +91,32 @@ export const showError = (
 export const showWarning = (message: string) => {
   toast.warning(message);
   console.warn(message);
+};
+
+export const showPnpmMinimumReleaseAgeWarning = ({
+  message,
+  onInstallPnpm,
+  onOpenDocs,
+  onNeverShowAgain,
+}: {
+  message: string;
+  onInstallPnpm: () => Promise<void>;
+  onOpenDocs: () => void;
+  onNeverShowAgain: () => void;
+}) => {
+  console.warn(message);
+  return toast.custom(
+    (t) => (
+      <PnpmMinimumReleaseAgeToast
+        toastId={t}
+        message={message}
+        onInstallPnpm={onInstallPnpm}
+        onOpenDocs={onOpenDocs}
+        onNeverShowAgain={onNeverShowAgain}
+      />
+    ),
+    { id: "pnpm-minimum-release-age-warning", duration: Infinity },
+  );
 };
 
 /**

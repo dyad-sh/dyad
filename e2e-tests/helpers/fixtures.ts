@@ -24,6 +24,7 @@ export interface ElectronConfig {
   }) => Promise<void>;
   postLaunchHook?: () => Promise<void>;
   showSetupScreen?: boolean;
+  showPnpmMinimumReleaseAgeWarning?: boolean;
 }
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
@@ -44,13 +45,23 @@ export const test = base.extend<{
     { auto: true },
   ],
   po: [
-    async ({ electronApp }, use) => {
+    async ({ electronApp, electronConfig }, use) => {
       const page = await electronApp.firstWindow();
 
       const po = new PageObject(electronApp, page, {
         userDataDir: (electronApp as any).$dyadUserDataDir,
         fakeLlmPort: (electronApp as any).$fakeLlmPort,
       });
+      if (!electronConfig.showPnpmMinimumReleaseAgeWarning) {
+        await page.evaluate(async () => {
+          await (window as any).electron.ipcRenderer.invoke(
+            "set-user-settings",
+            {
+              hidePnpmMinimumReleaseAgeWarning: true,
+            },
+          );
+        });
+      }
       await use(po);
     },
     { auto: true },
@@ -91,6 +102,8 @@ export const test = base.extend<{
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
       process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
       process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
+      process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
+      process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
       process.env.E2E_TEST_BUILD = "true";
       if (!electronConfig.showSetupScreen) {
         // This is just a hack to avoid the AI setup screen.

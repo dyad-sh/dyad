@@ -29,6 +29,11 @@ import {
   removeAppIfCurrentProcess,
   runningApps,
 } from "@/ipc/utils/process_manager";
+import {
+  ensurePnpmAllowBuildsConfigured,
+  getPnpmMinimumReleaseAgeSupport,
+  PNPM_INSTALL_POLICY_ARGS,
+} from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("app_runtime_service");
 
@@ -66,24 +71,92 @@ export function formatCloudSandboxError(error: unknown) {
   }
 }
 
-function getDefaultCommand(appId: number): string {
-  const port = getAppPort(appId);
-  return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
+function getPnpmInstallCommand(): string {
+  return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
 }
 
-function getCommand({
+function getNpmInstallCommand(): string {
+  return "npm install --legacy-peer-deps";
+}
+
+async function getDefaultCommand({
+  runtimeMode,
   appId,
+  appPath,
+  onPnpmMinimumReleaseAgeWarning,
+}: {
+  runtimeMode: RuntimeMode2;
+  appId: number;
+  appPath: string;
+  onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
+}): Promise<string> {
+  const port = getAppPort(appId);
+  if (runtimeMode === "docker") {
+    await ensurePnpmAllowBuildsConfigured({ appPath });
+    return `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`;
+  }
+
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  const npmCommand = `(${getNpmInstallCommand()} && npm run dev -- --port ${port})`;
+
+  if (!pnpmSupport.supported) {
+    if (pnpmSupport.warningMessage) {
+      onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
+    }
+    return npmCommand;
+  }
+
+  await ensurePnpmAllowBuildsConfigured({ appPath });
+  return `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`;
+}
+
+async function getCommand({
+  runtimeMode,
+  appId,
+  appPath,
   installCommand,
   startCommand,
+  onPnpmMinimumReleaseAgeWarning,
 }: {
+  runtimeMode: RuntimeMode2;
   appId: number;
+  appPath: string;
   installCommand?: string | null;
   startCommand?: string | null;
-}) {
+  onPnpmMinimumReleaseAgeWarning?: (message: string) => void;
+}): Promise<string> {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
-  return hasCustomCommands
-    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : getDefaultCommand(appId);
+  if (hasCustomCommands) {
+    return `${installCommand!.trim()} && ${startCommand!.trim()}`;
+  }
+
+  return getDefaultCommand({
+    runtimeMode,
+    appId,
+    appPath,
+    onPnpmMinimumReleaseAgeWarning,
+  });
+}
+
+function emitPnpmMinimumReleaseAgeWarning({
+  appId,
+  event,
+  message,
+}: {
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+  message: string;
+}) {
+  const settings = readSettings();
+  if (settings.hidePnpmMinimumReleaseAgeWarning) {
+    return;
+  }
+
+  safeSend(event.sender, "app:output", {
+    type: "package-manager-warning",
+    message,
+    appId,
+  });
 }
 
 export async function executeApp({
@@ -242,7 +315,15 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const command = getCommand({ appId, installCommand, startCommand });
+  const command = await getCommand({
+    runtimeMode: "host",
+    appId,
+    appPath,
+    installCommand,
+    startCommand,
+    onPnpmMinimumReleaseAgeWarning: (message) =>
+      emitPnpmMinimumReleaseAgeWarning({ appId, event, message }),
+  });
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,
@@ -628,7 +709,15 @@ RUN npm install -g pnpm
       `dyad-app-${appId}`,
       "sh",
       "-c",
-      getCommand({ appId, installCommand, startCommand }),
+      await getCommand({
+        runtimeMode: "docker",
+        appId,
+        appPath,
+        installCommand,
+        startCommand,
+        onPnpmMinimumReleaseAgeWarning: (message) =>
+          emitPnpmMinimumReleaseAgeWarning({ appId, event, message }),
+      }),
     ],
     {
       stdio: "pipe",

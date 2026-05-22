@@ -142,6 +142,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </div>
             <Toaster
               richColors
+              expand
               duration={settings?.isTestMode ? 500 : undefined}
             />
           </SidebarProvider>

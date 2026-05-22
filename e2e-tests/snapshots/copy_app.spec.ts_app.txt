@@ -208,6 +208,9 @@ A file (2)
   "packageManager": "<scrubbed>"
 }
 
+=== pnpm-workspace.yaml ===
+[10 lines]
+
 === postcss.config.js ===
 export default {
   plugins: {

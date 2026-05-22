@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const { gitIsIgnoredIsoMock } = vi.hoisted(() => ({
-  gitIsIgnoredIsoMock: vi.fn(),
-}));
+const { commitPnpmAllowBuildsConfigIfChangedMock, gitIsIgnoredIsoMock } =
+  vi.hoisted(() => ({
+    commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
+    gitIsIgnoredIsoMock: vi.fn(),
+  }));
 
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
@@ -26,6 +28,18 @@ vi.mock("./test_utils", () => ({
 vi.mock("./git_utils", () => ({
   gitIsIgnoredIso: gitIsIgnoredIsoMock,
 }));
+
+vi.mock("@/ipc/utils/socket_firewall", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/socket_firewall")
+  >("@/ipc/utils/socket_firewall");
+
+  return {
+    ...actual,
+    commitPnpmAllowBuildsConfigIfChanged:
+      commitPnpmAllowBuildsConfigIfChangedMock,
+  };
+});
 
 import {
   CloudSandboxApiError,
@@ -486,6 +500,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
   let fetchSpy: { mockRestore: () => void };
 
   beforeEach(() => {
+    commitPnpmAllowBuildsConfigIfChangedMock.mockReset();
     fetchMock = vi.fn(async () => {
       return new Response(
         JSON.stringify({
@@ -519,9 +534,13 @@ describe("cloud_sandbox_provider sandbox creation", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       appId: 42,
       appPath: "/tmp/app",
-      installCommand: "pnpm install",
+      installCommand:
+        "pnpm --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
       startCommand: "pnpm run dev",
     });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
+      "/tmp/app",
+    );
   });
 
   it("preserves explicit custom commands after trimming", async () => {
@@ -540,6 +559,26 @@ describe("cloud_sandbox_provider sandbox creation", () => {
       installCommand: "npm ci",
       startCommand: "npm run dev -- --port 3000",
     });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves custom pnpm commands with leading package-manager options", async () => {
+    await createCloudSandbox({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: "  pnpm -C apps/web install  ",
+      startCommand: "  pnpm -C apps/web dev  ",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: "pnpm -C apps/web install",
+      startCommand: "pnpm -C apps/web dev",
+    });
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
   });
 
   it("throws when the engine response is missing sandboxId", async () => {

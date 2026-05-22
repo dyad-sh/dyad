@@ -2,12 +2,12 @@
 - paragraph: I will intentionally add an error
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"':
   - img
-  - text: ""
+  - text: Index.tsx src/pages/Index.tsx
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
-  - text: ""
+  - text: "Summary: intentionally add an error"
 - button "Copy":
   - img
 - img
@@ -25,14 +25,14 @@
   - text: )
 - button "Copy":
   - img
-  - text: ""
+  - text: Copy
 - code: Fixing the error...
 - button "Index.tsx src/pages/Index.tsx Edit":
   - img
-  - text: ""
+  - text: Index.tsx src/pages/Index.tsx
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
 - button "Copy":
   - img
@@ -46,7 +46,7 @@
 - text: "Version 3: wrote 1 file(s)"
 - button "Undo":
   - img
-  - text: ""
+  - text: Undo
 - button "Retry":
   - img
-  - text: ""
+  - text: Retry

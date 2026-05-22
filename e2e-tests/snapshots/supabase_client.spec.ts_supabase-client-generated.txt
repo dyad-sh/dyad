@@ -72,6 +72,9 @@ A file (2)
   "packageManager": "<scrubbed>"
 }
 
+=== pnpm-workspace.yaml ===
+[10 lines]
+
 === src/App.tsx ===
 const App = () => <div>Minimal imported app</div>;
 

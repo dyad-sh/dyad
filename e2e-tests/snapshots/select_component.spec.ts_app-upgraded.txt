@@ -107,6 +107,9 @@ dist-ssr
   "packageManager": "<scrubbed>"
 }
 
+=== pnpm-workspace.yaml ===
+[10 lines]
+
 === src/App.tsx ===
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";

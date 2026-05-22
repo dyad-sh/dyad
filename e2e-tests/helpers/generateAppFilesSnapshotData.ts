@@ -7,6 +7,8 @@ export interface FileSnapshotData {
   content: string;
 }
 
+const SUMMARY_ONLY_FILES = new Set(["pnpm-workspace.yaml"]);
+
 const binaryExtensions = new Set([
   ".png",
   ".jpg",
@@ -55,6 +57,16 @@ const binaryExtensions = new Set([
 
 function isBinaryFile(filePath: string): boolean {
   return binaryExtensions.has(path.extname(filePath).toLowerCase());
+}
+
+function countLines(content: string): number {
+  if (content === "") {
+    return 0;
+  }
+  const contentWithoutFinalNewline = content.endsWith("\n")
+    ? content.slice(0, -1)
+    : content;
+  return contentWithoutFinalNewline.split("\n").length;
 }
 
 export function generateAppFilesSnapshotData(
@@ -109,6 +121,13 @@ export function generateAppFilesSnapshotData(
           .readFileSync(entryPath, "utf-8")
           // Normalize line endings to always use \n
           .replace(/\r\n/g, "\n");
+        if (SUMMARY_ONLY_FILES.has(entry.name)) {
+          files.push({
+            relativePath,
+            content: `[${countLines(content)} lines]`,
+          });
+          continue;
+        }
         if (entry.name === "package.json") {
           const packageJson = JSON.parse(content);
           packageJson.packageManager = "<scrubbed>";

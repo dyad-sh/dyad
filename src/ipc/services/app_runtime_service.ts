@@ -30,7 +30,7 @@ import {
   runningApps,
 } from "@/ipc/utils/process_manager";
 import {
-  commitPnpmAllowBuildsConfigIfChanged,
+  ensurePnpmAllowBuildsConfigured,
   getPnpmMinimumReleaseAgeSupport,
   PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
@@ -92,7 +92,7 @@ async function getDefaultCommand({
 }): Promise<string> {
   const port = getAppPort(appId);
   if (runtimeMode === "docker") {
-    await commitPnpmAllowBuildsConfigIfChanged(appPath);
+    await ensurePnpmAllowBuildsConfigured({ appPath });
     return `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`;
   }
 
@@ -106,7 +106,7 @@ async function getDefaultCommand({
     return npmCommand;
   }
 
-  await commitPnpmAllowBuildsConfigIfChanged(appPath);
+  await ensurePnpmAllowBuildsConfigured({ appPath });
   return `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`;
 }
 

@@ -182,7 +182,11 @@ testWithMultipleBackups(
     for (let backup of expectedRemainingBackups) {
       let expectedBackup = backup;
       if (backup === "*") {
-        expectedBackup = backups[0];
+        const upgradeBackup = backups.find((name) =>
+          name.endsWith("_upgrade_from_0.1.0"),
+        );
+        expect(upgradeBackup).toBeDefined();
+        expectedBackup = upgradeBackup!;
         expect(expectedBackup.endsWith("_upgrade_from_0.1.0")).toEqual(true);
       } else {
         expect(backups).toContain(expectedBackup);

@@ -226,6 +226,14 @@ async function applyCapacitor({
     errorPrefix: "Failed to initialize Capacitor",
   });
 
+  await simpleSpawn({
+    command:
+      "pnpm install --prod=false || npm install --include=dev --legacy-peer-deps",
+    cwd: appPath,
+    successMessage: "Development dependencies installed successfully",
+    errorPrefix: "Failed to install development dependencies",
+  });
+
   // Add iOS and Android platforms
   await simpleSpawn({
     command: "npx cap add ios && npx cap add android",

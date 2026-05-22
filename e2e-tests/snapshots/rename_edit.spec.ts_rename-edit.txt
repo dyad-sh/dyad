@@ -72,6 +72,9 @@ A file (2)
   "packageManager": "<scrubbed>"
 }
 
+=== pnpm-workspace.yaml ===
+[10 lines]
+
 === src/main.tsx ===
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";

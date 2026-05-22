@@ -158,6 +158,7 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
 });
 
 const oldPnpmTestSkipIfWindows = testWithConfigSkipIfWindows({
+  showPnpmMinimumReleaseAgeWarning: true,
   preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
     await configurePackageManagerCache(userDataDir);
     await createOldPnpmShim(userDataDir);
@@ -168,6 +169,7 @@ const oldPnpmTestSkipIfWindows = testWithConfigSkipIfWindows({
 });
 
 const upgradePnpmTestSkipIfWindows = testWithConfigSkipIfWindows({
+  showPnpmMinimumReleaseAgeWarning: true,
   preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
     await configurePackageManagerCache(userDataDir);
     await createUpgradeablePnpmShim(userDataDir);

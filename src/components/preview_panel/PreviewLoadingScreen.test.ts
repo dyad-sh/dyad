@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
+  didPreviewCommandFail,
   getPreviewLoadingSessionStartedAt,
   isWarningMessage,
   sanitizePreviewErrorForPrompt,
+  shouldShowPreviewErrorBanner,
 } from "./PreviewLoadingScreen";
 
 const entry = (
@@ -84,5 +86,97 @@ describe("PreviewLoadingScreen helpers", () => {
     expect(sanitized).not.toContain("\u0000");
     expect(sanitized).toContain("[truncated]");
     expect(sanitized.length).toBeLessThan(message.length);
+  });
+
+  describe("didPreviewCommandFail", () => {
+    it("returns true only for a non-zero exit in the current loading session", () => {
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(true);
+
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 0, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(false);
+
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 50 },
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(false);
+
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: null, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(false);
+    });
+
+    it("returns false when the exit belongs to a different app", () => {
+      expect(
+        didPreviewCommandFail({
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 2,
+        }),
+      ).toBe(false);
+    });
+  });
+
+  describe("shouldShowPreviewErrorBanner", () => {
+    it("hides the banner when errors are logged before the command exits", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: still compiling"],
+          previewAppExit: null,
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(false);
+    });
+
+    it("hides the banner when the command exits successfully", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: noisy stderr"],
+          previewAppExit: { appId: 1, exitCode: 0, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(false);
+    });
+
+    it("shows the banner only when the current command exits non-zero with errors", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: Cannot find module 'react'"],
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 1,
+        }),
+      ).toBe(true);
+    });
+
+    it("hides the banner when the exit belongs to a different app", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: Cannot find module 'react'"],
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+          currentAppId: 2,
+        }),
+      ).toBe(false);
+    });
   });
 });

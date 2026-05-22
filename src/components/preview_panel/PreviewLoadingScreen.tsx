@@ -12,8 +12,11 @@ import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
   appConsoleEntriesAtom,
+  previewAppExitAtom,
   previewRunStartedAtAtom,
+  selectedAppIdAtom,
 } from "@/atoms/appAtoms";
+import type { PreviewAppExit } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -87,6 +90,41 @@ export function sanitizePreviewErrorForPrompt(message: string) {
     : withoutControlChars;
 }
 
+export function didPreviewCommandFail({
+  previewAppExit,
+  sessionStartedAt,
+  currentAppId,
+}: {
+  previewAppExit: PreviewAppExit | null;
+  sessionStartedAt: number;
+  currentAppId: number | null;
+}) {
+  return (
+    previewAppExit !== null &&
+    previewAppExit.appId === currentAppId &&
+    previewAppExit.timestamp >= sessionStartedAt &&
+    previewAppExit.exitCode !== null &&
+    previewAppExit.exitCode !== 0
+  );
+}
+
+export function shouldShowPreviewErrorBanner({
+  errorMessages,
+  previewAppExit,
+  sessionStartedAt,
+  currentAppId,
+}: {
+  errorMessages: string[];
+  previewAppExit: PreviewAppExit | null;
+  sessionStartedAt: number;
+  currentAppId: number | null;
+}) {
+  return (
+    errorMessages.length > 0 &&
+    didPreviewCommandFail({ previewAppExit, sessionStartedAt, currentAppId })
+  );
+}
+
 interface PreviewLoadingScreenProps {
   // True while the app is being spawned/restarted (useRunApp).
   loading: boolean;
@@ -108,7 +146,9 @@ export function PreviewLoadingScreen({
 }: PreviewLoadingScreenProps) {
   const { t } = useTranslation("home");
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
+  const previewAppExit = useAtomValue(previewAppExitAtom);
   const previewRunStartedAt = useAtomValue(previewRunStartedAtAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();
@@ -235,7 +275,12 @@ export function PreviewLoadingScreen({
 
   if (!shouldRender) return null;
 
-  const showErrorBanner = errorMessages.length > 0;
+  const showErrorBanner = shouldShowPreviewErrorBanner({
+    errorMessages,
+    previewAppExit,
+    sessionStartedAt,
+    currentAppId: selectedAppId,
+  });
   const errorCount = errorMessages.length;
 
   return (

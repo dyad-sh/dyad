@@ -19,6 +19,12 @@ export const selectedVersionIdAtom = atom<string | null>(null);
 
 export const appConsoleEntriesAtom = atom<ConsoleEntry[]>([]);
 export const previewRunStartedAtAtom = atom<number | null>(null);
+export type PreviewAppExit = {
+  appId: number;
+  exitCode: number | null;
+  timestamp: number;
+};
+export const previewAppExitAtom = atom<PreviewAppExit | null>(null);
 export const appUrlAtom = atom<
   | {
       appUrl: string;

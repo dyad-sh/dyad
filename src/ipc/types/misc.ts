@@ -304,10 +304,13 @@ export const AppOutputSchema = z.object({
     "package-manager-warning",
     "sync-error",
     "sync-recovered",
+    "app-exit",
   ]),
   message: z.string(),
   appId: z.number(),
   timestamp: z.number().optional(),
+  exitCode: z.number().nullable().optional(),
+  signal: z.string().nullable().optional(),
 });
 
 export type AppOutput = z.infer<typeof AppOutputSchema>;

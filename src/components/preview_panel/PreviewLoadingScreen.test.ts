@@ -5,6 +5,7 @@ import {
   getPreviewLoadingSessionStartedAt,
   isWarningMessage,
   sanitizePreviewErrorForPrompt,
+  shouldShowPreviewErrorBanner,
 } from "./PreviewLoadingScreen";
 
 const entry = (
@@ -116,6 +117,38 @@ describe("PreviewLoadingScreen helpers", () => {
           sessionStartedAt: 100,
         }),
       ).toBe(false);
+    });
+  });
+
+  describe("shouldShowPreviewErrorBanner", () => {
+    it("hides the banner when errors are logged before the command exits", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: still compiling"],
+          previewAppExit: null,
+          sessionStartedAt: 100,
+        }),
+      ).toBe(false);
+    });
+
+    it("hides the banner when the command exits successfully", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: noisy stderr"],
+          previewAppExit: { appId: 1, exitCode: 0, timestamp: 200 },
+          sessionStartedAt: 100,
+        }),
+      ).toBe(false);
+    });
+
+    it("shows the banner only when the current command exits non-zero with errors", () => {
+      expect(
+        shouldShowPreviewErrorBanner({
+          errorMessages: ["Error: Cannot find module 'react'"],
+          previewAppExit: { appId: 1, exitCode: 1, timestamp: 200 },
+          sessionStartedAt: 100,
+        }),
+      ).toBe(true);
     });
   });
 });

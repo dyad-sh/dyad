@@ -104,6 +104,21 @@ export function didPreviewCommandFail({
   );
 }
 
+export function shouldShowPreviewErrorBanner({
+  errorMessages,
+  previewAppExit,
+  sessionStartedAt,
+}: {
+  errorMessages: string[];
+  previewAppExit: PreviewAppExit | null;
+  sessionStartedAt: number;
+}) {
+  return (
+    errorMessages.length > 0 &&
+    didPreviewCommandFail({ previewAppExit, sessionStartedAt })
+  );
+}
+
 interface PreviewLoadingScreenProps {
   // True while the app is being spawned/restarted (useRunApp).
   loading: boolean;
@@ -253,8 +268,8 @@ export function PreviewLoadingScreen({
 
   if (!shouldRender) return null;
 
-  const showErrorBanner = errorMessages.length > 0;
-  const showFixErrorsWithAi = didPreviewCommandFail({
+  const showErrorBanner = shouldShowPreviewErrorBanner({
+    errorMessages,
     previewAppExit,
     sessionStartedAt,
   });
@@ -376,18 +391,16 @@ export function PreviewLoadingScreen({
                 <Cog size={14} />
                 <span>{t("preview.rebuild")}</span>
               </button>
-              {showFixErrorsWithAi && (
-                <button
-                  type="button"
-                  onClick={handleFixAllErrors}
-                  disabled={isStreaming || !selectedChatId}
-                  className="cursor-pointer flex items-center gap-1 px-2.5 py-1 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500 text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  data-testid="preview-loading-fix-errors-button"
-                >
-                  <Sparkles size={14} />
-                  <span>Fix {errorCount} error(s) with AI</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleFixAllErrors}
+                disabled={isStreaming || !selectedChatId}
+                className="cursor-pointer flex items-center gap-1 px-2.5 py-1 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500 text-white rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                data-testid="preview-loading-fix-errors-button"
+              >
+                <Sparkles size={14} />
+                <span>Fix {errorCount} error(s) with AI</span>
+              </button>
             </div>
           </div>
         )}

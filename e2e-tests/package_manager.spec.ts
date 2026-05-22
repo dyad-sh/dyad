@@ -74,7 +74,7 @@ async function createUpgradeablePnpmShim(userDataDir: string) {
       '  echo "${DYAD_TEST_PNPM_VERSION:-10.15.0}"',
       "  exit 0",
       "fi",
-      `exec "${process.execPath}" "${systemPnpmPath}" "$@"`,
+      `exec "${systemPnpmPath}" "$@"`,
       "",
     ].join("\n"),
   );
@@ -92,11 +92,7 @@ async function createSupportedPnpmShim(userDataDir: string) {
   await fs.mkdir(fakeBinDir, { recursive: true });
   await fs.writeFile(
     pnpmPath,
-    [
-      "#!/bin/sh",
-      `exec "${process.execPath}" "${systemPnpmPath}" "$@"`,
-      "",
-    ].join("\n"),
+    ["#!/bin/sh", `exec "${systemPnpmPath}" "$@"`, ""].join("\n"),
   );
   await fs.chmod(pnpmPath, 0o755);
   process.env.PATH = `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`;

@@ -226,6 +226,9 @@ async function applyCapacitor({
     errorPrefix: "Failed to initialize Capacitor",
   });
 
+  // Intentionally omit PNPM_INSTALL_POLICY_ARGS because:
+  // 1. confirmModulesPurge will almost never be needed for capacitor (i.e. user would need to switch from npm to pnpm and not triggered a rebuild).
+  // 2. strictBuildDeps should be kept true (default value) in case capacitor has native deps.
   await simpleSpawn({
     command:
       "pnpm install --prod=false || npm install --include=dev --legacy-peer-deps",

@@ -45,9 +45,23 @@ export function isWarningMessage(message: string): boolean {
   );
 }
 
+export function isPreviewErrorMessage(message: string): boolean {
+  return /\bERR_PNPM_[A-Z0-9_]+\b/.test(message);
+}
+
+function isActionableErrorEntry(entry: ConsoleEntry): boolean {
+  if (isWarningMessage(entry.message)) {
+    return false;
+  }
+  return entry.level === "error" || isPreviewErrorMessage(entry.message);
+}
+
 function displayLevel(entry: ConsoleEntry): ConsoleEntry["level"] {
   if (entry.level === "error" && isWarningMessage(entry.message)) {
     return "warn";
+  }
+  if (entry.level === "info" && isPreviewErrorMessage(entry.message)) {
+    return "error";
   }
   return entry.level;
 }
@@ -205,7 +219,7 @@ export function PreviewLoadingScreen({
     const seen = new Set<string>();
     const result: string[] = [];
     for (const entry of sessionEntries) {
-      if (entry.level !== "error" || isWarningMessage(entry.message)) {
+      if (!isActionableErrorEntry(entry)) {
         continue;
       }
       const key = entry.message;

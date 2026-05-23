@@ -3,6 +3,7 @@ import type { ConsoleEntry } from "@/ipc/types";
 import {
   didPreviewCommandFail,
   getPreviewLoadingSessionStartedAt,
+  isPreviewErrorMessage,
   isWarningMessage,
   sanitizePreviewErrorForPrompt,
   shouldShowPreviewErrorBanner,
@@ -75,6 +76,23 @@ describe("PreviewLoadingScreen helpers", () => {
       "Deprecation without colon suffix",
     ])("returns false for actionable errors: %s", (message) => {
       expect(isWarningMessage(message)).toBe(false);
+    });
+  });
+
+  describe("isPreviewErrorMessage", () => {
+    it("recognizes pnpm error codes even when pnpm prints them to stdout", () => {
+      expect(
+        isPreviewErrorMessage(
+          'ERR_PNPM_NO_SCRIPT Missing script: dev Command "dev" not found.',
+        ),
+      ).toBe(true);
+    });
+
+    it("does not treat normal command output as a preview error", () => {
+      expect(isPreviewErrorMessage("Lockfile is up to date")).toBe(false);
+      expect(
+        isPreviewErrorMessage("ELIFECYCLE Command failed with exit code 143."),
+      ).toBe(false);
     });
   });
 

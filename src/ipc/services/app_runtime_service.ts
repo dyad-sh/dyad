@@ -8,7 +8,10 @@ import log from "electron-log";
 
 import { getAppPort } from "../../../shared/ports";
 import { readSettings } from "@/main/settings";
-import type { RuntimeMode2 } from "@/lib/schemas";
+import {
+  shouldShowPnpmMinimumReleaseAgeWarning,
+  type RuntimeMode2,
+} from "@/lib/schemas";
 import type { AppOutput } from "@/ipc/types/misc";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { addLog } from "@/lib/log_store";
@@ -99,10 +102,11 @@ async function getDefaultCommand({
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
   const npmCommand = `(${getNpmInstallCommand()} && npm run dev -- --port ${port})`;
 
-  if (!pnpmSupport.supported) {
-    if (pnpmSupport.warningMessage) {
-      onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
-    }
+  if (!pnpmSupport.minimumReleaseAgeSupported && pnpmSupport.warningMessage) {
+    onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
+  }
+
+  if (!pnpmSupport.available) {
     return npmCommand;
   }
 
@@ -148,7 +152,7 @@ function emitPnpmMinimumReleaseAgeWarning({
   message: string;
 }) {
   const settings = readSettings();
-  if (settings.hidePnpmMinimumReleaseAgeWarning) {
+  if (!shouldShowPnpmMinimumReleaseAgeWarning(settings)) {
     return;
   }
 

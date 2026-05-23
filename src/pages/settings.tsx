@@ -225,6 +225,30 @@ export default function SettingsPage() {
                 <BlockUnsafeNpmPackagesSwitch />
               </div>
               <div
+                id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-pnpm-minimum-release-age-warning"
+                    aria-label="Enable pnpm upgrade warning"
+                    checked={!!settings?.enablePnpmMinimumReleaseAgeWarning}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enablePnpmMinimumReleaseAgeWarning: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-pnpm-minimum-release-age-warning">
+                    Enable pnpm upgrade warning
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Show the pnpm release-age warning toast and one-click pnpm
+                  upgrade action.
+                </div>
+              </div>
+              <div
                 id={SETTING_IDS.enableMcpServersForBuildMode}
                 className="space-y-1 mt-4"
               >

@@ -52,11 +52,22 @@ export const test = base.extend<{
         userDataDir: (electronApp as any).$dyadUserDataDir,
         fakeLlmPort: (electronApp as any).$fakeLlmPort,
       });
-      if (!electronConfig.showPnpmMinimumReleaseAgeWarning) {
+      if (electronConfig.showPnpmMinimumReleaseAgeWarning) {
         await page.evaluate(async () => {
           await (window as any).electron.ipcRenderer.invoke(
             "set-user-settings",
             {
+              enablePnpmMinimumReleaseAgeWarning: true,
+              hidePnpmMinimumReleaseAgeWarning: false,
+            },
+          );
+        });
+      } else {
+        await page.evaluate(async () => {
+          await (window as any).electron.ipcRenderer.invoke(
+            "set-user-settings",
+            {
+              enablePnpmMinimumReleaseAgeWarning: false,
               hidePnpmMinimumReleaseAgeWarning: true,
             },
           );

@@ -141,6 +141,8 @@ When a main-process workflow needs to show a user-facing warning toast after a t
 
 When changing install-policy constants or helpers in `src/ipc/utils/socket_firewall.ts`, search all command builders before committing. The same policy can be consumed by add-dependency processing, app startup (`src/ipc/services/app_runtime_service.ts`), and cloud sandbox setup, so removing an export like `NPM_INSTALL_POLICY_ARGS` can leave stale imports that only `npm run ts` catches.
 
+Do not treat "pnpm is available but older than the minimumReleaseAge-supporting version" the same as "pnpm is unavailable." `PNPM_INSTALL_POLICY_ARGS` currently use `--config.*` flags, which pnpm 10.15.0 and 9.0.0 accept on `pnpm install`; keep using pnpm with those flags when it is present, and only fall back to npm when the pnpm binary cannot be run.
+
 ## React + IPC integration pattern
 
 When creating hooks/components that call IPC handlers:

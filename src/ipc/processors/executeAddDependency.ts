@@ -13,6 +13,7 @@ import {
   getPnpmMinimumReleaseAgeSupport,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
+import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 
 function escapeRegExp(value: string): string {
@@ -194,13 +195,13 @@ export async function installPackages({
 
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
   if (
-    !pnpmSupport.supported &&
+    !pnpmSupport.minimumReleaseAgeSupported &&
     pnpmSupport.warningMessage &&
-    !settings.hidePnpmMinimumReleaseAgeWarning
+    shouldShowPnpmMinimumReleaseAgeWarning(settings)
   ) {
     warningMessages.push(pnpmSupport.warningMessage);
   }
-  const packageManager = pnpmSupport.supported ? "pnpm" : "npm";
+  const packageManager = pnpmSupport.available ? "pnpm" : "npm";
   if (packageManager === "pnpm") {
     await commitPnpmAllowBuildsConfigIfChanged(appPath);
   }

@@ -3,7 +3,28 @@ import type { ChildProcess } from "node:child_process";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { safeSendMock, spawnMock } = vi.hoisted(() => ({
+const {
+  getPnpmMinimumReleaseAgeSupportMock,
+  ensurePnpmAllowBuildsConfiguredMock,
+  readSettingsMock,
+  safeSendMock,
+  spawnMock,
+} = vi.hoisted(() => ({
+  getPnpmMinimumReleaseAgeSupportMock: vi.fn<
+    () => Promise<{
+      available: boolean;
+      minimumReleaseAgeSupported: boolean;
+      warningMessage?: string;
+    }>
+  >(async () => ({
+    available: false,
+    minimumReleaseAgeSupported: false,
+  })),
+  ensurePnpmAllowBuildsConfiguredMock:
+    vi.fn<(args: unknown) => Promise<{ changed: boolean }>>(),
+  readSettingsMock: vi.fn<() => Record<string, unknown>>(() => ({
+    runtimeMode2: "host",
+  })),
   safeSendMock: vi.fn(),
   spawnMock: vi.fn(),
 }));
@@ -36,9 +57,7 @@ vi.mock("kill-port", () => ({
 }));
 
 vi.mock("@/main/settings", () => ({
-  readSettings: () => ({
-    runtimeMode2: "host",
-  }),
+  readSettings: () => readSettingsMock(),
 }));
 
 vi.mock("@/ipc/utils/safe_sender", () => ({
@@ -46,10 +65,9 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
 }));
 
 vi.mock("@/ipc/utils/socket_firewall", () => ({
-  ensurePnpmAllowBuildsConfigured: vi.fn(),
-  getPnpmMinimumReleaseAgeSupport: vi.fn(async () => ({
-    supported: false,
-  })),
+  ensurePnpmAllowBuildsConfigured: (args: unknown) =>
+    ensurePnpmAllowBuildsConfiguredMock(args),
+  getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
   PNPM_INSTALL_POLICY_ARGS: ["--minimum-release-age=1440"],
 }));
 
@@ -100,6 +118,17 @@ describe("executeApp", () => {
   beforeEach(() => {
     runningApps.clear();
     processCounter.value = 0;
+    getPnpmMinimumReleaseAgeSupportMock.mockReset();
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: false,
+      minimumReleaseAgeSupported: false,
+    });
+    ensurePnpmAllowBuildsConfiguredMock.mockReset();
+    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({ changed: false });
+    readSettingsMock.mockReset();
+    readSettingsMock.mockReturnValue({
+      runtimeMode2: "host",
+    });
     safeSendMock.mockReset();
     spawnMock.mockReset();
   });
@@ -161,5 +190,48 @@ describe("executeApp", () => {
       }),
     );
     expect(runningApps.has(1)).toBe(false);
+  });
+
+  it("uses pnpm when pnpm is available but too old for minimumReleaseAge", async () => {
+    const process = new FakeChildProcess(101);
+    spawnMock.mockReturnValueOnce(process);
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: true,
+      minimumReleaseAgeSupported: false,
+      warningMessage:
+        "Install pnpm 10.16.0 or newer for the strongest protection",
+    });
+    readSettingsMock.mockReturnValue({
+      runtimeMode2: "host",
+      enablePnpmMinimumReleaseAgeWarning: true,
+    });
+
+    const event = createEvent();
+    await executeApp({
+      appPath: "/tmp/app",
+      appId: 1,
+      event,
+      isNeon: false,
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "pnpm --minimum-release-age=1440 install && pnpm run dev --port 32101",
+      [],
+      expect.objectContaining({
+        cwd: "/tmp/app",
+        shell: true,
+      }),
+    );
+    expect(ensurePnpmAllowBuildsConfiguredMock).toHaveBeenCalledWith({
+      appPath: "/tmp/app",
+    });
+    expect(safeSendMock).toHaveBeenCalledWith(
+      event.sender,
+      "app:output",
+      expect.objectContaining({
+        type: "package-manager-warning",
+        message: "Install pnpm 10.16.0 or newer for the strongest protection",
+      }),
+    );
   });
 });

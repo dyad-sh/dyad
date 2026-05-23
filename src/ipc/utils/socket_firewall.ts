@@ -709,13 +709,14 @@ export async function detectPreferredPackageManager(
   runner: CommandRunner = runCommand,
 ): Promise<PackageManager> {
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport(runner);
-  return pnpmSupport.supported ? "pnpm" : "npm";
+  return pnpmSupport.available ? "pnpm" : "npm";
 }
 
 export async function getPnpmMinimumReleaseAgeSupport(
   runner: CommandRunner = runCommand,
 ): Promise<{
-  supported: boolean;
+  available: boolean;
+  minimumReleaseAgeSupported: boolean;
   version?: string;
   warningMessage?: string;
 }> {
@@ -724,10 +725,15 @@ export async function getPnpmMinimumReleaseAgeSupport(
     : undefined;
   if (testPnpmVersion) {
     if (isVersionAtLeast(testPnpmVersion, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
-      return { supported: true, version: testPnpmVersion };
+      return {
+        available: true,
+        minimumReleaseAgeSupported: true,
+        version: testPnpmVersion,
+      };
     }
     return {
-      supported: false,
+      available: true,
+      minimumReleaseAgeSupported: false,
       version: testPnpmVersion,
       warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
     };
@@ -739,16 +745,18 @@ export async function getPnpmMinimumReleaseAgeSupport(
     });
     const version = result.stdout.trim();
     if (isVersionAtLeast(version, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
-      return { supported: true, version };
+      return { available: true, minimumReleaseAgeSupported: true, version };
     }
     return {
-      supported: false,
+      available: true,
+      minimumReleaseAgeSupported: false,
       version,
       warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
     };
   } catch {
     return {
-      supported: false,
+      available: false,
+      minimumReleaseAgeSupported: false,
       warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
     };
   }

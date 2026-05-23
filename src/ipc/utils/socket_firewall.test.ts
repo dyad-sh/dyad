@@ -26,6 +26,7 @@ import {
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
+  getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   resolveExecutableName,
   runCommand,
@@ -83,14 +84,41 @@ describe("detectPreferredPackageManager", () => {
     });
   });
 
-  it("falls back to npm when pnpm is too old for minimumReleaseAge", async () => {
+  it("prefers pnpm when pnpm is available but too old for minimumReleaseAge", async () => {
     const runner = vi
       .fn<CommandRunner>()
       .mockResolvedValue({ stdout: "10.15.0", stderr: "" });
 
-    await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
+    await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
+  });
+
+  it("reports old pnpm as available but not minimumReleaseAge-capable", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValue({ stdout: "10.15.0", stderr: "" });
+
+    await expect(getPnpmMinimumReleaseAgeSupport(runner)).resolves.toEqual({
+      available: true,
+      minimumReleaseAgeSupported: false,
+      version: "10.15.0",
+      warningMessage:
+        "Install pnpm 10.16.0 or newer for the strongest protection",
+    });
+  });
+
+  it("reports missing pnpm as unavailable", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockRejectedValue(new Error("ENOENT"));
+
+    await expect(getPnpmMinimumReleaseAgeSupport(runner)).resolves.toEqual({
+      available: false,
+      minimumReleaseAgeSupported: false,
+      warningMessage:
+        "Install pnpm 10.16.0 or newer for the strongest protection",
     });
   });
 });

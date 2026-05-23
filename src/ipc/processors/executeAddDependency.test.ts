@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   CommandExecutionError,
+  PNPM_INSTALL_POLICY_ARGS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
 import {
@@ -66,7 +67,8 @@ describe("executeAddDependency", () => {
     });
     dbUpdateWhereMock.mockResolvedValue(undefined);
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
-      supported: true,
+      available: true,
+      minimumReleaseAgeSupported: true,
       version: "10.16.0",
     });
     commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue(undefined);
@@ -341,9 +343,60 @@ describe("executeAddDependency", () => {
     expect(runCommandMock).toHaveBeenCalledTimes(1);
   });
 
-  it("uses npm directly when pnpm cannot enforce the release-age policy", async () => {
+  it("uses pnpm with policy flags when pnpm cannot enforce the release-age policy", async () => {
+    readEffectiveSettingsMock.mockResolvedValueOnce({
+      blockUnsafeNpmPackages: true,
+      enablePnpmMinimumReleaseAgeWarning: true,
+    });
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
-      supported: false,
+      available: true,
+      minimumReleaseAgeSupported: false,
+      warningMessage:
+        "Install pnpm 10.16.0 or newer for the strongest protection",
+    });
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+      warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
+    });
+    runCommandMock.mockResolvedValueOnce({
+      stdout: "installed via pnpm",
+      stderr: "",
+    });
+
+    const result = await executeAddDependency({
+      packages: ["react"],
+      message: {
+        id: 1,
+        content: '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+      } as any,
+      appPath: "/tmp/app",
+    });
+
+    expect(runCommandMock).toHaveBeenCalledWith(
+      "pnpm",
+      [...PNPM_INSTALL_POLICY_ARGS, "add", "react"],
+      {
+        cwd: "/tmp/app",
+        timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+      },
+    );
+    expect(runCommandMock).toHaveBeenCalledTimes(1);
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
+      "/tmp/app",
+    );
+    expect(result).toMatchObject({
+      installResults: "installed via pnpm",
+      warningMessages: [
+        SOCKET_FIREWALL_WARNING_MESSAGE,
+        "Install pnpm 10.16.0 or newer for the strongest protection",
+      ],
+    });
+  });
+
+  it("falls back to npm when pnpm is unavailable", async () => {
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: false,
+      minimumReleaseAgeSupported: false,
       warningMessage:
         "Install pnpm 10.16.0 or newer for the strongest protection",
     });
@@ -373,14 +426,10 @@ describe("executeAddDependency", () => {
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
       },
     );
-    expect(runCommandMock).toHaveBeenCalledTimes(1);
     expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       installResults: "installed via npm",
-      warningMessages: [
-        SOCKET_FIREWALL_WARNING_MESSAGE,
-        "Install pnpm 10.16.0 or newer for the strongest protection",
-      ],
+      warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
     });
   });
 

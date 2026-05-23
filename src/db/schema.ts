@@ -251,6 +251,29 @@ export const mcpServers = sqliteTable("mcp_servers", {
   enabled: integer("enabled", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  // Whether this server requires OAuth. When true, the MCP manager wires
+  // an `OAuthClientProvider` into the transport (HTTP/SSE) so the
+  // Vercel `@ai-sdk/mcp` `auth()` flow can drive PKCE + refresh.
+  oauthEnabled: integer("oauth_enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  // OAuth state (tokens, expiry, client info). Encrypted via Electron
+  // `safeStorage`, or base64 plaintext where no keyring is available
+  // (see encryptToString). Read/written only by DyadOAuthClientProvider.
+  oauthState: text("oauth_state"),
+  // Optional pre-registered OAuth client_id for servers that don't
+  // support dynamic client registration (RFC 7591). User-supplied via
+  // the add-server UI; left blank for servers that support DCR.
+  oauthClientId: text("oauth_client_id"),
+  // Optional pre-registered OAuth client_secret for confidential
+  // clients. Encrypted via `safeStorage` (base64 plaintext fallback
+  // where no keyring exists). Never sent to the renderer.
+  oauthClientSecret: text("oauth_client_secret"),
+  // Space-separated OAuth scopes requested at the authorize endpoint.
+  // Server-defined values; check provider docs. Blank means omit the
+  // `scope` parameter entirely so the server applies its own default
+  // (rather than us guessing a value that fits a minority of providers).
+  oauthScope: text("oauth_scope"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

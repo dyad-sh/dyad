@@ -3,9 +3,12 @@ import { mcpServers } from "../../db/schema";
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { eq } from "drizzle-orm";
 
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  DyadOAuthClientProvider,
+  decryptFromString,
+} from "./mcp_oauth_provider";
 
 class McpManager {
   private static _instance: McpManager;
@@ -25,22 +28,36 @@ class McpManager {
       .where(eq(mcpServers.id, serverId));
     const s = server.find((x) => x.id === serverId);
     if (!s) throw new Error(`MCP server not found: ${serverId}`);
-    let transport: StdioClientTransport | StreamableHTTPClientTransport;
+
+    let client: MCPClient;
     if (s.transport === "stdio") {
       const args = s.args ?? [];
       const env = s.envJson ?? undefined;
       if (!s.command) throw new Error("MCP server command is required");
-      transport = new StdioClientTransport({
+      const stdio = new StdioClientTransport({
         command: s.command,
         args,
         env,
       });
-    } else if (s.transport === "http") {
-      if (!s.url) throw new Error("HTTP MCP requires url");
-      const headers = s.headersJson ?? {};
-      transport = new StreamableHTTPClientTransport(new URL(s.url as string), {
-        requestInit: {
-          headers,
+      client = await createMCPClient({ transport: stdio });
+    } else if (s.transport === "http" || s.transport === "sse") {
+      if (!s.url) throw new Error(`${s.transport} MCP requires url`);
+      const authProvider = s.oauthEnabled
+        ? new DyadOAuthClientProvider({
+            serverId: s.id,
+            scope: s.oauthScope ?? undefined,
+            preregisteredClientId: s.oauthClientId ?? undefined,
+            preregisteredClientSecret: s.oauthClientSecret
+              ? decryptFromString(s.oauthClientSecret) || undefined
+              : undefined,
+          })
+        : undefined;
+      client = await createMCPClient({
+        transport: {
+          type: s.transport,
+          url: s.url,
+          headers: s.headersJson ?? undefined,
+          authProvider,
         },
       });
     } else {
@@ -49,9 +66,7 @@ class McpManager {
         DyadErrorKind.Validation,
       );
     }
-    const client = await createMCPClient({
-      transport,
-    });
+
     this.clients.set(serverId, client);
     return client;
   }

@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import type {
   McpServer,
@@ -10,7 +15,7 @@ import type {
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
-export type Transport = "stdio" | "http";
+export type Transport = "stdio" | "http" | "sse";
 
 export function useMcp() {
   const queryClient = useQueryClient();
@@ -33,11 +38,24 @@ export function useMcp() {
     queryKey: queryKeys.mcp.toolsByServer.list({ serverIds }),
     enabled: serverIds.length > 0,
     queryFn: async () => {
-      const entries = await Promise.all(
+      // Promise.allSettled (not all) so one server's listTools
+      // rejection doesn't poison the batch -- an unconnected
+      // OAuth-gated server can hang on its 401 path, which would
+      // otherwise hold every other server's tools hostage. The
+      // handler-side timeout caps the worst case; this is the
+      // renderer-side safety net.
+      const settled = await Promise.allSettled(
         serverIds.map(async (id) => [id, await ipc.mcp.listTools(id)] as const),
+      );
+      const entries = settled.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : [],
       );
       return Object.fromEntries(entries) as Record<number, McpTool[]>;
     },
+    // `serverIds` is part of the query key, so adding/removing a
+    // server makes React Query see a brand-new query. keepPreviousData
+    // keeps existing servers' tools visible while the new key loads.
+    placeholderData: keepPreviousData,
     meta: { showErrorToast: true },
   });
 
@@ -97,6 +115,36 @@ export function useMcp() {
     meta: { showErrorToast: true },
   });
 
+  const startOAuthMutation = useMutation({
+    mutationFn: async (params: { serverId: number }) => {
+      return ipc.mcp.startOAuth(params);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.mcp.toolsByServer.all,
+        }),
+      ]);
+    },
+    meta: { showErrorToast: true },
+  });
+
+  const disconnectOAuthMutation = useMutation({
+    mutationFn: async (serverId: number) => {
+      return ipc.mcp.disconnectOAuth(serverId);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.mcp.toolsByServer.all,
+        }),
+      ]);
+    },
+    meta: { showErrorToast: true },
+  });
+
   const setConsentMutation = useMutation({
     mutationFn: async (params: {
       serverId: number;
@@ -129,6 +177,12 @@ export function useMcp() {
     consent: McpToolConsent["consent"],
   ) => setConsentMutation.mutateAsync({ serverId, toolName, consent });
 
+  const startOAuth = async (params: { serverId: number }) =>
+    startOAuthMutation.mutateAsync(params);
+
+  const disconnectOAuth = async (serverId: number) =>
+    disconnectOAuthMutation.mutateAsync(serverId);
+
   const refetchAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
@@ -158,6 +212,8 @@ export function useMcp() {
     updateServer,
     deleteServer,
     setToolConsent,
+    startOAuth,
+    disconnectOAuth,
 
     // Status flags
     isCreating: createServerMutation.isPending,
@@ -165,5 +221,7 @@ export function useMcp() {
     isUpdatingServer: updateServerMutation.isPending,
     isDeleting: deleteServerMutation.isPending,
     isSettingConsent: setConsentMutation.isPending,
+    isStartingOAuth: startOAuthMutation.isPending,
+    isDisconnectingOAuth: disconnectOAuthMutation.isPending,
   } as const;
 }

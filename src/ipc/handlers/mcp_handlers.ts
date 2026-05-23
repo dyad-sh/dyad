@@ -7,6 +7,11 @@ import { createTypedHandler } from "./base";
 import { resolveConsent } from "../utils/mcp_consent";
 import { getStoredConsent } from "../utils/mcp_consent";
 import { mcpManager } from "../utils/mcp_manager";
+import { disconnectOAuth, runOAuthFlow } from "../utils/mcp_oauth_flow";
+import {
+  encryptToString,
+  oauthStateHasTokens,
+} from "../utils/mcp_oauth_provider";
 import {
   mcpContracts,
   type McpServer,
@@ -16,11 +21,26 @@ import {
 
 const logger = log.scope("mcp_handlers");
 
-// Helper to cast DB server to typed server
+// Convert a DB row into the shape sent to the UI. Drops the encrypted
+// `oauthState` / `oauthClientSecret`; sends `oauthConnected` instead.
 function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
   return {
-    ...dbServer,
+    id: dbServer.id,
+    name: dbServer.name,
     transport: dbServer.transport as McpTransport,
+    command: dbServer.command,
+    args: dbServer.args,
+    envJson: dbServer.envJson,
+    headersJson: dbServer.headersJson,
+    url: dbServer.url,
+    enabled: dbServer.enabled,
+    oauthEnabled: dbServer.oauthEnabled,
+    // `oauthState` being set isn't enough -- it can hold just a
+    // registered client ID before any tokens exist.
+    // `oauthStateHasTokens` checks for a real access token.
+    oauthConnected: oauthStateHasTokens(dbServer.oauthState),
+    createdAt: dbServer.createdAt,
+    updatedAt: dbServer.updatedAt,
   };
 }
 
@@ -41,6 +61,10 @@ export function registerMcpHandlers() {
       headersJson,
       url,
       enabled,
+      oauthEnabled,
+      oauthClientId,
+      oauthClientSecret,
+      oauthScope,
     } = params;
     // Handle args: can be string (JSON), array, or null/undefined
     const parsedArgs = args
@@ -71,23 +95,24 @@ export function registerMcpHandlers() {
         headersJson: parsedHeadersJson,
         url: url || null,
         enabled: !!enabled,
+        oauthEnabled: !!oauthEnabled,
+        oauthClientId: oauthClientId ?? null,
+        oauthClientSecret: oauthClientSecret
+          ? encryptToString(oauthClientSecret)
+          : null,
+        oauthScope: oauthScope ?? null,
       })
       .returning();
     return toMcpServer(result[0]);
   });
 
   createTypedHandler(mcpContracts.updateServer, async (_, params) => {
-    const update: any = {};
+    const update: Partial<typeof mcpServers.$inferInsert> = {};
     if (params.name !== undefined) update.name = params.name;
     if (params.transport !== undefined) update.transport = params.transport;
     if (params.command !== undefined) update.command = params.command;
     if (params.args !== undefined)
-      update.args = params.args
-        ? typeof params.args === "string"
-          ? JSON.parse(params.args)
-          : params.args
-        : null;
-    if (params.cwd !== undefined) update.cwd = params.cwd;
+      update.args = params.args ? JSON.parse(params.args) : null;
     if (params.envJson !== undefined)
       update.envJson = params.envJson
         ? typeof params.envJson === "string"
@@ -108,7 +133,9 @@ export function registerMcpHandlers() {
       .set(update)
       .where(eq(mcpServers.id, params.id))
       .returning();
-    // If server config changed, dispose cached client to be recreated on next use
+    if (!result[0]) throw new Error(`MCP server not found: ${params.id}`);
+    // Config may have changed; dispose the cached client so the next
+    // use rebuilds the transport with the updated row.
     try {
       mcpManager.dispose(params.id);
     } catch {}
@@ -125,21 +152,45 @@ export function registerMcpHandlers() {
 
   // Tools listing (dynamic)
   createTypedHandler(mcpContracts.listTools, async (_, serverId) => {
+    // Bounded wait per server: the renderer waits for every server's
+    // listTools to settle before rendering, so one hung server (often
+    // an unconnected OAuth-gated host) would otherwise freeze the
+    // whole tools list. This ceiling caps the worst case.
+    const LIST_TOOLS_TIMEOUT_MS = 8_000;
     try {
-      const client = await mcpManager.getClient(serverId);
-      const remoteTools = await client.tools();
-      const tools = await Promise.all(
-        Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
-          name,
-          description: mcpTool.description ?? null,
-          consent: (await getStoredConsent(serverId, name)) as
-            | McpConsentValue
-            | undefined,
-        })),
-      );
-      return tools;
+      const result = await Promise.race([
+        (async () => {
+          const client = await mcpManager.getClient(serverId);
+          const remoteTools = await client.tools();
+          return Promise.all(
+            Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
+              name,
+              description: mcpTool.description ?? null,
+              consent: (await getStoredConsent(serverId, name)) as
+                | McpConsentValue
+                | undefined,
+            })),
+          );
+        })(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Timed out after ${LIST_TOOLS_TIMEOUT_MS / 1000}s waiting for tools from server ${serverId}.`,
+                ),
+              ),
+            LIST_TOOLS_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+      return result;
     } catch (e) {
-      logger.error("Failed to list tools", e);
+      logger.error(
+        `Failed to list tools for server ${serverId}: ${
+          e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+        }`,
+      );
       return [];
     }
   });
@@ -198,6 +249,20 @@ export function registerMcpHandlers() {
   // Receive consent response from renderer
   createTypedHandler(mcpContracts.respondToConsent, async (_, data) => {
     resolveConsent(data.requestId, data.decision);
+  });
+
+  // OAuth: kick off the full flow against the named MCP server. The
+  // main-process loopback listener captures the redirect, the
+  // `@ai-sdk/mcp` `auth()` function drives PKCE + token exchange, and
+  // tokens land in the encrypted `oauth_state` column.
+  createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
+    return await runOAuthFlow({ serverId: params.serverId });
+  });
+
+  // OAuth disconnect: clear stored tokens + client info. Forces the
+  // next tool call to require a fresh consent flow.
+  createTypedHandler(mcpContracts.disconnectOAuth, async (_, serverId) => {
+    return await disconnectOAuth(serverId);
   });
 
   logger.debug("Registered MCP IPC handlers");

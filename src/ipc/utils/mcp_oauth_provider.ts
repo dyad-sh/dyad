@@ -1,0 +1,315 @@
+import { shell, safeStorage } from "electron";
+import log from "electron-log";
+import { eq } from "drizzle-orm";
+import type {
+  OAuthClientInformation,
+  OAuthClientMetadata,
+  OAuthClientProvider,
+  OAuthTokens,
+} from "@ai-sdk/mcp";
+import { db } from "../../db";
+import { mcpServers } from "../../db/schema";
+import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
+
+const logger = log.scope("mcp_oauth_provider");
+
+// Stored shape of `oauth_state` (after decryption). Both fields are
+// optional because the SDK fills them at different points in the flow.
+interface StoredOAuthState {
+  tokens?: OAuthTokens;
+  clientInformation?: OAuthClientInformation;
+}
+
+// PKCE code verifiers are short-lived secrets. Kept in memory only,
+// never in the DB, so they're gone when the app exits.
+const codeVerifiers = new Map<number, string>();
+
+export function encryptToString(plaintext: string): string {
+  if (!safeStorage.isEncryptionAvailable()) {
+    // No keyring available (e.g. Linux without libsecret): store as
+    // plaintext rather than blocking OAuth entirely on those setups.
+    logger.warn(
+      "safeStorage encryption unavailable; OAuth state written as plaintext",
+    );
+    return Buffer.from(plaintext, "utf8").toString("base64");
+  }
+  return safeStorage.encryptString(plaintext).toString("base64");
+}
+
+export function decryptFromString(stored: string): string {
+  const buf = Buffer.from(stored, "base64");
+  if (!safeStorage.isEncryptionAvailable()) {
+    return buf.toString("utf8");
+  }
+  try {
+    return safeStorage.decryptString(buf);
+  } catch (err) {
+    // Usually means the data was written on another machine, or the
+    // keychain was reset. Treat as empty so the user just re-runs the
+    // OAuth flow instead of hitting a crash.
+    logger.warn("Failed to decrypt OAuth state; treating as empty", err);
+    return "";
+  }
+}
+
+// True only if the stored OAuth state has an access token. A
+// non-empty `oauth_state` isn't enough -- it can hold just a
+// registered client ID with no tokens yet. Drives the
+// "OAuth: connected" badge.
+export function oauthStateHasTokens(stored: string | null): boolean {
+  if (!stored) return false;
+  const json = decryptFromString(stored);
+  if (!json) return false;
+  try {
+    const parsed = JSON.parse(json) as StoredOAuthState;
+    return Boolean(parsed.tokens?.access_token);
+  } catch {
+    return false;
+  }
+}
+
+async function readState(serverId: number): Promise<StoredOAuthState> {
+  const rows = await db
+    .select({ oauthState: mcpServers.oauthState })
+    .from(mcpServers)
+    .where(eq(mcpServers.id, serverId));
+  const raw = rows[0]?.oauthState;
+  if (!raw) return {};
+  const json = decryptFromString(raw);
+  if (!json) return {};
+  try {
+    return JSON.parse(json) as StoredOAuthState;
+  } catch {
+    return {};
+  }
+}
+
+async function writeState(
+  serverId: number,
+  state: StoredOAuthState,
+): Promise<void> {
+  // No tokens and no client info: store NULL instead of an encrypted
+  // empty object, so the column clearly means "nothing stored".
+  const isEmpty = !state.tokens && !state.clientInformation;
+  const blob = isEmpty ? null : encryptToString(JSON.stringify(state));
+  await db
+    .update(mcpServers)
+    .set({ oauthState: blob })
+    .where(eq(mcpServers.id, serverId));
+}
+
+interface ProviderConfig {
+  serverId: number;
+  callbackPort?: number;
+  scope?: string;
+  // Client ID the user registered by hand, for servers that don't
+  // support automatic registration. When set, the SDK skips its
+  // `/register` call.
+  preregisteredClientId?: string;
+  // Pre-registered client_secret for confidential OAuth clients. Only
+  // meaningful alongside `preregisteredClientId`.
+  preregisteredClientSecret?: string;
+  // Random anti-CSRF value put in the authorize URL and checked when
+  // the browser redirects back. When unset, `state()` returns "" and
+  // the SDK leaves `state=` off the URL.
+  flowState?: string;
+  // True only for the Connect-button flow, which also starts the
+  // callback listener. Other providers pass false: they throw instead
+  // of opening a browser, since no listener is running to catch the
+  // redirect.
+  allowInteractive?: boolean;
+}
+
+export class DyadOAuthClientProvider implements OAuthClientProvider {
+  private readonly serverId: number;
+  private readonly callbackPort: number;
+  private readonly scope: string | undefined;
+  private readonly preregisteredClientId: string | undefined;
+  private readonly preregisteredClientSecret: string | undefined;
+  private readonly flowState: string | undefined;
+  private readonly allowInteractive: boolean;
+  // Client info kept in memory. The SDK calls `addClientAuthentication`
+  // without awaiting it, so that method can't do an async DB read --
+  // it uses this instead. Set by `clientInformation()` and
+  // `saveClientInformation()`.
+  private cachedClientInformation: OAuthClientInformation | undefined;
+
+  constructor(config: ProviderConfig) {
+    this.serverId = config.serverId;
+    this.callbackPort = config.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT;
+    this.scope = config.scope;
+    this.preregisteredClientId = config.preregisteredClientId;
+    this.preregisteredClientSecret = config.preregisteredClientSecret;
+    this.flowState = config.flowState;
+    this.allowInteractive = config.allowInteractive ?? false;
+  }
+
+  // The SDK reads this when building the authorize URL. Returns ""
+  // when no state is set, so the SDK leaves `state=` off.
+  state(): string {
+    return this.flowState ?? "";
+  }
+
+  get redirectUrl(): string {
+    return `http://localhost:${this.callbackPort}/callback`;
+  }
+
+  get clientMetadata(): OAuthClientMetadata {
+    // Pick the auth method from whether we have a client_secret:
+    // "client_secret_post" if so, "none" (plain PKCE) otherwise. The
+    // wrong choice makes the server reject the token exchange.
+    const tokenEndpointAuthMethod = this.preregisteredClientSecret
+      ? "client_secret_post"
+      : "none";
+    return {
+      redirect_uris: [this.redirectUrl],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: tokenEndpointAuthMethod,
+      client_name: "Dyad",
+      scope: this.scope,
+    };
+  }
+
+  async tokens(): Promise<OAuthTokens | undefined> {
+    const state = await readState(this.serverId);
+    return state.tokens;
+  }
+
+  async saveTokens(tokens: OAuthTokens): Promise<void> {
+    const state = await readState(this.serverId);
+    state.tokens = tokens;
+    await writeState(this.serverId, state);
+  }
+
+  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+    const state = await readState(this.serverId);
+    if (state.clientInformation) {
+      this.cachedClientInformation = state.clientInformation;
+      return state.clientInformation;
+    }
+    // If the user gave us a client ID, return it on first read so the
+    // SDK skips its `/register` call. Saved too, so later reads just
+    // load it from storage.
+    if (this.preregisteredClientId) {
+      const seeded: OAuthClientInformation = {
+        client_id: this.preregisteredClientId,
+        ...(this.preregisteredClientSecret
+          ? { client_secret: this.preregisteredClientSecret }
+          : {}),
+      };
+      await writeState(this.serverId, { ...state, clientInformation: seeded });
+      this.cachedClientInformation = seeded;
+      return seeded;
+    }
+    this.cachedClientInformation = undefined;
+    return undefined;
+  }
+
+  async saveClientInformation(
+    clientInformation: OAuthClientInformation,
+  ): Promise<void> {
+    // Update the in-memory copy before the DB write -- the SDK may
+    // call `addClientAuthentication` (which reads it) before this
+    // returns.
+    this.cachedClientInformation = clientInformation;
+    const state = await readState(this.serverId);
+    state.clientInformation = clientInformation;
+    await writeState(this.serverId, state);
+  }
+
+  async codeVerifier(): Promise<string> {
+    const v = codeVerifiers.get(this.serverId);
+    if (!v) {
+      throw new Error(
+        `No PKCE code verifier in memory for MCP server ${this.serverId}; the OAuth flow must be restarted.`,
+      );
+    }
+    return v;
+  }
+
+  async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    codeVerifiers.set(this.serverId, codeVerifier);
+  }
+
+  async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    // Only the Connect-button flow opens a browser. Other providers
+    // throw here -- no callback listener is running, so a redirect
+    // would have nowhere to land. See `allowInteractive`.
+    if (!this.allowInteractive) {
+      throw new Error(
+        "OAuth not currently allowed (interactive consent required; click Connect on the server row).",
+      );
+    }
+    logger.info(
+      `Opening browser for OAuth: ${authorizationUrl.origin}${authorizationUrl.pathname}`,
+    );
+    await shell.openExternal(authorizationUrl.toString());
+  }
+
+  // Arrow field so `this` still works when the SDK calls it as a
+  // loose function. Stays synchronous: the SDK doesn't await it, so it
+  // reads `cachedClientInformation` instead of doing an async DB read.
+  addClientAuthentication = (
+    headers: Headers,
+    params: URLSearchParams,
+  ): void => {
+    const info = this.cachedClientInformation;
+    if (!info) {
+      logger.warn(
+        `addClientAuthentication invoked without cached clientInformation for MCP server ${this.serverId}; token exchange will fail.`,
+      );
+      return;
+    }
+    const method = (
+      info as OAuthClientInformation & { token_endpoint_auth_method?: string }
+    ).token_endpoint_auth_method;
+    const hasSecret = Boolean(info.client_secret);
+    const chosen = method ?? (hasSecret ? "client_secret_post" : "none");
+
+    if (chosen === "client_secret_basic" && info.client_secret) {
+      const credentials = Buffer.from(
+        `${info.client_id}:${info.client_secret}`,
+      ).toString("base64");
+      headers.set("Authorization", `Basic ${credentials}`);
+      return;
+    }
+
+    if (chosen === "client_secret_post") {
+      params.set("client_id", info.client_id);
+      if (info.client_secret) params.set("client_secret", info.client_secret);
+      return;
+    }
+
+    params.set("client_id", info.client_id);
+  };
+
+  async invalidateCredentials(
+    scope: "all" | "client" | "tokens" | "verifier",
+  ): Promise<void> {
+    logger.debug(
+      `invalidateCredentials(${scope}) for MCP server ${this.serverId}`,
+    );
+    // The SDK only ever calls with "all" or "tokens"; warn (rather
+    // than silently no-op) if that ever changes so we notice.
+    if (scope !== "all" && scope !== "tokens") {
+      logger.warn(
+        `invalidateCredentials(${scope}) is unhandled; SDK only calls 'all'/'tokens'`,
+      );
+      return;
+    }
+    const state = await readState(this.serverId);
+    delete state.tokens;
+    if (scope === "all") {
+      codeVerifiers.delete(this.serverId);
+      delete state.clientInformation;
+      this.cachedClientInformation = undefined;
+    }
+    await writeState(this.serverId, state);
+  }
+}
+
+// Test helper: clears the in-memory code-verifier map.
+export function _resetCodeVerifiersForTest(): void {
+  codeVerifiers.clear();
+}

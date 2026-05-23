@@ -71,6 +71,10 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
 vi.mock("@/ipc/utils/socket_firewall", () => ({
   ensurePnpmAllowBuildsConfigured: (args: unknown) =>
     ensurePnpmAllowBuildsConfiguredMock(args),
+  getPnpmCommandEnv: () => ({
+    ...process.env,
+    COREPACK_ENABLE_PROJECT_SPEC: "0",
+  }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
   PNPM_INSTALL_POLICY_ARGS: ["--minimum-release-age=1440"],
 }));
@@ -231,6 +235,9 @@ describe("executeApp", () => {
       [],
       expect.objectContaining({
         cwd: "/tmp/app",
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+        }),
         shell: true,
       }),
     );

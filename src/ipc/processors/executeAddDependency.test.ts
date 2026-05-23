@@ -382,6 +382,9 @@ describe("executeAddDependency", () => {
       ],
       {
         cwd: "/tmp/app",
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+        }),
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
       },
     );

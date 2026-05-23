@@ -26,6 +26,7 @@ import {
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
+  getPnpmCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   resolveExecutableName,
@@ -59,6 +60,16 @@ async function withPlatform<T>(
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe("getPnpmCommandEnv", () => {
+  it("disables Corepack project packageManager pins while preserving the rest of the env", () => {
+    expect(getPnpmCommandEnv({ PATH: "/bin", FOO: "bar" })).toEqual({
+      PATH: "/bin",
+      FOO: "bar",
+      COREPACK_ENABLE_PROJECT_SPEC: "0",
+    });
+  });
 });
 
 describe("detectPreferredPackageManager", () => {

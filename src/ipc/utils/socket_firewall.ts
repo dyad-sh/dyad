@@ -16,6 +16,7 @@ export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
 export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
 export const PNPM_GLOBAL_INSTALL_PACKAGE = "pnpm@latest-11";
+export const COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV = "0";
 const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
   MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
@@ -99,6 +100,15 @@ export type CommandRunner = (
   args: string[],
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
+
+export function getPnpmCommandEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    COREPACK_ENABLE_PROJECT_SPEC: COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV,
+  };
+}
 
 export type PackageManager = "pnpm" | "npm";
 type AllowBuildsChannel = "local" | "remote";

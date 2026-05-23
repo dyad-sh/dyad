@@ -464,19 +464,17 @@ export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
 
+type PnpmMinimumReleaseAgeWarningSettings = Pick<
+  UserSettings,
+  "enablePnpmMinimumReleaseAgeWarning" | "hidePnpmMinimumReleaseAgeWarning"
+>;
+
 export function shouldShowPnpmMinimumReleaseAgeWarning(
-  settings:
-    | Pick<
-        UserSettings,
-        | "enablePnpmMinimumReleaseAgeWarning"
-        | "hidePnpmMinimumReleaseAgeWarning"
-      >
-    | null
-    | undefined,
+  settings?: PnpmMinimumReleaseAgeWarningSettings | null,
 ): boolean {
-  return (
-    settings?.enablePnpmMinimumReleaseAgeWarning === true &&
-    settings.hidePnpmMinimumReleaseAgeWarning !== true
+  return Boolean(
+    settings?.enablePnpmMinimumReleaseAgeWarning &&
+    !settings.hidePnpmMinimumReleaseAgeWarning,
   );
 }
 

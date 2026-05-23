@@ -11,6 +11,7 @@ import {
   executeAddDependency,
   ExecuteAddDependencyError,
 } from "./executeAddDependency";
+import { ensurePnpmAllowBuildsConfigured } from "@/ipc/utils/socket_firewall";
 import {
   deleteSupabaseFunction,
   deploySupabaseFunction,
@@ -610,11 +611,18 @@ export async function processFullResponseActions(
     let extraFilesError: string | undefined;
 
     if (hasChanges) {
+      const pnpmWorkspaceConfigResult = await ensurePnpmAllowBuildsConfigured({
+        appPath,
+      });
+
       // Stage all written files
       for (const file of writtenFiles) {
         await gitAdd({ path: appPath, filepath: file });
       }
-      if (fs.existsSync(safeJoin(appPath, "pnpm-workspace.yaml"))) {
+      if (
+        pnpmWorkspaceConfigResult.changed ||
+        fs.existsSync(safeJoin(appPath, "pnpm-workspace.yaml"))
+      ) {
         await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
       }
 

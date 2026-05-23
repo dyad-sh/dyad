@@ -73,7 +73,7 @@ A file (2)
 }
 
 === pnpm-workspace.yaml ===
-[10 lines]
+[13 lines]
 
 === src/main.tsx ===
 import { createRoot } from "react-dom/client";

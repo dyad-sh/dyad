@@ -17,6 +17,7 @@ import { db } from "../db";
 import { cleanFullResponse } from "../ipc/utils/cleanFullResponse";
 import { gitAdd, gitRemove, gitCommit } from "../ipc/utils/git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { ensurePnpmAllowBuildsConfigured } from "@/ipc/utils/socket_firewall";
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {
@@ -58,6 +59,12 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitStatus: vi.fn().mockResolvedValue([]),
   getGitUncommittedFiles: vi.fn().mockResolvedValue([]),
   hasStagedChanges: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("@/ipc/utils/socket_firewall", () => ({
+  ensurePnpmAllowBuildsConfigured: vi.fn().mockResolvedValue({
+    changed: false,
+  }),
 }));
 
 // Mock paths module to control getDyadAppPath
@@ -999,6 +1006,31 @@ describe("processFullResponse", () => {
         filepath: "src/file1.js",
       }),
     );
+    expect(gitAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filepath: "pnpm-workspace.yaml",
+      }),
+    );
+    expect(result).toEqual({ updatedFiles: true });
+  });
+
+  it("should configure and stage pnpm-workspace.yaml before committing response changes", async () => {
+    vi.mocked(ensurePnpmAllowBuildsConfigured).mockResolvedValueOnce({
+      changed: true,
+    });
+    vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+    vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+    const response = `<dyad-write path="src/file1.js">console.log('Hello');</dyad-write>`;
+
+    const result = await processFullResponseActions(response, 1, {
+      chatSummary: undefined,
+      messageId: 1,
+    });
+
+    expect(ensurePnpmAllowBuildsConfigured).toHaveBeenCalledWith({
+      appPath: "/mock/user/data/path/mock-app-path",
+    });
     expect(gitAdd).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "pnpm-workspace.yaml",

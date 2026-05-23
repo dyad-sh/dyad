@@ -39,6 +39,9 @@ async function configurePackageManagerCache(userDataDir: string) {
 async function createOldPnpmShim(userDataDir: string) {
   const fakeBinDir = path.join(userDataDir, "fake-old-pnpm-bin");
   const pnpmPath = path.join(fakeBinDir, "pnpm");
+  const systemPnpmPath = execFileSync("which", ["pnpm"], {
+    encoding: "utf8",
+  }).trim();
 
   await fs.mkdir(fakeBinDir, { recursive: true });
   await fs.writeFile(
@@ -49,8 +52,7 @@ async function createOldPnpmShim(userDataDir: string) {
       '  echo "10.15.0"',
       "  exit 0",
       "fi",
-      'echo "fake pnpm only supports --version" >&2',
-      "exit 1",
+      `exec "${systemPnpmPath}" "$@"`,
       "",
     ].join("\n"),
   );
@@ -312,7 +314,7 @@ testSkipIfWindows(
 );
 
 oldPnpmTestSkipIfWindows(
-  "app run falls back to npm and hides the pnpm minimum release age warning after opt-out",
+  "app run shows and hides the pnpm minimum release age warning after opt-out",
   async ({ po }, testInfo) => {
     testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
 
@@ -336,7 +338,7 @@ oldPnpmTestSkipIfWindows(
     const appPath = await po.appManagement.getCurrentAppPath();
     await expect(async () => {
       await expect(
-        fs.stat(path.join(appPath, "package-lock.json")),
+        fs.stat(path.join(appPath, "pnpm-lock.yaml")),
       ).resolves.toBeTruthy();
     }).toPass({ timeout: Timeout.EXTRA_LONG });
 

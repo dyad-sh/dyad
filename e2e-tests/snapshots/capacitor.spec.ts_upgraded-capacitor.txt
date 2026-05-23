@@ -2166,7 +2166,7 @@ end
 }
 
 === pnpm-workspace.yaml ===
-[10 lines]
+[13 lines]
 
 === postcss.config.js ===
 export default {

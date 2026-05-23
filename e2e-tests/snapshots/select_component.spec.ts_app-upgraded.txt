@@ -108,7 +108,7 @@ dist-ssr
 }
 
 === pnpm-workspace.yaml ===
-[10 lines]
+[13 lines]
 
 === src/App.tsx ===
 import { BrowserRouter, Routes, Route } from "react-router-dom";

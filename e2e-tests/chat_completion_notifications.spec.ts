@@ -153,7 +153,9 @@ testWithNotificationsEnabled(
     const chatId = await createChat(po);
     await po.browserNotifications.injectFakeNotifications();
 
-    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
+    await po.chatActions.sendPrompt("hello [sleep=medium]", {
+      skipWaitForCompletion: true,
+    });
     await triggerDifferentChat(po, chatId);
 
     const notification =
@@ -229,7 +231,9 @@ testWithNotificationsEnabled(
 
     await po.browserNotifications.injectFakeNotifications();
 
-    await po.chatActions.sendPrompt("test", { skipWaitForCompletion: true });
+    await po.chatActions.sendPrompt("test [sleep=medium]", {
+      skipWaitForCompletion: true,
+    });
     await triggerDifferentChat(po, initialChatId);
 
     const tag = `dyad-chat-complete-${initialChatId}`;

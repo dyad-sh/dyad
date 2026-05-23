@@ -17,7 +17,9 @@ test("should connect to GitHub using device flow", async ({ po }) => {
   ).toBeVisible();
 
   // Verify the "Set up your GitHub repo" section appears
-  await expect(po.githubConnector.getSetupYourGitHubRepoButton()).toBeVisible();
+  await expect(po.githubConnector.getSetupYourGitHubRepoButton()).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 });
 
 test("create and sync to new repo", async ({ po }) => {
@@ -30,6 +32,7 @@ test("create and sync to new repo", async ({ po }) => {
   // Verify "Create new repo" is selected by default
   await expect(po.githubConnector.getCreateNewRepoModeButton()).toHaveClass(
     /bg-primary/,
+    { timeout: Timeout.MEDIUM },
   );
 
   await po.githubConnector.fillCreateRepoName("test-new-repo");

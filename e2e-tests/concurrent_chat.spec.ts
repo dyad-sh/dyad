@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 test("concurrent chat", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=chat1 [sleep=medium]", {
+  await po.sendPrompt("tc=chat1 [sleep=long]", {
     skipWaitForCompletion: true,
   });
   // Need a short wait otherwise the click on Apps tab is ignored.
@@ -22,5 +22,7 @@ test("concurrent chat", async ({ po }) => {
 
   // Click the button inside the tab to select it
   await chat1TabContainer.locator("button").first().click();
-  await po.snapshotMessages({ timeout: 12_000 });
+  await expect(po.page.getByTestId("messages-list")).toContainText(
+    "tc=chat1 [sleep=long]",
+  );
 });

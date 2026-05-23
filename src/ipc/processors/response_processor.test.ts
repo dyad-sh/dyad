@@ -68,6 +68,19 @@ vi.mock("@/main/settings", () => ({
   readSettings: mocks.readSettingsMock,
 }));
 
+vi.mock("@/ipc/utils/socket_firewall", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/socket_firewall")
+  >("@/ipc/utils/socket_firewall");
+
+  return {
+    ...actual,
+    ensurePnpmAllowBuildsConfigured: vi.fn().mockResolvedValue({
+      changed: false,
+    }),
+  };
+});
+
 vi.mock("../utils/cloud_sandbox_provider", () => ({
   queueCloudSandboxSnapshotSync: mocks.queueCloudSandboxSnapshotSyncMock,
 }));

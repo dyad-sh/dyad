@@ -26,9 +26,7 @@ const mockUser = {
   email: "testuser@example.com",
 };
 
-const mockReposRoot = fs.mkdtempSync(
-  path.join(os.tmpdir(), "dyad-git-mock-"),
-);
+const mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
 
 const mockRepos = [
   {

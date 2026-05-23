@@ -11,11 +11,16 @@ import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 =======
 import {
   isComponentTaggerUpgradeNeeded,
-  isCapacitorUpgradeNeeded,
   applyComponentTagger,
-  applyCapacitor,
 } from "../utils/app_upgrade_utils";
+<<<<<<< HEAD
 >>>>>>> 3aa0b201 (add automatique update in app import)
+=======
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { gitAddAll, gitCommit } from "../utils/git_utils";
+>>>>>>> 481b64ec (apply feedback fix)
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -51,6 +56,9 @@ async function getApp(appId: number) {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 481b64ec (apply feedback fix)
 function isViteApp(appPath: string): boolean {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
@@ -58,6 +66,7 @@ function isViteApp(appPath: string): boolean {
   return fs.existsSync(viteConfigPathTs) || fs.existsSync(viteConfigPathJs);
 }
 
+<<<<<<< HEAD
 function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
@@ -80,6 +89,8 @@ function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
   }
 }
 
+=======
+>>>>>>> 481b64ec (apply feedback fix)
 function isCapacitorUpgradeNeeded(appPath: string): boolean {
   // Check if it's a Vite app first
   if (!isViteApp(appPath)) {
@@ -103,6 +114,7 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
+<<<<<<< HEAD
 async function applyComponentTagger(appPath: string) {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
@@ -209,6 +221,8 @@ async function applyComponentTagger(appPath: string) {
   }
 }
 
+=======
+>>>>>>> 481b64ec (apply feedback fix)
 async function applyCapacitor({
   appName,
   appPath,
@@ -219,7 +233,11 @@ async function applyCapacitor({
   // Install Capacitor dependencies
   await simpleSpawn({
     command:
+<<<<<<< HEAD
       "pnpm add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+=======
+      "pnpm add @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+>>>>>>> 481b64ec (apply feedback fix)
     cwd: appPath,
     successMessage: "Capacitor dependencies installed successfully",
     errorPrefix: "Failed to install Capacitor dependencies",
@@ -273,8 +291,11 @@ async function applyCapacitor({
   }
 }
 
+<<<<<<< HEAD
 =======
 >>>>>>> 3aa0b201 (add automatique update in app import)
+=======
+>>>>>>> 481b64ec (apply feedback fix)
 export function registerAppUpgradeHandlers() {
   handle(
     "get-app-upgrades",

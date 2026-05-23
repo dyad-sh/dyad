@@ -16,3 +16,7 @@ default settings snapshot mismatches.
 For settings whose default can be overridden remotely:
 
 - Prefer leaving the raw stored field unset until the user explicitly changes it, then compute the effective value as `stored value ?? remote default ?? built-in fallback`. Do not persist remote-applied defaults into `user-settings.json`.
+
+For schema-validated settings:
+
+- Assume `UserSettings` and other parsed schema types have already normalized field types. Prefer idiomatic boolean checks like `settings?.flag && !settings.hidden` over defensive literal comparisons like `settings?.flag === true && settings.hidden !== true`, unless you are intentionally handling raw unvalidated persisted data before schema parsing.

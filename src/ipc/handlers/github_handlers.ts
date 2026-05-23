@@ -56,6 +56,10 @@ export function normalizeGitHubRepoName(repoName: string): string {
 
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
+import {
+  isComponentTaggerUpgradeNeeded,
+  applyComponentTagger,
+} from "../utils/app_upgrade_utils";
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
 
 // Use test server URLs when in test mode
@@ -179,13 +183,13 @@ export async function prepareLocalBranch({
         if (isGitMergeInProgress({ path: appPath })) {
           throw new Error(
             "Cannot auto-commit changes because a merge is in progress. " +
-              "Please complete or abort the merge and try again.",
+            "Please complete or abort the merge and try again.",
           );
         }
         if (isGitRebaseInProgress({ path: appPath })) {
           throw new Error(
             "Cannot auto-commit changes because a rebase is in progress. " +
-              "Please complete or abort the rebase and try again.",
+            "Please complete or abort the rebase and try again.",
           );
         }
 
@@ -259,8 +263,8 @@ export async function prepareLocalBranch({
               } catch (innerErr: any) {
                 throw new Error(
                   `Failed to resolve remote branch 'origin/${targetBranch}' to a commit. ` +
-                    "Ensure 'git fetch' succeeded and the remote branch exists. " +
-                    `${innerErr?.message || String(innerErr)}`,
+                  "Ensure 'git fetch' succeeded and the remote branch exists. " +
+                  `${innerErr?.message || String(innerErr)}`,
                 );
               }
             }
@@ -285,7 +289,7 @@ export async function prepareLocalBranch({
               } else {
                 logger.warn(
                   "[GitHub Handler] Previous branch unknown; repository may remain in detached HEAD at " +
-                    `${commitSha}.`,
+                  `${commitSha}.`,
                 );
               }
               throw error;
@@ -318,7 +322,7 @@ export async function prepareLocalBranch({
     ) {
       throw new Error(
         `Failed to prepare local branch: uncommitted changes detected. ` +
-          "Unable to automatically handle uncommitted changes. Please commit or stash your changes manually and try again.",
+        "Unable to automatically handle uncommitted changes. Please commit or stash your changes manually and try again.",
       );
     }
     throw new Error(errorMessage);
@@ -434,9 +438,8 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
   } catch (error) {
     logger.error("Error polling for GitHub access token:", error);
     event.sender.send("github:flow-error", {
-      error: `Network or unexpected error during polling: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      error: `Network or unexpected error during polling: ${error instanceof Error ? error.message : String(error)
+        }`,
     });
     stopPolling();
   }
@@ -1021,7 +1024,7 @@ export async function ensureCleanWorkspace(
   if (isClean) return;
   throw new Error(
     `Workspace is not clean before ${operationDescription}. ` +
-      "Please commit or stash your changes manually and try again.",
+    "Please commit or stash your changes manually and try again.",
   );
 }
 
@@ -1152,7 +1155,7 @@ async function handleInviteCollaborator(
       const data = (await response.json()) as { message?: string };
       throw new Error(
         data.message ||
-          `Failed to invite collaborator: ${response.status} ${response.statusText}`,
+        `Failed to invite collaborator: ${response.status} ${response.statusText}`,
       );
     }
   } catch (err: any) {
@@ -1196,7 +1199,7 @@ async function handleRemoveCollaborator(
       const data = (await response.json()) as { message?: string };
       throw new Error(
         data.message ||
-          `Failed to remove collaborator: ${response.status} ${response.statusText}`,
+        `Failed to remove collaborator: ${response.status} ${response.statusText}`,
       );
     }
   } catch (err: any) {
@@ -1334,6 +1337,21 @@ async function handleCloneRepoFromUrl(
       })
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
+
+    if (isComponentTaggerUpgradeNeeded(appPath)) {
+      try {
+        await applyComponentTagger(appPath);
+        logger.log(
+          `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
+        );
+      } catch (upgradeError) {
+        logger.warn(
+          `[GitHub Handler] Failed to auto-apply component tagger upgrade for ${owner}/${repoName}`,
+          upgradeError,
+        );
+      }
+    }
+
     // Return success object
     return {
       app: {

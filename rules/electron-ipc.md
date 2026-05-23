@@ -143,6 +143,8 @@ When changing install-policy constants or helpers in `src/ipc/utils/socket_firew
 
 Do not treat "pnpm is available but older than the minimumReleaseAge-supporting version" the same as "pnpm is unavailable." `PNPM_INSTALL_POLICY_ARGS` currently use `--config.*` flags, which pnpm 10.15.0 and 9.0.0 accept on `pnpm install`; keep using pnpm with those flags when it is present, and only fall back to npm when the pnpm binary cannot be run.
 
+When running Dyad-managed pnpm install/add commands from inside an app directory, use `getPnpmCommandEnv()` so Corepack ignores stale project `packageManager` pins via `COREPACK_ENABLE_PROJECT_SPEC=0`. Apply this to `npx sfw ... pnpm ...` wrappers too, since the wrapped pnpm inherits the parent env; avoid forcing it onto user-authored custom commands unless intentionally changing their package-manager semantics.
+
 When generating `pnpm-workspace.yaml` for install policy (`allowBuilds`, `minimumReleaseAge`), include a top-level `packages:` block such as `packages: ["." ]` if one does not already exist. pnpm 9 treats `pnpm-workspace.yaml` as a workspace manifest and fails with `packages field missing or empty` when the file only contains config keys.
 
 Automated `pnpm add` commands that run in an app root with a generated `pnpm-workspace.yaml` must pass `--ignore-workspace-root-check`. Otherwise older pnpm versions can fail with `ERR_PNPM_ADDING_TO_ROOT` even though Dyad intentionally installs into that app root.

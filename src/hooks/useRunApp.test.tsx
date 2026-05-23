@@ -38,7 +38,12 @@ const {
   respondToAppInputMock: vi.fn(),
   restartAppMock: vi.fn(),
   settingsMock: {
-    current: {} as { hidePnpmMinimumReleaseAgeWarning?: boolean } | undefined,
+    current: {} as
+      | {
+          enablePnpmMinimumReleaseAgeWarning?: boolean;
+          hidePnpmMinimumReleaseAgeWarning?: boolean;
+        }
+      | undefined,
   },
   showErrorMock: vi.fn(),
   showInputRequestMock: vi.fn(),
@@ -249,6 +254,9 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("shows pnpm warning toast with install and docs actions", async () => {
+    settingsMock.current = {
+      enablePnpmMinimumReleaseAgeWarning: true,
+    };
     const { Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
@@ -287,7 +295,31 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
+  it("does not show pnpm warning toast when the experiment is disabled", () => {
+    const { Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "package-manager-warning",
+          message: "Install pnpm 10.16.0 or newer for the strongest protection",
+          appId: 1,
+        });
+      }
+    });
+
+    expect(showPnpmMinimumReleaseAgeWarningMock).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
   it("does not clear visible app logs when a stale pnpm toast rebuilds another app", async () => {
+    settingsMock.current = {
+      enablePnpmMinimumReleaseAgeWarning: true,
+    };
     const { store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
@@ -332,6 +364,9 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("clears pnpm rebuild loading when the selected app changes mid-rebuild", async () => {
+    settingsMock.current = {
+      enablePnpmMinimumReleaseAgeWarning: true,
+    };
     const { store, Wrapper } = makeWrapper(1);
     let finishRestartApp: () => void = () => {};
     restartAppMock.mockReturnValueOnce(

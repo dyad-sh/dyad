@@ -342,6 +342,10 @@ describe("executeAddDependency", () => {
   });
 
   it("uses npm directly when pnpm cannot enforce the release-age policy", async () => {
+    readEffectiveSettingsMock.mockResolvedValueOnce({
+      blockUnsafeNpmPackages: true,
+      enablePnpmMinimumReleaseAgeWarning: true,
+    });
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       supported: false,
       warningMessage:

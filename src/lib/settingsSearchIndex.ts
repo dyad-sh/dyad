@@ -39,6 +39,8 @@ export const SETTING_IDS = {
   enableCloudSandbox: "setting-enable-cloud-sandbox",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
+  enablePnpmMinimumReleaseAgeWarning:
+    "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
@@ -420,6 +422,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Block unsafe npm packages",
     description: "Uses socket.dev to detect unsafe packages and blocks them",
     keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enablePnpmMinimumReleaseAgeWarning,
+    label: "Enable pnpm upgrade warning",
+    description:
+      "Show the pnpm release-age warning toast and one-click pnpm upgrade action",
+    keywords: [
+      "pnpm",
+      "npm",
+      "package",
+      "release",
+      "warning",
+      "toast",
+      "upgrade",
+      "experiment",
+    ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

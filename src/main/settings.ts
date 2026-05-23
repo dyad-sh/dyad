@@ -58,6 +58,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableSandboxScriptExecution: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
+  enablePnpmMinimumReleaseAgeWarning: false,
   previewIdleTimeoutPolicy: "default",
 };
 

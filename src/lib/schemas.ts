@@ -355,6 +355,7 @@ const BaseUserSettingsFields = {
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
+  enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
@@ -461,6 +462,22 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
 
 export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
+}
+
+export function shouldShowPnpmMinimumReleaseAgeWarning(
+  settings:
+    | Pick<
+        UserSettings,
+        | "enablePnpmMinimumReleaseAgeWarning"
+        | "hidePnpmMinimumReleaseAgeWarning"
+      >
+    | null
+    | undefined,
+): boolean {
+  return (
+    settings?.enablePnpmMinimumReleaseAgeWarning === true &&
+    settings.hidePnpmMinimumReleaseAgeWarning !== true
+  );
 }
 
 /**

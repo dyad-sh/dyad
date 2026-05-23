@@ -8,7 +8,10 @@ import log from "electron-log";
 
 import { getAppPort } from "../../../shared/ports";
 import { readSettings } from "@/main/settings";
-import type { RuntimeMode2 } from "@/lib/schemas";
+import {
+  shouldShowPnpmMinimumReleaseAgeWarning,
+  type RuntimeMode2,
+} from "@/lib/schemas";
 import type { AppOutput } from "@/ipc/types/misc";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { addLog } from "@/lib/log_store";
@@ -148,7 +151,7 @@ function emitPnpmMinimumReleaseAgeWarning({
   message: string;
 }) {
   const settings = readSettings();
-  if (settings.hidePnpmMinimumReleaseAgeWarning) {
+  if (!shouldShowPnpmMinimumReleaseAgeWarning(settings)) {
     return;
   }
 

@@ -18,7 +18,11 @@ import {
   showInputRequest,
   showPnpmMinimumReleaseAgeWarning,
 } from "@/lib/toast";
-import type { RuntimeMode2, UserSettings } from "@/lib/schemas";
+import {
+  shouldShowPnpmMinimumReleaseAgeWarning,
+  type RuntimeMode2,
+  type UserSettings,
+} from "@/lib/schemas";
 import { useSettings } from "./useSettings";
 
 const useRunAppLoadingAtom = atom(false);
@@ -168,7 +172,7 @@ export function useAppOutputSubscription() {
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   const pnpmWarningSettingRef = useRef({
     hasSettings: Boolean(settings),
-    hideWarning: settings?.hidePnpmMinimumReleaseAgeWarning,
+    showWarning: shouldShowPnpmMinimumReleaseAgeWarning(settings),
   });
   const syncErrorToastRef = useRef(
     new Map<number, { message: string; shownAt: number }>(),
@@ -177,9 +181,13 @@ export function useAppOutputSubscription() {
   useEffect(() => {
     pnpmWarningSettingRef.current = {
       hasSettings: Boolean(settings),
-      hideWarning: settings?.hidePnpmMinimumReleaseAgeWarning,
+      showWarning: shouldShowPnpmMinimumReleaseAgeWarning(settings),
     };
-  }, [settings, settings?.hidePnpmMinimumReleaseAgeWarning]);
+  }, [
+    settings,
+    settings?.enablePnpmMinimumReleaseAgeWarning,
+    settings?.hidePnpmMinimumReleaseAgeWarning,
+  ]);
 
   const processProxyServerOutput = useCallback(
     (output: AppOutput) => {
@@ -276,7 +284,7 @@ export function useAppOutputSubscription() {
       if (
         output.type === "package-manager-warning" &&
         pnpmWarningSettingRef.current.hasSettings &&
-        !pnpmWarningSettingRef.current.hideWarning
+        pnpmWarningSettingRef.current.showWarning
       ) {
         showPnpmMinimumReleaseAgeWarningToast({
           message: output.message,

@@ -13,6 +13,7 @@ import {
   getPnpmMinimumReleaseAgeSupport,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
+import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 
 function escapeRegExp(value: string): string {
@@ -196,7 +197,7 @@ export async function installPackages({
   if (
     !pnpmSupport.supported &&
     pnpmSupport.warningMessage &&
-    !settings.hidePnpmMinimumReleaseAgeWarning
+    shouldShowPnpmMinimumReleaseAgeWarning(settings)
   ) {
     warningMessages.push(pnpmSupport.warningMessage);
   }

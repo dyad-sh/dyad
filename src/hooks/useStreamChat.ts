@@ -54,6 +54,7 @@ import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCanc
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 import { resolveAppIdForChat } from "@/lib/chatUtils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
+import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -134,7 +135,7 @@ export function useStreamChat({
   const showWarningMessage = useCallback(
     (warningMessage: string, warningAppId: number | null) => {
       if (warningMessage.startsWith(PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX)) {
-        if (!settings || settings.hidePnpmMinimumReleaseAgeWarning) {
+        if (!shouldShowPnpmMinimumReleaseAgeWarning(settings)) {
           return;
         }
 
@@ -156,6 +157,7 @@ export function useStreamChat({
     [
       rebuildAppAfterPnpmInstall,
       settings,
+      settings?.enablePnpmMinimumReleaseAgeWarning,
       settings?.hidePnpmMinimumReleaseAgeWarning,
       updateSettings,
     ],

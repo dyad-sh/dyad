@@ -341,7 +341,10 @@ function hasTopLevelConfigKey(lines: string[], key: string): boolean {
 
 function formatPnpmWorkspaceConfigContent(lines: string[]): string {
   if (!hasTopLevelConfigKey(lines, "packages")) {
-    lines.unshift("packages:", "  - .", "");
+    if (lines.length > 0 && lines.at(-1) !== "") {
+      lines.push("");
+    }
+    lines.push("packages:", "  - .");
   }
 
   if (!hasTopLevelConfigKey(lines, "minimumReleaseAge")) {

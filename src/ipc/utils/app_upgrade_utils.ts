@@ -1,64 +1,21 @@
-import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { AppUpgrade } from "@/ipc/types";
-import { db } from "../../db";
-import { apps } from "../../db/schema";
-import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { gitAddAll, gitCommit } from "./git_utils";
+import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-<<<<<<< HEAD
-import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
-=======
-import {
-  isComponentTaggerUpgradeNeeded,
-  isCapacitorUpgradeNeeded,
-  applyComponentTagger,
-  applyCapacitor,
-} from "../utils/app_upgrade_utils";
->>>>>>> 3aa0b201 (add automatique update in app import)
 
-export const logger = log.scope("app_upgrade_handlers");
-const handle = createLoggedHandler(logger);
+export const logger = log.scope("app_upgrade_utils");
 
-const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
-  {
-    id: "component-tagger",
-    title: "Enable select component to edit",
-    description:
-      "Installs the Dyad component tagger Vite plugin and its dependencies.",
-    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
-  },
-  {
-    id: "capacitor",
-    title: "Upgrade to hybrid mobile app with Capacitor",
-    description:
-      "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
-    manualUpgradeUrl: "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
-  },
-];
-
-async function getApp(appId: number) {
-  const app = await db.query.apps.findFirst({
-    where: eq(apps.id, appId),
-  });
-  if (!app) {
-    throw new DyadError(
-      `App with id ${appId} not found`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  return app;
-}
-
-<<<<<<< HEAD
-function isViteApp(appPath: string): boolean {
+export function isViteApp(appPath: string): boolean {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
   return fs.existsSync(viteConfigPathTs) || fs.existsSync(viteConfigPathJs);
 }
 
-function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
+export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
@@ -80,7 +37,7 @@ function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
   }
 }
 
-function isCapacitorUpgradeNeeded(appPath: string): boolean {
+export function isCapacitorUpgradeNeeded(appPath: string): boolean {
   // Check if it's a Vite app first
   if (!isViteApp(appPath)) {
     return false;
@@ -103,7 +60,7 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
-async function applyComponentTagger(appPath: string) {
+export async function applyComponentTagger(appPath: string) {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
@@ -164,10 +121,9 @@ async function applyComponentTagger(appPath: string) {
   await new Promise<void>((resolve, reject) => {
     logger.info("Installing component-tagger dependency");
     const process = spawn(
-      "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
+      "pnpm add -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
       {
         cwd: appPath,
-        env: getPackageManagerCommandEnv(),
         shell: true,
         stdio: "pipe",
       },
@@ -209,7 +165,7 @@ async function applyComponentTagger(appPath: string) {
   }
 }
 
-async function applyCapacitor({
+export async function applyCapacitor({
   appName,
   appPath,
 }: {
@@ -219,7 +175,7 @@ async function applyCapacitor({
   // Install Capacitor dependencies
   await simpleSpawn({
     command:
-      "pnpm add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+      "pnpm add @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
     cwd: appPath,
     successMessage: "Capacitor dependencies installed successfully",
     errorPrefix: "Failed to install Capacitor dependencies",
@@ -268,54 +224,7 @@ async function applyCapacitor({
     );
     throw new Error(
       "Failed to commit Capacitor changes. Please commit them manually. Error: " +
-        err,
+      err,
     );
   }
-}
-
-=======
->>>>>>> 3aa0b201 (add automatique update in app import)
-export function registerAppUpgradeHandlers() {
-  handle(
-    "get-app-upgrades",
-    async (_, { appId }: { appId: number }): Promise<AppUpgrade[]> => {
-      const app = await getApp(appId);
-      const appPath = getDyadAppPath(app.path);
-
-      const upgradesWithStatus = availableUpgrades.map((upgrade) => {
-        let isNeeded = false;
-        if (upgrade.id === "component-tagger") {
-          isNeeded = isComponentTaggerUpgradeNeeded(appPath);
-        } else if (upgrade.id === "capacitor") {
-          isNeeded = isCapacitorUpgradeNeeded(appPath);
-        }
-        return { ...upgrade, isNeeded };
-      });
-
-      return upgradesWithStatus;
-    },
-  );
-
-  handle(
-    "execute-app-upgrade",
-    async (_, { appId, upgradeId }: { appId: number; upgradeId: string }) => {
-      if (!upgradeId) {
-        throw new DyadError("upgradeId is required", DyadErrorKind.Validation);
-      }
-
-      const app = await getApp(appId);
-      const appPath = getDyadAppPath(app.path);
-
-      if (upgradeId === "component-tagger") {
-        await applyComponentTagger(appPath);
-      } else if (upgradeId === "capacitor") {
-        await applyCapacitor({ appName: app.name, appPath });
-      } else {
-        throw new DyadError(
-          `Unknown upgrade id: ${upgradeId}`,
-          DyadErrorKind.External,
-        );
-      }
-    },
-  );
 }

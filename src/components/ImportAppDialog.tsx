@@ -26,6 +26,7 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useOpenApp } from "@/hooks/useOpenApp";
 import {
   Accordion,
   AccordionContent,
@@ -55,6 +56,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { selectChat } = useSelectChat();
   const { refreshApps } = useLoadApps();
+  const openApp = useOpenApp();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   // GitHub import state
   const [url, setUrl] = useState("");
@@ -123,6 +125,15 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         return;
       }
       setSelectedAppId(result.app.id);
+      // Ensure the app list is refreshed so the imported app appears in the sidebar
+      await refreshApps();
+      // Programmatically open the imported app so tests and UI are deterministic
+      try {
+        await openApp(result.app.id);
+      } catch (e) {
+        // Non-fatal; UI selection failing shouldn't block import flow
+        console.warn("Failed to open imported app:", e);
+      }
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });
@@ -160,6 +171,14 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         return;
       }
       setSelectedAppId(result.app.id);
+      // Refresh app list so the newly cloned app is visible immediately
+      await refreshApps();
+      // Programmatically open the imported app so tests and UI are deterministic
+      try {
+        await openApp(result.app.id);
+      } catch (e) {
+        console.warn("Failed to open imported app:", e);
+      }
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });
@@ -579,6 +598,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     {repos.map((repo) => (
                       <div
                         key={repo.full_name}
+                        data-testid={`github-repo-row-${repo.full_name.replace(/[^a-zA-Z0-9_-]/g, "-")}`}
                         className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors min-w-0"
                       >
                         <div className="min-w-0 flex-1 overflow-hidden mr-2">

@@ -13,12 +13,12 @@ const {
   getPnpmMinimumReleaseAgeSupportMock: vi.fn<
     () => Promise<{
       available: boolean;
-      supported: boolean;
+      minimumReleaseAgeSupported: boolean;
       warningMessage?: string;
     }>
   >(async () => ({
     available: false,
-    supported: false,
+    minimumReleaseAgeSupported: false,
   })),
   ensurePnpmAllowBuildsConfiguredMock:
     vi.fn<(args: unknown) => Promise<{ changed: boolean }>>(),
@@ -121,7 +121,7 @@ describe("executeApp", () => {
     getPnpmMinimumReleaseAgeSupportMock.mockReset();
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       available: false,
-      supported: false,
+      minimumReleaseAgeSupported: false,
     });
     ensurePnpmAllowBuildsConfiguredMock.mockReset();
     ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({ changed: false });
@@ -197,7 +197,7 @@ describe("executeApp", () => {
     spawnMock.mockReturnValueOnce(process);
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       available: true,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       warningMessage:
         "Install pnpm 10.16.0 or newer for the strongest protection",
     });

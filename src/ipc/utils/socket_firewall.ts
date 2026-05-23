@@ -716,7 +716,7 @@ export async function getPnpmMinimumReleaseAgeSupport(
   runner: CommandRunner = runCommand,
 ): Promise<{
   available: boolean;
-  supported: boolean;
+  minimumReleaseAgeSupported: boolean;
   version?: string;
   warningMessage?: string;
 }> {
@@ -725,11 +725,15 @@ export async function getPnpmMinimumReleaseAgeSupport(
     : undefined;
   if (testPnpmVersion) {
     if (isVersionAtLeast(testPnpmVersion, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
-      return { available: true, supported: true, version: testPnpmVersion };
+      return {
+        available: true,
+        minimumReleaseAgeSupported: true,
+        version: testPnpmVersion,
+      };
     }
     return {
       available: true,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       version: testPnpmVersion,
       warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
     };
@@ -741,18 +745,18 @@ export async function getPnpmMinimumReleaseAgeSupport(
     });
     const version = result.stdout.trim();
     if (isVersionAtLeast(version, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
-      return { available: true, supported: true, version };
+      return { available: true, minimumReleaseAgeSupported: true, version };
     }
     return {
       available: true,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       version,
       warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
     };
   } catch {
     return {
       available: false,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       warningMessage: PNPM_MINIMUM_RELEASE_AGE_WARNING_MESSAGE,
     };
   }

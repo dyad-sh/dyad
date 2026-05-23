@@ -102,7 +102,7 @@ describe("detectPreferredPackageManager", () => {
 
     await expect(getPnpmMinimumReleaseAgeSupport(runner)).resolves.toEqual({
       available: true,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       version: "10.15.0",
       warningMessage:
         "Install pnpm 10.16.0 or newer for the strongest protection",
@@ -116,7 +116,7 @@ describe("detectPreferredPackageManager", () => {
 
     await expect(getPnpmMinimumReleaseAgeSupport(runner)).resolves.toEqual({
       available: false,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       warningMessage:
         "Install pnpm 10.16.0 or newer for the strongest protection",
     });

@@ -68,7 +68,7 @@ describe("executeAddDependency", () => {
     dbUpdateWhereMock.mockResolvedValue(undefined);
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       available: true,
-      supported: true,
+      minimumReleaseAgeSupported: true,
       version: "10.16.0",
     });
     commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue(undefined);
@@ -350,7 +350,7 @@ describe("executeAddDependency", () => {
     });
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       available: true,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       warningMessage:
         "Install pnpm 10.16.0 or newer for the strongest protection",
     });
@@ -396,7 +396,7 @@ describe("executeAddDependency", () => {
   it("falls back to npm when pnpm is unavailable", async () => {
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       available: false,
-      supported: false,
+      minimumReleaseAgeSupported: false,
       warningMessage:
         "Install pnpm 10.16.0 or newer for the strongest protection",
     });

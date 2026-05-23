@@ -102,7 +102,7 @@ async function getDefaultCommand({
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
   const npmCommand = `(${getNpmInstallCommand()} && npm run dev -- --port ${port})`;
 
-  if (!pnpmSupport.supported && pnpmSupport.warningMessage) {
+  if (!pnpmSupport.minimumReleaseAgeSupported && pnpmSupport.warningMessage) {
     onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
   }
 

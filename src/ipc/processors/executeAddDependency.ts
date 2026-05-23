@@ -195,7 +195,7 @@ export async function installPackages({
 
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
   if (
-    !pnpmSupport.supported &&
+    !pnpmSupport.minimumReleaseAgeSupported &&
     pnpmSupport.warningMessage &&
     shouldShowPnpmMinimumReleaseAgeWarning(settings)
   ) {

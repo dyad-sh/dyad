@@ -31,7 +31,9 @@ export class AppManagement {
       return;
     }
 
-    const telemetryLaterButton = this.page.getByTestId("telemetry-later-button");
+    const telemetryLaterButton = this.page.getByTestId(
+      "telemetry-later-button",
+    );
     if (await telemetryLaterButton.isVisible().catch(() => false)) {
       await telemetryLaterButton.click();
     }

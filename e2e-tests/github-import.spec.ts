@@ -178,29 +178,29 @@ test("should allow empty commands to use defaults", async ({ po }) => {
   ).not.toBeVisible();
 });
 
-test("should auto-apply component tagger upgrade on GitHub import", async ({ po }) => {
+test("should auto-apply component tagger upgrade on GitHub import", async ({
+  po,
+}) => {
   await po.setUp();
 
-  
   await po.page.getByRole("button", { name: "Import App" }).click();
   await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
   await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
   await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
 
-  
   await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
   const repoRow = po.page.getByTestId("github-repo-row-testuser-existing-app");
   await expect(repoRow).toBeVisible();
   await repoRow.getByRole("button", { name: "Import" }).click();
 
- 
   await expect(
     po.page.getByRole("heading", { name: "Import App" }),
   ).not.toBeVisible();
 
-
   await po.appManagement.showAppList();
-  await expect(po.appManagement.getAppListItem({ appName: "existing-app" })).toBeVisible({
+  await expect(
+    po.appManagement.getAppListItem({ appName: "existing-app" }),
+  ).toBeVisible({
     timeout: 20_000,
   });
   await po.appManagement.clickAppListItem({ appName: "existing-app" });

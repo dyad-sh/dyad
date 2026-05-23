@@ -163,6 +163,9 @@ jobs:
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify Electron install
+        if: contains(matrix.os.name, 'macos')
+        run: node -e "console.log(require('electron'))"
       - name: Presubmit check (e.g. lint, format)
         # do not run this on Windows (it fails and not necessary)
         if: contains(matrix.os.name, 'macos')

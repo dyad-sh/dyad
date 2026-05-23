@@ -201,7 +201,7 @@ export async function installPackages({
   ) {
     warningMessages.push(pnpmSupport.warningMessage);
   }
-  const packageManager = pnpmSupport.supported ? "pnpm" : "npm";
+  const packageManager = pnpmSupport.available ? "pnpm" : "npm";
   if (packageManager === "pnpm") {
     await commitPnpmAllowBuildsConfigIfChanged(appPath);
   }

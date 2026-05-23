@@ -137,6 +137,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
   it("creates allowBuilds config when no config exists", () => {
     expect(updatePnpmAllowBuildsConfigContent("", allowBuildsText)).toBe(
       [
+        "packages:",
+        "  - .",
+        "",
         "allowBuilds:",
         "  # dyad-default-allow-builds begin",
         "  # dyad-default-allow-builds-schema=v1",
@@ -161,6 +164,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       ),
     ).toBe(
       [
+        "packages:",
+        "  - .",
+        "",
         "storeDir: /tmp/pnpm-store",
         "allowBuilds:",
         "  # dyad-default-allow-builds begin",
@@ -184,6 +190,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       ),
     ).toBe(
       [
+        "packages:",
+        "  - .",
+        "",
         "minimumReleaseAge: 60",
         "allowBuilds:",
         "  # dyad-default-allow-builds begin",
@@ -214,6 +223,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       ),
     ).toBe(
       [
+        "packages:",
+        "  - .",
+        "",
         "allowBuilds:",
         "  # dyad-default-allow-builds begin",
         "  # dyad-default-allow-builds-schema=v1",
@@ -241,6 +253,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       ),
     ).toBe(
       [
+        "packages:",
+        "  - .",
+        "",
         "allowBuilds:",
         "  # dyad-default-allow-builds begin",
         "  # dyad-default-allow-builds-schema=v1",
@@ -261,6 +276,31 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
     ).toThrow("Invalid default pnpm allow-builds list");
   });
 
+  it("preserves an existing packages config", () => {
+    expect(
+      updatePnpmAllowBuildsConfigContent(
+        ["packages:", "  - apps/*", "", "allowBuilds:"].join("\n"),
+        allowBuildsText,
+      ),
+    ).toBe(
+      [
+        "packages:",
+        "  - apps/*",
+        "",
+        "allowBuilds:",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=local",
+        '  "@swc/core": true',
+        "  sharp: true",
+        "  # dyad-default-allow-builds end",
+        "minimumReleaseAge: 1440",
+        "",
+      ].join("\n"),
+    );
+  });
+
   it("writes project pnpm-workspace.yaml atomically", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-config-"));
     try {
@@ -275,6 +315,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
         readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
       ).resolves.toBe(
         [
+          "packages:",
+          "  - .",
+          "",
           "allowBuilds:",
           "  # dyad-default-allow-builds begin",
           "  # dyad-default-allow-builds-schema=v1",
@@ -434,6 +477,9 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
     );
     const configPath = path.join(tempDir, "pnpm-workspace.yaml");
     const existingConfig = [
+      "packages:",
+      "  - .",
+      "",
       "allowBuilds:",
       "  # dyad-default-allow-builds begin",
       "  # dyad-default-allow-builds-schema=v1",

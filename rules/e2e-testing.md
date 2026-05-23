@@ -87,6 +87,8 @@ Snapshots must be **deterministic** and **platform-agnostic**. They must not con
 
 If the output under test contains non-deterministic or platform-specific content, add sanitization logic in the test helper (e.g. in `test_helper.ts`) to normalize it before snapshotting.
 
+When a chat E2E adds artificial stream delays such as `[sleep=long]`, avoid snapshotting completed message status text that includes generated completion timing. Assert stable message content or sanitize the timing field instead.
+
 ## Accordion-wrapped settings in E2E tests
 
 The Pro mode build settings (Web Access, Turbo Edits, Smart Context) are inside a collapsed `<Accordion>` in `ProModeSelector`. E2E test helpers must expand the accordion before interacting with elements inside it. The `ProModesDialog` class in `e2e-tests/helpers/page-objects/dialogs/ProModesDialog.ts` has an `expandBuildModeSettings()` method that handles this — call it before clicking any build mode setting buttons.

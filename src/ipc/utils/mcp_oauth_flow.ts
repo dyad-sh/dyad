@@ -88,12 +88,18 @@ async function startCallbackListener(
     rejectCode = reject;
   });
 
+  // Set before flow.reject so a supersede also flips `disposed` and
+  // any in-flight bind from this flow tears itself down on completion.
+  let disposed = false;
+
   const flow: PendingFlow = {
-    reject: rejectCode,
+    reject: (err: Error) => {
+      disposed = true;
+      rejectCode(err);
+    },
     servers: [],
     timeout: null,
   };
-  let disposed = false;
 
   // Tears down only this flow's resources; drops the map entry only
   // while it still belongs to this flow.
@@ -291,7 +297,18 @@ export async function runOAuthFlow(
 
   // Start the listener before `auth()` -- `auth()` opens the browser
   // and the callback can arrive before a later bind would be ready.
-  const listener = await startCallbackListener(callbackPort, expectedState);
+  // A bind failure here must surface through the `{success, error}`
+  // return contract, not as an uncaught throw across the IPC boundary.
+  let listener: CallbackListener;
+  try {
+    listener = await startCallbackListener(callbackPort, expectedState);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `Could not start OAuth callback listener for server ${s.id}: ${message}`,
+    );
+    return { success: false, error: message };
+  }
   // Side-handler so an early bind-failure rejection isn't unhandled
   // during the long `await auth()`; the real rejection still
   // propagates through `await listener.code` below.

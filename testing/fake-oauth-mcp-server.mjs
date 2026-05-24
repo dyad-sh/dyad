@@ -104,9 +104,13 @@ function matchesRegisteredRedirect(requested, registeredList) {
     } catch {
       continue;
     }
+    // RFC 8252 §7.3 only relaxes port matching, NOT host matching --
+    // `localhost` registrations must not auto-match `127.0.0.1`/`::1`
+    // and vice versa, or a malicious client could swap hosts to land
+    // its callback on a different loopback listener.
     const sameLoopback =
       loopbackHosts.has(reg.hostname) &&
-      loopbackHosts.has(req.hostname) &&
+      reg.hostname === req.hostname &&
       reg.protocol === req.protocol &&
       reg.pathname === req.pathname;
     if (sameLoopback) return true;

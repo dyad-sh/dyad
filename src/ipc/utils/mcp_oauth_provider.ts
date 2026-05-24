@@ -24,6 +24,19 @@ interface StoredOAuthState {
 // never in the DB, so they're gone when the app exits.
 const codeVerifiers = new Map<number, string>();
 
+// application/x-www-form-urlencoded per RFC 6749 §B / WHATWG URL.
+// Differs from `encodeURIComponent`: ! ' ( ) * are percent-encoded
+// and spaces become `+` rather than `%20`. Required for the Basic
+// auth header per RFC 6749 §2.3.1.
+function formUrlEncode(s: string): string {
+  return encodeURIComponent(s)
+    .replace(
+      /[!'()*]/g,
+      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
+    .replace(/%20/g, "+");
+}
+
 export function encryptToString(plaintext: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
     // No keyring available (e.g. Linux without libsecret): store as
@@ -245,9 +258,13 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // can't trick us into handing arbitrary URIs (file:, javascript:,
     // custom protocol handlers) to `shell.openExternal`. http: is
     // allowed only for loopback so local test fixtures still work.
+    // WHATWG URL keeps IPv6 literals bracketed in `.hostname`
+    // (`http://[::1]/` -> `"[::1]"`), so both forms are checked --
+    // some upstream code paths and tests still pass the bare `::1`.
     const isLoopback =
       authorizationUrl.hostname === "localhost" ||
       authorizationUrl.hostname === "127.0.0.1" ||
+      authorizationUrl.hostname === "[::1]" ||
       authorizationUrl.hostname === "::1";
     if (
       authorizationUrl.protocol !== "https:" &&
@@ -281,14 +298,20 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       info as OAuthClientInformation & { token_endpoint_auth_method?: string }
     ).token_endpoint_auth_method;
     const hasSecret = Boolean(info.client_secret);
-    const chosen = method ?? (hasSecret ? "client_secret_post" : "none");
+    // RFC 6749 §2.3.1 makes Basic REQUIRED and Post OPTIONAL for
+    // confidential clients, so default to Basic when the server hasn't
+    // told us which method to use (typical for pre-registered clients).
+    // DCR-registered clients get an explicit `token_endpoint_auth_method`
+    // back from the server and take the branch above.
+    const chosen = method ?? (hasSecret ? "client_secret_basic" : "none");
 
     if (chosen === "client_secret_basic" && info.client_secret) {
-      // RFC 6749 §2.3.1: each credential is form-urlencoded before the
-      // ":" join and the final base64 wrap, so a `:` or `@` in the id
-      // or secret can't break out of the Basic header format.
+      // RFC 6749 §2.3.1: each credential is form-urlencoded (spaces as
+      // `+`, RFC 3986 reserved chars percent-encoded) before the ":"
+      // join and the final base64 wrap, so a `:` or `@` in the id or
+      // secret can't break out of the Basic header format.
       const credentials = Buffer.from(
-        `${encodeURIComponent(info.client_id)}:${encodeURIComponent(info.client_secret)}`,
+        `${formUrlEncode(info.client_id)}:${formUrlEncode(info.client_secret)}`,
       ).toString("base64");
       headers.set("Authorization", `Basic ${credentials}`);
       return;

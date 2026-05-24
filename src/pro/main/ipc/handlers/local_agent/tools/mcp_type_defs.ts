@@ -1,4 +1,7 @@
 import type { IpcMainInvokeEvent } from "electron";
+import { asSchema } from "@ai-sdk/provider-utils";
+import type { JSONSchema7 } from "@ai-sdk/provider";
+import type { MCPClient } from "@ai-sdk/mcp";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { db } from "@/db";
@@ -26,8 +29,8 @@ export interface McpToolDef {
   serverName: string;
   toolName: string;
   description?: string;
-  /** Raw JSON Schema (or Zod) for the tool input. */
-  inputSchema: unknown;
+  /** Tool input schema, normalized to JSON Schema at collection time. */
+  inputSchema: JSONSchema7;
 }
 
 /**
@@ -61,7 +64,7 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
   // unique sandbox capability.
   const seenJsNames = new Set<string>();
   for (const s of servers) {
-    let toolSet: Record<string, any>;
+    let toolSet: Awaited<ReturnType<MCPClient["tools"]>>;
     try {
       const client = await mcpManager.getClient(s.id);
       toolSet = await client.tools();
@@ -80,6 +83,16 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
         suffix += 1;
       }
       seenJsNames.add(jsName);
+      let inputSchema: JSONSchema7;
+      try {
+        inputSchema = await asSchema(mcpTool.inputSchema).jsonSchema;
+      } catch {
+        inputSchema = {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        };
+      }
       defs.push({
         jsName,
         toolKey,
@@ -87,32 +100,11 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
         serverName: s.name || "",
         toolName,
         description: mcpTool.description,
-        inputSchema: mcpTool.inputSchema,
+        inputSchema,
       });
     }
   }
   return defs;
-}
-
-/**
- * Normalize various schema shapes (AI-SDK wrapped schema, Zod, raw JSON
- * Schema, or unknown) into a plain JSON Schema object. Returns an empty
- * object schema on failure.
- */
-function toJsonSchema(input: unknown): Record<string, any> {
-  if (!input || typeof input !== "object") {
-    return { type: "object" };
-  }
-
-  // AI-SDK Schema wrapper: `{ [schemaSymbol]: true, jsonSchema: <schema>, validate }`.
-  // The `jsonSchema` property is a getter that returns the underlying JSON
-  // Schema (or the result of a thunk).
-  const maybeWrapped = input as { jsonSchema?: unknown };
-  if (maybeWrapped.jsonSchema && typeof maybeWrapped.jsonSchema === "object") {
-    return maybeWrapped.jsonSchema as Record<string, any>;
-  }
-
-  return input as Record<string, any>;
 }
 
 /**
@@ -292,10 +284,12 @@ export function buildMcpCapabilityMap(params: {
 /**
  * Build the full TypeScript declaration block describing all MCP tools
  * exposed inside the sandbox. Injected into the `execute` tool description.
+ * Returns an empty string when `defs` is empty; callers should skip
+ * emitting the MCP section entirely in that case.
  */
 export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
   if (defs.length === 0) {
-    return `${MCP_RESULT_TYPE}\n\n// No MCP servers enabled.`;
+    return "";
   }
 
   const byServer = new Map<string, McpToolDef[]>();
@@ -309,8 +303,7 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
   for (const [serverName, list] of byServer) {
     sections.push(`// ---- Server: ${serverName} ----`);
     for (const def of list) {
-      const jsonSchema = toJsonSchema(def.inputSchema);
-      const argsType = jsonSchemaToTs(jsonSchema, 0);
+      const argsType = jsonSchemaToTs(def.inputSchema, 0);
       if (def.description) {
         const oneLine = def.description.replace(/\s+/g, " ").trim();
         sections.push(`/** ${oneLine.replace(/\*\//g, "*\\/")} */`);

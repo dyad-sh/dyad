@@ -721,10 +721,10 @@ export async function handleLocalAgentStream(
       try {
         // Collect MCP tool defs once per turn and reuse them for both the
         // dynamic tool description and the sandbox capability map (read
-        // by `execute_sandbox_script.execute()` via `ctx.mcpToolDefsCache`).
+        // by `execute_sandbox_script.execute()` via `ctx.mcpToolDefs`).
         // Skips a second DB + MCP-client walk per sandbox invocation.
         const defs = await collectMcpToolDefs();
-        ctx.mcpToolDefsCache = defs;
+        ctx.mcpToolDefs = defs;
         agentTools.execute_sandbox_script!.description =
           await buildExecuteSandboxScriptDescription(defs);
       } catch (e) {

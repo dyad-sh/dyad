@@ -163,10 +163,8 @@ describe("jsonSchemaToTs", () => {
 });
 
 describe("buildMcpTypeDefsBlock", () => {
-  it("emits a 'no servers enabled' marker when defs are empty", () => {
-    const block = buildMcpTypeDefsBlock([]);
-    expect(block).toContain("type McpResult");
-    expect(block).toContain("No MCP servers enabled");
+  it("returns an empty string when defs are empty", () => {
+    expect(buildMcpTypeDefsBlock([])).toBe("");
   });
 
   it("emits a JSDoc + declare function for each tool", () => {
@@ -218,37 +216,25 @@ describe("buildMcpTypeDefsBlock", () => {
         inputSchema: { type: "object" },
       }),
     ]);
-    const alphaIdx = block.indexOf("// ---- Server: alpha ----");
-    const betaIdx = block.indexOf("// ---- Server: beta ----");
-    expect(alphaIdx).toBeGreaterThanOrEqual(0);
-    expect(betaIdx).toBeGreaterThan(alphaIdx);
-    const aOne = block.indexOf("a__one");
-    const aTwo = block.indexOf("a__two");
-    expect(aOne).toBeGreaterThan(0);
-    expect(aTwo).toBeGreaterThan(aOne);
-  });
+    expect(block).toMatchInlineSnapshot(`
+      "type McpResult = {
+        content: Array<
+          | { type: "text"; text: string }
+          | { type: "image"; data: string; mimeType: string }
+          | { type: "resource"; resource: unknown }
+        >;
+        isError?: boolean;
+      };
 
-  it("unwraps AI-SDK schema wrappers via the .jsonSchema getter", () => {
-    const wrapped = {
-      jsonSchema: {
-        type: "object",
-        properties: { count: { type: "integer" } },
-        required: ["count"],
-      },
-    };
-    const block = buildMcpTypeDefsBlock([
-      def({ jsName: "wrap__tool", inputSchema: wrapped }),
-    ]);
-    expect(block).toContain(
-      "declare function wrap__tool(args: {\n  count: number;\n}): Promise<McpResult>;",
-    );
-  });
+      // ---- Server: alpha ----
+      declare function a__one(args: {}): Promise<McpResult>;
 
-  it("falls back to {} when input schema is unparseable", () => {
-    const block = buildMcpTypeDefsBlock([
-      def({ jsName: "broken__tool", inputSchema: 42 as unknown }),
-    ]);
-    expect(block).toContain("declare function broken__tool(args: {}):");
+      declare function a__two(args: {}): Promise<McpResult>;
+
+      // ---- Server: beta ----
+      declare function b__one(args: {}): Promise<McpResult>;
+      "
+    `);
   });
 });
 

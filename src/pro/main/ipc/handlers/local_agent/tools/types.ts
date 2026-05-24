@@ -8,6 +8,7 @@ import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import type { McpToolDef } from "./mcp_type_defs";
 
 // ============================================================================
 // XML Escape Helpers
@@ -119,14 +120,13 @@ export interface AgentContext {
    */
   mcpToolsEnabled?: boolean;
   /**
-   * Per-turn cache of MCP tool definitions populated by the local-agent
-   * handler when building the dynamic tool description. The sandbox
-   * execute path reuses these so a single turn only walks the MCP server
-   * list and calls `client.tools()` once instead of twice. Opaque type
-   * here (`unknown[]`) to keep this module free of a circular import on
-   * `mcp_type_defs`; the producer / consumer both cast to `McpToolDef[]`.
+   * MCP tool definitions for the current turn, populated by the local-agent
+   * handler. The handler uses these to build the dynamic
+   * `execute_sandbox_script` description and the sandbox `execute()` path
+   * uses the same array to build the capability map — so the prompt and
+   * the runtime surface are guaranteed to agree.
    */
-  mcpToolDefsCache?: ReadonlyArray<unknown>;
+  mcpToolDefs?: McpToolDef[];
 }
 
 // ============================================================================

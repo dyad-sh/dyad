@@ -162,31 +162,30 @@ declare function list_files(dir?: "." | "attachments:" | string): Promise<string
 declare function file_stats(path: string): Promise<FileStats>;
 \`\`\`
 
-Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.
-
-MCP host functions (TypeScript declarations):
-`;
+Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`;
 
 /**
- * Build the full tool description including the dynamic MCP type defs block.
- * Called per-turn so the description reflects the currently enabled MCP
- * servers. When the caller has already collected the MCP tool defs for
- * this turn (e.g. to cache them on `AgentContext.mcpToolDefsCache`), it
- * can pass them in to avoid a second DB + MCP-client walk.
+ * Build the full tool description, appending MCP host function declarations
+ * when any MCP server is enabled. The caller passes in the per-turn defs
+ * collected by the local-agent handler; the standalone `collectMcpToolDefs()`
+ * fallback is only for callers that don't go through the handler.
  */
 export async function buildExecuteSandboxScriptDescription(
   precomputedDefs?: McpToolDef[],
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
+  if (defs.length === 0) {
+    return STATIC_PREAMBLE;
+  }
   const typeDefsBlock = buildMcpTypeDefsBlock(defs);
-  return `${STATIC_PREAMBLE}\n\`\`\`ts\n${typeDefsBlock}\n\`\`\``;
+  return `${STATIC_PREAMBLE}\n\nMCP host functions (TypeScript declarations):\n\`\`\`ts\n${typeDefsBlock}\n\`\`\``;
 }
 
 export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
   {
     name: "execute_sandbox_script",
     description:
-      "Run a MustardScript program in a sandbox. Supports file inspection and MCP tool calls. (Dynamic description with MCP type defs is built per-turn.)",
+      "Run a MustardScript program in a sandbox. Supports file inspection and MCP tool calls.",
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
 
@@ -204,13 +203,11 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
         // read-only and plan-mode turns from exposing MCP tools through
         // the sandbox even if the model invents a host-function name.
         //
-        // Prefer the per-turn cache populated by the handler when it built
-        // the dynamic tool description. Falling back to a fresh
-        // `collectMcpToolDefs()` keeps the call paths working in isolation
-        // (tests, callers that don't go through the handler).
-        const cachedDefs = ctx.mcpToolDefsCache as McpToolDef[] | undefined;
+        // The handler populates `ctx.mcpToolDefs` with the same defs used
+        // to build the dynamic tool description, so the prompt and the
+        // capability map can never disagree about which tools exist.
         const defs: McpToolDef[] = ctx.mcpToolsEnabled
-          ? (cachedDefs ?? (await collectMcpToolDefs()))
+          ? (ctx.mcpToolDefs ?? [])
           : [];
         const fileCaps = buildSandboxCapabilitiesWithObserver(
           ctx.appPath,

@@ -141,10 +141,9 @@ async function readInstalledPackageMajor(
       DyadErrorKind.Internal,
     );
   }
-  // Pre-release versions like "1.0.0-rc.3" still expose the major as the
-  // leading int. Split on any non-digit to capture both stable ("1.2.3") and
-  // pre-release ("1.0.0-rc.3", "1.0.0+build.7") forms.
-  const major = parseInt(version.split(/[^0-9]/)[0], 10);
+  // parseInt stops at the first non-digit, so it captures the major from both
+  // stable ("1.2.3") and pre-release ("1.0.0-rc.3", "1.0.0+build.7") forms.
+  const major = parseInt(version, 10);
   if (Number.isNaN(major)) {
     throw new DyadError(
       `Could not parse ${packageName} version "${version}" in ${pkgPath}`,
@@ -175,8 +174,10 @@ export async function areMigrationDepsInstalled(
   let kitMajor: number;
   let ormMajor: number;
   try {
-    kitMajor = await readInstalledPackageMajor(appPath, "drizzle-kit");
-    ormMajor = await readInstalledPackageMajor(appPath, "drizzle-orm");
+    [kitMajor, ormMajor] = await Promise.all([
+      readInstalledPackageMajor(appPath, "drizzle-kit"),
+      readInstalledPackageMajor(appPath, "drizzle-orm"),
+    ]);
   } catch (err) {
     logger.warn(
       `Could not read installed drizzle versions; will reinstall. Reason: ${err instanceof Error ? err.message : String(err)}`,

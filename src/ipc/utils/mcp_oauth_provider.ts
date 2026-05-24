@@ -241,6 +241,22 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
         "OAuth not currently allowed (interactive consent required; click Connect on the server row).",
       );
     }
+    // Refuse non-http(s) schemes so a malicious or misconfigured server
+    // can't trick us into handing arbitrary URIs (file:, javascript:,
+    // custom protocol handlers) to `shell.openExternal`. http: is
+    // allowed only for loopback so local test fixtures still work.
+    const isLoopback =
+      authorizationUrl.hostname === "localhost" ||
+      authorizationUrl.hostname === "127.0.0.1" ||
+      authorizationUrl.hostname === "::1";
+    if (
+      authorizationUrl.protocol !== "https:" &&
+      !(authorizationUrl.protocol === "http:" && isLoopback)
+    ) {
+      throw new Error(
+        `Refusing to open OAuth authorize URL with protocol "${authorizationUrl.protocol}" (only https, or http on localhost).`,
+      );
+    }
     logger.info(
       `Opening browser for OAuth: ${authorizationUrl.origin}${authorizationUrl.pathname}`,
     );
@@ -268,8 +284,11 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     const chosen = method ?? (hasSecret ? "client_secret_post" : "none");
 
     if (chosen === "client_secret_basic" && info.client_secret) {
+      // RFC 6749 §2.3.1: each credential is form-urlencoded before the
+      // ":" join and the final base64 wrap, so a `:` or `@` in the id
+      // or secret can't break out of the Basic header format.
       const credentials = Buffer.from(
-        `${info.client_id}:${info.client_secret}`,
+        `${encodeURIComponent(info.client_id)}:${encodeURIComponent(info.client_secret)}`,
       ).toString("base64");
       headers.set("Authorization", `Basic ${credentials}`);
       return;

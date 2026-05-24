@@ -21,6 +21,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
@@ -51,6 +52,9 @@ const refreshTokens = new Map(); // refresh_token -> {client_id, scope}
 if (!DCR_ENABLED && STATIC_CLIENT_ID) {
   registeredClients.set(STATIC_CLIENT_ID, {
     client_secret: STATIC_CLIENT_SECRET ?? undefined,
+    // `null` means "accept any redirect_uri" -- static clients here
+    // don't pre-declare URIs, matching the legacy fixture behavior.
+    redirect_uris: null,
   });
 }
 
@@ -81,6 +85,35 @@ function parseForm(body) {
   return Object.fromEntries(new URLSearchParams(body));
 }
 
+// RFC 8252 §7.3: loopback redirect URIs match by host + path with any
+// port. Non-loopback URIs must match exactly. Returns true if the
+// requested URI matches any registered URI under those rules.
+function matchesRegisteredRedirect(requested, registeredList) {
+  const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+  let req;
+  try {
+    req = new URL(requested);
+  } catch {
+    return false;
+  }
+  for (const candidate of registeredList) {
+    if (candidate === requested) return true;
+    let reg;
+    try {
+      reg = new URL(candidate);
+    } catch {
+      continue;
+    }
+    const sameLoopback =
+      loopbackHosts.has(reg.hostname) &&
+      loopbackHosts.has(req.hostname) &&
+      reg.protocol === req.protocol &&
+      reg.pathname === req.pathname;
+    if (sameLoopback) return true;
+  }
+  return false;
+}
+
 // --- MCP server (one shared instance; auth gates the /mcp HTTP route) ---
 const mcp = new McpServer({ name: "fake-oauth-mcp", version: "0.1.0" });
 
@@ -96,6 +129,10 @@ mcp.registerTool(
   }),
 );
 
+// AsyncLocalStorage scopes the authenticated client_id to the current
+// request so concurrent `/mcp` calls can't see each other's identity.
+const requestContext = new AsyncLocalStorage();
+
 mcp.registerTool(
   "whoami",
   {
@@ -105,11 +142,9 @@ mcp.registerTool(
     inputSchema: {},
   },
   async (_args, _extra) => {
-    // The bearer client_id is plumbed via the request-scoped token check
-    // (see the http server wrapper below). We stash it on the transport
-    // via a module-level holder for the duration of the request.
+    const ctx = requestContext.getStore();
     return {
-      content: [{ type: "text", text: currentRequestClientId ?? "anonymous" }],
+      content: [{ type: "text", text: ctx?.clientId ?? "anonymous" }],
     };
   },
 );
@@ -118,8 +153,6 @@ const transport = new StreamableHTTPServerTransport({
   sessionIdGenerator: undefined,
 });
 await mcp.connect(transport);
-
-let currentRequestClientId = null;
 
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", BASE);
@@ -181,11 +214,17 @@ const httpServer = createServer(async (req, res) => {
       }
       const body = JSON.parse(await readBody(req));
       const clientId = `dcr-${makeOpaque(8)}`;
-      registeredClients.set(clientId, {}); // public PKCE client, no secret
+      // Persist the registered redirect_uris so /authorize can enforce
+      // exact-match (RFC 6749 §3.1.2.2 / §10.6) instead of trusting
+      // whatever the request says.
+      const redirectUris = Array.isArray(body.redirect_uris)
+        ? body.redirect_uris
+        : [];
+      registeredClients.set(clientId, { redirect_uris: redirectUris });
       jsonResponse(res, 201, {
         client_id: clientId,
         client_id_issued_at: Math.floor(Date.now() / 1000),
-        redirect_uris: body.redirect_uris ?? [],
+        redirect_uris: redirectUris,
         token_endpoint_auth_method: "none",
         grant_types: body.grant_types ?? [
           "authorization_code",
@@ -223,6 +262,20 @@ const httpServer = createServer(async (req, res) => {
       }
       if (!redirectUri) {
         res.writeHead(400).end("redirect_uri required");
+        return;
+      }
+      // Enforce that the requested redirect_uri matches one of the
+      // client's registered URIs. `redirect_uris: null` means the
+      // static-client fixture path that accepts any URI. Per RFC 8252
+      // §7.3, loopback URIs match by host+path with any port, so
+      // native apps that pick an ephemeral callback port still work.
+      const registered = registeredClients.get(clientId);
+      const allowed = registered?.redirect_uris;
+      if (
+        Array.isArray(allowed) &&
+        !matchesRegisteredRedirect(redirectUri, allowed)
+      ) {
+        res.writeHead(400).end("redirect_uri does not match registered URIs");
         return;
       }
       if (REQUIRED_SCOPE && !scope.split(" ").includes(REQUIRED_SCOPE)) {
@@ -372,12 +425,9 @@ const httpServer = createServer(async (req, res) => {
         res.end(JSON.stringify({ error: "invalid_token" }));
         return;
       }
-      currentRequestClientId = tokenInfo.client_id;
-      try {
+      await requestContext.run({ clientId: tokenInfo.client_id }, async () => {
         await transport.handleRequest(req, res);
-      } finally {
-        currentRequestClientId = null;
-      }
+      });
       return;
     }
 

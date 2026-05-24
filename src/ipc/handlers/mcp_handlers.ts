@@ -21,6 +21,22 @@ import {
 
 const logger = log.scope("mcp_handlers");
 
+// Parse a JSON string from the renderer and surface a clear error
+// instead of letting the main process see a raw SyntaxError. Returns
+// `null` if the input is falsy.
+function parseJsonField<T>(
+  value: string | null | undefined,
+  field: string,
+): T | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as T;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid JSON for "${field}": ${message}`);
+  }
+}
+
 // Convert a DB row into the shape sent to the UI. Drops the encrypted
 // `oauthState` / `oauthClientSecret`; sends `oauthConnected` instead.
 function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
@@ -67,23 +83,20 @@ export function registerMcpHandlers() {
       oauthScope,
     } = params;
     // Handle args: can be string (JSON), array, or null/undefined
-    const parsedArgs = args
-      ? typeof args === "string"
-        ? (JSON.parse(args) as string[])
-        : args
-      : null;
+    const parsedArgs =
+      typeof args === "string"
+        ? parseJsonField<string[]>(args, "args")
+        : (args ?? null);
     // Handle envJson: can be string (JSON), object, or null/undefined
-    const parsedEnvJson = envJson
-      ? typeof envJson === "string"
-        ? (JSON.parse(envJson) as Record<string, string>)
-        : envJson
-      : null;
+    const parsedEnvJson =
+      typeof envJson === "string"
+        ? parseJsonField<Record<string, string>>(envJson, "envJson")
+        : (envJson ?? null);
     // Handle headersJson: can be string (JSON), object, or null/undefined
-    const parsedHeadersJson = headersJson
-      ? typeof headersJson === "string"
-        ? (JSON.parse(headersJson) as Record<string, string>)
-        : headersJson
-      : null;
+    const parsedHeadersJson =
+      typeof headersJson === "string"
+        ? parseJsonField<Record<string, string>>(headersJson, "headersJson")
+        : (headersJson ?? null);
     const result = await db
       .insert(mcpServers)
       .values({
@@ -112,19 +125,20 @@ export function registerMcpHandlers() {
     if (params.transport !== undefined) update.transport = params.transport;
     if (params.command !== undefined) update.command = params.command;
     if (params.args !== undefined)
-      update.args = params.args ? JSON.parse(params.args) : null;
+      update.args = parseJsonField<string[]>(params.args, "args");
     if (params.envJson !== undefined)
-      update.envJson = params.envJson
-        ? typeof params.envJson === "string"
-          ? JSON.parse(params.envJson)
-          : params.envJson
-        : null;
+      update.envJson =
+        typeof params.envJson === "string"
+          ? parseJsonField<Record<string, string>>(params.envJson, "envJson")
+          : (params.envJson ?? null);
     if (params.headersJson !== undefined)
-      update.headersJson = params.headersJson
-        ? typeof params.headersJson === "string"
-          ? JSON.parse(params.headersJson)
-          : params.headersJson
-        : null;
+      update.headersJson =
+        typeof params.headersJson === "string"
+          ? parseJsonField<Record<string, string>>(
+              params.headersJson,
+              "headersJson",
+            )
+          : (params.headersJson ?? null);
     if (params.url !== undefined) update.url = params.url;
     if (params.enabled !== undefined) update.enabled = !!params.enabled;
 

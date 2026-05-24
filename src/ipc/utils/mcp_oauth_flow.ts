@@ -81,7 +81,18 @@ async function startCallbackListener(
     );
   }
 
-  const flow: PendingFlow = { reject: () => {}, servers: [], timeout: null };
+  let resolveCode!: (code: string) => void;
+  let rejectCode!: (err: Error) => void;
+  const code = new Promise<string>((resolve, reject) => {
+    resolveCode = resolve;
+    rejectCode = reject;
+  });
+
+  const flow: PendingFlow = {
+    reject: rejectCode,
+    servers: [],
+    timeout: null,
+  };
   let disposed = false;
 
   // Tears down only this flow's resources; drops the map entry only
@@ -93,15 +104,13 @@ async function startCallbackListener(
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
   };
 
-  const code = new Promise<string>((resolve, reject) => {
-    flow.reject = reject;
+  const settle = (fn: () => void): void => {
+    dispose();
+    fn();
+  };
 
-    const settle = (fn: () => void) => {
-      dispose();
-      fn();
-    };
-
-    const handler = (req: IncomingMessage, res: ServerResponse): void => {
+  const handler = (req: IncomingMessage, res: ServerResponse): void => {
+    try {
       if (!req.url) {
         res.writeHead(400).end("Bad request");
         return;
@@ -122,7 +131,7 @@ async function startCallbackListener(
             "<html><body><h1>OAuth state mismatch</h1><p>This window can be closed; the flow will be retried.</p></body></html>",
           );
         settle(() =>
-          reject(
+          rejectCode(
             new Error(
               "OAuth callback `state` did not match. Aborting to prevent CSRF.",
             ),
@@ -137,7 +146,7 @@ async function startCallbackListener(
           .end(
             "<html><body><h1>Authorization successful</h1><p>You can close this window and return to Dyad.</p></body></html>",
           );
-        settle(() => resolve(code));
+        settle(() => resolveCode(code));
         return;
       }
 
@@ -149,59 +158,76 @@ async function startCallbackListener(
         .writeHead(400, { "Content-Type": "text/html" })
         .end(`<html><body><h1>OAuth error</h1><p>${safeErr}</p></body></html>`);
       settle(() =>
-        reject(
+        rejectCode(
           new Error(`OAuth callback error: ${errParam ?? "missing code"}`),
         ),
       );
-    };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`OAuth callback handler crashed: ${message}`);
+      if (!res.headersSent) {
+        res
+          .writeHead(500, { "Content-Type": "text/plain" })
+          .end("Internal error");
+      }
+      settle(() => rejectCode(err instanceof Error ? err : new Error(message)));
+    }
+  };
 
-    const tryBind = (host: string): Promise<Server | null> =>
-      new Promise((resolveBind) => {
-        const s = createServer(handler);
-        const onError = (err: Error) => {
-          logger.warn(
-            `Could not bind OAuth callback listener on ${host}:${port}: ${err.message}`,
-          );
-          resolveBind(null);
-        };
-        s.once("error", onError);
-        s.listen(port, host, () => {
-          s.removeListener("error", onError);
-          resolveBind(s);
-        });
+  const tryBind = (host: string): Promise<Server | null> =>
+    new Promise((resolveBind) => {
+      const s = createServer(handler);
+      const onError = (err: Error) => {
+        logger.warn(
+          `Could not bind OAuth callback listener on ${host}:${port}: ${err.message}`,
+        );
+        resolveBind(null);
+      };
+      s.once("error", onError);
+      s.listen(port, host, () => {
+        s.removeListener("error", onError);
+        resolveBind(s);
       });
-
-    Promise.all(LOOPBACK_BIND_HOSTS.map(tryBind)).then((bindResults) => {
-      const bound = bindResults.filter((s): s is Server => s !== null);
-      // Disposed before the bind resolved (e.g. silent-refresh path):
-      // close the sockets and never register.
-      if (disposed) {
-        for (const s of bound) s.close();
-        return;
-      }
-      if (bound.length === 0) {
-        reject(
-          new Error(
-            `Could not bind OAuth callback listener on port ${port} (tried IPv4 and IPv6 loopback).`,
-          ),
-        );
-        return;
-      }
-      flow.servers.push(...bound);
-      flow.timeout = setTimeout(() => {
-        dispose();
-        reject(
-          new Error(
-            `OAuth flow timed out after ${OAUTH_FLOW_TIMEOUT_MS / 1000}s. Did you close the browser tab?`,
-          ),
-        );
-      }, OAUTH_FLOW_TIMEOUT_MS);
-      pendingFlows.set(port, flow);
-      logger.info(
-        `OAuth callback listener bound on http://localhost:${port} (${bound.length} stack${bound.length === 1 ? "" : "s"})`,
-      );
     });
-  });
+
+  // Register the pending flow before kicking off the async bind so a
+  // concurrent Connect on the same port sees this entry and supersedes
+  // it (rather than racing into its own bind and hitting EADDRINUSE).
+  pendingFlows.set(port, flow);
+
+  // Await the bind so callers can safely open the browser knowing the
+  // callback endpoint is actually listening. Without this, `auth()`
+  // could redirect before the socket was ready and hit ECONNREFUSED.
+  const bindResults = await Promise.all(LOOPBACK_BIND_HOSTS.map(tryBind));
+  const bound = bindResults.filter((s): s is Server => s !== null);
+
+  if (disposed) {
+    for (const s of bound) s.close();
+    if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
+    rejectCode(new Error("OAuth flow disposed before listener bound."));
+    return { code, dispose };
+  }
+  if (bound.length === 0) {
+    if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
+    const err = new Error(
+      `Could not bind OAuth callback listener on port ${port} (tried IPv4 and IPv6 loopback).`,
+    );
+    rejectCode(err);
+    throw err;
+  }
+
+  flow.servers.push(...bound);
+  flow.timeout = setTimeout(() => {
+    dispose();
+    rejectCode(
+      new Error(
+        `OAuth flow timed out after ${OAUTH_FLOW_TIMEOUT_MS / 1000}s. Did you close the browser tab?`,
+      ),
+    );
+  }, OAUTH_FLOW_TIMEOUT_MS);
+  logger.info(
+    `OAuth callback listener bound on http://localhost:${port} (${bound.length} stack${bound.length === 1 ? "" : "s"})`,
+  );
 
   return { code, dispose };
 }

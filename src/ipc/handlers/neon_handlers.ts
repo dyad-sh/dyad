@@ -22,6 +22,7 @@ import {
   readEnvFileIfExists,
   readEnvVarsOrEmpty,
   removeNeonEnvVars,
+  upsertEnvVarInFile,
 } from "../utils/app_env_var_utils";
 import {
   logger,
@@ -861,9 +862,21 @@ export function registerNeonHandlers() {
           const existingSecret = envVars.find(
             (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
           )?.value;
+          let cookieSecret = existingSecret;
+          if (!cookieSecret) {
+            // Persist a freshly generated secret so subsequent reads (e.g.
+            // TanStack Query refetches) return the same value, preventing
+            // auth failures from a drifting secret.
+            cookieSecret = generateCookieSecret();
+            await upsertEnvVarInFile({
+              appPath: appData.path,
+              key: "NEON_AUTH_COOKIE_SECRET",
+              value: cookieSecret,
+            });
+          }
           neonAuth = {
             baseUrl,
-            cookieSecret: existingSecret ?? generateCookieSecret(),
+            cookieSecret,
           };
         }
       } catch (error) {

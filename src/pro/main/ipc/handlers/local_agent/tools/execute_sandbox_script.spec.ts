@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
+import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
 import {
@@ -11,6 +12,10 @@ import type { AgentContext } from "./types";
 vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
   executeSandboxScriptInProcess: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/sandbox/runner", () => ({
+  runSandboxScript: vi.fn(),
 }));
 
 vi.mock("@/ipc/utils/sandbox/capabilities", () => ({
@@ -88,7 +93,7 @@ describe("executeSandboxScriptTool", () => {
     let thrown: unknown;
     try {
       await executeSandboxScriptTool.execute(
-        { script, description: "Read data.csv" },
+        { script, description: "Read data.csv", execution_thread: "main" },
         createMockContext(),
       );
     } catch (error) {
@@ -116,6 +121,65 @@ describe("executeSandboxScriptTool", () => {
         chatId: 123,
         error: "Unexpected token ?.",
       }),
+    );
+  });
+
+  it("defaults execution_thread to main and runs in-process", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "42",
+      truncated: false,
+      executionMs: 5,
+    });
+
+    await executeSandboxScriptTool.execute(
+      { script: "1 + 1", execution_thread: "main" },
+      createMockContext(),
+    );
+
+    expect(executeSandboxScriptInProcess).toHaveBeenCalledTimes(1);
+    expect(runSandboxScript).not.toHaveBeenCalled();
+    expect(sendTelemetryEvent).toHaveBeenCalledWith(
+      "sandbox.script.completed",
+      expect.objectContaining({ executionThread: "main" }),
+    );
+  });
+
+  it("with execution_thread: 'worker', invokes runSandboxScript and does not inject MCP capabilities", async () => {
+    vi.mocked(runSandboxScript).mockResolvedValue({
+      value: "ok",
+      truncated: false,
+      executionMs: 1,
+    });
+
+    const ctx = createMockContext();
+    // Pretend MCP is enabled with one tool def — worker path should
+    // ignore it entirely.
+    ctx.mcpToolsEnabled = true;
+    ctx.mcpToolDefs = [
+      {
+        jsName: "srv__hello",
+        toolKey: "srv__hello",
+        serverId: 1,
+        serverName: "srv",
+        toolName: "hello",
+        inputSchema: { type: "object" } as any,
+      },
+    ];
+
+    await executeSandboxScriptTool.execute(
+      { script: "1 + 1", execution_thread: "worker" },
+      ctx,
+    );
+
+    expect(runSandboxScript).toHaveBeenCalledTimes(1);
+    expect(executeSandboxScriptInProcess).not.toHaveBeenCalled();
+    const runnerCall = vi.mocked(runSandboxScript).mock.calls[0][0];
+    // The runner is given only the observer; the MCP capability map is
+    // never built or passed on the worker path.
+    expect(Object.keys(runnerCall)).not.toContain("capabilities");
+    expect(sendTelemetryEvent).toHaveBeenCalledWith(
+      "sandbox.script.completed",
+      expect.objectContaining({ executionThread: "worker" }),
     );
   });
 });

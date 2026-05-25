@@ -6,36 +6,36 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Category } from "@/hooks/useCategories";
+import type { AppCollection } from "@/hooks/useAppCollections";
 
-interface CategoryFolderCardProps {
-  category: Category;
-  onOpen: (category: Category) => void;
-  onRename: (category: Category) => void;
-  onDelete: (category: Category) => void;
+interface CollectionFolderCardProps {
+  collection: AppCollection;
+  onOpen: (collection: AppCollection) => void;
+  onRename: (collection: AppCollection) => void;
+  onDelete: (collection: AppCollection) => void;
 }
 
-export function CategoryFolderCard({
-  category,
+export function CollectionFolderCard({
+  collection,
   onOpen,
   onRename,
   onDelete,
-}: CategoryFolderCardProps) {
-  const count = category.appIds.length;
+}: CollectionFolderCardProps) {
+  const count = collection.appIds.length;
   return (
     <div
-      data-testid={`category-folder-${category.id}`}
+      data-testid={`collection-folder-${collection.id}`}
       className={cn(
         "border rounded-lg p-4 bg-(--background-lightest) relative cursor-pointer",
         "hover:border-primary/30 transition-colors",
       )}
       role="button"
       tabIndex={0}
-      onClick={() => onOpen(category)}
+      onClick={() => onOpen(collection)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onOpen(category);
+          onOpen(collection);
         }
       }}
     >
@@ -47,18 +47,18 @@ export function CategoryFolderCard({
         <DropdownMenu>
           <DropdownMenuTrigger
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={`Category ${category.name} actions`}
-            data-testid={`category-folder-${category.id}-menu`}
+            aria-label={`Collection ${collection.name} actions`}
+            data-testid={`collection-folder-${collection.id}-menu`}
           >
             <MoreVertical className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onRename(category)}>
+            <DropdownMenuItem onClick={() => onRename(collection)}>
               <Pencil className="mr-2 h-4 w-4" />
               Rename
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => onDelete(category)}
+              onClick={() => onDelete(collection)}
               className="text-destructive focus:text-destructive"
             >
               <Trash2 className="mr-2 h-4 w-4" />
@@ -72,7 +72,7 @@ export function CategoryFolderCard({
           <Folder className="h-8 w-8 text-amber-500" fill="currentColor" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold truncate">{category.name}</h3>
+          <h3 className="text-lg font-semibold truncate">{collection.name}</h3>
           <p className="text-sm text-muted-foreground">
             {count} app{count !== 1 ? "s" : ""}
           </p>

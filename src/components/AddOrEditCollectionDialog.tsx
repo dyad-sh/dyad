@@ -16,29 +16,29 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { showError, showSuccess } from "@/lib/toast";
-import { useCategories } from "@/hooks/useCategories";
+import { useAppCollections } from "@/hooks/useAppCollections";
 import { cn } from "@/lib/utils";
 import type { ListedApp } from "@/ipc/types/app";
-import type { Category } from "@/hooks/useCategories";
+import type { AppCollection } from "@/hooks/useAppCollections";
 
-interface AddOrEditCategoryDialogProps {
+interface AddOrEditCollectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** When provided, dialog is in edit mode for that category. */
-  category?: Category | null;
+  /** When provided, dialog is in edit mode for that collection. */
+  collection?: AppCollection | null;
   allApps: ListedApp[];
-  categories: Category[];
+  collections: AppCollection[];
 }
 
-export function AddOrEditCategoryDialog({
+export function AddOrEditCollectionDialog({
   open,
   onOpenChange,
-  category,
+  collection,
   allApps,
-  categories,
-}: AddOrEditCategoryDialogProps) {
-  const isEdit = !!category;
-  const { createCategory, updateCategory } = useCategories();
+  collections,
+}: AddOrEditCollectionDialogProps) {
+  const isEdit = !!collection;
+  const { createCollection, updateCollection } = useAppCollections();
 
   const [name, setName] = useState("");
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
@@ -47,22 +47,22 @@ export function AddOrEditCategoryDialog({
 
   useEffect(() => {
     if (open) {
-      setName(category?.name ?? "");
-      setSelectedAppIds(new Set(category?.appIds ?? []));
+      setName(collection?.name ?? "");
+      setSelectedAppIds(new Set(collection?.appIds ?? []));
       setPickerOpen(false);
     }
-  }, [open, category]);
+  }, [open, collection]);
 
-  const categoryNameByAppId = useMemo(() => {
+  const collectionNameByAppId = useMemo(() => {
     const map = new Map<number, string>();
-    for (const cat of categories) {
-      if (isEdit && cat.id === category!.id) continue;
-      for (const appId of cat.appIds) {
-        map.set(appId, cat.name);
+    for (const col of collections) {
+      if (isEdit && col.id === collection!.id) continue;
+      for (const appId of col.appIds) {
+        map.set(appId, col.name);
       }
     }
     return map;
-  }, [categories, category, isEdit]);
+  }, [collections, collection, isEdit]);
 
   const selectedApps = useMemo(
     () => allApps.filter((a) => selectedAppIds.has(a.id)),
@@ -85,22 +85,22 @@ export function AddOrEditCategoryDialog({
   const handleSubmit = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      showError("Category name is required");
+      showError("Collection name is required");
       return;
     }
     setIsSubmitting(true);
     try {
       const finalAppIds = Array.from(selectedAppIds);
-      if (isEdit && category) {
-        await updateCategory({
-          id: category.id,
+      if (isEdit && collection) {
+        await updateCollection({
+          id: collection.id,
           name: trimmed,
           appIds: finalAppIds,
         });
-        showSuccess(`Category "${trimmed}" updated`);
+        showSuccess(`Collection "${trimmed}" updated`);
       } else {
-        await createCategory({ name: trimmed, appIds: finalAppIds });
-        showSuccess(`Category "${trimmed}" created`);
+        await createCollection({ name: trimmed, appIds: finalAppIds });
+        showSuccess(`Collection "${trimmed}" created`);
       }
       onOpenChange(false);
     } catch (error) {
@@ -119,10 +119,12 @@ export function AddOrEditCategoryDialog({
     >
       <DialogContent className="max-w-md p-4">
         <DialogHeader className="pb-2">
-          <DialogTitle>{isEdit ? "Edit category" : "Add category"}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? "Edit collection" : "Add collection"}
+          </DialogTitle>
           <DialogDescription className="text-xs">
             {isEdit
-              ? "Rename this category or change which apps belong to it."
+              ? "Rename this collection or change which apps belong to it."
               : "Group related apps together."}
           </DialogDescription>
         </DialogHeader>
@@ -130,14 +132,14 @@ export function AddOrEditCategoryDialog({
         <div className="space-y-3">
           <div>
             <label
-              htmlFor="category-name-input"
+              htmlFor="collection-name-input"
               className="text-xs font-medium text-muted-foreground"
             >
               Name
             </label>
             <Input
-              id="category-name-input"
-              data-testid="category-name-input"
+              id="collection-name-input"
+              data-testid="collection-name-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Work"
@@ -148,13 +150,13 @@ export function AddOrEditCategoryDialog({
 
           <div>
             <span className="text-xs font-medium text-muted-foreground block mb-1">
-              Apps in this category
+              Apps in this collection
             </span>
 
             <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
               <div
                 className="min-h-[80px] max-h-48 overflow-y-auto rounded-md border border-border bg-(--background-lighter) p-2"
-                data-testid="category-selected-apps"
+                data-testid="collection-selected-apps"
               >
                 <ul className="flex flex-wrap gap-1.5 items-center">
                   {selectedApps.length === 0 && (
@@ -163,7 +165,7 @@ export function AddOrEditCategoryDialog({
                     </li>
                   )}
                   {selectedApps.map((app) => {
-                    const inOther = categoryNameByAppId.get(app.id);
+                    const inOther = collectionNameByAppId.get(app.id);
                     return (
                       <li
                         key={app.id}
@@ -185,7 +187,7 @@ export function AddOrEditCategoryDialog({
                           onClick={() => toggleApp(app.id, false)}
                           className="text-muted-foreground hover:text-foreground"
                           aria-label={`Remove ${app.name}`}
-                          data-testid={`category-remove-app-${app.id}`}
+                          data-testid={`collection-remove-app-${app.id}`}
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -201,7 +203,7 @@ export function AddOrEditCategoryDialog({
                           : "border-dashed border-border",
                       )}
                       disabled={isSubmitting || pickableApps.length === 0}
-                      data-testid="category-add-apps-picker-trigger"
+                      data-testid="collection-add-apps-picker-trigger"
                       aria-label="Add apps"
                     >
                       <Plus className="h-3 w-3" />
@@ -217,14 +219,14 @@ export function AddOrEditCategoryDialog({
                     </div>
                   ) : (
                     pickableApps.map((app) => {
-                      const inOther = categoryNameByAppId.get(app.id);
+                      const inOther = collectionNameByAppId.get(app.id);
                       return (
                         <button
                           key={app.id}
                           type="button"
                           onClick={() => toggleApp(app.id, true)}
                           className="w-full flex items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
-                          data-testid={`category-picker-app-${app.id}`}
+                          data-testid={`collection-picker-app-${app.id}`}
                         >
                           <span className="flex-1 min-w-0 truncate">
                             {app.name}
@@ -258,7 +260,7 @@ export function AddOrEditCategoryDialog({
             disabled={isSubmitting || !name.trim()}
             size="sm"
             className="flex items-center gap-1"
-            data-testid="category-submit-button"
+            data-testid="collection-submit-button"
           >
             {isSubmitting ? (
               <>

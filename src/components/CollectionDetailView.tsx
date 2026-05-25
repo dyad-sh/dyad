@@ -6,35 +6,35 @@ import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 import type { ListedApp } from "@/ipc/types/app";
-import type { Category } from "@/hooks/useCategories";
-import { AddAppsToCategoryDialog } from "@/components/AddAppsToCategoryDialog";
+import type { AppCollection } from "@/hooks/useAppCollections";
+import { AddAppsToCollectionDialog } from "@/components/AddAppsToCollectionDialog";
 
-interface CategoryDetailViewProps {
-  category: Category;
+interface CollectionDetailViewProps {
+  collection: AppCollection;
   apps: ListedApp[];
-  categories: Category[];
+  collections: AppCollection[];
   onBack: () => void;
 }
 
-export function CategoryDetailView({
-  category,
+export function CollectionDetailView({
+  collection,
   apps,
-  categories,
+  collections,
   onBack,
-}: CategoryDetailViewProps) {
+}: CollectionDetailViewProps) {
   const openApp = useOpenApp();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
   const memberApps = useMemo(() => {
-    const memberSet = new Set(category.appIds);
+    const memberSet = new Set(collection.appIds);
     return sortAppsForShowcase(apps.filter((a) => memberSet.has(a.id)));
-  }, [apps, category.appIds]);
+  }, [apps, collection.appIds]);
 
   const memberAppIds = useMemo(() => memberApps.map((a) => a.id), [memberApps]);
   const thumbnailByAppId = useAppThumbnails(memberAppIds);
 
   return (
-    <div data-testid={`category-detail-${category.id}`}>
+    <div data-testid={`collection-detail-${collection.id}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <Button
@@ -42,12 +42,12 @@ export function CategoryDetailView({
             size="sm"
             onClick={onBack}
             className="flex items-center gap-2"
-            data-testid="category-detail-back-button"
+            data-testid="collection-detail-back-button"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
-          <h2 className="text-xl font-semibold truncate">{category.name}</h2>
+          <h2 className="text-xl font-semibold truncate">{collection.name}</h2>
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {memberApps.length} app{memberApps.length === 1 ? "" : "s"}
           </span>
@@ -56,7 +56,7 @@ export function CategoryDetailView({
           size="sm"
           onClick={() => setIsAddDialogOpen(true)}
           className="flex items-center gap-1"
-          data-testid="category-detail-add-apps-button"
+          data-testid="collection-detail-add-apps-button"
         >
           <Plus className="h-4 w-4" />
           Add apps
@@ -66,7 +66,7 @@ export function CategoryDetailView({
       {memberApps.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <p className="text-muted-foreground text-center">
-            No apps in this category yet.
+            No apps in this collection yet.
           </p>
           <Button size="sm" onClick={() => setIsAddDialogOpen(true)}>
             <Plus className="mr-1 h-4 w-4" />
@@ -75,7 +75,7 @@ export function CategoryDetailView({
         </div>
       ) : (
         <div
-          data-testid="category-apps-grid"
+          data-testid="collection-apps-grid"
           className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
         >
           {memberApps.map((app) => (
@@ -89,12 +89,12 @@ export function CategoryDetailView({
         </div>
       )}
 
-      <AddAppsToCategoryDialog
+      <AddAppsToCollectionDialog
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
-        category={category}
+        collection={collection}
         allApps={apps}
-        categories={categories}
+        collections={collections}
       />
     </div>
   );

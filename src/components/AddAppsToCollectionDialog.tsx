@@ -12,26 +12,26 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { showError, showSuccess } from "@/lib/toast";
-import { useCategories } from "@/hooks/useCategories";
+import { useAppCollections } from "@/hooks/useAppCollections";
 import type { ListedApp } from "@/ipc/types/app";
-import type { Category } from "@/hooks/useCategories";
+import type { AppCollection } from "@/hooks/useAppCollections";
 
-interface AddAppsToCategoryDialogProps {
+interface AddAppsToCollectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  category: Category;
+  collection: AppCollection;
   allApps: ListedApp[];
-  categories: Category[];
+  collections: AppCollection[];
 }
 
-export function AddAppsToCategoryDialog({
+export function AddAppsToCollectionDialog({
   open,
   onOpenChange,
-  category,
+  collection,
   allApps,
-  categories,
-}: AddAppsToCategoryDialogProps) {
-  const { assignApps } = useCategories();
+  collections,
+}: AddAppsToCollectionDialogProps) {
+  const { assignApps } = useAppCollections();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -43,24 +43,24 @@ export function AddAppsToCategoryDialog({
     }
   }, [open]);
 
-  const categoryNameByAppId = useMemo(() => {
+  const collectionNameByAppId = useMemo(() => {
     const map = new Map<number, string>();
-    for (const cat of categories) {
-      if (cat.id === category.id) continue;
-      for (const appId of cat.appIds) {
-        map.set(appId, cat.name);
+    for (const col of collections) {
+      if (col.id === collection.id) continue;
+      for (const appId of col.appIds) {
+        map.set(appId, col.name);
       }
     }
     return map;
-  }, [categories, category.id]);
+  }, [collections, collection.id]);
 
   const availableApps = useMemo(() => {
-    const memberSet = new Set(category.appIds);
+    const memberSet = new Set(collection.appIds);
     const q = searchQuery.trim().toLowerCase();
     return allApps
       .filter((a) => !memberSet.has(a.id))
       .filter((a) => !q || a.name.toLowerCase().includes(q));
-  }, [allApps, category.appIds, searchQuery]);
+  }, [allApps, collection.appIds, searchQuery]);
 
   const toggleApp = (appId: number) => {
     setSelected((prev) => {
@@ -76,11 +76,11 @@ export function AddAppsToCategoryDialog({
     setIsSubmitting(true);
     try {
       await assignApps({
-        categoryId: category.id,
+        collectionId: collection.id,
         appIds: Array.from(selected),
       });
       showSuccess(
-        `Added ${selected.size} app${selected.size === 1 ? "" : "s"} to "${category.name}"`,
+        `Added ${selected.size} app${selected.size === 1 ? "" : "s"} to "${collection.name}"`,
       );
       onOpenChange(false);
     } catch (error) {
@@ -99,9 +99,10 @@ export function AddAppsToCategoryDialog({
     >
       <DialogContent className="max-w-md p-4">
         <DialogHeader className="pb-2">
-          <DialogTitle>Add apps to "{category.name}"</DialogTitle>
+          <DialogTitle>Add apps to "{collection.name}"</DialogTitle>
           <DialogDescription className="text-xs">
-            Select apps to add. Apps already in another category will be moved.
+            Select apps to add. Apps already in another collection will be
+            moved.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,13 +121,13 @@ export function AddAppsToCategoryDialog({
         >
           {availableApps.length === 0 ? (
             <div className="p-3 text-center text-xs text-muted-foreground">
-              {allApps.length === category.appIds.length
-                ? "All apps are already in this category."
+              {allApps.length === collection.appIds.length
+                ? "All apps are already in this collection."
                 : "No apps match your search."}
             </div>
           ) : (
             availableApps.map((app) => {
-              const inOther = categoryNameByAppId.get(app.id);
+              const inOther = collectionNameByAppId.get(app.id);
               const checked = selected.has(app.id);
               return (
                 <label

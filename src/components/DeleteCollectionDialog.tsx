@@ -10,31 +10,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { showError, showSuccess } from "@/lib/toast";
-import { useCategories } from "@/hooks/useCategories";
-import type { Category } from "@/hooks/useCategories";
+import { useAppCollections } from "@/hooks/useAppCollections";
+import type { AppCollection } from "@/hooks/useAppCollections";
 
-interface DeleteCategoryDialogProps {
+interface DeleteCollectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  category: Category | null;
+  collection: AppCollection | null;
   onDeleted?: () => void;
 }
 
-export function DeleteCategoryDialog({
+export function DeleteCollectionDialog({
   open,
   onOpenChange,
-  category,
+  collection,
   onDeleted,
-}: DeleteCategoryDialogProps) {
-  const { deleteCategory } = useCategories();
+}: DeleteCollectionDialogProps) {
+  const { deleteCollection } = useAppCollections();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleConfirm = async () => {
-    if (!category) return;
+    if (!collection) return;
     setIsDeleting(true);
     try {
-      await deleteCategory(category.id);
-      showSuccess(`Category "${category.name}" deleted`);
+      await deleteCollection(collection.id);
+      showSuccess(`Collection "${collection.name}" deleted`);
       onOpenChange(false);
       onDeleted?.();
     } catch (error) {
@@ -44,7 +44,7 @@ export function DeleteCategoryDialog({
     }
   };
 
-  const count = category?.appIds.length ?? 0;
+  const count = collection?.appIds.length ?? 0;
 
   return (
     <Dialog
@@ -56,12 +56,12 @@ export function DeleteCategoryDialog({
       <DialogContent className="max-w-sm p-4">
         <DialogHeader className="pb-2">
           <DialogTitle>
-            Delete category {category ? `"${category.name}"` : ""}?
+            Delete collection {collection ? `"${collection.name}"` : ""}?
           </DialogTitle>
           <DialogDescription className="text-xs">
             {count > 0
-              ? `The ${count} app${count === 1 ? "" : "s"} in this category won't be deleted — they'll just be uncategorized.`
-              : "This category will be removed."}
+              ? `The ${count} app${count === 1 ? "" : "s"} in this collection won't be deleted — they'll just be uncollected.`
+              : "This collection will be removed."}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex justify-end gap-2 pt-2">
@@ -76,10 +76,10 @@ export function DeleteCategoryDialog({
           <Button
             variant="destructive"
             onClick={handleConfirm}
-            disabled={isDeleting || !category}
+            disabled={isDeleting || !collection}
             size="sm"
             className="flex items-center gap-1"
-            data-testid="category-delete-confirm-button"
+            data-testid="collection-delete-confirm-button"
           >
             {isDeleting ? (
               <>

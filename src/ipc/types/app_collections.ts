@@ -2,10 +2,10 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 
 // =============================================================================
-// Category Schemas
+// AppCollection Schemas
 // =============================================================================
 
-export const CategoryDtoSchema = z.object({
+export const AppCollectionDtoSchema = z.object({
   id: z.number(),
   name: z.string(),
   appIds: z.array(z.number()),
@@ -13,68 +13,72 @@ export const CategoryDtoSchema = z.object({
   updatedAt: z.date(),
 });
 
-export type CategoryDto = z.infer<typeof CategoryDtoSchema>;
+export type AppCollectionDto = z.infer<typeof AppCollectionDtoSchema>;
 
-export const CreateCategoryParamsSchema = z.object({
+export const CreateAppCollectionParamsSchema = z.object({
   name: z.string().min(1),
   appIds: z.array(z.number()).optional(),
 });
 
-export type CreateCategoryParams = z.infer<typeof CreateCategoryParamsSchema>;
+export type CreateAppCollectionParams = z.infer<
+  typeof CreateAppCollectionParamsSchema
+>;
 
-export const UpdateCategoryParamsSchema = z.object({
+export const UpdateAppCollectionParamsSchema = z.object({
   id: z.number(),
   name: z.string().min(1),
   appIds: z.array(z.number()).optional(),
 });
 
-export type UpdateCategoryParams = z.infer<typeof UpdateCategoryParamsSchema>;
+export type UpdateAppCollectionParams = z.infer<
+  typeof UpdateAppCollectionParamsSchema
+>;
 
 export const AssignAppsParamsSchema = z.object({
-  categoryId: z.number().nullable(),
+  collectionId: z.number().nullable(),
   appIds: z.array(z.number()),
 });
 
 export type AssignAppsParams = z.infer<typeof AssignAppsParamsSchema>;
 
 // =============================================================================
-// Category Contracts
+// AppCollection Contracts
 // =============================================================================
 
-export const categoryContracts = {
+export const appCollectionContracts = {
   list: defineContract({
-    channel: "categories:list",
+    channel: "appCollections:list",
     input: z.void(),
-    output: z.array(CategoryDtoSchema),
+    output: z.array(AppCollectionDtoSchema),
   }),
 
   create: defineContract({
-    channel: "categories:create",
-    input: CreateCategoryParamsSchema,
-    output: CategoryDtoSchema,
+    channel: "appCollections:create",
+    input: CreateAppCollectionParamsSchema,
+    output: AppCollectionDtoSchema,
   }),
 
   update: defineContract({
-    channel: "categories:update",
-    input: UpdateCategoryParamsSchema,
+    channel: "appCollections:update",
+    input: UpdateAppCollectionParamsSchema,
     output: z.void(),
   }),
 
   delete: defineContract({
-    channel: "categories:delete",
+    channel: "appCollections:delete",
     input: z.number(),
     output: z.void(),
   }),
 
   assignApps: defineContract({
-    channel: "categories:assignApps",
+    channel: "appCollections:assignApps",
     input: AssignAppsParamsSchema,
     output: z.void(),
   }),
 } as const;
 
 // =============================================================================
-// Category Client
+// AppCollection Client
 // =============================================================================
 
-export const categoryClient = createClient(categoryContracts);
+export const appCollectionClient = createClient(appCollectionContracts);

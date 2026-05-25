@@ -29,48 +29,52 @@ import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom, currentAppAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
-import { useCategories, type Category } from "@/hooks/useCategories";
-import { CategoryFolderCard } from "@/components/CategoryFolderCard";
-import { CategoryDetailView } from "@/components/CategoryDetailView";
-import { AddOrEditCategoryDialog } from "@/components/AddOrEditCategoryDialog";
-import { AssignAppsToCategoryDialog } from "@/components/AssignAppsToCategoryDialog";
-import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
+import {
+  useAppCollections,
+  type AppCollection,
+} from "@/hooks/useAppCollections";
+import { CollectionFolderCard } from "@/components/CollectionFolderCard";
+import { CollectionDetailView } from "@/components/CollectionDetailView";
+import { AddOrEditCollectionDialog } from "@/components/AddOrEditCollectionDialog";
+import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectionDialog";
+import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
 
 export default function AppsPage() {
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
-  const { categories, isLoading: categoriesLoading } = useCategories();
+  const { collections, isLoading: collectionsLoading } = useAppCollections();
   const openApp = useOpenApp();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
-  const [isAssignCategoryDialogOpen, setIsAssignCategoryDialogOpen] =
+  const [isAssignCollectionDialogOpen, setIsAssignCollectionDialogOpen] =
     useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const [currentApp, setCurrentApp] = useAtom(currentAppAtom);
   const [view, setView] = useState<AppsView>("apps");
-  const [openCategoryId, setOpenCategoryId] = useState<number | null>(null);
-  const [isAddOrEditCategoryOpen, setIsAddOrEditCategoryOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<Category | null>(
-    null,
-  );
+  const [openCollectionId, setOpenCollectionId] = useState<number | null>(null);
+  const [isAddOrEditCollectionOpen, setIsAddOrEditCollectionOpen] =
+    useState(false);
+  const [editingCollection, setEditingCollection] =
+    useState<AppCollection | null>(null);
+  const [deletingCollection, setDeletingCollection] =
+    useState<AppCollection | null>(null);
 
-  const openCategory = useMemo(
+  const openCollection = useMemo(
     () =>
-      openCategoryId == null
+      openCollectionId == null
         ? null
-        : (categories.find((c) => c.id === openCategoryId) ?? null),
-    [categories, openCategoryId],
+        : (collections.find((c) => c.id === openCollectionId) ?? null),
+    [collections, openCollectionId],
   );
 
-  const filteredCategories = useMemo(() => {
+  const filteredCollections = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return categories;
-    return categories.filter((c) => c.name.toLowerCase().includes(q));
-  }, [categories, searchQuery]);
+    if (!q) return collections;
+    return collections.filter((c) => c.name.toLowerCase().includes(q));
+  }, [collections, searchQuery]);
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -209,9 +213,11 @@ export default function AppsPage() {
             <input
               type="text"
               placeholder={
-                view === "apps" ? "Search apps..." : "Search categories..."
+                view === "apps" ? "Search apps..." : "Search collections..."
               }
-              aria-label={view === "apps" ? "Search apps" : "Search categories"}
+              aria-label={
+                view === "apps" ? "Search apps" : "Search collections"
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent py-3 pl-11 pr-4 text-sm outline-none placeholder:text-muted-foreground"
@@ -224,7 +230,7 @@ export default function AppsPage() {
             value={view}
             onChange={(next) => {
               setView(next);
-              setOpenCategoryId(null);
+              setOpenCollectionId(null);
               if (next !== "apps") {
                 setIsSelectionMode(false);
                 setSelectedAppIds(new Set());
@@ -265,13 +271,13 @@ export default function AppsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsAssignCategoryDialogOpen(true)}
+                onClick={() => setIsAssignCollectionDialogOpen(true)}
                 disabled={selectedAppIds.size === 0}
-                data-testid="apps-gallery-bulk-add-to-category-button"
+                data-testid="apps-gallery-bulk-add-to-collection-button"
                 className="flex items-center gap-1"
               >
                 <FolderPlus className="h-4 w-4" />
-                Add to category ({selectedAppIds.size})
+                Add to collection ({selectedAppIds.size})
               </Button>
               <Button
                 variant="destructive"
@@ -324,12 +330,12 @@ export default function AppsPage() {
               ))}
             </div>
           )
-        ) : openCategory ? (
-          <CategoryDetailView
-            category={openCategory}
+        ) : openCollection ? (
+          <CollectionDetailView
+            collection={openCollection}
             apps={apps}
-            categories={categories}
-            onBack={() => setOpenCategoryId(null)}
+            collections={collections}
+            onBack={() => setOpenCollectionId(null)}
           />
         ) : (
           <>
@@ -337,55 +343,55 @@ export default function AppsPage() {
               <Button
                 size="sm"
                 onClick={() => {
-                  setEditingCategory(null);
-                  setIsAddOrEditCategoryOpen(true);
+                  setEditingCollection(null);
+                  setIsAddOrEditCollectionOpen(true);
                 }}
                 className="flex items-center gap-1"
-                data-testid="add-category-button"
+                data-testid="add-collection-button"
               >
                 <Plus className="h-4 w-4" />
-                Add category
+                Add collection
               </Button>
             </div>
-            {categoriesLoading ? (
+            {collectionsLoading ? (
               <div className="text-muted-foreground text-center py-12">
-                Loading categories...
+                Loading collections...
               </div>
-            ) : filteredCategories.length === 0 ? (
+            ) : filteredCollections.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <p className="text-muted-foreground text-center">
                   {searchQuery
-                    ? "No categories match your search."
-                    : "No categories yet. Create one to organize your apps."}
+                    ? "No collections match your search."
+                    : "No collections yet. Create one to organize your apps."}
                 </p>
                 {!searchQuery && (
                   <Button
                     size="sm"
                     onClick={() => {
-                      setEditingCategory(null);
-                      setIsAddOrEditCategoryOpen(true);
+                      setEditingCollection(null);
+                      setIsAddOrEditCollectionOpen(true);
                     }}
                   >
                     <Plus className="mr-1 h-4 w-4" />
-                    Add category
+                    Add collection
                   </Button>
                 )}
               </div>
             ) : (
               <div
-                data-testid="categories-grid"
+                data-testid="collections-grid"
                 className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
               >
-                {filteredCategories.map((c) => (
-                  <CategoryFolderCard
+                {filteredCollections.map((c) => (
+                  <CollectionFolderCard
                     key={c.id}
-                    category={c}
-                    onOpen={(cat) => setOpenCategoryId(cat.id)}
-                    onRename={(cat) => {
-                      setEditingCategory(cat);
-                      setIsAddOrEditCategoryOpen(true);
+                    collection={c}
+                    onOpen={(col) => setOpenCollectionId(col.id)}
+                    onRename={(col) => {
+                      setEditingCollection(col);
+                      setIsAddOrEditCollectionOpen(true);
                     }}
-                    onDelete={(cat) => setDeletingCategory(cat)}
+                    onDelete={(col) => setDeletingCollection(col)}
                   />
                 ))}
               </div>
@@ -456,39 +462,39 @@ export default function AppsPage() {
         </DialogContent>
       </Dialog>
 
-      <AssignAppsToCategoryDialog
-        open={isAssignCategoryDialogOpen}
-        onOpenChange={setIsAssignCategoryDialogOpen}
+      <AssignAppsToCollectionDialog
+        open={isAssignCollectionDialogOpen}
+        onOpenChange={setIsAssignCollectionDialogOpen}
         apps={selectedApps}
-        categories={categories}
+        collections={collections}
         onAssigned={() => {
           setSelectedAppIds(new Set());
           setIsSelectionMode(false);
         }}
       />
 
-      <AddOrEditCategoryDialog
-        open={isAddOrEditCategoryOpen}
+      <AddOrEditCollectionDialog
+        open={isAddOrEditCollectionOpen}
         onOpenChange={(next) => {
-          setIsAddOrEditCategoryOpen(next);
-          if (!next) setEditingCategory(null);
+          setIsAddOrEditCollectionOpen(next);
+          if (!next) setEditingCollection(null);
         }}
-        category={editingCategory}
+        collection={editingCollection}
         allApps={apps}
-        categories={categories}
+        collections={collections}
       />
 
-      <DeleteCategoryDialog
-        open={deletingCategory !== null}
+      <DeleteCollectionDialog
+        open={deletingCollection !== null}
         onOpenChange={(next) => {
-          if (!next) setDeletingCategory(null);
+          if (!next) setDeletingCollection(null);
         }}
-        category={deletingCategory}
+        collection={deletingCollection}
         onDeleted={() => {
-          if (openCategoryId === deletingCategory?.id) {
-            setOpenCategoryId(null);
+          if (openCollectionId === deletingCollection?.id) {
+            setOpenCollectionId(null);
           }
-          setDeletingCategory(null);
+          setDeletingCollection(null);
         }}
       />
     </div>

@@ -12,60 +12,60 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { showError, showSuccess } from "@/lib/toast";
-import { useCategories } from "@/hooks/useCategories";
+import { useAppCollections } from "@/hooks/useAppCollections";
 import type { ListedApp } from "@/ipc/types/app";
-import type { Category } from "@/hooks/useCategories";
+import type { AppCollection } from "@/hooks/useAppCollections";
 
-interface AssignAppsToCategoryDialogProps {
+interface AssignAppsToCollectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   apps: ListedApp[];
-  categories: Category[];
+  collections: AppCollection[];
   onAssigned?: () => void;
 }
 
-export function AssignAppsToCategoryDialog({
+export function AssignAppsToCollectionDialog({
   open,
   onOpenChange,
   apps,
-  categories,
+  collections,
   onAssigned,
-}: AssignAppsToCategoryDialogProps) {
-  const { assignApps, createCategory } = useCategories();
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    null,
-  );
+}: AssignAppsToCollectionDialogProps) {
+  const { assignApps, createCollection } = useAppCollections();
+  const [selectedCollectionId, setSelectedCollectionId] = useState<
+    number | null
+  >(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCollectionName, setNewCollectionName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setSelectedCategoryId(null);
+      setSelectedCollectionId(null);
       setSearchQuery("");
       setIsCreating(false);
-      setNewCategoryName("");
+      setNewCollectionName("");
     }
   }, [open]);
 
-  const filteredCategories = useMemo(() => {
+  const filteredCollections = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return categories;
-    return categories.filter((c) => c.name.toLowerCase().includes(q));
-  }, [categories, searchQuery]);
+    if (!q) return collections;
+    return collections.filter((c) => c.name.toLowerCase().includes(q));
+  }, [collections, searchQuery]);
 
   const appIds = useMemo(() => apps.map((a) => a.id), [apps]);
 
   const handleAssignToExisting = async () => {
-    if (selectedCategoryId == null || appIds.length === 0) return;
+    if (selectedCollectionId == null || appIds.length === 0) return;
     setIsSubmitting(true);
     try {
-      const target = categories.find((c) => c.id === selectedCategoryId);
-      await assignApps({ categoryId: selectedCategoryId, appIds });
+      const target = collections.find((c) => c.id === selectedCollectionId);
+      await assignApps({ collectionId: selectedCollectionId, appIds });
       showSuccess(
         `Added ${apps.length} app${apps.length === 1 ? "" : "s"} to "${
-          target?.name ?? "category"
+          target?.name ?? "collection"
         }"`,
       );
       onAssigned?.();
@@ -78,14 +78,14 @@ export function AssignAppsToCategoryDialog({
   };
 
   const handleCreateAndAssign = async () => {
-    const trimmed = newCategoryName.trim();
+    const trimmed = newCollectionName.trim();
     if (!trimmed) {
-      showError("Category name is required");
+      showError("Collection name is required");
       return;
     }
     setIsSubmitting(true);
     try {
-      await createCategory({ name: trimmed, appIds });
+      await createCollection({ name: trimmed, appIds });
       showSuccess(
         `Added ${apps.length} app${apps.length === 1 ? "" : "s"} to "${trimmed}"`,
       );
@@ -108,26 +108,26 @@ export function AssignAppsToCategoryDialog({
       <DialogContent className="max-w-md p-4">
         <DialogHeader className="pb-2">
           <DialogTitle>
-            Add {apps.length} app{apps.length === 1 ? "" : "s"} to a category
+            Add {apps.length} app{apps.length === 1 ? "" : "s"} to a collection
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Apps already in another category will be moved.
+            Apps already in another collection will be moved.
           </DialogDescription>
         </DialogHeader>
 
         {isCreating ? (
           <div className="space-y-2">
             <label
-              htmlFor="new-category-name-input"
+              htmlFor="new-collection-name-input"
               className="text-xs font-medium text-muted-foreground"
             >
-              New category name
+              New collection name
             </label>
             <Input
-              id="new-category-name-input"
-              data-testid="assign-apps-new-category-name"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
+              id="new-collection-name-input"
+              data-testid="assign-apps-new-collection-name"
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
               placeholder="e.g. Work"
               autoFocus
               disabled={isSubmitting}
@@ -137,7 +137,7 @@ export function AssignAppsToCategoryDialog({
           <>
             <Input
               type="text"
-              placeholder="Search categories..."
+              placeholder="Search collections..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-(--background-lighter)"
@@ -146,34 +146,34 @@ export function AssignAppsToCategoryDialog({
 
             <div
               className="max-h-72 overflow-y-auto rounded-md border border-border bg-(--background-lighter) p-1"
-              data-testid="assign-apps-category-list"
+              data-testid="assign-apps-collection-list"
             >
-              {filteredCategories.length === 0 ? (
+              {filteredCollections.length === 0 ? (
                 <div className="p-3 text-center text-xs text-muted-foreground">
-                  {categories.length === 0
-                    ? "No categories yet. Create one below."
-                    : "No categories match your search."}
+                  {collections.length === 0
+                    ? "No collections yet. Create one below."
+                    : "No collections match your search."}
                 </div>
               ) : (
-                filteredCategories.map((cat) => {
-                  const isSelected = selectedCategoryId === cat.id;
+                filteredCollections.map((col) => {
+                  const isSelected = selectedCollectionId === col.id;
                   return (
                     <button
-                      key={cat.id}
+                      key={col.id}
                       type="button"
-                      onClick={() => setSelectedCategoryId(cat.id)}
+                      onClick={() => setSelectedCollectionId(col.id)}
                       className={cn(
                         "w-full flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
                         isSelected && "bg-muted",
                       )}
-                      data-testid={`assign-apps-category-${cat.id}`}
+                      data-testid={`assign-apps-collection-${col.id}`}
                       aria-pressed={isSelected}
                     >
                       <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate">{cat.name}</span>
+                      <span className="flex-1 truncate">{col.name}</span>
                       <span className="text-[10px] text-muted-foreground shrink-0">
-                        {cat.appIds.length} app
-                        {cat.appIds.length === 1 ? "" : "s"}
+                        {col.appIds.length} app
+                        {col.appIds.length === 1 ? "" : "s"}
                       </span>
                     </button>
                   );
@@ -188,7 +188,7 @@ export function AssignAppsToCategoryDialog({
               data-testid="assign-apps-create-new-toggle"
             >
               <Plus className="h-3 w-3" />
-              Create new category
+              Create new collection
             </button>
           </>
         )}
@@ -200,7 +200,7 @@ export function AssignAppsToCategoryDialog({
                 variant="outline"
                 onClick={() => {
                   setIsCreating(false);
-                  setNewCategoryName("");
+                  setNewCollectionName("");
                 }}
                 disabled={isSubmitting}
                 size="sm"
@@ -209,7 +209,7 @@ export function AssignAppsToCategoryDialog({
               </Button>
               <Button
                 onClick={handleCreateAndAssign}
-                disabled={isSubmitting || !newCategoryName.trim()}
+                disabled={isSubmitting || !newCollectionName.trim()}
                 size="sm"
                 className="flex items-center gap-1"
                 data-testid="assign-apps-create-confirm"
@@ -236,7 +236,7 @@ export function AssignAppsToCategoryDialog({
               </Button>
               <Button
                 onClick={handleAssignToExisting}
-                disabled={isSubmitting || selectedCategoryId == null}
+                disabled={isSubmitting || selectedCollectionId == null}
                 size="sm"
                 className="flex items-center gap-1"
                 data-testid="assign-apps-confirm"

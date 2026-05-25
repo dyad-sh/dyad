@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type AppsView = "apps" | "categories";
+export type AppsView = "apps" | "collections";
 
 interface AppsViewTabsProps {
   value: AppsView;
@@ -9,7 +9,7 @@ interface AppsViewTabsProps {
 
 const TABS: { key: AppsView; label: string }[] = [
   { key: "apps", label: "Apps" },
-  { key: "categories", label: "Categories" },
+  { key: "collections", label: "Collections" },
 ];
 
 export function AppsViewTabs({ value, onChange }: AppsViewTabsProps) {

@@ -1,11 +1,11 @@
 import { db } from "@/db";
-import { apps, categories } from "@/db/schema";
+import { apps, appCollections } from "@/db/schema";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 import { createTypedHandler } from "./base";
-import { categoryContracts } from "../types/categories";
+import { appCollectionContracts } from "../types/app_collections";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
-function buildCategoryDto(
+function buildAppCollectionDto(
   row: {
     id: number;
     name: string;
@@ -30,33 +30,39 @@ function isUniqueNameError(error: unknown): boolean {
       : typeof error === "string"
         ? error
         : "";
-  return message.includes("UNIQUE constraint failed: categories.name");
+  return message.includes("UNIQUE constraint failed: app_collections.name");
 }
 
-export function registerCategoryHandlers() {
-  createTypedHandler(categoryContracts.list, async () => {
-    const rows = db.select().from(categories).orderBy(categories.name).all();
-    const appRows = db
-      .select({ id: apps.id, categoryId: apps.categoryId })
-      .from(apps)
-      .where(isNotNull(apps.categoryId))
+export function registerAppCollectionHandlers() {
+  createTypedHandler(appCollectionContracts.list, async () => {
+    const rows = db
+      .select()
+      .from(appCollections)
+      .orderBy(appCollections.name)
       .all();
-    const appsByCategory = new Map<number, number[]>();
+    const appRows = db
+      .select({ id: apps.id, collectionId: apps.collectionId })
+      .from(apps)
+      .where(isNotNull(apps.collectionId))
+      .all();
+    const appsByCollection = new Map<number, number[]>();
     for (const row of appRows) {
-      if (row.categoryId == null) continue;
-      const list = appsByCategory.get(row.categoryId) ?? [];
+      if (row.collectionId == null) continue;
+      const list = appsByCollection.get(row.collectionId) ?? [];
       list.push(row.id);
-      appsByCategory.set(row.categoryId, list);
+      appsByCollection.set(row.collectionId, list);
     }
-    return rows.map((r) => buildCategoryDto(r, appsByCategory.get(r.id) ?? []));
+    return rows.map((r) =>
+      buildAppCollectionDto(r, appsByCollection.get(r.id) ?? []),
+    );
   });
 
-  createTypedHandler(categoryContracts.create, async (_, params) => {
+  createTypedHandler(appCollectionContracts.create, async (_, params) => {
     const { name, appIds } = params;
     const trimmed = name.trim();
     if (!trimmed) {
       throw new DyadError(
-        "Category name is required",
+        "Collection name is required",
         DyadErrorKind.Validation,
       );
     }
@@ -65,13 +71,13 @@ export function registerCategoryHandlers() {
     try {
       id = db.transaction((tx) => {
         const insertResult = tx
-          .insert(categories)
+          .insert(appCollections)
           .values({ name: trimmed })
           .run();
         const newId = Number(insertResult.lastInsertRowid);
         if (appIds && appIds.length > 0) {
           tx.update(apps)
-            .set({ categoryId: newId })
+            .set({ collectionId: newId })
             .where(inArray(apps.id, appIds))
             .run();
         }
@@ -80,59 +86,63 @@ export function registerCategoryHandlers() {
     } catch (error) {
       if (isUniqueNameError(error)) {
         throw new DyadError(
-          "A category with that name already exists",
+          "A collection with that name already exists",
           DyadErrorKind.Conflict,
         );
       }
       throw error;
     }
 
-    const row = db.select().from(categories).where(eq(categories.id, id)).get();
+    const row = db
+      .select()
+      .from(appCollections)
+      .where(eq(appCollections.id, id))
+      .get();
     if (!row) {
       throw new DyadError(
-        "Failed to fetch created category",
+        "Failed to fetch created collection",
         DyadErrorKind.Internal,
       );
     }
     const memberAppRows = db
       .select({ id: apps.id })
       .from(apps)
-      .where(eq(apps.categoryId, id))
+      .where(eq(apps.collectionId, id))
       .all();
-    return buildCategoryDto(
+    return buildAppCollectionDto(
       row,
       memberAppRows.map((a) => a.id),
     );
   });
 
-  createTypedHandler(categoryContracts.update, async (_, params) => {
+  createTypedHandler(appCollectionContracts.update, async (_, params) => {
     const { id, name, appIds } = params;
     const trimmed = name.trim();
     if (!trimmed) {
       throw new DyadError(
-        "Category name is required",
+        "Collection name is required",
         DyadErrorKind.Validation,
       );
     }
     try {
       db.transaction((tx) => {
-        const existingCategory = tx
-          .select({ id: categories.id })
-          .from(categories)
-          .where(eq(categories.id, id))
+        const existingCollection = tx
+          .select({ id: appCollections.id })
+          .from(appCollections)
+          .where(eq(appCollections.id, id))
           .get();
-        if (!existingCategory) {
-          throw new DyadError("Category not found", DyadErrorKind.NotFound);
+        if (!existingCollection) {
+          throw new DyadError("Collection not found", DyadErrorKind.NotFound);
         }
-        tx.update(categories)
+        tx.update(appCollections)
           .set({ name: trimmed, updatedAt: new Date() })
-          .where(eq(categories.id, id))
+          .where(eq(appCollections.id, id))
           .run();
         if (appIds) {
           const existing = tx
             .select({ id: apps.id })
             .from(apps)
-            .where(eq(apps.categoryId, id))
+            .where(eq(apps.collectionId, id))
             .all();
           const before = new Set(existing.map((a) => a.id));
           const after = new Set(appIds);
@@ -142,13 +152,13 @@ export function registerCategoryHandlers() {
             .filter((appId) => !after.has(appId));
           if (toAdd.length > 0) {
             tx.update(apps)
-              .set({ categoryId: id })
+              .set({ collectionId: id })
               .where(inArray(apps.id, toAdd))
               .run();
           }
           if (toRemove.length > 0) {
             tx.update(apps)
-              .set({ categoryId: null })
+              .set({ collectionId: null })
               .where(inArray(apps.id, toRemove))
               .run();
           }
@@ -157,7 +167,7 @@ export function registerCategoryHandlers() {
     } catch (error) {
       if (isUniqueNameError(error)) {
         throw new DyadError(
-          "A category with that name already exists",
+          "A collection with that name already exists",
           DyadErrorKind.Conflict,
         );
       }
@@ -165,24 +175,27 @@ export function registerCategoryHandlers() {
     }
   });
 
-  createTypedHandler(categoryContracts.delete, async (_, id) => {
-    // ON DELETE SET NULL on apps.category_id handles this at the DB level,
+  createTypedHandler(appCollectionContracts.delete, async (_, id) => {
+    // ON DELETE SET NULL on apps.collection_id handles this at the DB level,
     // but we null out explicitly first so the operation is robust regardless
     // of whether foreign_keys pragma is enabled in the current connection.
     db.transaction((tx) => {
       tx.update(apps)
-        .set({ categoryId: null })
-        .where(eq(apps.categoryId, id))
+        .set({ collectionId: null })
+        .where(eq(apps.collectionId, id))
         .run();
-      tx.delete(categories).where(eq(categories.id, id)).run();
+      tx.delete(appCollections).where(eq(appCollections.id, id)).run();
     });
   });
 
-  createTypedHandler(categoryContracts.assignApps, async (_, params) => {
-    const { categoryId, appIds } = params;
+  createTypedHandler(appCollectionContracts.assignApps, async (_, params) => {
+    const { collectionId, appIds } = params;
     if (appIds.length === 0) return;
     db.transaction((tx) => {
-      tx.update(apps).set({ categoryId }).where(inArray(apps.id, appIds)).run();
+      tx.update(apps)
+        .set({ collectionId })
+        .where(inArray(apps.id, appIds))
+        .run();
     });
   });
 }

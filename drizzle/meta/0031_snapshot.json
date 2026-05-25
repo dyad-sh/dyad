@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a1f4d63c-9b27-4e7a-8d92-2c5e9f3b4a02",
+  "id": "a1f4d63c-9b27-4e7a-8d92-2c5e9f3b4a03",
   "prevId": "0d6f2a27-1b3e-4d0c-9f5d-3431baefd476",
   "tables": {
     "apps": {
@@ -200,8 +200,8 @@
           "autoincrement": false,
           "default": "0"
         },
-        "category_id": {
-          "name": "category_id",
+        "collection_id": {
+          "name": "collection_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -210,12 +210,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "apps_category_id_categories_id_fk": {
-          "name": "apps_category_id_categories_id_fk",
+        "apps_collection_id_app_collections_id_fk": {
+          "name": "apps_collection_id_app_collections_id_fk",
           "tableFrom": "apps",
-          "tableTo": "categories",
+          "tableTo": "app_collections",
           "columnsFrom": [
-            "category_id"
+            "collection_id"
           ],
           "columnsTo": [
             "id"
@@ -228,8 +228,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "categories": {
-      "name": "categories",
+    "app_collections": {
+      "name": "app_collections",
       "columns": {
         "id": {
           "name": "id",
@@ -263,8 +263,8 @@
         }
       },
       "indexes": {
-        "categories_name_unique": {
-          "name": "categories_name_unique",
+        "app_collections_name_unique": {
+          "name": "app_collections_name_unique",
           "columns": [
             "name"
           ],

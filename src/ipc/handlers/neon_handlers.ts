@@ -17,8 +17,10 @@ import { EndpointType } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  generateCookieSecret,
   getEnvFilePath,
   readEnvFileIfExists,
+  readEnvVarsOrEmpty,
   removeNeonEnvVars,
 } from "../utils/app_env_var_utils";
 import {
@@ -848,7 +850,31 @@ export function registerNeonHandlers() {
         branchId,
       });
 
-      return { connectionUri };
+      let neonAuth: { baseUrl: string; cookieSecret: string } | undefined;
+      try {
+        const baseUrl = await ensureNeonAuth({
+          projectId: appData.neonProjectId,
+          branchId,
+        });
+        if (baseUrl) {
+          const envVars = await readEnvVarsOrEmpty({ appPath: appData.path });
+          const existingSecret = envVars.find(
+            (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
+          )?.value;
+          neonAuth = {
+            baseUrl,
+            cookieSecret: existingSecret ?? generateCookieSecret(),
+          };
+        }
+      } catch (error) {
+        logger.warn(
+          `Failed to resolve Neon Auth env vars for app ${appId} (${branchType}): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      return { connectionUri, neonAuth };
     },
   );
 

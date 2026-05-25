@@ -4,8 +4,10 @@ import {
   ArrowLeft,
   Check,
   Copy,
-  Database,
+  ExternalLink,
   FlaskConical,
+  Info,
+  Rocket,
   Server,
 } from "lucide-react";
 import { ipc } from "@/ipc/types";
@@ -17,11 +19,11 @@ import { getErrorMessage } from "@/lib/errors";
 
 type EnvKind = "prod" | "dev";
 
-interface DatabaseUrlPanelProps {
+interface DeploymentEnvPanelProps {
   appId: number;
 }
 
-const storageKey = (appId: number) => `dyad.databaseUrlPanel.env.${appId}`;
+const storageKey = (appId: number) => `dyad.deploymentEnvPanel.env.${appId}`;
 
 const readPersistedEnv = (appId: number): EnvKind | null => {
   try {
@@ -57,17 +59,15 @@ const ENV_META: Record<
   },
 };
 
-export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
+export const DeploymentEnvPanel = ({ appId }: DeploymentEnvPanelProps) => {
   const [selectedEnv, setSelectedEnv] = useState<EnvKind | null>(() =>
     readPersistedEnv(appId),
   );
   const [pendingEnv, setPendingEnv] = useState<EnvKind | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setSelectedEnv(readPersistedEnv(appId));
     setPendingEnv(null);
-    setCopied(false);
   }, [appId]);
 
   const confirmEnv = () => {
@@ -105,32 +105,22 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
     }
     setSelectedEnv(null);
     setPendingEnv(null);
-    setCopied(false);
-  };
-
-  const handleCopy = async () => {
-    if (!data?.connectionUri) return;
-    await navigator.clipboard.writeText(data.connectionUri);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <Card data-testid="database-url-panel">
+    <Card data-testid="deployment-env-panel">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-primary" />
-          Database URL
+          <Rocket className="w-5 h-5 text-primary" />
+          Deployment environment
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {selectedEnv === null ? (
           <>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Pick the database your deployed app should connect to. Copy the
-              connection string into your hosting provider's{" "}
-              <code className="font-mono text-xs">DATABASE_URL</code>{" "}
-              environment variable.
+              Pick the database your deployed app should connect to. We'll show
+              you the environment variables to set in your hosting provider.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(Object.keys(ENV_META) as EnvKind[]).map((kind) => {
@@ -187,53 +177,116 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
               </span>
             </div>
 
-            <div>
-              <label
-                htmlFor={`db-url-${appId}`}
-                className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block"
-              >
-                {ENV_META[selectedEnv].title} database URL
-              </label>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                Paste this into your deployed app's{" "}
-                <code className="font-mono">DATABASE_URL</code> environment
-                variable.
-              </p>
-              <div className="flex items-center gap-2">
-                <Input
-                  id={`db-url-${appId}`}
-                  readOnly
-                  type="text"
-                  value={
-                    isLoading ? "" : error ? "" : (data?.connectionUri ?? "")
-                  }
-                  placeholder={isLoading ? "Loading…" : ""}
-                  className="font-mono text-xs"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={handleCopy}
-                  disabled={!data?.connectionUri}
-                  aria-label="Copy URL"
-                >
-                  {copied ? (
-                    <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
-              {error && (
-                <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                  {getErrorMessage(error)}
-                </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Add these environment variables to your hosting provider so the
+              deployed app can connect to Neon.
+            </p>
+
+            <div className="space-y-3">
+              <EnvVarRow
+                id={`db-url-${appId}`}
+                name="DATABASE_URL"
+                value={data?.connectionUri ?? ""}
+                isLoading={isLoading}
+              />
+              {data?.neonAuth && (
+                <>
+                  <EnvVarRow
+                    id={`neon-auth-base-url-${appId}`}
+                    name="NEON_AUTH_BASE_URL"
+                    value={data.neonAuth.baseUrl}
+                    isLoading={false}
+                  />
+                  <EnvVarRow
+                    id={`neon-auth-cookie-secret-${appId}`}
+                    name="NEON_AUTH_COOKIE_SECRET"
+                    value={data.neonAuth.cookieSecret}
+                    isLoading={false}
+                  />
+                </>
               )}
             </div>
+
+            {error && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {getErrorMessage(error)}
+              </p>
+            )}
+
+            {data?.neonAuth && (
+              <button
+                type="button"
+                onClick={() =>
+                  ipc.system.openExternalUrl(
+                    "https://neon.com/docs/auth/guides/configure-domains",
+                  )
+                }
+                className="w-full flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30 transition-colors"
+              >
+                <Info className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                <span className="flex-1 text-left">
+                  Add your deployed domain to Neon Auth's trusted domains after
+                  deploying.
+                </span>
+                <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
+              </button>
+            )}
           </>
         )}
       </CardContent>
     </Card>
+  );
+};
+
+interface EnvVarRowProps {
+  id: string;
+  name: string;
+  value: string;
+  isLoading: boolean;
+}
+
+const EnvVarRow = ({ id, name, value, isLoading }: EnvVarRowProps) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="font-mono text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block"
+      >
+        {name}
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          readOnly
+          type="text"
+          value={isLoading ? "" : value}
+          placeholder={isLoading ? "Loading…" : ""}
+          className="font-mono text-xs"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={handleCopy}
+          disabled={!value}
+          aria-label={`Copy ${name}`}
+        >
+          {copied ? (
+            <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+          ) : (
+            <Copy className="w-4 h-4" />
+          )}
+        </Button>
+      </div>
+    </div>
   );
 };

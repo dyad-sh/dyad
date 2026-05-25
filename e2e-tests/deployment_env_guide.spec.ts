@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 testSkipIfWindows(
-  "database url guide shows connection URIs for development and production",
+  "deployment env guide shows env vars for development and production",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.navigation.goToHubAndSelectTemplate("Next.js Template");
@@ -17,9 +17,9 @@ testSkipIfWindows(
     await po.navigation.clickBackButton();
     await po.previewPanel.selectPreviewMode("publish");
 
-    // Scope to the Database URL panel — the chat history also renders a
+    // Scope to the Deployment Env panel — the chat history also renders a
     // "Continue" button from the add-integration message.
-    const panel = po.page.getByTestId("database-url-panel");
+    const panel = po.page.getByTestId("deployment-env-panel");
     await expect(panel).toBeVisible({ timeout: Timeout.MEDIUM });
 
     // The picker shows Continue disabled until an environment is chosen.
@@ -31,14 +31,22 @@ testSkipIfWindows(
     await expect(continueButton).toBeEnabled();
     await continueButton.click();
 
-    const devInput = panel.getByLabel("Development database URL");
-    await expect(devInput).toHaveValue(
+    const devDbInput = panel.getByLabel("DATABASE_URL");
+    await expect(devDbInput).toHaveValue(
       "postgresql://test:test@test-development.neon.tech/test",
       { timeout: Timeout.MEDIUM },
     );
 
-    // Copy button writes the URI to the clipboard.
-    await panel.getByRole("button", { name: "Copy URL" }).click();
+    // Auth env vars are populated from the mocked Neon Auth API.
+    await expect(panel.getByLabel("NEON_AUTH_BASE_URL")).toHaveValue(
+      "https://test-development.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+    );
+    await expect(panel.getByLabel("NEON_AUTH_COOKIE_SECRET")).not.toHaveValue(
+      "",
+    );
+
+    // Copy button writes the DATABASE_URL to the clipboard.
+    await panel.getByRole("button", { name: "Copy DATABASE_URL" }).click();
     expect(await po.getClipboardText()).toBe(
       "postgresql://test:test@test-development.neon.tech/test",
     );
@@ -49,10 +57,13 @@ testSkipIfWindows(
     await panel.getByRole("button", { name: /^Production/ }).click();
     await panel.getByRole("button", { name: "Continue" }).click();
 
-    const prodInput = panel.getByLabel("Production database URL");
-    await expect(prodInput).toHaveValue(
+    const prodDbInput = panel.getByLabel("DATABASE_URL");
+    await expect(prodDbInput).toHaveValue(
       "postgresql://test:test@test-main.neon.tech/test",
       { timeout: Timeout.MEDIUM },
+    );
+    await expect(panel.getByLabel("NEON_AUTH_BASE_URL")).toHaveValue(
+      "https://test-main.neonauth.us-east-2.aws.neon.tech/neondb/auth",
     );
   },
 );

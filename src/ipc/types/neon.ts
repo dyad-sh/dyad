@@ -118,6 +118,12 @@ export type GetNeonBranchConnectionUriParams = z.infer<
 
 export const GetNeonBranchConnectionUriResponseSchema = z.object({
   connectionUri: z.string(),
+  neonAuth: z
+    .object({
+      baseUrl: z.string(),
+      cookieSecret: z.string(),
+    })
+    .optional(),
 });
 
 export type GetNeonBranchConnectionUriResponse = z.infer<

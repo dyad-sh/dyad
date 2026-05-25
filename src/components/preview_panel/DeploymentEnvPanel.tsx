@@ -189,19 +189,19 @@ export const DeploymentEnvPanel = ({ appId }: DeploymentEnvPanelProps) => {
                 value={data?.connectionUri ?? ""}
                 isLoading={isLoading}
               />
-              {data?.neonAuth && (
+              {(isLoading || data?.neonAuth) && (
                 <>
                   <EnvVarRow
                     id={`neon-auth-base-url-${appId}-${selectedEnv}`}
                     name="NEON_AUTH_BASE_URL"
-                    value={data.neonAuth.baseUrl}
-                    isLoading={false}
+                    value={data?.neonAuth?.baseUrl ?? ""}
+                    isLoading={isLoading}
                   />
                   <EnvVarRow
                     id={`neon-auth-cookie-secret-${appId}-${selectedEnv}`}
                     name="NEON_AUTH_COOKIE_SECRET"
-                    value={data.neonAuth.cookieSecret}
-                    isLoading={false}
+                    value={data?.neonAuth?.cookieSecret ?? ""}
+                    isLoading={isLoading}
                   />
                 </>
               )}

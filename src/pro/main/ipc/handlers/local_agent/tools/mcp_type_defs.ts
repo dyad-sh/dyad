@@ -235,6 +235,69 @@ function mergeSchemas(sources: any[]): any {
 }
 
 /**
+ * Build the two virtual schemas that an if/then/else dispatch should
+ * render as a discriminated union. For each `properties: { X: { const:
+ * V } }` discriminator in the `if` condition, the then-branch narrows
+ * X to the const V (and marks it required); the else-branch narrows X
+ * to the complement when the parent's X is an enum (with a single
+ * remaining value collapsing to a const). When the complement can't be
+ * computed, the else-branch leaves X with the parent's broader type.
+ */
+function computeIfThenElseBranches(
+  parent: any,
+  ifSchema: any,
+  thenSchema: any,
+  elseSchema: any,
+): { thenBranch: any; elseBranch: any } {
+  const ifProps =
+    (ifSchema &&
+      typeof ifSchema === "object" &&
+      typeof ifSchema.properties === "object" &&
+      ifSchema.properties) ||
+    {};
+  const thenNarrow: any = { properties: {}, required: [] };
+  const elseNarrow: any = { properties: {}, required: [] };
+
+  for (const key of Object.keys(ifProps)) {
+    const cond = ifProps[key];
+    if (cond && typeof cond === "object" && "const" in cond) {
+      const constVal = cond.const;
+      thenNarrow.properties[key] = { const: constVal };
+      thenNarrow.required.push(key);
+
+      const parentProp = parent?.properties?.[key];
+      if (parentProp && Array.isArray(parentProp.enum)) {
+        const remaining = parentProp.enum.filter(
+          (v: unknown) => JSON.stringify(v) !== JSON.stringify(constVal),
+        );
+        if (remaining.length === 1) {
+          elseNarrow.properties[key] = { const: remaining[0] };
+          elseNarrow.required.push(key);
+        } else if (remaining.length > 1) {
+          elseNarrow.properties[key] = { enum: remaining };
+          elseNarrow.required.push(key);
+        }
+        // 0 remaining → can't narrow; leave parent's property unchanged.
+      }
+      // No enum on parent's property → can't compute complement; leave
+      // parent's property unchanged on the else branch.
+    }
+  }
+
+  const thenSources: any[] = [parent, thenNarrow];
+  if (thenSchema && typeof thenSchema === "object")
+    thenSources.push(thenSchema);
+  const elseSources: any[] = [parent, elseNarrow];
+  if (elseSchema && typeof elseSchema === "object")
+    elseSources.push(elseSchema);
+
+  return {
+    thenBranch: mergeSchemas(thenSources),
+    elseBranch: mergeSchemas(elseSources),
+  };
+}
+
+/**
  * Render any JSON-serializable value as a TypeScript literal type.
  * Used for `const` and `enum` so non-primitive values (objects, arrays)
  * become valid TS literal types like `{ "a": 1 }` instead of
@@ -428,6 +491,27 @@ function jsonSchemaToTsInner(
   if (typeof schema.$dynamicRef === "string") {
     // Dynamic refs are intentionally not resolved — see deviation #8.
     return "unknown";
+  }
+
+  // if/then/else: emit a discriminated union of (parent + if-narrowed +
+  // then) | (parent + if-complement-narrowed + else). When the `if`
+  // condition is `properties: {X: {const: V}}`, we narrow X to the
+  // const V on the then-branch (and to the complement on the else-
+  // branch, when computable from a parent enum). See deviation list
+  // and the simplification it documents.
+  if (schema.if && typeof schema.if === "object") {
+    const parent = stripKeywords(schema, ["if", "then", "else"]);
+    const { thenBranch, elseBranch } = computeIfThenElseBranches(
+      parent,
+      schema.if,
+      schema.then,
+      schema.else,
+    );
+    return `${jsonSchemaToTs(thenBranch, indent, ctx)} | ${jsonSchemaToTs(
+      elseBranch,
+      indent,
+      ctx,
+    )}`;
   }
 
   // anyOf / oneOf: merge each variant with the sibling constraints in

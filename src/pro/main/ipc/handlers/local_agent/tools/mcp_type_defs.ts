@@ -313,8 +313,46 @@ function renderLiteralType(value: unknown): string {
  *     schemas accept any value — and prevents "no constraint" branches
  *     from polluting intersections like `string & Record<...>`.
  */
-export function jsonSchemaToTs(schema: any, indent = 0): string {
-  return appendNullableSuffix(schema, jsonSchemaToTsInner(schema, indent));
+/**
+ * Internal recursion context: the root schema for `$ref` resolution and
+ * the set of refs currently being resolved (for cycle detection).
+ */
+interface JsonSchemaToTsCtx {
+  root: any;
+  visited: Set<string>;
+}
+
+export function jsonSchemaToTs(
+  schema: any,
+  indent = 0,
+  ctx?: JsonSchemaToTsCtx,
+): string {
+  const realCtx = ctx ?? { root: schema, visited: new Set() };
+  return appendNullableSuffix(
+    schema,
+    jsonSchemaToTsInner(schema, indent, realCtx),
+  );
+}
+
+/**
+ * Walk a JSON Pointer fragment (`#/foo/bar`) against `root` and return
+ * the target subschema, or `null` if any segment is missing.
+ */
+function resolveLocalRef(root: any, ref: string): any {
+  if (!ref.startsWith("#/")) return null;
+  const segments = ref
+    .slice(2)
+    .split("/")
+    .map((seg) => seg.replace(/~1/g, "/").replace(/~0/g, "~"));
+  let cur = root;
+  for (const seg of segments) {
+    if (cur && typeof cur === "object" && seg in cur) {
+      cur = cur[seg];
+    } else {
+      return null;
+    }
+  }
+  return cur;
 }
 
 // OpenAPI-style `nullable: true` is not standard JSON Schema, but many
@@ -334,7 +372,11 @@ function appendNullableSuffix(schema: any, rendered: string): string {
   return rendered;
 }
 
-function jsonSchemaToTsInner(schema: any, indent = 0): string {
+function jsonSchemaToTsInner(
+  schema: any,
+  indent: number,
+  ctx: JsonSchemaToTsCtx,
+): string {
   // JSON Schema boolean schemas: `true` accepts anything, `false` rejects
   // everything. Map to `unknown` / `never` accordingly.
   if (schema === true) return "unknown";
@@ -352,6 +394,28 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
     return "unknown";
   }
 
+  // $ref: resolve local JSON Pointers (`#/$defs/X`, `#/definitions/X`)
+  // against the root schema. Remote refs (http://, file://, relative
+  // paths) and unresolved local refs both render as `unknown` — see the
+  // deviation block above for the SSRF rationale on remote refs. Cycle
+  // detection ensures recursive schemas (e.g. tree nodes) terminate.
+  if (typeof schema.$ref === "string") {
+    const ref: string = schema.$ref;
+    if (!ref.startsWith("#/")) return "unknown";
+    if (ctx.visited.has(ref)) return "unknown";
+    const resolved = resolveLocalRef(ctx.root, ref);
+    if (!resolved || typeof resolved !== "object") return "unknown";
+    const nextCtx: JsonSchemaToTsCtx = {
+      root: ctx.root,
+      visited: new Set([...ctx.visited, ref]),
+    };
+    return jsonSchemaToTs(resolved, indent, nextCtx);
+  }
+  if (typeof schema.$dynamicRef === "string") {
+    // Dynamic refs are intentionally not resolved — see deviation #8.
+    return "unknown";
+  }
+
   // anyOf / oneOf: merge each variant with the sibling constraints in
   // the parent (the schema with the combinator stripped). Render each
   // merged variant and join with `|`. oneOf collapses to the same shape
@@ -363,14 +427,14 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
     return variants
       .map((v: any) => {
         // No parent constraints → render the variant alone.
-        if (!parentNonEmpty) return jsonSchemaToTs(v, indent);
+        if (!parentNonEmpty) return jsonSchemaToTs(v, indent, ctx);
         // Both sides object-shaped → merge into a single shape per branch.
         if (isObjectShaped(parent) && isObjectShaped(v)) {
-          return jsonSchemaToTs(mergeSchemas([parent, v]), indent);
+          return jsonSchemaToTs(mergeSchemas([parent, v]), indent, ctx);
         }
         // Unmergeable: render the variant alone. Parent constraints are
         // dropped for that branch (best-effort).
-        return jsonSchemaToTs(v, indent);
+        return jsonSchemaToTs(v, indent, ctx);
       })
       .join(" | ");
   }
@@ -383,13 +447,13 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
     const sources = [parent, ...schema.allOf].filter(hasStructuralKeyword);
     if (sources.length === 0) return "unknown";
     if (sources.length === 1) {
-      return jsonSchemaToTs(sources[0], indent);
+      return jsonSchemaToTs(sources[0], indent, ctx);
     }
     if (sources.every(isObjectShaped)) {
       const merged = mergeSchemas(sources);
-      return jsonSchemaToTs(merged, indent);
+      return jsonSchemaToTs(merged, indent, ctx);
     }
-    return sources.map((s) => jsonSchemaToTs(s, indent)).join(" & ");
+    return sources.map((s) => jsonSchemaToTs(s, indent, ctx)).join(" & ");
   }
   if (Array.isArray(schema.enum)) {
     return schema.enum.map(renderLiteralType).join(" | ");
@@ -401,7 +465,7 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
   const type = schema.type;
   if (Array.isArray(type)) {
     return type
-      .map((t: string) => jsonSchemaToTs({ ...schema, type: t }, indent))
+      .map((t: string) => jsonSchemaToTs({ ...schema, type: t }, indent, ctx))
       .join(" | ");
   }
 
@@ -444,7 +508,7 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
             ? schema.maxItems
             : prefixSrc.length;
         const parts = prefixSrc.slice(0, maxItems).map((s: any, i: number) => {
-          const t = jsonSchemaToTs(s, indent);
+          const t = jsonSchemaToTs(s, indent, ctx);
           return i >= minItems ? `${t}?` : t;
         });
         if (rest === false) {
@@ -456,11 +520,11 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
         const restType =
           rest === true || rest === undefined
             ? "unknown"
-            : jsonSchemaToTs(rest, indent);
+            : jsonSchemaToTs(rest, indent, ctx);
         return `[${parts.join(", ")}, ...${restType}[]]`;
       }
       const items = schema.items
-        ? jsonSchemaToTs(schema.items, indent)
+        ? jsonSchemaToTs(schema.items, indent, ctx)
         : "unknown";
       return `Array<${items}>`;
     }
@@ -471,7 +535,7 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
         ? schema.required
         : [];
       const keys = Object.keys(props);
-      const indexType = buildIndexSignatureType(schema, indent);
+      const indexType = buildIndexSignatureType(schema, indent, ctx);
       if (keys.length === 0) {
         return indexType ? `Record<string, ${indexType}>` : "{}";
       }
@@ -481,7 +545,7 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
         const optional = required.includes(key) ? "" : "?";
         const propSchema = props[key];
         const desc = propSchema?.description;
-        const typeStr = jsonSchemaToTs(propSchema, indent + 1);
+        const typeStr = jsonSchemaToTs(propSchema, indent + 1, ctx);
         const safeKey = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)
           ? key
           : JSON.stringify(key);
@@ -504,7 +568,11 @@ function jsonSchemaToTsInner(schema: any, indent = 0): string {
  * `unevaluatedProperties`. Returns the rendered union of those types, or
  * `null` when the schema is closed (no index signature should be emitted).
  */
-function buildIndexSignatureType(schema: any, indent: number): string | null {
+function buildIndexSignatureType(
+  schema: any,
+  indent: number,
+  ctx: JsonSchemaToTsCtx,
+): string | null {
   const ap = schema.additionalProperties;
   const up = schema.unevaluatedProperties;
 
@@ -516,7 +584,7 @@ function buildIndexSignatureType(schema: any, indent: number): string | null {
   const patternProps = schema.patternProperties;
   if (patternProps && typeof patternProps === "object") {
     for (const key of Object.keys(patternProps)) {
-      parts.push(jsonSchemaToTs(patternProps[key], indent));
+      parts.push(jsonSchemaToTs(patternProps[key], indent, ctx));
     }
   }
 
@@ -533,7 +601,7 @@ function buildIndexSignatureType(schema: any, indent: number): string | null {
     if (value === true) {
       parts.push("unknown");
     } else if (value && typeof value === "object") {
-      parts.push(jsonSchemaToTs(value, indent));
+      parts.push(jsonSchemaToTs(value, indent, ctx));
     }
   }
 

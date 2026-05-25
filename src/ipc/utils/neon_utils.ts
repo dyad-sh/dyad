@@ -7,6 +7,8 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { updateNeonEnvVars } from "../utils/app_env_var_utils";
+import { detectFrameworkType } from "./framework_utils";
+import { getDyadAppPath } from "@/paths/paths";
 
 export const logger = log.scope("neon_utils");
 
@@ -152,6 +154,7 @@ export async function autoInjectNeonEnvVars({
     appPath,
     connectionUri,
     neonAuthBaseUrl,
+    frameworkType: detectFrameworkType(getDyadAppPath(appPath)),
     preserveExistingAuth: !neonAuthBaseUrl,
   });
 

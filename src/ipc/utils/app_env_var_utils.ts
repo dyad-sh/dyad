@@ -5,6 +5,7 @@
 
 import { getDyadAppPath } from "@/paths/paths";
 import { EnvVar } from "@/ipc/types";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -210,12 +211,19 @@ export async function updateNeonEnvVars({
   appPath,
   connectionUri,
   neonAuthBaseUrl,
+  frameworkType,
   preserveExistingAuth = false,
 }: {
   appPath: string;
   connectionUri: string;
   /** Auth base URL returned by the Neon Auth API */
   neonAuthBaseUrl?: string;
+  /**
+   * App framework. Used to decide whether to write NEON_AUTH_COOKIE_SECRET —
+   * only the Next.js `createNeonAuth` integration consumes it (to sign the
+   * optional `session_data` cache cookie), so we only write it for Next.js.
+   */
+  frameworkType?: AppFrameworkType | null;
   /** Preserve existing auth vars when auth activation failed transiently. */
   preserveExistingAuth?: boolean;
 }): Promise<void> {
@@ -224,18 +232,26 @@ export async function updateNeonEnvVars({
   upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
   upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
 
+  const cookieSecretUsed = frameworkType === "nextjs";
+
   if (neonAuthBaseUrl) {
     const previousAuthUrl = envVars.find(
       (v) => v.key === "NEON_AUTH_BASE_URL",
     )?.value;
     upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", neonAuthBaseUrl);
-    // Regenerate the cookie secret when the auth URL changes (e.g. branch switch)
-    // to prevent cross-branch session reuse, or generate one if absent
-    const existingSecret = envVars.find(
-      (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
-    );
-    if (!existingSecret || previousAuthUrl !== neonAuthBaseUrl) {
-      upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", generateCookieSecret());
+    if (cookieSecretUsed) {
+      // Regenerate the cookie secret when the auth URL changes (e.g. branch switch)
+      // to prevent cross-branch session reuse, or generate one if absent
+      const existingSecret = envVars.find(
+        (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
+      );
+      if (!existingSecret || previousAuthUrl !== neonAuthBaseUrl) {
+        upsertEnvVar(
+          envVars,
+          "NEON_AUTH_COOKIE_SECRET",
+          generateCookieSecret(),
+        );
+      }
     }
   } else {
     // Auth activation failed or is not available on this branch —

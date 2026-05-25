@@ -394,6 +394,20 @@ function jsonSchemaToTsInner(
     return "unknown";
   }
 
+  // `not` describes a type complement that has no TypeScript equivalent.
+  // When `not` is the only structural keyword, the schema accepts any
+  // value not matching the negated subschema — we can't narrow that, so
+  // it renders as `unknown`. When `not` appears alongside other
+  // structural keywords, we drop it silently and render the rest
+  // (deliberate lossy choice — see deviation #3).
+  if (schema.not !== undefined) {
+    const hasOther = Object.keys(schema).some(
+      (k) => STRUCTURAL_KEYWORDS.has(k) && k !== "not",
+    );
+    if (!hasOther) return "unknown";
+    return jsonSchemaToTs(stripKeywords(schema, ["not"]), indent, ctx);
+  }
+
   // $ref: resolve local JSON Pointers (`#/$defs/X`, `#/definitions/X`)
   // against the root schema. Remote refs (http://, file://, relative
   // paths) and unresolved local refs both render as `unknown` — see the

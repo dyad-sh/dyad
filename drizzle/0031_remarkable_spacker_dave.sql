@@ -6,4 +6,4 @@ CREATE TABLE `app_collections` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `app_collections_name_unique` ON `app_collections` (`name`);--> statement-breakpoint
-ALTER TABLE `apps` ADD `collection_id` integer REFERENCES app_collections(id);
+ALTER TABLE `apps` ADD `collection_id` integer REFERENCES app_collections(id) ON DELETE SET NULL;

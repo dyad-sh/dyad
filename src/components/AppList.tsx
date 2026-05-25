@@ -46,21 +46,33 @@ export function AppList({ show }: { show?: boolean }) {
     [apps],
   );
 
+  const visibleCollectionIds = useMemo(
+    () => new Set(collections.map((c) => c.id)),
+    [collections],
+  );
+
   const nonFavoriteApps = useMemo(
-    () => apps.filter((app) => !app.isFavorite && app.collectionId == null),
-    [apps],
+    () =>
+      apps.filter(
+        (app) =>
+          !app.isFavorite &&
+          (app.collectionId == null ||
+            !visibleCollectionIds.has(app.collectionId)),
+      ),
+    [apps, visibleCollectionIds],
   );
 
   const collectionMembers = useMemo(() => {
     const byId = new Map<number, typeof apps>();
     for (const app of apps) {
       if (app.collectionId == null) continue;
+      if (!visibleCollectionIds.has(app.collectionId)) continue;
       const list = byId.get(app.collectionId) ?? [];
       list.push(app);
       byId.set(app.collectionId, list);
     }
     return byId;
-  }, [apps]);
+  }, [apps, visibleCollectionIds]);
 
   if (!show) {
     return null;

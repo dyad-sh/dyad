@@ -31,19 +31,21 @@ testSkipIfWindows(
     await expect(continueButton).toBeEnabled();
     await continueButton.click();
 
-    const devDbInput = panel.getByLabel("DATABASE_URL");
+    const devDbInput = panel.getByRole("textbox", { name: "DATABASE_URL" });
     await expect(devDbInput).toHaveValue(
       "postgresql://test:test@test-development.neon.tech/test",
       { timeout: Timeout.MEDIUM },
     );
 
     // Auth env vars are populated from the mocked Neon Auth API.
-    await expect(panel.getByLabel("NEON_AUTH_BASE_URL")).toHaveValue(
+    await expect(
+      panel.getByRole("textbox", { name: "NEON_AUTH_BASE_URL" }),
+    ).toHaveValue(
       "https://test-development.neonauth.us-east-2.aws.neon.tech/neondb/auth",
     );
-    await expect(panel.getByLabel("NEON_AUTH_COOKIE_SECRET")).not.toHaveValue(
-      "",
-    );
+    await expect(
+      panel.getByRole("textbox", { name: "NEON_AUTH_COOKIE_SECRET" }),
+    ).not.toHaveValue("");
 
     // Copy button writes the DATABASE_URL to the clipboard.
     await panel.getByRole("button", { name: "Copy DATABASE_URL" }).click();
@@ -57,12 +59,14 @@ testSkipIfWindows(
     await panel.getByRole("button", { name: /^Production/ }).click();
     await panel.getByRole("button", { name: "Continue" }).click();
 
-    const prodDbInput = panel.getByLabel("DATABASE_URL");
+    const prodDbInput = panel.getByRole("textbox", { name: "DATABASE_URL" });
     await expect(prodDbInput).toHaveValue(
       "postgresql://test:test@test-main.neon.tech/test",
       { timeout: Timeout.MEDIUM },
     );
-    await expect(panel.getByLabel("NEON_AUTH_BASE_URL")).toHaveValue(
+    await expect(
+      panel.getByRole("textbox", { name: "NEON_AUTH_BASE_URL" }),
+    ).toHaveValue(
       "https://test-main.neonauth.us-east-2.aws.neon.tech/neondb/auth",
     );
   },

@@ -200,7 +200,23 @@ function mergeSchemas(sources: any[]): any {
     if (!s || typeof s !== "object") continue;
     if (s.properties && typeof s.properties === "object") {
       for (const k of Object.keys(s.properties)) {
-        props[k] = s.properties[k];
+        // Property-level type conflict detection: if two branches both
+        // assert `type` on the same property with incompatible values,
+        // the merged shape is unsatisfiable.
+        const existing = props[k];
+        const incoming = s.properties[k];
+        if (
+          existing &&
+          incoming &&
+          typeof existing === "object" &&
+          typeof incoming === "object" &&
+          typeof existing.type === "string" &&
+          typeof incoming.type === "string" &&
+          existing.type !== incoming.type
+        ) {
+          return { __impossible: true };
+        }
+        props[k] = incoming;
       }
     }
     if (Array.isArray(s.required)) {
@@ -547,8 +563,17 @@ function jsonSchemaToTsInner(
     if (sources.length === 1) {
       return jsonSchemaToTs(sources[0], indent, ctx);
     }
+    // Impossible-schema detection: allOf branches that declare
+    // conflicting primitive `type`s can never be satisfied at the same
+    // time, so collapse to `never`.
+    const declaredTypes = new Set<string>();
+    for (const s of sources) {
+      if (typeof s.type === "string") declaredTypes.add(s.type);
+    }
+    if (declaredTypes.size > 1) return "never";
     if (sources.every(isObjectShaped)) {
       const merged = mergeSchemas(sources);
+      if (merged.__impossible) return "never";
       return jsonSchemaToTs(merged, indent, ctx);
     }
     return sources.map((s) => jsonSchemaToTs(s, indent, ctx)).join(" & ");

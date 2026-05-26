@@ -10,6 +10,12 @@ export default defineConfig({
     maxConcurrency: 5,
   },
   resolve: {
-    alias: { "@": resolve(__dirname, "./src") },
+    alias: {
+      "@": resolve(__dirname, "./src"),
+      "ts-pg-schema-diff": resolve(
+        __dirname,
+        "./packages/ts-pg-schema-diff/src/index.ts",
+      ),
+    },
   },
 });

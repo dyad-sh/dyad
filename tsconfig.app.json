@@ -3,7 +3,7 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
 
@@ -24,10 +24,12 @@
     // import
     "paths": {
       "*": ["./*"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "ts-pg-schema-diff": ["./packages/ts-pg-schema-diff/src/index.ts"],
+      "ts-pg-schema-diff/*": ["./packages/ts-pg-schema-diff/src/*"]
     }
   },
-  "include": ["src", "e2e-tests", "shared"],
+  "include": ["src", "e2e-tests", "shared", "packages/ts-pg-schema-diff/src"],
   "exclude": [
     "e2e-tests/fixtures",
     "src/__tests__/evals/fixtures",

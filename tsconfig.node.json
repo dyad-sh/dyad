@@ -12,7 +12,9 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "paths": {
-      "*": ["./*"]
+      "*": ["./*"],
+      "ts-pg-schema-diff": ["./packages/ts-pg-schema-diff/src/index.ts"],
+      "ts-pg-schema-diff/*": ["./packages/ts-pg-schema-diff/src/*"]
     }
 
     // /* Bundler mode */
@@ -30,5 +32,5 @@
     // "noFallthroughCasesInSwitch": true,
     // "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src", "packages/ts-pg-schema-diff/src"]
 }

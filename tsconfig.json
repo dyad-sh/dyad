@@ -11,7 +11,9 @@
   "compilerOptions": {
     "paths": {
       "*": ["./*"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "ts-pg-schema-diff": ["./packages/ts-pg-schema-diff/src/index.ts"],
+      "ts-pg-schema-diff/*": ["./packages/ts-pg-schema-diff/src/*"]
     },
     "skipLibCheck": true
   }

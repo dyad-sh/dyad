@@ -18,6 +18,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "ts-pg-schema-diff": path.resolve(
+        __dirname,
+        "./packages/ts-pg-schema-diff/src/index.ts",
+      ),
     },
   },
 });

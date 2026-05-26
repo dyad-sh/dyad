@@ -52,6 +52,26 @@
  *     ignore) renders as `unknown`. This matches the spec — those
  *     schemas accept any value — and prevents "no constraint" branches
  *     from polluting intersections like `string & Record<...>`.
+ * 13. When an object schema has named `properties` AND a typed index
+ *     signature (from `additionalProperties`, `unevaluatedProperties`,
+ *     or `patternProperties`), the index signature is widened to
+ *     `unknown` in the rendered `T & Record<string, unknown>`. The spec
+ *     says those keywords only apply to keys outside `properties`, but
+ *     TS has no "all keys except X" index, so naively intersecting
+ *     would make every named-prop type satisfy the index too — which
+ *     yields `never` when the types conflict (e.g. number id vs string
+ *     additionalProperties). Matches json-schema-to-ts's behavior.
+ * 14. allOf / anyOf branches with `additionalProperties: false` do not
+ *     restrict the combined shape. Per spec, a closed branch listing
+ *     only `{num}` forbids any sibling/parent property in that branch;
+ *     for allOf the overall shape should reject those keys, for anyOf
+ *     that variant of the union should not include them. We merge
+ *     properties across branches and let the closed setting dominate,
+ *     which over-permits keys the closed branch forbids. Effect: the
+ *     model may include forbidden properties; the MCP server's own
+ *     validator rejects the call and the model retries. Self-correcting
+ *     via tool-error feedback, but wastes a call. Library tracks
+ *     per-branch evaluated keys to handle this correctly. Out of scope.
  */
 export function jsonSchemaToTs(
   schema: any,
@@ -393,6 +413,25 @@ function jsonSchemaToTsInner(
       root: ctx.root,
       visited: new Set([...ctx.visited, ref]),
     };
+    // Sibling keywords next to `$ref` apply alongside the resolved
+    // schema. Merge when both sides are object-shaped; intersect
+    // otherwise. Metadata-only siblings (e.g. `description`) fall
+    // through to the plain resolved render.
+    const siblings = stripKeywords(schema, ["$ref"]);
+    if (hasStructuralKeyword(siblings)) {
+      if (isObjectShaped(resolved) && isObjectShaped(siblings)) {
+        return jsonSchemaToTs(
+          mergeSchemas([resolved, siblings]),
+          indent,
+          nextCtx,
+        );
+      }
+      return `${jsonSchemaToTs(resolved, indent, nextCtx)} & ${jsonSchemaToTs(
+        siblings,
+        indent,
+        nextCtx,
+      )}`;
+    }
     return jsonSchemaToTs(resolved, indent, nextCtx);
   }
   if (typeof schema.$dynamicRef === "string") {
@@ -512,10 +551,9 @@ function jsonSchemaToTsInner(
         const rest = Array.isArray(schema.prefixItems)
           ? schema.items
           : schema.additionalItems;
+        // Omitted `minItems` defaults to 0 — instances may be empty.
         const minItems =
-          typeof schema.minItems === "number"
-            ? schema.minItems
-            : prefixSrc.length;
+          typeof schema.minItems === "number" ? schema.minItems : 0;
         const maxItems =
           typeof schema.maxItems === "number" &&
           schema.maxItems < prefixSrc.length
@@ -549,7 +587,22 @@ function jsonSchemaToTsInner(
         ? schema.required
         : [];
       const keys = Object.keys(props);
-      const indexType = buildIndexSignatureType(schema, indent, ctx);
+      const rawIndexType = buildIndexSignatureType(schema, indent, ctx);
+      // When named properties exist alongside a typed index signature
+      // (`additionalProperties`, `unevaluatedProperties`, or
+      // `patternProperties`), TypeScript's `T & Record<string, U>` would
+      // require each named property to satisfy `U` too — which yields
+      // `never` when the named property type isn't assignable to `U`
+      // (e.g. `{id?: number} & Record<string, string>` makes `id` impossible
+      // to set). Per JSON Schema, those keywords only constrain keys
+      // outside `properties`. Widening the index to `unknown` matches
+      // json-schema-to-ts's behavior and avoids the conflict. The empty-
+      // object branch above keeps the precise type, since there's no
+      // named-prop conflict possible there.
+      const indexType =
+        keys.length > 0 && rawIndexType && rawIndexType !== "unknown"
+          ? "unknown"
+          : rawIndexType;
       if (keys.length === 0) {
         return indexType ? `Record<string, ${indexType}>` : "{}";
       }

@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
 
-// `jsonSchemaToTs` test layout mirrors `json-schema-to-ts`'s
-// `src/tests/readme/` directory (one describe per file there) so coverage
-// parity is visible at a glance. Categories with `it.todo(...)` are
-// planned in upcoming steps; categories deliberately out of scope
-// (extensions, deserialization, remote $ref) are noted inline.
+// Test layout mirrors `json-schema-to-ts`'s `src/tests/readme/` directory
+// (one describe per file there) so coverage parity is visible at a glance.
 describe("jsonSchemaToTs", () => {
   describe("primitive", () => {
     it("renders each primitive type", () => {
@@ -49,30 +46,36 @@ describe("jsonSchemaToTs", () => {
       });
       // Nested object inherits the spec-default additionalProperties: true,
       // so the rendered element type includes the `unknown` index signature.
-      expect(arrOfObj).toBe(
-        "Array<{\n  id: number;\n} & Record<string, unknown>>",
-      );
+      expect(arrOfObj).toMatchInlineSnapshot(`
+        "Array<{
+          id: number;
+        } & Record<string, unknown>>"
+      `);
     });
   });
 
   describe("tuple", () => {
-    it("renders items-as-array as a tuple, defaulting to ...unknown[] rest", () => {
+    it("renders items-as-array as a tuple with all prefix elements optional (minItems defaults to 0)", () => {
+      // No minItems → all prefix elements optional so empty and partial
+      // tuples type-check.
       expect(
         jsonSchemaToTs({
           type: "array",
           items: [{ type: "boolean" }, { type: "string" }],
         }),
-      ).toBe("[boolean, string, ...unknown[]]");
+      ).toBe("[boolean?, string?, ...unknown[]]");
     });
 
-    it("renders items-as-array with additionalItems: false as a closed tuple", () => {
+    it("renders items-as-array with additionalItems: false as a closed optional tuple", () => {
+      // Closed tuple without minItems still accepts shorter prefixes
+      // (and the empty array) — prefix elements remain optional.
       expect(
         jsonSchemaToTs({
           type: "array",
           items: [{ type: "boolean" }, { type: "string" }],
           additionalItems: false,
         }),
-      ).toBe("[boolean, string]");
+      ).toBe("[boolean?, string?]");
     });
 
     it("renders items-as-array with typed additionalItems as a rest tuple", () => {
@@ -82,7 +85,7 @@ describe("jsonSchemaToTs", () => {
           items: [{ type: "boolean" }, { type: "string" }],
           additionalItems: { type: "number" },
         }),
-      ).toBe("[boolean, string, ...number[]]");
+      ).toBe("[boolean?, string?, ...number[]]");
     });
 
     it("honors minItems by marking trailing elements optional and maxItems by clamping length", () => {
@@ -96,7 +99,8 @@ describe("jsonSchemaToTs", () => {
           maxItems: 2,
         }),
       ).toBe("[boolean, string?]");
-      // maxItems < tuple length → clamped.
+      // maxItems < tuple length → clamped. With default minItems=0
+      // both remaining elements are optional.
       expect(
         jsonSchemaToTs({
           type: "array",
@@ -104,17 +108,17 @@ describe("jsonSchemaToTs", () => {
           additionalItems: false,
           maxItems: 2,
         }),
-      ).toBe("[boolean, string]");
+      ).toBe("[boolean?, string?]");
     });
 
-    it("renders prefixItems (2020-12) the same as items-as-array, treating items as the rest type", () => {
+    it("renders prefixItems the same as items-as-array, treating items as the rest type", () => {
       expect(
         jsonSchemaToTs({
           type: "array",
           prefixItems: [{ type: "boolean" }, { type: "string" }],
           items: { type: "number" },
         }),
-      ).toBe("[boolean, string, ...number[]]");
+      ).toBe("[boolean?, string?, ...number[]]");
       // prefixItems without `items` follows the same default as items-as-array
       // without `additionalItems`: unrestricted → ...unknown[] rest.
       expect(
@@ -122,7 +126,7 @@ describe("jsonSchemaToTs", () => {
           type: "array",
           prefixItems: [{ type: "boolean" }],
         }),
-      ).toBe("[boolean, ...unknown[]]");
+      ).toBe("[boolean?, ...unknown[]]");
       // prefixItems with items: false → closed tuple.
       expect(
         jsonSchemaToTs({
@@ -130,7 +134,19 @@ describe("jsonSchemaToTs", () => {
           prefixItems: [{ type: "boolean" }],
           items: false,
         }),
-      ).toBe("[boolean]");
+      ).toBe("[boolean?]");
+    });
+
+    it("renders all prefix items as required when minItems matches the tuple length", () => {
+      // Explicit minItems pins the required count.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          items: [{ type: "boolean" }, { type: "string" }],
+          additionalItems: false,
+          minItems: 2,
+        }),
+      ).toBe("[boolean, string]");
     });
   });
 
@@ -147,9 +163,12 @@ describe("jsonSchemaToTs", () => {
       // additionalProperties is unspecified, so the JSON Schema spec
       // default (`true`) applies — the rendered shape carries an `unknown`
       // index signature.
-      expect(out).toBe(
-        "{\n  name: string;\n  age?: number;\n} & Record<string, unknown>",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+          age?: number;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("emits JSDoc comments from property descriptions", () => {
@@ -202,7 +221,11 @@ describe("jsonSchemaToTs", () => {
         required: ["a"],
         additionalProperties: false,
       });
-      expect(out).toBe("{\n  a: string;\n}");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          a: string;
+        }"
+      `);
     });
 
     it("renders implicit and explicit additionalProperties: true the same way", () => {
@@ -220,7 +243,11 @@ describe("jsonSchemaToTs", () => {
         required: ["a"],
         additionalProperties: true,
       });
-      expect(implicit).toBe("{\n  a: string;\n} & Record<string, unknown>");
+      expect(implicit).toMatchInlineSnapshot(`
+        "{
+          a: string;
+        } & Record<string, unknown>"
+      `);
       expect(explicitTrue).toBe(implicit);
     });
 
@@ -249,14 +276,40 @@ describe("jsonSchemaToTs", () => {
       expect(out).toContain('"with-hyphen": string;');
     });
 
-    it("merges named properties with additionalProperties via an index signature", () => {
+    it("merges named properties with additionalProperties by widening the index to unknown", () => {
+      // Widening prevents the `{name: string} & Record<string, number>`
+      // contradiction. See deviation #13.
       const out = jsonSchemaToTs({
         type: "object",
         properties: { name: { type: "string" } },
         required: ["name"],
         additionalProperties: { type: "number" },
       });
-      expect(out).toBe("{\n  name: string;\n} & Record<string, number>");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown>"
+      `);
+    });
+
+    it("widens the index to unknown when a typed additionalProperties would conflict with a named-prop type", () => {
+      // `number: number` next to string additionalProperties — widen so
+      // the number prop doesn't have to satisfy the string index.
+      const out = jsonSchemaToTs({
+        type: "object",
+        properties: {
+          number: { type: "number" },
+          streetName: { type: "string" },
+        },
+        required: ["number", "streetName"],
+        additionalProperties: { type: "string" },
+      });
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          number: number;
+          streetName: string;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("renders patternProperties as a string index union", () => {
@@ -275,14 +328,19 @@ describe("jsonSchemaToTs", () => {
           additionalProperties: { type: "number" },
         }),
       ).toBe("Record<string, string | number>");
-      // patternProperties alongside named properties produces a hybrid type.
+      // Named props + patternProperties: same widening as typed
+      // additionalProperties.
       const hybrid = jsonSchemaToTs({
         type: "object",
         properties: { id: { type: "number" } },
         required: ["id"],
         patternProperties: { "^x-": { type: "string" } },
       });
-      expect(hybrid).toBe("{\n  id: number;\n} & Record<string, string>");
+      expect(hybrid).toMatchInlineSnapshot(`
+        "{
+          id: number;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("supports unevaluatedProperties: false (closed schema)", () => {
@@ -294,17 +352,26 @@ describe("jsonSchemaToTs", () => {
         required: ["name"],
         unevaluatedProperties: false,
       });
-      expect(out).toBe("{\n  name: string;\n}");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        }"
+      `);
     });
 
-    it("supports unevaluatedProperties: <schema> (open schema)", () => {
+    it("supports unevaluatedProperties: <schema> (widens to unknown when named props exist)", () => {
+      // Same widening as typed additionalProperties.
       const out = jsonSchemaToTs({
         type: "object",
         properties: { name: { type: "string" } },
         required: ["name"],
         unevaluatedProperties: { type: "boolean" },
       });
-      expect(out).toBe("{\n  name: string;\n} & Record<string, boolean>");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("merges allOf branches' properties under unevaluatedProperties: false (closed schema with composition)", () => {
@@ -323,7 +390,12 @@ describe("jsonSchemaToTs", () => {
         ],
         unevaluatedProperties: false,
       });
-      expect(out).toBe("{\n  a: string;\n  b: number;\n}");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          a: string;
+          b: number;
+        }"
+      `);
     });
 
     // Omitted: defaulted-property strict mode (json-schema-to-ts treats a
@@ -384,9 +456,12 @@ describe("jsonSchemaToTs", () => {
           { type: "object", properties: { b: { type: "number" } } },
         ],
       });
-      expect(out).toBe(
-        "{\n  a?: string;\n  b?: number;\n} & Record<string, unknown>",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          a?: string;
+          b?: number;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("falls back to intersection rendering when allOf branches are not all object-shaped", () => {
@@ -424,9 +499,14 @@ describe("jsonSchemaToTs", () => {
           },
         ],
       });
-      expect(out).toBe(
-        '{\n  address: string;\n  city: string;\n  state: string;\n  type?: "residential" | "business";\n} & Record<string, unknown>',
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          address: string;
+          city: string;
+          state: string;
+          type?: "residential" | "business";
+        } & Record<string, unknown>"
+      `);
     });
 
     it("merges allOf with sibling constraints (allOf + properties) instead of dropping the parent", () => {
@@ -442,9 +522,12 @@ describe("jsonSchemaToTs", () => {
           },
         ],
       });
-      expect(out).toBe(
-        "{\n  id: number;\n  name: string;\n} & Record<string, unknown>",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          id: number;
+          name: string;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("narrows allOf of incompatible primitive types to `never` (impossible-schema detection)", () => {
@@ -474,9 +557,15 @@ describe("jsonSchemaToTs", () => {
           { properties: { num: { type: "number" } } },
         ],
       });
-      expect(out).toBe(
-        "{\n  bool: boolean;\n  str: string;\n} & Record<string, unknown> | {\n  bool: boolean;\n  num?: number;\n} & Record<string, unknown>",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          bool: boolean;
+          str: string;
+        } & Record<string, unknown> | {
+          bool: boolean;
+          num?: number;
+        } & Record<string, unknown>"
+      `);
     });
   });
 
@@ -501,9 +590,13 @@ describe("jsonSchemaToTs", () => {
           },
         ],
       });
-      expect(out).toBe(
-        '{\n  name: string;\n} & Record<string, unknown> | {\n  color?: "black" | "brown" | "white";\n} & Record<string, unknown>',
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown> | {
+          color?: "black" | "brown" | "white";
+        } & Record<string, unknown>"
+      `);
     });
   });
 
@@ -527,7 +620,11 @@ describe("jsonSchemaToTs", () => {
         required: ["x"],
         not: { properties: { x: { const: "bad" } } },
       });
-      expect(out).toBe("{\n  x: string;\n} & Record<string, unknown>");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          x: string;
+        } & Record<string, unknown>"
+      `);
     });
   });
 
@@ -552,9 +649,15 @@ describe("jsonSchemaToTs", () => {
           required: ["catBreed"],
         },
       });
-      expect(out).toBe(
-        '{\n  animal: "dog";\n  dogBreed: string;\n} & Record<string, unknown> | {\n  animal: "cat";\n  catBreed: string;\n} & Record<string, unknown>',
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          animal: "dog";
+          dogBreed: string;
+        } & Record<string, unknown> | {
+          animal: "cat";
+          catBreed: string;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("treats a missing `then` or `else` branch as the unconstrained sibling", () => {
@@ -570,9 +673,14 @@ describe("jsonSchemaToTs", () => {
           required: ["y"],
         },
       });
-      expect(noElse).toBe(
-        '{\n  x: "a";\n  y: number;\n} & Record<string, unknown> | {\n  x?: string;\n} & Record<string, unknown>',
-      );
+      expect(noElse).toMatchInlineSnapshot(`
+        "{
+          x: "a";
+          y: number;
+        } & Record<string, unknown> | {
+          x?: string;
+        } & Record<string, unknown>"
+      `);
       // No `then`: when `if` matches, only the parent shape with the
       // discriminator narrowed and required. When it doesn't, else applies.
       const noThen = jsonSchemaToTs({
@@ -584,9 +692,14 @@ describe("jsonSchemaToTs", () => {
           required: ["y"],
         },
       });
-      expect(noThen).toBe(
-        '{\n  x: "a";\n} & Record<string, unknown> | {\n  x?: string;\n  y: number;\n} & Record<string, unknown>',
-      );
+      expect(noThen).toMatchInlineSnapshot(`
+        "{
+          x: "a";
+        } & Record<string, unknown> | {
+          x?: string;
+          y: number;
+        } & Record<string, unknown>"
+      `);
     });
   });
 
@@ -607,9 +720,11 @@ describe("jsonSchemaToTs", () => {
         required: ["name"],
         nullable: true,
       });
-      expect(out).toBe(
-        "{\n  name: string;\n} & Record<string, unknown> | null",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown> | null"
+      `);
     });
 
     it("propagates nullable through nested property schemas", () => {
@@ -618,9 +733,11 @@ describe("jsonSchemaToTs", () => {
         properties: { name: { type: "string", nullable: true } },
         required: ["name"],
       });
-      expect(out).toBe(
-        "{\n  name: string | null;\n} & Record<string, unknown>",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string | null;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("does not double-append when the rendered type already ends in null", () => {
@@ -650,7 +767,11 @@ describe("jsonSchemaToTs", () => {
         },
         $ref: "#/$defs/User",
       });
-      expect(out).toBe("{\n  name: string;\n} & Record<string, unknown>");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("resolves local $ref against the legacy `definitions` keyword", () => {
@@ -664,7 +785,11 @@ describe("jsonSchemaToTs", () => {
         },
         $ref: "#/definitions/User",
       });
-      expect(out).toBe("{\n  name: string;\n} & Record<string, unknown>");
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("breaks cycles by emitting `unknown` for the recursive position", () => {
@@ -680,9 +805,12 @@ describe("jsonSchemaToTs", () => {
         },
         $ref: "#/$defs/Tree",
       });
-      expect(out).toBe(
-        "{\n  value?: string;\n  child?: unknown;\n} & Record<string, unknown>",
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          value?: string;
+          child?: unknown;
+        } & Record<string, unknown>"
+      `);
     });
 
     it("renders unresolved or remote $ref as `unknown`", () => {
@@ -691,6 +819,43 @@ describe("jsonSchemaToTs", () => {
       );
       expect(jsonSchemaToTs({ $ref: "./other.json" })).toBe("unknown");
       expect(jsonSchemaToTs({ $ref: "#/$defs/Missing" })).toBe("unknown");
+    });
+
+    it("merges sibling structural keywords with the resolved $ref schema", () => {
+      // Sibling `required` and `additionalProperties` apply alongside
+      // the resolved schema. `false` wins for additionalProperties.
+      const out = jsonSchemaToTs({
+        $defs: {
+          Person: {
+            type: "object",
+            properties: {
+              firstName: { type: "string" },
+              lastName: { type: "string" },
+            },
+            required: ["firstName"],
+            additionalProperties: false,
+          },
+        },
+        $ref: "#/$defs/Person",
+        required: ["lastName"],
+        additionalProperties: true,
+      });
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          firstName: string;
+          lastName: string;
+        }"
+      `);
+    });
+
+    it("treats metadata-only siblings next to $ref as no-ops on the rendered type", () => {
+      // Non-structural siblings (e.g. `description`) skip the merge path.
+      const out = jsonSchemaToTs({
+        $defs: { Name: { type: "string" } },
+        $ref: "#/$defs/Name",
+        description: "user-facing name",
+      });
+      expect(out).toBe("string");
     });
   });
 
@@ -712,9 +877,14 @@ describe("jsonSchemaToTs", () => {
         },
         required: ["name", "age"],
       });
-      expect(out).toBe(
-        '{\n  name: string;\n  age: number;\n  hobbies?: Array<string>;\n  favoriteFood?: "pizza" | "taco" | "fries";\n} & Record<string, unknown>',
-      );
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+          age: number;
+          hobbies?: Array<string>;
+          favoriteFood?: "pizza" | "taco" | "fries";
+        } & Record<string, unknown>"
+      `);
     });
 
     it("emits `never` for an unsatisfiable allOf composition", () => {

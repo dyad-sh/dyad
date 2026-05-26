@@ -1,77 +1,19 @@
 /**
- * Convert a JSON Schema fragment to a TypeScript type string.
+ * Convert a JSON Schema fragment to a TypeScript type string. Used by
+ * the sandbox-script tool to render MCP-tool input schemas into the
+ * `declare function` block the LLM sees.
  *
- * Deliberate spec deviations and unsupported features (audited against
- * the JSON Schema 2020-12 core + validation vocabularies). All keywords
- * we don't render either map to constraints TypeScript types can't
- * express, are metadata, or are deliberately limited for security:
+ * Coverage spans primitives, type-as-array unions, objects (with
+ * properties / required / patternProperties / additionalProperties /
+ * unevaluatedProperties), arrays + tuples (items / prefixItems /
+ * additionalItems), enum, const, allOf / anyOf / oneOf, if / then / else
+ * as a discriminated union, local `$ref` against `$defs` and
+ * `definitions` (with cycle detection), and the OpenAPI `nullable: true`
+ * extension.
  *
- *  1. Runtime validation keywords are ignored — TypeScript types are
- *     static, so we can't represent them:
- *       - String:  format, pattern, minLength, maxLength,
- *                  contentEncoding, contentMediaType, contentSchema
- *       - Number:  minimum, maximum, exclusiveMinimum, exclusiveMaximum,
- *                  multipleOf
- *       - Array:   uniqueItems, contains, minContains, maxContains, and
- *                  minItems/maxItems on non-tuple arrays
- *       - Object:  minProperties, maxProperties, propertyNames,
- *                  dependentRequired, dependentSchemas
- *  2. `oneOf` is rendered as a union, same as `anyOf`. TypeScript can't
- *     express the "exactly one branch matches" constraint at the type
- *     level.
- *  3. `not` is dropped from rendering — TypeScript has no general
- *     type-complement operator. A bare `not` schema renders as `unknown`.
- *  4. Annotation / metadata keywords are ignored: `title`, `default`,
- *     `examples`, `deprecated`, `readOnly`, `writeOnly`, `$comment`,
- *     `$schema`, `$vocabulary`, `$id`, `$anchor`. `description` is
- *     preserved as JSDoc when on an object property.
- *  5. `required` keys that don't appear in `properties` are dropped from
- *     the rendered shape — the instance must have them per spec, but we
- *     have no type to associate with them.
- *  6. `nullable: true` is an OpenAPI extension, not standard JSON Schema.
- *     We honor it because many MCP servers come from OpenAPI specs.
- *  7. Remote `$ref` (http://, file://, relative file paths) renders as
- *     `unknown`. Resolving them would let third-party schemas trigger
- *     arbitrary URL fetches from the Dyad main process (SSRF defense).
- *  8. Dynamic refs (`$dynamicAnchor` / `$dynamicRef`) are not resolved —
- *     they encode runtime polymorphic dispatch that has no static
- *     equivalent. Treated as unresolved → `unknown`.
- *  9. `unevaluatedItems` is not applied. The standalone-schema case
- *     would be equivalent to `additionalItems`, which our tuple branch
- *     already handles via the rest type. Full composition-aware
- *     semantics would require tracking which items each branch
- *     evaluated.
- * 10. Custom-keyword extensions (library-specific JSON Schema
- *     vocabularies) are not interpreted — we render only the standard
- *     keywords each subschema also uses.
- * 11. A schema with no `type` keyword but with object-shaped keywords
- *     (properties, required, etc.) is rendered as an object. Per spec
- *     such schemas also accept non-object instances trivially; we treat
- *     the object reading as the intended one.
- * 12. The bare `{}` schema (and any schema whose only keywords we
- *     ignore) renders as `unknown`. This matches the spec — those
- *     schemas accept any value — and prevents "no constraint" branches
- *     from polluting intersections like `string & Record<...>`.
- * 13. When an object schema has named `properties` AND a typed index
- *     signature (from `additionalProperties`, `unevaluatedProperties`,
- *     or `patternProperties`), the index signature is widened to
- *     `unknown` in the rendered `T & Record<string, unknown>`. The spec
- *     says those keywords only apply to keys outside `properties`, but
- *     TS has no "all keys except X" index, so naively intersecting
- *     would make every named-prop type satisfy the index too — which
- *     yields `never` when the types conflict (e.g. number id vs string
- *     additionalProperties). Matches json-schema-to-ts's behavior.
- * 14. allOf / anyOf branches with `additionalProperties: false` do not
- *     restrict the combined shape. Per spec, a closed branch listing
- *     only `{num}` forbids any sibling/parent property in that branch;
- *     for allOf the overall shape should reject those keys, for anyOf
- *     that variant of the union should not include them. We merge
- *     properties across branches and let the closed setting dominate,
- *     which over-permits keys the closed branch forbids. Effect: the
- *     model may include forbidden properties; the MCP server's own
- *     validator rejects the call and the model retries. Self-correcting
- *     via tool-error feedback, but wastes a call. Library tracks
- *     per-branch evaluated keys to handle this correctly. Out of scope.
+ * Documented spec deviations and library-coverage omissions live with
+ * the test suite in `json_schema_to_ts.spec.ts`. Anything that changes
+ * the rendered output should be backed by a test there.
  */
 export function jsonSchemaToTs(
   schema: any,
@@ -389,7 +331,7 @@ function jsonSchemaToTsInner(
   // value not matching the negated subschema — we can't narrow that, so
   // it renders as `unknown`. When `not` appears alongside other
   // structural keywords, we drop it silently and render the rest
-  // (deliberate lossy choice — see deviation #3).
+  // (deliberate lossy choice — see deviation #3 in the spec file).
   if (schema.not !== undefined) {
     const hasOther = Object.keys(schema).some(
       (k) => STRUCTURAL_KEYWORDS.has(k) && k !== "not",
@@ -400,9 +342,9 @@ function jsonSchemaToTsInner(
 
   // $ref: resolve local JSON Pointers (`#/$defs/X`, `#/definitions/X`)
   // against the root schema. Remote refs (http://, file://, relative
-  // paths) and unresolved local refs both render as `unknown` — see the
-  // deviation block above for the SSRF rationale on remote refs. Cycle
-  // detection ensures recursive schemas (e.g. tree nodes) terminate.
+  // paths) and unresolved local refs both render as `unknown` (SSRF
+  // rationale lives in deviation #7 in the spec file). Cycle detection
+  // ensures recursive schemas (e.g. tree nodes) terminate.
   if (typeof schema.$ref === "string") {
     const ref: string = schema.$ref;
     if (!ref.startsWith("#/")) return "unknown";
@@ -435,7 +377,7 @@ function jsonSchemaToTsInner(
     return jsonSchemaToTs(resolved, indent, nextCtx);
   }
   if (typeof schema.$dynamicRef === "string") {
-    // Dynamic refs are intentionally not resolved — see deviation #8.
+    // Dynamic refs intentionally not resolved (deviation #8 in spec file).
     return "unknown";
   }
 

@@ -908,8 +908,74 @@ describe("jsonSchemaToTs", () => {
     });
   });
 
-  // Deliberate omissions vs. the json-schema-to-ts coverage. Each one has
-  // a concrete reason (not "rare in practice"):
+  // ==========================================================================
+  // Documented spec deviations (audited against JSON Schema 2020-12 core +
+  // validation vocabularies). Keywords we don't render either map to runtime
+  // constraints TypeScript can't express, are metadata, or are deliberately
+  // limited for security.
+  //
+  //   1. Runtime validation keywords are ignored:
+  //        String:  format, pattern, minLength, maxLength, contentEncoding,
+  //                 contentMediaType, contentSchema
+  //        Number:  minimum, maximum, exclusiveMinimum, exclusiveMaximum,
+  //                 multipleOf
+  //        Array:   uniqueItems, contains, minContains, maxContains, and
+  //                 minItems/maxItems on non-tuple arrays
+  //        Object:  minProperties, maxProperties, propertyNames,
+  //                 dependentRequired, dependentSchemas
+  //   2. `oneOf` renders as a union, same as `anyOf`. TypeScript can't
+  //      express "exactly one branch matches" at the type level.
+  //   3. `not` is dropped — TypeScript has no general type-complement
+  //      operator. A bare `not` schema renders as `unknown`.
+  //   4. Annotation / metadata keywords are ignored: `title`, `default`,
+  //      `examples`, `deprecated`, `readOnly`, `writeOnly`, `$comment`,
+  //      `$schema`, `$vocabulary`, `$id`, `$anchor`. `description` is
+  //      preserved as JSDoc when on an object property.
+  //   5. `required` keys that don't appear in `properties` are dropped from
+  //      the rendered shape — instance must have them per spec, but we have
+  //      no type to associate with them.
+  //   6. `nullable: true` is an OpenAPI extension, not standard JSON Schema.
+  //      Honored because many MCP servers come from OpenAPI specs.
+  //   7. Remote `$ref` (http://, file://, relative file paths) renders as
+  //      `unknown`. Resolving them would let third-party schemas trigger
+  //      arbitrary URL fetches from the Dyad main process (SSRF defense).
+  //   8. Dynamic refs (`$dynamicAnchor` / `$dynamicRef`) are not resolved —
+  //      they encode runtime polymorphic dispatch with no static equivalent.
+  //   9. `unevaluatedItems` is not applied. The standalone-schema case is
+  //      equivalent to `additionalItems`, which our tuple branch handles via
+  //      the rest type. Full composition-aware semantics would require
+  //      tracking which items each branch evaluated.
+  //  10. Custom-keyword extensions (library-specific JSON Schema
+  //      vocabularies) are not interpreted.
+  //  11. A schema with no `type` keyword but with object-shaped keywords
+  //      (properties, required, etc.) is rendered as an object. Per spec
+  //      such schemas also accept non-object instances trivially; we treat
+  //      the object reading as the intended one.
+  //  12. The bare `{}` schema (and any schema whose only keywords we ignore)
+  //      renders as `unknown`. Matches the spec — those schemas accept any
+  //      value — and prevents "no constraint" branches from polluting
+  //      intersections like `string & Record<...>`.
+  //  13. When an object schema has named `properties` AND a typed index
+  //      signature (from `additionalProperties`, `unevaluatedProperties`, or
+  //      `patternProperties`), the index signature is widened to `unknown`.
+  //      The spec says those keywords only apply to keys outside
+  //      `properties`, but TS has no "all keys except X" index, so naive
+  //      intersection would make every named-prop type satisfy the index
+  //      too — collapsing to `never` on conflict (e.g. number id vs string
+  //      additionalProperties). Matches json-schema-to-ts's behavior.
+  //  14. allOf / anyOf branches with `additionalProperties: false` do not
+  //      restrict the combined shape. Per spec, a closed branch listing
+  //      only `{num}` forbids any sibling/parent property in that branch.
+  //      We merge properties across branches and let the closed setting
+  //      dominate, over-permitting keys the closed branch forbids. Effect:
+  //      model may include forbidden properties; MCP server's validator
+  //      rejects the call and the model retries. Self-correcting via
+  //      tool-error feedback, but wastes a call. Library tracks per-branch
+  //      evaluated keys to handle this correctly. Out of scope.
+  //
+  // ==========================================================================
+  // Deliberate omissions vs. the json-schema-to-ts test suite. Each has a
+  // concrete reason (not "rare in practice"):
   //
   //   - extensions.type.test.ts:
   //     The library's `ExtendedJSONSchema` mechanism for user-defined
@@ -921,19 +987,17 @@ describe("jsonSchemaToTs", () => {
   //     this module does.
   //
   //   - references.test.ts (remote URI cases):
-  //     Implementing remote $ref would let third-party schema authors
-  //     make the Dyad main process fetch arbitrary URLs (SSRF). Captured
-  //     in the "definitions & $ref" describe; renders as `unknown`.
+  //     SSRF defense (deviation #7); renders as `unknown`.
   //
   //   - not.type.test.ts (all 7 cases):
-  //     `not` describes a type complement, an operator TypeScript does
-  //     not have. Any output narrower than `unknown` would be incorrect.
+  //     `not` describes a type complement, an operator TypeScript does not
+  //     have (deviation #3).
   //
   //   - object.type.test.ts case 7 ("defaulted property strict mode"):
   //     json-schema-to-ts has an option that turns `default` into "this
   //     property is required in the type". For a tool *caller*, `default`
-  //     means "server fills it in if omitted", so the property remains
-  //     optional — which is our default behavior already.
+  //     means "server fills it in if omitted", so the property stays
+  //     optional — our default behavior already.
   //
   //   - enum.type.test.ts case 2 (TS-enum derivation):
   //     A TypeScript-side input transformation (`Object.values(Food)`).
@@ -942,5 +1006,4 @@ describe("jsonSchemaToTs", () => {
   //   - intro.type.test.ts case 2 (`asConst` helper):
   //     A TypeScript convenience helper, not JSON Schema content. The
   //     schema it produces is already covered by intro case 1.
-  //
 });

@@ -178,6 +178,32 @@ describe("buildMcpCapabilityMap", () => {
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-result"))).toBe(true);
   });
 
+  it("wraps a plain-string MCP result into the declared McpResult shape", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue(true);
+    const execute = vi.fn().mockResolvedValue("hello world");
+    vi.mocked(mcpManager.getClient).mockResolvedValue({
+      tools: async () => ({ hello: { execute } }),
+    } as any);
+
+    const ctx = createCtx();
+    const map = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    });
+
+    const result = await map.srv__hello({});
+
+    expect(result).toEqual({
+      content: [{ type: "text", text: "hello world" }],
+    });
+    const resultXml = vi
+      .mocked(ctx.onXmlComplete)
+      .mock.calls.map((c) => c[0])
+      .find((x) => x.startsWith("<dyad-mcp-tool-result"));
+    expect(resultXml).toContain("hello world");
+  });
+
   it("throws a DyadError(UserCancelled) and skips execution when consent is denied", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue(false);
     const execute = vi.fn();

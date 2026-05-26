@@ -165,11 +165,18 @@ export function buildMcpCapabilityMap(params: {
           toolCallId: `mcp-sandbox-${def.toolKey}`,
           messages: [],
         });
+        // The SDK sometimes returns a plain string for text-only MCP
+        // tools. Wrap it into the McpResult shape we advertise in the
+        // declarations so scripts can rely on `.content` regardless.
+        const normalized =
+          typeof res === "string"
+            ? { content: [{ type: "text", text: res }] }
+            : res;
         const resultStr = typeof res === "string" ? res : JSON.stringify(res);
         params.ctx.onXmlComplete(
           `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
         );
-        return res;
+        return normalized;
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);

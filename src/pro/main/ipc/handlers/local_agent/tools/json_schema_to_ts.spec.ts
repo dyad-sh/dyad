@@ -111,6 +111,41 @@ describe("jsonSchemaToTs", () => {
       ).toBe("[boolean?, string?]");
     });
 
+    it("closes the tuple when maxItems caps it, even without additionalItems: false", () => {
+      // prefixItems length === maxItems: tail must be suppressed.
+      // Without this, `[boolean?, string?, ...unknown[]]` would let the
+      // model pass extra elements the schema would reject at runtime.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          prefixItems: [{ type: "boolean" }, { type: "string" }],
+          maxItems: 2,
+        }),
+      ).toBe("[boolean?, string?]");
+      // maxItems < prefixItems length: clamp and close.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          prefixItems: [
+            { type: "boolean" },
+            { type: "string" },
+            { type: "number" },
+          ],
+          maxItems: 1,
+        }),
+      ).toBe("[boolean?]");
+      // maxItems > prefixItems length: expand with the rest schema in
+      // the trailing slots instead of an open `...rest[]` tail.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          prefixItems: [{ type: "boolean" }],
+          items: { type: "number" },
+          maxItems: 3,
+        }),
+      ).toBe("[boolean?, number?, number?]");
+    });
+
     it("renders prefixItems the same as items-as-array, treating items as the rest type", () => {
       expect(
         jsonSchemaToTs({
@@ -972,6 +1007,11 @@ describe("jsonSchemaToTs", () => {
   //      rejects the call and the model retries. Self-correcting via
   //      tool-error feedback, but wastes a call. Library tracks per-branch
   //      evaluated keys to handle this correctly. Out of scope.
+  //  15. Tuple `maxItems` above 64 falls back to an open `...rest[]` tail
+  //      (with the prefix clamped to `maxItems` if smaller). Below the cap
+  //      we expand to a fixed-length tuple so the upper bound is enforced
+  //      at the type level. The cap prevents pathological schemas like
+  //      `maxItems: 10000` from blowing up the rendered declaration.
   //
   // ==========================================================================
   // Deliberate omissions vs. the json-schema-to-ts test suite. Each has a

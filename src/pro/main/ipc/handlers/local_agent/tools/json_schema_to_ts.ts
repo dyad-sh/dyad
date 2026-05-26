@@ -496,6 +496,36 @@ function jsonSchemaToTsInner(
         // Omitted `minItems` defaults to 0 — instances may be empty.
         const minItems =
           typeof schema.minItems === "number" ? schema.minItems : 0;
+        // Absent / `true` rest = any extra element. `false` = closed
+        // tuple (no rest emitted at all). Typed schema = render it.
+        const restType =
+          rest === true || rest === undefined || rest === false
+            ? "unknown"
+            : jsonSchemaToTs(rest, indent, ctx);
+        // Bounded tuple: `maxItems` pins an upper bound, so emit a
+        // fixed-length tuple of exactly `maxItems` elements with no
+        // `...rest[]` tail. Slots past the prefix take the rest schema
+        // (or `unknown` if absent). 64-element cap prevents pathological
+        // schemas like `maxItems: 10000` from exploding the declaration;
+        // larger bounds fall through to the open-tuple path below.
+        const BOUNDED_TUPLE_CAP = 64;
+        if (
+          typeof schema.maxItems === "number" &&
+          schema.maxItems >= 0 &&
+          schema.maxItems <= BOUNDED_TUPLE_CAP
+        ) {
+          const len = schema.maxItems;
+          const elts: string[] = [];
+          for (let i = 0; i < len; i++) {
+            const src = i < prefixSrc.length ? prefixSrc[i] : null;
+            const t = src ? jsonSchemaToTs(src, indent, ctx) : restType;
+            elts.push(i >= minItems ? `${t}?` : t);
+          }
+          return `[${elts.join(", ")}]`;
+        }
+        // Open tuple: prefix portion + optional `...rest[]` tail. If
+        // `maxItems` is set but above the cap we keep the open form and
+        // clamp the prefix to it (documented deviation).
         const maxItems =
           typeof schema.maxItems === "number" &&
           schema.maxItems < prefixSrc.length
@@ -508,13 +538,6 @@ function jsonSchemaToTsInner(
         if (rest === false) {
           return `[${parts.join(", ")}]`;
         }
-        // When the rest schema is absent or `true`, additional elements past
-        // the tuple prefix are unrestricted (any value), so render as
-        // `...unknown[]`. Otherwise render the rest schema as the rest type.
-        const restType =
-          rest === true || rest === undefined
-            ? "unknown"
-            : jsonSchemaToTs(rest, indent, ctx);
         return `[${parts.join(", ")}, ...${restType}[]]`;
       }
       const items = schema.items

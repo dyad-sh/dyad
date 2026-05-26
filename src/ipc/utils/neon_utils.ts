@@ -34,6 +34,12 @@ export function buildNeonAuthActivationWarning(branchName: string): string {
   return `Neon Auth could not be fully activated for the ${branchName} branch.`;
 }
 
+function getNeonAuthCookieSecretColumn(branchType: NeonBranchType) {
+  return branchType === "production"
+    ? "neonProductionAuthCookieSecret"
+    : "neonDevelopmentAuthCookieSecret";
+}
+
 /**
  * Fetches an app record and resolves the active Neon branch ID.
  * Throws if the app is not found, has no Neon project, or has no branch.
@@ -140,10 +146,7 @@ export async function getOrCreateNeonAuthCookieSecret({
   appData: AppRow;
   branchType: NeonBranchType;
 }): Promise<string> {
-  const column =
-    branchType === "production"
-      ? "neonProductionAuthCookieSecret"
-      : "neonDevelopmentAuthCookieSecret";
+  const column = getNeonAuthCookieSecretColumn(branchType);
 
   const persisted = appData[column];
   if (persisted) return persisted;
@@ -164,8 +167,43 @@ export async function getOrCreateNeonAuthCookieSecret({
   return secret;
 }
 
+/**
+ * Before switching branches, persist the active branch's actual .env.local
+ * cookie secret into DB. The env file is the current runtime source of truth
+ * for the outgoing branch, including apps created before per-branch secret
+ * columns existed or rows that were already populated by an older buggy build.
+ */
+export async function syncActiveNeonAuthCookieSecretFromEnv({
+  appData,
+  branchType,
+}: {
+  appData: AppRow;
+  branchType: NeonBranchType;
+}): Promise<string | undefined> {
+  if (!isBranchActive(appData, branchType)) return undefined;
+
+  const envVars = await readEnvVarsOrEmpty({ appPath: appData.path });
+  const secret = envVars.find(
+    (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
+  )?.value;
+  if (!secret) return undefined;
+
+  const column = getNeonAuthCookieSecretColumn(branchType);
+  if (appData[column] === secret) return secret;
+
+  await db
+    .update(apps)
+    .set({ [column]: secret })
+    .where(eq(apps.id, appData.id));
+
+  return secret;
+}
+
 function isBranchActive(appData: AppRow, branchType: NeonBranchType): boolean {
-  const activeId = appData.neonActiveBranchId;
+  // Legacy rows may not have neonActiveBranchId populated. In those cases the
+  // development branch is still the effective active branch throughout Neon code.
+  const activeId =
+    appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
   if (!activeId) return false;
   if (branchType === "development") {
     return appData.neonDevelopmentBranchId === activeId;

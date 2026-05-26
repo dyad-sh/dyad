@@ -55,7 +55,10 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { getOrCreateNeonAuthCookieSecret } from "@/ipc/utils/neon_utils";
+import {
+  getOrCreateNeonAuthCookieSecret,
+  syncActiveNeonAuthCookieSecretFromEnv,
+} from "@/ipc/utils/neon_utils";
 
 type AppRow = {
   id: number;
@@ -183,8 +186,33 @@ describe("getOrCreateNeonAuthCookieSecret", () => {
     });
   });
 
-  it("generates fresh when neonActiveBranchId is null (mid-creation)", async () => {
+  it("adopts the development env secret when neonActiveBranchId is null but development is the implicit active branch", async () => {
     const appData = makeApp({
+      neonDevelopmentAuthCookieSecret: null,
+      neonActiveBranchId: null,
+    });
+    mocks.readEnvVarsOrEmpty.mockResolvedValueOnce([
+      { key: "NEON_AUTH_COOKIE_SECRET", value: "legacy-dev-secret" },
+    ]);
+
+    const result = await getOrCreateNeonAuthCookieSecret({
+      appData: appData as any,
+      branchType: "development",
+    });
+
+    expect(result).toBe("legacy-dev-secret");
+    expect(mocks.readEnvVarsOrEmpty).toHaveBeenCalledWith({
+      appPath: "my-app",
+    });
+    expect(mocks.generateCookieSecret).not.toHaveBeenCalled();
+    expect(mocks.set).toHaveBeenCalledWith({
+      neonDevelopmentAuthCookieSecret: "legacy-dev-secret",
+    });
+  });
+
+  it("generates fresh when neonActiveBranchId is null and there is no implicit development branch", async () => {
+    const appData = makeApp({
+      neonDevelopmentBranchId: null,
       neonDevelopmentAuthCookieSecret: null,
       neonActiveBranchId: null,
     });
@@ -232,5 +260,66 @@ describe("getOrCreateNeonAuthCookieSecret", () => {
 
     expect(mocks.readEnvVarsOrEmpty).not.toHaveBeenCalled();
     expect(mocks.generateCookieSecret).toHaveBeenCalledOnce();
+  });
+});
+
+describe("syncActiveNeonAuthCookieSecretFromEnv", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("persists the active development branch's current env secret over a stale DB value", async () => {
+    const appData = makeApp({
+      neonDevelopmentAuthCookieSecret: "stale-generated-secret",
+      neonActiveBranchId: "br-dev",
+    });
+    mocks.readEnvVarsOrEmpty.mockResolvedValueOnce([
+      { key: "NEON_AUTH_COOKIE_SECRET", value: "actual-env-secret" },
+    ]);
+
+    const result = await syncActiveNeonAuthCookieSecretFromEnv({
+      appData: appData as any,
+      branchType: "development",
+    });
+
+    expect(result).toBe("actual-env-secret");
+    expect(mocks.generateCookieSecret).not.toHaveBeenCalled();
+    expect(mocks.set).toHaveBeenCalledWith({
+      neonDevelopmentAuthCookieSecret: "actual-env-secret",
+    });
+  });
+
+  it("does not write when the requested branch type is not active", async () => {
+    const appData = makeApp({
+      neonProductionAuthCookieSecret: null,
+      neonActiveBranchId: "br-dev",
+    });
+
+    const result = await syncActiveNeonAuthCookieSecretFromEnv({
+      appData: appData as any,
+      branchType: "production",
+    });
+
+    expect(result).toBeUndefined();
+    expect(mocks.readEnvVarsOrEmpty).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("does not write when the active env file has no cookie secret", async () => {
+    const appData = makeApp({
+      neonDevelopmentAuthCookieSecret: null,
+      neonActiveBranchId: "br-dev",
+    });
+    mocks.readEnvVarsOrEmpty.mockResolvedValueOnce([
+      { key: "DATABASE_URL", value: "postgresql://..." },
+    ]);
+
+    const result = await syncActiveNeonAuthCookieSecretFromEnv({
+      appData: appData as any,
+      branchType: "development",
+    });
+
+    expect(result).toBeUndefined();
+    expect(mocks.set).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,7 @@ import {
   assertNoSupabaseProject,
   assertNoNeonProject,
   getOrCreateNeonAuthCookieSecret,
+  syncActiveNeonAuthCookieSecretFromEnv,
   type NeonBranchType,
 } from "../utils/neon_utils";
 import {
@@ -737,18 +738,23 @@ export function registerNeonHandlers() {
           ? "development"
           : "production";
 
-      // Back-compat for legacy apps: the OUTGOING branch's cookie secret
-      // may only exist in .env.local (column null).
-      // Resolve it first so the resolver's adopt-from-env path captures
-      // it into the DB before autoInjectNeonEnvVars overwrites .env.local
-      // with the incoming branch's secret. Preview-active was rejected
-      // above, so the binary classifier matches isBranchActive's view.
-      if (appData.neonActiveBranchId) {
+      // Back-compat for existing apps: the OUTGOING branch's actual cookie
+      // secret may only exist in .env.local, or a prior build may have put a
+      // generated value in DB. Capture the runtime env value before
+      // autoInjectNeonEnvVars overwrites .env.local with the incoming branch.
+      // Preview branches do not have a persisted cookie-secret column, so skip
+      // that outgoing shape.
+      const outgoingBranchId =
+        appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
+      if (
+        outgoingBranchId &&
+        outgoingBranchId !== appData.neonPreviewBranchId
+      ) {
         const outgoingBranchType: NeonBranchType =
-          appData.neonActiveBranchId === appData.neonDevelopmentBranchId
+          outgoingBranchId === appData.neonDevelopmentBranchId
             ? "development"
             : "production";
-        await getOrCreateNeonAuthCookieSecret({
+        await syncActiveNeonAuthCookieSecretFromEnv({
           appData,
           branchType: outgoingBranchType,
         });

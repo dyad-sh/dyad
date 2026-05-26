@@ -110,7 +110,7 @@ router.push('/auth/sign-in');
 
 ### Vite + Nitro: Password Reset
 
-In a Vite + React Router project, password reset goes through the same Nitro proxy as the rest of Neon Auth (`/api/auth/*`) — the cookie secret stays in `server/`, the React app only talks to `/api/auth/...`. The UI components (`AuthView`, `ForgotPasswordForm`, `ResetPasswordForm`) are imported from `@neondatabase/auth/react` and use the shared `authClient` from `src/lib/auth-client.ts`.
+In a Vite + React Router project, password reset goes through the same Nitro proxy as the rest of Neon Auth (`/api/auth/*`). `NEON_AUTH_BASE_URL` stays server-only in `server/`, the React app only talks to `/api/auth/...`. The UI components (`AuthView`, `ForgotPasswordForm`, `ResetPasswordForm`) are imported from `@neondatabase/auth/react` and use the shared `authClient` from `src/lib/auth-client.ts`.
 
 <critical-rules>
 - **must-not-use-nextjs-routing**: Do NOT use `next/navigation`, `'use client'`, `app/auth/...`, or Next.js Server Components in a Vite + Nitro project. Use `react-router-dom` (`useNavigate`) and `src/pages/auth/...`.

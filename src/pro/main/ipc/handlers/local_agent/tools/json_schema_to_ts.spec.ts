@@ -52,6 +52,17 @@ describe("jsonSchemaToTs", () => {
         } & Record<string, unknown>>"
       `);
     });
+
+    it("renders items: false as the empty tuple (or never when minItems > 0)", () => {
+      // No elements permitted → empty tuple. Without this guard the
+      // falsy `items` check rendered `Array<unknown>`, advertising
+      // element values the schema would reject.
+      expect(jsonSchemaToTs({ type: "array", items: false })).toBe("[]");
+      // Required elements with no element schema is unsatisfiable.
+      expect(jsonSchemaToTs({ type: "array", items: false, minItems: 1 })).toBe(
+        "never",
+      );
+    });
   });
 
   describe("tuple", () => {

@@ -562,6 +562,14 @@ function jsonSchemaToTsInner(
         }
         return `[${parts.join(", ")}, ...${restType}[]]`;
       }
+      // `items: false` forbids any elements — empty tuple, or `never`
+      // if the schema still requires elements via `minItems`. Without
+      // this guard the falsy `items` check below would render
+      // `Array<unknown>`, advertising elements the validator rejects.
+      if (schema.items === false) {
+        const min = typeof schema.minItems === "number" ? schema.minItems : 0;
+        return min > 0 ? "never" : "[]";
+      }
       const items = schema.items
         ? jsonSchemaToTs(schema.items, indent, ctx)
         : "unknown";

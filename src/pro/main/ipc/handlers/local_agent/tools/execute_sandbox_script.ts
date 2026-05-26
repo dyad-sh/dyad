@@ -138,6 +138,7 @@ Recommendations:
 Unsupported / unavailable:
 - No import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, timers, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.
 - String.prototype.localeCompare is not supported; compare with <, >, or === instead.
+- \`console.*\` is not available.
 - Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.
 
 Avoid returning shared references:

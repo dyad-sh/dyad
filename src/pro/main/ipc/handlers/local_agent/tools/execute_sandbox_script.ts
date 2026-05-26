@@ -117,9 +117,15 @@ function buildScriptXml(params: {
   return `<dyad-script ${attrs.join(" ")}>${escapeXmlContent(payload)}</dyad-script>`;
 }
 
-const STATIC_PREAMBLE = `Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files and/or invoke MCP tools.
+// File-inspection-only base. Used as-is when no MCP servers are
+// enabled (or in read-only / plan mode where the sandbox cannot reach
+// MCP), and as the lead-in to the MCP-augmented description otherwise.
+// Keep MCP-specific framing out of this block — if it lands in front
+// of the model when MCP is off, the model will write calls to host
+// functions that don't exist.
+const FILES_ONLY_PREAMBLE = `Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files.
 
-Use this when you need to slice, search, count, aggregate, summarize file contents, OR call one or more MCP tools (optionally chaining their results) before answering. Return only the concise value you need.
+Use this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.
 
 Supported language surface:
 - let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
@@ -150,11 +156,9 @@ return {
 };
 \`\`\`
 
-Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
-
 Execution thread:
-- 'main' (default) runs in-process. MCP host functions only work on this thread. Use for small / fast scripts and anything that calls MCP.
-- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations). MCP host functions are NOT available on the worker thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
+- 'main' (default) runs in-process. Use for small / fast scripts.
+- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations).
 
 Host functions:
 \`\`\`ts
@@ -182,21 +186,37 @@ declare function file_stats(path: string): Promise<FileStats>;
 
 Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`;
 
+function buildMcpAddendum(typeDefsBlock: string): string {
+  return `
+
+MCP tools can also be invoked from inside the script. Use this when you need to call one or more MCP tools (optionally chaining their results, or combining them with file reads) before answering.
+- Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
+- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
+
+MCP host functions (TypeScript declarations):
+\`\`\`ts
+${typeDefsBlock}
+\`\`\``;
+}
+
 /**
- * Build the full tool description, appending MCP host function declarations
- * when any MCP server is enabled. The caller passes in the per-turn defs
- * collected by the local-agent handler; the standalone `collectMcpToolDefs()`
- * fallback is only for callers that don't go through the handler.
+ * Build the full tool description, appending the MCP host-function
+ * declarations and usage notes when any MCP server is enabled. The
+ * caller passes in the per-turn defs collected by the local-agent
+ * handler; the standalone `collectMcpToolDefs()` fallback is only for
+ * callers that don't go through the handler. When no MCP defs are
+ * available the description carries no MCP framing at all, so the
+ * model does not try to call host functions that don't exist (e.g. in
+ * read-only / plan-only turns).
  */
 export async function buildExecuteSandboxScriptDescription(
   precomputedDefs?: McpToolDef[],
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
   if (defs.length === 0) {
-    return STATIC_PREAMBLE;
+    return FILES_ONLY_PREAMBLE;
   }
-  const typeDefsBlock = buildMcpTypeDefsBlock(defs);
-  return `${STATIC_PREAMBLE}\n\nMCP host functions (TypeScript declarations):\n\`\`\`ts\n${typeDefsBlock}\n\`\`\``;
+  return FILES_ONLY_PREAMBLE + buildMcpAddendum(buildMcpTypeDefsBlock(defs));
 }
 
 export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =

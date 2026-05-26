@@ -717,15 +717,17 @@ export async function handleLocalAgentStream(
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
-    if (mcpInSandboxEnabled) {
+    if (agentTools.execute_sandbox_script !== undefined) {
       try {
-        // Collect MCP tool defs once per turn and reuse them for both the
-        // dynamic tool description and the sandbox capability map (read
-        // by `execute_sandbox_script.execute()` via `ctx.mcpToolDefs`).
-        // Skips a second DB + MCP-client walk per sandbox invocation.
-        const defs = await collectMcpToolDefs();
-        ctx.mcpToolDefs = defs;
-        agentTools.execute_sandbox_script!.description =
+        // Collect MCP defs once per turn and reuse for both the description
+        // and the sandbox capability map (via `ctx.mcpToolDefs`). When the
+        // sandbox can't call MCP, pass `[]` so the description omits MCP
+        // type decls but still carries the MustardScript docs.
+        const defs = mcpInSandboxEnabled ? await collectMcpToolDefs() : [];
+        if (mcpInSandboxEnabled) {
+          ctx.mcpToolDefs = defs;
+        }
+        agentTools.execute_sandbox_script.description =
           await buildExecuteSandboxScriptDescription(defs);
       } catch (e) {
         logger.warn(

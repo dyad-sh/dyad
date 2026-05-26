@@ -30,6 +30,8 @@ import {
   autoInjectNeonEnvVars,
   assertNoSupabaseProject,
   assertNoNeonProject,
+  getOrCreateNeonAuthCookieSecret,
+  type NeonBranchType,
 } from "../utils/neon_utils";
 import {
   ensureNitroIfVite,
@@ -246,9 +248,11 @@ export function registerNeonHandlers() {
           ...nitroWarnings,
           ...authWarnings,
           await autoInjectNeonEnvVars({
+            appId,
             appPath,
             projectId: project.id,
             branchId: developmentBranch.id,
+            branchType: "development",
           }),
         );
 
@@ -287,6 +291,8 @@ export function registerNeonHandlers() {
               neonDevelopmentBranchId: null,
               neonPreviewBranchId: null,
               neonActiveBranchId: null,
+              neonProductionAuthCookieSecret: null,
+              neonDevelopmentAuthCookieSecret: null,
             })
             .where(eq(apps.id, appId));
         } catch (dbCleanupError) {
@@ -550,12 +556,18 @@ export function registerNeonHandlers() {
         .where(eq(apps.id, appId));
 
       // Auto-inject env vars into the app's .env.local
+      const branchType: NeonBranchType =
+        activeBranchId === dedicatedDevBranch?.id
+          ? "development"
+          : "production";
       let warning: string | undefined;
       try {
         warning = await autoInjectNeonEnvVars({
+          appId,
           appPath,
           projectId,
           branchId: activeBranchId,
+          branchType,
         });
       } catch (envError) {
         // Revert the DB update so the app doesn't end up half-linked
@@ -570,6 +582,8 @@ export function registerNeonHandlers() {
               neonDevelopmentBranchId: null,
               neonPreviewBranchId: null,
               neonActiveBranchId: null,
+              neonProductionAuthCookieSecret: null,
+              neonDevelopmentAuthCookieSecret: null,
             })
             .where(eq(apps.id, appId));
         } catch (revertError) {
@@ -644,6 +658,8 @@ export function registerNeonHandlers() {
           neonDevelopmentBranchId: null,
           neonPreviewBranchId: null,
           neonActiveBranchId: null,
+          neonProductionAuthCookieSecret: null,
+          neonDevelopmentAuthCookieSecret: null,
         })
         .where(eq(apps.id, appId));
 
@@ -716,6 +732,17 @@ export function registerNeonHandlers() {
         );
       }
 
+      const branchType: NeonBranchType =
+        branchId === appData.neonDevelopmentBranchId
+          ? "development"
+          : "production";
+
+      // Lock in the per-branch cookie secret using PRE-update appData (old
+      // active branch). After the DB flip below, autoInjectNeonEnvVars hits
+      // the DB-hit path and returns this same value — no risk of falsely
+      // adopting the previous branch's .env.local secret as the new branch's.
+      await getOrCreateNeonAuthCookieSecret({ appData, branchType });
+
       // Update DB first, then inject env vars.
       // If env injection fails, revert the DB update so the app and env stay in sync.
       const previousActiveBranchId = appData.neonActiveBranchId;
@@ -727,9 +754,11 @@ export function registerNeonHandlers() {
       let warning: string | undefined;
       try {
         warning = await autoInjectNeonEnvVars({
+          appId,
           appPath: appData.path,
           projectId: appData.neonProjectId!,
           branchId,
+          branchType,
         });
       } catch (envError) {
         logger.warn(

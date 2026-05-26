@@ -6,9 +6,15 @@ import { getConnectionUri } from "../../neon_admin/neon_context";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { updateNeonEnvVars } from "../utils/app_env_var_utils";
+import {
+  generateCookieSecret,
+  readEnvVarsOrEmpty,
+  updateNeonEnvVars,
+} from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { getDyadAppPath } from "@/paths/paths";
+
+export type NeonBranchType = "production" | "development";
 
 export const logger = log.scope("neon_utils");
 
@@ -119,18 +125,74 @@ export async function ensureNeonAuth({
 }
 
 /**
+ * Resolves the Neon Auth cookie secret for a given app + branch type.
+ * The DB is the source of truth (one column per branch). When the column
+ * is null, falls back to adopting an existing .env.local value if the
+ * queried branch is currently active (back-compat for users upgrading
+ * from the old regenerate-on-switch behavior), otherwise generates a
+ * fresh secret. The resolved value is persisted into the column, so the
+ * column is monotonic per branch.
+ */
+export async function getOrCreateNeonAuthCookieSecret({
+  appData,
+  branchType,
+}: {
+  appData: AppRow;
+  branchType: NeonBranchType;
+}): Promise<string> {
+  const column =
+    branchType === "production"
+      ? "neonProductionAuthCookieSecret"
+      : "neonDevelopmentAuthCookieSecret";
+
+  const persisted = appData[column];
+  if (persisted) return persisted;
+
+  let adopted: string | undefined;
+  if (isBranchActive(appData, branchType)) {
+    const envVars = await readEnvVarsOrEmpty({ appPath: appData.path });
+    adopted = envVars.find((v) => v.key === "NEON_AUTH_COOKIE_SECRET")?.value;
+  }
+
+  const secret = adopted ?? generateCookieSecret();
+
+  await db
+    .update(apps)
+    .set({ [column]: secret })
+    .where(eq(apps.id, appData.id));
+
+  return secret;
+}
+
+function isBranchActive(appData: AppRow, branchType: NeonBranchType): boolean {
+  const activeId = appData.neonActiveBranchId;
+  if (!activeId) return false;
+  if (branchType === "development") {
+    return appData.neonDevelopmentBranchId === activeId;
+  }
+  // production = active is neither the dev branch nor the preview branch
+  if (activeId === appData.neonDevelopmentBranchId) return false;
+  if (activeId === appData.neonPreviewBranchId) return false;
+  return true;
+}
+
+/**
  * Auto-injects Neon environment variables into the app's .env.local.
  * Always writes DATABASE_URL/POSTGRES_URL. Returns a warning message
  * if Neon Auth activation fails.
  */
 export async function autoInjectNeonEnvVars({
+  appId,
   appPath,
   projectId,
   branchId,
+  branchType,
 }: {
+  appId: number;
   appPath: string;
   projectId: string;
   branchId: string;
+  branchType: NeonBranchType;
 }): Promise<string | undefined> {
   const connectionUri = await getConnectionUri({ projectId, branchId });
   // Attempt to ensure Neon Auth is active; capture any error as a warning
@@ -147,6 +209,29 @@ export async function autoInjectNeonEnvVars({
     warning = `Failed to activate Neon Auth: ${message}`;
   }
 
+  // Resolve per-branch cookie secret from DB (or generate / adopt once).
+  // Re-SELECT so we see any updates the caller made (e.g. setActiveBranch
+  // flipping neonActiveBranchId, or this same helper having just persisted
+  // a secret in a prior call within the request).
+  let cookieSecret: string | undefined;
+  if (neonAuthBaseUrl) {
+    const rows = await db
+      .select()
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (rows.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+    cookieSecret = await getOrCreateNeonAuthCookieSecret({
+      appData: rows[0],
+      branchType,
+    });
+  }
+
   // Always write env vars (DATABASE_URL, POSTGRES_URL, and auth URL if available).
   // When auth activation failed transiently, preserve existing auth vars so a
   // previously working setup isn't wiped by a temporary Neon API failure.
@@ -155,6 +240,7 @@ export async function autoInjectNeonEnvVars({
     connectionUri,
     neonAuthBaseUrl,
     frameworkType: detectFrameworkType(getDyadAppPath(appPath)),
+    cookieSecret,
     preserveExistingAuth: !neonAuthBaseUrl,
   });
 

@@ -55,6 +55,8 @@ export const apps = sqliteTable("apps", {
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
   neonActiveBranchId: text("neon_active_branch_id"),
+  neonProductionAuthCookieSecret: text("neon_production_auth_cookie_secret"),
+  neonDevelopmentAuthCookieSecret: text("neon_development_auth_cookie_secret"),
   vercelProjectId: text("vercel_project_id"),
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),

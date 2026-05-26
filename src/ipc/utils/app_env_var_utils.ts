@@ -212,6 +212,7 @@ export async function updateNeonEnvVars({
   connectionUri,
   neonAuthBaseUrl,
   frameworkType,
+  cookieSecret,
   preserveExistingAuth = false,
 }: {
   appPath: string;
@@ -224,6 +225,8 @@ export async function updateNeonEnvVars({
    * optional `session_data` cache cookie), so we only write it for Next.js.
    */
   frameworkType?: AppFrameworkType | null;
+  /** Persisted per-branch cookie secret. Used when neonAuthBaseUrl is set on a Next.js app. */
+  cookieSecret?: string;
   /** Preserve existing auth vars when auth activation failed transiently. */
   preserveExistingAuth?: boolean;
 }): Promise<void> {
@@ -235,33 +238,23 @@ export async function updateNeonEnvVars({
   const cookieSecretUsed = frameworkType === "nextjs";
 
   if (neonAuthBaseUrl) {
-    const previousAuthUrl = envVars.find(
-      (v) => v.key === "NEON_AUTH_BASE_URL",
-    )?.value;
     upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", neonAuthBaseUrl);
     if (cookieSecretUsed) {
-      // Regenerate the cookie secret when the auth URL changes (e.g. branch switch)
-      // to prevent cross-branch session reuse, or generate one if absent
-      const existingSecret = envVars.find(
-        (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
-      );
-      if (!existingSecret || previousAuthUrl !== neonAuthBaseUrl) {
-        upsertEnvVar(
-          envVars,
-          "NEON_AUTH_COOKIE_SECRET",
-          generateCookieSecret(),
-        );
+      if (cookieSecret) {
+        upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", cookieSecret);
+      } else if (!preserveExistingAuth) {
+        // Auth claimed active but caller didn't supply a secret — strip stale
+        // value rather than silently keep a wrong one.
+        envVars = envVars.filter((v) => v.key !== "NEON_AUTH_COOKIE_SECRET");
       }
     }
-  } else {
+  } else if (!preserveExistingAuth) {
     // Auth activation failed or is not available on this branch —
     // remove stale auth env vars so the old branch's values don't linger.
-    if (!preserveExistingAuth) {
-      envVars = envVars.filter(
-        (v) =>
-          v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
-      );
-    }
+    envVars = envVars.filter(
+      (v) =>
+        v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
+    );
   }
 
   const envFileContents = serializeEnvFile(envVars);

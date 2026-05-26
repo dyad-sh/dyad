@@ -503,18 +503,23 @@ function jsonSchemaToTsInner(
             ? "unknown"
             : jsonSchemaToTs(rest, indent, ctx);
         // Bounded tuple: `maxItems` pins an upper bound, so emit a
-        // fixed-length tuple of exactly `maxItems` elements with no
-        // `...rest[]` tail. Slots past the prefix take the rest schema
-        // (or `unknown` if absent). 64-element cap prevents pathological
-        // schemas like `maxItems: 10000` from exploding the declaration;
-        // larger bounds fall through to the open-tuple path below.
+        // fixed-length tuple with no `...rest[]` tail. Slots past the
+        // prefix take the rest schema (or `unknown` if absent). When
+        // rest is `false` the tuple is closed at the prefix regardless
+        // of `maxItems`, so clamp the length to `prefixSrc.length`. The
+        // 64-element cap prevents pathological schemas like
+        // `maxItems: 10000` from exploding the declaration; larger
+        // bounds fall through to the open-tuple path below.
         const BOUNDED_TUPLE_CAP = 64;
         if (
           typeof schema.maxItems === "number" &&
           schema.maxItems >= 0 &&
           schema.maxItems <= BOUNDED_TUPLE_CAP
         ) {
-          const len = schema.maxItems;
+          const len =
+            rest === false
+              ? Math.min(schema.maxItems, prefixSrc.length)
+              : schema.maxItems;
           const elts: string[] = [];
           for (let i = 0; i < len; i++) {
             const src = i < prefixSrc.length ? prefixSrc[i] : null;

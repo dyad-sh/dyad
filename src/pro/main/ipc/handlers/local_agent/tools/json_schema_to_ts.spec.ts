@@ -144,6 +144,28 @@ describe("jsonSchemaToTs", () => {
           maxItems: 3,
         }),
       ).toBe("[boolean?, number?, number?]");
+      // Closed tuple (additionalItems: false) with maxItems > prefix
+      // length: the tuple stays closed at the prefix — `maxItems`
+      // can't open it. Without the clamp this would emit
+      // `[boolean?, unknown?, unknown?]`, advertising elements the
+      // schema rejects.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          items: [{ type: "boolean" }],
+          additionalItems: false,
+          maxItems: 3,
+        }),
+      ).toBe("[boolean?]");
+      // Same with prefixItems + items: false.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          prefixItems: [{ type: "boolean" }],
+          items: false,
+          maxItems: 3,
+        }),
+      ).toBe("[boolean?]");
     });
 
     it("renders prefixItems the same as items-as-array, treating items as the rest type", () => {

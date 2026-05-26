@@ -718,22 +718,28 @@ export async function handleLocalAgentStream(
         ? await getMcpTools(event, ctx)
         : {};
     if (agentTools.execute_sandbox_script !== undefined) {
-      try {
-        // Collect MCP defs once per turn and reuse for both the description
-        // and the sandbox capability map (via `ctx.mcpToolDefs`). When the
-        // sandbox can't call MCP, pass `[]` so the description omits MCP
-        // type decls but still carries the MustardScript docs.
-        const defs = mcpInSandboxEnabled ? await collectMcpToolDefs() : [];
-        if (mcpInSandboxEnabled) {
+      // Initialize with the MustardScript-only preamble so even a
+      // failure in the MCP collection path below leaves the model with
+      // the syntax + file-inspection docs (rather than the one-line
+      // placeholder from the tool definition).
+      agentTools.execute_sandbox_script.description =
+        await buildExecuteSandboxScriptDescription([]);
+      if (mcpInSandboxEnabled) {
+        try {
+          // Collect MCP defs once per turn and reuse for both the
+          // description and the sandbox capability map (via
+          // `ctx.mcpToolDefs`). Skips a second DB + MCP-client walk per
+          // sandbox invocation.
+          const defs = await collectMcpToolDefs();
           ctx.mcpToolDefs = defs;
+          agentTools.execute_sandbox_script.description =
+            await buildExecuteSandboxScriptDescription(defs);
+        } catch (e) {
+          logger.warn(
+            "Failed to build dynamic execute_sandbox_script description",
+            e,
+          );
         }
-        agentTools.execute_sandbox_script.description =
-          await buildExecuteSandboxScriptDescription(defs);
-      } catch (e) {
-        logger.warn(
-          "Failed to build dynamic execute_sandbox_script description",
-          e,
-        );
       }
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };

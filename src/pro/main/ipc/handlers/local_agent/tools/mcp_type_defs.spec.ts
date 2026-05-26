@@ -48,12 +48,23 @@ describe("buildMcpTypeDefsBlock", () => {
         },
       }),
     ]);
-    expect(block).toContain("type McpResult");
-    expect(block).toContain("// ---- Server: test_server ----");
-    expect(block).toContain("/** Greet someone */");
-    expect(block).toContain(
-      "declare function test_server__hello(args: {\n  name: string;\n} & Record<string, unknown>): Promise<McpResult>;",
-    );
+    expect(block).toMatchInlineSnapshot(`
+      "type McpResult = {
+        content: Array<
+          | { type: "text"; text: string }
+          | { type: "image"; data: string; mimeType: string }
+          | { type: "resource"; resource: unknown }
+        >;
+        isError?: boolean;
+      };
+
+      // ---- Server: test_server ----
+      /** Greet someone */
+      declare function test_server__hello(args: {
+        name: string;
+      } & Record<string, unknown>): Promise<McpResult>;
+      "
+    `);
   });
 
   it("collapses multi-line tool descriptions into a single line", () => {
@@ -287,10 +298,7 @@ describe("buildMcpCapabilityMap", () => {
   });
 });
 
-// `collectMcpToolDefs` is not directly tested for built-in-name
-// collisions because the current `toolKey` format always prefixes the
-// tool name with `serverNameSanitized__`, so a sanitized tool key can
-// never bare-match a file host fn name (`read_file`, etc.). The
-// guard in `collectMcpToolDefs` (seeding `seenJsNames` with the
-// built-in names) is defense in depth in case the key format changes
-// or a new built-in is added that does overlap.
+// No test for built-in-name collisions: the `serverNameSanitized__`
+// prefix on every toolKey makes a bare match like `read_file`
+// unreachable today. The seeded reserved set in `collectMcpToolDefs`
+// is defense in depth for future key-format or built-in changes.

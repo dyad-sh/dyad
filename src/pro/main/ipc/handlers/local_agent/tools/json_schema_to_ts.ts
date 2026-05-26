@@ -496,6 +496,23 @@ function jsonSchemaToTsInner(
         // Omitted `minItems` defaults to 0 — instances may be empty.
         const minItems =
           typeof schema.minItems === "number" ? schema.minItems : 0;
+        // Effective upper bound: `false` rest caps at the prefix
+        // length, otherwise `maxItems` (or unbounded). If `minItems`
+        // exceeds it, the tuple is unsatisfiable — no instance can
+        // simultaneously have at least `minItems` and at most
+        // `effectiveMax` elements, so render `never` instead of a
+        // tuple the MCP validator will always reject.
+        const effectiveMax =
+          rest === false
+            ? typeof schema.maxItems === "number"
+              ? Math.min(schema.maxItems, prefixSrc.length)
+              : prefixSrc.length
+            : typeof schema.maxItems === "number"
+              ? schema.maxItems
+              : Infinity;
+        if (minItems > effectiveMax) {
+          return "never";
+        }
         // Absent / `true` rest = any extra element. `false` = closed
         // tuple (no rest emitted at all). Typed schema = render it.
         const restType =

@@ -168,6 +168,38 @@ describe("jsonSchemaToTs", () => {
       ).toBe("[boolean?]");
     });
 
+    it("renders unsatisfiable tuple bounds as never", () => {
+      // minItems > maxItems: no instance can satisfy both.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          prefixItems: [{ type: "boolean" }],
+          items: { type: "number" },
+          minItems: 5,
+          maxItems: 2,
+        }),
+      ).toBe("never");
+      // Closed tuple with minItems greater than the prefix length:
+      // tuple can never reach the required count.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          prefixItems: [{ type: "boolean" }, { type: "string" }],
+          items: false,
+          minItems: 3,
+        }),
+      ).toBe("never");
+      // Same shape via items-as-array + additionalItems: false.
+      expect(
+        jsonSchemaToTs({
+          type: "array",
+          items: [{ type: "boolean" }],
+          additionalItems: false,
+          minItems: 2,
+        }),
+      ).toBe("never");
+    });
+
     it("renders prefixItems the same as items-as-array, treating items as the rest type", () => {
       expect(
         jsonSchemaToTs({

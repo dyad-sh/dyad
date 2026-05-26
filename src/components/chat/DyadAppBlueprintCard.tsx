@@ -31,6 +31,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { AppBlueprintUserPrompt } from "./AppBlueprintUserPrompt";
 import { AppBlueprintDesignDirection } from "./AppBlueprintDesignDirection";
 import { AppBlueprintVisuals } from "./AppBlueprintVisuals";
+import { getAppBlueprintTemplateOptions } from "./appBlueprintTemplateOptions";
 import type { CustomTagState } from "./stateTypes";
 
 interface DyadAppBlueprintCardProps {
@@ -115,6 +116,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
   const primaryColorTextFieldId = `${inputIdPrefix}-primary-color-text`;
   const primaryColorPickerFieldId = `${inputIdPrefix}-primary-color-picker`;
   const statusId = `${inputIdPrefix}-status`;
+  const templateOptions = getAppBlueprintTemplateOptions(templates, templateId);
 
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(appName);
@@ -684,7 +686,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                     Unknown template ({templateId})
                   </option>
                 )}
-                {(templates ?? []).map((t) => (
+                {templateOptions.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
                   </option>

@@ -459,6 +459,28 @@ describe("jsonSchemaToTs", () => {
       `);
     });
 
+    it("keeps additionalProperties' index signature when unevaluatedProperties: false is set alongside it", () => {
+      // ap evaluates extra keys, so up: false has nothing left to
+      // reject — the index signature must survive. Without this, the
+      // sandbox type would be stricter than the runtime validator and
+      // drop valid dynamic keys.
+      const out = jsonSchemaToTs({
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+        additionalProperties: { type: "string" },
+        unevaluatedProperties: false,
+      });
+      // Named-prop + typed index conflict widens the index to unknown
+      // (deviation #13), so the closure-vs-open distinction is what
+      // this test asserts — `Record<string, unknown>` must be present.
+      expect(out).toMatchInlineSnapshot(`
+        "{
+          name: string;
+        } & Record<string, unknown>"
+      `);
+    });
+
     it("supports unevaluatedProperties: <schema> (widens to unknown when named props exist)", () => {
       // Same widening as typed additionalProperties.
       const out = jsonSchemaToTs({

@@ -638,9 +638,13 @@ function buildIndexSignatureType(
   const ap = schema.additionalProperties;
   const up = schema.unevaluatedProperties;
 
-  // Explicit `false` on either keyword closes the object — no index
-  // signature, only patternProperties (if any) still apply.
-  const closed = ap === false || up === false;
+  // `additionalProperties: false` always closes the object. But
+  // `unevaluatedProperties: false` only forbids keys that nothing else
+  // evaluated — when `additionalProperties` is a schema (or `true`),
+  // it evaluates extra keys, so they stay allowed even with
+  // `unevaluatedProperties: false`. Only close on `up: false` when
+  // `additionalProperties` is absent.
+  const closed = ap === false || (up === false && ap === undefined);
 
   const parts: string[] = [];
   const patternProps = schema.patternProperties;

@@ -737,6 +737,23 @@ export function registerNeonHandlers() {
           ? "development"
           : "production";
 
+      // Back-compat for legacy apps: the OUTGOING branch's cookie secret
+      // may only exist in .env.local (column null).
+      // Resolve it first so the resolver's adopt-from-env path captures
+      // it into the DB before autoInjectNeonEnvVars overwrites .env.local
+      // with the incoming branch's secret. Preview-active was rejected
+      // above, so the binary classifier matches isBranchActive's view.
+      if (appData.neonActiveBranchId) {
+        const outgoingBranchType: NeonBranchType =
+          appData.neonActiveBranchId === appData.neonDevelopmentBranchId
+            ? "development"
+            : "production";
+        await getOrCreateNeonAuthCookieSecret({
+          appData,
+          branchType: outgoingBranchType,
+        });
+      }
+
       // Lock in the per-branch cookie secret using PRE-update appData (old
       // active branch). After the DB flip below, autoInjectNeonEnvVars hits
       // the DB-hit path and returns this same value — no risk of falsely

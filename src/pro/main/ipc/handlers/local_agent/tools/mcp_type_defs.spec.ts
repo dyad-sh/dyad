@@ -286,3 +286,11 @@ describe("buildMcpCapabilityMap", () => {
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-result"))).toBe(false);
   });
 });
+
+// `collectMcpToolDefs` is not directly tested for built-in-name
+// collisions because the current `toolKey` format always prefixes the
+// tool name with `serverNameSanitized__`, so a sanitized tool key can
+// never bare-match a file host fn name (`read_file`, etc.). The
+// guard in `collectMcpToolDefs` (seeding `seenJsNames` with the
+// built-in names) is defense in depth in case the key format changes
+// or a new built-in is added that does overlap.

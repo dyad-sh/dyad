@@ -3,6 +3,7 @@ import { asSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 import type { MCPClient } from "@ai-sdk/mcp";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
+import { SANDBOX_HOST_CALL_NAMES } from "@/ipc/utils/sandbox/capabilities";
 import { mcpServers } from "@/db/schema";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
@@ -63,7 +64,12 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
   // `srv_foo__t`) can collapse to the same JS identifier. Disambiguate by
   // appending a numeric suffix on collision so each MCP tool maps to a
   // unique sandbox capability.
-  const seenJsNames = new Set<string>();
+  //
+  // Seeded with the built-in file host fns so an MCP tool whose
+  // sanitized name happens to match (e.g. `read_file`) is renamed
+  // rather than silently shadowing the file capability when the two
+  // maps are merged.
+  const seenJsNames = new Set<string>(SANDBOX_HOST_CALL_NAMES);
   for (const s of servers) {
     let toolSet: Awaited<ReturnType<MCPClient["tools"]>>;
     try {

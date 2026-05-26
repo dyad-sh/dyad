@@ -9,7 +9,7 @@ MAX_ATTEMPTS=3
 RETRY_DELAY=10
 
 verify_electron() {
-  node -e 'require("electron")' >/dev/null
+  node -e 'require("electron")' >/dev/null 2>&1
 }
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
@@ -22,7 +22,7 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
     fi
 
     echo "Electron verification failed after npm ci, rebuilding Electron..."
-    if force_no_cache=true npm rebuild electron && verify_electron; then
+    if force_no_cache=true npm rebuild electron --ignore-scripts=false && verify_electron; then
       exit 0
     fi
 

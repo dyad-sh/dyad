@@ -216,8 +216,12 @@ async function startCallbackListener(
   if (disposed) {
     for (const s of bound) s.close();
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
-    rejectCode(new Error("OAuth flow disposed before listener bound."));
-    return { code, dispose };
+    // Throw rather than return: a returned listener would let
+    // `runOAuthFlow` proceed into `auth(provider)` and open the
+    // browser for an already-superseded flow, whose stale callback
+    // could land on the new listener with a mismatching `state` and
+    // abort the real flow.
+    throw new Error("OAuth flow superseded before listener bound.");
   }
   if (bound.length === 0) {
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);

@@ -179,6 +179,10 @@ export function registerMcpHandlers() {
     // an unconnected OAuth-gated host) would otherwise freeze the
     // whole tools list. This ceiling caps the worst case.
     const LIST_TOOLS_TIMEOUT_MS = 8_000;
+    // Clearable so the timer doesn't fire after the main op settles —
+    // a late reject on an unobserved promise surfaces as an
+    // unhandled rejection.
+    let timeoutId: NodeJS.Timeout | undefined;
     try {
       const result = await Promise.race([
         (async () => {
@@ -194,8 +198,8 @@ export function registerMcpHandlers() {
             })),
           );
         })(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
             () =>
               reject(
                 new Error(
@@ -203,11 +207,13 @@ export function registerMcpHandlers() {
                 ),
               ),
             LIST_TOOLS_TIMEOUT_MS,
-          ),
-        ),
+          );
+        }),
       ]);
+      clearTimeout(timeoutId);
       return result;
     } catch (e) {
+      clearTimeout(timeoutId);
       logger.error(
         `Failed to list tools for server ${serverId}: ${
           e instanceof Error ? `${e.name}: ${e.message}` : String(e)

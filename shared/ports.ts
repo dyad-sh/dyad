@@ -15,5 +15,5 @@ export function getAppPort(appId: number): number {
  * Uses a base of 42100 to stay clear of getAppPort's 32100..42099 range.
  */
 export function getAppProxyPort(appId: number): number {
-  return 42100 + (appId % 10_000);
+  return 42100 + (Math.abs(appId) % 10_000);
 }

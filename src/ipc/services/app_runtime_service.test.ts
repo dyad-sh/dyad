@@ -9,6 +9,8 @@ const {
   readSettingsMock,
   safeSendMock,
   spawnMock,
+  killPortMock,
+  startProxyMock,
 } = vi.hoisted(() => ({
   getPnpmMinimumReleaseAgeSupportMock: vi.fn<
     () => Promise<{
@@ -27,6 +29,8 @@ const {
   })),
   safeSendMock: vi.fn(),
   spawnMock: vi.fn(),
+  killPortMock: vi.fn<() => Promise<void>>(async () => {}),
+  startProxyMock: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -53,7 +57,7 @@ vi.mock("fix-path", () => ({
 }));
 
 vi.mock("kill-port", () => ({
-  default: vi.fn(),
+  default: killPortMock,
 }));
 
 vi.mock("@/main/settings", () => ({
@@ -87,7 +91,11 @@ vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
   uploadCloudSandboxFiles: vi.fn(),
 }));
 
-import { executeApp } from "./app_runtime_service";
+vi.mock("@/ipc/utils/start_proxy_server", () => ({
+  startProxy: (...args: unknown[]) => startProxyMock(...args),
+}));
+
+import { ensureProxyForRunningApp, executeApp } from "./app_runtime_service";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
 
 class FakeChildProcess extends EventEmitter {
@@ -131,6 +139,9 @@ describe("executeApp", () => {
     });
     safeSendMock.mockReset();
     spawnMock.mockReset();
+    killPortMock.mockReset();
+    killPortMock.mockResolvedValue(undefined);
+    startProxyMock.mockReset();
   });
 
   it("does not emit app-exit when a replaced process closes later", async () => {
@@ -232,6 +243,39 @@ describe("executeApp", () => {
         type: "package-manager-warning",
         message: "Install pnpm 10.16.0 or newer for the strongest protection",
       }),
+    );
+  });
+
+  it("cleans up the deterministic proxy port before starting a proxy worker", async () => {
+    const terminate = vi.fn();
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      opts.onStarted?.("http://localhost:42142");
+      return { terminate };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    const event = createEvent();
+    await ensureProxyForRunningApp({
+      appId: 42,
+      event,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+
+    expect(killPortMock).toHaveBeenCalledWith(42142, "tcp");
+    expect(startProxyMock).toHaveBeenCalledWith(
+      "http://localhost:32142",
+      expect.objectContaining({
+        port: 42142,
+      }),
+    );
+    expect(killPortMock.mock.invocationCallOrder[0]).toBeLessThan(
+      startProxyMock.mock.invocationCallOrder[0],
     );
   });
 });

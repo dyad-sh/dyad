@@ -274,6 +274,7 @@ export async function ensureProxyForRunningApp({
   // otherwise origin-scoped browser state (auth sessions, localStorage)
   // gets orphaned and users appear logged out.
   const proxyPort = getAppProxyPort(appId);
+  await killProcessOnPort(proxyPort);
 
   const proxyWorker = await startProxy(originalUrl, {
     port: proxyPort,

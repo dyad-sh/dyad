@@ -308,8 +308,25 @@ const httpServer = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/token") {
       const params = parseForm(await readBody(req));
       const grantType = params.grant_type;
-      const clientId = params.client_id;
-      const clientSecret = params.client_secret;
+      let clientId = params.client_id;
+      let clientSecret = params.client_secret;
+      // RFC 6749 §2.3.1: confidential clients may send credentials
+      // via the Authorization header instead of the body. Accept both
+      // so this fake matches real-world OAuth providers (which is
+      // also what the SDK's client_secret_basic auth method uses).
+      const authHeader = req.headers.authorization;
+      if (!clientId && authHeader?.toLowerCase().startsWith("basic ")) {
+        const decoded = Buffer.from(authHeader.slice(6), "base64").toString(
+          "utf8",
+        );
+        const idx = decoded.indexOf(":");
+        if (idx >= 0) {
+          // Reverse the provider's formUrlEncode (+ → space, %XX decoded).
+          const dec = (s) => decodeURIComponent(s.replace(/\+/g, "%20"));
+          clientId = dec(decoded.slice(0, idx));
+          clientSecret = dec(decoded.slice(idx + 1));
+        }
+      }
 
       if (!clientId || !registeredClients.has(clientId)) {
         jsonResponse(res, 401, {

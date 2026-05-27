@@ -167,7 +167,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
-    "electron": "40.0.0",
+    "electron": "^42.3.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
     "happy-dom": "^17.4.4",

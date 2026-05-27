@@ -30,7 +30,18 @@ import {
 
 export const logger = log.scope("migration_handlers");
 
-const MIGRATION_DEPS = ["drizzle-kit", "drizzle-orm"] as const;
+// Pin to the latest drizzle-kit/drizzle-orm v1 RC so new auto-installs land on
+// the v1 migration layout (per-migration directories with migration.sql +
+// snapshot.json). Users who already have <1.0.0 installed are detected at
+// runtime and read via the pre-v1 journal+meta layout instead — see
+// `getInstalledDrizzleKitMajor`.
+export const MIGRATION_DRIZZLE_KIT_VERSION = "1.0.0-rc.3";
+export const MIGRATION_DRIZZLE_ORM_VERSION = "1.0.0-rc.3";
+
+const MIGRATION_DEPS = [
+  `drizzle-kit@${MIGRATION_DRIZZLE_KIT_VERSION}`,
+  `drizzle-orm@${MIGRATION_DRIZZLE_ORM_VERSION}`,
+] as const;
 
 // =============================================================================
 // Constants
@@ -93,16 +104,109 @@ export function getDrizzleKitPath(appPath: string): string {
   return path.join(appPath, "node_modules", "drizzle-kit", "bin.cjs");
 }
 
+/**
+ * Semver major of drizzle-kit. `0` for the pre-v1 layout (journal +
+ * `meta/<idx>_snapshot.json` + `<tag>.sql`), `1` for the v1+ layout
+ * (per-migration directories with `migration.sql` + `snapshot.json`).
+ */
+export type DrizzleKitMajor = 0 | 1;
+
+/**
+ * Reads the `version` field from a package's installed `package.json` and
+ * returns its semver major as a number. Throws `DyadError` when the file is
+ * missing or the version string can't be parsed.
+ */
+async function readInstalledPackageMajor(
+  appPath: string,
+  packageName: string,
+): Promise<number> {
+  const pkgPath = path.join(
+    appPath,
+    "node_modules",
+    packageName,
+    "package.json",
+  );
+  let version: string;
+  try {
+    const parsed = JSON.parse(await fs.readFile(pkgPath, "utf-8")) as {
+      version?: string;
+    };
+    if (typeof parsed.version !== "string") {
+      throw new Error("missing or non-string version field");
+    }
+    version = parsed.version;
+  } catch (err) {
+    throw new DyadError(
+      `Could not read ${packageName} version from ${pkgPath}: ${err instanceof Error ? err.message : String(err)}`,
+      DyadErrorKind.Internal,
+    );
+  }
+  // parseInt stops at the first non-digit, so it captures the major from both
+  // stable ("1.2.3") and pre-release ("1.0.0-rc.3", "1.0.0+build.7") forms.
+  const major = parseInt(version, 10);
+  if (Number.isNaN(major)) {
+    throw new DyadError(
+      `Could not parse ${packageName} version "${version}" in ${pkgPath}`,
+      DyadErrorKind.Internal,
+    );
+  }
+  return major;
+}
+
+/**
+ * Returns true only when drizzle-kit and drizzle-orm are both installed AND
+ * agree on their semver major. A split state (e.g. drizzle-kit@1.x with
+ * drizzle-orm@0.x left over from a previous unpinned install) returns false
+ * so `installMigrationDeps` runs and re-syncs both packages to the v1 RC
+ * pin — otherwise drizzle-kit crashes with
+ * `ERR_PACKAGE_PATH_NOT_EXPORTED: './_relations'` because v1 drizzle-kit
+ * imports a v1-only subpath of drizzle-orm.
+ */
 export async function areMigrationDepsInstalled(
   appPath: string,
 ): Promise<boolean> {
   try {
     await fs.access(getDrizzleKitPath(appPath));
     await fs.access(path.join(appPath, "node_modules", "drizzle-orm"));
-    return true;
   } catch {
     return false;
   }
+  let kitMajor: number;
+  let ormMajor: number;
+  try {
+    [kitMajor, ormMajor] = await Promise.all([
+      readInstalledPackageMajor(appPath, "drizzle-kit"),
+      readInstalledPackageMajor(appPath, "drizzle-orm"),
+    ]);
+  } catch (err) {
+    logger.warn(
+      `Could not read installed drizzle versions; will reinstall. Reason: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+  if (kitMajor !== ormMajor) {
+    logger.warn(
+      `Installed drizzle-kit major (${kitMajor}) does not match drizzle-orm major (${ormMajor}); reinstalling to align with ${MIGRATION_DRIZZLE_KIT_VERSION} / ${MIGRATION_DRIZZLE_ORM_VERSION}.`,
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Reads the installed drizzle-kit version from the user's `node_modules` and
+ * returns the semver major. We never reinstall on top of an existing copy
+ * when both packages are in sync, so a user who's already on drizzle-kit
+ * <1.0.0 keeps the pre-v1 layout and readers branch accordingly; new
+ * installs land on `MIGRATION_DRIZZLE_KIT_VERSION` (currently a 1.x RC) and
+ * use the v1 layout.
+ */
+export async function getInstalledDrizzleKitMajor(
+  appPath: string,
+): Promise<DrizzleKitMajor> {
+  if (IS_TEST_BUILD) return 1;
+  const major = await readInstalledPackageMajor(appPath, "drizzle-kit");
+  return major >= 1 ? 1 : 0;
 }
 
 export async function installMigrationDeps(appPath: string): Promise<void> {
@@ -552,50 +656,48 @@ async function mockDrizzleKitRun({
   }
 
   if (drizzleCommand === "generate") {
+    // `getInstalledDrizzleKitMajor` returns 1 under IS_TEST_BUILD, so the
+    // mock has to emit the v1 layout: each migration is a `<tag>/`
+    // directory containing migration.sql + snapshot.json. No journal.
     const outDir = await resolveOutDirFromConfig({ args, cwd });
-    const metaDir = path.join(outDir, "meta");
-    await fs.mkdir(metaDir, { recursive: true });
+    await fs.mkdir(outDir, { recursive: true });
     const isBaseline = args.some(
       (a) => a === `--name=${BASELINE_NAME}` || a === BASELINE_NAME,
     );
 
-    let journal: { entries: { idx: number; tag: string }[] };
+    // Track the next idx by counting existing migration directories. drizzle-kit
+    // numbers each new generate sequentially regardless of prior names.
+    let existing: import("node:fs").Dirent[] = [];
     try {
-      journal = JSON.parse(
-        await fs.readFile(path.join(metaDir, "_journal.json"), "utf-8"),
-      );
+      existing = await fs.readdir(outDir, { withFileTypes: true });
     } catch {
-      journal = { entries: [] };
+      // outDir was just created; treat as empty.
     }
-    if (!journal.entries) {
-      journal.entries = [];
-    }
-
-    const idx = journal.entries.length;
+    const existingTags = existing
+      .filter((d) => d.isDirectory() && MIGRATION_NAME_RE.test(d.name))
+      .map((d) => d.name);
+    const idx = existingTags.length;
     const tag = isBaseline
       ? `${String(idx).padStart(4, "0")}_${BASELINE_NAME}`
       : `${String(idx).padStart(4, "0")}_test_diff`;
+
+    const migrationDir = path.join(outDir, tag);
+    await fs.mkdir(migrationDir, { recursive: true });
 
     // Mirror real drizzle-kit: write a "real" CREATE TABLE for the baseline
     // file. runBaselineGenerate then overwrites it with BASELINE_SQL_BODY.
     // For the diff, write a multi-statement migration so the parser tests
     // exercise the breakpoint splitter.
     await fs.writeFile(
-      path.join(outDir, `${tag}.sql`),
+      path.join(migrationDir, "migration.sql"),
       isBaseline
         ? 'CREATE TABLE "mock_baseline" ("id" serial);\n'
         : 'CREATE TABLE "mock" ("id" serial);\n--> statement-breakpoint\nALTER TABLE "mock" ADD COLUMN "name" text;\n',
       "utf-8",
     );
     await fs.writeFile(
-      path.join(metaDir, `${String(idx).padStart(4, "0")}_snapshot.json`),
+      path.join(migrationDir, "snapshot.json"),
       JSON.stringify({}, null, 2),
-      "utf-8",
-    );
-    journal.entries.push({ idx, tag });
-    await fs.writeFile(
-      path.join(metaDir, "_journal.json"),
-      JSON.stringify(journal, null, 2),
       "utf-8",
     );
 
@@ -801,8 +903,27 @@ interface PendingMigration {
   isBaseline: boolean;
 }
 
+// Matches the leading numeric-prefix drizzle-kit uses for migration names in
+// both layouts: a run of digits followed by `_<slug>`. v0 uses a 4-digit
+// zero-padded index (`0001_<slug>.sql`); v1 uses a 14-digit timestamp
+// (`20260524001318_<slug>/`). Both formats sort lexicographically into the
+// order drizzle-kit generated them: 4-digit indices sort numerically by
+// padding, and timestamps sort chronologically. A permissive `\d+_` matches
+// both — anchoring to a specific width would silently drop every v1
+// directory and surface as "0 statements" despite a non-empty diff.
+const MIGRATION_NAME_RE = /^\d+_/;
+
 /**
- * Reads `<workDir>/drizzle/meta/_journal.json` and returns each entry's SQL.
+ * Reads the drizzle-kit-generated migrations under `<workDir>/drizzle` in
+ * deterministic (idx-ordered) order. The `drizzleKitMajor` argument selects
+ * the on-disk layout to read:
+ *
+ *   - 0 (pre-v1): journal at `meta/_journal.json` → `<tag>.sql` files at the
+ *     top level. Order is taken from the journal entries.
+ *   - 1 (v1+):   per-migration directories `<tag>/` containing
+ *     `migration.sql` + `snapshot.json`. Order is the directory names sorted
+ *     lexicographically — the `NNNN_` prefix makes that equivalent to idx
+ *     ordering.
  *
  * The baseline file is identified by **content equality** to
  * `BASELINE_SQL_BODY`. `runBaselineGenerate` always overwrites the file
@@ -812,29 +933,64 @@ interface PendingMigration {
  */
 export async function readPendingMigrationFiles(
   workDir: string,
+  drizzleKitMajor: DrizzleKitMajor,
 ): Promise<PendingMigration[]> {
   const drizzleDir = path.join(workDir, "drizzle");
-  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
 
-  let journal: { entries?: Array<{ idx: number; tag: string }> };
+  if (drizzleKitMajor === 0) {
+    const journalPath = path.join(drizzleDir, "meta", "_journal.json");
+    let journal: { entries?: Array<{ idx: number; tag: string }> };
+    try {
+      journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+    } catch {
+      return [];
+    }
+
+    const entries = journal.entries ?? [];
+    const out: PendingMigration[] = [];
+    for (const entry of entries) {
+      const filePath = path.join(drizzleDir, `${entry.tag}.sql`);
+      let sql: string;
+      try {
+        sql = await fs.readFile(filePath, "utf-8");
+      } catch {
+        continue;
+      }
+      out.push({
+        name: entry.tag,
+        sql,
+        isBaseline: sql === BASELINE_SQL_BODY,
+      });
+    }
+    return out;
+  }
+
+  // v1 layout: each migration is a directory `<tag>/` with migration.sql +
+  // snapshot.json. Skip non-matching entries (e.g., stray files left by
+  // drizzle-kit) and sort by name so order is deterministic.
+  let dirents: import("node:fs").Dirent[];
   try {
-    journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+    dirents = await fs.readdir(drizzleDir, { withFileTypes: true });
   } catch {
     return [];
   }
 
-  const entries = journal.entries ?? [];
+  const tags = dirents
+    .filter((d) => d.isDirectory() && MIGRATION_NAME_RE.test(d.name))
+    .map((d) => d.name)
+    .sort();
+
   const out: PendingMigration[] = [];
-  for (const entry of entries) {
-    const filePath = path.join(drizzleDir, `${entry.tag}.sql`);
+  for (const tag of tags) {
+    const sqlPath = path.join(drizzleDir, tag, "migration.sql");
     let sql: string;
     try {
-      sql = await fs.readFile(filePath, "utf-8");
+      sql = await fs.readFile(sqlPath, "utf-8");
     } catch {
       continue;
     }
     out.push({
-      name: entry.tag,
+      name: tag,
       sql,
       isBaseline: sql === BASELINE_SQL_BODY,
     });
@@ -1039,16 +1195,21 @@ export async function introspectProdWithCache({
 
 /**
  * Verifies the on-disk artifacts produced by `drizzle-kit generate` are
- * complete: every journal entry must reference an existing SQL file and
- * matching snapshot. We can settle the spawn early on idle (drizzle-kit's
- * neon driver / esbuild service can leave handles open that prevent a clean
- * process exit), so we need a separate signal that the work actually
- * finished. A complete journal whose referenced files all exist means
- * drizzle-kit got past the write phase before we killed it; a missing file
- * means we settled too early and the plan would be partial / incorrect.
+ * complete. We can settle the spawn early on idle (drizzle-kit's neon driver
+ * / esbuild service can leave handles open that prevent a clean process
+ * exit), so we need a separate signal that the work actually finished. A
+ * complete set of write-phase artifacts means drizzle-kit got past writing
+ * before we killed it; a partial set means we settled too early and the plan
+ * would be partial / incorrect.
+ *
+ * Per-layout completeness rules:
+ *   - 0 (pre-v1): journal at `meta/_journal.json` whose every entry has a
+ *     matching `<tag>.sql` + `meta/<idx>_snapshot.json`.
+ *   - 1 (v1+):    one `<tag>/` directory per migration containing both
+ *     `migration.sql` and `snapshot.json`.
  *
  * Returns the number of complete entries (0 means drizzle-kit reported "no
- * schema changes" and never wrote a journal).
+ * schema changes" and never wrote any migration artifacts).
  */
 export async function assertGenerateArtifactsComplete(
   drizzleDir: string,
@@ -1056,54 +1217,91 @@ export async function assertGenerateArtifactsComplete(
     SpawnDrizzleKitWithEarlyTerminationResult,
     "terminatedReason" | "stderr"
   >,
+  drizzleKitMajor: DrizzleKitMajor,
 ): Promise<number> {
-  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
-  let entries: Array<{ idx: number; tag: string }>;
-  try {
-    const journal = JSON.parse(await fs.readFile(journalPath, "utf-8")) as {
-      entries?: Array<{ idx: number; tag: string }>;
-    };
-    entries = journal.entries ?? [];
-  } catch {
-    // No journal at all. The benign reading is "drizzle-kit reported no
-    // schema changes and never wrote one." But if we settled via `idle` AND
-    // stderr is non-empty, that combination is suspicious by definition:
-    // on a successful generate, drizzle-kit writes the journal before going
-    // quiet. An idle settle with no journal AND output on stderr almost
-    // certainly means the command failed before completing — Treat it as a
-    // hard failure so we don't tell the user "already in sync" when the
-    // diff never actually ran.
-    if (
-      spawnResult.terminatedReason === "idle" &&
-      spawnResult.stderr.trim().length > 0
-    ) {
-      throw new DyadError(
-        `drizzle-kit generate produced no journal but emitted stderr before going idle; the command likely failed before writing artifacts: ${spawnResult.stderr.trim()}`,
-        DyadErrorKind.External,
-      );
+  // Shared "no artifacts but stderr after idle" guard. On a successful
+  // generate, drizzle-kit always writes its journal/migration files before
+  // going quiet — so seeing idle + stderr + zero artifacts means the command
+  // crashed before producing anything; surface it instead of silently
+  // returning "already in sync".
+  const idleFailureWithoutArtifacts = (): never => {
+    throw new DyadError(
+      `drizzle-kit generate produced no migration artifacts but emitted stderr before going idle; the command likely failed before writing artifacts: ${spawnResult.stderr.trim()}`,
+      DyadErrorKind.External,
+    );
+  };
+  const noArtifactsIdleSuspicious =
+    spawnResult.terminatedReason === "idle" &&
+    spawnResult.stderr.trim().length > 0;
+
+  if (drizzleKitMajor === 0) {
+    const journalPath = path.join(drizzleDir, "meta", "_journal.json");
+    let entries: Array<{ idx: number; tag: string }>;
+    try {
+      const journal = JSON.parse(await fs.readFile(journalPath, "utf-8")) as {
+        entries?: Array<{ idx: number; tag: string }>;
+      };
+      entries = journal.entries ?? [];
+    } catch {
+      if (noArtifactsIdleSuspicious) idleFailureWithoutArtifacts();
+      return 0;
     }
+
+    for (const entry of entries) {
+      const sqlPath = path.join(drizzleDir, `${entry.tag}.sql`);
+      const snapshotPath = path.join(
+        drizzleDir,
+        "meta",
+        `${String(entry.idx).padStart(4, "0")}_snapshot.json`,
+      );
+      try {
+        await fs.access(sqlPath);
+        await fs.access(snapshotPath);
+      } catch {
+        throw new DyadError(
+          `drizzle-kit generate left an incomplete journal: entry ${entry.tag} is missing its SQL or snapshot file. The process likely settled before drizzle-kit finished writing artifacts.`,
+          DyadErrorKind.External,
+        );
+      }
+    }
+
+    return entries.length;
+  }
+
+  // v1 layout: enumerate migration directories under drizzleDir.
+  let dirents: import("node:fs").Dirent[];
+  try {
+    dirents = await fs.readdir(drizzleDir, { withFileTypes: true });
+  } catch {
+    if (noArtifactsIdleSuspicious) idleFailureWithoutArtifacts();
     return 0;
   }
 
-  for (const entry of entries) {
-    const sqlPath = path.join(drizzleDir, `${entry.tag}.sql`);
-    const snapshotPath = path.join(
-      drizzleDir,
-      "meta",
-      `${String(entry.idx).padStart(4, "0")}_snapshot.json`,
-    );
+  const tags = dirents
+    .filter((d) => d.isDirectory() && MIGRATION_NAME_RE.test(d.name))
+    .map((d) => d.name)
+    .sort();
+
+  if (tags.length === 0) {
+    if (noArtifactsIdleSuspicious) idleFailureWithoutArtifacts();
+    return 0;
+  }
+
+  for (const tag of tags) {
+    const sqlPath = path.join(drizzleDir, tag, "migration.sql");
+    const snapshotPath = path.join(drizzleDir, tag, "snapshot.json");
     try {
       await fs.access(sqlPath);
       await fs.access(snapshotPath);
     } catch {
       throw new DyadError(
-        `drizzle-kit generate left an incomplete journal: entry ${entry.tag} is missing its SQL or snapshot file. The process likely settled before drizzle-kit finished writing artifacts.`,
+        `drizzle-kit generate left an incomplete migration: directory ${tag} is missing migration.sql or snapshot.json. The process likely settled before drizzle-kit finished writing artifacts.`,
         DyadErrorKind.External,
       );
     }
   }
 
-  return entries.length;
+  return tags.length;
 }
 
 /**
@@ -1123,11 +1321,13 @@ export async function runBaselineGenerate({
   appPath,
   prodSchemaPath,
   prodConnectionUri,
+  drizzleKitMajor,
 }: {
   workDir: string;
   appPath: string;
   prodSchemaPath: string;
   prodConnectionUri: string;
+  drizzleKitMajor: DrizzleKitMajor;
 }): Promise<{ baselineProduced: boolean }> {
   const drizzleDir = path.join(workDir, "drizzle");
   await fs.mkdir(drizzleDir, { recursive: true });
@@ -1185,28 +1385,29 @@ export async function runBaselineGenerate({
 
   // Verify drizzle-kit finished writing its artifacts before we settled.
   // Idle-termination is a best-effort signal (the neon driver / esbuild
-  // service can keep handles open after work completes), so a journal with
-  // missing SQL or snapshot files means we killed the process mid-write and
-  // the plan would be partial.
+  // service can keep handles open after work completes), so artifacts with
+  // missing files mean we killed the process mid-write and the plan would
+  // be partial.
   const completeEntryCount = await assertGenerateArtifactsComplete(
     drizzleDir,
     result,
+    drizzleKitMajor,
   );
   if (completeEntryCount === 0) {
-    // No journal — drizzle-kit said "no schema changes" (empty prod). No
-    // baseline file to neutralize; the next diff-generate will start fresh.
+    // drizzle-kit said "no schema changes" (empty prod). No baseline file
+    // to neutralize; the next diff-generate will start fresh.
     return { baselineProduced: false };
   }
 
-  // Find the baseline file via the journal's first entry. drizzle-kit names
-  // the file randomly on some versions even with --name=baseline, so we
-  // can't hardcode a path.
-  const journalPath = path.join(drizzleDir, "meta", "_journal.json");
-  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8")) as {
-    entries?: Array<{ idx: number; tag: string }>;
-  };
-  const firstEntry = journal.entries?.[0];
-  if (!firstEntry) {
+  // Locate the baseline file. drizzle-kit names it randomly on some
+  // versions even with --name=baseline, so we can't hardcode a path. In
+  // both layouts the first generated migration's name has the leading
+  // `0000_` prefix, so we sort the discovered names and take the first.
+  const baselineSqlPath = await locateBaselineSqlPath(
+    drizzleDir,
+    drizzleKitMajor,
+  );
+  if (!baselineSqlPath) {
     return { baselineProduced: false };
   }
 
@@ -1214,10 +1415,40 @@ export async function runBaselineGenerate({
   // to zero statements in `parseDrizzleMigrationFile` and never contributes
   // to the apply plan; the snapshot beside it is the real anchor for the
   // next diff.
-  const baselineSqlPath = path.join(drizzleDir, `${firstEntry.tag}.sql`);
   await fs.writeFile(baselineSqlPath, BASELINE_SQL_BODY, "utf-8");
 
   return { baselineProduced: true };
+}
+
+async function locateBaselineSqlPath(
+  drizzleDir: string,
+  drizzleKitMajor: DrizzleKitMajor,
+): Promise<string | null> {
+  if (drizzleKitMajor === 0) {
+    const journalPath = path.join(drizzleDir, "meta", "_journal.json");
+    let journal: { entries?: Array<{ idx: number; tag: string }> };
+    try {
+      journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+    } catch {
+      return null;
+    }
+    const firstEntry = journal.entries?.[0];
+    if (!firstEntry) return null;
+    return path.join(drizzleDir, `${firstEntry.tag}.sql`);
+  }
+
+  let dirents: import("node:fs").Dirent[];
+  try {
+    dirents = await fs.readdir(drizzleDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const tags = dirents
+    .filter((d) => d.isDirectory() && MIGRATION_NAME_RE.test(d.name))
+    .map((d) => d.name)
+    .sort();
+  if (tags.length === 0) return null;
+  return path.join(drizzleDir, tags[0], "migration.sql");
 }
 
 /**
@@ -1230,11 +1461,13 @@ export async function runDiffGenerate({
   appPath,
   devSchemaPath,
   devConnectionUri,
+  drizzleKitMajor,
 }: {
   workDir: string;
   appPath: string;
   devSchemaPath: string;
   devConnectionUri: string;
+  drizzleKitMajor: DrizzleKitMajor;
 }): Promise<void> {
   const drizzleDir = path.join(workDir, "drizzle");
   const configPath = await createDrizzleConfig({
@@ -1291,10 +1524,10 @@ export async function runDiffGenerate({
     );
   }
 
-  // Same idle-termination guard as the baseline run: verify every journal
-  // entry has its SQL + snapshot on disk before letting the caller read the
-  // pending migrations.
-  await assertGenerateArtifactsComplete(drizzleDir, result);
+  // Same idle-termination guard as the baseline run: verify every migration
+  // artifact is on disk before letting the caller read the pending
+  // migrations.
+  await assertGenerateArtifactsComplete(drizzleDir, result, drizzleKitMajor);
 }
 
 // =============================================================================
@@ -1310,6 +1543,7 @@ export interface MigrationContext {
   prodUri: string;
   appPath: string;
   workDir: string;
+  drizzleKitMajor: DrizzleKitMajor;
 }
 
 export async function prepareMigrationContext({
@@ -1380,7 +1614,8 @@ export async function prepareMigrationContext({
 
   // 4. Ensure migration deps are installed in the user's app
   const appPath = getDyadAppPath(appData.path);
-  if (!(await areMigrationDepsInstalled(appPath))) {
+  const depsAlreadyInstalled = await areMigrationDepsInstalled(appPath);
+  if (!depsAlreadyInstalled) {
     logger.info(
       `Migration dependencies not installed in ${appPath}; installing now.`,
     );
@@ -1408,7 +1643,16 @@ export async function prepareMigrationContext({
     }
   }
 
-  // 5. Work directory — preview always starts from a clean slate. The
+  // 5. Detect installed drizzle-kit major to pick the right on-disk migration
+  // layout downstream. Run after the install step so we read whichever
+  // version is now on disk (either user-pinned existing copy or the v1 RC we
+  // just installed).
+  const drizzleKitMajor = await getInstalledDrizzleKitMajor(appPath);
+  logger.info(
+    `Detected drizzle-kit major ${drizzleKitMajor} in ${appPath} (${depsAlreadyInstalled ? "pre-existing" : "freshly installed"})`,
+  );
+
+  // 6. Work directory — preview always starts from a clean slate. The
   // migrate handler does not call prepareMigrationContext; it consumes the
   // SQL plan from the in-memory plan store instead.
   const workDir = getMigrationWorkDir(appId);
@@ -1423,5 +1667,6 @@ export async function prepareMigrationContext({
     prodUri,
     appPath,
     workDir,
+    drizzleKitMajor,
   };
 }

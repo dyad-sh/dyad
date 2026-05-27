@@ -35,7 +35,7 @@ export class AppManagement {
       "telemetry-later-button",
     );
     if (await telemetryLaterButton.isVisible().catch(() => false)) {
-      await telemetryLaterButton.click();
+      await telemetryLaterButton.click({ timeout: Timeout.MEDIUM });
     }
 
     await this.page.getByRole("link", { name: "Apps" }).hover();

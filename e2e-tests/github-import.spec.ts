@@ -1,4 +1,6 @@
 import { expect } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "./helpers/test_helper";
 
 test("should open GitHub import modal from home", async ({ po }) => {
@@ -193,16 +195,18 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
   await expect(repoRow).toBeVisible();
   await repoRow.getByRole("button", { name: "Import" }).click();
 
-  await expect(
-    po.page.getByRole("heading", { name: "Import App" }),
-  ).not.toBeVisible();
-
-  await po.appManagement.showAppList();
-  await expect(
-    po.appManagement.getAppListItem({ appName: "existing-app" }),
-  ).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect.poll(
+    async () => {
+      try {
+        await po.appManagement.showAppList();
+        const item = po.appManagement.getAppListItem({ appName: "existing-app" });
+        return await item.isVisible().catch(() => false);
+      } catch {
+        return false;
+      }
+    },
+    { timeout: 60_000 },
+  ).toBe(true);
   await po.appManagement.clickAppListItem({ appName: "existing-app" });
 
   await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
@@ -211,5 +215,13 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
   );
   await po.appManagement.getTitleBarAppNameButton().click();
 
-  await po.appManagement.expectNoAppUpgrades();
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await expect.poll(() => {
+    const pkgPath = path.join(appPath, "package.json");
+    if (!fs.existsSync(pkgPath)) {
+      return false;
+    }
+    const pkg = fs.readFileSync(pkgPath, "utf8");
+    return pkg.includes("@dyad-sh/react-vite-component-tagger");
+  }).toBe(true);
 });

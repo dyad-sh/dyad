@@ -121,7 +121,7 @@ export const GetNeonBranchConnectionUriResponseSchema = z.object({
   neonAuth: z
     .object({
       baseUrl: z.string(),
-      cookieSecret: z.string(),
+      cookieSecret: z.string().optional(),
     })
     .optional(),
 });

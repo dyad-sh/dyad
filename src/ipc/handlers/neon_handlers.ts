@@ -17,12 +17,9 @@ import { EndpointType } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
-  generateCookieSecret,
   getEnvFilePath,
   readEnvFileIfExists,
-  readEnvVarsOrEmpty,
   removeNeonEnvVars,
-  upsertEnvVarInFile,
 } from "../utils/app_env_var_utils";
 import {
   logger,
@@ -37,6 +34,7 @@ import {
   syncActiveNeonAuthCookieSecretFromEnv,
   type NeonBranchType,
 } from "../utils/neon_utils";
+import { detectFrameworkType } from "../utils/framework_utils";
 import {
   ensureNitroIfVite,
   type EnsureNitroResult,
@@ -903,33 +901,29 @@ export function registerNeonHandlers() {
         branchId,
       });
 
-      let neonAuth: { baseUrl: string; cookieSecret: string } | undefined;
+      let neonAuth: { baseUrl: string; cookieSecret?: string } | undefined;
       try {
         const baseUrl = await ensureNeonAuth({
           projectId: appData.neonProjectId,
           branchId,
         });
         if (baseUrl) {
-          const envVars = await readEnvVarsOrEmpty({ appPath: appData.path });
-          const existingSecret = envVars.find(
-            (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
-          )?.value;
-          let cookieSecret = existingSecret;
-          if (!cookieSecret) {
-            // Persist a freshly generated secret so subsequent reads (e.g.
-            // TanStack Query refetches) return the same value, preventing
-            // auth failures from a drifting secret.
-            cookieSecret = generateCookieSecret();
-            await upsertEnvVarInFile({
-              appPath: appData.path,
-              key: "NEON_AUTH_COOKIE_SECRET",
-              value: cookieSecret,
-            });
-          }
-          neonAuth = {
-            baseUrl,
-            cookieSecret,
-          };
+          // Only Next.js consumes NEON_AUTH_COOKIE_SECRET (the `createNeonAuth`
+          // integration uses it to sign the `session_data` cache cookie), so
+          // we resolve and surface the secret only for Next.js apps. For
+          // Next.js, the secret is generated once per branch and persisted to
+          // the DB column by `getOrCreateNeonAuthCookieSecret`.
+          const frameworkType = detectFrameworkType(
+            getDyadAppPath(appData.path),
+          );
+          const cookieSecret =
+            frameworkType === "nextjs"
+              ? await getOrCreateNeonAuthCookieSecret({
+                  appData,
+                  branchType,
+                })
+              : undefined;
+          neonAuth = { baseUrl, cookieSecret };
         }
       } catch (error) {
         logger.warn(

@@ -230,6 +230,7 @@ export default function AppsPage() {
             value={view}
             onChange={(next) => {
               setView(next);
+              setSearchQuery("");
               setOpenCollectionId(null);
               if (next !== "apps") {
                 setIsSelectionMode(false);

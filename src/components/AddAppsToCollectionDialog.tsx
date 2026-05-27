@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { showError, showSuccess } from "@/lib/toast";
 import { useAppCollections } from "@/hooks/useAppCollections";
+import { buildCollectionNameByAppId } from "@/lib/appCollections";
 import type { ListedApp } from "@/ipc/types/app";
 import type { AppCollection } from "@/hooks/useAppCollections";
 
@@ -43,16 +44,10 @@ export function AddAppsToCollectionDialog({
     }
   }, [open]);
 
-  const collectionNameByAppId = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const col of collections) {
-      if (col.id === collection.id) continue;
-      for (const appId of col.appIds) {
-        map.set(appId, col.name);
-      }
-    }
-    return map;
-  }, [collections, collection.id]);
+  const collectionNameByAppId = useMemo(
+    () => buildCollectionNameByAppId(collections, collection.id),
+    [collections, collection.id],
+  );
 
   const availableApps = useMemo(() => {
     const memberSet = new Set(collection.appIds);

@@ -180,6 +180,14 @@ export function registerAppCollectionHandlers() {
     // but we null out explicitly first so the operation is robust regardless
     // of whether foreign_keys pragma is enabled in the current connection.
     db.transaction((tx) => {
+      const existingCollection = tx
+        .select({ id: appCollections.id })
+        .from(appCollections)
+        .where(eq(appCollections.id, id))
+        .get();
+      if (!existingCollection) {
+        throw new DyadError("Collection not found", DyadErrorKind.NotFound);
+      }
       tx.update(apps)
         .set({ collectionId: null })
         .where(eq(apps.collectionId, id))
@@ -192,6 +200,16 @@ export function registerAppCollectionHandlers() {
     const { collectionId, appIds } = params;
     if (appIds.length === 0) return;
     db.transaction((tx) => {
+      if (collectionId != null) {
+        const existingCollection = tx
+          .select({ id: appCollections.id })
+          .from(appCollections)
+          .where(eq(appCollections.id, collectionId))
+          .get();
+        if (!existingCollection) {
+          throw new DyadError("Collection not found", DyadErrorKind.NotFound);
+        }
+      }
       tx.update(apps)
         .set({ collectionId })
         .where(inArray(apps.id, appIds))

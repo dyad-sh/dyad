@@ -31,6 +31,19 @@ testSkipIfWindows(
       ),
     ).toBeVisible();
 
+    // Search is shared by both tabs, so switching tabs should clear it.
+    await po.page
+      .getByRole("textbox", { name: "Search collections" })
+      .fill("not-a-real-collection");
+    await po.page.getByTestId("apps-view-tab-apps").click();
+    await expect(
+      po.page.getByRole("textbox", { name: "Search apps" }),
+    ).toHaveValue("");
+    await expect(
+      po.page.getByTestId(`app-showcase-card-${appName1}`),
+    ).toBeVisible();
+    await po.page.getByTestId("apps-view-tab-collections").click();
+
     // Open the add-collection dialog and create a collection with the first app.
     await po.page.getByTestId("add-collection-button").click();
     await po.page

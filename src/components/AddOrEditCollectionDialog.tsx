@@ -18,6 +18,7 @@ import {
 import { showError, showSuccess } from "@/lib/toast";
 import { useAppCollections } from "@/hooks/useAppCollections";
 import { cn } from "@/lib/utils";
+import { buildCollectionNameByAppId } from "@/lib/appCollections";
 import type { ListedApp } from "@/ipc/types/app";
 import type { AppCollection } from "@/hooks/useAppCollections";
 
@@ -53,16 +54,10 @@ export function AddOrEditCollectionDialog({
     }
   }, [open, collection]);
 
-  const collectionNameByAppId = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const col of collections) {
-      if (isEdit && col.id === collection!.id) continue;
-      for (const appId of col.appIds) {
-        map.set(appId, col.name);
-      }
-    }
-    return map;
-  }, [collections, collection, isEdit]);
+  const collectionNameByAppId = useMemo(
+    () => buildCollectionNameByAppId(collections, collection?.id),
+    [collections, collection?.id],
+  );
 
   const selectedApps = useMemo(
     () => allApps.filter((a) => selectedAppIds.has(a.id)),

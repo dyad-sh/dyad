@@ -71,7 +71,7 @@ end of new-file
 }
 
 === pnpm-workspace.yaml ===
-[10 lines]
+[13 lines]
 
 === to-be-edited.txt ===
 after-edit

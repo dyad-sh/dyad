@@ -14,7 +14,18 @@ verify_electron() {
 
 install_electron_binary() {
   rm -rf node_modules/electron/dist node_modules/electron/path.txt
-  env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true npx install-electron
+
+  if env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true npx --no-install install-electron; then
+    return 0
+  fi
+
+  echo "install-electron is unavailable or failed, falling back to Electron install.js..."
+  if [ -f node_modules/electron/install.js ]; then
+    env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true node node_modules/electron/install.js
+    return $?
+  fi
+
+  return 1
 }
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
@@ -22,19 +33,14 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
   unset ELECTRON_SKIP_BINARY_DOWNLOAD
 
   if env -u ELECTRON_SKIP_BINARY_DOWNLOAD npm ci --no-audit --no-fund --progress=false --ignore-scripts=false; then
-    install_electron_binary
-
-    if verify_electron; then
+    if install_electron_binary && verify_electron; then
       exit 0
     fi
 
     echo "Electron verification failed after install-electron, rebuilding Electron..."
-    if env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true npm rebuild electron --ignore-scripts=false && verify_electron; then
-      exit 0
-    fi
-
-    echo "Electron verification failed after rebuild, running install-electron again..."
-    if install_electron_binary && verify_electron; then
+    if env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true npm rebuild electron --ignore-scripts=false &&
+      install_electron_binary &&
+      verify_electron; then
       exit 0
     fi
 

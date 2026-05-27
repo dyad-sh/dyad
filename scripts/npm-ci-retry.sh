@@ -4,7 +4,7 @@
 # These errors are caused by file locking from antivirus or indexing services.
 #
 # Electron 42+ no longer has a postinstall hook, so we must explicitly invoke
-# install.js after npm ci to download the binary.
+# our own install-electron-binary.mjs script after npm ci.
 
 set -e
 
@@ -15,8 +15,7 @@ verify_electron() {
   node -e 'console.log(require("electron"))'
 }
 
-# Where @electron/get caches downloaded zips. A corrupted entry here causes
-# install.js to silently "succeed" without writing path.txt.
+# Where @electron/get caches downloaded zips.
 electron_cache_dir() {
   case "$(uname -s)" in
     Darwin) echo "$HOME/Library/Caches/electron" ;;
@@ -36,34 +35,22 @@ clear_electron_cache() {
 }
 
 install_electron_binary() {
-  # Force fresh download (bypass any cached zip). install.js reads
-  # `force_no_cache` from env and passes it as `force: true` to @electron/get.
-  env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true \
-    node node_modules/electron/install.js
+  # Run our own installer (bypasses electron's install.js which silently
+  # exits 0 on some self-hosted runners).
+  env -u ELECTRON_SKIP_BINARY_DOWNLOAD node scripts/install-electron-binary.mjs
 }
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
+  echo "===== Attempt $i / $MAX_ATTEMPTS ====="
   rm -rf node_modules || true
   unset ELECTRON_SKIP_BINARY_DOWNLOAD
   clear_electron_cache
 
   if env -u ELECTRON_SKIP_BINARY_DOWNLOAD npm ci --no-audit --no-fund --progress=false --ignore-scripts=false; then
-    # Electron 42 has no postinstall, so npm ci leaves the binary uninstalled.
-    echo "Running Electron install.js (force_no_cache=true)..."
-    if install_electron_binary && [ -f node_modules/electron/path.txt ] && verify_electron; then
+    if install_electron_binary && verify_electron; then
       exit 0
     fi
-
-    echo "Electron install.js did not produce a working install (path.txt missing or require failed)."
-    echo "Rebuilding electron and retrying..."
-    if env -u ELECTRON_SKIP_BINARY_DOWNLOAD force_no_cache=true npm rebuild electron --ignore-scripts=false \
-        && install_electron_binary \
-        && [ -f node_modules/electron/path.txt ] \
-        && verify_electron; then
-      exit 0
-    fi
-
-    echo "Electron verification failed after rebuild."
+    echo "Electron install/verify failed on attempt $i."
   else
     echo "npm ci attempt $i failed."
   fi

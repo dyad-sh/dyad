@@ -435,7 +435,37 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
             stdio: "pipe",
           });
           fs.writeFileSync(path.join(tmpClone, "README.md"), `# ${repoName}\n`);
-          execSync(`git add README.md`, { cwd: tmpClone, stdio: "pipe" });
+          if (repoName === "existing-app") {
+            fs.writeFileSync(
+              path.join(tmpClone, "package.json"),
+              JSON.stringify(
+                {
+                  name: "existing-app",
+                  version: "0.0.1",
+                  private: true,
+                  devDependencies: {
+                    vite: "^5.0.0",
+                    "@vitejs/plugin-react-swc": "^3.9.0",
+                  },
+                },
+                null,
+                2,
+              ) + "\n",
+            );
+            fs.writeFileSync(
+              path.join(tmpClone, "vite.config.ts"),
+              [
+                "import { defineConfig } from \"vite\";",
+                "import react from \"@vitejs/plugin-react-swc\";",
+                "",
+                "export default defineConfig(() => ({",
+                "  plugins: [react()],",
+                "}));",
+                "",
+              ].join("\n"),
+            );
+          }
+          execSync(`git add -A`, { cwd: tmpClone, stdio: "pipe" });
           execSync(
             `git -c user.name=dyad -c user.email=dyad@example.com commit -m "initial commit"`,
             { cwd: tmpClone, stdio: "pipe" },

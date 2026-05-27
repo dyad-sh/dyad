@@ -1357,10 +1357,8 @@ async function handleCloneRepoFromUrl(
           `[GitHub Handler] Failed to auto-apply component tagger upgrade for ${owner}/${repoName}`,
           upgradeError,
         );
-        throw new DyadError(
-          `Failed to apply component tagger upgrade: ${upgradeError instanceof Error ? upgradeError.message : String(upgradeError)}`,
-          DyadErrorKind.External,
-        );
+        // Don't throw - upgrade failure should not block the import
+        // The app is already cloned successfully, so continue
       }
     }
 

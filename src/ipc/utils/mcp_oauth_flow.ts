@@ -215,11 +215,13 @@ async function startCallbackListener(
   }
   if (bound.length === 0) {
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
-    const err = new Error(
+    // Don't reject `code` here: we throw before returning, so the
+    // caller never gets a listener to attach `code.catch(...)` to,
+    // and a rejected-but-unobserved `code` would surface as an
+    // unhandled rejection in the Electron main process.
+    throw new Error(
       `Could not bind OAuth callback listener on port ${port} (tried IPv4 and IPv6 loopback).`,
     );
-    rejectCode(err);
-    throw err;
   }
 
   flow.servers.push(...bound);

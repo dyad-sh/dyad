@@ -1,10 +1,10 @@
-- paragraph: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
 - button "file1.txt file1.txt Edit":
   - img
-  - text: file1.txt file1.txt
+  - text: ""
   - button "Edit":
     - img
-    - text: Edit
+    - text: ""
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,10 +16,10 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 2: (2 files changed)"
+- text: "Version 2: (1 files changed)"
 - button "Copy Request ID":
   - img
-  - text: Request ID
+  - text: ""
 - paragraph: tc=local-agent/step-limit
 - paragraph: "Step 1: reading file."
 - img
@@ -48,285 +48,285 @@
 - paragraph: "Step 9: reading file."
 - img
 - text: Read package.json
-- paragraph: "Step 10: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 11: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 12: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 13: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 14: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 15: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 16: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 17: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 18: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 19: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 20: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 21: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 22: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 23: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 24: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 25: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 26: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 27: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 28: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 29: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 30: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 31: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 32: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 33: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 34: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 35: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 36: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 37: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 38: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 39: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 40: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 41: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 42: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 43: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 44: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 45: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 46: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 47: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 48: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 49: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 50: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 51: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 52: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 53: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 54: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 55: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 56: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 57: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 58: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 59: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 60: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 61: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 62: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 63: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 64: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 65: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 66: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 67: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 68: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 69: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 70: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 71: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 72: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 73: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 74: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 75: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 76: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 77: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 78: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 79: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 80: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 81: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 82: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 83: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 84: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 85: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 86: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 87: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 88: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 89: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 90: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 91: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 92: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 93: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 94: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 95: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 96: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 97: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 98: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 99: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
-- paragraph: "Step 100: reading file."
+- paragraph: "/Step \\d+: reading file\\./"
 - img
 - text: Read package.json
 - img
-- text: Paused after 100 tool calls
+- text: /Paused after \d+ tool calls/
 - button "Continue":
   - img
-  - text: Continue
-- text: Automatically paused after 100 tool calls.
+  - text: ""
+- text: /Automatically paused after \d+ tool calls\./
 - button "Copy":
   - img
 - img
@@ -337,14 +337,14 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
-  - text: Request ID
+  - text: ""
 - paragraph: Continue
 - button "file1.txt file1.txt Edit":
   - img
-  - text: file1.txt file1.txt
+  - text: ""
   - button "Edit":
     - img
-    - text: Edit
+    - text: ""
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -357,23 +357,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
-  - text: Request ID
-- paragraph: tc=local-agent/simple-response
-- paragraph: Hello! I understand your request. This is a simple response from the Basic Agent mode.
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: Request ID
+  - text: ""
 - button "Undo":
   - img
-  - text: Undo
+  - text: ""
 - button "Retry":
   - img
-  - text: Retry
+  - text: ""

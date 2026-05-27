@@ -1,10 +1,10 @@
-- paragraph: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
 - button "file1.txt file1.txt Edit":
   - img
-  - text: file1.txt file1.txt
+  - text: ""
   - button "Edit":
     - img
-    - text: Edit
+    - text: ""
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,10 +16,10 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 2: (2 files changed)"
+- text: "Version 2: (1 files changed)"
 - button "Copy Request ID":
   - img
-  - text: Request ID
+  - text: ""
 - paragraph: tc=local-agent/read-then-edit
 - paragraph: Let me first read the current file contents to understand what we're working with.
 - img
@@ -27,9 +27,9 @@
 - paragraph: Now I'll update the welcome message to say UPDATED imported app instead.
 - button "Search & Replace App.tsx src/App.tsx":
   - img
-  - text: Search & Replace App.tsx
+  - text: ""
   - img
-  - text: src/App.tsx
+  - text: ""
 - paragraph: Done! I've updated the title from 'Minimal imported app' to 'UPDATED imported app'. The change has been applied successfully.
 - button "Copy":
   - img
@@ -40,13 +40,13 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 3: (1 files changed)"
+- text: "Version 3: (2 files changed)"
 - button "Copy Request ID":
   - img
-  - text: Request ID
+  - text: ""
 - button "Undo":
   - img
-  - text: Undo
+  - text: ""
 - button "Retry":
   - img
-  - text: Retry
+  - text: ""

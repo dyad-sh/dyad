@@ -15,6 +15,7 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { withLock } from "../utils/lock_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   getEnvFilePath,
@@ -687,144 +688,148 @@ export function registerNeonHandlers() {
     const { appId, branchId } = params;
     logger.info(`Setting active Neon branch ${branchId} for app ${appId}`);
 
-    try {
-      const appRecord = await db
-        .select()
-        .from(apps)
-        .where(eq(apps.id, appId))
-        .limit(1);
+    // Serialize per-app to avoid races between concurrent branch switches
+    // (env-secret sync, DB flip, and .env.local rewrite must run atomically).
+    return withLock(appId, async () => {
+      try {
+        const appRecord = await db
+          .select()
+          .from(apps)
+          .where(eq(apps.id, appId))
+          .limit(1);
 
-      if (appRecord.length === 0) {
-        throw new DyadError(
-          `App with ID ${appId} not found`,
-          DyadErrorKind.NotFound,
+        if (appRecord.length === 0) {
+          throw new DyadError(
+            `App with ID ${appId} not found`,
+            DyadErrorKind.NotFound,
+          );
+        }
+
+        const appData = appRecord[0];
+        const envFileSnapshot = await readEnvFileIfExists({
+          appPath: appData.path,
+        });
+
+        if (!appData.neonProjectId) {
+          throw new DyadError(
+            `No Neon project found for app ${appId}`,
+            DyadErrorKind.Precondition,
+          );
+        }
+
+        // Validate that the branch belongs to this project
+        const neonClient = await getNeonClient();
+        const branchResponse = await neonClient.getProjectBranch(
+          appData.neonProjectId,
+          branchId,
         );
-      }
+        if (branchResponse.data.branch?.project_id !== appData.neonProjectId) {
+          throw new DyadError(
+            `Branch ${branchId} does not belong to Neon project ${appData.neonProjectId}`,
+            DyadErrorKind.Precondition,
+          );
+        }
 
-      const appData = appRecord[0];
-      const envFileSnapshot = await readEnvFileIfExists({
-        appPath: appData.path,
-      });
+        if (branchId === appData.neonPreviewBranchId) {
+          throw new DyadError(
+            "Preview branches are used for historical rollback and cannot be selected as the active Neon branch.",
+            DyadErrorKind.Precondition,
+          );
+        }
 
-      if (!appData.neonProjectId) {
-        throw new DyadError(
-          `No Neon project found for app ${appId}`,
-          DyadErrorKind.Precondition,
-        );
-      }
-
-      // Validate that the branch belongs to this project
-      const neonClient = await getNeonClient();
-      const branchResponse = await neonClient.getProjectBranch(
-        appData.neonProjectId,
-        branchId,
-      );
-      if (branchResponse.data.branch?.project_id !== appData.neonProjectId) {
-        throw new DyadError(
-          `Branch ${branchId} does not belong to Neon project ${appData.neonProjectId}`,
-          DyadErrorKind.Precondition,
-        );
-      }
-
-      if (branchId === appData.neonPreviewBranchId) {
-        throw new DyadError(
-          "Preview branches are used for historical rollback and cannot be selected as the active Neon branch.",
-          DyadErrorKind.Precondition,
-        );
-      }
-
-      const branchType: NeonBranchType =
-        branchId === appData.neonDevelopmentBranchId
-          ? "development"
-          : "production";
-
-      // Back-compat for existing apps: the OUTGOING branch's actual cookie
-      // secret may only exist in .env.local, or a prior build may have put a
-      // generated value in DB. Capture the runtime env value before
-      // autoInjectNeonEnvVars overwrites .env.local with the incoming branch.
-      // Preview branches do not have a persisted cookie-secret column, so skip
-      // that outgoing shape.
-      const outgoingBranchId =
-        appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
-      if (
-        outgoingBranchId &&
-        outgoingBranchId !== appData.neonPreviewBranchId
-      ) {
-        const outgoingBranchType: NeonBranchType =
-          outgoingBranchId === appData.neonDevelopmentBranchId
+        const branchType: NeonBranchType =
+          branchId === appData.neonDevelopmentBranchId
             ? "development"
             : "production";
-        await syncActiveNeonAuthCookieSecretFromEnv({
-          appData,
-          branchType: outgoingBranchType,
-        });
-      }
 
-      // Lock in the per-branch cookie secret using PRE-update appData (old
-      // active branch). After the DB flip below, autoInjectNeonEnvVars hits
-      // the DB-hit path and returns this same value — no risk of falsely
-      // adopting the previous branch's .env.local secret as the new branch's.
-      await getOrCreateNeonAuthCookieSecret({ appData, branchType });
-
-      // Update DB first, then inject env vars.
-      // If env injection fails, revert the DB update so the app and env stay in sync.
-      const previousActiveBranchId = appData.neonActiveBranchId;
-      await db
-        .update(apps)
-        .set({ neonActiveBranchId: branchId })
-        .where(eq(apps.id, appId));
-
-      let warning: string | undefined;
-      try {
-        warning = await autoInjectNeonEnvVars({
-          appId,
-          appPath: appData.path,
-          projectId: appData.neonProjectId!,
-          branchId,
-          branchType,
-        });
-      } catch (envError) {
-        logger.warn(
-          `autoInjectNeonEnvVars failed for app ${appId}, reverting active branch: ${envError}`,
-        );
-        try {
-          await db
-            .update(apps)
-            .set({ neonActiveBranchId: previousActiveBranchId })
-            .where(eq(apps.id, appId));
-        } catch (revertError) {
-          logger.error(
-            `Failed to revert active branch for app ${appId}: ${revertError}`,
-          );
-        }
-        try {
-          await restoreEnvFileSnapshot({
-            appPath: appData.path,
-            snapshot: envFileSnapshot,
+        // Back-compat for existing apps: the OUTGOING branch's actual cookie
+        // secret may only exist in .env.local, or a prior build may have put a
+        // generated value in DB. Capture the runtime env value before
+        // autoInjectNeonEnvVars overwrites .env.local with the incoming branch.
+        // Preview branches do not have a persisted cookie-secret column, so skip
+        // that outgoing shape.
+        const outgoingBranchId =
+          appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
+        if (
+          outgoingBranchId &&
+          outgoingBranchId !== appData.neonPreviewBranchId
+        ) {
+          const outgoingBranchType: NeonBranchType =
+            outgoingBranchId === appData.neonDevelopmentBranchId
+              ? "development"
+              : "production";
+          await syncActiveNeonAuthCookieSecretFromEnv({
+            appData,
+            branchType: outgoingBranchType,
           });
-        } catch (restoreError) {
-          logger.error(
-            `Failed to restore .env.local for app ${appId}: ${restoreError}`,
-          );
         }
-        throw envError;
-      }
 
-      logger.info(
-        `Successfully set active branch ${branchId} for app ${appId}`,
-      );
-      return { success: true, warning };
-    } catch (error: any) {
-      if (error instanceof DyadError) throw error;
-      const errorMessage = getNeonErrorMessage(error);
-      logger.error(
-        `Failed to set active branch for app ${appId}: ${errorMessage}`,
-      );
-      throw new DyadError(
-        `Failed to set active branch for app ${appId}: ${errorMessage}`,
-        DyadErrorKind.External,
-      );
-    }
+        // Lock in the per-branch cookie secret using PRE-update appData (old
+        // active branch). After the DB flip below, autoInjectNeonEnvVars hits
+        // the DB-hit path and returns this same value — no risk of falsely
+        // adopting the previous branch's .env.local secret as the new branch's.
+        await getOrCreateNeonAuthCookieSecret({ appData, branchType });
+
+        // Update DB first, then inject env vars.
+        // If env injection fails, revert the DB update so the app and env stay in sync.
+        const previousActiveBranchId = appData.neonActiveBranchId;
+        await db
+          .update(apps)
+          .set({ neonActiveBranchId: branchId })
+          .where(eq(apps.id, appId));
+
+        let warning: string | undefined;
+        try {
+          warning = await autoInjectNeonEnvVars({
+            appId,
+            appPath: appData.path,
+            projectId: appData.neonProjectId!,
+            branchId,
+            branchType,
+          });
+        } catch (envError) {
+          logger.warn(
+            `autoInjectNeonEnvVars failed for app ${appId}, reverting active branch: ${envError}`,
+          );
+          try {
+            await db
+              .update(apps)
+              .set({ neonActiveBranchId: previousActiveBranchId })
+              .where(eq(apps.id, appId));
+          } catch (revertError) {
+            logger.error(
+              `Failed to revert active branch for app ${appId}: ${revertError}`,
+            );
+          }
+          try {
+            await restoreEnvFileSnapshot({
+              appPath: appData.path,
+              snapshot: envFileSnapshot,
+            });
+          } catch (restoreError) {
+            logger.error(
+              `Failed to restore .env.local for app ${appId}: ${restoreError}`,
+            );
+          }
+          throw envError;
+        }
+
+        logger.info(
+          `Successfully set active branch ${branchId} for app ${appId}`,
+        );
+        return { success: true, warning };
+      } catch (error: any) {
+        if (error instanceof DyadError) throw error;
+        const errorMessage = getNeonErrorMessage(error);
+        logger.error(
+          `Failed to set active branch for app ${appId}: ${errorMessage}`,
+        );
+        throw new DyadError(
+          `Failed to set active branch for app ${appId}: ${errorMessage}`,
+          DyadErrorKind.External,
+        );
+      }
+    });
   });
 
   // Get email and password config for the active branch

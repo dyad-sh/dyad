@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { createTypedHandler } from "./base";
+import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
 import { resolveConsent } from "../utils/mcp_consent";
 import { getStoredConsent } from "../utils/mcp_consent";
@@ -33,7 +34,10 @@ function parseJsonField<T>(
     return JSON.parse(value) as T;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Invalid JSON for "${field}": ${message}`);
+    throw new DyadError(
+      `Invalid JSON for "${field}": ${message}`,
+      DyadErrorKind.Validation,
+    );
   }
 }
 
@@ -147,7 +151,11 @@ export function registerMcpHandlers() {
       .set(update)
       .where(eq(mcpServers.id, params.id))
       .returning();
-    if (!result[0]) throw new Error(`MCP server not found: ${params.id}`);
+    if (!result[0])
+      throw new DyadError(
+        `MCP server not found: ${params.id}`,
+        DyadErrorKind.NotFound,
+      );
     // Config may have changed; dispose the cached client so the next
     // use rebuilds the transport with the updated row.
     try {

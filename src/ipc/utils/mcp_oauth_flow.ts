@@ -87,6 +87,12 @@ async function startCallbackListener(
     resolveCode = resolve;
     rejectCode = reject;
   });
+  // Pre-attach a no-op observer so a rejection fired before the caller
+  // gets the listener (e.g. a supersede landing while we're still
+  // awaiting the loopback bind) doesn't surface as an unhandled
+  // rejection in the Electron main process. Real observers attached
+  // later still see the rejection.
+  code.catch(() => undefined);
 
   // Set before flow.reject so a supersede also flips `disposed` and
   // any in-flight bind from this flow tears itself down on completion.

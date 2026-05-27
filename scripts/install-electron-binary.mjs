@@ -5,11 +5,18 @@
 
 import { createRequire } from "node:module";
 import { promises as fs } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
 const require = createRequire(import.meta.url);
 const electronDir = path.resolve("node_modules/electron");
+
+process.on("uncaughtException", (err) => {
+  console.error("[install-electron] UNCAUGHT EXCEPTION:");
+  console.error(err.stack || err);
+  process.exit(1);
+});
 
 function log(msg) {
   console.log(`[install-electron] ${msg}`);
@@ -60,16 +67,11 @@ async function main() {
   const version = electronPkg.version;
   log(`electron version: ${version}`);
 
-  let downloadArtifact, extract;
+  let downloadArtifact;
   try {
     ({ downloadArtifact } = await import("@electron/get"));
   } catch (err) {
     fail("could not import @electron/get", err);
-  }
-  try {
-    extract = (await import("extract-zip")).default;
-  } catch (err) {
-    fail("could not import extract-zip", err);
   }
 
   const distPath = path.join(electronDir, "dist");
@@ -114,12 +116,34 @@ async function main() {
   }
   log(`zip size: ${stat.size} bytes`);
 
-  log(`extracting to ${distPath}`);
-  try {
-    await extract(zipPath, { dir: distPath });
-  } catch (err) {
-    fail("extract threw", err);
+  await fs.mkdir(distPath, { recursive: true });
+  if (process.platform === "win32") {
+    log(`extracting to ${distPath} (extract-zip)`);
+    let extract;
+    try {
+      extract = (await import("extract-zip")).default;
+    } catch (err) {
+      fail("could not import extract-zip", err);
+    }
+    try {
+      await extract(zipPath, { dir: distPath });
+    } catch (err) {
+      fail("extract threw", err);
+    }
+  } else {
+    log(`extracting to ${distPath} (shell unzip)`);
+    const unzipResult = spawnSync(
+      "unzip",
+      ["-q", "-o", zipPath, "-d", distPath],
+      { stdio: "inherit" },
+    );
+    if (unzipResult.status !== 0) {
+      fail(
+        `unzip exited with status ${unzipResult.status} (signal=${unzipResult.signal})`,
+      );
+    }
   }
+  log(`extraction completed`);
 
   const extracted = await fs.readdir(distPath).catch(() => []);
   log(

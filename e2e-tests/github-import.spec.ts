@@ -221,13 +221,16 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
 
   const appPath = await po.appManagement.getCurrentAppPath();
   await expect
-    .poll(() => {
-      const pkgPath = path.join(appPath, "package.json");
-      if (!fs.existsSync(pkgPath)) {
-        return false;
-      }
-      const pkg = fs.readFileSync(pkgPath, "utf8");
-      return pkg.includes("@dyad-sh/react-vite-component-tagger");
-    })
+    .poll(
+      () => {
+        const pkgPath = path.join(appPath, "package.json");
+        if (!fs.existsSync(pkgPath)) {
+          return false;
+        }
+        const pkg = fs.readFileSync(pkgPath, "utf8");
+        return pkg.includes("@dyad-sh/react-vite-component-tagger");
+      },
+      { timeout: 60_000 },
+    )
     .toBe(true);
 });

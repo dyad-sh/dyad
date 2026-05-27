@@ -35,7 +35,15 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
   }
 }
 
-export async function applyComponentTagger(appPath: string) {
+type ApplyComponentTaggerOptions = {
+  installDependencies?: boolean;
+};
+
+export async function applyComponentTagger(
+  appPath: string,
+  options: ApplyComponentTaggerOptions = {},
+) {
+  const { installDependencies = true } = options;
   const packageJsonPath = path.join(appPath, "package.json");
   const viteConfigPath = findViteConfigPath(appPath);
 
@@ -126,31 +134,57 @@ export async function applyComponentTagger(appPath: string) {
     );
   }
 
-  void simpleSpawn({
-    command:
-      "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
-    cwd: appPath,
-    env: getPackageManagerCommandEnv() as Record<string, string>,
-    successMessage: "component-tagger dependency installed successfully",
-    errorPrefix: "Failed to install dependency via pnpm",
-  })
-    .then(async () => {
+  if (installDependencies) {
+    const env = getPackageManagerCommandEnv() as Record<string, string>;
+    try {
+      // Try pnpm first
+      await simpleSpawn({
+        command:
+          "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger",
+        cwd: appPath,
+        env,
+        successMessage:
+          "component-tagger dependency installed successfully with pnpm",
+        errorPrefix: "Failed to install dependency via pnpm",
+      });
+    } catch (pnpmErr) {
+      // Fall back to npm if pnpm is not available or fails
+      logger.info("pnpm install failed, falling back to npm", pnpmErr);
       try {
-        logger.info("Committing updated lock file after pnpm install");
-        await gitAddAll({ path: appPath });
-        await gitCommit({
-          path: appPath,
-          message: "[dyad] update package lock after component tagger install",
+        await simpleSpawn({
+          command:
+            "npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
+          cwd: appPath,
+          env,
+          successMessage:
+            "component-tagger dependency installed successfully with npm",
+          errorPrefix: "Failed to install dependency via npm",
         });
-        logger.info("Successfully committed lock file updates");
-      } catch (err) {
+      } catch (npmErr) {
         logger.warn(
-          "Failed to commit lock file after pnpm install. The component tagger is installed but lock file changes may not be committed.",
-          err,
+          "Failed to install component tagger with both pnpm and npm. User may need to run install manually.",
+          npmErr,
         );
+        return;
       }
-    })
-    .catch((err) => {
-      logger.warn("Component tagger pnpm install failed in background", err);
-    });
+    }
+
+    // After package manager completes successfully, commit the lock file updates
+    try {
+      logger.info("Committing updated lock file after package manager install");
+      await gitAddAll({ path: appPath });
+      await gitCommit({
+        path: appPath,
+        message: "[dyad] update package lock after component tagger install",
+      });
+      logger.info("Successfully committed lock file updates");
+    } catch (err) {
+      logger.warn(
+        "Failed to commit lock file after package manager install. The component tagger is installed but lock file changes may not be committed.",
+        err,
+      );
+    }
+  } else {
+    logger.info("Skipping dependency install for component tagger");
+  }
 }

@@ -1341,7 +1341,7 @@ async function handleCloneRepoFromUrl(
 
     if (isComponentTaggerUpgradeNeeded(appPath)) {
       try {
-        await applyComponentTagger(appPath);
+        await applyComponentTagger(appPath, { installDependencies: false });
         logger.log(
           `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
         );
@@ -1350,12 +1350,10 @@ async function handleCloneRepoFromUrl(
           `[GitHub Handler] Failed to auto-apply component tagger upgrade for ${owner}/${repoName}`,
           upgradeError,
         );
-        // Don't throw - upgrade failure should not block the import
-        // The app is already cloned successfully, so continue
+    
       }
     }
 
-    // Return success object
     return {
       app: {
         ...newApp,
@@ -1367,7 +1365,6 @@ async function handleCloneRepoFromUrl(
       hasAiRules,
     };
   } catch (err: any) {
-    // Catch any remaining unexpected errors and return an error object
     logger.error("[GitHub Handler] Unexpected error in clone flow:", err);
     return {
       error: err.message || "An unexpected error occurred during cloning.",

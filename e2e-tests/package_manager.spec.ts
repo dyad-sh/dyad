@@ -100,6 +100,13 @@ async function createSupportedPnpmShim(userDataDir: string) {
   process.env.PATH = `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`;
 }
 
+function warmSocketFirewallCache() {
+  execFileSync("npx", ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"], {
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+}
+
 async function restorePackageManagerCache() {
   if (originalNpmCache === undefined) {
     delete process.env.npm_config_cache;
@@ -151,6 +158,7 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
     await createSupportedPnpmShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
     process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
+    warmSocketFirewallCache();
   },
   postLaunchHook: restorePackageManagerCache,
 });

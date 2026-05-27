@@ -179,13 +179,43 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run pre:e2e
+      - name: Debug packaged app output
+        if: always()
+        run: |
+          echo "Working directory: $(pwd)"
+          echo "Runner OS: $RUNNER_OS"
+          echo "Node: $(node --version || true)"
+          echo "npm: $(npm --version || true)"
+          echo "Top-level files:"
+          ls -la
+          echo "Electron package state:"
+          ls -la node_modules/electron || true
+          echo "Electron dist state:"
+          find node_modules/electron/dist -maxdepth 3 -print || true
+          echo "Forge output state:"
+          find out -maxdepth 4 -print || true
+          echo "Nearby build-like directories:"
+          find . -maxdepth 2 \( -name out -o -name dist -o -name ".vite" \) -print || true
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -
       # macOS: Archive app bundle with tar to preserve metadata (code signatures, extended attributes)
       # This is necessary because GitHub artifact upload/download loses these attributes
       - name: Archive macOS app bundle
         if: contains(matrix.os.name, 'macos')
-        run: tar -cvf out-macos.tar out/
+        run: |
+          if [ ! -d out ]; then
+            echo "::error::Expected Electron Forge output directory 'out/' is missing after npm run pre:e2e"
+            echo "Top-level files:"
+            ls -la
+            echo "Electron package state:"
+            ls -la node_modules/electron || true
+            echo "Electron dist state:"
+            find node_modules/electron/dist -maxdepth 3 -print || true
+            echo "Build-like directories:"
+            find . -maxdepth 3 \( -name out -o -name dist -o -name ".vite" \) -print || true
+            exit 1
+          fi
+          tar -cvf out-macos.tar out/
       - name: Upload build artifacts (macOS)
         if: contains(matrix.os.name, 'macos')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

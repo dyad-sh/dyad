@@ -7,7 +7,32 @@ import {
 } from "./helpers/test_helper";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
+
+function commitRuntimeBaselineChanges(appPath: string) {
+  const status = execSync("git status --short -- pnpm-workspace.yaml", {
+    cwd: appPath,
+    encoding: "utf-8",
+  }).trim();
+  if (!status) {
+    return;
+  }
+
+  execFileSync("git", ["add", "--", "pnpm-workspace.yaml"], {
+    cwd: appPath,
+  });
+  execFileSync(
+    "git",
+    [
+      "commit",
+      "-m",
+      "E2E baseline pnpm workspace",
+      "--",
+      "pnpm-workspace.yaml",
+    ],
+    { cwd: appPath },
+  );
+}
 
 const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
   await po.setUp({ disableNativeGit: !nativeGit });
@@ -17,6 +42,7 @@ const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
   if (!appPath) {
     throw new Error("No app path found");
   }
+  commitRuntimeBaselineChanges(appPath);
 
   const banner = po.page.getByTestId("uncommitted-files-banner");
 
@@ -88,6 +114,7 @@ const runUncommittedFilesBannerTest = async (
   if (!appPath) {
     throw new Error("No app path found");
   }
+  commitRuntimeBaselineChanges(appPath);
 
   // Ensure clean state - commit any existing changes first
   const banner = po.page.getByTestId("uncommitted-files-banner");

@@ -39,6 +39,10 @@ import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { slugifyAppPath } from "@/shared/slugify";
+import {
+  isComponentTaggerUpgradeNeeded,
+  applyComponentTagger,
+} from "../utils/app_upgrade_utils";
 
 const logger = log.scope("github_handlers");
 
@@ -56,10 +60,6 @@ export function normalizeGitHubRepoName(repoName: string): string {
 
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
-import {
-  isComponentTaggerUpgradeNeeded,
-  applyComponentTagger,
-} from "../utils/app_upgrade_utils";
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
 
 // Use test server URLs when in test mode

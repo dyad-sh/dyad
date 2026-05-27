@@ -8,23 +8,21 @@ import { getPackageManagerCommandEnv } from "./socket_firewall";
 
 export const logger = log.scope("app_upgrade_utils");
 
-export function isViteApp(appPath: string): boolean {
-  const viteConfigPathJs = path.join(appPath, "vite.config.js");
+function findViteConfigPath(appPath: string): string | null {
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
+  const viteConfigPathJs = path.join(appPath, "vite.config.js");
 
-  return fs.existsSync(viteConfigPathTs) || fs.existsSync(viteConfigPathJs);
+  if (fs.existsSync(viteConfigPathTs)) {
+    return viteConfigPathTs;
+  } else if (fs.existsSync(viteConfigPathJs)) {
+    return viteConfigPathJs;
+  }
+  return null;
 }
 
 export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
-  const viteConfigPathJs = path.join(appPath, "vite.config.js");
-  const viteConfigPathTs = path.join(appPath, "vite.config.ts");
-
-  let viteConfigPath;
-  if (fs.existsSync(viteConfigPathTs)) {
-    viteConfigPath = viteConfigPathTs;
-  } else if (fs.existsSync(viteConfigPathJs)) {
-    viteConfigPath = viteConfigPathJs;
-  } else {
+  const viteConfigPath = findViteConfigPath(appPath);
+  if (!viteConfigPath) {
     return false;
   }
 
@@ -38,16 +36,10 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 }
 
 export async function applyComponentTagger(appPath: string) {
-  const viteConfigPathJs = path.join(appPath, "vite.config.js");
-  const viteConfigPathTs = path.join(appPath, "vite.config.ts");
   const packageJsonPath = path.join(appPath, "package.json");
+  const viteConfigPath = findViteConfigPath(appPath);
 
-  let viteConfigPath;
-  if (fs.existsSync(viteConfigPathTs)) {
-    viteConfigPath = viteConfigPathTs;
-  } else if (fs.existsSync(viteConfigPathJs)) {
-    viteConfigPath = viteConfigPathJs;
-  } else {
+  if (!viteConfigPath) {
     throw new DyadError(
       "Could not find vite.config.js or vite.config.ts",
       DyadErrorKind.External,
@@ -56,13 +48,13 @@ export async function applyComponentTagger(appPath: string) {
 
   let content = await fs.promises.readFile(viteConfigPath, "utf-8");
 
-  // Add import statement if not present
+ 
   if (
     !content.includes(
       "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
     )
   ) {
-    // Add it after the last import statement
+   
     const lines = content.split("\n");
     let lastImportIndex = -1;
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -79,7 +71,7 @@ export async function applyComponentTagger(appPath: string) {
     content = lines.join("\n");
   }
 
-  // Add plugin to plugins array
+ 
   if (content.includes("plugins: [")) {
     if (!content.includes("dyadComponentTagger()")) {
       content = content.replace(
@@ -88,15 +80,14 @@ export async function applyComponentTagger(appPath: string) {
       );
     }
   } else {
-    throw new Error(
+    throw new DyadError(
       `Could not find 'plugins: [' in ${path.basename(viteConfigPath)}. Manual installation required.`,
+      DyadErrorKind.External,
     );
   }
 
   await fs.promises.writeFile(viteConfigPath, content);
 
-  // Update package.json immediately so the dependency is visible even if the
-  // package manager install is slow or unavailable in the import environment.
   try {
     const packageJson = JSON.parse(
       await fs.promises.readFile(packageJsonPath, "utf-8"),
@@ -118,7 +109,23 @@ export async function applyComponentTagger(appPath: string) {
     logger.warn("Failed to update package.json for component tagger", err);
   }
 
-  // Keep install off the import's critical path
+  // Commit the manual file modifications (vite config + package.json) first
+  // This must complete before pnpm runs to avoid race conditions
+  try {
+    logger.info("Staging and committing vite config and package.json changes");
+    await gitAddAll({ path: appPath });
+    await gitCommit({
+      path: appPath,
+      message: "[dyad] add Dyad component tagger",
+    });
+    logger.info("Successfully committed component tagger modifications");
+  } catch (err) {
+    logger.warn(
+      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
+      err,
+    );
+  }
+
   void simpleSpawn({
     command:
       "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
@@ -126,21 +133,24 @@ export async function applyComponentTagger(appPath: string) {
     env: getPackageManagerCommandEnv() as Record<string, string>,
     successMessage: "component-tagger dependency installed successfully",
     errorPrefix: "Failed to install dependency via pnpm",
-  }).catch((err) => logger.warn("Component tagger install failed", err));
-
-  // Commit changes
-  try {
-    logger.info("Staging and committing changes");
-    await gitAddAll({ path: appPath });
-    await gitCommit({
-      path: appPath,
-      message: "[dyad] add Dyad component tagger",
+  })
+    .then(async () => {
+      try {
+        logger.info("Committing updated lock file after pnpm install");
+        await gitAddAll({ path: appPath });
+        await gitCommit({
+          path: appPath,
+          message: "[dyad] update package lock after component tagger install",
+        });
+        logger.info("Successfully committed lock file updates");
+      } catch (err) {
+        logger.warn(
+          "Failed to commit lock file after pnpm install. The component tagger is installed but lock file changes may not be committed.",
+          err,
+        );
+      }
+    })
+    .catch((err) => {
+      logger.warn("Component tagger pnpm install failed in background", err);
     });
-    logger.info("Successfully committed changes");
-  } catch (err) {
-    logger.warn(
-      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
-      err,
-    );
-  }
 }

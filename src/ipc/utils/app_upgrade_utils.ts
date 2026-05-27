@@ -1,7 +1,6 @@
 import log from "electron-log";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -41,6 +40,7 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 export async function applyComponentTagger(appPath: string) {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
+  const packageJsonPath = path.join(appPath, "package.json");
 
   let viteConfigPath;
   if (fs.existsSync(viteConfigPathTs)) {
@@ -95,37 +95,38 @@ export async function applyComponentTagger(appPath: string) {
 
   await fs.promises.writeFile(viteConfigPath, content);
 
-  // Install the dependency
-  await new Promise<void>((resolve, reject) => {
-    logger.info("Installing component-tagger dependency");
-    const process = spawn(
-      "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
-      {
-        cwd: appPath,
-        env: getPackageManagerCommandEnv(),
-        shell: true,
-        stdio: "pipe",
-      },
+  // Update package.json immediately so the dependency is visible even if the
+  // package manager install is slow or unavailable in the import environment.
+  try {
+    const packageJson = JSON.parse(
+      await fs.promises.readFile(packageJsonPath, "utf-8"),
     );
-
-    process.stdout?.on("data", (data) => logger.info(data.toString()));
-    process.stderr?.on("data", (data) => logger.error(data.toString()));
-
-    process.on("close", (code) => {
-      if (code === 0) {
-        logger.info("component-tagger dependency installed successfully");
-        resolve();
-      } else {
-        logger.error(`Failed to install dependency, exit code ${code}`);
-        reject(new Error("Failed to install dependency"));
+    packageJson.devDependencies ??= {};
+    packageJson.devDependencies["@dyad-sh/react-vite-component-tagger"] =
+      "^0.9.0";
+    if (packageJson.dependencies?.["@dyad-sh/react-vite-component-tagger"]) {
+      delete packageJson.dependencies["@dyad-sh/react-vite-component-tagger"];
+      if (Object.keys(packageJson.dependencies).length === 0) {
+        delete packageJson.dependencies;
       }
-    });
+    }
+    await fs.promises.writeFile(
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
+  } catch (err) {
+    logger.warn("Failed to update package.json for component tagger", err);
+  }
 
-    process.on("error", (err) => {
-      logger.error("Failed to spawn pnpm", err);
-      reject(err);
-    });
-  });
+  // Keep install off the import's critical path
+  void simpleSpawn({
+    command:
+      "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
+    cwd: appPath,
+    env: getPackageManagerCommandEnv() as Record<string, string>,
+    successMessage: "component-tagger dependency installed successfully",
+    errorPrefix: "Failed to install dependency via pnpm",
+  }).catch((err) => logger.warn("Component tagger install failed", err));
 
   // Commit changes
   try {

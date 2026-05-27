@@ -137,7 +137,7 @@ async function applyCapacitor({
     );
     throw new Error(
       "Failed to commit Capacitor changes. Please commit them manually. Error: " +
-        err,
+      err,
     );
   }
 }

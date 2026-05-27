@@ -18,9 +18,12 @@ import {
 =======
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
+<<<<<<< HEAD
 >>>>>>> 481b64ec (apply feedback fix)
+=======
+import { simpleSpawn } from "../utils/simpleSpawn";
+>>>>>>> 6a0dcb96 (chore: format and fix imports for app_upgrade_handlers)
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);

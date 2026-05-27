@@ -66,6 +66,9 @@ dir/c.txt
   "packageManager": "<scrubbed>"
 }
 
+=== pnpm-workspace.yaml ===
+[Dyad-managed pnpm workspace config]
+
 === to-be-deleted.txt ===
 this file should be deleted
 

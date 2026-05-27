@@ -1,10 +1,10 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- paragraph: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
 - button "file1.txt file1.txt Edit":
   - img
-  - text: ""
+  - text: file1.txt file1.txt
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,20 +16,20 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 2: (1 files changed)"
+- text: "Version 2: (2 files changed)"
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - paragraph: tc=local-agent/persistent-todos
 - paragraph: I'll create a task list to track the work.Let me create the utility module first.
 - 'button "utils.ts src/lib/utils.ts Edit Summary: Create utility module"':
   - img
-  - text: ""
+  - text: utils.ts src/lib/utils.ts
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
-  - text: ""
+  - text: "Summary: Create utility module"
 - paragraph: Marking the first task as done.I've completed the utility module. I'll continue with the remaining tasks.I see there are remaining tasks. I'll pick these up in the next turn.
 - button "Copy":
   - img
@@ -40,29 +40,29 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 3: (2 files changed)"
+- text: "Version 3: (1 files changed)"
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - paragraph: tc=local-agent/persistent-todos-resume
 - paragraph: I see there are unfinished todos from last time. Let me continue.Adding error handling to the utility module.
 - 'button "utils.ts src/lib/utils.ts Edit Summary: Add error handling utility"':
   - img
-  - text: ""
+  - text: utils.ts src/lib/utils.ts
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
-  - text: ""
+  - text: "Summary: Add error handling utility"
 - paragraph: Now writing the tests.
 - 'button "utils.test.ts src/lib/utils.test.ts Edit Summary: Write tests for utility module"':
   - img
-  - text: ""
+  - text: utils.test.ts src/lib/utils.test.ts
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
-  - text: ""
+  - text: "Summary: Write tests for utility module"
 - paragraph: Marking all remaining tasks as done.All tasks from the previous turn are now complete! I created the utility module, added error handling, and wrote the tests.
 - button "Copy":
   - img
@@ -76,10 +76,10 @@
 - text: "Version 4: (2 files changed)"
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - button "Undo":
   - img
-  - text: ""
+  - text: Undo
 - button "Retry":
   - img
-  - text: ""
+  - text: Retry

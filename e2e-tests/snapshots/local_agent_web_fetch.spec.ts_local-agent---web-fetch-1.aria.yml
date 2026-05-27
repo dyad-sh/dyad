@@ -1,10 +1,10 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- paragraph: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
 - button "file1.txt file1.txt Edit":
   - img
-  - text: ""
+  - text: file1.txt file1.txt
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,10 +16,10 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 2: (1 files changed)"
+- text: "Version 2: (2 files changed)"
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - paragraph: tc=local-agent/web-fetch
 - paragraph: I'll fetch the content of that page for you.
 - img
@@ -37,10 +37,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
-  - text: ""
+  - text: Request ID
 - button "Undo":
   - img
-  - text: ""
+  - text: Undo
 - button "Retry":
   - img
-  - text: ""
+  - text: Retry

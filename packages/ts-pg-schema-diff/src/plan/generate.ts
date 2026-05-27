@@ -14,7 +14,11 @@ export type InternalPlan = {
   readonly currentSchemaHash: string;
 };
 
-export function generatePlan(currentSchema: Schema, desiredSchema: Schema, options: GeneratePlanOptions = {}): InternalPlan {
+export function generatePlan(
+  currentSchema: Schema,
+  desiredSchema: Schema,
+  options: GeneratePlanOptions = {},
+): InternalPlan {
   const diff = buildSchemaDiff(currentSchema, desiredSchema);
   return {
     statements: generateStatements(diff, options),

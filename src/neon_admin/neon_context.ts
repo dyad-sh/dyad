@@ -167,9 +167,9 @@ export async function executeNeonSql({
  * this is safe for migration apply.
  *
  * Caveat: a small set of statements (e.g. `CREATE INDEX CONCURRENTLY`) cannot
- * run inside a transaction. drizzle-kit's default output does not produce
- * those, but the error message surfaces the failing statement index so the
- * user can act on it.
+ * run inside a transaction. The Neon migration preview calls
+ * ts-pg-schema-diff with `noConcurrentIndexOperations: true` so this executor
+ * can stay transactional.
  */
 export async function executeNeonStatementsInTransaction({
   projectId,

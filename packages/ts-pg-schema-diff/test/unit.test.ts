@@ -5,7 +5,11 @@ import { diffLists } from "../src/diff/listDiff.js";
 import { toPublicStatement } from "../src/plan/classify.js";
 import { generatePlan, toSchemaDiffResult } from "../src/plan/generate.js";
 import type { InternalStatement, MigrationHazard } from "../src/plan/types.js";
-import { escapeIdentifier, procName, schemaQualifiedName } from "../src/schema/identifiers.js";
+import {
+  escapeIdentifier,
+  procName,
+  schemaQualifiedName,
+} from "../src/schema/identifiers.js";
 import {
   emptySchema,
   type Column,
@@ -70,12 +74,24 @@ describe("generatePlan", () => {
   it("generates statements for enum label additions and index drops", () => {
     const current: Schema = {
       ...emptySchema(),
-      enums: [{ kind: "enum", name: schemaQualifiedName("public", "mood"), labels: ["sad"] }],
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad"],
+        },
+      ],
       indexes: [index("users_name_idx")],
     };
     const desired: Schema = {
       ...emptySchema(),
-      enums: [{ kind: "enum", name: schemaQualifiedName("public", "mood"), labels: ["sad", "ok"] }],
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad", "ok"],
+        },
+      ],
     };
 
     const result = toSchemaDiffResult(generatePlan(current, desired));
@@ -95,18 +111,32 @@ describe("generatePlan", () => {
   it("renames a replaced index before creating the new index and dropping the old one", () => {
     const current: Schema = {
       ...emptySchema(),
-      indexes: [index("users_name_idx", "CREATE INDEX users_name_idx ON public.users USING btree (name)")],
+      indexes: [
+        index(
+          "users_name_idx",
+          "CREATE INDEX users_name_idx ON public.users USING btree (name)",
+        ),
+      ],
     };
     const desired: Schema = {
       ...emptySchema(),
-      indexes: [index("users_name_idx", "CREATE INDEX users_name_idx ON public.users USING btree (name, id)")],
+      indexes: [
+        index(
+          "users_name_idx",
+          "CREATE INDEX users_name_idx ON public.users USING btree (name, id)",
+        ),
+      ],
     };
 
     const result = toSchemaDiffResult(generatePlan(current, desired));
     expect(result.statements.map((statement) => statement.sql)).toEqual([
-      expect.stringMatching(/^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+      ),
       "CREATE INDEX CONCURRENTLY users_name_idx ON public.users USING btree (name, id)",
-      expect.stringMatching(/^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+      ),
     ]);
   });
 
@@ -120,7 +150,9 @@ describe("generatePlan", () => {
       indexes: [index("new_idx")],
     };
 
-    const result = toSchemaDiffResult(generatePlan(current, desired, { noConcurrentIndexOperations: true }));
+    const result = toSchemaDiffResult(
+      generatePlan(current, desired, { noConcurrentIndexOperations: true }),
+    );
 
     expect(result.statements.map((statement) => statement.sql)).toEqual([
       'DROP INDEX "public"."old_idx"',
@@ -131,7 +163,12 @@ describe("generatePlan", () => {
   it("alters ordinary triggers with CREATE OR REPLACE", () => {
     const current: Schema = {
       ...emptySchema(),
-      triggers: [trigger("account_touch", "CREATE TRIGGER account_touch BEFORE INSERT ON public.accounts FOR EACH ROW EXECUTE FUNCTION touch_account()")],
+      triggers: [
+        trigger(
+          "account_touch",
+          "CREATE TRIGGER account_touch BEFORE INSERT ON public.accounts FOR EACH ROW EXECUTE FUNCTION touch_account()",
+        ),
+      ],
     };
     const desired: Schema = {
       ...emptySchema(),
@@ -183,9 +220,17 @@ describe("generatePlan", () => {
   it("renders view and materialized view options in deterministic order", () => {
     const desired: Schema = {
       ...emptySchema(),
-      views: [view("secure_accounts", { security_invoker: "true", security_barrier: "true" })],
+      views: [
+        view("secure_accounts", {
+          security_invoker: "true",
+          security_barrier: "true",
+        }),
+      ],
       materializedViews: [
-        materializedView("account_names", { log_autovacuum_min_duration: "1000", autovacuum_enabled: "false" }),
+        materializedView("account_names", {
+          log_autovacuum_min_duration: "1000",
+          autovacuum_enabled: "false",
+        }),
       ],
     };
 
@@ -200,16 +245,33 @@ describe("generatePlan", () => {
   it("classifies untrackable routine dependencies as destructive", () => {
     const desired: Schema = {
       ...emptySchema(),
-      functions: [functionSchema("non_sql_func", "plpgsql"), functionSchema("sql_func", "sql")],
+      functions: [
+        functionSchema("non_sql_func", "plpgsql"),
+        functionSchema("sql_func", "sql"),
+      ],
       procedures: [procedure("sync_accounts")],
     };
 
     const result = toSchemaDiffResult(generatePlan(emptySchema(), desired));
 
-    expect(result.statements.map((statement) => ({ sql: statement.sql, type: statement.type }))).toEqual([
-      { sql: 'CREATE FUNCTION "public"."non_sql_func"() RETURNS integer LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END; $$', type: "destructive" },
-      { sql: 'CREATE FUNCTION "public"."sql_func"() RETURNS integer LANGUAGE sql RETURN 1', type: "additive" },
-      { sql: 'CREATE PROCEDURE "public"."sync_accounts"() LANGUAGE plpgsql AS $$ BEGIN END; $$', type: "destructive" },
+    expect(
+      result.statements.map((statement) => ({
+        sql: statement.sql,
+        type: statement.type,
+      })),
+    ).toEqual([
+      {
+        sql: 'CREATE FUNCTION "public"."non_sql_func"() RETURNS integer LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END; $$',
+        type: "destructive",
+      },
+      {
+        sql: 'CREATE FUNCTION "public"."sql_func"() RETURNS integer LANGUAGE sql RETURN 1',
+        type: "additive",
+      },
+      {
+        sql: 'CREATE PROCEDURE "public"."sync_accounts"() LANGUAGE plpgsql AS $$ BEGIN END; $$',
+        type: "destructive",
+      },
     ]);
   });
 
@@ -269,7 +331,9 @@ describe("generatePlan", () => {
         },
         emptySchema(),
       ),
-    ).toThrow("dropping an index partition that backs a local constraint is not supported");
+    ).toThrow(
+      "dropping an index partition that backs a local constraint is not supported",
+    );
   });
 
   it("rejects creating invalid indexes", () => {
@@ -358,8 +422,20 @@ describe("assertSupportedPostgresVersion", () => {
 
 describe("toPublicStatement", () => {
   it("classifies non-removal statements as additive", () => {
-    expect(toPublicStatement(internalStatement("CREATE INDEX CONCURRENTLY users_name_idx ON public.users (name)")).type).toBe("additive");
-    expect(toPublicStatement(internalStatement('ALTER TABLE "public"."users" VALIDATE CONSTRAINT "users_name_check"')).type).toBe("additive");
+    expect(
+      toPublicStatement(
+        internalStatement(
+          "CREATE INDEX CONCURRENTLY users_name_idx ON public.users (name)",
+        ),
+      ).type,
+    ).toBe("additive");
+    expect(
+      toPublicStatement(
+        internalStatement(
+          'ALTER TABLE "public"."users" VALIDATE CONSTRAINT "users_name_check"',
+        ),
+      ).type,
+    ).toBe("additive");
   });
 
   it("classifies destructive hazards and removal-shaped SQL as destructive", () => {
@@ -370,8 +446,18 @@ describe("toPublicStatement", () => {
         ]),
       ).type,
     ).toBe("destructive");
-    expect(toPublicStatement(internalStatement('ALTER TABLE "public"."users" DROP COLUMN "old_name"')).type).toBe("destructive");
-    expect(toPublicStatement(internalStatement('DROP INDEX CONCURRENTLY "public"."users_name_idx"')).type).toBe("destructive");
+    expect(
+      toPublicStatement(
+        internalStatement(
+          'ALTER TABLE "public"."users" DROP COLUMN "old_name"',
+        ),
+      ).type,
+    ).toBe("destructive");
+    expect(
+      toPublicStatement(
+        internalStatement('DROP INDEX CONCURRENTLY "public"."users_name_idx"'),
+      ).type,
+    ).toBe("destructive");
   });
 });
 
@@ -392,7 +478,10 @@ function table(name: string, columns: readonly Column[]): Table {
   };
 }
 
-function internalStatement(sql: string, hazards: readonly MigrationHazard[] = []): InternalStatement {
+function internalStatement(
+  sql: string,
+  hazards: readonly MigrationHazard[] = [],
+): InternalStatement {
   return {
     sql,
     hazards,
@@ -418,7 +507,10 @@ function column(name: string, type: string, isNullable: boolean): Column {
   };
 }
 
-function index(name: string, getIndexDefStmt = `CREATE INDEX ${name} ON public.users USING btree (name)`): Index {
+function index(
+  name: string,
+  getIndexDefStmt = `CREATE INDEX ${name} ON public.users USING btree (name)`,
+): Index {
   return {
     kind: "index",
     name,
@@ -433,7 +525,11 @@ function index(name: string, getIndexDefStmt = `CREATE INDEX ${name} ON public.u
   };
 }
 
-function trigger(name: string, getTriggerDefStmt: string, isConstraint = false): Trigger {
+function trigger(
+  name: string,
+  getTriggerDefStmt: string,
+  isConstraint = false,
+): Trigger {
   return {
     kind: "trigger",
     escapedName: escapeIdentifier(name),
@@ -444,7 +540,10 @@ function trigger(name: string, getTriggerDefStmt: string, isConstraint = false):
   };
 }
 
-function view(name: string, options: Readonly<Record<string, string>> = {}): View {
+function view(
+  name: string,
+  options: Readonly<Record<string, string>> = {},
+): View {
   return {
     kind: "view",
     name: schemaQualifiedName("public", name),
@@ -454,7 +553,10 @@ function view(name: string, options: Readonly<Record<string, string>> = {}): Vie
   };
 }
 
-function materializedView(name: string, options: Readonly<Record<string, string>> = {}): MaterializedView {
+function materializedView(
+  name: string,
+  options: Readonly<Record<string, string>> = {},
+): MaterializedView {
   return {
     kind: "materializedView",
     name: schemaQualifiedName("public", name),

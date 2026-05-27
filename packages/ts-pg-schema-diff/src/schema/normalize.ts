@@ -24,30 +24,44 @@ export function normalizeSchema(schema: Schema): Schema {
     procedures: sortByName(schema.procedures),
     triggers: sortByName(schema.triggers),
     views: sortByName(schema.views).map(normalizeView),
-    materializedViews: sortByName(schema.materializedViews).map(normalizeMaterializedView),
+    materializedViews: sortByName(schema.materializedViews).map(
+      normalizeMaterializedView,
+    ),
   };
 }
 
-export function sortByName<T extends SchemaObject>(values: readonly T[]): readonly T[] {
+export function sortByName<T extends SchemaObject>(
+  values: readonly T[],
+): readonly T[] {
   return [...values].sort((a, b) => objectName(a).localeCompare(objectName(b)));
 }
 
 function normalizeTable(table: Table): Table {
   return {
     ...table,
-    checkConstraints: sortByName(table.checkConstraints).map(normalizeCheckConstraint),
+    checkConstraints: sortByName(table.checkConstraints).map(
+      normalizeCheckConstraint,
+    ),
     policies: sortByName(table.policies).map(normalizePolicy),
     privileges: sortByName(table.privileges),
   };
 }
 
-function normalizeCheckConstraint(checkConstraint: CheckConstraint): CheckConstraint {
+function normalizeCheckConstraint(
+  checkConstraint: CheckConstraint,
+): CheckConstraint {
   return {
     ...checkConstraint,
     keyColumns: sortedStrings(checkConstraint.keyColumns),
-    dependsOnFunctions: sortByName(checkConstraint.dependsOnFunctions.map((name) => ({ kind: "function" as const, name, functionDef: "", language: "", dependsOnFunctions: [] }))).map(
-      (fn) => fn.name,
-    ),
+    dependsOnFunctions: sortByName(
+      checkConstraint.dependsOnFunctions.map((name) => ({
+        kind: "function" as const,
+        name,
+        functionDef: "",
+        language: "",
+        dependsOnFunctions: [],
+      })),
+    ).map((fn) => fn.name),
   };
 }
 
@@ -62,9 +76,15 @@ function normalizePolicy(policy: Policy): Policy {
 function normalizeFunction(fn: FunctionSchema): FunctionSchema {
   return {
     ...fn,
-    dependsOnFunctions: sortByName(fn.dependsOnFunctions.map((name) => ({ kind: "function" as const, name, functionDef: "", language: "", dependsOnFunctions: [] }))).map(
-      (dep) => dep.name,
-    ),
+    dependsOnFunctions: sortByName(
+      fn.dependsOnFunctions.map((name) => ({
+        kind: "function" as const,
+        name,
+        functionDef: "",
+        language: "",
+        dependsOnFunctions: [],
+      })),
+    ).map((dep) => dep.name),
   };
 }
 
@@ -84,9 +104,14 @@ function normalizeMaterializedView(view: MaterializedView): MaterializedView {
   };
 }
 
-function normalizeTableDependencies(dependencies: readonly TableDependency[]): readonly TableDependency[] {
+function normalizeTableDependencies(
+  dependencies: readonly TableDependency[],
+): readonly TableDependency[] {
   return [...dependencies]
-    .map((dependency) => ({ ...dependency, columns: sortedStrings(dependency.columns) }))
+    .map((dependency) => ({
+      ...dependency,
+      columns: sortedStrings(dependency.columns),
+    }))
     .sort((a, b) => {
       const aName = `${a.name.schemaName}.${a.name.escapedName}`;
       const bName = `${b.name.schemaName}.${b.name.escapedName}`;
@@ -98,7 +123,9 @@ function sortedStrings(values: readonly string[]): readonly string[] {
   return [...values].sort((a, b) => a.localeCompare(b));
 }
 
-function sortRecord(record: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
+function sortRecord(
+  record: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
   const entries = Object.entries(record).sort(([a], [b]) => a.localeCompare(b));
   return Object.fromEntries(entries);
 }

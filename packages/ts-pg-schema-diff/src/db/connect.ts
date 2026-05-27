@@ -28,7 +28,10 @@ export async function withDatabaseClient<T>(
   }
 }
 
-export function buildPoolConfig(connectionString: string, options: DatabaseConnectionOptions = {}): PoolConfig {
+export function buildPoolConfig(
+  connectionString: string,
+  options: DatabaseConnectionOptions = {},
+): PoolConfig {
   return {
     connectionString,
     max: options.maxConnections ?? 1,

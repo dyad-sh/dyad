@@ -1,34 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { DirectedGraph, isLowerPriorityFromGetPriority } from "../src/graph/graph.js";
+import {
+  DirectedGraph,
+  isLowerPriorityFromGetPriority,
+} from "../src/graph/graph.js";
 import { SqlGraph, sqlPriority } from "../src/graph/sqlGraph.js";
 import type { InternalStatement } from "../src/plan/types.js";
 
 describe("DirectedGraph", () => {
   it("sorts deterministically by id when priority does not decide", () => {
-    const graph = new DirectedGraph<{ readonly id: string; readonly priority: number }>();
+    const graph = new DirectedGraph<{
+      readonly id: string;
+      readonly priority: number;
+    }>();
     graph.addVertex({ id: "b", priority: 0 });
     graph.addVertex({ id: "a", priority: 0 });
     graph.addVertex({ id: "c", priority: 0 });
 
-    expect(graph.topologicallySortWithPriority(isLowerPriorityFromGetPriority((vertex) => vertex.priority)).map((vertex) => vertex.id)).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    expect(
+      graph
+        .topologicallySortWithPriority(
+          isLowerPriorityFromGetPriority((vertex) => vertex.priority),
+        )
+        .map((vertex) => vertex.id),
+    ).toEqual(["a", "b", "c"]);
   });
 
   it("chooses higher-priority available sources before lower-priority sources", () => {
-    const graph = new DirectedGraph<{ readonly id: string; readonly priority: number }>();
+    const graph = new DirectedGraph<{
+      readonly id: string;
+      readonly priority: number;
+    }>();
     graph.addVertex({ id: "a", priority: 0 });
     graph.addVertex({ id: "b", priority: 10 });
     graph.addVertex({ id: "c", priority: -1 });
     graph.addEdge("b", "c");
 
-    expect(graph.topologicallySortWithPriority(isLowerPriorityFromGetPriority((vertex) => vertex.priority)).map((vertex) => vertex.id)).toEqual([
-      "b",
-      "a",
-      "c",
-    ]);
+    expect(
+      graph
+        .topologicallySortWithPriority(
+          isLowerPriorityFromGetPriority((vertex) => vertex.priority),
+        )
+        .map((vertex) => vertex.id),
+    ).toEqual(["b", "a", "c"]);
   });
 
   it("throws a useful cycle error", () => {
@@ -38,7 +51,9 @@ describe("DirectedGraph", () => {
     graph.addEdge("a", "b");
     graph.addEdge("b", "a");
 
-    expect(() => graph.topologicallySort()).toThrow(/cycle detected: .*a->b.*b->a/u);
+    expect(() => graph.topologicallySort()).toThrow(
+      /cycle detected: .*a->b.*b->a/u,
+    );
   });
 });
 
@@ -53,7 +68,10 @@ describe("SqlGraph", () => {
     graph.addVertex({
       id: "create",
       priority: sqlPriority.sooner,
-      statements: [statement("CREATE INDEX new_idx ON users (id)"), statement("ANALYZE users")],
+      statements: [
+        statement("CREATE INDEX new_idx ON users (id)"),
+        statement("ANALYZE users"),
+      ],
     });
     graph.addVertex({
       id: "rename",

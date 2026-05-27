@@ -1,7 +1,15 @@
 import { escapeIdentifier, fqName } from "../schema/identifiers.js";
-import type { Column, ColumnIdentity, SchemaQualifiedName } from "../schema/model.js";
+import type {
+  Column,
+  ColumnIdentity,
+  SchemaQualifiedName,
+} from "../schema/model.js";
 import { temporaryNotNullConstraintName } from "../schema/randomIdentifier.js";
-import { lockTimeoutDefaultMs, statementTimeoutDefaultMs, type InternalStatement } from "../plan/types.js";
+import {
+  lockTimeoutDefaultMs,
+  statementTimeoutDefaultMs,
+  type InternalStatement,
+} from "../plan/types.js";
 import type { ColumnDiff } from "../diff/schemaDiff.js";
 
 export function buildColumnDefinition(column: Column): string {
@@ -23,7 +31,10 @@ export function buildColumnDefinition(column: Column): string {
   return definition;
 }
 
-export function addColumnStatement(tableName: SchemaQualifiedName, column: Column): InternalStatement {
+export function addColumnStatement(
+  tableName: SchemaQualifiedName,
+  column: Column,
+): InternalStatement {
   return {
     sql: `${alterTablePrefix(tableName)} ADD COLUMN ${buildColumnDefinition(column)}`,
     timeoutMs: statementTimeoutDefaultMs,
@@ -32,7 +43,8 @@ export function addColumnStatement(tableName: SchemaQualifiedName, column: Colum
       ? [
           {
             type: "ACQUIRES_ACCESS_EXCLUSIVE_LOCK",
-            message: "Adding a generated column requires computing the expression for existing rows.",
+            message:
+              "Adding a generated column requires computing the expression for existing rows.",
           },
         ]
       : [],
@@ -40,17 +52,25 @@ export function addColumnStatement(tableName: SchemaQualifiedName, column: Colum
   };
 }
 
-export function deleteColumnStatement(tableName: SchemaQualifiedName, column: Column): InternalStatement {
+export function deleteColumnStatement(
+  tableName: SchemaQualifiedName,
+  column: Column,
+): InternalStatement {
   return {
     sql: `${alterTablePrefix(tableName)} DROP COLUMN ${escapeIdentifier(column.name)}`,
     timeoutMs: statementTimeoutDefaultMs,
     lockTimeoutMs: lockTimeoutDefaultMs,
-    hazards: [{ type: "DELETES_DATA", message: "Deletes all values in the column" }],
+    hazards: [
+      { type: "DELETES_DATA", message: "Deletes all values in the column" },
+    ],
     skipValidation: false,
   };
 }
 
-export function alterColumnStatements(tableName: SchemaQualifiedName, diff: ColumnDiff): readonly InternalStatement[] {
+export function alterColumnStatements(
+  tableName: SchemaQualifiedName,
+  diff: ColumnDiff,
+): readonly InternalStatement[] {
   const statements: InternalStatement[] = [];
   const prefix = `${alterTablePrefix(tableName)} ALTER COLUMN ${escapeIdentifier(diff.next.name)}`;
 
@@ -81,7 +101,10 @@ export function alterColumnStatements(tableName: SchemaQualifiedName, diff: Colu
   }
 
   if (columnTypeOrCollationChanged(diff.old, diff.next)) {
-    statements.push(typeTransformationStatement(tableName, diff.old, diff.next), analyzeColumnStatement(tableName, diff.next));
+    statements.push(
+      typeTransformationStatement(tableName, diff.old, diff.next),
+      analyzeColumnStatement(tableName, diff.next),
+    );
   }
 
   if (diff.old.default !== diff.next.default && diff.next.default.length > 0) {
@@ -97,21 +120,35 @@ export function alterColumnStatements(tableName: SchemaQualifiedName, diff: Colu
   return statements;
 }
 
-function columnTypeOrCollationChanged(oldColumn: Column, newColumn: Column): boolean {
-  return oldColumn.type.toLowerCase() !== newColumn.type.toLowerCase() || schemaName(oldColumn.collation) !== schemaName(newColumn.collation);
+function columnTypeOrCollationChanged(
+  oldColumn: Column,
+  newColumn: Column,
+): boolean {
+  return (
+    oldColumn.type.toLowerCase() !== newColumn.type.toLowerCase() ||
+    schemaName(oldColumn.collation) !== schemaName(newColumn.collation)
+  );
 }
 
 function schemaName(name: SchemaQualifiedName | null): string {
   return name === null ? "" : fqName(name);
 }
 
-function typeTransformationStatement(tableName: SchemaQualifiedName, oldColumn: Column, newColumn: Column): InternalStatement {
+function typeTransformationStatement(
+  tableName: SchemaQualifiedName,
+  oldColumn: Column,
+  newColumn: Column,
+): InternalStatement {
   const prefix = `${alterTablePrefix(tableName)} ALTER COLUMN ${escapeIdentifier(newColumn.name)}`;
   const usingExpression =
-    oldColumn.type.toLowerCase() === "bigint" && newColumn.type.toLowerCase() === "timestamp without time zone"
+    oldColumn.type.toLowerCase() === "bigint" &&
+    newColumn.type.toLowerCase() === "timestamp without time zone"
       ? `to_timestamp(${escapeIdentifier(newColumn.name)} / 1000)`
       : `${escapeIdentifier(newColumn.name)}::${newColumn.type}`;
-  const collation = newColumn.collation === null ? "" : `COLLATE ${fqName(newColumn.collation)} `;
+  const collation =
+    newColumn.collation === null
+      ? ""
+      : `COLLATE ${fqName(newColumn.collation)} `;
   return {
     sql: `${prefix} SET DATA TYPE ${newColumn.type} ${collation}using ${usingExpression}`,
     timeoutMs: statementTimeoutDefaultMs,
@@ -119,14 +156,18 @@ function typeTransformationStatement(tableName: SchemaQualifiedName, oldColumn: 
     hazards: [
       {
         type: "ACQUIRES_ACCESS_EXCLUSIVE_LOCK",
-        message: "This will lock the table while data is rewritten if the conversion is not trivial.",
+        message:
+          "This will lock the table while data is rewritten if the conversion is not trivial.",
       },
     ],
     skipValidation: false,
   };
 }
 
-function analyzeColumnStatement(tableName: SchemaQualifiedName, column: Column): InternalStatement {
+function analyzeColumnStatement(
+  tableName: SchemaQualifiedName,
+  column: Column,
+): InternalStatement {
   return {
     sql: `ANALYZE ${fqName(tableName)} (${escapeIdentifier(column.name)})`,
     timeoutMs: statementTimeoutDefaultMs,
@@ -134,14 +175,19 @@ function analyzeColumnStatement(tableName: SchemaQualifiedName, column: Column):
     hazards: [
       {
         type: "IMPACTS_DATABASE_PERFORMANCE",
-        message: "Running analyze reads rows from the table and may affect query performance.",
+        message:
+          "Running analyze reads rows from the table and may affect query performance.",
       },
     ],
     skipValidation: false,
   };
 }
 
-function identityStatements(tableName: SchemaQualifiedName, oldColumn: Column, newColumn: Column): readonly InternalStatement[] {
+function identityStatements(
+  tableName: SchemaQualifiedName,
+  oldColumn: Column,
+  newColumn: Column,
+): readonly InternalStatement[] {
   if (identityEqual(oldColumn.identity, newColumn.identity)) {
     return [];
   }
@@ -151,12 +197,18 @@ function identityStatements(tableName: SchemaQualifiedName, oldColumn: Column, n
     return [standardColumnStatement(`${prefix} DROP IDENTITY`)];
   }
   if (oldColumn.identity === null) {
-    return [standardColumnStatement(`${prefix} ADD ${buildColumnIdentityDefinition(newColumn.identity)}`)];
+    return [
+      standardColumnStatement(
+        `${prefix} ADD ${buildColumnIdentityDefinition(newColumn.identity)}`,
+      ),
+    ];
   }
 
   const modifications: string[] = [];
   if (oldColumn.identity.type !== newColumn.identity.type) {
-    modifications.push(`\tSET GENERATED ${columnIdentityTypeModifier(newColumn.identity.type)}`);
+    modifications.push(
+      `\tSET GENERATED ${columnIdentityTypeModifier(newColumn.identity.type)}`,
+    );
   }
   if (oldColumn.identity.increment !== newColumn.identity.increment) {
     modifications.push(`\tSET INCREMENT BY ${newColumn.identity.increment}`);
@@ -190,20 +242,28 @@ function standardColumnStatement(sql: string): InternalStatement {
   };
 }
 
-function identityEqual(left: ColumnIdentity | null, right: ColumnIdentity | null): boolean {
+function identityEqual(
+  left: ColumnIdentity | null,
+  right: ColumnIdentity | null,
+): boolean {
   if (left === null || right === null) {
     return left === right;
   }
-  return left.type === right.type &&
+  return (
+    left.type === right.type &&
     left.minValue === right.minValue &&
     left.maxValue === right.maxValue &&
     left.startValue === right.startValue &&
     left.increment === right.increment &&
     left.cacheSize === right.cacheSize &&
-    left.cycle === right.cycle;
+    left.cycle === right.cycle
+  );
 }
 
-function onlineNotNullStatements(tableName: SchemaQualifiedName, column: Column): readonly InternalStatement[] {
+function onlineNotNullStatements(
+  tableName: SchemaQualifiedName,
+  column: Column,
+): readonly InternalStatement[] {
   const constraintName = temporaryNotNullConstraintName();
   const escapedConstraintName = escapeIdentifier(constraintName);
   const table = fqName(tableName);

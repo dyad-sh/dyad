@@ -35,40 +35,104 @@ import {
   type MigrationHazard,
 } from "../plan/types.js";
 import type { SchemaDiff, TableDiff } from "../diff/schemaDiff.js";
-import { addColumnStatement, alterColumnStatements, buildColumnDefinition, deleteColumnStatement } from "./column.js";
+import {
+  addColumnStatement,
+  alterColumnStatements,
+  buildColumnDefinition,
+  deleteColumnStatement,
+} from "./column.js";
 import type { GeneratePlanOptions } from "../plan/generate.js";
+import type { ListDiff } from "../diff/listDiff.js";
 
-export function generateStatements(diff: SchemaDiff, options: GeneratePlanOptions = {}): readonly InternalStatement[] {
-  const indexDeletes = diff.indexDiffs.deletes.filter((index) => !indexOwningRelationDeleted(index, diff));
-  const indexRenamesByName = buildReplacementIndexRenames(indexDeletes, diff.indexDiffs.adds);
+export function generateStatements(
+  diff: SchemaDiff,
+  options: GeneratePlanOptions = {},
+): readonly InternalStatement[] {
+  const indexDeletes = diff.indexDiffs.deletes.filter(
+    (index) => !indexOwningRelationDeleted(index, diff),
+  );
+  const indexRenamesByName = buildReplacementIndexRenames(
+    indexDeletes,
+    diff.indexDiffs.adds,
+  );
   const functionAddAlters = orderFunctionsForAddAlter([
     ...diff.functionDiffs.adds,
     ...diff.functionDiffs.alters.map((functionDiff) => functionDiff.next),
   ]);
   const functionDeletes = orderFunctionsForDelete(diff.functionDiffs.deletes);
-  const sequenceDeletes = diff.sequenceDiffs.deletes.filter((sequence) => !sequenceDeletedWithOwner(sequence, diff));
+  const sequenceDeletes = diff.sequenceDiffs.deletes.filter(
+    (sequence) => !sequenceDeletedWithOwner(sequence, diff),
+  );
   const enumAddNames = new Set(diff.enumDiffs.adds.map(objectName));
-  const enumRecreateNames = new Set(diff.enumDiffs.deletes.map(objectName).filter((name) => enumAddNames.has(name)));
-  const enumRecreateDeletes = diff.enumDiffs.deletes.filter((schemaEnum) => enumRecreateNames.has(objectName(schemaEnum)));
-  const enumDeletes = diff.enumDiffs.deletes.filter((schemaEnum) => !enumRecreateNames.has(objectName(schemaEnum)));
-  const enumRecreateAdds = diff.enumDiffs.adds.filter((schemaEnum) => enumRecreateNames.has(objectName(schemaEnum)));
-  const enumAdds = diff.enumDiffs.adds.filter((schemaEnum) => !enumRecreateNames.has(objectName(schemaEnum)));
+  const enumRecreateNames = new Set(
+    diff.enumDiffs.deletes
+      .map(objectName)
+      .filter((name) => enumAddNames.has(name)),
+  );
+  const enumRecreateDeletes = diff.enumDiffs.deletes.filter((schemaEnum) =>
+    enumRecreateNames.has(objectName(schemaEnum)),
+  );
+  const enumDeletes = diff.enumDiffs.deletes.filter(
+    (schemaEnum) => !enumRecreateNames.has(objectName(schemaEnum)),
+  );
+  const enumRecreateAdds = diff.enumDiffs.adds.filter((schemaEnum) =>
+    enumRecreateNames.has(objectName(schemaEnum)),
+  );
+  const enumAdds = diff.enumDiffs.adds.filter(
+    (schemaEnum) => !enumRecreateNames.has(objectName(schemaEnum)),
+  );
+  const tableDeletes = diff.tableDiffs.deletes
+    .map((table) => deleteTable(table, diff))
+    .filter(isStatement);
   for (const schemaEnum of enumRecreateDeletes) {
     assertEnumCanBeRecreated(schemaEnum, diff);
   }
   return orderStatementSections([
-    { id: "named-schema:add", statements: diff.namedSchemaDiffs.adds.map(addNamedSchema) },
-    { id: "extension:add", statements: diff.extensionDiffs.adds.map(addExtension) },
-    { id: "extension:alter", statements: diff.extensionDiffs.alters.map(alterExtension).flat() },
-    { id: "enum:recreate-delete", statements: enumRecreateDeletes.map(deleteEnum) },
+    {
+      id: "named-schema:add",
+      statements: diff.namedSchemaDiffs.adds.map(addNamedSchema),
+    },
+    {
+      id: "extension:add",
+      statements: diff.extensionDiffs.adds.map(addExtension),
+    },
+    {
+      id: "extension:alter",
+      statements: diff.extensionDiffs.alters.map(alterExtension).flat(),
+    },
+    {
+      id: "enum:recreate-delete",
+      statements: enumRecreateDeletes.map(deleteEnum),
+    },
     { id: "enum:recreate-add", statements: enumRecreateAdds.map(addEnum) },
     { id: "enum:add", statements: enumAdds.map(addEnum) },
-    { id: "enum:alter", statements: diff.enumDiffs.alters.map(alterEnum).flat() },
+    {
+      id: "enum:alter",
+      statements: diff.enumDiffs.alters.map(alterEnum).flat(),
+    },
     { id: "view:delete", statements: diff.viewDiffs.deletes.map(deleteView) },
-    { id: "materialized-view:delete", statements: diff.materializedViewDiffs.deletes.map(deleteMaterializedView) },
-    { id: "trigger:delete", statements: diff.triggerDiffs.deletes.map(deleteTrigger) },
-    { id: "foreign-key:delete", statements: diff.foreignKeyConstraintDiffs.deletes.map(deleteForeignKeyConstraint) },
-    { id: "index:rename-for-replacement", statements: [...indexRenamesByName.entries()].map(([, replacement]) => renameIndex(replacement.oldIndex, replacement.temporaryName)) },
+    {
+      id: "materialized-view:delete",
+      statements: diff.materializedViewDiffs.deletes.map(
+        deleteMaterializedView,
+      ),
+    },
+    {
+      id: "trigger:delete",
+      statements: diff.triggerDiffs.deletes.map(deleteTrigger),
+    },
+    {
+      id: "foreign-key:delete",
+      statements: diff.foreignKeyConstraintDiffs.deletes.map(
+        deleteForeignKeyConstraint,
+      ),
+    },
+    {
+      id: "index:rename-for-replacement",
+      statements: [...indexRenamesByName.entries()].map(([, replacement]) =>
+        renameIndex(replacement.oldIndex, replacement.temporaryName),
+      ),
+    },
     {
       id: "index:delete",
       statements: indexDeletes
@@ -76,42 +140,129 @@ export function generateStatements(diff: SchemaDiff, options: GeneratePlanOption
         .map((index) => deleteIndex(index, null, options))
         .filter(isStatement),
     },
-    { id: "table:delete", statements: diff.tableDiffs.deletes.map(deleteTable) },
-    { id: "sequence:add", statements: diff.sequenceDiffs.adds.map(addSequence) },
-    { id: "table:add", statements: orderTableAdds(diff.tableDiffs.adds).map(addTable).flat() },
-    { id: "table:attach-partition", statements: orderTableAdds(diff.tableDiffs.adds).map(addAttachPartitionStatement).filter(isStatement) },
-    { id: "table:alter", statements: diff.tableDiffs.alters.map(alterTable).flat() },
-    { id: "sequence:delete-owned", statements: sequenceDeletes.map(deleteSequence) },
-    { id: "sequence:own", statements: diff.sequenceDiffs.adds.map(sequenceOwnershipStatement).filter(isStatement) },
-    { id: "sequence:alter", statements: diff.sequenceDiffs.alters.map(alterSequence).flat() },
-    { id: "function:add-alter", statements: functionAddAlters.map(addFunction) },
-    { id: "procedure:add", statements: diff.procedureDiffs.adds.map(addProcedure) },
-    { id: "procedure:alter", statements: diff.procedureDiffs.alters.map((procedureDiff) => addProcedure(procedureDiff.next)) },
+    { id: "table:delete", statements: tableDeletes },
+    {
+      id: "sequence:add",
+      statements: diff.sequenceDiffs.adds.map(addSequence),
+    },
+    {
+      id: "table:add",
+      statements: orderTableAdds(diff.tableDiffs.adds).map(addTable).flat(),
+    },
+    {
+      id: "table:attach-partition",
+      statements: orderTableAdds(diff.tableDiffs.adds)
+        .map(addAttachPartitionStatement)
+        .filter(isStatement),
+    },
+    {
+      id: "table:alter",
+      statements: diff.tableDiffs.alters
+        .map((tableDiff) => alterTable(tableDiff, diff))
+        .flat(),
+    },
+    {
+      id: "sequence:delete-owned",
+      statements: sequenceDeletes.map(deleteSequence),
+    },
+    {
+      id: "sequence:own",
+      statements: diff.sequenceDiffs.adds
+        .map(sequenceOwnershipStatement)
+        .filter(isStatement),
+    },
+    {
+      id: "sequence:alter",
+      statements: diff.sequenceDiffs.alters.map(alterSequence).flat(),
+    },
+    {
+      id: "function:add-alter",
+      statements: functionAddAlters.map(addFunction),
+    },
+    {
+      id: "procedure:add",
+      statements: diff.procedureDiffs.adds.map(addProcedure),
+    },
+    {
+      id: "procedure:alter",
+      statements: diff.procedureDiffs.alters.map((procedureDiff) =>
+        addProcedure(procedureDiff.next),
+      ),
+    },
     { id: "view:add", statements: diff.viewDiffs.adds.map(addView) },
-    { id: "view:alter", statements: diff.viewDiffs.alters.map((viewDiff) => [deleteView(viewDiff.old), addView(viewDiff.next)]).flat() },
-    { id: "materialized-view:add", statements: diff.materializedViewDiffs.adds.map(addMaterializedView) },
+    {
+      id: "view:alter",
+      statements: diff.viewDiffs.alters
+        .map((viewDiff) => [deleteView(viewDiff.old), addView(viewDiff.next)])
+        .flat(),
+    },
+    {
+      id: "materialized-view:add",
+      statements: diff.materializedViewDiffs.adds.map(addMaterializedView),
+    },
     {
       id: "materialized-view:alter",
-      statements: diff.materializedViewDiffs.alters.map((viewDiff) => [deleteMaterializedView(viewDiff.old), addMaterializedView(viewDiff.next)]).flat(),
+      statements: diff.materializedViewDiffs.alters
+        .map((viewDiff) => [
+          deleteMaterializedView(viewDiff.old),
+          addMaterializedView(viewDiff.next),
+        ])
+        .flat(),
     },
-    { id: "index:add", statements: orderIndexAdds(diff.indexDiffs.adds).map((index) => addIndex(index, options)).flat() },
-    { id: "index:alter", statements: diff.indexDiffs.alters.map(alterIndex).flat() },
+    {
+      id: "index:add",
+      statements: orderIndexAdds(diff.indexDiffs.adds)
+        .map((index) => addIndex(index, options))
+        .flat(),
+    },
+    {
+      id: "index:alter",
+      statements: diff.indexDiffs.alters.map(alterIndex).flat(),
+    },
     {
       id: "index:delete-replaced",
       statements: indexDeletes
         .filter((index) => indexRenamesByName.has(objectName(index)))
-        .map((index) => deleteIndex(index, indexRenamesByName.get(objectName(index))?.temporaryName ?? null, options))
+        .map((index) =>
+          deleteIndex(
+            index,
+            indexRenamesByName.get(objectName(index))?.temporaryName ?? null,
+            options,
+          ),
+        )
         .filter(isStatement),
     },
-    { id: "foreign-key:alter", statements: diff.foreignKeyConstraintDiffs.alters.map(alterForeignKeyConstraint).flat() },
-    { id: "foreign-key:add", statements: diff.foreignKeyConstraintDiffs.adds.map(addForeignKeyConstraint).flat() },
-    { id: "trigger:alter", statements: diff.triggerDiffs.alters.map(alterTrigger).flat() },
+    {
+      id: "foreign-key:alter",
+      statements: diff.foreignKeyConstraintDiffs.alters
+        .map(alterForeignKeyConstraint)
+        .flat(),
+    },
+    {
+      id: "foreign-key:add",
+      statements: diff.foreignKeyConstraintDiffs.adds
+        .map(addForeignKeyConstraint)
+        .flat(),
+    },
+    {
+      id: "trigger:alter",
+      statements: diff.triggerDiffs.alters.map(alterTrigger).flat(),
+    },
     { id: "trigger:add", statements: diff.triggerDiffs.adds.map(addTrigger) },
     { id: "function:delete", statements: functionDeletes.map(deleteFunction) },
-    { id: "procedure:delete", statements: diff.procedureDiffs.deletes.map(deleteProcedure) },
+    {
+      id: "procedure:delete",
+      statements: diff.procedureDiffs.deletes.map(deleteProcedure),
+    },
     { id: "enum:delete", statements: enumDeletes.map(deleteEnum) },
-    { id: "extension:delete", statements: diff.extensionDiffs.deletes.map(deleteExtension) },
-    { id: "named-schema:delete", statements: diff.namedSchemaDiffs.deletes.map(deleteNamedSchema) },
+    {
+      id: "extension:delete",
+      statements: diff.extensionDiffs.deletes.map(deleteExtension),
+    },
+    {
+      id: "named-schema:delete",
+      statements: diff.namedSchemaDiffs.deletes.map(deleteNamedSchema),
+    },
   ]);
 }
 
@@ -120,10 +271,16 @@ type StatementSection = {
   readonly statements: readonly InternalStatement[];
 };
 
-function orderStatementSections(sections: readonly StatementSection[]): readonly InternalStatement[] {
+function orderStatementSections(
+  sections: readonly StatementSection[],
+): readonly InternalStatement[] {
   const graph = new SqlGraph();
   for (const section of sections) {
-    graph.addVertex({ id: section.id, priority: sqlPriority.unset, statements: section.statements });
+    graph.addVertex({
+      id: section.id,
+      priority: sqlPriority.unset,
+      statements: section.statements,
+    });
   }
   for (let index = 1; index < sections.length; index += 1) {
     const previous = sections[index - 1];
@@ -136,26 +293,43 @@ function orderStatementSections(sections: readonly StatementSection[]): readonly
   return graph.toOrderedStatements();
 }
 
-function sequenceDeletedWithOwner(sequence: Sequence, diff: SchemaDiff): boolean {
+function sequenceDeletedWithOwner(
+  sequence: Sequence,
+  diff: SchemaDiff,
+): boolean {
   if (sequence.owner === null) {
     return false;
   }
 
   const ownerTableName = fqName(sequence.owner.tableName);
-  if (diff.tableDiffs.deletes.some((table) => objectName(table) === ownerTableName)) {
+  if (
+    diff.tableDiffs.deletes.some(
+      (table) => objectName(table) === ownerTableName,
+    )
+  ) {
     return true;
   }
 
-  const ownerTableDiff = diff.tableDiffs.alters.find((tableDiff) => objectName(tableDiff.old) === ownerTableName);
-  return ownerTableDiff?.columnsDiff.deletes.some((column) => column.name === sequence.owner?.columnName) ?? false;
+  const ownerTableDiff = diff.tableDiffs.alters.find(
+    (tableDiff) => objectName(tableDiff.old) === ownerTableName,
+  );
+  return (
+    ownerTableDiff?.columnsDiff.deletes.some(
+      (column) => column.name === sequence.owner?.columnName,
+    ) ?? false
+  );
 }
 
 function indexOwningRelationDeleted(index: Index, diff: SchemaDiff): boolean {
   const owningRelationName = fqName(index.owningRelName);
   if (index.owningRelKind === "m") {
-    return diff.materializedViewDiffs.deletes.some((view) => objectName(view) === owningRelationName);
+    return diff.materializedViewDiffs.deletes.some(
+      (view) => objectName(view) === owningRelationName,
+    );
   }
-  return diff.tableDiffs.deletes.some((table) => objectName(table) === owningRelationName);
+  return diff.tableDiffs.deletes.some(
+    (table) => objectName(table) === owningRelationName,
+  );
 }
 
 type ReplacementIndexRename = {
@@ -167,12 +341,18 @@ function buildReplacementIndexRenames(
   deletedIndexes: readonly Index[],
   addedIndexes: readonly Index[],
 ): ReadonlyMap<string, ReplacementIndexRename> {
-  const deletedByName = new Map(deletedIndexes.map((index) => [objectName(index), index]));
+  const deletedByName = new Map(
+    deletedIndexes.map((index) => [objectName(index), index]),
+  );
   const renames = new Map<string, ReplacementIndexRename>();
   for (const addedIndex of addedIndexes) {
     const name = objectName(addedIndex);
     const oldIndex = deletedByName.get(name);
-    if (oldIndex !== undefined && oldIndex.constraint === null && addedIndex.constraint === null) {
+    if (
+      oldIndex !== undefined &&
+      oldIndex.constraint === null &&
+      addedIndex.constraint === null
+    ) {
       renames.set(name, {
         oldIndex,
         temporaryName: temporaryIndexName(oldIndex.name),
@@ -183,12 +363,16 @@ function buildReplacementIndexRenames(
 }
 
 function renameIndex(index: Index, temporaryName: string): InternalStatement {
-  return standardStatement(`ALTER INDEX ${indexQualifiedName(index)} RENAME TO ${escapeIdentifier(temporaryName)}`);
+  return standardStatement(
+    `ALTER INDEX ${indexQualifiedName(index)} RENAME TO ${escapeIdentifier(temporaryName)}`,
+  );
 }
 
 function assertEnumCanBeRecreated(schemaEnum: Enum, diff: SchemaDiff): void {
   const typeNames = enumTypeNameCandidates(schemaEnum);
-  const referencingTable = diff.old.tables.find((table) => table.columns.some((column) => columnUsesType(column, typeNames)));
+  const referencingTable = diff.old.tables.find((table) =>
+    table.columns.some((column) => columnUsesType(column, typeNames)),
+  );
   if (referencingTable !== undefined) {
     throw new NotImplementedMigrationError(
       `removing labels from enum ${fqName(schemaEnum.name)} is not supported because it is used by table ${fqName(referencingTable.name)}`,
@@ -196,7 +380,10 @@ function assertEnumCanBeRecreated(schemaEnum: Enum, diff: SchemaDiff): void {
   }
 }
 
-function columnUsesType(column: Column, typeNames: ReadonlySet<string>): boolean {
+function columnUsesType(
+  column: Column,
+  typeNames: ReadonlySet<string>,
+): boolean {
   return typeNames.has(column.type);
 }
 
@@ -225,27 +412,47 @@ function addNamedSchema(schema: NamedSchema): InternalStatement {
 function deleteNamedSchema(schema: NamedSchema): InternalStatement {
   return {
     ...standardStatement(`DROP SCHEMA ${escapeIdentifier(schema.name)}`),
-    hazards: [{ type: "DELETES_DATA", message: "Drops the schema and objects it contains if dependencies allow it." }],
+    hazards: [
+      {
+        type: "DELETES_DATA",
+        message:
+          "Drops the schema and objects it contains if dependencies allow it.",
+      },
+    ],
   };
 }
 
 function addExtension(extension: Extension): InternalStatement {
-  const version = extension.version.length === 0 ? "" : ` VERSION ${escapeIdentifier(extension.version)}`;
-  return standardStatement(`CREATE EXTENSION ${extension.name.escapedName} WITH SCHEMA ${escapeIdentifier(extension.name.schemaName)}${version}`);
+  const version =
+    extension.version.length === 0
+      ? ""
+      : ` VERSION ${escapeIdentifier(extension.version)}`;
+  return standardStatement(
+    `CREATE EXTENSION ${extension.name.escapedName} WITH SCHEMA ${escapeIdentifier(extension.name.schemaName)}${version}`,
+  );
 }
 
-function alterExtension(diff: { readonly old: Extension; readonly next: Extension }): readonly InternalStatement[] {
+function alterExtension(diff: {
+  readonly old: Extension;
+  readonly next: Extension;
+}): readonly InternalStatement[] {
   if (diff.old.version === diff.next.version) {
     return [];
   }
-  const target = diff.next.version.length === 0 ? "" : ` TO ${escapeIdentifier(diff.next.version)}`;
+  const target =
+    diff.next.version.length === 0
+      ? ""
+      : ` TO ${escapeIdentifier(diff.next.version)}`;
   return [
     {
-      ...standardStatement(`ALTER EXTENSION ${diff.next.name.escapedName} UPDATE${target}`),
+      ...standardStatement(
+        `ALTER EXTENSION ${diff.next.name.escapedName} UPDATE${target}`,
+      ),
       hazards: [
         {
           type: "UPGRADING_EXTENSION_VERSION",
-          message: "This extension's version is being upgraded. Be sure the newer version is backwards compatible.",
+          message:
+            "This extension's version is being upgraded. Be sure the newer version is backwards compatible.",
         },
       ],
     },
@@ -258,15 +465,20 @@ function deleteExtension(extension: Extension): InternalStatement {
     hazards: [
       {
         type: "HAS_UNTRACKABLE_DEPENDENCIES",
-        message: "This extension may be in use by tables, indexes, functions, triggers, or other objects.",
+        message:
+          "This extension may be in use by tables, indexes, functions, triggers, or other objects.",
       },
     ],
   };
 }
 
 function addEnum(schemaEnum: Enum): InternalStatement {
-  const labels = schemaEnum.labels.map((label) => `'${label.replaceAll("'", "''")}'`).join(", ");
-  return standardStatement(`CREATE TYPE ${fqName(schemaEnum.name)} AS ENUM (${labels})`);
+  const labels = schemaEnum.labels
+    .map((label) => `'${label.replaceAll("'", "''")}'`)
+    .join(", ");
+  return standardStatement(
+    `CREATE TYPE ${fqName(schemaEnum.name)} AS ENUM (${labels})`,
+  );
 }
 
 function deleteEnum(schemaEnum: Enum): InternalStatement {
@@ -276,7 +488,10 @@ function deleteEnum(schemaEnum: Enum): InternalStatement {
   };
 }
 
-function alterEnum(diff: { readonly old: Enum; readonly next: Enum }): readonly InternalStatement[] {
+function alterEnum(diff: {
+  readonly old: Enum;
+  readonly next: Enum;
+}): readonly InternalStatement[] {
   const oldLabels = new Set(diff.old.labels);
   const statements: InternalStatement[] = [];
   for (let index = diff.next.labels.length - 1; index >= 0; index -= 1) {
@@ -285,8 +500,15 @@ function alterEnum(diff: { readonly old: Enum; readonly next: Enum }): readonly 
       continue;
     }
     const beforeLabel = diff.next.labels[index + 1];
-    const beforeClause = beforeLabel === undefined ? "" : ` BEFORE '${escapeStringLiteral(beforeLabel)}'`;
-    statements.push(standardStatement(`ALTER TYPE ${fqName(diff.next.name)} ADD VALUE '${escapeStringLiteral(label)}'${beforeClause}`));
+    const beforeClause =
+      beforeLabel === undefined
+        ? ""
+        : ` BEFORE '${escapeStringLiteral(beforeLabel)}'`;
+    statements.push(
+      standardStatement(
+        `ALTER TYPE ${fqName(diff.next.name)} ADD VALUE '${escapeStringLiteral(label)}'${beforeClause}`,
+      ),
+    );
   }
   return statements;
 }
@@ -299,14 +521,20 @@ function addTable(table: Table): readonly InternalStatement[] {
   if (table.parentTable !== null) {
     assertSupportedPartition(table);
   }
-  const columnDefs = table.columns.map((column) => `\t${buildColumnDefinition(column)}`).join(",\n");
+  const columnDefs = table.columns
+    .map((column) => `\t${buildColumnDefinition(column)}`)
+    .join(",\n");
   let sql = `CREATE TABLE ${fqName(table.name)} (\n${columnDefs}\n)`;
   if (table.partitionKeyDef.length > 0) {
     sql += ` PARTITION BY ${table.partitionKeyDef}`;
   }
   return [
     standardStatement(sql),
-    ...table.checkConstraints.map((constraint) => addCheckConstraintStatements(table, constraint, true)).flat(),
+    ...table.checkConstraints
+      .map((constraint) =>
+        addCheckConstraintStatements(table, constraint, true),
+      )
+      .flat(),
     ...replicaIdentityStatements(table, "d", table.replicaIdentity),
     ...table.policies.map((policy) => addPolicy(table, policy)),
     ...rlsStatements(table, false, false, table.rlsEnabled, table.rlsForced),
@@ -330,72 +558,225 @@ function addAttachPartitionStatement(table: Table): InternalStatement | null {
   if (table.parentTable === null) {
     return null;
   }
-  return standardStatement(`ALTER TABLE ${fqName(table.parentTable)} ATTACH PARTITION ${fqName(table.name)} ${table.forValues}`);
+  return standardStatement(
+    `ALTER TABLE ${fqName(table.parentTable)} ATTACH PARTITION ${fqName(table.name)} ${table.forValues}`,
+  );
 }
 
 function assertSupportedPartition(table: Table): void {
   if (table.partitionKeyDef.length > 0) {
-    throw new NotImplementedMigrationError("partitioned partitions are not supported");
+    throw new NotImplementedMigrationError(
+      "partitioned partitions are not supported",
+    );
   }
   if (table.checkConstraints.length > 0) {
-    throw new NotImplementedMigrationError("check constraints on partitions are not supported");
+    throw new NotImplementedMigrationError(
+      "check constraints on partitions are not supported",
+    );
   }
   if (table.policies.length > 0) {
-    throw new NotImplementedMigrationError("policies on partitions are not supported");
+    throw new NotImplementedMigrationError(
+      "policies on partitions are not supported",
+    );
   }
   if (table.privileges.length > 0) {
-    throw new NotImplementedMigrationError("privileges on partitions are not supported");
+    throw new NotImplementedMigrationError(
+      "privileges on partitions are not supported",
+    );
   }
 }
 
-function deleteTable(table: Table): InternalStatement {
+function deleteTable(table: Table, diff: SchemaDiff): InternalStatement | null {
+  if (table.parentTable !== null) {
+    const parentTable = table.parentTable;
+    if (
+      diff.tableDiffs.deletes.some(
+        (deletedTable) => objectName(deletedTable) === fqName(parentTable),
+      )
+    ) {
+      return null;
+    }
+    throw new NotImplementedMigrationError(
+      "deleting partitions without dropping parent table is not supported",
+    );
+  }
   return {
     sql: `DROP TABLE ${fqName(table.name)}`,
     timeoutMs: statementTimeoutTableDropMs,
     lockTimeoutMs: lockTimeoutDefaultMs,
-    hazards: [{ type: "DELETES_DATA", message: "Deletes all rows in the table and the table itself" }],
+    hazards: [
+      {
+        type: "DELETES_DATA",
+        message: "Deletes all rows in the table and the table itself",
+      },
+    ],
     skipValidation: false,
   };
 }
 
-function alterTable(diff: TableDiff): readonly InternalStatement[] {
+function alterTable(
+  diff: TableDiff,
+  schemaDiff: SchemaDiff,
+): readonly InternalStatement[] {
+  if (diff.next.parentTable !== null) {
+    return alterPartition(diff, schemaDiff);
+  }
+
   const afterEarlyRlsEnabled = diff.old.rlsEnabled && diff.next.rlsEnabled;
   const afterEarlyRlsForced = diff.old.rlsForced && diff.next.rlsForced;
-  const columnStatements =
-    diff.next.parentTable === null
-      ? [
-          ...diff.columnsDiff.deletes.map((column) => deleteColumnStatement(diff.next.name, column)),
-          ...diff.columnsDiff.adds.map((column) => addColumnStatement(diff.next.name, column)),
-          ...diff.columnsDiff.alters.map((columnDiff) => alterColumnStatements(diff.next.name, columnDiff)).flat(),
-        ]
-      : [];
+  const columnStatements = [
+    ...diff.columnsDiff.deletes.map((column) =>
+      deleteColumnStatement(diff.next.name, column),
+    ),
+    ...diff.columnsDiff.adds.map((column) =>
+      addColumnStatement(diff.next.name, column),
+    ),
+    ...diff.columnsDiff.alters
+      .map((columnDiff) => alterColumnStatements(diff.next.name, columnDiff))
+      .flat(),
+  ];
   return [
-    ...rlsStatements(diff.next, diff.old.rlsEnabled, diff.old.rlsForced, afterEarlyRlsEnabled, afterEarlyRlsForced),
+    ...rlsStatements(
+      diff.next,
+      diff.old.rlsEnabled,
+      diff.old.rlsForced,
+      afterEarlyRlsEnabled,
+      afterEarlyRlsForced,
+    ),
     ...columnStatements,
-    ...diff.checkConstraintDiff.deletes.map((constraint) => deleteCheckConstraint(diff.next, constraint)),
-    ...diff.checkConstraintDiff.adds.map((constraint) => addCheckConstraintStatements(diff.next, constraint, false)).flat(),
-    ...diff.checkConstraintDiff.alters.map((constraintDiff) => alterCheckConstraint(diff.next, constraintDiff)).flat(),
-    ...diff.policiesDiff.deletes.map((policy) => deletePolicy(diff.next, policy)),
+    ...diff.checkConstraintDiff.deletes.map((constraint) =>
+      deleteCheckConstraint(diff.next, constraint),
+    ),
+    ...diff.checkConstraintDiff.adds
+      .map((constraint) =>
+        addCheckConstraintStatements(diff.next, constraint, false),
+      )
+      .flat(),
+    ...diff.checkConstraintDiff.alters
+      .map((constraintDiff) => alterCheckConstraint(diff.next, constraintDiff))
+      .flat(),
+    ...diff.policiesDiff.deletes.map((policy) =>
+      deletePolicy(diff.next, policy),
+    ),
     ...diff.policiesDiff.adds.map((policy) => addPolicy(diff.next, policy)),
-    ...diff.policiesDiff.alters.map((policyDiff) => alterPolicy(diff.next, policyDiff)).flat(),
-    ...diff.privilegesDiff.deletes.map((privilege) => deletePrivilege(diff.next, privilege)),
-    ...diff.privilegesDiff.adds.map((privilege) => addPrivilege(diff.next, privilege)),
-    ...diff.privilegesDiff.alters.map((privilegeDiff) => alterPrivilege(diff.next, privilegeDiff)).flat(),
-    ...replicaIdentityStatements(diff.next, diff.old.replicaIdentity, diff.next.replicaIdentity),
-    ...rlsStatements(diff.next, afterEarlyRlsEnabled, afterEarlyRlsForced, diff.next.rlsEnabled, diff.next.rlsForced),
+    ...diff.policiesDiff.alters
+      .map((policyDiff) => alterPolicy(diff.next, policyDiff))
+      .flat(),
+    ...diff.privilegesDiff.deletes.map((privilege) =>
+      deletePrivilege(diff.next, privilege),
+    ),
+    ...diff.privilegesDiff.adds.map((privilege) =>
+      addPrivilege(diff.next, privilege),
+    ),
+    ...diff.privilegesDiff.alters
+      .map((privilegeDiff) => alterPrivilege(diff.next, privilegeDiff))
+      .flat(),
+    ...replicaIdentityStatements(
+      diff.next,
+      diff.old.replicaIdentity,
+      diff.next.replicaIdentity,
+    ),
+    ...rlsStatements(
+      diff.next,
+      afterEarlyRlsEnabled,
+      afterEarlyRlsForced,
+      diff.next.rlsEnabled,
+      diff.next.rlsForced,
+    ),
   ];
 }
 
-function addCheckConstraintStatements(table: Table, constraint: CheckConstraint, isNewTable: boolean): readonly InternalStatement[] {
+function alterPartition(
+  diff: TableDiff,
+  schemaDiff: SchemaDiff,
+): readonly InternalStatement[] {
+  if (diff.old.forValues !== diff.next.forValues) {
+    throw new NotImplementedMigrationError(
+      "altering partition FOR VALUES is not supported",
+    );
+  }
+  if (!listDiffIsEmpty(diff.checkConstraintDiff)) {
+    throw new NotImplementedMigrationError(
+      "check constraints on partitions are not supported",
+    );
+  }
+  if (!listDiffIsEmpty(diff.policiesDiff)) {
+    throw new NotImplementedMigrationError(
+      "policies on partitions are not supported",
+    );
+  }
+  if (!listDiffIsEmpty(diff.privilegesDiff)) {
+    throw new NotImplementedMigrationError(
+      "privileges on partitions are not supported",
+    );
+  }
+
+  const parentDiff = schemaDiff.tableDiffs.alters.find(
+    (tableDiff) =>
+      diff.next.parentTable !== null &&
+      objectName(tableDiff.next) === fqName(diff.next.parentTable),
+  );
+  const alteredParentColumnsByName = new Map(
+    parentDiff?.columnsDiff.alters.map((columnDiff) => [
+      columnDiff.next.name,
+      columnDiff,
+    ]) ?? [],
+  );
+  const statements: InternalStatement[] = [];
+
+  for (const columnDiff of diff.columnsDiff.alters) {
+    if (columnDiff.old.isNullable === columnDiff.next.isNullable) {
+      continue;
+    }
+
+    const parentColumnDiff = alteredParentColumnsByName.get(
+      columnDiff.next.name,
+    );
+    if (
+      parentColumnDiff !== undefined &&
+      columnDiff.next.isNullable === parentColumnDiff.next.isNullable &&
+      parentColumnDiff.next.isNullable !== parentColumnDiff.old.isNullable
+    ) {
+      continue;
+    }
+
+    statements.push(
+      standardStatement(
+        `ALTER TABLE ${fqName(diff.next.name)} ALTER COLUMN ${escapeIdentifier(columnDiff.next.name)} ${
+          columnDiff.next.isNullable ? "DROP NOT NULL" : "SET NOT NULL"
+        }`,
+      ),
+    );
+  }
+
+  return statements;
+}
+
+function addCheckConstraintStatements(
+  table: Table,
+  constraint: CheckConstraint,
+  isNewTable: boolean,
+): readonly InternalStatement[] {
   assertCheckConstraintSupported(constraint);
   if (constraint.isValid && !isNewTable) {
-    const invalidConstraint = createCheckConstraintStatement(table, { ...constraint, isValid: false });
-    return [invalidConstraint, standardStatement(`ALTER TABLE ${fqName(table.name)} VALIDATE CONSTRAINT ${escapeIdentifier(constraint.name)}`)];
+    const invalidConstraint = createCheckConstraintStatement(table, {
+      ...constraint,
+      isValid: false,
+    });
+    return [
+      invalidConstraint,
+      standardStatement(
+        `ALTER TABLE ${fqName(table.name)} VALIDATE CONSTRAINT ${escapeIdentifier(constraint.name)}`,
+      ),
+    ];
   }
   return [createCheckConstraintStatement(table, constraint)];
 }
 
-function createCheckConstraintStatement(table: Table, constraint: CheckConstraint): InternalStatement {
+function createCheckConstraintStatement(
+  table: Table,
+  constraint: CheckConstraint,
+): InternalStatement {
   let sql = `ALTER TABLE ${fqName(table.name)} ADD CONSTRAINT ${escapeIdentifier(constraint.name)} CHECK(${constraint.expression})`;
   if (!constraint.isInheritable) {
     sql += " NO INHERIT";
@@ -405,21 +786,26 @@ function createCheckConstraintStatement(table: Table, constraint: CheckConstrain
   }
   return {
     ...standardStatement(sql),
-    hazards:
-      constraint.isValid
-        ? [
-            {
-              type: "ACQUIRES_ACCESS_EXCLUSIVE_LOCK",
-              message: "Adding a valid check constraint may lock reads and writes while the constraint is added.",
-            },
-          ]
-        : [],
+    hazards: constraint.isValid
+      ? [
+          {
+            type: "ACQUIRES_ACCESS_EXCLUSIVE_LOCK",
+            message:
+              "Adding a valid check constraint may lock reads and writes while the constraint is added.",
+          },
+        ]
+      : [],
   };
 }
 
-function deleteCheckConstraint(table: Table, constraint: CheckConstraint): InternalStatement {
+function deleteCheckConstraint(
+  table: Table,
+  constraint: CheckConstraint,
+): InternalStatement {
   assertCheckConstraintSupported(constraint);
-  return standardStatement(`ALTER TABLE ${fqName(table.name)} DROP CONSTRAINT ${escapeIdentifier(constraint.name)}`);
+  return standardStatement(
+    `ALTER TABLE ${fqName(table.name)} DROP CONSTRAINT ${escapeIdentifier(constraint.name)}`,
+  );
 }
 
 function alterCheckConstraint(
@@ -429,14 +815,20 @@ function alterCheckConstraint(
   assertCheckConstraintSupported(diff.old);
   assertCheckConstraintSupported(diff.next);
   if (!diff.old.isValid && diff.next.isValid) {
-    return [standardStatement(`ALTER TABLE ${fqName(table.name)} VALIDATE CONSTRAINT ${escapeIdentifier(diff.next.name)}`)];
+    return [
+      standardStatement(
+        `ALTER TABLE ${fqName(table.name)} VALIDATE CONSTRAINT ${escapeIdentifier(diff.next.name)}`,
+      ),
+    ];
   }
   return [];
 }
 
 function assertCheckConstraintSupported(constraint: CheckConstraint): void {
   if (constraint.dependsOnFunctions.length > 0) {
-    throw new NotImplementedMigrationError("check constraints that depend on user-defined functions are not supported");
+    throw new NotImplementedMigrationError(
+      "check constraints that depend on user-defined functions are not supported",
+    );
   }
 }
 
@@ -449,16 +841,32 @@ function rlsStatements(
 ): readonly InternalStatement[] {
   const statements: InternalStatement[] = [];
   if (oldForced && !newForced) {
-    statements.push(authzStatement(`ALTER TABLE ${fqName(table.name)} NO FORCE ROW LEVEL SECURITY`));
+    statements.push(
+      authzStatement(
+        `ALTER TABLE ${fqName(table.name)} NO FORCE ROW LEVEL SECURITY`,
+      ),
+    );
   }
   if (oldEnabled && !newEnabled) {
-    statements.push(authzStatement(`ALTER TABLE ${fqName(table.name)} DISABLE ROW LEVEL SECURITY`));
+    statements.push(
+      authzStatement(
+        `ALTER TABLE ${fqName(table.name)} DISABLE ROW LEVEL SECURITY`,
+      ),
+    );
   }
   if (!oldEnabled && newEnabled) {
-    statements.push(authzStatement(`ALTER TABLE ${fqName(table.name)} ENABLE ROW LEVEL SECURITY`));
+    statements.push(
+      authzStatement(
+        `ALTER TABLE ${fqName(table.name)} ENABLE ROW LEVEL SECURITY`,
+      ),
+    );
   }
   if (!oldForced && newForced) {
-    statements.push(authzStatement(`ALTER TABLE ${fqName(table.name)} FORCE ROW LEVEL SECURITY`));
+    statements.push(
+      authzStatement(
+        `ALTER TABLE ${fqName(table.name)} FORCE ROW LEVEL SECURITY`,
+      ),
+    );
   }
   return statements;
 }
@@ -466,24 +874,38 @@ function rlsStatements(
 function authzStatement(sql: string): InternalStatement {
   return {
     ...standardStatement(sql),
-    hazards: [{ type: "AUTHZ_UPDATE", message: "Changes table authorization behavior." }],
+    hazards: [
+      {
+        type: "AUTHZ_UPDATE",
+        message: "Changes table authorization behavior.",
+      },
+    ],
   };
 }
 
-function replicaIdentityStatements(table: Table, oldIdentity: ReplicaIdentity, newIdentity: ReplicaIdentity): readonly InternalStatement[] {
+function replicaIdentityStatements(
+  table: Table,
+  oldIdentity: ReplicaIdentity,
+  newIdentity: ReplicaIdentity,
+): readonly InternalStatement[] {
   if (oldIdentity === newIdentity) {
     return [];
   }
   if (newIdentity === "i") {
-    throw new NotImplementedMigrationError("index replica identity is not supported");
+    throw new NotImplementedMigrationError(
+      "index replica identity is not supported",
+    );
   }
   return [
     {
-      ...standardStatement(`ALTER TABLE ${fqName(table.name)} REPLICA IDENTITY ${replicaIdentitySql(newIdentity)}`),
+      ...standardStatement(
+        `ALTER TABLE ${fqName(table.name)} REPLICA IDENTITY ${replicaIdentitySql(newIdentity)}`,
+      ),
       hazards: [
         {
           type: "CORRECTNESS",
-          message: "Changing replica identity may change logical replication behavior.",
+          message:
+            "Changing replica identity may change logical replication behavior.",
         },
       ],
     },
@@ -505,25 +927,43 @@ function replicaIdentitySql(identity: Exclude<ReplicaIdentity, "i">): string {
 
 function addPolicy(table: Table, policy: Policy): InternalStatement {
   const mode = policy.isPermissive ? "PERMISSIVE" : "RESTRICTIVE";
-  const roles = policy.appliesTo.length === 0 ? "PUBLIC" : policy.appliesTo.map(escapeRoleName).join(", ");
-  const using = policy.usingExpression.length === 0 ? "" : ` USING (${policy.usingExpression})`;
-  const check = policy.checkExpression.length === 0 ? "" : ` WITH CHECK (${policy.checkExpression})`;
+  const roles =
+    policy.appliesTo.length === 0
+      ? "PUBLIC"
+      : policy.appliesTo.map(escapeRoleName).join(", ");
+  const using =
+    policy.usingExpression.length === 0
+      ? ""
+      : ` USING (${policy.usingExpression})`;
+  const check =
+    policy.checkExpression.length === 0
+      ? ""
+      : ` WITH CHECK (${policy.checkExpression})`;
   return {
     ...standardStatement(
       `CREATE POLICY ${policy.escapedName} ON ${fqName(table.name)} AS ${mode} FOR ${policyCmdSql(policy.cmd)} TO ${roles}${using}${check}`,
     ),
-    hazards: [{ type: "AUTHZ_UPDATE", message: "Creates a row-level security policy." }],
+    hazards: [
+      { type: "AUTHZ_UPDATE", message: "Creates a row-level security policy." },
+    ],
   };
 }
 
 function deletePolicy(table: Table, policy: Policy): InternalStatement {
   return {
-    ...standardStatement(`DROP POLICY ${policy.escapedName} ON ${fqName(table.name)}`),
-    hazards: [{ type: "AUTHZ_UPDATE", message: "Drops a row-level security policy." }],
+    ...standardStatement(
+      `DROP POLICY ${policy.escapedName} ON ${fqName(table.name)}`,
+    ),
+    hazards: [
+      { type: "AUTHZ_UPDATE", message: "Drops a row-level security policy." },
+    ],
   };
 }
 
-function alterPolicy(table: Table, diff: { readonly old: Policy; readonly next: Policy }): readonly InternalStatement[] {
+function alterPolicy(
+  table: Table,
+  diff: { readonly old: Policy; readonly next: Policy },
+): readonly InternalStatement[] {
   if (deepEqual(diff.old, diff.next)) {
     return [];
   }
@@ -531,23 +971,40 @@ function alterPolicy(table: Table, diff: { readonly old: Policy; readonly next: 
   if (!deepEqual(diff.old.appliesTo, diff.next.appliesTo)) {
     parts.push(`TO ${policyRoles(diff.next)}`);
   }
-  if (diff.old.usingExpression !== diff.next.usingExpression && diff.next.usingExpression.length > 0) {
+  if (
+    diff.old.usingExpression !== diff.next.usingExpression &&
+    diff.next.usingExpression.length > 0
+  ) {
     parts.push(`USING (${diff.next.usingExpression})`);
   }
-  if (diff.old.checkExpression !== diff.next.checkExpression && diff.next.checkExpression.length > 0) {
+  if (
+    diff.old.checkExpression !== diff.next.checkExpression &&
+    diff.next.checkExpression.length > 0
+  ) {
     parts.push(`WITH CHECK (${diff.next.checkExpression})`);
   }
   if (parts.length === 0) {
     return [];
   }
-  return [{
-    ...standardStatement(`ALTER POLICY ${diff.next.escapedName} ON ${fqName(table.name)}\n\t${parts.join("\n\t")}`),
-    hazards: [{ type: "AUTHZ_UPDATE", message: "Alters a row-level security policy." }],
-  }];
+  return [
+    {
+      ...standardStatement(
+        `ALTER POLICY ${diff.next.escapedName} ON ${fqName(table.name)}\n\t${parts.join("\n\t")}`,
+      ),
+      hazards: [
+        {
+          type: "AUTHZ_UPDATE",
+          message: "Alters a row-level security policy.",
+        },
+      ],
+    },
+  ];
 }
 
 function policyRoles(policy: Policy): string {
-  return policy.appliesTo.length === 0 ? "PUBLIC" : policy.appliesTo.map(escapeRoleName).join(", ");
+  return policy.appliesTo.length === 0
+    ? "PUBLIC"
+    : policy.appliesTo.map(escapeRoleName).join(", ");
 }
 
 function policyCmdSql(cmd: PolicyCmd): string {
@@ -567,17 +1024,27 @@ function policyCmdSql(cmd: PolicyCmd): string {
   }
 }
 
-function addPrivilege(table: Table, privilege: TablePrivilege): InternalStatement {
+function addPrivilege(
+  table: Table,
+  privilege: TablePrivilege,
+): InternalStatement {
   const grantOption = privilege.isGrantable ? " WITH GRANT OPTION" : "";
   return {
-    ...standardStatement(`GRANT ${privilege.privilege} ON ${fqName(table.name)} TO ${escapeRoleName(privilege.grantee)}${grantOption}`),
+    ...standardStatement(
+      `GRANT ${privilege.privilege} ON ${fqName(table.name)} TO ${escapeRoleName(privilege.grantee)}${grantOption}`,
+    ),
     hazards: [{ type: "AUTHZ_UPDATE", message: "Grants table privileges." }],
   };
 }
 
-function deletePrivilege(table: Table, privilege: TablePrivilege): InternalStatement {
+function deletePrivilege(
+  table: Table,
+  privilege: TablePrivilege,
+): InternalStatement {
   return {
-    ...standardStatement(`REVOKE ${privilege.privilege} ON ${fqName(table.name)} FROM ${escapeRoleName(privilege.grantee)}`),
+    ...standardStatement(
+      `REVOKE ${privilege.privilege} ON ${fqName(table.name)} FROM ${escapeRoleName(privilege.grantee)}`,
+    ),
     hazards: [{ type: "AUTHZ_UPDATE", message: "Revokes table privileges." }],
   };
 }
@@ -593,10 +1060,15 @@ function alterPrivilege(
 }
 
 function escapeRoleName(roleName: string): string {
-  return roleName === "" || roleName === "PUBLIC" ? "PUBLIC" : escapeIdentifier(roleName);
+  return roleName === "" || roleName === "PUBLIC"
+    ? "PUBLIC"
+    : escapeIdentifier(roleName);
 }
 
-function addIndex(index: Index, options: GeneratePlanOptions): readonly InternalStatement[] {
+function addIndex(
+  index: Index,
+  options: GeneratePlanOptions,
+): readonly InternalStatement[] {
   if (index.isInvalid) {
     throw new NotImplementedMigrationError("can't create an invalid index");
   }
@@ -609,18 +1081,37 @@ function addIndex(index: Index, options: GeneratePlanOptions): readonly Internal
     ];
   }
 
-  const concurrently = (index.owningRelKind === "r" || index.owningRelKind === "m") && options.noConcurrentIndexOperations !== true;
+  const concurrently =
+    (index.owningRelKind === "r" || index.owningRelKind === "m") &&
+    options.noConcurrentIndexOperations !== true;
   const createIndexStatement: InternalStatement = {
-    ...standardStatement(concurrently ? toCreateIndexConcurrently(index.getIndexDefStmt) : index.getIndexDefStmt),
-    timeoutMs: concurrently ? statementTimeoutConcurrentIndexBuildMs : statementTimeoutDefaultMs,
-    hazards: [{ type: "INDEX_BUILD", message: "Building this index may affect database performance." }],
+    ...standardStatement(
+      concurrently
+        ? toCreateIndexConcurrently(index.getIndexDefStmt)
+        : index.getIndexDefStmt,
+    ),
+    timeoutMs: concurrently
+      ? statementTimeoutConcurrentIndexBuildMs
+      : statementTimeoutDefaultMs,
+    hazards: [
+      {
+        type: "INDEX_BUILD",
+        message: "Building this index may affect database performance.",
+      },
+    ],
   };
   if (index.constraint === null) {
-    return index.parentIdx === null ? [createIndexStatement] : [createIndexStatement, attachIndexPartition(index)];
+    return index.parentIdx === null
+      ? [createIndexStatement]
+      : [createIndexStatement, attachIndexPartition(index)];
   }
   return index.parentIdx === null
     ? [createIndexStatement, addIndexConstraint(index)]
-    : [createIndexStatement, addIndexConstraint(index), attachIndexPartition(index)];
+    : [
+        createIndexStatement,
+        addIndexConstraint(index),
+        attachIndexPartition(index),
+      ];
 }
 
 function orderIndexAdds(indexes: readonly Index[]): readonly Index[] {
@@ -635,40 +1126,69 @@ function orderIndexAdds(indexes: readonly Index[]): readonly Index[] {
   });
 }
 
-function deleteIndex(index: Index, renamedTo: string | null, options: GeneratePlanOptions): InternalStatement | null {
+function deleteIndex(
+  index: Index,
+  renamedTo: string | null,
+  options: GeneratePlanOptions,
+): InternalStatement | null {
   if (index.parentIdx !== null) {
     if (index.constraint?.isLocal === true) {
-      throw new NotImplementedMigrationError("dropping an index partition that backs a local constraint is not supported");
+      throw new NotImplementedMigrationError(
+        "dropping an index partition that backs a local constraint is not supported",
+      );
     }
     return null;
   }
   if (index.constraint !== null) {
     return {
-      ...standardStatement(`ALTER TABLE ${fqName(index.owningRelName)} DROP CONSTRAINT ${index.constraint.escapedConstraintName}`),
+      ...standardStatement(
+        `ALTER TABLE ${fqName(index.owningRelName)} DROP CONSTRAINT ${index.constraint.escapedConstraintName}`,
+      ),
       hazards: [
-        { type: "ACQUIRES_ACCESS_EXCLUSIVE_LOCK", message: "Dropping this constraint drops its backing index." },
-        { type: "INDEX_DROPPED", message: "Dropping this index may make queries perform worse." },
+        {
+          type: "ACQUIRES_ACCESS_EXCLUSIVE_LOCK",
+          message: "Dropping this constraint drops its backing index.",
+        },
+        {
+          type: "INDEX_DROPPED",
+          message: "Dropping this index may make queries perform worse.",
+        },
       ],
     };
   }
-  const concurrently = (index.owningRelKind === "r" || index.owningRelKind === "m") && options.noConcurrentIndexOperations !== true;
+  const concurrently =
+    (index.owningRelKind === "r" || index.owningRelKind === "m") &&
+    options.noConcurrentIndexOperations !== true;
   const indexName = renamedTo ?? index.name;
   return {
-    ...standardStatement(`DROP INDEX${concurrently ? " CONCURRENTLY" : ""} ${fqName({ schemaName: index.owningRelName.schemaName, escapedName: escapeIdentifier(indexName) })}`),
-    timeoutMs: concurrently ? statementTimeoutConcurrentIndexDropMs : statementTimeoutDefaultMs,
-    hazards: [{ type: "INDEX_DROPPED", message: "Dropping this index may make queries perform worse." }],
+    ...standardStatement(
+      `DROP INDEX${concurrently ? " CONCURRENTLY" : ""} ${fqName({ schemaName: index.owningRelName.schemaName, escapedName: escapeIdentifier(indexName) })}`,
+    ),
+    timeoutMs: concurrently
+      ? statementTimeoutConcurrentIndexDropMs
+      : statementTimeoutDefaultMs,
+    hazards: [
+      {
+        type: "INDEX_DROPPED",
+        message: "Dropping this index may make queries perform worse.",
+      },
+    ],
   };
 }
 
 function toCreateIndexConcurrently(createIndexSql: string): string {
   const match = /^(CREATE (?:UNIQUE )?INDEX )(.*)$/u.exec(createIndexSql);
   if (match === null) {
-    throw new Error(`${createIndexSql} follows an unexpected CREATE INDEX structure`);
+    throw new Error(
+      `${createIndexSql} follows an unexpected CREATE INDEX structure`,
+    );
   }
   const prefix = match[1];
   const rest = match[2];
   if (prefix === undefined || rest === undefined) {
-    throw new Error(`${createIndexSql} follows an unexpected CREATE INDEX structure`);
+    throw new Error(
+      `${createIndexSql} follows an unexpected CREATE INDEX structure`,
+    );
   }
   return `${prefix}CONCURRENTLY ${rest}`;
 }
@@ -679,7 +1199,10 @@ function addIndexConstraint(index: Index): InternalStatement {
   );
 }
 
-function alterIndex(diff: { readonly old: Index; readonly next: Index }): readonly InternalStatement[] {
+function alterIndex(diff: {
+  readonly old: Index;
+  readonly next: Index;
+}): readonly InternalStatement[] {
   let comparableOld = diff.old;
   const statements: InternalStatement[] = [];
 
@@ -698,17 +1221,26 @@ function alterIndex(diff: { readonly old: Index; readonly next: Index }): readon
     diff.next.parentIdx !== null &&
     comparableOld.constraint !== null &&
     diff.next.constraint !== null &&
-    constraintsEqualIgnoringLocality(comparableOld.constraint, diff.next.constraint)
+    constraintsEqualIgnoringLocality(
+      comparableOld.constraint,
+      diff.next.constraint,
+    )
   ) {
     comparableOld = { ...comparableOld, constraint: diff.next.constraint };
   }
 
-  if (comparableOld.owningRelKind === "p" && comparableOld.isInvalid && !diff.next.isInvalid) {
+  if (
+    comparableOld.owningRelKind === "p" &&
+    comparableOld.isInvalid &&
+    !diff.next.isInvalid
+  ) {
     comparableOld = { ...comparableOld, isInvalid: diff.next.isInvalid };
   }
 
   if (!deepEqual(comparableOld, diff.next)) {
-    throw new Error(`index diff could not be resolved for ${objectName(diff.next)}`);
+    throw new Error(
+      `index diff could not be resolved for ${objectName(diff.next)}`,
+    );
   }
 
   return statements;
@@ -718,20 +1250,27 @@ function constraintsEqualIgnoringLocality(
   left: NonNullable<Index["constraint"]>,
   right: NonNullable<Index["constraint"]>,
 ): boolean {
-  return left.type === right.type &&
+  return (
+    left.type === right.type &&
     left.escapedConstraintName === right.escapedConstraintName &&
-    left.constraintDef === right.constraintDef;
+    left.constraintDef === right.constraintDef
+  );
 }
 
 function attachIndexPartition(index: Index): InternalStatement {
   if (index.parentIdx === null) {
     throw new Error("expected index partition parent");
   }
-  return standardStatement(`ALTER INDEX ${fqName(index.parentIdx)} ATTACH PARTITION ${indexQualifiedName(index)}`);
+  return standardStatement(
+    `ALTER INDEX ${fqName(index.parentIdx)} ATTACH PARTITION ${indexQualifiedName(index)}`,
+  );
 }
 
 function indexQualifiedName(index: Index): string {
-  return fqName({ schemaName: index.owningRelName.schemaName, escapedName: escapeIdentifier(index.name) });
+  return fqName({
+    schemaName: index.owningRelName.schemaName,
+    escapedName: escapeIdentifier(index.name),
+  });
 }
 
 function constraintTypeSql(index: Index): string {
@@ -753,25 +1292,44 @@ function assertMissingConstraint(): never {
   throw new Error("expected index constraint");
 }
 
-function addForeignKeyConstraint(constraint: ForeignKeyConstraint): readonly InternalStatement[] {
+function addForeignKeyConstraint(
+  constraint: ForeignKeyConstraint,
+): readonly InternalStatement[] {
   if (!constraint.isValid) {
-    return [standardStatement(`ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${constraint.constraintDef}`)];
+    return [
+      standardStatement(
+        `ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${constraint.constraintDef}`,
+      ),
+    ];
   }
   return [
-    standardStatement(`ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${constraint.constraintDef} NOT VALID`),
-    standardStatement(`ALTER TABLE ${fqName(constraint.owningTable)} VALIDATE CONSTRAINT ${constraint.escapedName}`),
+    standardStatement(
+      `ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${constraint.constraintDef} NOT VALID`,
+    ),
+    standardStatement(
+      `ALTER TABLE ${fqName(constraint.owningTable)} VALIDATE CONSTRAINT ${constraint.escapedName}`,
+    ),
   ];
 }
 
-function deleteForeignKeyConstraint(constraint: ForeignKeyConstraint): InternalStatement {
-  return standardStatement(`ALTER TABLE ${fqName(constraint.owningTable)} DROP CONSTRAINT ${constraint.escapedName}`);
+function deleteForeignKeyConstraint(
+  constraint: ForeignKeyConstraint,
+): InternalStatement {
+  return standardStatement(
+    `ALTER TABLE ${fqName(constraint.owningTable)} DROP CONSTRAINT ${constraint.escapedName}`,
+  );
 }
 
-function alterForeignKeyConstraint(
-  diff: { readonly old: ForeignKeyConstraint; readonly next: ForeignKeyConstraint },
-): readonly InternalStatement[] {
+function alterForeignKeyConstraint(diff: {
+  readonly old: ForeignKeyConstraint;
+  readonly next: ForeignKeyConstraint;
+}): readonly InternalStatement[] {
   if (!diff.old.isValid && diff.next.isValid) {
-    return [standardStatement(`ALTER TABLE ${fqName(diff.next.owningTable)} VALIDATE CONSTRAINT ${diff.next.escapedName}`)];
+    return [
+      standardStatement(
+        `ALTER TABLE ${fqName(diff.next.owningTable)} VALIDATE CONSTRAINT ${diff.next.escapedName}`,
+      ),
+    ];
   }
   return [];
 }
@@ -786,7 +1344,10 @@ function addSequence(sequence: Sequence): InternalStatement {
   };
 }
 
-function alterSequence(diff: { readonly old: Sequence; readonly next: Sequence }): readonly InternalStatement[] {
+function alterSequence(diff: {
+  readonly old: Sequence;
+  readonly next: Sequence;
+}): readonly InternalStatement[] {
   const statements: InternalStatement[] = [];
   const oldComparable = { ...diff.old, owner: null };
   const nextComparable = { ...diff.next, owner: null };
@@ -799,7 +1360,12 @@ function alterSequence(diff: { readonly old: Sequence; readonly next: Sequence }
     );
   }
   if (!deepEqual(diff.old.owner, diff.next.owner)) {
-    statements.push(sequenceOwnershipStatement(diff.next) ?? standardStatement(`ALTER SEQUENCE ${fqName(diff.next.name)} OWNED BY NONE`));
+    statements.push(
+      sequenceOwnershipStatement(diff.next) ??
+        standardStatement(
+          `ALTER SEQUENCE ${fqName(diff.next.name)} OWNED BY NONE`,
+        ),
+    );
   }
   return statements;
 }
@@ -808,7 +1374,10 @@ function deleteSequence(sequence: Sequence): InternalStatement {
   return {
     ...standardStatement(`DROP SEQUENCE ${fqName(sequence.name)}`),
     hazards: [
-      { type: "DELETES_DATA", message: "By deleting a sequence, its value will be permanently lost" },
+      {
+        type: "DELETES_DATA",
+        message: "By deleting a sequence, its value will be permanently lost",
+      },
       ...(sequence.owner === null ? [sequenceDependencyHazard()] : []),
     ],
   };
@@ -821,7 +1390,9 @@ function sequenceDependencyHazard(): MigrationHazard {
   };
 }
 
-function sequenceOwnershipStatement(sequence: Sequence): InternalStatement | null {
+function sequenceOwnershipStatement(
+  sequence: Sequence,
+): InternalStatement | null {
   if (sequence.owner === null) {
     return null;
   }
@@ -830,15 +1401,29 @@ function sequenceOwnershipStatement(sequence: Sequence): InternalStatement | nul
   );
 }
 
-function isStatement(statement: InternalStatement | null): statement is InternalStatement {
+function isStatement(
+  statement: InternalStatement | null,
+): statement is InternalStatement {
   return statement !== null;
 }
 
-function orderFunctionsForAddAlter(functions: readonly FunctionSchema[]): readonly FunctionSchema[] {
+function listDiffIsEmpty(diff: ListDiff<unknown, unknown>): boolean {
+  return (
+    diff.adds.length === 0 &&
+    diff.deletes.length === 0 &&
+    diff.alters.length === 0
+  );
+}
+
+function orderFunctionsForAddAlter(
+  functions: readonly FunctionSchema[],
+): readonly FunctionSchema[] {
   return orderFunctionsByDependency(functions, "dependency-first");
 }
 
-function orderFunctionsForDelete(functions: readonly FunctionSchema[]): readonly FunctionSchema[] {
+function orderFunctionsForDelete(
+  functions: readonly FunctionSchema[],
+): readonly FunctionSchema[] {
   return orderFunctionsByDependency(functions, "dependent-first");
 }
 
@@ -846,7 +1431,10 @@ function orderFunctionsByDependency(
   functions: readonly FunctionSchema[],
   direction: "dependency-first" | "dependent-first",
 ): readonly FunctionSchema[] {
-  const graph = new DirectedGraph<{ readonly id: string; readonly fn: FunctionSchema }>();
+  const graph = new DirectedGraph<{
+    readonly id: string;
+    readonly fn: FunctionSchema;
+  }>();
   for (const fn of functions) {
     graph.addVertex({ id: objectName(fn), fn });
   }
@@ -897,11 +1485,15 @@ function deleteProcedure(procedure: Procedure): InternalStatement {
   };
 }
 
-function functionDependencyHazards(fn: FunctionSchema, operation: "adds" | "drops"): readonly MigrationHazard[] {
+function functionDependencyHazards(
+  fn: FunctionSchema,
+  operation: "adds" | "drops",
+): readonly MigrationHazard[] {
   if (fn.language === "sql") {
     return [];
   }
-  const action = operation === "adds" ? "created/altered before" : "dropped after";
+  const action =
+    operation === "adds" ? "created/altered before" : "dropped after";
   return [
     {
       type: "HAS_UNTRACKABLE_DEPENDENCIES",
@@ -913,7 +1505,9 @@ function functionDependencyHazards(fn: FunctionSchema, operation: "adds" | "drop
   ];
 }
 
-function procedureDependencyHazard(operation: "adds" | "drops"): MigrationHazard {
+function procedureDependencyHazard(
+  operation: "adds" | "drops",
+): MigrationHazard {
   const action = operation === "adds" ? "added before" : "dropped after";
   return {
     type: "HAS_UNTRACKABLE_DEPENDENCIES",
@@ -929,17 +1523,24 @@ function addTrigger(trigger: Trigger): InternalStatement {
 }
 
 function deleteTrigger(trigger: Trigger): InternalStatement {
-  return standardStatement(`DROP TRIGGER ${trigger.escapedName} ON ${fqName(trigger.owningTable)}`);
+  return standardStatement(
+    `DROP TRIGGER ${trigger.escapedName} ON ${fqName(trigger.owningTable)}`,
+  );
 }
 
-function alterTrigger(diff: { readonly old: Trigger; readonly next: Trigger }): readonly InternalStatement[] {
+function alterTrigger(diff: {
+  readonly old: Trigger;
+  readonly next: Trigger;
+}): readonly InternalStatement[] {
   if (deepEqual(diff.old, diff.next)) {
     return [];
   }
   if (diff.old.isConstraint || diff.next.isConstraint) {
     return [deleteTrigger(diff.old), addTrigger(diff.next)];
   }
-  return [standardStatement(triggerDefToCreateOrReplace(diff.next.getTriggerDefStmt))];
+  return [
+    standardStatement(triggerDefToCreateOrReplace(diff.next.getTriggerDefStmt)),
+  ];
 }
 
 function triggerDefToCreateOrReplace(getTriggerDefStmt: string): string {
@@ -950,7 +1551,9 @@ function triggerDefToCreateOrReplace(getTriggerDefStmt: string): string {
 }
 
 function addView(view: View): InternalStatement {
-  return standardStatement(`CREATE VIEW ${fqName(view.name)}${relOptionsClause(view.options)} AS\n${view.viewDefinition}`);
+  return standardStatement(
+    `CREATE VIEW ${fqName(view.name)}${relOptionsClause(view.options)} AS\n${view.viewDefinition}`,
+  );
 }
 
 function deleteView(view: View): InternalStatement {
@@ -958,7 +1561,10 @@ function deleteView(view: View): InternalStatement {
 }
 
 function addMaterializedView(view: MaterializedView): InternalStatement {
-  const tablespace = view.tablespace.length === 0 ? "" : ` TABLESPACE ${escapeIdentifier(view.tablespace)}`;
+  const tablespace =
+    view.tablespace.length === 0
+      ? ""
+      : ` TABLESPACE ${escapeIdentifier(view.tablespace)}`;
   return standardStatement(
     `CREATE MATERIALIZED VIEW ${fqName(view.name)}${relOptionsClause(view.options)}${tablespace} AS\n${view.viewDefinition}`,
   );
@@ -969,7 +1575,9 @@ function deleteMaterializedView(view: MaterializedView): InternalStatement {
 }
 
 function relOptionsClause(options: Readonly<Record<string, string>>): string {
-  const entries = Object.entries(options).map(([key, value]) => `${key}=${value}`);
+  const entries = Object.entries(options).map(
+    ([key, value]) => `${key}=${value}`,
+  );
   entries.sort((left, right) => left.localeCompare(right));
   return entries.length === 0 ? "" : ` WITH (${entries.join(", ")})`;
 }

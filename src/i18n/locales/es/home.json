@@ -640,8 +640,6 @@
       "migrateToProduction": "Migrar a Producción",
       "migrateToProductionDestructive": "Lo entiendo, migrar a producción",
       "migrating": "Migrando...",
-      "installingDependencies": "Instalando dependencias, luego migrando...",
-      "installDependenciesNote": "La primera migración instalará drizzle-kit y drizzle-orm. Esto puede tomar unos minutos.",
       "success": "Migración aplicada con éxito.",
       "errorMessage": "La migración no pudo ser aplicada.",
       "showDetails": "Mostrar detalles",

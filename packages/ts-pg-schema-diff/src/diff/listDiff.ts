@@ -20,9 +20,17 @@ export function diffLists<TObject, TDiff>(options: {
   readonly oldObjects: readonly TObject[];
   readonly newObjects: readonly TObject[];
   readonly getName: (object: TObject) => string;
-  readonly buildDiff: (oldObject: TObject, newObject: TObject, oldIndex: number, newIndex: number) => BuildDiffResult<TDiff>;
+  readonly buildDiff: (
+    oldObject: TObject,
+    newObject: TObject,
+    oldIndex: number,
+    newIndex: number,
+  ) => BuildDiffResult<TDiff>;
 }): ListDiff<TObject, TDiff> {
-  const nameToOld = new Map<string, { readonly index: number; readonly object: TObject }>();
+  const nameToOld = new Map<
+    string,
+    { readonly index: number; readonly object: TObject }
+  >();
 
   options.oldObjects.forEach((oldObject, index) => {
     const name = options.getName(oldObject);
@@ -45,7 +53,12 @@ export function diffLists<TObject, TDiff>(options: {
     }
 
     nameToOld.delete(name);
-    const result = options.buildDiff(oldEntry.object, newObject, oldEntry.index, newIndex);
+    const result = options.buildDiff(
+      oldEntry.object,
+      newObject,
+      oldEntry.index,
+      newIndex,
+    );
     if (result.requiresRecreation) {
       deletes.push(oldEntry.object);
       adds.push(newObject);

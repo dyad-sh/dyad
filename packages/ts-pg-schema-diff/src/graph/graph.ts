@@ -2,7 +2,10 @@ export type Vertex = {
   readonly id: string;
 };
 
-export type PriorityComparator<TVertex extends Vertex> = (left: TVertex, right: TVertex) => boolean;
+export type PriorityComparator<TVertex extends Vertex> = (
+  left: TVertex,
+  right: TVertex,
+) => boolean;
 
 export class DirectedGraph<TVertex extends Vertex> {
   readonly #verticesById = new Map<string, TVertex>();
@@ -41,13 +44,18 @@ export class DirectedGraph<TVertex extends Vertex> {
     return vertex;
   }
 
-  public union(other: DirectedGraph<TVertex>, merge: (oldVertex: TVertex, newVertex: TVertex) => TVertex): void {
+  public union(
+    other: DirectedGraph<TVertex>,
+    merge: (oldVertex: TVertex, newVertex: TVertex) => TVertex,
+  ): void {
     for (const newVertex of other.#verticesById.values()) {
       if (this.hasVertex(newVertex.id)) {
         const oldVertex = this.getVertex(newVertex.id);
         const merged = merge(oldVertex, newVertex);
         if (merged.id !== newVertex.id) {
-          throw new Error(`the merge function must return a vertex with the same id: expected ${newVertex.id} but found ${merged.id}`);
+          throw new Error(
+            `the merge function must return a vertex with the same id: expected ${newVertex.id} but found ${merged.id}`,
+          );
         }
         this.addVertex(merged);
       } else {
@@ -66,7 +74,9 @@ export class DirectedGraph<TVertex extends Vertex> {
     return this.topologicallySortWithPriority(() => false);
   }
 
-  public topologicallySortWithPriority(isLowerPriority: PriorityComparator<TVertex>): readonly TVertex[] {
+  public topologicallySortWithPriority(
+    isLowerPriority: PriorityComparator<TVertex>,
+  ): readonly TVertex[] {
     const verticesById = new Map(this.#verticesById);
     const edges = cloneEdges(this.#edges);
     const incomingEdgeCountByVertex = buildIncomingCounts(verticesById, edges);
@@ -84,7 +94,9 @@ export class DirectedGraph<TVertex extends Vertex> {
 
       const source = highestPrioritySource(sources, isLowerPriority);
       if (source === null) {
-        throw new Error(`cycle detected: ${formatCycleDebug(verticesById, edges, incomingEdgeCountByVertex)}`);
+        throw new Error(
+          `cycle detected: ${formatCycleDebug(verticesById, edges, incomingEdgeCountByVertex)}`,
+        );
       }
 
       output.push(source);
@@ -107,9 +119,10 @@ export class DirectedGraph<TVertex extends Vertex> {
   }
 }
 
-export function isLowerPriorityFromGetPriority<TVertex extends Vertex, TPriority extends number | string>(
-  getPriority: (vertex: TVertex) => TPriority,
-): PriorityComparator<TVertex> {
+export function isLowerPriorityFromGetPriority<
+  TVertex extends Vertex,
+  TPriority extends number | string,
+>(getPriority: (vertex: TVertex) => TPriority): PriorityComparator<TVertex> {
   return (left, right) => getPriority(left) < getPriority(right);
 }
 
@@ -126,7 +139,9 @@ function highestPrioritySource<TVertex extends Vertex>(
   return highest;
 }
 
-function cloneEdges(edges: ReadonlyMap<string, ReadonlySet<string>>): Map<string, Set<string>> {
+function cloneEdges(
+  edges: ReadonlyMap<string, ReadonlySet<string>>,
+): Map<string, Set<string>> {
   const cloned = new Map<string, Set<string>>();
   for (const [source, targets] of edges) {
     cloned.set(source, new Set(targets));
@@ -157,7 +172,9 @@ function formatCycleDebug<TVertex extends Vertex>(
 ): string {
   const remainingVertices = [...verticesById.keys()].sort().join(", ");
   const edgeList = [...edges.entries()]
-    .flatMap(([source, targets]) => [...targets].map((target) => `${source}->${target}`))
+    .flatMap(([source, targets]) =>
+      [...targets].map((target) => `${source}->${target}`),
+    )
     .sort()
     .join(", ");
   const incoming = [...incomingEdgeCountByVertex.entries()]

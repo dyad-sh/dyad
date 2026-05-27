@@ -92,7 +92,10 @@ export function policyName(obj: Policy): string {
 }
 
 export function indexName(obj: Index): string {
-  return fqName({ schemaName: obj.owningRelName.schemaName, escapedName: escapeIdentifier(obj.name) });
+  return fqName({
+    schemaName: obj.owningRelName.schemaName,
+    escapedName: escapeIdentifier(obj.name),
+  });
 }
 
 export function foreignKeyConstraintName(obj: ForeignKeyConstraint): string {

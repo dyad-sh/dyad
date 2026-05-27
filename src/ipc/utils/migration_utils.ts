@@ -11,13 +11,18 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { readEffectiveSettings } from "@/main/settings";
-import { getDyadAppPath } from "../../paths/paths";
 import { getAppWithNeonBranch } from "./neon_utils";
-import { gitAdd, gitCommit } from "./git_utils";
 import {
   DestructiveStatement,
   DestructiveStatementReason,
 } from "../types/migration";
+import {
+  generateSchemaDiff,
+  NotImplementedMigrationError,
+  PgSchemaDiffError,
+  UnsupportedPostgresVersionError,
+  type DatabaseConnectionOptions,
+} from "ts-pg-schema-diff";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
@@ -42,6 +47,14 @@ const MIGRATION_DEPS = [
   `drizzle-kit@${MIGRATION_DRIZZLE_KIT_VERSION}`,
   `drizzle-orm@${MIGRATION_DRIZZLE_ORM_VERSION}`,
 ] as const;
+export const MIGRATION_SCHEMA_DIFF_INCLUDE_SCHEMAS = ["public"] as const;
+export const MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS = {
+  ssl: true,
+  maxConnections: 1,
+  connectionTimeoutMs: 30_000,
+  queryTimeoutMs: 120_000,
+  statementTimeoutMs: 120_000,
+} as const satisfies DatabaseConnectionOptions;
 
 // =============================================================================
 // Constants
@@ -1531,6 +1544,91 @@ export async function runDiffGenerate({
 }
 
 // =============================================================================
+// ts-pg-schema-diff generation
+// =============================================================================
+
+export async function generateNeonMigrationStatements({
+  currentDatabaseUrl,
+  desiredDatabaseUrl,
+}: {
+  currentDatabaseUrl: string;
+  desiredDatabaseUrl: string;
+}): Promise<string[]> {
+  if (IS_TEST_BUILD) {
+    return [
+      'CREATE TABLE "mock" ("id" serial)',
+      'ALTER TABLE "mock" ADD COLUMN "name" text',
+    ];
+  }
+
+  try {
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl,
+      desiredDatabaseUrl,
+      includeSchemas: MIGRATION_SCHEMA_DIFF_INCLUDE_SCHEMAS,
+      noConcurrentIndexOperations: true,
+      connection: MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
+    });
+    return diff.statements.map((statement) => statement.sql);
+  } catch (error) {
+    throw toMigrationDiffDyadError(error);
+  }
+}
+
+function toMigrationDiffDyadError(error: unknown): DyadError {
+  const unsupportedChange = findErrorInCauseChain(
+    error,
+    (candidate) =>
+      candidate instanceof NotImplementedMigrationError ||
+      candidate.name === "NotImplementedMigrationError",
+  );
+  if (unsupportedChange) {
+    return new DyadError(
+      `Unsupported schema change: ${unsupportedChange.message}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  const unsupportedVersion = findErrorInCauseChain(
+    error,
+    (candidate) =>
+      candidate instanceof UnsupportedPostgresVersionError ||
+      candidate.name === "UnsupportedPostgresVersionError",
+  );
+  if (unsupportedVersion) {
+    return new DyadError(
+      unsupportedVersion.message,
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  const message =
+    error instanceof PgSchemaDiffError || error instanceof Error
+      ? error.message
+      : String(error);
+  return new DyadError(
+    `Failed to compute migration plan: ${message}`,
+    DyadErrorKind.External,
+  );
+}
+
+function findErrorInCauseChain(
+  error: unknown,
+  predicate: (candidate: Error) => boolean,
+): Error | null {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current instanceof Error && !seen.has(current)) {
+    if (predicate(current)) {
+      return current;
+    }
+    seen.add(current);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+// =============================================================================
 // Migration context (shared setup for preview)
 // =============================================================================
 
@@ -1541,9 +1639,6 @@ export interface MigrationContext {
   prodUpdatedAt: string;
   devUri: string;
   prodUri: string;
-  appPath: string;
-  workDir: string;
-  drizzleKitMajor: DrizzleKitMajor;
 }
 
 export async function prepareMigrationContext({
@@ -1612,52 +1707,6 @@ export async function prepareMigrationContext({
     );
   }
 
-  // 4. Ensure migration deps are installed in the user's app
-  const appPath = getDyadAppPath(appData.path);
-  const depsAlreadyInstalled = await areMigrationDepsInstalled(appPath);
-  if (!depsAlreadyInstalled) {
-    logger.info(
-      `Migration dependencies not installed in ${appPath}; installing now.`,
-    );
-    await installMigrationDeps(appPath);
-
-    try {
-      await gitAdd({ path: appPath, filepath: "package.json" });
-      for (const lockfile of [
-        "package-lock.json",
-        "pnpm-lock.yaml",
-        "yarn.lock",
-      ]) {
-        await gitAdd({ path: appPath, filepath: lockfile }).catch(() => {});
-      }
-      await gitCommit({
-        path: appPath,
-        message: "[dyad] install drizzle-kit and drizzle-orm for migrations",
-      });
-      logger.info(`Committed migration dependency install in ${appPath}`);
-    } catch (err) {
-      logger.warn(
-        `Failed to commit migration dependency install. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
-        err,
-      );
-    }
-  }
-
-  // 5. Detect installed drizzle-kit major to pick the right on-disk migration
-  // layout downstream. Run after the install step so we read whichever
-  // version is now on disk (either user-pinned existing copy or the v1 RC we
-  // just installed).
-  const drizzleKitMajor = await getInstalledDrizzleKitMajor(appPath);
-  logger.info(
-    `Detected drizzle-kit major ${drizzleKitMajor} in ${appPath} (${depsAlreadyInstalled ? "pre-existing" : "freshly installed"})`,
-  );
-
-  // 6. Work directory — preview always starts from a clean slate. The
-  // migrate handler does not call prepareMigrationContext; it consumes the
-  // SQL plan from the in-memory plan store instead.
-  const workDir = getMigrationWorkDir(appId);
-  await ensureFreshWorkDir(workDir);
-
   return {
     projectId,
     devBranchId,
@@ -1665,8 +1714,5 @@ export async function prepareMigrationContext({
     prodUpdatedAt,
     devUri,
     prodUri,
-    appPath,
-    workDir,
-    drizzleKitMajor,
   };
 }

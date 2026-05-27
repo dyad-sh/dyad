@@ -21,7 +21,9 @@ export class DuplicateIdentifierError extends PgSchemaDiffError {
 
 export class UnsupportedPostgresVersionError extends PgSchemaDiffError {
   public constructor(versionNumber: number) {
-    super(`PostgreSQL server version ${versionNumber} is not supported; PostgreSQL 14 or newer is required`);
+    super(
+      `PostgreSQL server version ${versionNumber} is not supported; PostgreSQL 14 or newer is required`,
+    );
     this.name = "UnsupportedPostgresVersionError";
   }
 }

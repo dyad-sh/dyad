@@ -22,7 +22,10 @@ let harness: PgHarness | null = null;
 describe("generateSchemaDiff against local PostgreSQL", () => {
   beforeAll(async () => {
     const externalDatabaseUrl = process.env["PG_SCHEMA_DIFF_TEST_DATABASE_URL"];
-    harness = externalDatabaseUrl === undefined ? await startPostgres() : externalPostgres(externalDatabaseUrl);
+    harness =
+      externalDatabaseUrl === undefined
+        ? await startPostgres()
+        : externalPostgres(externalDatabaseUrl);
   }, 30_000);
 
   afterAll(async () => {
@@ -37,7 +40,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "current_db");
     await createDatabase(pg, "desired_db");
 
-    await execSql(pg.databaseUrl("desired_db"), 'CREATE TABLE "users" ("id" integer NOT NULL)');
+    await execSql(
+      pg.databaseUrl("desired_db"),
+      'CREATE TABLE "users" ("id" integer NOT NULL)',
+    );
 
     const firstDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("current_db"),
@@ -60,7 +66,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       desiredDatabaseUrl: pg.databaseUrl("desired_db"),
     });
     expect(secondDiff.statements).toEqual([]);
-    await expect(dumpSchema(pg.databaseUrl("current_db"))).resolves.toBe(await dumpSchema(pg.databaseUrl("desired_db")));
+    await expect(dumpSchema(pg.databaseUrl("current_db"))).resolves.toBe(
+      await dumpSchema(pg.databaseUrl("desired_db")),
+    );
   }, 30_000);
 
   it("creates and drops named schemas", async () => {
@@ -68,8 +76,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "named_schema_current_db");
     await createDatabase(pg, "named_schema_desired_db");
 
-    await execSql(pg.databaseUrl("named_schema_current_db"), 'CREATE SCHEMA "schema 1"; CREATE SCHEMA "schema 2"');
-    await execSql(pg.databaseUrl("named_schema_desired_db"), 'CREATE SCHEMA "schema 2"; CREATE SCHEMA "schema 3"');
+    await execSql(
+      pg.databaseUrl("named_schema_current_db"),
+      'CREATE SCHEMA "schema 1"; CREATE SCHEMA "schema 2"',
+    );
+    await execSql(
+      pg.databaseUrl("named_schema_desired_db"),
+      'CREATE SCHEMA "schema 2"; CREATE SCHEMA "schema 3"',
+    );
 
     const firstDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("named_schema_current_db"),
@@ -96,7 +110,11 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       desiredDatabaseUrl: pg.databaseUrl("named_schema_desired_db"),
     });
     expect(secondDiff.statements).toEqual([]);
-    await expect(dumpSchema(pg.databaseUrl("named_schema_current_db"))).resolves.toBe(await dumpSchema(pg.databaseUrl("named_schema_desired_db")));
+    await expect(
+      dumpSchema(pg.databaseUrl("named_schema_current_db")),
+    ).resolves.toBe(
+      await dumpSchema(pg.databaseUrl("named_schema_desired_db")),
+    );
   }, 30_000);
 
   it("creates and drops extensions in named schemas", async () => {
@@ -104,8 +122,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "extension_current_db");
     await createDatabase(pg, "extension_desired_db");
 
-    await execSql(pg.databaseUrl("extension_current_db"), 'CREATE SCHEMA "schema 1"; CREATE EXTENSION amcheck WITH SCHEMA "schema 1"');
-    await execSql(pg.databaseUrl("extension_desired_db"), 'CREATE SCHEMA "schema 2"; CREATE EXTENSION pg_trgm WITH SCHEMA "schema 2"');
+    await execSql(
+      pg.databaseUrl("extension_current_db"),
+      'CREATE SCHEMA "schema 1"; CREATE EXTENSION amcheck WITH SCHEMA "schema 1"',
+    );
+    await execSql(
+      pg.databaseUrl("extension_desired_db"),
+      'CREATE SCHEMA "schema 2"; CREATE EXTENSION pg_trgm WITH SCHEMA "schema 2"',
+    );
 
     const firstDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("extension_current_db"),
@@ -118,7 +142,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         type: "additive",
       },
       {
-        sql: expect.stringMatching(/^CREATE EXTENSION "pg_trgm" WITH SCHEMA "schema 2" VERSION "[^"]+"$/u),
+        sql: expect.stringMatching(
+          /^CREATE EXTENSION "pg_trgm" WITH SCHEMA "schema 2" VERSION "[^"]+"$/u,
+        ),
         type: "additive",
       },
       {
@@ -140,7 +166,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       desiredDatabaseUrl: pg.databaseUrl("extension_desired_db"),
     });
     expect(secondDiff.statements).toEqual([]);
-    await expect(dumpSchema(pg.databaseUrl("extension_current_db"))).resolves.toBe(await dumpSchema(pg.databaseUrl("extension_desired_db")));
+    await expect(
+      dumpSchema(pg.databaseUrl("extension_current_db")),
+    ).resolves.toBe(await dumpSchema(pg.databaseUrl("extension_desired_db")));
   }, 30_000);
 
   it("upgrades extension versions", async () => {
@@ -148,8 +176,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "extension_upgrade_current_db");
     await createDatabase(pg, "extension_upgrade_desired_db");
 
-    await execSql(pg.databaseUrl("extension_upgrade_current_db"), "CREATE EXTENSION pg_trgm WITH VERSION '1.5'");
-    await execSql(pg.databaseUrl("extension_upgrade_desired_db"), "CREATE EXTENSION pg_trgm");
+    await execSql(
+      pg.databaseUrl("extension_upgrade_current_db"),
+      "CREATE EXTENSION pg_trgm WITH VERSION '1.5'",
+    );
+    await execSql(
+      pg.databaseUrl("extension_upgrade_desired_db"),
+      "CREATE EXTENSION pg_trgm",
+    );
 
     const firstDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("extension_upgrade_current_db"),
@@ -158,13 +192,18 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     expect(firstDiff.statements).toEqual([
       {
-        sql: expect.stringMatching(/^ALTER EXTENSION "pg_trgm" UPDATE TO "[^"]+"$/u),
+        sql: expect.stringMatching(
+          /^ALTER EXTENSION "pg_trgm" UPDATE TO "[^"]+"$/u,
+        ),
         type: "additive",
       },
     ]);
 
     for (const statement of firstDiff.statements) {
-      await execSql(pg.databaseUrl("extension_upgrade_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("extension_upgrade_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -172,7 +211,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       desiredDatabaseUrl: pg.databaseUrl("extension_upgrade_desired_db"),
     });
     expect(secondDiff.statements).toEqual([]);
-    await expect(dumpSchema(pg.databaseUrl("extension_upgrade_current_db"))).resolves.toBe(
+    await expect(
+      dumpSchema(pg.databaseUrl("extension_upgrade_current_db")),
+    ).resolves.toBe(
       await dumpSchema(pg.databaseUrl("extension_upgrade_desired_db")),
     );
   }, 30_000);
@@ -201,11 +242,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = firstDiff.statements.map((statement) => statement.sql);
-    expect(sql.some((statement) => /^ALTER TABLE "public"\."accounts" ADD CONSTRAINT "label_present" CHECK\(.+\)$/u.test(statement))).toBe(
-      true,
+    expect(
+      sql.some((statement) =>
+        /^ALTER TABLE "public"\."accounts" ADD CONSTRAINT "label_present" CHECK\(.+\)$/u.test(
+          statement,
+        ),
+      ),
+    ).toBe(true);
+    expect(sql).toContain(
+      'CREATE POLICY "accounts_read" ON "public"."accounts" AS PERMISSIVE FOR SELECT TO PUBLIC USING (true)',
     );
-    expect(sql).toContain('CREATE POLICY "accounts_read" ON "public"."accounts" AS PERMISSIVE FOR SELECT TO PUBLIC USING (true)');
-    expect(sql).toContain('ALTER TABLE "public"."accounts" ENABLE ROW LEVEL SECURITY');
+    expect(sql).toContain(
+      'ALTER TABLE "public"."accounts" ENABLE ROW LEVEL SECURITY',
+    );
     expect(sql).toContain('GRANT SELECT ON "public"."accounts" TO PUBLIC');
 
     for (const statement of firstDiff.statements) {
@@ -224,7 +273,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "check_current_db");
     await createDatabase(pg, "check_desired_db");
 
-    await execSql(pg.databaseUrl("check_current_db"), "CREATE TABLE accounts (id integer NOT NULL, balance integer NOT NULL)");
+    await execSql(
+      pg.databaseUrl("check_current_db"),
+      "CREATE TABLE accounts (id integer NOT NULL, balance integer NOT NULL)",
+    );
     await execSql(
       pg.databaseUrl("check_desired_db"),
       "CREATE TABLE accounts (id integer NOT NULL, balance integer NOT NULL CONSTRAINT balance_nonnegative CHECK (balance >= 0))",
@@ -306,7 +358,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         currentDatabaseUrl: pg.databaseUrl("check_udf_current_db"),
         desiredDatabaseUrl: pg.databaseUrl("check_udf_desired_db"),
       }),
-    ).rejects.toThrow("check constraints that depend on user-defined functions are not supported");
+    ).rejects.toThrow(
+      "check constraints that depend on user-defined functions are not supported",
+    );
   }, 30_000);
 
   it("rejects index replica identity on newly-added tables", async () => {
@@ -328,8 +382,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     await expect(
       generateSchemaDiff({
-        currentDatabaseUrl: pg.databaseUrl("replica_identity_index_add_current_db"),
-        desiredDatabaseUrl: pg.databaseUrl("replica_identity_index_add_desired_db"),
+        currentDatabaseUrl: pg.databaseUrl(
+          "replica_identity_index_add_current_db",
+        ),
+        desiredDatabaseUrl: pg.databaseUrl(
+          "replica_identity_index_add_desired_db",
+        ),
       }),
     ).rejects.toThrow("index replica identity is not supported");
   }, 30_000);
@@ -346,7 +404,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       );
       CREATE UNIQUE INDEX accounts_email_idx ON accounts(email);
     `;
-    await execSql(pg.databaseUrl("replica_identity_index_alter_current_db"), `${baseSql} ALTER TABLE accounts REPLICA IDENTITY FULL;`);
+    await execSql(
+      pg.databaseUrl("replica_identity_index_alter_current_db"),
+      `${baseSql} ALTER TABLE accounts REPLICA IDENTITY FULL;`,
+    );
     await execSql(
       pg.databaseUrl("replica_identity_index_alter_desired_db"),
       `${baseSql} ALTER TABLE accounts REPLICA IDENTITY USING INDEX accounts_email_idx;`,
@@ -354,8 +415,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     await expect(
       generateSchemaDiff({
-        currentDatabaseUrl: pg.databaseUrl("replica_identity_index_alter_current_db"),
-        desiredDatabaseUrl: pg.databaseUrl("replica_identity_index_alter_desired_db"),
+        currentDatabaseUrl: pg.databaseUrl(
+          "replica_identity_index_alter_current_db",
+        ),
+        desiredDatabaseUrl: pg.databaseUrl(
+          "replica_identity_index_alter_desired_db",
+        ),
       }),
     ).rejects.toThrow("index replica identity is not supported");
   }, 30_000);
@@ -429,7 +494,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("policy_recreate_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("policy_recreate_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -443,7 +511,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     const pg = requireHarness();
     await createDatabase(pg, "privilege_grant_option_current_db");
     await createDatabase(pg, "privilege_grant_option_desired_db");
-    await execSql(pg.databaseUrl("postgres"), "CREATE ROLE privilege_grant_option_user");
+    await execSql(
+      pg.databaseUrl("postgres"),
+      "CREATE ROLE privilege_grant_option_user",
+    );
 
     await execSql(
       pg.databaseUrl("privilege_grant_option_current_db"),
@@ -464,7 +535,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("privilege_grant_option_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("privilege_grant_option_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -480,10 +554,22 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "index_desired_db");
     await createDatabase(pg, "index_no_index_db");
 
-    await execSql(pg.databaseUrl("index_current_db"), "CREATE TABLE users (id integer NOT NULL, name text)");
-    await execSql(pg.databaseUrl("index_desired_db"), "CREATE TABLE users (id integer NOT NULL, name text)");
-    await execSql(pg.databaseUrl("index_no_index_db"), "CREATE TABLE users (id integer NOT NULL, name text)");
-    await execSql(pg.databaseUrl("index_desired_db"), "CREATE INDEX users_name_idx ON users (name)");
+    await execSql(
+      pg.databaseUrl("index_current_db"),
+      "CREATE TABLE users (id integer NOT NULL, name text)",
+    );
+    await execSql(
+      pg.databaseUrl("index_desired_db"),
+      "CREATE TABLE users (id integer NOT NULL, name text)",
+    );
+    await execSql(
+      pg.databaseUrl("index_no_index_db"),
+      "CREATE TABLE users (id integer NOT NULL, name text)",
+    );
+    await execSql(
+      pg.databaseUrl("index_desired_db"),
+      "CREATE INDEX users_name_idx ON users (name)",
+    );
 
     const addDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("index_current_db"),
@@ -507,7 +593,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       currentDatabaseUrl: pg.databaseUrl("index_desired_db"),
       desiredDatabaseUrl: pg.databaseUrl("index_no_index_db"),
     });
-    expect(dropDiff.statements.map((statement) => statement.sql)).toContain('DROP INDEX CONCURRENTLY "public"."users_name_idx"');
+    expect(dropDiff.statements.map((statement) => statement.sql)).toContain(
+      'DROP INDEX CONCURRENTLY "public"."users_name_idx"',
+    );
   }, 30_000);
 
   it("replaces changed indexes by renaming the old index before creating the new one", async () => {
@@ -515,19 +603,35 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "replace_index_current_db");
     await createDatabase(pg, "replace_index_desired_db");
 
-    await execSql(pg.databaseUrl("replace_index_current_db"), "CREATE TABLE users (id integer NOT NULL, name text)");
-    await execSql(pg.databaseUrl("replace_index_desired_db"), "CREATE TABLE users (id integer NOT NULL, name text)");
-    await execSql(pg.databaseUrl("replace_index_current_db"), "CREATE INDEX users_name_idx ON users (name)");
-    await execSql(pg.databaseUrl("replace_index_desired_db"), "CREATE INDEX users_name_idx ON users (name, id)");
+    await execSql(
+      pg.databaseUrl("replace_index_current_db"),
+      "CREATE TABLE users (id integer NOT NULL, name text)",
+    );
+    await execSql(
+      pg.databaseUrl("replace_index_desired_db"),
+      "CREATE TABLE users (id integer NOT NULL, name text)",
+    );
+    await execSql(
+      pg.databaseUrl("replace_index_current_db"),
+      "CREATE INDEX users_name_idx ON users (name)",
+    );
+    await execSql(
+      pg.databaseUrl("replace_index_desired_db"),
+      "CREATE INDEX users_name_idx ON users (name, id)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("replace_index_current_db"),
       desiredDatabaseUrl: pg.databaseUrl("replace_index_desired_db"),
     });
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
-      expect.stringMatching(/^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+      ),
       "CREATE INDEX CONCURRENTLY users_name_idx ON public.users USING btree (name, id)",
-      expect.stringMatching(/^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+      ),
     ]);
 
     for (const statement of diff.statements) {
@@ -567,7 +671,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("table_drop_index_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("table_drop_index_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -587,7 +694,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE MATERIALIZED VIEW account_names AS SELECT id, name FROM accounts;
     `;
     await execSql(pg.databaseUrl("matview_index_current_db"), baseSql);
-    await execSql(pg.databaseUrl("matview_index_desired_db"), `${baseSql} CREATE INDEX account_names_name_idx ON account_names(name);`);
+    await execSql(
+      pg.databaseUrl("matview_index_desired_db"),
+      `${baseSql} CREATE INDEX account_names_name_idx ON account_names(name);`,
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("matview_index_current_db"),
@@ -622,7 +732,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         CREATE INDEX account_names_name_idx ON account_names(name);
       `,
     );
-    await execSql(pg.databaseUrl("matview_drop_index_desired_db"), "CREATE TABLE accounts (id integer NOT NULL, name text NOT NULL)");
+    await execSql(
+      pg.databaseUrl("matview_drop_index_desired_db"),
+      "CREATE TABLE accounts (id integer NOT NULL, name text NOT NULL)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("matview_drop_index_current_db"),
@@ -637,7 +750,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("matview_drop_index_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("matview_drop_index_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -674,7 +790,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
       'DROP VIEW "public"."active_accounts"',
-      expect.stringMatching(/^CREATE VIEW "public"\."active_accounts" WITH \(security_barrier=true\) AS\n/u),
+      expect.stringMatching(
+        /^CREATE VIEW "public"\."active_accounts" WITH \(security_barrier=true\) AS\n/u,
+      ),
     ]);
 
     for (const statement of diff.statements) {
@@ -721,7 +839,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("matview_options_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("matview_options_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -764,11 +885,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       'DROP TABLE "public"."accounts"',
       'CREATE TABLE "public"."accounts" (\n\t"id" integer NOT NULL,\n\t"created_at" date NOT NULL\n) PARTITION BY RANGE (created_at)',
       expect.stringMatching(/^CREATE VIEW "public"\."account_days" AS\n/u),
-      expect.stringMatching(/^CREATE MATERIALIZED VIEW "public"\."account_day_counts" AS\n/u),
+      expect.stringMatching(
+        /^CREATE MATERIALIZED VIEW "public"\."account_day_counts" AS\n/u,
+      ),
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("view_dependency_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("view_dependency_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -798,11 +924,15 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     expect(diff.statements).toEqual([
       {
-        sql: expect.stringMatching(/^CREATE OR REPLACE FUNCTION public\.non_sql_func/u),
+        sql: expect.stringMatching(
+          /^CREATE OR REPLACE FUNCTION public\.non_sql_func/u,
+        ),
         type: "destructive",
       },
       {
-        sql: expect.stringMatching(/^CREATE OR REPLACE PROCEDURE public\.sync_accounts/u),
+        sql: expect.stringMatching(
+          /^CREATE OR REPLACE PROCEDURE public\.sync_accounts/u,
+        ),
         type: "destructive",
       },
     ]);
@@ -850,7 +980,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of addDiff.statements) {
-      await execSql(pg.databaseUrl("function_order_add_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("function_order_add_current_db"),
+        statement.sql,
+      );
     }
     const addSecondDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("function_order_add_current_db"),
@@ -868,7 +1001,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of dropDiff.statements) {
-      await execSql(pg.databaseUrl("function_order_drop_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("function_order_drop_current_db"),
+        statement.sql,
+      );
     }
     const dropSecondDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("function_order_drop_current_db"),
@@ -882,8 +1018,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "pk_current_db");
     await createDatabase(pg, "pk_desired_db");
 
-    await execSql(pg.databaseUrl("pk_current_db"), "CREATE TABLE accounts (id integer NOT NULL)");
-    await execSql(pg.databaseUrl("pk_desired_db"), "CREATE TABLE accounts (id integer PRIMARY KEY)");
+    await execSql(
+      pg.databaseUrl("pk_current_db"),
+      "CREATE TABLE accounts (id integer NOT NULL)",
+    );
+    await execSql(
+      pg.databaseUrl("pk_desired_db"),
+      "CREATE TABLE accounts (id integer PRIMARY KEY)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("pk_current_db"),
@@ -915,7 +1057,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       pg.databaseUrl("unique_existing_index_current_db"),
       "CREATE TABLE accounts (email text); CREATE UNIQUE INDEX accounts_email_key ON accounts(email)",
     );
-    await execSql(pg.databaseUrl("unique_existing_index_desired_db"), "CREATE TABLE accounts (email text UNIQUE)");
+    await execSql(
+      pg.databaseUrl("unique_existing_index_desired_db"),
+      "CREATE TABLE accounts (email text UNIQUE)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("unique_existing_index_current_db"),
@@ -927,7 +1072,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("unique_existing_index_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("unique_existing_index_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -967,7 +1115,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("constraint_rename_index_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("constraint_rename_index_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -992,7 +1143,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE INDEX metrics_recorded_at_idx ON ONLY metrics (recorded_at);
       CREATE INDEX metrics_2024_recorded_at_idx ON metrics_2024 (recorded_at);
     `;
-    await execSql(pg.databaseUrl("partitioned_index_attach_current_db"), baseSql);
+    await execSql(
+      pg.databaseUrl("partitioned_index_attach_current_db"),
+      baseSql,
+    );
     await execSql(
       pg.databaseUrl("partitioned_index_attach_desired_db"),
       `${baseSql} ALTER INDEX metrics_recorded_at_idx ATTACH PARTITION metrics_2024_recorded_at_idx;`,
@@ -1008,7 +1162,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_attach_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_attach_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1037,15 +1194,22 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       ALTER INDEX metrics_recorded_at_idx ATTACH PARTITION metrics_2024_recorded_at_idx;
       CREATE INDEX metrics_2025_recorded_at_idx ON metrics_2025 (recorded_at);
     `;
-    await execSql(pg.databaseUrl("partitioned_invalid_index_attach_current_db"), baseSql);
+    await execSql(
+      pg.databaseUrl("partitioned_invalid_index_attach_current_db"),
+      baseSql,
+    );
     await execSql(
       pg.databaseUrl("partitioned_invalid_index_attach_desired_db"),
       `${baseSql} ALTER INDEX metrics_recorded_at_idx ATTACH PARTITION metrics_2025_recorded_at_idx;`,
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_invalid_index_attach_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_invalid_index_attach_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_invalid_index_attach_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_invalid_index_attach_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1053,12 +1217,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_invalid_index_attach_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_invalid_index_attach_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_invalid_index_attach_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_invalid_index_attach_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_invalid_index_attach_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_invalid_index_attach_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1078,7 +1249,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE TABLE metrics_2025 PARTITION OF metrics
         FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
     `;
-    await execSql(pg.databaseUrl("partitioned_index_type_current_db"), `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics (recorded_at);`);
+    await execSql(
+      pg.databaseUrl("partitioned_index_type_current_db"),
+      `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics (recorded_at);`,
+    );
     await execSql(
       pg.databaseUrl("partitioned_index_type_desired_db"),
       `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics USING hash (recorded_at);`,
@@ -1090,12 +1264,29 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql).toContain("CREATE INDEX metrics_recorded_at_idx ON ONLY public.metrics USING hash (recorded_at)");
-    expect(sql.filter((statement) => /^CREATE INDEX .+ ON public\.metrics_202[45] USING hash \(recorded_at\)$/u.test(statement))).toHaveLength(2);
-    expect(sql.filter((statement) => /^ALTER INDEX "public"\."metrics_recorded_at_idx" ATTACH PARTITION "public"\.".+"$/u.test(statement))).toHaveLength(2);
+    expect(sql).toContain(
+      "CREATE INDEX metrics_recorded_at_idx ON ONLY public.metrics USING hash (recorded_at)",
+    );
+    expect(
+      sql.filter((statement) =>
+        /^CREATE INDEX .+ ON public\.metrics_202[45] USING hash \(recorded_at\)$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(2);
+    expect(
+      sql.filter((statement) =>
+        /^ALTER INDEX "public"\."metrics_recorded_at_idx" ATTACH PARTITION "public"\.".+"$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(2);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_type_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_type_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1135,12 +1326,29 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql).toContain("CREATE INDEX metrics_recorded_tenant_idx ON ONLY public.metrics USING btree (tenant_id, recorded_at)");
-    expect(sql.filter((statement) => /^CREATE INDEX .+ ON public\.metrics_202[45] USING btree \(tenant_id, recorded_at\)$/u.test(statement))).toHaveLength(2);
-    expect(sql.filter((statement) => /^ALTER INDEX "public"\."metrics_recorded_tenant_idx" ATTACH PARTITION "public"\.".+"$/u.test(statement))).toHaveLength(2);
+    expect(sql).toContain(
+      "CREATE INDEX metrics_recorded_tenant_idx ON ONLY public.metrics USING btree (tenant_id, recorded_at)",
+    );
+    expect(
+      sql.filter((statement) =>
+        /^CREATE INDEX .+ ON public\.metrics_202[45] USING btree \(tenant_id, recorded_at\)$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(2);
+    expect(
+      sql.filter((statement) =>
+        /^ALTER INDEX "public"\."metrics_recorded_tenant_idx" ATTACH PARTITION "public"\.".+"$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(2);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_order_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_order_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1179,8 +1387,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_index_column_delete_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_index_column_delete_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_column_delete_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_column_delete_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1189,12 +1401,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_column_delete_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_column_delete_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_index_column_delete_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_index_column_delete_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_column_delete_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_column_delete_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1223,7 +1442,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         ALTER TABLE metrics ADD CONSTRAINT metrics_recorded_region_key UNIQUE (recorded_at, region);
       `,
     );
-    await execSql(pg.databaseUrl("partitioned_index_delete_desired_db"), tableSql);
+    await execSql(
+      pg.databaseUrl("partitioned_index_delete_desired_db"),
+      tableSql,
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("partitioned_index_delete_current_db"),
@@ -1233,11 +1455,18 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     const sql = diff.statements.map((statement) => statement.sql);
     expect(sql).toContain('DROP INDEX "public"."metrics_recorded_at_idx"');
     expect(sql).toContain('DROP INDEX "public"."metrics_recorded_region_idx"');
-    expect(sql).toContain('ALTER TABLE "public"."metrics" DROP CONSTRAINT "metrics_pkey"');
-    expect(sql).toContain('ALTER TABLE "public"."metrics" DROP CONSTRAINT "metrics_recorded_region_key"');
+    expect(sql).toContain(
+      'ALTER TABLE "public"."metrics" DROP CONSTRAINT "metrics_pkey"',
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "public"."metrics" DROP CONSTRAINT "metrics_recorded_region_key"',
+    );
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_delete_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_delete_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1276,8 +1505,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_index_column_delete_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_index_column_delete_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_index_column_delete_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_index_column_delete_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1286,12 +1519,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_index_column_delete_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_index_column_delete_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_index_column_delete_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_index_column_delete_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_index_column_delete_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_index_column_delete_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1311,8 +1551,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE TABLE metrics_2025 PARTITION OF metrics
         FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
     `;
-    await execSql(pg.databaseUrl("partitioned_pk_switch_current_db"), `${tableSql} ALTER TABLE metrics ADD PRIMARY KEY (recorded_at);`);
-    await execSql(pg.databaseUrl("partitioned_pk_switch_desired_db"), `${tableSql} ALTER TABLE metrics ADD PRIMARY KEY (recorded_at, tenant_id);`);
+    await execSql(
+      pg.databaseUrl("partitioned_pk_switch_current_db"),
+      `${tableSql} ALTER TABLE metrics ADD PRIMARY KEY (recorded_at);`,
+    );
+    await execSql(
+      pg.databaseUrl("partitioned_pk_switch_desired_db"),
+      `${tableSql} ALTER TABLE metrics ADD PRIMARY KEY (recorded_at, tenant_id);`,
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("partitioned_pk_switch_current_db"),
@@ -1320,15 +1566,30 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql[0]).toBe('ALTER TABLE "public"."metrics" DROP CONSTRAINT "metrics_pkey"');
-    expect(sql).toContain('ALTER TABLE ONLY "public"."metrics" ADD CONSTRAINT "metrics_pkey" PRIMARY KEY (recorded_at, tenant_id)');
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY metrics_2024_pkey ON public.metrics_2024 USING btree (recorded_at, tenant_id)");
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY metrics_2025_pkey ON public.metrics_2025 USING btree (recorded_at, tenant_id)");
-    expect(sql).toContain('ALTER INDEX "public"."metrics_pkey" ATTACH PARTITION "public"."metrics_2024_pkey"');
-    expect(sql).toContain('ALTER INDEX "public"."metrics_pkey" ATTACH PARTITION "public"."metrics_2025_pkey"');
+    expect(sql[0]).toBe(
+      'ALTER TABLE "public"."metrics" DROP CONSTRAINT "metrics_pkey"',
+    );
+    expect(sql).toContain(
+      'ALTER TABLE ONLY "public"."metrics" ADD CONSTRAINT "metrics_pkey" PRIMARY KEY (recorded_at, tenant_id)',
+    );
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY metrics_2024_pkey ON public.metrics_2024 USING btree (recorded_at, tenant_id)",
+    );
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY metrics_2025_pkey ON public.metrics_2025 USING btree (recorded_at, tenant_id)",
+    );
+    expect(sql).toContain(
+      'ALTER INDEX "public"."metrics_pkey" ATTACH PARTITION "public"."metrics_2024_pkey"',
+    );
+    expect(sql).toContain(
+      'ALTER INDEX "public"."metrics_pkey" ATTACH PARTITION "public"."metrics_2025_pkey"',
+    );
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_pk_switch_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_pk_switch_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1362,8 +1623,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_partition_index_change_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_partition_index_change_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_change_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_change_desired_db",
+      ),
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
@@ -1372,16 +1637,25 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         /^ALTER INDEX "tenant_data"\."metrics_2024_local_idx" RENAME TO "pgschemadiff_tmpidx_metrics_2024_local_i_[A-Za-z0-9$_]{22}"$/u,
       ),
       "CREATE INDEX CONCURRENTLY metrics_2024_local_idx ON tenant_data.metrics_2024 USING btree (tenant_id, recorded_at)",
-      expect.stringMatching(/^DROP INDEX CONCURRENTLY "tenant_data"\."pgschemadiff_tmpidx_metrics_2024_local_i_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^DROP INDEX CONCURRENTLY "tenant_data"\."pgschemadiff_tmpidx_metrics_2024_local_i_[A-Za-z0-9$_]{22}"$/u,
+      ),
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_partition_index_change_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_partition_index_change_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_partition_index_change_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_partition_index_change_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_change_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_change_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1428,27 +1702,64 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_partition_index_conflict_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_partition_index_conflict_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_conflict_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_conflict_desired_db",
+      ),
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql.filter((statement) => /^ALTER INDEX "first_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(statement))).toHaveLength(1);
     expect(
-      sql.filter((statement) => /^ALTER INDEX "second_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(statement)),
+      sql.filter((statement) =>
+        /^ALTER INDEX "first_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+          statement,
+        ),
+      ),
     ).toHaveLength(1);
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY same_local_idx ON first_child.metrics_2024 USING btree (tenant_id, recorded_at)");
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY same_local_idx ON second_child.metrics_2024 USING btree (tenant_id, recorded_at)");
-    expect(sql.filter((statement) => /^DROP INDEX CONCURRENTLY "first_child"\."pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(statement))).toHaveLength(1);
-    expect(sql.filter((statement) => /^DROP INDEX CONCURRENTLY "second_child"\."pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(statement))).toHaveLength(1);
+    expect(
+      sql.filter((statement) =>
+        /^ALTER INDEX "second_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(1);
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY same_local_idx ON first_child.metrics_2024 USING btree (tenant_id, recorded_at)",
+    );
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY same_local_idx ON second_child.metrics_2024 USING btree (tenant_id, recorded_at)",
+    );
+    expect(
+      sql.filter((statement) =>
+        /^DROP INDEX CONCURRENTLY "first_child"\."pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(1);
+    expect(
+      sql.filter((statement) =>
+        /^DROP INDEX CONCURRENTLY "second_child"\."pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(1);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_partition_index_conflict_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_partition_index_conflict_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_partition_index_conflict_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_partition_index_conflict_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_conflict_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_partition_index_conflict_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1466,15 +1777,22 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE TABLE metrics_2024 PARTITION OF metrics
         FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
     `;
-    await execSql(pg.databaseUrl("partitioned_to_local_index_current_db"), `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics (recorded_at);`);
+    await execSql(
+      pg.databaseUrl("partitioned_to_local_index_current_db"),
+      `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics (recorded_at);`,
+    );
     await execSql(
       pg.databaseUrl("partitioned_to_local_index_desired_db"),
       `${tableSql} CREATE INDEX metrics_2024_recorded_at_idx ON metrics_2024 (recorded_at);`,
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_to_local_index_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_to_local_index_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_to_local_index_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_to_local_index_desired_db",
+      ),
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
@@ -1487,12 +1805,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_to_local_index_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_to_local_index_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_to_local_index_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_to_local_index_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_to_local_index_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_to_local_index_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1529,8 +1854,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_child_index_add_drop_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_child_index_add_drop_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_child_index_add_drop_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_child_index_add_drop_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1540,12 +1869,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_child_index_add_drop_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_child_index_add_drop_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_child_index_add_drop_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_child_index_add_drop_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_child_index_add_drop_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_child_index_add_drop_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1566,7 +1902,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
     `;
     await execSql(pg.databaseUrl("partitioned_index_add_current_db"), tableSql);
-    await execSql(pg.databaseUrl("partitioned_index_add_desired_db"), `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics(recorded_at);`);
+    await execSql(
+      pg.databaseUrl("partitioned_index_add_desired_db"),
+      `${tableSql} CREATE INDEX metrics_recorded_at_idx ON metrics(recorded_at);`,
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("partitioned_index_add_current_db"),
@@ -1574,15 +1913,30 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql[0]).toBe("CREATE INDEX metrics_recorded_at_idx ON ONLY public.metrics USING btree (recorded_at)");
-    expect(sql.filter((statement) => /^CREATE INDEX .+ ON public\.metrics_202[45] USING btree \(recorded_at\)$/u.test(statement))).toHaveLength(2);
+    expect(sql[0]).toBe(
+      "CREATE INDEX metrics_recorded_at_idx ON ONLY public.metrics USING btree (recorded_at)",
+    );
     expect(
-      sql.filter((statement) => /^ALTER INDEX "public"\."metrics_recorded_at_idx" ATTACH PARTITION "public"\.".+"$/u.test(statement)),
+      sql.filter((statement) =>
+        /^CREATE INDEX .+ ON public\.metrics_202[45] USING btree \(recorded_at\)$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(2);
+    expect(
+      sql.filter((statement) =>
+        /^ALTER INDEX "public"\."metrics_recorded_at_idx" ATTACH PARTITION "public"\.".+"$/u.test(
+          statement,
+        ),
+      ),
     ).toHaveLength(2);
     expect(sql[0]?.includes("CONCURRENTLY")).toBe(false);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_add_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_add_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1606,7 +1960,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE TABLE "Event Log 2024" PARTITION OF "Event Log"
         FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
     `;
-    await execSql(pg.databaseUrl("partitioned_index_sql_shape_current_db"), tableSql);
+    await execSql(
+      pg.databaseUrl("partitioned_index_sql_shape_current_db"),
+      tableSql,
+    );
     await execSql(
       pg.databaseUrl("partitioned_index_sql_shape_desired_db"),
       `
@@ -1618,23 +1975,46 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_index_sql_shape_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_index_sql_shape_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_sql_shape_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_sql_shape_desired_db",
+      ),
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql).toContain('CREATE INDEX "Event Lower Idx" ON ONLY public."Event Log" USING btree (lower("Event Type"))');
-    expect(sql).toContain('CREATE INDEX "Event Type Hash Idx" ON ONLY public."Event Log" USING hash ("Event Type")');
-    expect(sql).toContain('CREATE INDEX "Event Type Recorded Idx" ON ONLY public."Event Log" USING btree ("Event Type", recorded_at)');
-    expect(sql.filter((statement) => /^ALTER INDEX "public"\."Event .+ Idx" ATTACH PARTITION "public"\.".+_idx"$/u.test(statement))).toHaveLength(3);
+    expect(sql).toContain(
+      'CREATE INDEX "Event Lower Idx" ON ONLY public."Event Log" USING btree (lower("Event Type"))',
+    );
+    expect(sql).toContain(
+      'CREATE INDEX "Event Type Hash Idx" ON ONLY public."Event Log" USING hash ("Event Type")',
+    );
+    expect(sql).toContain(
+      'CREATE INDEX "Event Type Recorded Idx" ON ONLY public."Event Log" USING btree ("Event Type", recorded_at)',
+    );
+    expect(
+      sql.filter((statement) =>
+        /^ALTER INDEX "public"\."Event .+ Idx" ATTACH PARTITION "public"\.".+_idx"$/u.test(
+          statement,
+        ),
+      ),
+    ).toHaveLength(3);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_index_sql_shape_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_index_sql_shape_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_index_sql_shape_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_index_sql_shape_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_sql_shape_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_index_sql_shape_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1662,8 +2042,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_index_local_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_index_local_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_index_local_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_index_local_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1672,12 +2056,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_unique_index_local_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_unique_index_local_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_index_local_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_index_local_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_index_local_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_index_local_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1695,7 +2086,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       CREATE TABLE metrics_2024 PARTITION OF metrics
         FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
     `;
-    await execSql(pg.databaseUrl("partitioned_local_pk_index_current_db"), tableSql);
+    await execSql(
+      pg.databaseUrl("partitioned_local_pk_index_current_db"),
+      tableSql,
+    );
     await execSql(
       pg.databaseUrl("partitioned_local_pk_index_desired_db"),
       `
@@ -1708,8 +2102,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_local_pk_index_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_local_pk_index_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_local_pk_index_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_local_pk_index_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1720,12 +2118,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_local_pk_index_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_local_pk_index_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_local_pk_index_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_local_pk_index_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_local_pk_index_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_local_pk_index_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1755,13 +2160,24 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql).toContain('ALTER TABLE ONLY "public"."Metrics" ADD CONSTRAINT "Metrics PKey" PRIMARY KEY ("Recorded At", "Tenant Id")');
-    expect(sql).toContain('CREATE UNIQUE INDEX CONCURRENTLY "Metrics 2024_pkey" ON public."Metrics 2024" USING btree ("Recorded At", "Tenant Id")');
-    expect(sql).toContain('ALTER TABLE "public"."Metrics 2024" ADD CONSTRAINT "Metrics 2024_pkey" PRIMARY KEY USING INDEX "Metrics 2024_pkey"');
-    expect(sql).toContain('ALTER INDEX "public"."Metrics PKey" ATTACH PARTITION "public"."Metrics 2024_pkey"');
+    expect(sql).toContain(
+      'ALTER TABLE ONLY "public"."Metrics" ADD CONSTRAINT "Metrics PKey" PRIMARY KEY ("Recorded At", "Tenant Id")',
+    );
+    expect(sql).toContain(
+      'CREATE UNIQUE INDEX CONCURRENTLY "Metrics 2024_pkey" ON public."Metrics 2024" USING btree ("Recorded At", "Tenant Id")',
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "public"."Metrics 2024" ADD CONSTRAINT "Metrics 2024_pkey" PRIMARY KEY USING INDEX "Metrics 2024_pkey"',
+    );
+    expect(sql).toContain(
+      'ALTER INDEX "public"."Metrics PKey" ATTACH PARTITION "public"."Metrics 2024_pkey"',
+    );
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_pk_add_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_pk_add_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -1797,8 +2213,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_pk_existing_local_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_pk_existing_local_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_existing_local_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_existing_local_idx_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1810,12 +2230,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_pk_existing_local_idx_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_pk_existing_local_idx_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_pk_existing_local_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_pk_existing_local_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_existing_local_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_existing_local_idx_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1843,8 +2270,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1856,12 +2287,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_pk_parent_idx_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_pk_parent_idx_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1893,8 +2331,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_local_pk_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_local_pk_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_local_pk_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_local_pk_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1904,20 +2346,33 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_pk_parent_idx_local_pk_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_pk_parent_idx_local_pk_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_local_pk_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_pk_parent_idx_local_pk_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_local_pk_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_pk_parent_idx_local_pk_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
   it("adds partitioned unique constraints when matching local indexes already exist", async () => {
     const pg = requireHarness();
-    await createDatabase(pg, "partitioned_unique_existing_local_idx_current_db");
-    await createDatabase(pg, "partitioned_unique_existing_local_idx_desired_db");
+    await createDatabase(
+      pg,
+      "partitioned_unique_existing_local_idx_current_db",
+    );
+    await createDatabase(
+      pg,
+      "partitioned_unique_existing_local_idx_desired_db",
+    );
 
     const tableSql = `
       CREATE TABLE metrics (
@@ -1940,8 +2395,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_existing_local_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_existing_local_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_existing_local_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_existing_local_idx_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1953,12 +2412,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_unique_existing_local_idx_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_unique_existing_local_idx_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_existing_local_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_existing_local_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_existing_local_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_existing_local_idx_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -1986,8 +2452,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -1999,20 +2469,33 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_unique_parent_idx_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_unique_parent_idx_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
   it("adds partitioned unique constraints when the parent index and local child unique constraint already exist", async () => {
     const pg = requireHarness();
-    await createDatabase(pg, "partitioned_unique_parent_idx_local_unique_current_db");
-    await createDatabase(pg, "partitioned_unique_parent_idx_local_unique_desired_db");
+    await createDatabase(
+      pg,
+      "partitioned_unique_parent_idx_local_unique_current_db",
+    );
+    await createDatabase(
+      pg,
+      "partitioned_unique_parent_idx_local_unique_desired_db",
+    );
 
     const tableSql = `
       CREATE TABLE metrics (
@@ -2036,8 +2519,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_local_unique_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_local_unique_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_local_unique_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_local_unique_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -2047,20 +2534,33 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_unique_parent_idx_local_unique_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_unique_parent_idx_local_unique_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_local_unique_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_parent_idx_local_unique_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_local_unique_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partitioned_unique_parent_idx_local_unique_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
   it("rejects partitioned constraint adds when an attached child index backs a local constraint", async () => {
     const pg = requireHarness();
-    await createDatabase(pg, "partitioned_constraint_attached_local_current_db");
-    await createDatabase(pg, "partitioned_constraint_attached_local_desired_db");
+    await createDatabase(
+      pg,
+      "partitioned_constraint_attached_local_current_db",
+    );
+    await createDatabase(
+      pg,
+      "partitioned_constraint_attached_local_desired_db",
+    );
 
     const tableSql = `
       CREATE TABLE metrics (
@@ -2085,10 +2585,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     await expect(
       generateSchemaDiff({
-        currentDatabaseUrl: pg.databaseUrl("partitioned_constraint_attached_local_current_db"),
-        desiredDatabaseUrl: pg.databaseUrl("partitioned_constraint_attached_local_desired_db"),
+        currentDatabaseUrl: pg.databaseUrl(
+          "partitioned_constraint_attached_local_current_db",
+        ),
+        desiredDatabaseUrl: pg.databaseUrl(
+          "partitioned_constraint_attached_local_desired_db",
+        ),
       }),
-    ).rejects.toThrow("dropping an index partition that backs a local constraint is not supported");
+    ).rejects.toThrow(
+      "dropping an index partition that backs a local constraint is not supported",
+    );
   }, 30_000);
 
   it("rejects partitioned unique adds when an attached child index backs a local unique constraint", async () => {
@@ -2119,10 +2625,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     await expect(
       generateSchemaDiff({
-        currentDatabaseUrl: pg.databaseUrl("partitioned_unique_attached_local_current_db"),
-        desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_attached_local_desired_db"),
+        currentDatabaseUrl: pg.databaseUrl(
+          "partitioned_unique_attached_local_current_db",
+        ),
+        desiredDatabaseUrl: pg.databaseUrl(
+          "partitioned_unique_attached_local_desired_db",
+        ),
       }),
-    ).rejects.toThrow("dropping an index partition that backs a local constraint is not supported");
+    ).rejects.toThrow(
+      "dropping an index partition that backs a local constraint is not supported",
+    );
   }, 30_000);
 
   it("rejects partitioned unique adds when an attached child index backs a local primary key", async () => {
@@ -2160,10 +2672,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     await expect(
       generateSchemaDiff({
-        currentDatabaseUrl: pg.databaseUrl("partitioned_unique_attached_local_pk_current_db"),
-        desiredDatabaseUrl: pg.databaseUrl("partitioned_unique_attached_local_pk_desired_db"),
+        currentDatabaseUrl: pg.databaseUrl(
+          "partitioned_unique_attached_local_pk_current_db",
+        ),
+        desiredDatabaseUrl: pg.databaseUrl(
+          "partitioned_unique_attached_local_pk_desired_db",
+        ),
       }),
-    ).rejects.toThrow("dropping an index partition that backs a local constraint is not supported");
+    ).rejects.toThrow(
+      "dropping an index partition that backs a local constraint is not supported",
+    );
   }, 30_000);
 
   it("attaches local primary-key constraints to existing child indexes", async () => {
@@ -2180,15 +2698,22 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
       CREATE UNIQUE INDEX metrics_2024_pkey ON metrics_2024 (recorded_at, tenant_id);
     `;
-    await execSql(pg.databaseUrl("local_pk_existing_child_idx_current_db"), baseSql);
+    await execSql(
+      pg.databaseUrl("local_pk_existing_child_idx_current_db"),
+      baseSql,
+    );
     await execSql(
       pg.databaseUrl("local_pk_existing_child_idx_desired_db"),
       `${baseSql} ALTER TABLE metrics_2024 ADD CONSTRAINT metrics_2024_pkey PRIMARY KEY USING INDEX metrics_2024_pkey;`,
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_pk_existing_child_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_pk_existing_child_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_pk_existing_child_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_pk_existing_child_idx_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -2196,12 +2721,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_pk_existing_child_idx_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_pk_existing_child_idx_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_pk_existing_child_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_pk_existing_child_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_pk_existing_child_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_pk_existing_child_idx_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -2257,7 +2789,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_child_constraints_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_child_constraints_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2281,15 +2816,22 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
       CREATE UNIQUE INDEX metrics_2024_recorded_tenant_key ON metrics_2024 (recorded_at, tenant_id);
     `;
-    await execSql(pg.databaseUrl("local_unique_existing_child_idx_current_db"), baseSql);
+    await execSql(
+      pg.databaseUrl("local_unique_existing_child_idx_current_db"),
+      baseSql,
+    );
     await execSql(
       pg.databaseUrl("local_unique_existing_child_idx_desired_db"),
       `${baseSql} ALTER TABLE metrics_2024 ADD CONSTRAINT metrics_2024_recorded_tenant_key UNIQUE USING INDEX metrics_2024_recorded_tenant_key;`,
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_unique_existing_child_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_unique_existing_child_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_unique_existing_child_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_unique_existing_child_idx_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -2297,12 +2839,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_unique_existing_child_idx_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_unique_existing_child_idx_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("local_unique_existing_child_idx_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("local_unique_existing_child_idx_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "local_unique_existing_child_idx_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "local_unique_existing_child_idx_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -2352,7 +2901,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_pk_delete_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_pk_delete_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2418,16 +2970,33 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     const sql = diff.statements.map((statement) => statement.sql);
-    expect(sql).toContain('ALTER TABLE "public"."metrics_2025" DROP CONSTRAINT "metrics_2025_pkey"');
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY metrics_2025_pkey ON public.metrics_2025 USING btree (recorded_at, tenant_id)");
-    expect(sql).toContain('ALTER TABLE "public"."metrics_2025" ADD CONSTRAINT "metrics_2025_pkey" PRIMARY KEY USING INDEX "metrics_2025_pkey"');
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY metrics_2024_pkey ON tenant_data.metrics_2024 USING btree (recorded_at, tenant_id)");
-    expect(sql).toContain('ALTER TABLE "tenant_data"."metrics_2024" ADD CONSTRAINT "metrics_2024_pkey" PRIMARY KEY USING INDEX "metrics_2024_pkey"');
-    expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY metrics_2025_pkey ON tenant_data.metrics_2025 USING btree (recorded_at, region)");
-    expect(sql).toContain('ALTER TABLE "tenant_data"."metrics_2025" ADD CONSTRAINT "metrics_2025_pkey" PRIMARY KEY USING INDEX "metrics_2025_pkey"');
+    expect(sql).toContain(
+      'ALTER TABLE "public"."metrics_2025" DROP CONSTRAINT "metrics_2025_pkey"',
+    );
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY metrics_2025_pkey ON public.metrics_2025 USING btree (recorded_at, tenant_id)",
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "public"."metrics_2025" ADD CONSTRAINT "metrics_2025_pkey" PRIMARY KEY USING INDEX "metrics_2025_pkey"',
+    );
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY metrics_2024_pkey ON tenant_data.metrics_2024 USING btree (recorded_at, tenant_id)",
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "tenant_data"."metrics_2024" ADD CONSTRAINT "metrics_2024_pkey" PRIMARY KEY USING INDEX "metrics_2024_pkey"',
+    );
+    expect(sql).toContain(
+      "CREATE UNIQUE INDEX CONCURRENTLY metrics_2025_pkey ON tenant_data.metrics_2025 USING btree (recorded_at, region)",
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "tenant_data"."metrics_2025" ADD CONSTRAINT "metrics_2025_pkey" PRIMARY KEY USING INDEX "metrics_2025_pkey"',
+    );
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_pk_switch_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_pk_switch_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2484,7 +3053,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("local_unique_delete_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("local_unique_delete_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2532,7 +3104,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partitioned_unique_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partitioned_unique_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2557,7 +3132,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       ALTER TABLE ONLY metrics ADD CONSTRAINT metrics_tenant_recorded_key UNIQUE (recorded_at, tenant_id);
       CREATE UNIQUE INDEX metrics_2024_tenant_recorded_key ON metrics_2024(recorded_at, tenant_id);
     `;
-    await execSql(pg.databaseUrl("partition_child_constraint_current_db"), baseSql);
+    await execSql(
+      pg.databaseUrl("partition_child_constraint_current_db"),
+      baseSql,
+    );
     await execSql(
       pg.databaseUrl("partition_child_constraint_desired_db"),
       `${baseSql}
@@ -2566,8 +3144,12 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partition_child_constraint_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partition_child_constraint_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partition_child_constraint_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partition_child_constraint_desired_db",
+      ),
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
@@ -2576,12 +3158,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("partition_child_constraint_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("partition_child_constraint_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("partition_child_constraint_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("partition_child_constraint_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "partition_child_constraint_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "partition_child_constraint_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -2624,6 +3213,152 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
+  it("drops partitioned tables through the parent table only", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "partitioned_table_drop_current_db");
+    await createDatabase(pg, "partitioned_table_drop_desired_db");
+
+    await execSql(
+      pg.databaseUrl("partitioned_table_drop_current_db"),
+      `
+        CREATE TABLE events (
+          tenant_id integer NOT NULL,
+          occurred_at date NOT NULL
+        ) PARTITION BY RANGE (occurred_at);
+        CREATE TABLE events_2024 PARTITION OF events FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+        CREATE TABLE events_2025 PARTITION OF events FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+      `,
+    );
+
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("partitioned_table_drop_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("partitioned_table_drop_desired_db"),
+    });
+
+    expect(diff.statements).toEqual([
+      {
+        sql: 'DROP TABLE "public"."events"',
+        type: "destructive",
+      },
+    ]);
+
+    for (const statement of diff.statements) {
+      await execSql(
+        pg.databaseUrl("partitioned_table_drop_current_db"),
+        statement.sql,
+      );
+    }
+
+    const secondDiff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("partitioned_table_drop_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("partitioned_table_drop_desired_db"),
+    });
+    expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
+  it("rejects dropping a table partition without dropping its parent", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "partition_drop_current_db");
+    await createDatabase(pg, "partition_drop_desired_db");
+
+    const parentSql = `
+      CREATE TABLE events (
+        tenant_id integer NOT NULL,
+        occurred_at date NOT NULL
+      ) PARTITION BY RANGE (occurred_at);
+      CREATE TABLE events_2024 PARTITION OF events FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+    `;
+    await execSql(
+      pg.databaseUrl("partition_drop_current_db"),
+      `${parentSql} CREATE TABLE events_2025 PARTITION OF events FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');`,
+    );
+    await execSql(pg.databaseUrl("partition_drop_desired_db"), parentSql);
+
+    await expect(
+      generateSchemaDiff({
+        currentDatabaseUrl: pg.databaseUrl("partition_drop_current_db"),
+        desiredDatabaseUrl: pg.databaseUrl("partition_drop_desired_db"),
+      }),
+    ).rejects.toThrow(
+      "deleting partitions without dropping parent table is not supported",
+    );
+  }, 30_000);
+
+  it("alters partition column nullability independently from the parent", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "partition_nullability_current_db");
+    await createDatabase(pg, "partition_nullability_desired_db");
+
+    const parentSql = `
+      CREATE TABLE events (
+        tenant_id integer,
+        occurred_at date NOT NULL
+      ) PARTITION BY RANGE (occurred_at);
+    `;
+    await execSql(
+      pg.databaseUrl("partition_nullability_current_db"),
+      `${parentSql} CREATE TABLE events_2024 PARTITION OF events (tenant_id NOT NULL) FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');`,
+    );
+    await execSql(
+      pg.databaseUrl("partition_nullability_desired_db"),
+      `${parentSql} CREATE TABLE events_2024 PARTITION OF events FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');`,
+    );
+
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("partition_nullability_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("partition_nullability_desired_db"),
+    });
+
+    expect(diff.statements.map((statement) => statement.sql)).toEqual([
+      'ALTER TABLE "public"."events_2024" ALTER COLUMN "tenant_id" DROP NOT NULL',
+    ]);
+
+    for (const statement of diff.statements) {
+      await execSql(
+        pg.databaseUrl("partition_nullability_current_db"),
+        statement.sql,
+      );
+    }
+
+    const secondDiff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("partition_nullability_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("partition_nullability_desired_db"),
+    });
+    expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
+  it("rejects changing a partition key definition", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "partition_key_change_current_db");
+    await createDatabase(pg, "partition_key_change_desired_db");
+
+    await execSql(
+      pg.databaseUrl("partition_key_change_current_db"),
+      `
+        CREATE TABLE events (
+          tenant_id integer NOT NULL,
+          occurred_at date NOT NULL
+        ) PARTITION BY RANGE (occurred_at);
+      `,
+    );
+    await execSql(
+      pg.databaseUrl("partition_key_change_desired_db"),
+      `
+        CREATE TABLE events (
+          tenant_id integer NOT NULL,
+          occurred_at date NOT NULL
+        ) PARTITION BY LIST (tenant_id);
+      `,
+    );
+
+    await expect(
+      generateSchemaDiff({
+        currentDatabaseUrl: pg.databaseUrl("partition_key_change_current_db"),
+        desiredDatabaseUrl: pg.databaseUrl("partition_key_change_desired_db"),
+      }),
+    ).rejects.toThrow("changing partition key def is not supported");
+  }, 30_000);
+
   it("preserves sequence ownership for owned sequences", async () => {
     const pg = requireHarness();
     await createDatabase(pg, "sequence_owner_current_db");
@@ -2664,7 +3399,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "owned_sequence_drop_current_db");
     await createDatabase(pg, "owned_sequence_drop_desired_db");
 
-    await execSql(pg.databaseUrl("owned_sequence_drop_current_db"), "CREATE TABLE orders (id serial PRIMARY KEY)");
+    await execSql(
+      pg.databaseUrl("owned_sequence_drop_current_db"),
+      "CREATE TABLE orders (id serial PRIMARY KEY)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("owned_sequence_drop_current_db"),
@@ -2679,7 +3417,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("owned_sequence_drop_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("owned_sequence_drop_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2694,12 +3435,22 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "owned_sequence_column_drop_current_db");
     await createDatabase(pg, "owned_sequence_column_drop_desired_db");
 
-    await execSql(pg.databaseUrl("owned_sequence_column_drop_current_db"), "CREATE TABLE orders (id serial, note text)");
-    await execSql(pg.databaseUrl("owned_sequence_column_drop_desired_db"), "CREATE TABLE orders (note text)");
+    await execSql(
+      pg.databaseUrl("owned_sequence_column_drop_current_db"),
+      "CREATE TABLE orders (id serial, note text)",
+    );
+    await execSql(
+      pg.databaseUrl("owned_sequence_column_drop_desired_db"),
+      "CREATE TABLE orders (note text)",
+    );
 
     const diff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("owned_sequence_column_drop_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("owned_sequence_column_drop_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "owned_sequence_column_drop_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "owned_sequence_column_drop_desired_db",
+      ),
     });
 
     expect(diff.statements).toEqual([
@@ -2710,12 +3461,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("owned_sequence_column_drop_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("owned_sequence_column_drop_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
-      currentDatabaseUrl: pg.databaseUrl("owned_sequence_column_drop_current_db"),
-      desiredDatabaseUrl: pg.databaseUrl("owned_sequence_column_drop_desired_db"),
+      currentDatabaseUrl: pg.databaseUrl(
+        "owned_sequence_column_drop_current_db",
+      ),
+      desiredDatabaseUrl: pg.databaseUrl(
+        "owned_sequence_column_drop_desired_db",
+      ),
     });
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
@@ -2726,7 +3484,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "unowned_sequence_drop_target_db");
     await createDatabase(pg, "unowned_sequence_desired_db");
 
-    await execSql(pg.databaseUrl("unowned_sequence_desired_db"), "CREATE SEQUENCE ticket_seq");
+    await execSql(
+      pg.databaseUrl("unowned_sequence_desired_db"),
+      "CREATE SEQUENCE ticket_seq",
+    );
 
     const addDiff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("unowned_sequence_empty_db"),
@@ -2766,8 +3527,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "owned_sequence_type_current_db");
     await createDatabase(pg, "owned_sequence_type_desired_db");
 
-    await execSql(pg.databaseUrl("owned_sequence_type_current_db"), "CREATE TABLE orders (id serial)");
-    await execSql(pg.databaseUrl("owned_sequence_type_desired_db"), "CREATE TABLE orders (id text)");
+    await execSql(
+      pg.databaseUrl("owned_sequence_type_current_db"),
+      "CREATE TABLE orders (id serial)",
+    );
+    await execSql(
+      pg.databaseUrl("owned_sequence_type_desired_db"),
+      "CREATE TABLE orders (id text)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("owned_sequence_type_current_db"),
@@ -2783,7 +3550,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("owned_sequence_type_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("owned_sequence_type_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2798,8 +3568,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "sequence_alter_current_db");
     await createDatabase(pg, "sequence_alter_desired_db");
 
-    await execSql(pg.databaseUrl("sequence_alter_current_db"), "CREATE SEQUENCE ticket_seq INCREMENT BY 1 CACHE 1");
-    await execSql(pg.databaseUrl("sequence_alter_desired_db"), "CREATE SEQUENCE ticket_seq INCREMENT BY 5 CACHE 2 CYCLE");
+    await execSql(
+      pg.databaseUrl("sequence_alter_current_db"),
+      "CREATE SEQUENCE ticket_seq INCREMENT BY 1 CACHE 1",
+    );
+    await execSql(
+      pg.databaseUrl("sequence_alter_desired_db"),
+      "CREATE SEQUENCE ticket_seq INCREMENT BY 5 CACHE 2 CYCLE",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("sequence_alter_current_db"),
@@ -2850,7 +3626,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("sequence_owner_alter_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("sequence_owner_alter_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -2865,7 +3644,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "fk_current_db");
     await createDatabase(pg, "fk_desired_db");
 
-    await execSql(pg.databaseUrl("fk_current_db"), "CREATE TABLE parent (id integer PRIMARY KEY); CREATE TABLE child (parent_id integer);");
+    await execSql(
+      pg.databaseUrl("fk_current_db"),
+      "CREATE TABLE parent (id integer PRIMARY KEY); CREATE TABLE child (parent_id integer);",
+    );
     await execSql(
       pg.databaseUrl("fk_desired_db"),
       "CREATE TABLE parent (id integer PRIMARY KEY); CREATE TABLE child (parent_id integer REFERENCES parent(id));",
@@ -2936,15 +3718,21 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "enum_order_current_db");
     await createDatabase(pg, "enum_order_desired_db");
 
-    await execSql(pg.databaseUrl("enum_order_current_db"), "CREATE TYPE mood AS ENUM ('sad', 'happy')");
-    await execSql(pg.databaseUrl("enum_order_desired_db"), "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')");
+    await execSql(
+      pg.databaseUrl("enum_order_current_db"),
+      "CREATE TYPE mood AS ENUM ('sad', 'happy')",
+    );
+    await execSql(
+      pg.databaseUrl("enum_order_desired_db"),
+      "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("enum_order_current_db"),
       desiredDatabaseUrl: pg.databaseUrl("enum_order_desired_db"),
     });
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
-      'ALTER TYPE "public"."mood" ADD VALUE \'ok\' BEFORE \'happy\'',
+      "ALTER TYPE \"public\".\"mood\" ADD VALUE 'ok' BEFORE 'happy'",
     ]);
 
     for (const statement of diff.statements) {
@@ -2963,8 +3751,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "enum_recreate_current_db");
     await createDatabase(pg, "enum_recreate_desired_db");
 
-    await execSql(pg.databaseUrl("enum_recreate_current_db"), "CREATE TYPE status AS ENUM ('open', 'pending', 'closed')");
-    await execSql(pg.databaseUrl("enum_recreate_desired_db"), "CREATE TYPE status AS ENUM ('new', 'open', 'closed')");
+    await execSql(
+      pg.databaseUrl("enum_recreate_current_db"),
+      "CREATE TYPE status AS ENUM ('open', 'pending', 'closed')",
+    );
+    await execSql(
+      pg.databaseUrl("enum_recreate_desired_db"),
+      "CREATE TYPE status AS ENUM ('new', 'open', 'closed')",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("enum_recreate_current_db"),
@@ -2976,7 +3770,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         type: "destructive",
       },
       {
-        sql: 'CREATE TYPE "public"."status" AS ENUM (\'new\', \'open\', \'closed\')',
+        sql: "CREATE TYPE \"public\".\"status\" AS ENUM ('new', 'open', 'closed')",
         type: "additive",
       },
     ]);
@@ -3011,7 +3805,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         currentDatabaseUrl: pg.databaseUrl("enum_used_recreate_current_db"),
         desiredDatabaseUrl: pg.databaseUrl("enum_used_recreate_desired_db"),
       }),
-    ).rejects.toThrow('removing labels from enum "public"."status" is not supported because it is used by table "public"."tickets"');
+    ).rejects.toThrow(
+      'removing labels from enum "public"."status" is not supported because it is used by table "public"."tickets"',
+    );
   }, 30_000);
 
   it("filters schema objects by includeSchemas", async () => {
@@ -3019,10 +3815,13 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "filter_current_db");
     await createDatabase(pg, "filter_desired_db");
 
-    await execSql(pg.databaseUrl("filter_desired_db"), "CREATE TABLE public.visible_table (id integer)");
     await execSql(
       pg.databaseUrl("filter_desired_db"),
-      'CREATE SCHEMA ignored; CREATE TABLE ignored.hidden_table (id integer);',
+      "CREATE TABLE public.visible_table (id integer)",
+    );
+    await execSql(
+      pg.databaseUrl("filter_desired_db"),
+      "CREATE SCHEMA ignored; CREATE TABLE ignored.hidden_table (id integer);",
     );
 
     const diff = await generateSchemaDiff({
@@ -3031,7 +3830,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       includeSchemas: ["public"],
     });
 
-    expect(diff.statements.map((statement) => statement.sql)).toEqual(['CREATE TABLE "public"."visible_table" (\n\t"id" integer\n)']);
+    expect(diff.statements.map((statement) => statement.sql)).toEqual([
+      'CREATE TABLE "public"."visible_table" (\n\t"id" integer\n)',
+    ]);
   }, 30_000);
 
   it("uses an online check-constraint sequence when changing a column to NOT NULL", async () => {
@@ -3039,8 +3840,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "not_null_current_db");
     await createDatabase(pg, "not_null_desired_db");
 
-    await execSql(pg.databaseUrl("not_null_current_db"), "CREATE TABLE users (id integer)");
-    await execSql(pg.databaseUrl("not_null_desired_db"), "CREATE TABLE users (id integer NOT NULL)");
+    await execSql(
+      pg.databaseUrl("not_null_current_db"),
+      "CREATE TABLE users (id integer)",
+    );
+    await execSql(
+      pg.databaseUrl("not_null_desired_db"),
+      "CREATE TABLE users (id integer NOT NULL)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("not_null_current_db"),
@@ -3048,10 +3855,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
-      expect.stringMatching(/^ALTER TABLE "public"\."users" ADD CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}" CHECK\("id" IS NOT NULL\) NOT VALID$/u),
-      expect.stringMatching(/^ALTER TABLE "public"\."users" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^ALTER TABLE "public"\."users" ADD CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}" CHECK\("id" IS NOT NULL\) NOT VALID$/u,
+      ),
+      expect.stringMatching(
+        /^ALTER TABLE "public"\."users" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}"$/u,
+      ),
       'ALTER TABLE "public"."users" ALTER COLUMN "id" SET NOT NULL',
-      expect.stringMatching(/^ALTER TABLE "public"\."users" DROP CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}"$/u),
+      expect.stringMatching(
+        /^ALTER TABLE "public"\."users" DROP CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}"$/u,
+      ),
     ]);
 
     for (const statement of diff.statements) {
@@ -3070,8 +3883,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "identity_add_current_db");
     await createDatabase(pg, "identity_add_desired_db");
 
-    await execSql(pg.databaseUrl("identity_add_current_db"), "CREATE TABLE accounts (id bigint NOT NULL DEFAULT 5)");
-    await execSql(pg.databaseUrl("identity_add_desired_db"), "CREATE TABLE accounts (id bigint NOT NULL GENERATED ALWAYS AS IDENTITY)");
+    await execSql(
+      pg.databaseUrl("identity_add_current_db"),
+      "CREATE TABLE accounts (id bigint NOT NULL DEFAULT 5)",
+    );
+    await execSql(
+      pg.databaseUrl("identity_add_desired_db"),
+      "CREATE TABLE accounts (id bigint NOT NULL GENERATED ALWAYS AS IDENTITY)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("identity_add_current_db"),
@@ -3099,8 +3918,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "identity_drop_current_db");
     await createDatabase(pg, "identity_drop_desired_db");
 
-    await execSql(pg.databaseUrl("identity_drop_current_db"), "CREATE TABLE accounts (id bigint NOT NULL GENERATED ALWAYS AS IDENTITY)");
-    await execSql(pg.databaseUrl("identity_drop_desired_db"), "CREATE TABLE accounts (id bigint NOT NULL)");
+    await execSql(
+      pg.databaseUrl("identity_drop_current_db"),
+      "CREATE TABLE accounts (id bigint NOT NULL GENERATED ALWAYS AS IDENTITY)",
+    );
+    await execSql(
+      pg.databaseUrl("identity_drop_desired_db"),
+      "CREATE TABLE accounts (id bigint NOT NULL)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("identity_drop_current_db"),
@@ -3161,8 +3986,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "type_timestamp_current_db");
     await createDatabase(pg, "type_timestamp_desired_db");
 
-    await execSql(pg.databaseUrl("type_timestamp_current_db"), "CREATE TABLE events (occurred_at bigint)");
-    await execSql(pg.databaseUrl("type_timestamp_desired_db"), "CREATE TABLE events (occurred_at timestamp without time zone)");
+    await execSql(
+      pg.databaseUrl("type_timestamp_current_db"),
+      "CREATE TABLE events (occurred_at bigint)",
+    );
+    await execSql(
+      pg.databaseUrl("type_timestamp_desired_db"),
+      "CREATE TABLE events (occurred_at timestamp without time zone)",
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("type_timestamp_current_db"),
@@ -3190,8 +4021,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     await createDatabase(pg, "collation_current_db");
     await createDatabase(pg, "collation_desired_db");
 
-    await execSql(pg.databaseUrl("collation_current_db"), "CREATE TABLE users (name text)");
-    await execSql(pg.databaseUrl("collation_desired_db"), 'CREATE TABLE users (name text COLLATE "C")');
+    await execSql(
+      pg.databaseUrl("collation_current_db"),
+      "CREATE TABLE users (name text)",
+    );
+    await execSql(
+      pg.databaseUrl("collation_desired_db"),
+      'CREATE TABLE users (name text COLLATE "C")',
+    );
 
     const diff = await generateSchemaDiff({
       currentDatabaseUrl: pg.databaseUrl("collation_current_db"),
@@ -3243,7 +4080,9 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     expect(diff.statements).toEqual([
       {
-        sql: expect.stringMatching(/^CREATE OR REPLACE TRIGGER account_touch BEFORE INSERT ON public\.accounts/u),
+        sql: expect.stringMatching(
+          /^CREATE OR REPLACE TRIGGER account_touch BEFORE INSERT ON public\.accounts/u,
+        ),
         type: "additive",
       },
     ]);
@@ -3288,12 +4127,19 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
-      expect.stringMatching(/^DROP TRIGGER "account_touch" ON "public"\."accounts"$/u),
-      expect.stringMatching(/^CREATE CONSTRAINT TRIGGER account_touch AFTER INSERT ON public\.accounts/u),
+      expect.stringMatching(
+        /^DROP TRIGGER "account_touch" ON "public"\."accounts"$/u,
+      ),
+      expect.stringMatching(
+        /^CREATE CONSTRAINT TRIGGER account_touch AFTER INSERT ON public\.accounts/u,
+      ),
     ]);
 
     for (const statement of diff.statements) {
-      await execSql(pg.databaseUrl("constraint_trigger_current_db"), statement.sql);
+      await execSql(
+        pg.databaseUrl("constraint_trigger_current_db"),
+        statement.sql,
+      );
     }
 
     const secondDiff = await generateSchemaDiff({
@@ -3337,21 +4183,45 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       `,
     );
 
-    const client = new Client({ connectionString: pg.databaseUrl("introspection_db") });
+    const client = new Client({
+      connectionString: pg.databaseUrl("introspection_db"),
+    });
     await client.connect();
     try {
       const schema = await getSchema(client);
-      expect(schema.enums.map((schemaEnum) => schemaEnum.labels)).toContainEqual(["sad", "ok"]);
-      expect(schema.tables.map((table) => table.name.escapedName)).toContain('"child"');
-      expect(schema.indexes.map((index) => index.name)).toContain("child_parent_id_idx");
+      expect(
+        schema.enums.map((schemaEnum) => schemaEnum.labels),
+      ).toContainEqual(["sad", "ok"]);
+      expect(schema.tables.map((table) => table.name.escapedName)).toContain(
+        '"child"',
+      );
+      expect(schema.indexes.map((index) => index.name)).toContain(
+        "child_parent_id_idx",
+      );
       expect(schema.foreignKeyConstraints).toHaveLength(1);
-      expect(schema.sequences.map((sequence) => sequence.name.escapedName)).toContain('"ticket_seq"');
-      expect(schema.functions.map((fn) => fn.name.escapedName)).toContain('"touch_child"()');
-      expect(schema.triggers.map((trigger) => trigger.escapedName)).toContain('"child_touch"');
-      expect(schema.views.map((view) => view.name.escapedName)).toContain('"child_view"');
-      expect(schema.materializedViews.map((view) => view.name.escapedName)).toContain('"child_mv"');
-      expect(schema.tables.find((table) => table.name.escapedName === '"child"')?.policies).toHaveLength(1);
-      expect(schema.tables.find((table) => table.name.escapedName === '"child"')?.privileges).toContainEqual({
+      expect(
+        schema.sequences.map((sequence) => sequence.name.escapedName),
+      ).toContain('"ticket_seq"');
+      expect(schema.functions.map((fn) => fn.name.escapedName)).toContain(
+        '"touch_child"()',
+      );
+      expect(schema.triggers.map((trigger) => trigger.escapedName)).toContain(
+        '"child_touch"',
+      );
+      expect(schema.views.map((view) => view.name.escapedName)).toContain(
+        '"child_view"',
+      );
+      expect(
+        schema.materializedViews.map((view) => view.name.escapedName),
+      ).toContain('"child_mv"');
+      expect(
+        schema.tables.find((table) => table.name.escapedName === '"child"')
+          ?.policies,
+      ).toHaveLength(1);
+      expect(
+        schema.tables.find((table) => table.name.escapedName === '"child"')
+          ?.privileges,
+      ).toContainEqual({
         kind: "tablePrivilege",
         grantee: "",
         privilege: "SELECT",
@@ -3404,33 +4274,76 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       `,
     );
 
-    const client = new Client({ connectionString: pg.databaseUrl("go_struct_parity_introspection_db") });
+    const client = new Client({
+      connectionString: pg.databaseUrl("go_struct_parity_introspection_db"),
+    });
     await client.connect();
     try {
       const schema = await getSchema(client);
-      const parentTable = schema.tables.find((table) => table.name.escapedName === '"parent"');
-      const childTable = schema.tables.find((table) => table.name.escapedName === '"child"');
-      const codeColumn = parentTable?.columns.find((column) => column.name === "code");
-      const idColumn = parentTable?.columns.find((column) => column.name === "id");
-      const normalizedColumn = parentTable?.columns.find((column) => column.name === "normalized");
-      const checkConstraint = parentTable?.checkConstraints.find((constraint) => constraint.name === "parent_code_check");
-      const parentPolicy = parentTable?.policies.find((policy) => policy.escapedName === '"parent_read"');
-      const childIndex = schema.indexes.find((index) => index.name === "child_parent_idx");
-      const childFk = schema.foreignKeyConstraints.find((fk) => fk.escapedName === '"child_parent_fk"');
-      const ticketSeq = schema.sequences.find((sequence) => sequence.name.escapedName === '"ticket_seq"');
-      const dependentFn = schema.functions.find((fn) => fn.name.escapedName === '"dependent_fn"()');
-      const procedure = schema.procedures.find((proc) => proc.name.escapedName === '"touch_proc"()');
-      const trigger = schema.triggers.find((item) => item.escapedName === '"child_touch"');
-      const childView = schema.views.find((view) => view.name.escapedName === '"child_view"');
-      const childMaterializedView = schema.materializedViews.find((view) => view.name.escapedName === '"child_mv"');
+      const parentTable = schema.tables.find(
+        (table) => table.name.escapedName === '"parent"',
+      );
+      const childTable = schema.tables.find(
+        (table) => table.name.escapedName === '"child"',
+      );
+      const codeColumn = parentTable?.columns.find(
+        (column) => column.name === "code",
+      );
+      const idColumn = parentTable?.columns.find(
+        (column) => column.name === "id",
+      );
+      const normalizedColumn = parentTable?.columns.find(
+        (column) => column.name === "normalized",
+      );
+      const checkConstraint = parentTable?.checkConstraints.find(
+        (constraint) => constraint.name === "parent_code_check",
+      );
+      const parentPolicy = parentTable?.policies.find(
+        (policy) => policy.escapedName === '"parent_read"',
+      );
+      const childIndex = schema.indexes.find(
+        (index) => index.name === "child_parent_idx",
+      );
+      const childFk = schema.foreignKeyConstraints.find(
+        (fk) => fk.escapedName === '"child_parent_fk"',
+      );
+      const ticketSeq = schema.sequences.find(
+        (sequence) => sequence.name.escapedName === '"ticket_seq"',
+      );
+      const dependentFn = schema.functions.find(
+        (fn) => fn.name.escapedName === '"dependent_fn"()',
+      );
+      const procedure = schema.procedures.find(
+        (proc) => proc.name.escapedName === '"touch_proc"()',
+      );
+      const trigger = schema.triggers.find(
+        (item) => item.escapedName === '"child_touch"',
+      );
+      const childView = schema.views.find(
+        (view) => view.name.escapedName === '"child_view"',
+      );
+      const childMaterializedView = schema.materializedViews.find(
+        (view) => view.name.escapedName === '"child_mv"',
+      );
 
-      expect(schema.namedSchemas).toContainEqual({ kind: "namedSchema", name: "app" });
-      expect(schema.extensions.find((extension) => extension.name.escapedName === '"pg_trgm"')).toMatchObject({
+      expect(schema.namedSchemas).toContainEqual({
+        kind: "namedSchema",
+        name: "app",
+      });
+      expect(
+        schema.extensions.find(
+          (extension) => extension.name.escapedName === '"pg_trgm"',
+        ),
+      ).toMatchObject({
         kind: "extension",
         name: schemaQualifiedName("app", "pg_trgm"),
         version: expect.any(String),
       });
-      expect(schema.enums.find((schemaEnum) => schemaEnum.name.escapedName === '"mood"')).toEqual({
+      expect(
+        schema.enums.find(
+          (schemaEnum) => schemaEnum.name.escapedName === '"mood"',
+        ),
+      ).toEqual({
         kind: "enum",
         name: schemaQualifiedName("app", "mood"),
         labels: ["sad", "ok"],
@@ -3483,8 +4396,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         cmd: "r",
         usingExpression: "(code IS NOT NULL)",
       });
-      expect(parentTable?.privileges).toContainEqual({ kind: "tablePrivilege", grantee: "", privilege: "SELECT", isGrantable: false });
-      expect(childTable).toMatchObject({ kind: "table", name: schemaQualifiedName("app", "child") });
+      expect(parentTable?.privileges).toContainEqual({
+        kind: "tablePrivilege",
+        grantee: "",
+        privilege: "SELECT",
+        isGrantable: false,
+      });
+      expect(childTable).toMatchObject({
+        kind: "table",
+        name: schemaQualifiedName("app", "child"),
+      });
       expect(childIndex).toMatchObject({
         kind: "index",
         name: "child_parent_idx",
@@ -3521,7 +4442,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         language: "sql",
         dependsOnFunctions: [{ schemaName: "app", escapedName: '"base_fn"()' }],
       });
-      expect(procedure).toMatchObject({ kind: "procedure", name: { schemaName: "app", escapedName: '"touch_proc"()' } });
+      expect(procedure).toMatchObject({
+        kind: "procedure",
+        name: { schemaName: "app", escapedName: '"touch_proc"()' },
+      });
       expect(trigger).toMatchObject({
         kind: "trigger",
         escapedName: '"child_touch"',
@@ -3533,13 +4457,20 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         kind: "view",
         name: schemaQualifiedName("app", "child_view"),
         options: { security_barrier: "true" },
-        tableDependencies: [{ name: schemaQualifiedName("app", "child"), columns: ["id", "parent_id"] }],
+        tableDependencies: [
+          {
+            name: schemaQualifiedName("app", "child"),
+            columns: ["id", "parent_id"],
+          },
+        ],
       });
       expect(childMaterializedView).toMatchObject({
         kind: "materializedView",
         name: schemaQualifiedName("app", "child_mv"),
         options: { autovacuum_enabled: "false" },
-        tableDependencies: [{ name: schemaQualifiedName("app", "child"), columns: ["id"] }],
+        tableDependencies: [
+          { name: schemaQualifiedName("app", "child"), columns: ["id"] },
+        ],
       });
     } finally {
       await client.end();
@@ -3564,12 +4495,18 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       `,
     );
 
-    const client = new Client({ connectionString: pg.databaseUrl("partitioned_index_introspection_db") });
+    const client = new Client({
+      connectionString: pg.databaseUrl("partitioned_index_introspection_db"),
+    });
     await client.connect();
     try {
       const schema = await getSchema(client);
-      const parentIndex = schema.indexes.find((index) => index.name === "foobar_foo_id_key");
-      const childIndex = schema.indexes.find((index) => index.name === "foobar_1_foo_id_key");
+      const parentIndex = schema.indexes.find(
+        (index) => index.name === "foobar_foo_id_key",
+      );
+      const childIndex = schema.indexes.find(
+        (index) => index.name === "foobar_1_foo_id_key",
+      );
 
       expect(parentIndex).toMatchObject({
         kind: "index",
@@ -3611,15 +4548,27 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
 async function startPostgres(): Promise<PgHarness> {
   const dataDir = await mkdtemp(join(tmpdir(), "ts-pg-schema-diff-"));
-  await execFileAsync("initdb", ["-U", "postgres", "-D", dataDir, "-A", "trust"]);
+  await execFileAsync("initdb", [
+    "-U",
+    "postgres",
+    "-D",
+    dataDir,
+    "-A",
+    "trust",
+  ]);
 
   const { spawn } = await import("node:child_process");
   const port = 20_000 + Math.floor(Math.random() * 20_000);
-  const process = spawn("postgres", ["-D", dataDir, "-p", String(port), "-h", "127.0.0.1"], {
-    stdio: ["ignore", "ignore", "ignore"],
-  });
+  const process = spawn(
+    "postgres",
+    ["-D", dataDir, "-p", String(port), "-h", "127.0.0.1"],
+    {
+      stdio: ["ignore", "ignore", "ignore"],
+    },
+  );
 
-  const databaseUrl = (dbName: string): string => `postgresql://postgres@127.0.0.1:${port}/${dbName}`;
+  const databaseUrl = (dbName: string): string =>
+    `postgresql://postgres@127.0.0.1:${port}/${dbName}`;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
       await execSql(databaseUrl("postgres"), "SELECT 1");
@@ -3675,6 +4624,12 @@ async function execSql(databaseUrl: string, sql: string): Promise<void> {
 }
 
 async function dumpSchema(databaseUrl: string): Promise<string> {
-  const result = await execFileAsync("pg_dump", [databaseUrl, "--schema-only", "--no-owner", "--restrict-key", "tspgschemadiffrestrict"]);
+  const result = await execFileAsync("pg_dump", [
+    databaseUrl,
+    "--schema-only",
+    "--no-owner",
+    "--restrict-key",
+    "tspgschemadiffrestrict",
+  ]);
   return result.stdout;
 }

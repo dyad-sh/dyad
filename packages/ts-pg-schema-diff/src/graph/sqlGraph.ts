@@ -33,7 +33,9 @@ export class SqlGraph {
 
   public toOrderedStatements(): readonly InternalStatement[] {
     const vertices = this.#graph.topologicallySortWithPriority(
-      isLowerPriorityFromGetPriority((vertex) => vertex.statements.length * vertex.priority),
+      isLowerPriorityFromGetPriority(
+        (vertex) => vertex.statements.length * vertex.priority,
+      ),
     );
     return vertices.flatMap((vertex) => vertex.statements);
   }

@@ -1,8 +1,22 @@
-import { withDatabaseClient, type DatabaseConnectionOptions } from "./db/connect.js";
+import {
+  withDatabaseClient,
+  type DatabaseConnectionOptions,
+} from "./db/connect.js";
 import { getSchema } from "./db/introspect.js";
-import { generatePlan, toSchemaDiffResult, type GeneratePlanOptions } from "./plan/generate.js";
+import {
+  generatePlan,
+  toSchemaDiffResult,
+  type GeneratePlanOptions,
+} from "./plan/generate.js";
 import type { SchemaDiffResult, SchemaDiffStatement } from "./plan/types.js";
 import { PgSchemaDiffError } from "./errors.js";
+
+export {
+  DuplicateIdentifierError,
+  NotImplementedMigrationError,
+  PgSchemaDiffError,
+  UnsupportedPostgresVersionError,
+} from "./errors.js";
 
 export type GenerateSchemaDiffOptions = {
   readonly currentDatabaseUrl: string;
@@ -13,17 +27,27 @@ export type GenerateSchemaDiffOptions = {
   readonly connection?: DatabaseConnectionOptions;
 };
 
-export type { DatabaseConnectionOptions, SchemaDiffResult, SchemaDiffStatement };
+export type {
+  DatabaseConnectionOptions,
+  SchemaDiffResult,
+  SchemaDiffStatement,
+};
 
-export async function generateSchemaDiff(options: GenerateSchemaDiffOptions): Promise<SchemaDiffResult> {
+export async function generateSchemaDiff(
+  options: GenerateSchemaDiffOptions,
+): Promise<SchemaDiffResult> {
   const [currentSchema, desiredSchema] = await Promise.all([
     readSchema("current", options.currentDatabaseUrl, options),
     readSchema("desired", options.desiredDatabaseUrl, options),
   ]);
 
   const planOptions: GeneratePlanOptions =
-    options.noConcurrentIndexOperations === undefined ? {} : { noConcurrentIndexOperations: options.noConcurrentIndexOperations };
-  return toSchemaDiffResult(generatePlan(currentSchema, desiredSchema, planOptions));
+    options.noConcurrentIndexOperations === undefined
+      ? {}
+      : { noConcurrentIndexOperations: options.noConcurrentIndexOperations };
+  return toSchemaDiffResult(
+    generatePlan(currentSchema, desiredSchema, planOptions),
+  );
 }
 
 async function readSchema(
@@ -32,8 +56,15 @@ async function readSchema(
   options: GenerateSchemaDiffOptions,
 ) {
   try {
-    return await withDatabaseClient(databaseUrl, options.connection ?? {}, (client) => getSchema(client, options));
+    return await withDatabaseClient(
+      databaseUrl,
+      options.connection ?? {},
+      (client) => getSchema(client, options),
+    );
   } catch (error) {
-    throw new PgSchemaDiffError(`Failed to introspect ${label} database schema`, { cause: error });
+    throw new PgSchemaDiffError(
+      `Failed to introspect ${label} database schema`,
+      { cause: error },
+    );
   }
 }

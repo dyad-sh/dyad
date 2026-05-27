@@ -1,4 +1,8 @@
-import type { InternalStatement, MigrationHazardType, SchemaDiffStatement } from "./types.js";
+import type {
+  InternalStatement,
+  MigrationHazardType,
+  SchemaDiffStatement,
+} from "./types.js";
 
 const destructiveHazardTypes = new Set<MigrationHazardType>([
   "ACQUIRES_ACCESS_EXCLUSIVE_LOCK",
@@ -10,12 +14,20 @@ const destructiveHazardTypes = new Set<MigrationHazardType>([
   "AUTHZ_UPDATE",
 ]);
 
-const destructiveSqlPattern = /^\s*(DROP|REVOKE|ALTER\s+TABLE\b.*\bDROP\b|ALTER\s+TYPE\b.*\bDROP\b)/iu;
+const destructiveSqlPattern =
+  /^\s*(DROP|REVOKE|ALTER\s+TABLE\b.*\bDROP\b|ALTER\s+TYPE\b.*\bDROP\b)/iu;
 
-export function toPublicStatement(statement: InternalStatement): SchemaDiffStatement {
-  const hasDestructiveHazard = statement.hazards.some((hazard) => destructiveHazardTypes.has(hazard.type));
+export function toPublicStatement(
+  statement: InternalStatement,
+): SchemaDiffStatement {
+  const hasDestructiveHazard = statement.hazards.some((hazard) =>
+    destructiveHazardTypes.has(hazard.type),
+  );
   return {
     sql: statement.sql,
-    type: hasDestructiveHazard || destructiveSqlPattern.test(statement.sql) ? "destructive" : "additive",
+    type:
+      hasDestructiveHazard || destructiveSqlPattern.test(statement.sql)
+        ? "destructive"
+        : "additive",
   };
 }

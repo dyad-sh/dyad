@@ -19,7 +19,9 @@ const diff = await generateSchemaDiff({
   },
 });
 
-const sqlScript = diff.statements.map((statement) => `${statement.sql};`).join("\n\n");
+const sqlScript = diff.statements
+  .map((statement) => `${statement.sql};`)
+  .join("\n\n");
 
 const client = new Client({ connectionString: currentDatabaseUrl });
 await client.connect();

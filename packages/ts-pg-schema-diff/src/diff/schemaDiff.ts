@@ -3,6 +3,7 @@ import { diffLists, type ListDiff } from "./listDiff.js";
 import { fqName } from "../schema/identifiers.js";
 import { normalizeSchema } from "../schema/normalize.js";
 import { objectName } from "../schema/objectName.js";
+import { NotImplementedMigrationError } from "../errors.js";
 import type {
   CheckConstraint,
   Column,
@@ -78,25 +79,43 @@ export type SchemaDiff = {
   readonly enumDiffs: ListDiff<Enum, EnumDiff>;
   readonly tableDiffs: ListDiff<Table, TableDiff>;
   readonly indexDiffs: ListDiff<Index, DiffPair<Index>>;
-  readonly foreignKeyConstraintDiffs: ListDiff<ForeignKeyConstraint, DiffPair<ForeignKeyConstraint>>;
+  readonly foreignKeyConstraintDiffs: ListDiff<
+    ForeignKeyConstraint,
+    DiffPair<ForeignKeyConstraint>
+  >;
   readonly sequenceDiffs: ListDiff<Sequence, DiffPair<Sequence>>;
   readonly functionDiffs: ListDiff<FunctionSchema, DiffPair<FunctionSchema>>;
   readonly procedureDiffs: ListDiff<Procedure, DiffPair<Procedure>>;
   readonly triggerDiffs: ListDiff<Trigger, DiffPair<Trigger>>;
   readonly viewDiffs: ListDiff<View, DiffPair<View>>;
-  readonly materializedViewDiffs: ListDiff<MaterializedView, DiffPair<MaterializedView>>;
+  readonly materializedViewDiffs: ListDiff<
+    MaterializedView,
+    DiffPair<MaterializedView>
+  >;
 };
 
-export function buildSchemaDiff(oldSchema: Schema, newSchema: Schema): SchemaDiff {
+export function buildSchemaDiff(
+  oldSchema: Schema,
+  newSchema: Schema,
+): SchemaDiff {
   const oldNormalized = normalizeSchema(oldSchema);
   const newNormalized = normalizeSchema(newSchema);
-  const newTablesByName = new Map(newNormalized.tables.map((table) => [objectName(table), table]));
+  const newTablesByName = new Map(
+    newNormalized.tables.map((table) => [objectName(table), table]),
+  );
+  const oldIndexesByName = new Map(
+    oldNormalized.indexes.map((index) => [objectName(index), index]),
+  );
+  const newIndexesByName = new Map(
+    newNormalized.indexes.map((index) => [objectName(index), index]),
+  );
   const tableDiffs = diffLists({
     oldObjects: oldNormalized.tables,
     newObjects: newNormalized.tables,
     getName: objectName,
     buildDiff: buildTableDiff,
   });
+  const addedTablesByName = new Set(tableDiffs.adds.map(objectName));
 
   return {
     old: oldNormalized,
@@ -133,18 +152,36 @@ export function buildSchemaDiff(oldSchema: Schema, newSchema: Schema): SchemaDif
       oldObjects: oldNormalized.indexes,
       newObjects: newNormalized.indexes,
       getName: objectName,
-      buildDiff: (oldObject, newObject) => buildIndexDiff(oldObject, newObject, newTablesByName),
+      buildDiff: (oldObject, newObject) =>
+        buildIndexDiff({
+          oldIndex: oldObject,
+          newIndex: newObject,
+          newTablesByName,
+          addedTablesByName,
+          oldIndexesByName,
+          newIndexesByName,
+        }),
     }),
     foreignKeyConstraintDiffs: diffLists({
       oldObjects: oldNormalized.foreignKeyConstraints,
       newObjects: newNormalized.foreignKeyConstraints,
       getName: objectName,
       buildDiff: (oldObject, newObject) => {
-        const oldValidAsNew = { ...oldObject, isValid: newObject.isValid, constraintDef: stripNotValid(oldObject.constraintDef) };
-        const newComparable = { ...newObject, constraintDef: stripNotValid(newObject.constraintDef) };
+        const oldValidAsNew = {
+          ...oldObject,
+          isValid: newObject.isValid,
+          constraintDef: stripNotValid(oldObject.constraintDef),
+        };
+        const newComparable = {
+          ...newObject,
+          constraintDef: stripNotValid(newObject.constraintDef),
+        };
         return {
           diff: { old: oldObject, next: newObject },
-          requiresRecreation: !deepEqual(oldValidAsNew, newComparable),
+          requiresRecreation:
+            addedTablesByName.has(fqName(newObject.owningTable)) ||
+            addedTablesByName.has(fqName(newObject.foreignTable)) ||
+            !deepEqual(oldValidAsNew, newComparable),
         };
       },
     }),
@@ -154,13 +191,30 @@ export function buildSchemaDiff(oldSchema: Schema, newSchema: Schema): SchemaDif
       getName: objectName,
       buildDiff: (oldObject, newObject) => ({
         diff: { old: oldObject, next: newObject },
-        requiresRecreation: false,
+        requiresRecreation:
+          newObject.owner !== null &&
+          deepEqual(oldObject.owner, newObject.owner) &&
+          addedTablesByName.has(fqName(newObject.owner.tableName)),
       }),
     }),
-    functionDiffs: diffObjectList(oldNormalized.functions, newNormalized.functions),
-    procedureDiffs: diffObjectList(oldNormalized.procedures, newNormalized.procedures),
-    triggerDiffs: diffTriggerList(oldNormalized.triggers, newNormalized.triggers),
-    viewDiffs: diffTableDependentObjectList(oldNormalized.views, newNormalized.views, tableDiffs),
+    functionDiffs: diffObjectList(
+      oldNormalized.functions,
+      newNormalized.functions,
+    ),
+    procedureDiffs: diffObjectList(
+      oldNormalized.procedures,
+      newNormalized.procedures,
+    ),
+    triggerDiffs: diffTriggerList(
+      oldNormalized.triggers,
+      newNormalized.triggers,
+      addedTablesByName,
+    ),
+    viewDiffs: diffTableDependentObjectList(
+      oldNormalized.views,
+      newNormalized.views,
+      tableDiffs,
+    ),
     materializedViewDiffs: diffTableDependentObjectList(
       oldNormalized.materializedViews,
       newNormalized.materializedViews,
@@ -169,14 +223,79 @@ export function buildSchemaDiff(oldSchema: Schema, newSchema: Schema): SchemaDif
   };
 }
 
-function buildIndexDiff(
-  oldIndex: Index,
-  newIndex: Index,
-  newTablesByName: ReadonlyMap<string, Table>,
-): { readonly diff: DiffPair<Index>; readonly requiresRecreation: boolean } {
+type BuildIndexDiffOptions = {
+  readonly oldIndex: Index;
+  readonly newIndex: Index;
+  readonly newTablesByName: ReadonlyMap<string, Table>;
+  readonly addedTablesByName: ReadonlySet<string>;
+  readonly oldIndexesByName: ReadonlyMap<string, Index>;
+  readonly newIndexesByName: ReadonlyMap<string, Index>;
+  readonly seenIndexesByName?: ReadonlySet<string>;
+};
+
+function buildIndexDiff(options: BuildIndexDiffOptions): {
+  readonly diff: DiffPair<Index>;
+  readonly requiresRecreation: boolean;
+} {
+  const {
+    oldIndex,
+    newIndex,
+    newTablesByName,
+    addedTablesByName,
+    oldIndexesByName,
+    newIndexesByName,
+  } = options;
+  if (options.seenIndexesByName?.has(objectName(newIndex)) === true) {
+    throw new Error(
+      `loop detected between indexes that starts with ${objectName(newIndex)}`,
+    );
+  }
+  const seenIndexesByName = new Set(options.seenIndexesByName);
+  seenIndexesByName.add(objectName(newIndex));
+
+  if (addedTablesByName.has(fqName(newIndex.owningRelName))) {
+    return {
+      diff: { old: oldIndex, next: newIndex },
+      requiresRecreation: true,
+    };
+  }
+
   let comparableOld = oldIndex;
 
-  if (!indexIsOnPartitionedTable(newIndex, newTablesByName) && oldIndex.constraint === null && newIndex.constraint !== null) {
+  if (
+    oldIndex.parentIdx !== null &&
+    newIndex.parentIdx !== null &&
+    deepEqual(oldIndex.parentIdx, newIndex.parentIdx)
+  ) {
+    const oldParentIndex = oldIndexesByName.get(fqName(newIndex.parentIdx));
+    const newParentIndex = newIndexesByName.get(fqName(newIndex.parentIdx));
+    if (oldParentIndex === undefined || newParentIndex === undefined) {
+      throw new Error(
+        `could not find parent index ${fqName(newIndex.parentIdx)}`,
+      );
+    }
+    const parentDiff = buildIndexDiff({
+      oldIndex: oldParentIndex,
+      newIndex: newParentIndex,
+      newTablesByName,
+      addedTablesByName,
+      oldIndexesByName,
+      newIndexesByName,
+      seenIndexesByName,
+    });
+    if (parentDiff.requiresRecreation) {
+      return {
+        diff: { old: oldIndex, next: newIndex },
+        requiresRecreation: true,
+      };
+    }
+  }
+
+  if (
+    !indexIsOnPartitionedTable(newIndex, newTablesByName) &&
+    oldIndex.constraint === null &&
+    newIndex.constraint !== null
+  ) {
     comparableOld = { ...comparableOld, constraint: newIndex.constraint };
   }
 
@@ -194,7 +313,11 @@ function buildIndexDiff(
     comparableOld = { ...comparableOld, constraint: newIndex.constraint };
   }
 
-  if (indexIsOnPartitionedTable(newIndex, newTablesByName) && oldIndex.isInvalid && !newIndex.isInvalid) {
+  if (
+    indexIsOnPartitionedTable(newIndex, newTablesByName) &&
+    oldIndex.isInvalid &&
+    !newIndex.isInvalid
+  ) {
     comparableOld = { ...comparableOld, isInvalid: newIndex.isInvalid };
   }
 
@@ -204,7 +327,10 @@ function buildIndexDiff(
   };
 }
 
-function indexIsOnPartitionedTable(index: Index, newTablesByName: ReadonlyMap<string, Table>): boolean {
+function indexIsOnPartitionedTable(
+  index: Index,
+  newTablesByName: ReadonlyMap<string, Table>,
+): boolean {
   if (index.owningRelKind === "m") {
     return false;
   }
@@ -216,12 +342,17 @@ function constraintsEqualIgnoringLocality(
   left: NonNullable<Index["constraint"]>,
   right: NonNullable<Index["constraint"]>,
 ): boolean {
-  return left.type === right.type &&
+  return (
+    left.type === right.type &&
     left.escapedConstraintName === right.escapedConstraintName &&
-    left.constraintDef === right.constraintDef;
+    left.constraintDef === right.constraintDef
+  );
 }
 
-function isSubsequence(values: readonly string[], container: readonly string[]): boolean {
+function isSubsequence(
+  values: readonly string[],
+  container: readonly string[],
+): boolean {
   let index = 0;
   for (const value of container) {
     if (values[index] === value) {
@@ -258,6 +389,7 @@ function diffObjectList<TObject extends SchemaObject>(
 function diffTriggerList(
   oldObjects: readonly Trigger[],
   newObjects: readonly Trigger[],
+  addedTablesByName: ReadonlySet<string>,
 ): ListDiff<Trigger, DiffPair<Trigger>> {
   const diff = diffLists({
     oldObjects,
@@ -267,7 +399,9 @@ function diffTriggerList(
       const changed = !deepEqual(oldObject, newObject);
       return {
         diff: { old: oldObject, next: newObject },
-        requiresRecreation: changed && (oldObject.isConstraint || newObject.isConstraint),
+        requiresRecreation:
+          addedTablesByName.has(fqName(newObject.owningTable)) ||
+          (changed && (oldObject.isConstraint || newObject.isConstraint)),
       };
     },
   });
@@ -279,7 +413,9 @@ function diffTriggerList(
 
 type TableDependentSchemaObject = View | MaterializedView;
 
-function diffTableDependentObjectList<TObject extends TableDependentSchemaObject>(
+function diffTableDependentObjectList<
+  TObject extends TableDependentSchemaObject,
+>(
   oldObjects: readonly TObject[],
   newObjects: readonly TObject[],
   tableDiffs: ListDiff<Table, TableDiff>,
@@ -290,7 +426,9 @@ function diffTableDependentObjectList<TObject extends TableDependentSchemaObject
     getName: objectName,
     buildDiff: (oldObject, newObject) => ({
       diff: { old: oldObject, next: newObject },
-      requiresRecreation: !deepEqual(oldObject, newObject) || hasDeletedTableDependency(oldObject, tableDiffs),
+      requiresRecreation:
+        !deepEqual(oldObject, newObject) ||
+        hasDeletedTableDependency(oldObject, tableDiffs),
     }),
   });
   return {
@@ -299,9 +437,17 @@ function diffTableDependentObjectList<TObject extends TableDependentSchemaObject
   };
 }
 
-function hasDeletedTableDependency(object: TableDependentSchemaObject, tableDiffs: ListDiff<Table, TableDiff>): boolean {
+function hasDeletedTableDependency(
+  object: TableDependentSchemaObject,
+  tableDiffs: ListDiff<Table, TableDiff>,
+): boolean {
   const deletedTablesByName = new Set(tableDiffs.deletes.map(objectName));
-  const tableAltersByOldName = new Map(tableDiffs.alters.map((tableDiff) => [objectName(tableDiff.old), tableDiff]));
+  const tableAltersByOldName = new Map(
+    tableDiffs.alters.map((tableDiff) => [
+      objectName(tableDiff.old),
+      tableDiff,
+    ]),
+  );
 
   for (const dependency of object.tableDependencies) {
     const tableName = fqName(dependency.name);
@@ -314,7 +460,9 @@ function hasDeletedTableDependency(object: TableDependentSchemaObject, tableDiff
       continue;
     }
 
-    const deletedColumns = new Set(tableDiff.columnsDiff.deletes.map((column) => column.name));
+    const deletedColumns = new Set(
+      tableDiff.columnsDiff.deletes.map((column) => column.name),
+    );
     if (dependency.columns.some((column) => deletedColumns.has(column))) {
       return true;
     }
@@ -323,10 +471,22 @@ function hasDeletedTableDependency(object: TableDependentSchemaObject, tableDiff
   return false;
 }
 
-function buildTableDiff(oldTable: Table, newTable: Table): { readonly diff: TableDiff; readonly requiresRecreation: boolean } {
+function buildTableDiff(
+  oldTable: Table,
+  newTable: Table,
+): { readonly diff: TableDiff; readonly requiresRecreation: boolean } {
+  if (
+    tableIsPartitioned(oldTable) &&
+    tableIsPartitioned(newTable) &&
+    oldTable.partitionKeyDef !== newTable.partitionKeyDef
+  ) {
+    throw new NotImplementedMigrationError(
+      "changing partition key def is not supported",
+    );
+  }
+
   const requiresRecreation =
     tableIsPartitioned(oldTable) !== tableIsPartitioned(newTable) ||
-    oldTable.partitionKeyDef !== newTable.partitionKeyDef ||
     !deepEqual(oldTable.parentTable, newTable.parentTable);
 
   return {
@@ -370,7 +530,8 @@ function buildTableDiff(oldTable: Table, newTable: Table): { readonly diff: Tabl
         getName: objectName,
         buildDiff: (oldPrivilege, newPrivilege) => ({
           diff: { old: oldPrivilege, next: newPrivilege },
-          requiresRecreation: oldPrivilege.isGrantable !== newPrivilege.isGrantable,
+          requiresRecreation:
+            oldPrivilege.isGrantable !== newPrivilege.isGrantable,
         }),
       }),
     },
@@ -382,11 +543,23 @@ function policyCanBeAltered(oldPolicy: Policy, newPolicy: Policy): boolean {
   if (!deepEqual(comparableOld.appliesTo, newPolicy.appliesTo)) {
     comparableOld = { ...comparableOld, appliesTo: newPolicy.appliesTo };
   }
-  if (comparableOld.usingExpression !== newPolicy.usingExpression && newPolicy.usingExpression.length > 0) {
-    comparableOld = { ...comparableOld, usingExpression: newPolicy.usingExpression };
+  if (
+    comparableOld.usingExpression !== newPolicy.usingExpression &&
+    newPolicy.usingExpression.length > 0
+  ) {
+    comparableOld = {
+      ...comparableOld,
+      usingExpression: newPolicy.usingExpression,
+    };
   }
-  if (comparableOld.checkExpression !== newPolicy.checkExpression && newPolicy.checkExpression.length > 0) {
-    comparableOld = { ...comparableOld, checkExpression: newPolicy.checkExpression };
+  if (
+    comparableOld.checkExpression !== newPolicy.checkExpression &&
+    newPolicy.checkExpression.length > 0
+  ) {
+    comparableOld = {
+      ...comparableOld,
+      checkExpression: newPolicy.checkExpression,
+    };
   }
   comparableOld = { ...comparableOld, columns: newPolicy.columns };
   return deepEqual(comparableOld, newPolicy);
@@ -397,5 +570,7 @@ function tableIsPartitioned(table: Table): boolean {
 }
 
 function stripNotValid(value: string): string {
-  return value.endsWith(" NOT VALID") ? value.slice(0, -" NOT VALID".length) : value;
+  return value.endsWith(" NOT VALID")
+    ? value.slice(0, -" NOT VALID".length)
+    : value;
 }

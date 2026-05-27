@@ -1,20 +1,42 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import {
+  generateSchemaDiff,
+  NotImplementedMigrationError,
+  PgSchemaDiffError,
+  UnsupportedPostgresVersionError,
+} from "ts-pg-schema-diff";
 import {
   BASELINE_SQL_BODY,
   areMigrationDepsInstalled,
   assertGenerateArtifactsComplete,
   detectDestructiveStatements,
   detectDrizzleKitFailureInStderr,
+  generateNeonMigrationStatements,
+  MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
+  MIGRATION_SCHEMA_DIFF_INCLUDE_SCHEMAS,
   parseDrizzleMigrationFile,
   deriveDestructiveReasons,
   getInstalledDrizzleKitMajor,
   readPendingMigrationFiles,
   type DrizzleKitMajor,
 } from "./migration_utils";
-import { DyadError } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
+vi.mock("ts-pg-schema-diff", async () => {
+  const actual =
+    await vi.importActual<typeof import("ts-pg-schema-diff")>(
+      "ts-pg-schema-diff",
+    );
+  return {
+    ...actual,
+    generateSchemaDiff: vi.fn(),
+  };
+});
+
+const generateSchemaDiffMock = vi.mocked(generateSchemaDiff);
 
 // Per-layout fixture writers. v0 = journal + `<tag>.sql` + `meta/<idx>_snapshot.json`;
 // v1 = `<tag>/migration.sql` + `<tag>/snapshot.json`. Mirrors what
@@ -59,6 +81,95 @@ async function writeV1Migration(
 // Sample inputs are anchored to the format drizzle-kit `generate` writes:
 // SQL files separated by `--> statement-breakpoint` markers on their own
 // lines. Re-validate when MIGRATION_DEPS bumps drizzle-kit.
+
+describe("generateNeonMigrationStatements", () => {
+  beforeEach(() => {
+    generateSchemaDiffMock.mockReset();
+  });
+
+  it("diffs prod as current against dev as desired with transactional index SQL", async () => {
+    generateSchemaDiffMock.mockResolvedValue({
+      statements: [
+        { sql: 'CREATE TABLE "users" ("id" integer)', type: "additive" },
+        { sql: 'ALTER TABLE "users" ADD COLUMN "name" text', type: "additive" },
+      ],
+    });
+
+    const statements = await generateNeonMigrationStatements({
+      currentDatabaseUrl: "postgresql://prod",
+      desiredDatabaseUrl: "postgresql://dev",
+    });
+
+    expect(statements).toEqual([
+      'CREATE TABLE "users" ("id" integer)',
+      'ALTER TABLE "users" ADD COLUMN "name" text',
+    ]);
+    expect(generateSchemaDiffMock).toHaveBeenCalledWith({
+      currentDatabaseUrl: "postgresql://prod",
+      desiredDatabaseUrl: "postgresql://dev",
+      includeSchemas: MIGRATION_SCHEMA_DIFF_INCLUDE_SCHEMAS,
+      noConcurrentIndexOperations: true,
+      connection: MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
+    });
+  });
+
+  it("maps unsupported schema changes to precondition errors", async () => {
+    generateSchemaDiffMock.mockRejectedValue(
+      new NotImplementedMigrationError(
+        "changing partition key def is not supported",
+      ),
+    );
+
+    await expect(
+      generateNeonMigrationStatements({
+        currentDatabaseUrl: "postgresql://prod",
+        desiredDatabaseUrl: "postgresql://dev",
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message:
+        "Unsupported schema change: changing partition key def is not supported",
+    });
+  });
+
+  it("maps wrapped unsupported postgres versions to precondition errors", async () => {
+    generateSchemaDiffMock.mockRejectedValue(
+      new PgSchemaDiffError("Failed to introspect current database schema", {
+        cause: new UnsupportedPostgresVersionError(130000),
+      }),
+    );
+
+    await expect(
+      generateNeonMigrationStatements({
+        currentDatabaseUrl: "postgresql://prod",
+        desiredDatabaseUrl: "postgresql://dev",
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message:
+        "PostgreSQL server version 130000 is not supported; PostgreSQL 14 or newer is required",
+    });
+  });
+
+  it("maps introspection failures to external errors", async () => {
+    generateSchemaDiffMock.mockRejectedValue(
+      new PgSchemaDiffError("Failed to introspect current database schema", {
+        cause: new Error("connect ECONNRESET"),
+      }),
+    );
+
+    await expect(
+      generateNeonMigrationStatements({
+        currentDatabaseUrl: "postgresql://prod",
+        desiredDatabaseUrl: "postgresql://dev",
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message:
+        "Failed to compute migration plan: Failed to introspect current database schema",
+    });
+  });
+});
 
 describe("parseDrizzleMigrationFile", () => {
   it("returns a single statement when there are no breakpoints", () => {

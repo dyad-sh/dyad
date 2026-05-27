@@ -195,18 +195,22 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
   await expect(repoRow).toBeVisible();
   await repoRow.getByRole("button", { name: "Import" }).click();
 
-  await expect.poll(
-    async () => {
-      try {
-        await po.appManagement.showAppList();
-        const item = po.appManagement.getAppListItem({ appName: "existing-app" });
-        return await item.isVisible().catch(() => false);
-      } catch {
-        return false;
-      }
-    },
-    { timeout: 60_000 },
-  ).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        try {
+          await po.appManagement.showAppList();
+          const item = po.appManagement.getAppListItem({
+            appName: "existing-app",
+          });
+          return await item.isVisible().catch(() => false);
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
   await po.appManagement.clickAppListItem({ appName: "existing-app" });
 
   await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
@@ -216,12 +220,14 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
   await po.appManagement.getTitleBarAppNameButton().click();
 
   const appPath = await po.appManagement.getCurrentAppPath();
-  await expect.poll(() => {
-    const pkgPath = path.join(appPath, "package.json");
-    if (!fs.existsSync(pkgPath)) {
-      return false;
-    }
-    const pkg = fs.readFileSync(pkgPath, "utf8");
-    return pkg.includes("@dyad-sh/react-vite-component-tagger");
-  }).toBe(true);
+  await expect
+    .poll(() => {
+      const pkgPath = path.join(appPath, "package.json");
+      if (!fs.existsSync(pkgPath)) {
+        return false;
+      }
+      const pkg = fs.readFileSync(pkgPath, "utf8");
+      return pkg.includes("@dyad-sh/react-vite-component-tagger");
+    })
+    .toBe(true);
 });

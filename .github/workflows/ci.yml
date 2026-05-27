@@ -178,6 +178,7 @@ jobs:
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
+          DEBUG: "@electron/*,electron-forge:*"
         run: npm run pre:e2e
       - name: Debug packaged app output
         if: always()
@@ -195,7 +196,7 @@ jobs:
           echo "Forge output state:"
           find out -maxdepth 4 -print || true
           echo "Nearby build-like directories:"
-          find . -maxdepth 2 \( -name out -o -name dist -o -name ".vite" \) -print || true
+          find . -path ./node_modules -prune -o -maxdepth 3 \( -name out -o -name dist -o -name ".vite" \) -print || true
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -
       # macOS: Archive app bundle with tar to preserve metadata (code signatures, extended attributes)
@@ -212,7 +213,7 @@ jobs:
             echo "Electron dist state:"
             find node_modules/electron/dist -maxdepth 3 -print || true
             echo "Build-like directories:"
-            find . -maxdepth 3 \( -name out -o -name dist -o -name ".vite" \) -print || true
+            find . -path ./node_modules -prune -o -maxdepth 3 \( -name out -o -name dist -o -name ".vite" \) -print || true
             exit 1
           fi
           tar -cvf out-macos.tar out/

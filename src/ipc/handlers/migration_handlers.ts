@@ -92,6 +92,7 @@ export function registerMigrationHandlers() {
         appPath: ctx.appPath,
         prodSchemaPath,
         prodConnectionUri: ctx.prodUri,
+        drizzleKitMajor: ctx.drizzleKitMajor,
       });
 
       const devSchemaPath = await introspectBranch({
@@ -106,9 +107,13 @@ export function registerMigrationHandlers() {
         appPath: ctx.appPath,
         devSchemaPath,
         devConnectionUri: ctx.devUri,
+        drizzleKitMajor: ctx.drizzleKitMajor,
       });
 
-      const pending = await readPendingMigrationFiles(ctx.workDir);
+      const pending = await readPendingMigrationFiles(
+        ctx.workDir,
+        ctx.drizzleKitMajor,
+      );
       const userVisible = pending.filter((p) => !p.isBaseline);
 
       const statements: string[] = [];

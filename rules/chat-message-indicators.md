@@ -10,4 +10,4 @@ Content here
 
 Valid states: `"finished"`, `"in-progress"`, `"aborted"`
 
-- Renderer unit tests that import `DyadMarkdownParser` should mock `../preview_panel/FileEditor`; otherwise the `DyadWrite` import initializes Monaco and Happy DOM may try to fetch `cdn.jsdelivr.net`, causing offline `ENOTFOUND` failures.
+- Renderer unit tests that import chat components can initialize Monaco through the file editor tree, leading to Happy DOM errors like `moduleId: 'vs/editor/editor.main'` or offline `cdn.jsdelivr.net` failures. For pure helper logic, extract the helper into a small `.ts` module and test that directly; when testing `DyadMarkdownParser`, mock `../preview_panel/FileEditor`.

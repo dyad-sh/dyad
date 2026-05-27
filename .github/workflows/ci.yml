@@ -153,7 +153,7 @@ jobs:
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: v24.13.1
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install npm 11.8.0
@@ -228,7 +228,7 @@ jobs:
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: v24.13.1
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install npm 11.8.0
@@ -327,7 +327,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref || '' }}
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: v24.13.1
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - name: Install dependencies

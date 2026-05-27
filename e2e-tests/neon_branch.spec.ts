@@ -58,5 +58,23 @@ testSkipIfWindows("neon branch selection updates env vars", async ({ po }) => {
 
   const cookieSecretAfterSwitch = readCookieSecret(envAfterSwitch);
   expect(cookieSecretAfterSwitch).toBeTruthy();
+  // Each branch has its own persisted secret in the DB — switching to a
+  // different branch surfaces a different secret.
   expect(cookieSecretAfterSwitch).not.toBe(cookieSecretBeforeSwitch);
+
+  // Switching back to the original branch must return the SAME secret
+  // (per-branch persistence — no rotation on switch).
+  await po.appManagement.selectNeonBranch("development");
+
+  let envAfterReturn = "";
+  await expect(async () => {
+    envAfterReturn = fs.readFileSync(envFilePath, "utf8");
+    expect(envAfterReturn).toContain(
+      "DATABASE_URL=postgresql://test:test@test-development.neon.tech/test",
+    );
+    expect(envAfterReturn).toMatch(/NEON_AUTH_COOKIE_SECRET=[a-f0-9]{64}/);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  const cookieSecretAfterReturn = readCookieSecret(envAfterReturn);
+  expect(cookieSecretAfterReturn).toBe(cookieSecretBeforeSwitch);
 });

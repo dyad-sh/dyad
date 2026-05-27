@@ -71,7 +71,7 @@ end of new-file
 }
 
 === pnpm-workspace.yaml ===
-[10 lines]
+[Dyad-managed pnpm workspace config]
 
 === to-be-edited.txt ===
 after-edit

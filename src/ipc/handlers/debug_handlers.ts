@@ -344,7 +344,7 @@ export function registerDebugHandlers() {
         ]);
 
       // Read logs
-      const logs = readAppLogs(1_000, "info");
+      const logs = readAppLogs(5_000, "info");
 
       // Build the bundle
       const bundle: SessionDebugBundle = {

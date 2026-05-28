@@ -1,25 +1,12 @@
-import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { migrationContracts } from "../types/migration";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { IS_TEST_BUILD } from "../utils/test_utils";
-import { db } from "../../db";
-import { apps } from "../../db/schema";
-import { getDyadAppPath } from "../../paths/paths";
 import {
   logger,
   prepareMigrationContext,
-  areMigrationDepsInstalled,
-  introspectProdWithCache,
-  introspectBranch,
-  runBaselineGenerate,
-  runDiffGenerate,
-  readPendingMigrationFiles,
-  parseDrizzleMigrationFile,
+  generateNeonMigrationStatements,
   detectDestructiveStatements,
   deriveDestructiveReasons,
-  invalidateProdIntrospectCache,
-  cleanupWorkDir,
   getProductionBranchId,
 } from "../utils/migration_utils";
 import { getAppWithNeonBranch } from "../utils/neon_utils";
@@ -36,115 +23,47 @@ import {
 
 export function registerMigrationHandlers() {
   // -------------------------------------------------------------------------
-  // migration:dependencies-status
-  // -------------------------------------------------------------------------
-  createTypedHandler(
-    migrationContracts.dependenciesStatus,
-    async (_, params) => {
-      const { appId } = params;
-      if (IS_TEST_BUILD) {
-        return { installed: true };
-      }
-      const rows = await db
-        .select()
-        .from(apps)
-        .where(eq(apps.id, appId))
-        .limit(1);
-      if (rows.length === 0) {
-        throw new DyadError(
-          `App with ID ${appId} not found`,
-          DyadErrorKind.NotFound,
-        );
-      }
-      const appPath = getDyadAppPath(rows[0].path);
-      return { installed: await areMigrationDepsInstalled(appPath) };
-    },
-  );
-
-  // -------------------------------------------------------------------------
   // migration:preview
   //
-  // 1. Resolve dev/prod branches, ensure deps, wipe+recreate work dir.
-  // 2. Introspect prod (cached, 5 min TTL) → write a baseline snapshot.
-  // 3. Introspect dev (always fresh) → run diff generate.
-  // 4. Read pending migration files; the baseline file is hidden from the UI.
-  // 5. Stash the SQL statements in the in-memory plan store keyed by a fresh
-  //    migrationId; the work dir is then discarded — apply will execute
-  //    statements directly via Neon's HTTP transaction.
+  // 1. Resolve dev/prod branches and connection URLs.
+  // 2. Diff prod (current) against dev (desired) via ts-pg-schema-diff.
+  // 3. Stash the SQL statements in the in-memory plan store keyed by a fresh
+  //    migrationId; apply will execute statements directly via Neon's HTTP
+  //    transaction.
   // -------------------------------------------------------------------------
   createTypedHandler(migrationContracts.preview, async (_, params) => {
     const { appId } = params;
     logger.info(`Computing migration preview for app ${appId}`);
 
     const ctx = await prepareMigrationContext({ appId });
-    try {
-      const prodSchemaPath = await introspectProdWithCache({
-        appId,
-        prodBranchId: ctx.prodBranchId,
-        prodUpdatedAt: ctx.prodUpdatedAt,
-        appPath: ctx.appPath,
-        workDir: ctx.workDir,
-        prodConnectionUri: ctx.prodUri,
-      });
+    const schemaDiffStatements = await generateNeonMigrationStatements({
+      currentDatabaseUrl: ctx.prodUri,
+      desiredDatabaseUrl: ctx.devUri,
+    });
+    const statements = schemaDiffStatements.map((statement) => statement.sql);
 
-      await runBaselineGenerate({
-        workDir: ctx.workDir,
-        appPath: ctx.appPath,
-        prodSchemaPath,
-        prodConnectionUri: ctx.prodUri,
-        drizzleKitMajor: ctx.drizzleKitMajor,
-      });
+    const destructiveStatements =
+      detectDestructiveStatements(schemaDiffStatements);
+    const warningReasons = deriveDestructiveReasons(destructiveStatements);
+    const hasDataLoss = destructiveStatements.length > 0;
 
-      const devSchemaPath = await introspectBranch({
-        appPath: ctx.appPath,
-        workDir: ctx.workDir,
-        subDir: "dev-schema-out",
-        connectionUri: ctx.devUri,
-      });
+    const migrationId = storePreview(appId, statements, {
+      projectId: ctx.projectId,
+      prodBranchId: ctx.prodBranchId,
+      prodUpdatedAt: ctx.prodUpdatedAt,
+    });
 
-      await runDiffGenerate({
-        workDir: ctx.workDir,
-        appPath: ctx.appPath,
-        devSchemaPath,
-        devConnectionUri: ctx.devUri,
-        drizzleKitMajor: ctx.drizzleKitMajor,
-      });
+    logger.info(
+      `Migration preview ${migrationId} for app ${appId}: ${statements.length} statements, ${destructiveStatements.length} destructive`,
+    );
 
-      const pending = await readPendingMigrationFiles(
-        ctx.workDir,
-        ctx.drizzleKitMajor,
-      );
-      const userVisible = pending.filter((p) => !p.isBaseline);
-
-      const statements: string[] = [];
-      for (const entry of userVisible) {
-        statements.push(...parseDrizzleMigrationFile(entry.sql));
-      }
-
-      const destructiveStatements = detectDestructiveStatements(statements);
-      const warningReasons = deriveDestructiveReasons(destructiveStatements);
-      const hasDataLoss = destructiveStatements.length > 0;
-
-      const migrationId = storePreview(appId, statements, {
-        projectId: ctx.projectId,
-        prodBranchId: ctx.prodBranchId,
-        prodUpdatedAt: ctx.prodUpdatedAt,
-      });
-
-      logger.info(
-        `Migration preview ${migrationId} for app ${appId}: ${statements.length} statements, ${destructiveStatements.length} destructive`,
-      );
-
-      return {
-        migrationId,
-        statements,
-        hasDataLoss,
-        warningReasons,
-        destructiveStatements,
-      };
-    } finally {
-      await cleanupWorkDir(ctx.workDir);
-    }
+    return {
+      migrationId,
+      statements,
+      hasDataLoss,
+      warningReasons,
+      destructiveStatements,
+    };
   });
 
   // -------------------------------------------------------------------------
@@ -209,19 +128,15 @@ export function registerMigrationHandlers() {
       );
     }
 
-    try {
-      await executeNeonStatementsInTransaction({
-        projectId,
-        branchId: prodBranchId,
-        statements: stored.statements,
-      });
-      deletePreview(migrationId);
-      logger.info(
-        `Migration ${migrationId} applied successfully for app ${appId}`,
-      );
-      return { success: true };
-    } finally {
-      invalidateProdIntrospectCache({ appId, prodBranchId });
-    }
+    await executeNeonStatementsInTransaction({
+      projectId,
+      branchId: prodBranchId,
+      statements: stored.statements,
+    });
+    deletePreview(migrationId);
+    logger.info(
+      `Migration ${migrationId} applied successfully for app ${appId}`,
+    );
+    return { success: true };
   });
 }

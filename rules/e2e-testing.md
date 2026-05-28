@@ -117,6 +117,12 @@ If this happens:
 2. Re-run the same `npm run e2e -- e2e-tests/<spec>` command outside the sandbox before treating it as an app regression.
 3. If the test passes outside the sandbox, treat the sandbox launch failure as environmental rather than a product bug.
 
+## Packaged Electron launch hangs
+
+If an E2E test times out while setting up `electronApp` after `Debugger listening` but before Chromium prints `DevTools listening`, the packaged app may be blocked behind a native startup alert before any BrowserWindow exists. Sample the process; `NSAlert runModal` on the main thread confirms this.
+
+To expose the hidden error, launch the packaged executable with `--inspect-brk=0 --remote-debugging-port=0` and attach a Node inspector client that enables `Debugger.setPauseOnExceptions` before `Runtime.runIfWaitingForDebugger`. Errors like `ENOENT, node_modules/<pkg>/package.json not found in .../app.asar` usually mean `forge.config.ts`'s runtime dependency allowlist is missing a transitive package.
+
 ## Native rebuild Python issues during E2E builds
 
 If `npm run build` fails while rebuilding native modules with `ImportError` from Homebrew Python 3.14's `pyexpat` (for example `Symbol not found: _XML_SetAllocTrackerActivationThreshold`), rerun the build with the system Python: `PYTHON=/usr/bin/python3 npm run build`.

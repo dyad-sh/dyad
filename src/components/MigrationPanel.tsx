@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import {
   XCircle,
   ChevronDown,
   AlertTriangle,
-  Info,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -27,7 +26,6 @@ import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
-import { queryKeys } from "@/lib/queryKeys";
 import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
 
 interface MigrationPanelProps {
@@ -40,35 +38,14 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
   const { projectInfo, branches } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
-  const queryClient = useQueryClient();
-
-  const dependenciesStatus = useQuery({
-    queryKey: queryKeys.migration.dependenciesStatus({ appId }),
-    queryFn: () => ipc.migration.dependenciesStatus({ appId }),
-    staleTime: 0,
-    refetchOnMount: "always",
-  });
-  const depsInstalled = dependenciesStatus.data?.installed;
-  // Capture the install state at click time so the in-flight label doesn't
-  // flicker if the status query refetches mid-mutation.
-  const installingDepsRef = useRef(false);
-
-  const invalidateDepsStatus = () =>
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.migration.dependenciesStatus({ appId }),
-    });
 
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
-    onSuccess: invalidateDepsStatus,
-    onError: invalidateDepsStatus,
   });
 
   const migrateMutation = useMutation({
     mutationFn: (migrationId: string) =>
       ipc.migration.migrate({ appId, migrationId }),
-    onSuccess: invalidateDepsStatus,
-    onError: invalidateDepsStatus,
   });
 
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -144,16 +121,6 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           <span>{t("integrations.migration.backupWarning")}</span>
         </div>
 
-        {depsInstalled === false && !migrateMutation.isPending && (
-          <div
-            role="note"
-            className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3"
-          >
-            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span>{t("integrations.migration.installDependenciesNote")}</span>
-          </div>
-        )}
-
         <Button
           disabled={
             migrateMutation.isPending ||
@@ -162,7 +129,6 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           }
           onClick={() => {
             setShowErrorDetails(false);
-            installingDepsRef.current = depsInstalled === false;
             previewMutation.reset();
             // Clear any prior migrate error/success so the stale banner doesn't
             // sit behind the preview dialog while the user reviews a new plan.
@@ -174,9 +140,7 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
           {migrateMutation.isPending ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {installingDepsRef.current
-                ? t("integrations.migration.installingDependencies")
-                : t("integrations.migration.migrating")}
+              {t("integrations.migration.migrating")}
             </>
           ) : previewMutation.isPending ? (
             <>
@@ -270,10 +234,6 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
                     setPreviewOpen(true);
                     return;
                   }
-                  // Deps were installed during preview if needed; the migrate
-                  // step itself never installs anything, so make sure the
-                  // in-flight label doesn't claim otherwise.
-                  installingDepsRef.current = false;
                   migrateMutation.mutate(migrationId);
                 }}
               >

@@ -321,8 +321,6 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   migration: {
     all: ["migration"] as const,
-    dependenciesStatus: ({ appId }: { appId: number }) =>
-      ["migration", "dependencies-status", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

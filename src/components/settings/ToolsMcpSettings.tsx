@@ -345,6 +345,9 @@ export function ToolsMcpSettings() {
   const [connectingServerId, setConnectingServerId] = useState<number | null>(
     null,
   );
+  const [disconnectingServerId, setDisconnectingServerId] = useState<
+    number | null
+  >(null);
   const [connectFeedback, setConnectFeedback] =
     useState<ConnectFeedback | null>(null);
 
@@ -507,6 +510,7 @@ export function ToolsMcpSettings() {
   };
 
   const onDisconnect = async (serverId: number) => {
+    setDisconnectingServerId(serverId);
     try {
       await disconnectOAuth(serverId);
       showSuccess("Disconnected OAuth");
@@ -514,6 +518,8 @@ export function ToolsMcpSettings() {
       showError(
         err instanceof Error ? err.message : "Failed to disconnect OAuth",
       );
+    } finally {
+      setDisconnectingServerId(null);
     }
   };
 
@@ -727,7 +733,9 @@ export function ToolsMcpSettings() {
                   <Button
                     variant="outline"
                     onClick={() => onDisconnect(s.id)}
-                    disabled={isDisconnectingOAuth}
+                    disabled={
+                      isDisconnectingOAuth && disconnectingServerId === s.id
+                    }
                   >
                     Disconnect
                   </Button>

@@ -3,6 +3,7 @@
 Read this when adding Electron native dependencies such as `node-pty`, or any package that ships `.node` binaries, helper executables, or rebuild-time headers.
 
 - This repo's `forge.config.ts` uses a deny-by-default `ignore` filter for most `node_modules` content. When adding a native dependency, explicitly allowlist the runtime package and any rebuild-time helper packages it requires (for example `node-addon-api`), or Electron Forge can fail during `Preparing native dependencies` with errors like `Cannot find module 'node-addon-api'`.
+- The same deny-by-default packaging filter affects non-native packages that Vite leaves external in main/worker builds. If a runtime dependency is listed in a Vite `rollupOptions.external` array, make sure its package and runtime transitive dependencies are allowlisted in `forge.config.ts`, or packaged apps can fail with `MODULE_NOT_FOUND` even though dev builds work.
 - Add native runtime packages to `vite.main.config.mts` `build.rollupOptions.external` so Vite does not bundle them into the main-process build.
 - If a native runtime package is used from a separately built worker, also externalize it in that worker's Vite config and add the worker as a separate `VitePlugin` build entry in `forge.config.ts`; otherwise `path.join(__dirname, "worker.js")` can work in tests but the packaged app may miss the worker or fail to resolve the native package.
 - Add native runtime packages to `forge.config.ts` `rebuildConfig.extraModules` so Electron Forge rebuilds them against the packaged Electron version.

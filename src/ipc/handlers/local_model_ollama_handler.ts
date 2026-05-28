@@ -89,12 +89,16 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
     logger.info(`Successfully fetched ${models.length} models from Ollama`);
     return { models };
   } catch (error) {
+    if (error instanceof DyadError) {
+      throw error;
+    }
     if (
       error instanceof TypeError &&
       (error as Error).message.includes("fetch failed")
     ) {
-      throw new Error(
+      throw new DyadError(
         "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+        DyadErrorKind.Precondition,
       );
     }
     throw new DyadError(

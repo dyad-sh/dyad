@@ -160,16 +160,22 @@ export default function SettingsPage() {
             <ToolsMcpSettings />
           </div>
 
-          {/* Experiments Section */}
+          {/* Advanced Section */}
           <div
-            id={SECTION_IDS.experiments}
+            id={SECTION_IDS.advanced}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
           >
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Experiments
-            </h2>
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+                Advanced
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-2">
+                We recommend keeping the default settings unless something is
+                not working
+              </p>
+            </div>
             <div className="space-y-4">
-              <div id={SETTING_IDS.nativeGit} className="space-y-1 mt-4">
+              <div id={SETTING_IDS.nativeGit} className="space-y-1">
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enable-native-git"
@@ -187,12 +193,6 @@ export default function SettingsPage() {
                   This doesn't require any external Git installation and offers
                   a faster, native-Git performance experience.
                 </div>
-              </div>
-              <div
-                id={SETTING_IDS.enableCloudSandbox}
-                className="space-y-1 mt-4"
-              >
-                <CloudSandboxExperimentSwitch />
               </div>
               <div
                 id={SETTING_IDS.enableSandboxScriptExecution}
@@ -225,30 +225,6 @@ export default function SettingsPage() {
                 <BlockUnsafeNpmPackagesSwitch />
               </div>
               <div
-                id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
-                className="space-y-1 mt-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="enable-pnpm-minimum-release-age-warning"
-                    aria-label="Enable pnpm upgrade warning"
-                    checked={!!settings?.enablePnpmMinimumReleaseAgeWarning}
-                    onCheckedChange={(checked) => {
-                      updateSettings({
-                        enablePnpmMinimumReleaseAgeWarning: checked,
-                      });
-                    }}
-                  />
-                  <Label htmlFor="enable-pnpm-minimum-release-age-warning">
-                    Enable pnpm upgrade warning
-                  </Label>
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Show the pnpm release-age warning toast and one-click pnpm
-                  upgrade action.
-                </div>
-              </div>
-              <div
                 id={SETTING_IDS.enableMcpServersForBuildMode}
                 className="space-y-1 mt-4"
               >
@@ -270,6 +246,51 @@ export default function SettingsPage() {
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Allow MCP servers to be used when in Build mode. Note: MCP
                   servers are always enabled in Agent mode.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Experiments Section */}
+          <div
+            id={SECTION_IDS.experiments}
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+                Experiments
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-2">
+                We do not recommend enabling experiments as these features may
+                not be stable
+              </p>
+            </div>
+            <div className="space-y-4">
+              <div id={SETTING_IDS.enableCloudSandbox} className="space-y-1">
+                <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-pnpm-minimum-release-age-warning"
+                    aria-label="Enable pnpm upgrade warning"
+                    checked={!!settings?.enablePnpmMinimumReleaseAgeWarning}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enablePnpmMinimumReleaseAgeWarning: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-pnpm-minimum-release-age-warning">
+                    Enable pnpm upgrade warning
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Show the pnpm release-age warning toast and one-click pnpm
+                  upgrade action.
                 </div>
               </div>
               <div

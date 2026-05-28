@@ -6,7 +6,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.setUp();
   await po.navigation.goToSettingsTab();
-  await po.settings.scrollToSettingsSection("experiments");
+  await po.settings.scrollToSettingsSection("advanced");
   await po.settings.toggleEnableMcpServersForBuildMode();
   await po.settings.scrollToSettingsSection("tools-mcp");
 
@@ -89,7 +89,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
   try {
     await po.setUp();
     await po.navigation.goToSettingsTab();
-    await po.settings.scrollToSettingsSection("experiments");
+    await po.settings.scrollToSettingsSection("advanced");
     await po.settings.toggleEnableMcpServersForBuildMode();
     await po.settings.scrollToSettingsSection("tools-mcp");
 

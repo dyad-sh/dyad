@@ -73,12 +73,21 @@ export function alterColumnStatements(
 ): readonly InternalStatement[] {
   const statements: InternalStatement[] = [];
   const prefix = `${alterTablePrefix(tableName)} ALTER COLUMN ${escapeIdentifier(diff.next.name)}`;
+  const typeOrCollationChanged = columnTypeOrCollationChanged(
+    diff.old,
+    diff.next,
+  );
+  const defaultChanged = diff.old.default !== diff.next.default;
 
   if (diff.old.isNullable !== diff.next.isNullable && !diff.next.isNullable) {
     statements.push(...onlineNotNullStatements(tableName, diff.next));
   }
 
-  if (diff.old.default.length > 0 && diff.next.default.length === 0) {
+  if (
+    diff.old.default.length > 0 &&
+    (diff.next.default.length === 0 ||
+      (typeOrCollationChanged && defaultChanged))
+  ) {
     statements.push({
       sql: `${prefix} DROP DEFAULT`,
       timeoutMs: statementTimeoutDefaultMs,
@@ -100,14 +109,14 @@ export function alterColumnStatements(
     });
   }
 
-  if (columnTypeOrCollationChanged(diff.old, diff.next)) {
+  if (typeOrCollationChanged) {
     statements.push(
       typeTransformationStatement(tableName, diff.old, diff.next),
       analyzeColumnStatement(tableName, diff.next),
     );
   }
 
-  if (diff.old.default !== diff.next.default && diff.next.default.length > 0) {
+  if (defaultChanged && diff.next.default.length > 0) {
     statements.push({
       sql: `${prefix} SET DEFAULT ${diff.next.default}`,
       timeoutMs: statementTimeoutDefaultMs,
@@ -209,29 +218,31 @@ function identityStatements(
   const modifications: string[] = [];
   if (oldColumn.identity.type !== newColumn.identity.type) {
     modifications.push(
-      `\tSET GENERATED ${columnIdentityTypeModifier(newColumn.identity.type)}`,
+      `SET GENERATED ${columnIdentityTypeModifier(newColumn.identity.type)}`,
     );
   }
   if (oldColumn.identity.increment !== newColumn.identity.increment) {
-    modifications.push(`\tSET INCREMENT BY ${newColumn.identity.increment}`);
+    modifications.push(`SET INCREMENT BY ${newColumn.identity.increment}`);
   }
   if (oldColumn.identity.minValue !== newColumn.identity.minValue) {
-    modifications.push(`\tSET MINVALUE ${newColumn.identity.minValue}`);
+    modifications.push(`SET MINVALUE ${newColumn.identity.minValue}`);
   }
   if (oldColumn.identity.maxValue !== newColumn.identity.maxValue) {
-    modifications.push(`\tSET MAXVALUE ${newColumn.identity.maxValue}`);
+    modifications.push(`SET MAXVALUE ${newColumn.identity.maxValue}`);
   }
   if (oldColumn.identity.startValue !== newColumn.identity.startValue) {
-    modifications.push(`\tSET START ${newColumn.identity.startValue}`);
+    modifications.push(`SET START ${newColumn.identity.startValue}`);
   }
   if (oldColumn.identity.cacheSize !== newColumn.identity.cacheSize) {
-    modifications.push(`\tSET CACHE ${newColumn.identity.cacheSize}`);
+    modifications.push(`SET CACHE ${newColumn.identity.cacheSize}`);
   }
   if (oldColumn.identity.cycle !== newColumn.identity.cycle) {
-    modifications.push(`\tSET ${newColumn.identity.cycle ? "" : "NO "}CYCLE`);
+    modifications.push(`SET ${newColumn.identity.cycle ? "" : "NO "}CYCLE`);
   }
 
-  return [standardColumnStatement(`${prefix}\n${modifications.join("\n")}`)];
+  return modifications.map((modification) =>
+    standardColumnStatement(`${prefix} ${modification}`),
+  );
 }
 
 function standardColumnStatement(sql: string): InternalStatement {

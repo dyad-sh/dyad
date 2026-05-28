@@ -232,21 +232,26 @@ export function registerMcpHandlers() {
     // a late reject on an unobserved promise surfaces as an
     // unhandled rejection.
     let timeoutId: NodeJS.Timeout | undefined;
+    // Attach a no-op handler so a rejection from the main op after the
+    // timeout has already won the race doesn't surface as an unhandled
+    // rejection in the Electron main process.
+    const mainOp = (async () => {
+      const client = await mcpManager.getClient(serverId);
+      const remoteTools = await client.tools();
+      return Promise.all(
+        Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
+          name,
+          description: mcpTool.description ?? null,
+          consent: (await getStoredConsent(serverId, name)) as
+            | McpConsentValue
+            | undefined,
+        })),
+      );
+    })();
+    mainOp.catch(() => undefined);
     try {
       const result = await Promise.race([
-        (async () => {
-          const client = await mcpManager.getClient(serverId);
-          const remoteTools = await client.tools();
-          return Promise.all(
-            Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
-              name,
-              description: mcpTool.description ?? null,
-              consent: (await getStoredConsent(serverId, name)) as
-                | McpConsentValue
-                | undefined,
-            })),
-          );
-        })(),
+        mainOp,
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(
             () =>

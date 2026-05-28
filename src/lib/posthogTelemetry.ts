@@ -6,19 +6,21 @@ export type InitialLoadTelemetryInput = {
   settings: UserSettings;
   appVersion: string;
   platform: string | null;
+  isFirstSession: boolean;
 };
 
 export function getInitialLoadTelemetryProperties({
   settings,
   appVersion,
   platform,
+  isFirstSession,
 }: InitialLoadTelemetryInput) {
   return {
     isPro: hasDyadProKey(settings),
     appVersion,
     platform,
     releaseChannel: settings.releaseChannel,
-    isFirstSession: settings.hasRunBefore === false,
+    isFirstSession,
     modelProvider: settings.selectedModel.provider,
     defaultChatMode: settings.defaultChatMode ?? null,
     runtimeMode2: settings.runtimeMode2 ?? "host",

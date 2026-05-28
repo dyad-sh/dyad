@@ -56,6 +56,15 @@ export function useSettings() {
     staleTime: Infinity,
   });
 
+  const {
+    data: initialLoadTelemetryContext,
+    isLoading: isInitialLoadTelemetryContextLoading,
+  } = useQuery({
+    queryKey: queryKeys.system.initialLoadTelemetryContext,
+    queryFn: () => ipc.system.getInitialLoadTelemetryContext(),
+    staleTime: Infinity,
+  });
+
   // Process telemetry side effects when settings load/change
   useEffect(() => {
     if (!settingsQuery.data) {
@@ -71,7 +80,9 @@ export function useSettings() {
       initialLoadTelemetryState !== "idle" ||
       !appVersion ||
       !posthog ||
-      isPlatformLoading
+      isPlatformLoading ||
+      isInitialLoadTelemetryContextLoading ||
+      !initialLoadTelemetryContext
     ) {
       return;
     }
@@ -90,6 +101,7 @@ export function useSettings() {
         settings,
         appVersion,
         platform: platform ?? null,
+        isFirstSession: initialLoadTelemetryContext.isFirstSession,
       }),
     );
     initialLoadTelemetryState = "sent";
@@ -98,8 +110,10 @@ export function useSettings() {
     appVersion,
     posthog,
     isPlatformLoading,
+    isInitialLoadTelemetryContextLoading,
     platform,
     platformError,
+    initialLoadTelemetryContext,
     setSettingsAtom,
   ]);
 

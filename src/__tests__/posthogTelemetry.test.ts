@@ -88,13 +88,13 @@ describe("getInitialLoadTelemetryProperties", () => {
           defaultChatMode: "ask",
           selectedChatMode: "build",
           runtimeMode2: "docker",
-          hasRunBefore: true,
           providerSettings: {
             auto: { apiKey: { value: "secret" } },
           },
         }),
         appVersion: "1.1.0",
         platform: "darwin",
+        isFirstSession: false,
       }),
     ).toEqual({
       isPro: true,
@@ -113,10 +113,10 @@ describe("getInitialLoadTelemetryProperties", () => {
       getInitialLoadTelemetryProperties({
         settings: makeSettings({
           selectedChatMode: "plan",
-          hasRunBefore: false,
         }),
         appVersion: "1.1.0",
         platform: null,
+        isFirstSession: true,
       }),
     ).toEqual({
       isPro: false,

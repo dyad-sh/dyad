@@ -12,6 +12,11 @@ import { getExtraProviderOptionsForEngine } from "./thinking_utils";
 import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
+import {
+  findInvalidProviderApiKeyCharacter,
+  formatInvalidProviderApiKeyMessage,
+  normalizeProviderApiKeyInput,
+} from "@/lib/providerApiKey";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -74,11 +79,7 @@ export function createDyadEngine(
   const requestIdAttempts = new Map<string, number>();
 
   const getHeaders = () => ({
-    Authorization: `Bearer ${loadApiKey({
-      apiKey: options.apiKey,
-      environmentVariableName: "DYAD_PRO_API_KEY",
-      description: "Example API key",
-    })}`,
+    Authorization: `Bearer ${getDyadEngineApiKey(options.apiKey)}`,
     ...options.headers,
   });
 
@@ -246,11 +247,7 @@ export async function transcribeWithDyadEngine(
   options: ExampleProviderSettings,
 ): Promise<string> {
   const baseURL = withoutTrailingSlash(options.baseURL);
-  const apiKey = loadApiKey({
-    apiKey: options.apiKey,
-    environmentVariableName: "DYAD_PRO_API_KEY",
-    description: "Dyad Pro API key",
-  });
+  const apiKey = getDyadEngineApiKey(options.apiKey);
   logger.info("transcribing with dyad engine with baseURL", baseURL);
 
   const formData = new FormData();
@@ -287,4 +284,21 @@ export async function transcribeWithDyadEngine(
   }
   const data = (await response.json()) as { text: string };
   return data.text;
+}
+
+function getDyadEngineApiKey(apiKey: string | undefined): string {
+  const loadedApiKey = loadApiKey({
+    apiKey,
+    environmentVariableName: "DYAD_PRO_API_KEY",
+    description: "Dyad Pro API key",
+  });
+  const normalizedApiKey = normalizeProviderApiKeyInput(loadedApiKey);
+  const invalidCharacter = findInvalidProviderApiKeyCharacter(normalizedApiKey);
+  if (invalidCharacter) {
+    throw new DyadError(
+      formatInvalidProviderApiKeyMessage("Dyad", invalidCharacter),
+      DyadErrorKind.Validation,
+    );
+  }
+  return normalizedApiKey;
 }

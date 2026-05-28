@@ -763,7 +763,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
-  it("preserves view options when recreating changed views", async () => {
+  it("preserves view options when replacing changed views", async () => {
     const pg = requireHarness();
     await createDatabase(pg, "view_options_current_db");
     await createDatabase(pg, "view_options_desired_db");
@@ -789,9 +789,8 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
-      'DROP VIEW "public"."active_accounts"',
       expect.stringMatching(
-        /^CREATE VIEW "public"\."active_accounts" WITH \(security_barrier=true\) AS\n/u,
+        /^CREATE OR REPLACE VIEW "public"\."active_accounts" WITH \(security_barrier=true\) AS\n/u,
       ),
     ]);
 

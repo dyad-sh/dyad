@@ -1,5 +1,29 @@
 import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
+import { execFileSync, execSync } from "child_process";
+
+async function amendRuntimeWorkspaceIntoCurrentCommit(po: PageObject) {
+  const appPath = await po.appManagement.getCurrentAppPath();
+  if (!appPath) {
+    throw new Error("No app path found");
+  }
+
+  const status = execSync("git status --short -- pnpm-workspace.yaml", {
+    cwd: appPath,
+    encoding: "utf-8",
+  }).trim();
+  if (!status) {
+    return;
+  }
+
+  await po.appManagement.configureGitUser();
+  execFileSync("git", ["add", "--", "pnpm-workspace.yaml"], {
+    cwd: appPath,
+  });
+  execFileSync("git", ["commit", "--amend", "--no-edit", "--no-gpg-sign"], {
+    cwd: appPath,
+  });
+}
 
 const runSwitchVersionTest = async (
   po: PageObject,
@@ -9,6 +33,7 @@ const runSwitchVersionTest = async (
   await po.sendPrompt("tc=write-index");
 
   await po.previewPanel.snapshotPreview({ name: `v2` });
+  await amendRuntimeWorkspaceIntoCurrentCommit(po);
 
   expect(
     await po.page.getByRole("button", { name: "Version" }).textContent(),

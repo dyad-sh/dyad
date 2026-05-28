@@ -9,6 +9,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync, execSync } from "child_process";
 
+function configureGitForE2eCommit(appPath: string) {
+  execFileSync("git", ["config", "user.email", "test@example.com"], {
+    cwd: appPath,
+  });
+  execFileSync("git", ["config", "user.name", "Test User"], {
+    cwd: appPath,
+  });
+  execFileSync("git", ["config", "commit.gpgsign", "false"], {
+    cwd: appPath,
+  });
+}
+
 function commitRuntimeBaselineChanges(appPath: string) {
   const status = execSync("git status --short -- pnpm-workspace.yaml", {
     cwd: appPath,
@@ -18,6 +30,7 @@ function commitRuntimeBaselineChanges(appPath: string) {
     return;
   }
 
+  configureGitForE2eCommit(appPath);
   execFileSync("git", ["add", "--", "pnpm-workspace.yaml"], {
     cwd: appPath,
   });

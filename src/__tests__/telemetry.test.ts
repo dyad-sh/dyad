@@ -20,6 +20,12 @@ describe("shouldFilterTelemetryException", () => {
     expect(shouldFilterTelemetryException(error)).toBe(true);
   });
 
+  it("filters generic TypeError fetch failed network noise", () => {
+    const error = new TypeError("fetch failed");
+
+    expect(shouldFilterTelemetryException(error)).toBe(true);
+  });
+
   it("does not filter non-429 RateLimitError variants", () => {
     const error = new Error("Rate limited (503): Service Unavailable");
     error.name = "RateLimitError";

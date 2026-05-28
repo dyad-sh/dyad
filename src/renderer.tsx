@@ -33,6 +33,7 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
   shouldBypassNonProTelemetrySampling,
+  shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
 
 // @ts-ignore
@@ -87,6 +88,13 @@ const posthogClient = posthog.init(
     before_send: (event) => {
       if (!isTelemetryOptedIn()) {
         console.debug("Telemetry not opted in, skipping event");
+        return null;
+      }
+
+      if (shouldFilterPostHogExceptionEvent(event)) {
+        console.debug(
+          "Filtering generic fetch failed exception from telemetry",
+        );
         return null;
       }
       const telemetryUserId = getTelemetryUserId();

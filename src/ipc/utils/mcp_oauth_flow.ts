@@ -234,20 +234,21 @@ async function startCallbackListener(
       const state = url.searchParams.get("state");
 
       if (state !== expectedState) {
+        // Don't tear down the listener: a stale callback from a
+        // superseded Connect attempt (old browser tab finishing after
+        // a retry) carries the previous flow's `state`. Returning an
+        // error page is enough to dismiss it; the active flow's real
+        // callback can still arrive.
+        logger.info(
+          `Ignoring OAuth callback with mismatched state on port ${port}; keeping active flow alive.`,
+        );
         res.writeHead(400, { "Content-Type": "text/html" }).end(
           renderCallbackPage({
             kind: "error",
             title: "Authorization could not be verified",
             message:
-              "The browser's response didn't match the request Dyad started. You can close this window; the flow will be retried.",
+              "The browser's response didn't match the request Dyad started. You can close this window.",
           }),
-        );
-        settle(() =>
-          rejectCode(
-            new Error(
-              "OAuth callback `state` did not match. Aborting to prevent CSRF.",
-            ),
-          ),
         );
         return;
       }

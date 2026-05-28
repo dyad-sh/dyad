@@ -161,7 +161,7 @@ export function registerMcpHandlers() {
     if (!result[0])
       throw new DyadError(
         "Failed to create MCP server.",
-        DyadErrorKind.Validation,
+        DyadErrorKind.Internal,
       );
     return toMcpServer(result[0]);
   });

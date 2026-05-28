@@ -200,7 +200,9 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     // consent. This test sends the callback to `[::1]` directly and
     // checks the listener receives it, proving IPv6 is bound.
     seedRow({ id: 10, transport: "http", url: "https://example.com/mcp" });
+    seedRow({ id: 19, transport: "http", url: "https://example.com/mcp" });
     authMock.mockResolvedValueOnce("REDIRECT");
+    authMock.mockResolvedValueOnce("AUTHORIZED");
 
     const callbackPort = 53693;
     const flowPromise = runOAuthFlow({ serverId: 10, callbackPort });
@@ -217,11 +219,14 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     );
     expect(probe.status).toBe(400);
 
-    // State mismatch closed the listener; the flow resolves with the
-    // CSRF-mismatch error. The load-bearing check is the IPv6 probe
-    // above getting a real HTTP response, not ECONNREFUSED.
+    // Mismatched-state callbacks no longer terminate the flow (a
+    // stale tab from a superseded Connect must not kill the active
+    // listener). Supersede explicitly so the original flow resolves.
+    await runOAuthFlow({ serverId: 19, callbackPort });
+
     const result = await flowPromise;
     expect(result.success).toBe(false);
+    expect(result.error ?? "").toMatch(/superseded/i);
   });
 
   it("supersedes a stale flow when Connect is clicked again on the same port", async () => {
@@ -230,11 +235,13 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     // `superseded` error.
     seedRow({ id: 11, transport: "http", url: "https://example.com/mcp" });
     seedRow({ id: 12, transport: "http", url: "https://example.com/mcp" });
-    // First flow: stays in REDIRECT (listener bound, awaiting code).
+    seedRow({ id: 13, transport: "http", url: "https://example.com/mcp" });
+    // First and second flows stay in REDIRECT (listener bound,
+    // awaiting code). Third flow is a teardown that resolves
+    // AUTHORIZED so its listener tears down immediately.
     authMock.mockResolvedValueOnce("REDIRECT");
-    // Second flow (after supersede): also REDIRECT so we can probe
-    // the listener directly without driving a full code exchange.
     authMock.mockResolvedValueOnce("REDIRECT");
+    authMock.mockResolvedValueOnce("AUTHORIZED");
 
     const callbackPort = 53697;
     const firstPromise = runOAuthFlow({ serverId: 11, callbackPort });
@@ -248,7 +255,7 @@ describe("OAuth loopback listener (state CSRF check)", () => {
 
     // The new listener must be reachable -- probe via a malformed
     // state callback that the listener will 400 (proving the new
-    // listener is bound), then the second flow rejects with CSRF.
+    // listener is bound).
     const probe = await fetch(
       `http://127.0.0.1:${callbackPort}/callback?code=x&state=wrong`,
     );
@@ -259,16 +266,22 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     expect(firstResult.success).toBe(false);
     expect(firstResult.error ?? "").toMatch(/superseded/i);
 
+    // Tear the second flow down with a third supersede so its
+    // listener releases.
+    await runOAuthFlow({ serverId: 13, callbackPort });
+
     const secondResult = await secondPromise;
     expect(secondResult.success).toBe(false);
+    expect(secondResult.error ?? "").toMatch(/superseded/i);
   });
 
-  it("rejects callbacks whose `state` does not match the expected value", async () => {
+  it("ignores callbacks whose `state` does not match the expected value", async () => {
     seedRow({ id: 7, transport: "http", url: "https://example.com/mcp" });
+    seedRow({ id: 17, transport: "http", url: "https://example.com/mcp" });
     // Make auth() request a redirect (so the listener stays open).
     authMock.mockResolvedValueOnce("REDIRECT");
+    authMock.mockResolvedValueOnce("AUTHORIZED");
 
-    // Race the runOAuthFlow against a delayed wrong-state callback.
     const callbackPort = 53691;
     const flowPromise = runOAuthFlow({ serverId: 7, callbackPort });
 
@@ -281,8 +294,14 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     );
     expect(callbackResponse.status).toBe(400);
 
+    // Mismatched-state callbacks must NOT terminate the flow -- a
+    // stale tab from a superseded Connect attempt should not kill
+    // the active listener. Supersede explicitly and check the flow
+    // surfaces the supersede error, not a CSRF abort.
+    await runOAuthFlow({ serverId: 17, callbackPort });
+
     const result = await flowPromise;
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/state.*did not match|CSRF/i);
+    expect(result.error ?? "").toMatch(/superseded/i);
   });
 });

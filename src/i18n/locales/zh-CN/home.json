@@ -676,7 +676,8 @@
             "drop_column": "将删除一个列。",
             "alter_column_type": "列的类型将被更改（数据转换）。",
             "truncate": "将清空一张表。",
-            "drop_schema": "将删除一个 schema。"
+            "drop_schema": "将删除一个 schema。",
+            "schema_hazard": "此语句包含数据库风险，例如权限、锁、依赖关系或数据安全风险。"
           }
         }
       },

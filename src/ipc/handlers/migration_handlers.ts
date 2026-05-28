@@ -23,13 +23,6 @@ import {
 
 export function registerMigrationHandlers() {
   // -------------------------------------------------------------------------
-  // migration:dependencies-status
-  // -------------------------------------------------------------------------
-  createTypedHandler(migrationContracts.dependenciesStatus, async () => ({
-    installed: true,
-  }));
-
-  // -------------------------------------------------------------------------
   // migration:preview
   //
   // 1. Resolve dev/prod branches and connection URLs.
@@ -43,12 +36,14 @@ export function registerMigrationHandlers() {
     logger.info(`Computing migration preview for app ${appId}`);
 
     const ctx = await prepareMigrationContext({ appId });
-    const statements = await generateNeonMigrationStatements({
+    const schemaDiffStatements = await generateNeonMigrationStatements({
       currentDatabaseUrl: ctx.prodUri,
       desiredDatabaseUrl: ctx.devUri,
     });
+    const statements = schemaDiffStatements.map((statement) => statement.sql);
 
-    const destructiveStatements = detectDestructiveStatements(statements);
+    const destructiveStatements =
+      detectDestructiveStatements(schemaDiffStatements);
     const warningReasons = deriveDestructiveReasons(destructiveStatements);
     const hasDataLoss = destructiveStatements.length > 0;
 

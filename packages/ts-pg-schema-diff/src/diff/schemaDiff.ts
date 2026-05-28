@@ -1,5 +1,5 @@
 import { deepEqual } from "./equality.js";
-import { diffLists, type ListDiff } from "./listDiff.js";
+import { diffLists, type DiffPair, type ListDiff } from "./listDiff.js";
 import { fqName } from "../schema/identifiers.js";
 import { normalizeSchema } from "../schema/normalize.js";
 import { objectName } from "../schema/objectName.js";
@@ -167,10 +167,11 @@ export function buildSchemaDiff(
       newObjects: newNormalized.foreignKeyConstraints,
       getName: objectName,
       buildDiff: (oldObject, newObject) => {
-        const oldValidAsNew = {
+        const canValidateInPlace = !oldObject.isValid && newObject.isValid;
+        const oldComparable = {
           ...oldObject,
-          isValid: newObject.isValid,
           constraintDef: stripNotValid(oldObject.constraintDef),
+          ...(canValidateInPlace ? { isValid: newObject.isValid } : {}),
         };
         const newComparable = {
           ...newObject,
@@ -181,7 +182,7 @@ export function buildSchemaDiff(
           requiresRecreation:
             addedTablesByName.has(fqName(newObject.owningTable)) ||
             addedTablesByName.has(fqName(newObject.foreignTable)) ||
-            !deepEqual(oldValidAsNew, newComparable),
+            !deepEqual(oldComparable, newComparable),
         };
       },
     }),
@@ -362,11 +363,6 @@ function isSubsequence(
   return index === values.length;
 }
 
-type DiffPair<T> = {
-  readonly old: T;
-  readonly next: T;
-};
-
 function diffObjectList<TObject extends SchemaObject>(
   oldObjects: readonly TObject[],
   newObjects: readonly TObject[],
@@ -377,7 +373,7 @@ function diffObjectList<TObject extends SchemaObject>(
     getName: objectName,
     buildDiff: (oldObject, newObject) => ({
       diff: { old: oldObject, next: newObject },
-      requiresRecreation: !deepEqual(oldObject, newObject),
+      requiresRecreation: false,
     }),
   });
   return {

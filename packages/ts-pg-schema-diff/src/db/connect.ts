@@ -32,13 +32,20 @@ export function buildPoolConfig(
   connectionString: string,
   options: DatabaseConnectionOptions = {},
 ): PoolConfig {
+  const sessionOptions: string[] = [];
+  if (options.statementTimeoutMs !== undefined) {
+    sessionOptions.push(`-c statement_timeout=${options.statementTimeoutMs}`);
+  }
+  if (options.lockTimeoutMs !== undefined) {
+    sessionOptions.push(`-c lock_timeout=${options.lockTimeoutMs}`);
+  }
+
   return {
     connectionString,
     max: options.maxConnections ?? 1,
     ssl: options.ssl,
     connectionTimeoutMillis: options.connectionTimeoutMs,
     query_timeout: options.queryTimeoutMs,
-    statement_timeout: options.statementTimeoutMs,
-    lock_timeout: options.lockTimeoutMs,
+    options: sessionOptions.length === 0 ? undefined : sessionOptions.join(" "),
   };
 }

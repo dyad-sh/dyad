@@ -23,28 +23,13 @@ export type MigrationMigrateResponse = z.infer<
   typeof MigrationMigrateResponseSchema
 >;
 
-export const MigrationDependenciesStatusParamsSchema = z.object({
-  appId: z.number(),
-});
-
-export type MigrationDependenciesStatusParams = z.infer<
-  typeof MigrationDependenciesStatusParamsSchema
->;
-
-export const MigrationDependenciesStatusResponseSchema = z.object({
-  installed: z.boolean(),
-});
-
-export type MigrationDependenciesStatusResponse = z.infer<
-  typeof MigrationDependenciesStatusResponseSchema
->;
-
 export const DestructiveStatementReasonSchema = z.enum([
   "drop_table",
   "drop_column",
   "alter_column_type",
   "truncate",
   "drop_schema",
+  "schema_hazard",
 ]);
 
 export type DestructiveStatementReason = z.infer<
@@ -92,11 +77,6 @@ export const migrationContracts = {
     channel: "migration:preview",
     input: MigrationPreviewParamsSchema,
     output: MigrationPreviewResponseSchema,
-  }),
-  dependenciesStatus: defineContract({
-    channel: "migration:dependencies-status",
-    input: MigrationDependenciesStatusParamsSchema,
-    output: MigrationDependenciesStatusResponseSchema,
   }),
 } as const;
 

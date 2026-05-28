@@ -13,6 +13,29 @@ import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-nati
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
 
+const pgRuntimeDependencies = [
+  "pg",
+  "pg-cloudflare",
+  "pg-connection-string",
+  "pg-int8",
+  "pg-pool",
+  "pg-protocol",
+  "pg-types",
+  "pgpass",
+  "postgres-array",
+  "postgres-bytea",
+  "postgres-date",
+  "postgres-interval",
+  "split2",
+] as const;
+
+function isPgRuntimeDependency(file: string): boolean {
+  return pgRuntimeDependencies.some((dependency) => {
+    const modulePath = `/node_modules/${dependency}`;
+    return file === modulePath || file.startsWith(`${modulePath}/`);
+  });
+}
+
 // Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
   if (!file) return false;
@@ -59,6 +82,9 @@ const ignore = (file: string) => {
     return false;
   }
   if (file.startsWith("/node_modules/file-uri-to-path")) {
+    return false;
+  }
+  if (isPgRuntimeDependency(file)) {
     return false;
   }
   if (file.startsWith("/.vite")) {

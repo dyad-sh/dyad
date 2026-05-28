@@ -671,23 +671,23 @@ function parseTableDependency(value: string): {
   if (!isTableDependencyJson(parsed)) {
     throw new Error(`invalid table dependency JSON: ${value}`);
   }
-  return parsed;
+  return { ...parsed, columns: parsed.columns ?? [] };
 }
 
 function isTableDependencyJson(value: unknown): value is {
   readonly schema: string;
   readonly name: string;
-  readonly columns: readonly string[];
+  readonly columns: readonly string[] | null;
 } {
+  const columns = (value as { readonly columns?: unknown } | null)?.columns;
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { readonly schema?: unknown }).schema === "string" &&
     typeof (value as { readonly name?: unknown }).name === "string" &&
-    Array.isArray((value as { readonly columns?: unknown }).columns) &&
-    (value as { readonly columns: readonly unknown[] }).columns.every(
-      (column) => typeof column === "string",
-    )
+    (columns === null ||
+      (Array.isArray(columns) &&
+        columns.every((column) => typeof column === "string")))
   );
 }
 
@@ -709,7 +709,7 @@ function groupByTable<TValue>(
 }
 
 function tableObjectKey(schemaName: string, tableName: string): string {
-  return `${schemaName}.${tableName}`;
+  return JSON.stringify([schemaName, tableName]);
 }
 
 function filterSchema(schema: Schema, options: GetSchemaOptions): Schema {

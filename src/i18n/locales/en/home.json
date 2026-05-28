@@ -679,7 +679,8 @@
             "drop_column": "A column will be dropped.",
             "alter_column_type": "A column's type will be changed (data conversion).",
             "truncate": "A table will be truncated.",
-            "drop_schema": "A schema will be dropped."
+            "drop_schema": "A schema will be dropped.",
+            "schema_hazard": "This statement includes a database hazard such as a permission, lock, dependency, or data-safety risk."
           }
         }
       },

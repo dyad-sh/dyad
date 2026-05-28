@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { buildPoolConfig } from "../src/db/connect.js";
 import { assertSupportedPostgresVersion } from "../src/db/introspect.js";
 import { diffLists } from "../src/diff/listDiff.js";
+import { DuplicateIdentifierError } from "../src/errors.js";
 import { toPublicStatement } from "../src/plan/classify.js";
 import { generatePlan, toSchemaDiffResult } from "../src/plan/generate.js";
 import type { InternalStatement, MigrationHazard } from "../src/plan/types.js";
+import { randomPostgresIdentifierToken } from "../src/schema/randomIdentifier.js";
 import {
   escapeIdentifier,
   procName,
@@ -13,6 +15,7 @@ import {
 import {
   emptySchema,
   type Column,
+  type ForeignKeyConstraint,
   type FunctionSchema,
   type Index,
   type MaterializedView,
@@ -48,6 +51,20 @@ describe("diffLists", () => {
       alters: ["b:b"],
       deletes: ["a", "z"],
     });
+  });
+
+  it("throws on duplicate new object names", () => {
+    expect(() =>
+      diffLists({
+        oldObjects: [],
+        newObjects: ["duplicate", "duplicate"],
+        getName: (value) => value,
+        buildDiff: (oldValue, newValue) => ({
+          diff: `${oldValue}:${newValue}`,
+          requiresRecreation: false,
+        }),
+      }),
+    ).toThrow(DuplicateIdentifierError);
   });
 });
 
@@ -131,11 +148,11 @@ describe("generatePlan", () => {
     const result = toSchemaDiffResult(generatePlan(current, desired));
     expect(result.statements.map((statement) => statement.sql)).toEqual([
       expect.stringMatching(
-        /^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+        /^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[0-9a-f]{16}"$/u,
       ),
       "CREATE INDEX CONCURRENTLY users_name_idx ON public.users USING btree (name, id)",
       expect.stringMatching(
-        /^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+        /^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[0-9a-f]{16}"$/u,
       ),
     ]);
   });
@@ -310,6 +327,89 @@ describe("generatePlan", () => {
     ]);
   });
 
+  it("alters modified functions without dropping them afterward", () => {
+    const currentFunction = functionSchema(
+      "answer",
+      "sql",
+      [],
+      'CREATE OR REPLACE FUNCTION "public"."answer"() RETURNS integer LANGUAGE sql RETURN 1',
+    );
+    const desiredFunction = functionSchema(
+      "answer",
+      "sql",
+      [],
+      'CREATE OR REPLACE FUNCTION "public"."answer"() RETURNS integer LANGUAGE sql RETURN 2',
+    );
+
+    const result = toSchemaDiffResult(
+      generatePlan(
+        {
+          ...emptySchema(),
+          functions: [currentFunction],
+        },
+        {
+          ...emptySchema(),
+          functions: [desiredFunction],
+        },
+      ),
+    );
+
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      desiredFunction.functionDef,
+    ]);
+  });
+
+  it("preserves millisecond precision when converting bigint epochs to timestamp variants", () => {
+    const current: Schema = {
+      ...emptySchema(),
+      tables: [table("events", [column("created_at", "bigint", false)])],
+    };
+    const desired: Schema = {
+      ...emptySchema(),
+      tables: [
+        table("events", [
+          column("created_at", "timestamp(3) with time zone", false),
+        ]),
+      ],
+    };
+
+    const result = toSchemaDiffResult(generatePlan(current, desired));
+
+    expect(result.statements.map((statement) => statement.sql)).toContain(
+      'ALTER TABLE "public"."events" ALTER COLUMN "created_at" SET DATA TYPE timestamp(3) with time zone using to_timestamp("created_at" / 1000.0)',
+    );
+  });
+
+  it("recreates valid foreign keys when the desired constraint is invalid", () => {
+    const currentForeignKey = foreignKeyConstraint({
+      constraintDef: 'FOREIGN KEY (user_id) REFERENCES "public"."users"(id)',
+      isValid: true,
+    });
+    const desiredForeignKey = foreignKeyConstraint({
+      constraintDef:
+        'FOREIGN KEY (user_id) REFERENCES "public"."users"(id) NOT VALID',
+      isValid: false,
+    });
+
+    const result = toSchemaDiffResult(
+      generatePlan(
+        {
+          ...emptySchema(),
+          foreignKeyConstraints: [currentForeignKey],
+        },
+        {
+          ...emptySchema(),
+          foreignKeyConstraints: [desiredForeignKey],
+        },
+      ),
+    );
+
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      'ALTER TABLE "public"."orders" DROP CONSTRAINT "orders_user_id_fkey"',
+      'ALTER TABLE "public"."orders" ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY (user_id) REFERENCES "public"."users"(id) NOT VALID',
+    ]);
+  });
+
   it("rejects dropping index partitions that back local constraints", () => {
     const childIndex: Index = {
       ...index("users_2024_name_key"),
@@ -400,10 +500,15 @@ describe("buildPoolConfig", () => {
       max: 2,
       connectionTimeoutMillis: 1_000,
       query_timeout: 2_000,
-      statement_timeout: 3_000,
-      lock_timeout: 4_000,
+      options: "-c statement_timeout=3000 -c lock_timeout=4000",
       ssl: true,
     });
+  });
+});
+
+describe("randomPostgresIdentifierToken", () => {
+  it("uses SQL-parser-friendly hex characters", () => {
+    expect(randomPostgresIdentifierToken()).toMatch(/^[0-9a-f]{16}$/u);
   });
 });
 
@@ -522,6 +627,20 @@ function index(
     constraint: null,
     getIndexDefStmt,
     parentIdx: null,
+  };
+}
+
+function foreignKeyConstraint(options: {
+  readonly constraintDef: string;
+  readonly isValid: boolean;
+}): ForeignKeyConstraint {
+  return {
+    kind: "foreignKeyConstraint",
+    escapedName: escapeIdentifier("orders_user_id_fkey"),
+    owningTable: schemaQualifiedName("public", "orders"),
+    foreignTable: schemaQualifiedName("public", "users"),
+    constraintDef: options.constraintDef,
+    isValid: options.isValid,
   };
 }
 

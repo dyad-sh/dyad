@@ -39,7 +39,7 @@ WHERE
         SELECT ext_depend.objid
         FROM pg_catalog.pg_depend AS ext_depend
         WHERE
-            ext_depend.classid = 'pg_class'::REGCLASS
+            ext_depend.classid = 'pg_type'::REGCLASS
             AND ext_depend.objid = pg_type.oid
             AND ext_depend.deptype = 'e'
     );

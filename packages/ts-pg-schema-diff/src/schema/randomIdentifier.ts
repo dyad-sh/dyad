@@ -1,11 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 export function randomPostgresIdentifierToken(): string {
-  return randomBytes(16)
-    .toString("base64")
-    .replaceAll("+", "$")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
+  return randomBytes(8).toString("hex");
 }
 
 export function temporaryNotNullConstraintName(): string {

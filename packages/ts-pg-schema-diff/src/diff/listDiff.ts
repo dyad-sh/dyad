@@ -43,9 +43,15 @@ export function diffLists<TObject, TDiff>(options: {
   const adds: TObject[] = [];
   const deletes: TObject[] = [];
   const alters: TDiff[] = [];
+  const seenNewNames = new Set<string>();
 
   options.newObjects.forEach((newObject, newIndex) => {
     const name = options.getName(newObject);
+    if (seenNewNames.has(name)) {
+      throw new DuplicateIdentifierError(name);
+    }
+    seenNewNames.add(name);
+
     const oldEntry = nameToOld.get(name);
     if (oldEntry === undefined) {
       adds.push(newObject);

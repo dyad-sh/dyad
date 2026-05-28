@@ -140,10 +140,12 @@ function typeTransformationStatement(
   newColumn: Column,
 ): InternalStatement {
   const prefix = `${alterTablePrefix(tableName)} ALTER COLUMN ${escapeIdentifier(newColumn.name)}`;
+  const newType = newColumn.type.toLowerCase();
+  const isTimestampTarget =
+    newType.startsWith("timestamp") || newType.startsWith("timestamptz");
   const usingExpression =
-    oldColumn.type.toLowerCase() === "bigint" &&
-    newColumn.type.toLowerCase() === "timestamp without time zone"
-      ? `to_timestamp(${escapeIdentifier(newColumn.name)} / 1000)`
+    oldColumn.type.toLowerCase() === "bigint" && isTimestampTarget
+      ? `to_timestamp(${escapeIdentifier(newColumn.name)} / 1000.0)`
       : `${escapeIdentifier(newColumn.name)}::${newColumn.type}`;
   const collation =
     newColumn.collation === null

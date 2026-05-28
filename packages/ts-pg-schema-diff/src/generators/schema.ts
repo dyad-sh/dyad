@@ -1295,21 +1295,23 @@ function assertMissingConstraint(): never {
 function addForeignKeyConstraint(
   constraint: ForeignKeyConstraint,
 ): readonly InternalStatement[] {
+  const definition = stripNotValid(constraint.constraintDef);
+  const addNotValidStatement = standardStatement(
+    `ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${definition} NOT VALID`,
+  );
   if (!constraint.isValid) {
-    return [
-      standardStatement(
-        `ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${constraint.constraintDef}`,
-      ),
-    ];
+    return [addNotValidStatement];
   }
   return [
-    standardStatement(
-      `ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${constraint.constraintDef} NOT VALID`,
-    ),
+    addNotValidStatement,
     standardStatement(
       `ALTER TABLE ${fqName(constraint.owningTable)} VALIDATE CONSTRAINT ${constraint.escapedName}`,
     ),
   ];
+}
+
+function stripNotValid(definition: string): string {
+  return definition.replace(/\s+NOT VALID$/iu, "");
 }
 
 function deleteForeignKeyConstraint(

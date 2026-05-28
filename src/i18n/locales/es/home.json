@@ -676,7 +676,8 @@
             "drop_column": "Se eliminará una columna.",
             "alter_column_type": "El tipo de una columna cambiará (conversión de datos).",
             "truncate": "Se truncará una tabla.",
-            "drop_schema": "Se eliminará un esquema."
+            "drop_schema": "Se eliminará un esquema.",
+            "schema_hazard": "Esta declaración incluye un riesgo de base de datos, como permisos, bloqueos, dependencias o seguridad de datos."
           }
         }
       },

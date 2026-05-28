@@ -676,7 +676,8 @@
             "drop_column": "Uma coluna será excluída.",
             "alter_column_type": "O tipo de uma coluna será alterado (conversão de dados).",
             "truncate": "Uma tabela será truncada.",
-            "drop_schema": "Um schema será excluído."
+            "drop_schema": "Um schema será excluído.",
+            "schema_hazard": "Esta instrução inclui um risco de banco de dados, como permissões, bloqueios, dependências ou segurança dos dados."
           }
         }
       },

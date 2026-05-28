@@ -22,6 +22,7 @@ import {
   PgSchemaDiffError,
   UnsupportedPostgresVersionError,
   type DatabaseConnectionOptions,
+  type SchemaDiffStatement,
 } from "ts-pg-schema-diff";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
@@ -54,6 +55,7 @@ export const MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS = {
   connectionTimeoutMs: 30_000,
   queryTimeoutMs: 120_000,
   statementTimeoutMs: 120_000,
+  lockTimeoutMs: 30_000,
 } as const satisfies DatabaseConnectionOptions;
 
 // =============================================================================
@@ -832,18 +834,31 @@ const DESTRUCTIVE_PATTERNS: Array<{
 ];
 
 export function detectDestructiveStatements(
-  statements: string[],
+  statements: readonly SchemaDiffStatement[],
 ): DestructiveStatement[] {
   const out: DestructiveStatement[] = [];
-  statements.forEach((stmt, index) => {
-    for (const { regex, reason } of DESTRUCTIVE_PATTERNS) {
-      if (regex.test(stmt)) {
-        out.push({ index, reason });
-        break;
-      }
+  statements.forEach((statement, index) => {
+    const regexReason = destructiveReasonForSql(statement.sql);
+    if (regexReason !== null) {
+      out.push({ index, reason: regexReason });
+      return;
+    }
+    if (statement.type === "destructive") {
+      out.push({ index, reason: "schema_hazard" });
     }
   });
   return out;
+}
+
+function destructiveReasonForSql(
+  sql: string,
+): DestructiveStatementReason | null {
+  for (const { regex, reason } of DESTRUCTIVE_PATTERNS) {
+    if (regex.test(sql)) {
+      return reason;
+    }
+  }
+  return null;
 }
 
 /**
@@ -1553,11 +1568,11 @@ export async function generateNeonMigrationStatements({
 }: {
   currentDatabaseUrl: string;
   desiredDatabaseUrl: string;
-}): Promise<string[]> {
+}): Promise<readonly SchemaDiffStatement[]> {
   if (IS_TEST_BUILD) {
     return [
-      'CREATE TABLE "mock" ("id" serial)',
-      'ALTER TABLE "mock" ADD COLUMN "name" text',
+      { sql: 'CREATE TABLE "mock" ("id" serial)', type: "additive" },
+      { sql: 'ALTER TABLE "mock" ADD COLUMN "name" text', type: "additive" },
     ];
   }
 
@@ -1569,7 +1584,7 @@ export async function generateNeonMigrationStatements({
       noConcurrentIndexOperations: true,
       connection: MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
     });
-    return diff.statements.map((statement) => statement.sql);
+    return diff.statements;
   } catch (error) {
     throw toMigrationDiffDyadError(error);
   }

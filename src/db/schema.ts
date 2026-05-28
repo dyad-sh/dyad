@@ -281,7 +281,7 @@ export const mcpServers = sqliteTable("mcp_servers", {
     .notNull()
     .default(sql`0`),
   // Whether this server requires OAuth. When true, the MCP manager wires
-  // an `OAuthClientProvider` into the transport (HTTP/SSE) so the
+  // an `OAuthClientProvider` into the streamable HTTP transport so the
   // Vercel `@ai-sdk/mcp` `auth()` flow can drive PKCE + refresh.
   oauthEnabled: integer("oauth_enabled", { mode: "boolean" })
     .notNull()

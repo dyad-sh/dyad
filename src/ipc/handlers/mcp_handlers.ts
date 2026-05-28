@@ -22,12 +22,35 @@ import {
 } from "../types/mcp";
 import { findAvailablePort } from "../utils/port_utils";
 import net from "node:net";
+import { safeStorage } from "electron";
 import {
   classifyOAuthError,
   looksLikeUnauthorized,
 } from "./mcp_error_classifiers";
 
 const logger = log.scope("mcp_handlers");
+
+// Probes a port on both IPv4 and IPv6 loopback. Returns true only if
+// both stacks bind cleanly OR one is genuinely unavailable (e.g. IPv6
+// disabled) while the other is free. EADDRINUSE on either stack
+// disqualifies the port -- the OAuth callback listener requires both.
+async function isPortFreeOnBothLoopbacks(port: number): Promise<boolean> {
+  const probeOne = (host: string): Promise<"free" | "in_use" | "other"> =>
+    new Promise((resolve) => {
+      const s = net.createServer();
+      s.once("error", (err: NodeJS.ErrnoException) => {
+        s.close(() => undefined);
+        resolve(err.code === "EADDRINUSE" ? "in_use" : "other");
+      });
+      s.once("listening", () => {
+        s.close(() => resolve("free"));
+      });
+      s.listen(port, host);
+    });
+  const [v4, v6] = await Promise.all([probeOne("127.0.0.1"), probeOne("::1")]);
+  if (v4 === "in_use" || v6 === "in_use") return false;
+  return v4 === "free" || v6 === "free";
+}
 
 // Parse a JSON string from the renderer and surface a clear error
 // instead of letting the main process see a raw SyntaxError. Returns
@@ -218,21 +241,23 @@ export function registerMcpHandlers() {
       );
     })();
     mainOp.catch(() => undefined);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Timed out after ${LIST_TOOLS_TIMEOUT_MS / 1000}s waiting for tools from server ${serverId}.`,
+            ),
+          ),
+        LIST_TOOLS_TIMEOUT_MS,
+      );
+    });
+    // Same guard as `mainOp`: if `mainOp` wins the race after the
+    // timer already fired, the timeout rejection has no observer and
+    // would surface as an unhandled rejection.
+    timeoutPromise.catch(() => undefined);
     try {
-      const result = await Promise.race([
-        mainOp,
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `Timed out after ${LIST_TOOLS_TIMEOUT_MS / 1000}s waiting for tools from server ${serverId}.`,
-                ),
-              ),
-            LIST_TOOLS_TIMEOUT_MS,
-          );
-        }),
-      ]);
+      const result = await Promise.race([mainOp, timeoutPromise]);
       clearTimeout(timeoutId);
       return result;
     } catch (e) {
@@ -316,19 +341,14 @@ export function registerMcpHandlers() {
 
   // Tries DEFAULT_OAUTH_CALLBACK_PORT first since common
   // pre-registered redirect URIs use it; falls back to a free
-  // ephemeral port when taken.
+  // ephemeral port when taken. Probes both loopback stacks (127.0.0.1
+  // + ::1) -- the OAuth callback listener requires both, so partial
+  // EADDRINUSE on the default would push the renderer toward
+  // registering a port the flow can't actually bind.
   createTypedHandler(mcpContracts.probeCallbackPort, async () => {
-    const defaultFree = await new Promise<boolean>((resolve) => {
-      const probe = net.createServer();
-      probe.once("error", () => {
-        probe.close(() => resolve(false));
-      });
-      probe.once("listening", () => {
-        probe.close(() => resolve(true));
-      });
-      probe.listen(DEFAULT_OAUTH_CALLBACK_PORT, "localhost");
-    });
-    if (defaultFree) return { port: DEFAULT_OAUTH_CALLBACK_PORT };
+    if (await isPortFreeOnBothLoopbacks(DEFAULT_OAUTH_CALLBACK_PORT)) {
+      return { port: DEFAULT_OAUTH_CALLBACK_PORT };
+    }
     const fallback = await findAvailablePort(49152, 65535);
     return { port: fallback };
   });
@@ -356,6 +376,12 @@ export function registerMcpHandlers() {
   // next tool call to require a fresh consent flow.
   createTypedHandler(mcpContracts.disconnectOAuth, async (_, serverId) => {
     return await disconnectOAuth(serverId);
+  });
+
+  // Lets the renderer surface a banner when the OS keyring is missing
+  // and OAuth tokens would fall back to plaintext in SQLite.
+  createTypedHandler(mcpContracts.isOauthStorageEncrypted, async () => {
+    return { available: safeStorage.isEncryptionAvailable() };
   });
 
   logger.debug("Registered MCP IPC handlers");

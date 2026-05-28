@@ -342,6 +342,9 @@ export function ToolsMcpSettings() {
   const [oauthScope, setOauthScope] = useState("");
   // Null while the probe is in flight.
   const [callbackPort, setCallbackPort] = useState<number | null>(null);
+  const [oauthStorageEncrypted, setOauthStorageEncrypted] = useState<
+    boolean | null
+  >(null);
   const [connectingServerId, setConnectingServerId] = useState<number | null>(
     null,
   );
@@ -362,6 +365,16 @@ export function ToolsMcpSettings() {
         // Show a concrete fallback in the UI instead of "…" forever;
         // the OAuth flow itself also falls back to this port server-side.
         if (!cancelled) setCallbackPort(DEFAULT_OAUTH_CALLBACK_PORT);
+      });
+    ipc.mcp
+      .isOauthStorageEncrypted()
+      .then((result) => {
+        if (!cancelled) setOauthStorageEncrypted(result.available);
+      })
+      .catch(() => {
+        // Assume encrypted on probe failure: false alarms here are
+        // worse than silent on a transient IPC hiccup.
+        if (!cancelled) setOauthStorageEncrypted(true);
       });
     return () => {
       cancelled = true;
@@ -532,8 +545,26 @@ export function ToolsMcpSettings() {
     setConsents((prev) => ({ ...prev, [`${serverId}:${toolName}`]: consent }));
   };
 
+  const hasOauthServer = useMemo(
+    () => (servers || []).some((s) => s.transport === "http" && s.oauthEnabled),
+    [servers],
+  );
+
   return (
     <div className="space-y-6">
+      {oauthStorageEncrypted === false && hasOauthServer && (
+        <Alert variant="destructive">
+          <AlertTitle>OAuth tokens stored without OS encryption</AlertTitle>
+          <AlertDescription>
+            Your OS keyring is unavailable (on Linux this usually means
+            <code className="mx-1">libsecret</code>/<code>gnome-keyring</code>
+            is not installed), so OAuth tokens for HTTP MCP servers are written
+            to the local database without encryption. Any process with read
+            access to the Dyad data directory can decode them. Install a keyring
+            service and reconnect to upgrade.
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-3">
           <div>

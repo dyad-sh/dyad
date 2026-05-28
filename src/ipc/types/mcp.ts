@@ -242,6 +242,15 @@ export const mcpContracts = {
       error: z.string().nullable(),
     }),
   }),
+
+  // Reports whether the OS keyring is available. When false, OAuth
+  // tokens fall back to plaintext storage in SQLite -- the renderer
+  // surfaces a banner so users know the security degradation.
+  isOauthStorageEncrypted: defineContract({
+    channel: "mcp:is-oauth-storage-encrypted",
+    input: z.void(),
+    output: z.object({ available: z.boolean() }),
+  }),
 } as const;
 
 // =============================================================================

@@ -146,7 +146,6 @@ function renderCallbackPage(opts: {
     ${
       isSuccess
         ? `<a class="btn" href="${returnUrl}">Open Dyad</a>
-    <p class="muted">You can close this window once Dyad is in focus.</p>
     <script>
       // Try to hand focus back to Dyad automatically; the button above
       // is the fallback for browsers that block scripted navigation

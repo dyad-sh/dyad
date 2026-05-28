@@ -303,4 +303,33 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     expect(result.success).toBe(false);
     expect(result.error ?? "").toMatch(/superseded/i);
   });
+
+  it("fails fast when another local process holds one loopback stack on the callback port", async () => {
+    // Regression for the partial-bind case: if a third party owns
+    // 127.0.0.1:<port> (or [::1]:<port>) while the other stack is
+    // free, the OAuth flow must NOT proceed -- `localhost` could
+    // resolve to the busy address and the browser callback would land
+    // on the conflicting process, hanging the flow until timeout.
+    seedRow({ id: 21, transport: "http", url: "https://example.com/mcp" });
+    authMock.mockResolvedValueOnce("REDIRECT");
+
+    const { createServer: createNetServer } = await import("node:net");
+    const callbackPort = 53694;
+    const blocker = createNetServer();
+    await new Promise<void>((resolve, reject) => {
+      blocker.once("error", reject);
+      blocker.listen(callbackPort, "127.0.0.1", () => resolve());
+    });
+
+    try {
+      const result = await runOAuthFlow({ serverId: 21, callbackPort });
+      expect(result.success).toBe(false);
+      expect(result.error ?? "").toMatch(/another local process is holding/i);
+      // auth() must not have been called: the listener bind failed
+      // before runOAuthFlow ever reaches the SDK.
+      expect(authMock).not.toHaveBeenCalled();
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
 });

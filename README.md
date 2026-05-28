@@ -32,3 +32,11 @@ If you're interested in contributing to dyad, please read our [contributing](./C
 
 - All the code in this repo outside of `src/pro` is open-source and licensed under Apache 2.0 - see [LICENSE](./LICENSE).
 - All the code in this repo within `src/pro` is fair-source and licensed under [Functional Source License 1.1 Apache 2.0](https://fsl.software/) - see [LICENSE](./src/pro/LICENSE).
+
+## Requirements
+
+- **Node.js**: `>=24 <26`
+- **npm**: `>=10` (or `pnpm`/`yarn` with Node 24+ support)
+- **Operating System**: macOS 10.15+, Ubuntu 18.04+, or Windows 10+ with WSL2
+
+> **Note:** Node 24 or 25 is required. Node 26+ is not supported due to Electron compatibility constraints. Use [`nvm`](https://github.com/nvm-sh/nvm) or [`fnm`](https://github.com/Schniz/fnm) to manage Node versions.

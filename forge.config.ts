@@ -27,6 +27,7 @@ const pgRuntimeDependencies = [
   "postgres-date",
   "postgres-interval",
   "split2",
+  "xtend",
 ] as const;
 
 function isPgRuntimeDependency(file: string): boolean {

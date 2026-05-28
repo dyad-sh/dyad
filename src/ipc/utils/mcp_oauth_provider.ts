@@ -212,7 +212,14 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     await withStateLock(this.serverId, async () => {
       const state = await readState(this.serverId);
-      state.tokens = tokens;
+      // Servers that don't rotate refresh tokens omit `refresh_token`
+      // from the response; carry the previous one forward so the SDK
+      // can still silently refresh later.
+      const next: OAuthTokens = { ...tokens };
+      if (!next.refresh_token && state.tokens?.refresh_token) {
+        next.refresh_token = state.tokens.refresh_token;
+      }
+      state.tokens = next;
       await writeState(this.serverId, state);
     });
   }

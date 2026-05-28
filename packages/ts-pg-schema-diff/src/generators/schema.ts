@@ -71,6 +71,12 @@ export function generateStatements(
   const sequenceDeletes = diff.sequenceDiffs.deletes.filter(
     (sequence) => !sequenceDeletedWithOwner(sequence, diff),
   );
+  const viewMaterializedViewAdds = orderViewMaterializedViewAdds(
+    diff.viewDiffs.adds,
+    diff.materializedViewDiffs.adds,
+  ).map((add) =>
+    add.kind === "view" ? addView(add.view) : addMaterializedView(add.view),
+  );
   const enumAddNames = new Set(diff.enumDiffs.adds.map(objectName));
   const enumRecreateNames = new Set(
     diff.enumDiffs.deletes
@@ -204,14 +210,10 @@ export function generateStatements(
         addProcedure(procedureDiff.next),
       ),
     },
-    { id: "view:add", statements: diff.viewDiffs.adds.map(addView) },
+    { id: "view-materialized-view:add", statements: viewMaterializedViewAdds },
     {
       id: "view:alter",
       statements: diff.viewDiffs.alters.map(alterView).flat(),
-    },
-    {
-      id: "materialized-view:add",
-      statements: diff.materializedViewDiffs.adds.map(addMaterializedView),
     },
     {
       id: "materialized-view:alter",
@@ -1639,6 +1641,54 @@ function viewReplacementPreservesOutputColumns(
       oldColumn.type === nextColumn.type
     );
   });
+}
+
+type ViewMaterializedViewAdd =
+  | { readonly kind: "view"; readonly view: View }
+  | { readonly kind: "materializedView"; readonly view: MaterializedView };
+
+function orderViewMaterializedViewAdds(
+  views: readonly View[],
+  materializedViews: readonly MaterializedView[],
+): readonly ViewMaterializedViewAdd[] {
+  const graph = new DirectedGraph<{
+    readonly id: string;
+    readonly add: ViewMaterializedViewAdd;
+  }>();
+  const adds: readonly ViewMaterializedViewAdd[] = [
+    ...views.map((view) => ({ kind: "view" as const, view })),
+    ...materializedViews.map((view) => ({
+      kind: "materializedView" as const,
+      view,
+    })),
+  ];
+
+  for (const add of adds) {
+    graph.addVertex({ id: objectName(add.view), add });
+  }
+
+  for (const add of adds) {
+    if (add.kind !== "view") {
+      continue;
+    }
+    const dependentId = objectName(add.view);
+    for (const dependency of add.view.tableDependencies) {
+      const dependencyId = fqName(dependency.name);
+      if (graph.hasVertex(dependencyId)) {
+        graph.addEdge(dependencyId, dependentId);
+      }
+    }
+  }
+
+  return graph
+    .topologicallySortWithPriority(
+      (left, right) => viewAddPriority(left.add) < viewAddPriority(right.add),
+    )
+    .map((vertex) => vertex.add);
+}
+
+function viewAddPriority(add: ViewMaterializedViewAdd): number {
+  return add.kind === "view" ? 1 : 0;
 }
 
 function deleteView(view: View): InternalStatement {

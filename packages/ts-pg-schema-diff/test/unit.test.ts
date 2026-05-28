@@ -259,6 +259,41 @@ describe("generatePlan", () => {
     ]);
   });
 
+  it("creates added materialized views before added views that depend on them", () => {
+    const accountIds = materializedView("account_ids");
+    const accountIdsPublic = view("account_ids_public", {}, undefined, [
+      {
+        name: schemaQualifiedName("public", "account_ids"),
+        columns: ["id"],
+      },
+    ]);
+    const desired: Schema = {
+      ...emptySchema(),
+      tables: [table("accounts", [column("id", "integer", false)])],
+      views: [
+        {
+          ...accountIdsPublic,
+          viewDefinition: " SELECT id\n   FROM account_ids;",
+        },
+      ],
+      materializedViews: [
+        {
+          ...accountIds,
+          viewDefinition: " SELECT id\n   FROM accounts;",
+          outputColumns: [{ name: "id", type: "integer" }],
+        },
+      ],
+    };
+
+    const result = toSchemaDiffResult(generatePlan(emptySchema(), desired));
+
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      'CREATE TABLE "public"."accounts" (\n\t"id" integer NOT NULL\n)',
+      'CREATE MATERIALIZED VIEW "public"."account_ids" AS\n SELECT id\n   FROM accounts;',
+      'CREATE VIEW "public"."account_ids_public" AS\n SELECT id\n   FROM account_ids;',
+    ]);
+  });
+
   it("alters views with CREATE OR REPLACE so dependents do not block the migration", () => {
     const base = view("account_summary");
     const dependent = view("account_summary_public");
@@ -831,6 +866,7 @@ function view(
   name: string,
   options: Readonly<Record<string, string>> = {},
   outputColumns: View["outputColumns"] = [{ name: "id", type: "integer" }],
+  tableDependencies: View["tableDependencies"] = [],
 ): View {
   return {
     kind: "view",
@@ -838,13 +874,14 @@ function view(
     viewDefinition: " SELECT id\n   FROM accounts;",
     outputColumns,
     options,
-    tableDependencies: [],
+    tableDependencies,
   };
 }
 
 function materializedView(
   name: string,
   options: Readonly<Record<string, string>> = {},
+  tableDependencies: MaterializedView["tableDependencies"] = [],
 ): MaterializedView {
   return {
     kind: "materializedView",
@@ -853,7 +890,7 @@ function materializedView(
     outputColumns: [{ name: "name", type: "text" }],
     options,
     tablespace: "",
-    tableDependencies: [],
+    tableDependencies,
   };
 }
 

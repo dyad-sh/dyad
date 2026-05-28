@@ -30,15 +30,31 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
   await expect(
     po.page.getByRole("heading", { name: "Review migration SQL" }),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
-  await po.page.getByRole("button", { name: "Continue" }).click();
+  await expect(po.page.getByText("Destructive changes detected")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(po.page.getByText("A table will be dropped.")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(
+    po.page.getByText(
+      "This statement includes a database hazard such as a permission, lock, dependency, or data-safety risk.",
+    ),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await po.page.getByRole("button", { name: "I understand, continue" }).click();
 
   await expect(
     po.page.getByText(
       "This will modify the main schema in Test Project using the schema from development.",
     ),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(
+    po.page.getByText(
+      "This migration includes destructive changes that may result in data loss.",
+    ),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
   await po.page
-    .getByRole("button", { name: "Migrate to Production" })
+    .getByRole("button", { name: "I understand, migrate to production" })
     .last()
     .click();
 

@@ -160,6 +160,21 @@ describe("detectDestructiveStatements", () => {
     expect(result).toEqual([{ index: 0, reason: "schema_hazard" }]);
   });
 
+  it("does not treat routine index creation as destructive", () => {
+    const result = detectDestructiveStatements([
+      {
+        sql: 'CREATE INDEX "users_email_idx" ON "users" ("email");',
+        type: "destructive",
+      },
+      {
+        sql: 'CREATE UNIQUE INDEX CONCURRENTLY "users_name_idx" ON "users" ("name");',
+        type: "destructive",
+      },
+    ]);
+
+    expect(result).toEqual([]);
+  });
+
   it("only flags each statement once", () => {
     const result = detectDestructiveStatements(
       destructiveStatements([

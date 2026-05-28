@@ -97,7 +97,10 @@ export function detectDestructiveStatements(
       out.push({ index, reason: regexReason });
       return;
     }
-    if (statement.type === "destructive") {
+    if (
+      statement.type === "destructive" &&
+      !isRoutineIndexCreation(statement.sql)
+    ) {
       out.push({ index, reason: "schema_hazard" });
     }
   });
@@ -113,6 +116,10 @@ function destructiveReasonForSql(
     }
   }
   return null;
+}
+
+function isRoutineIndexCreation(sql: string): boolean {
+  return /^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?/iu.test(sql);
 }
 
 /**
@@ -148,6 +155,11 @@ export async function generateNeonMigrationStatements({
     return [
       { sql: 'CREATE TABLE "mock" ("id" serial)', type: "additive" },
       { sql: 'ALTER TABLE "mock" ADD COLUMN "name" text', type: "additive" },
+      { sql: 'DROP TABLE "mock_legacy"', type: "destructive" },
+      {
+        sql: 'GRANT SELECT ON TABLE "mock" TO "app_user"',
+        type: "destructive",
+      },
     ];
   }
 

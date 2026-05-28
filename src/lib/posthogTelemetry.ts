@@ -18,11 +18,11 @@ export function getInitialLoadTelemetryProperties({
     appVersion,
     platform,
     releaseChannel: settings.releaseChannel,
-    isFirstSession: !settings.lastShownReleaseNotesVersion,
+    isFirstSession: settings.hasRunBefore === false,
     modelProvider: settings.selectedModel.provider,
     defaultChatMode:
       settings.defaultChatMode ?? settings.selectedChatMode ?? null,
-    runtimeMode2: settings.runtimeMode2 ?? null,
+    runtimeMode2: settings.runtimeMode2 ?? "host",
   };
 }
 

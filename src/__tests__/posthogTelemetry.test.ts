@@ -88,7 +88,7 @@ describe("getInitialLoadTelemetryProperties", () => {
           defaultChatMode: "ask",
           selectedChatMode: "build",
           runtimeMode2: "docker",
-          lastShownReleaseNotesVersion: "1.0.0",
+          hasRunBefore: true,
           providerSettings: {
             auto: { apiKey: { value: "secret" } },
           },
@@ -113,6 +113,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       getInitialLoadTelemetryProperties({
         settings: makeSettings({
           selectedChatMode: "plan",
+          hasRunBefore: false,
         }),
         appVersion: "1.1.0",
         platform: null,
@@ -125,7 +126,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       isFirstSession: true,
       modelProvider: "auto",
       defaultChatMode: "plan",
-      runtimeMode2: null,
+      runtimeMode2: "host",
     });
   });
 });

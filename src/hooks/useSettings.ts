@@ -25,7 +25,7 @@ export function isDyadProUser(): boolean {
   return window.localStorage.getItem(DYAD_PRO_STATUS_KEY) === "true";
 }
 
-let isInitialLoad = false;
+let initialLoadTelemetryState: "idle" | "pending" | "sent" = "idle";
 
 export function useSettings() {
   const posthog = usePostHog();
@@ -54,22 +54,31 @@ export function useSettings() {
 
     processSettingsForTelemetry(settingsQuery.data);
     const isPro = hasDyadProKey(settingsQuery.data);
-    posthog.people.set({ isPro });
+    posthog?.people?.set({ isPro });
     setSettingsAtom(settingsQuery.data);
 
-    if (isInitialLoad || !appVersion) {
+    if (initialLoadTelemetryState !== "idle" || !appVersion || !posthog) {
       return;
     }
 
-    isInitialLoad = true;
+    initialLoadTelemetryState = "pending";
+    let cancelled = false;
     const settings = settingsQuery.data;
 
     void (async () => {
       let platform: string | null = null;
       try {
-        platform = await ipc.system.getSystemPlatform();
+        platform = await queryClient.ensureQueryData({
+          queryKey: queryKeys.system.platform,
+          queryFn: () => ipc.system.getSystemPlatform(),
+          staleTime: Infinity,
+        });
       } catch (error) {
         console.warn("Failed to get system platform for telemetry", error);
+      }
+
+      if (cancelled) {
+        return;
       }
 
       posthog.capture(
@@ -80,8 +89,16 @@ export function useSettings() {
           platform,
         }),
       );
+      initialLoadTelemetryState = "sent";
     })();
-  }, [settingsQuery.data, appVersion, posthog, setSettingsAtom]);
+
+    return () => {
+      cancelled = true;
+      if (initialLoadTelemetryState === "pending") {
+        initialLoadTelemetryState = "idle";
+      }
+    };
+  }, [settingsQuery.data, appVersion, posthog, queryClient, setSettingsAtom]);
 
   // Sync env vars to Jotai atom
   useEffect(() => {
@@ -98,7 +115,7 @@ export function useSettings() {
     onSuccess: (updatedSettings) => {
       queryClient.setQueryData(queryKeys.settings.user, updatedSettings);
       processSettingsForTelemetry(updatedSettings);
-      posthog.people.set({ isPro: hasDyadProKey(updatedSettings) });
+      posthog?.people?.set({ isPro: hasDyadProKey(updatedSettings) });
       setSettingsAtom(updatedSettings);
     },
     meta: { showErrorToast: true },

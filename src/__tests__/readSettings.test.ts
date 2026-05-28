@@ -146,6 +146,22 @@ describe("readSettings", () => {
       expect(result.releaseChannel).toBe("stable");
     });
 
+    it("should treat existing settings files without hasRunBefore as already run", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.hasRunBefore).toBe(true);
+    });
+
     it("should decrypt encrypted provider API keys", () => {
       const mockFileContent = {
         providerSettings: {

@@ -336,6 +336,7 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   const combinedSettings: UserSettings = {
     ...DEFAULT_SETTINGS,
     ...rawSettings,
+    hasRunBefore: rawSettings.hasRunBefore ?? true,
   };
   const supabase = combinedSettings.supabase;
   if (supabase) {

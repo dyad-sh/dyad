@@ -2,9 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
+  getInitialLoadTelemetryProperties,
   shouldBypassNonProTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "@/lib/posthogTelemetry";
+import type { UserSettings } from "@/lib/schemas";
+
+function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
+  return {
+    selectedModel: { provider: "auto", name: "auto" },
+    providerSettings: {},
+    selectedTemplateId: "react",
+    enableAutoUpdate: true,
+    releaseChannel: "stable",
+    ...overrides,
+  } as UserSettings;
+}
 
 describe("createExceptionFromTelemetry", () => {
   it("uses exception telemetry fields when present", () => {
@@ -66,6 +79,57 @@ describe("shouldFilterPostHogExceptionEvent", () => {
   });
 });
 
+describe("getInitialLoadTelemetryProperties", () => {
+  it("includes high-value launch properties from settings", () => {
+    expect(
+      getInitialLoadTelemetryProperties({
+        settings: makeSettings({
+          releaseChannel: "beta",
+          defaultChatMode: "ask",
+          selectedChatMode: "build",
+          runtimeMode2: "docker",
+          lastShownReleaseNotesVersion: "1.0.0",
+          providerSettings: {
+            auto: { apiKey: { value: "secret" } },
+          },
+        }),
+        appVersion: "1.1.0",
+        platform: "darwin",
+      }),
+    ).toEqual({
+      isPro: true,
+      appVersion: "1.1.0",
+      platform: "darwin",
+      releaseChannel: "beta",
+      isFirstSession: false,
+      modelProvider: "auto",
+      defaultChatMode: "ask",
+      runtimeMode2: "docker",
+    });
+  });
+
+  it("marks first sessions and falls back to selected chat mode", () => {
+    expect(
+      getInitialLoadTelemetryProperties({
+        settings: makeSettings({
+          selectedChatMode: "plan",
+        }),
+        appVersion: "1.1.0",
+        platform: null,
+      }),
+    ).toEqual({
+      isPro: false,
+      appVersion: "1.1.0",
+      platform: null,
+      releaseChannel: "stable",
+      isFirstSession: true,
+      modelProvider: "auto",
+      defaultChatMode: "plan",
+      runtimeMode2: null,
+    });
+  });
+});
+
 describe("shouldBypassNonProTelemetrySampling", () => {
   it("always sends sandbox.script.* events for non-Pro sampling", () => {
     expect(
@@ -90,6 +154,15 @@ describe("shouldBypassNonProTelemetrySampling", () => {
       shouldBypassNonProTelemetrySampling({
         event: "sandbox.script.timeout",
         properties: { error: "Script timed out" },
+      }),
+    ).toBe(true);
+  });
+
+  it("always sends app:initial-load for non-Pro sampling", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "app:initial-load",
+        properties: { isPro: false, appVersion: "1.0.0" },
       }),
     ).toBe(true);
   });

@@ -1,4 +1,30 @@
+import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+
 type TelemetryProperties = Record<string, unknown> | undefined;
+
+export type InitialLoadTelemetryInput = {
+  settings: UserSettings;
+  appVersion: string;
+  platform: string | null;
+};
+
+export function getInitialLoadTelemetryProperties({
+  settings,
+  appVersion,
+  platform,
+}: InitialLoadTelemetryInput) {
+  return {
+    isPro: hasDyadProKey(settings),
+    appVersion,
+    platform,
+    releaseChannel: settings.releaseChannel,
+    isFirstSession: !settings.lastShownReleaseNotesVersion,
+    modelProvider: settings.selectedModel.provider,
+    defaultChatMode:
+      settings.defaultChatMode ?? settings.selectedChatMode ?? null,
+    runtimeMode2: settings.runtimeMode2 ?? null,
+  };
+}
 
 /** PostHog event shape used by renderer `before_send` sampling. */
 export type PostHogTelemetryEvent = {
@@ -56,6 +82,10 @@ export function shouldBypassNonProTelemetrySampling(
   const properties = event?.properties;
 
   if (eventName?.startsWith("sandbox.script.")) {
+    return true;
+  }
+
+  if (eventName === "app:initial-load") {
     return true;
   }
 

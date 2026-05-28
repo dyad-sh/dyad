@@ -4,6 +4,7 @@ import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
+import { getInitialLoadTelemetryProperties } from "@/lib/posthogTelemetry";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 import { queryKeys } from "@/lib/queryKeys";
@@ -47,19 +48,39 @@ export function useSettings() {
 
   // Process telemetry side effects when settings load/change
   useEffect(() => {
-    if (settingsQuery.data) {
-      processSettingsForTelemetry(settingsQuery.data);
-      const isPro = hasDyadProKey(settingsQuery.data);
-      posthog.people.set({ isPro });
-      if (!isInitialLoad && appVersion) {
-        posthog.capture("app:initial-load", {
-          isPro,
-          appVersion,
-        });
-        isInitialLoad = true;
-      }
-      setSettingsAtom(settingsQuery.data);
+    if (!settingsQuery.data) {
+      return;
     }
+
+    processSettingsForTelemetry(settingsQuery.data);
+    const isPro = hasDyadProKey(settingsQuery.data);
+    posthog.people.set({ isPro });
+    setSettingsAtom(settingsQuery.data);
+
+    if (isInitialLoad || !appVersion) {
+      return;
+    }
+
+    isInitialLoad = true;
+    const settings = settingsQuery.data;
+
+    void (async () => {
+      let platform: string | null = null;
+      try {
+        platform = await ipc.system.getSystemPlatform();
+      } catch (error) {
+        console.warn("Failed to get system platform for telemetry", error);
+      }
+
+      posthog.capture(
+        "app:initial-load",
+        getInitialLoadTelemetryProperties({
+          settings,
+          appVersion,
+          platform,
+        }),
+      );
+    })();
   }, [settingsQuery.data, appVersion, posthog, setSettingsAtom]);
 
   // Sync env vars to Jotai atom

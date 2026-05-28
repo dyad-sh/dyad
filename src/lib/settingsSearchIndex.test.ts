@@ -40,8 +40,8 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       label: "Block unsafe npm packages",
       description: "Uses socket.dev to detect unsafe packages and blocks them",
       keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
-      sectionId: SECTION_IDS.experiments,
-      sectionLabel: "Experiments",
+      sectionId: SECTION_IDS.advanced,
+      sectionLabel: "Advanced",
     });
   });
 
@@ -87,10 +87,9 @@ describe("SETTINGS_SEARCH_INDEX", () => {
         "attachments",
         "mustard",
         "agent",
-        "experiment",
       ],
-      sectionId: SECTION_IDS.experiments,
-      sectionLabel: "Experiments",
+      sectionId: SECTION_IDS.advanced,
+      sectionLabel: "Advanced",
     });
   });
 });

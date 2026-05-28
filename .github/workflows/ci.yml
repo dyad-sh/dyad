@@ -147,6 +147,18 @@ jobs:
     needs: [check-changes]
     if: needs.check-changes.outputs.should_run_schema_diff_tests == 'true'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -164,9 +176,8 @@ jobs:
       - name: Install PostgreSQL
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql postgresql-client postgresql-contrib libpq-dev
-          echo "$(pg_config --bindir)" >> "$GITHUB_PATH"
-          pg_config --version
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
       - name: Install node modules
         run: bash scripts/npm-ci-retry.sh
         env:
@@ -178,6 +189,8 @@ jobs:
         run: npm --prefix packages/ts-pg-schema-diff test
       - name: Integration tests
         run: npm --prefix packages/ts-pg-schema-diff run test:integration
+        env:
+          PG_SCHEMA_DIFF_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   build:
     needs: [check-changes]

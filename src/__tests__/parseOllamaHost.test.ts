@@ -1,5 +1,14 @@
-import { parseOllamaHost } from "@/ipc/handlers/local_model_ollama_handler";
-import { describe, it, expect } from "vitest";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  fetchOllamaModels,
+  parseOllamaHost,
+} from "@/ipc/handlers/local_model_ollama_handler";
+import { afterEach, describe, it, expect, vi } from "vitest";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("parseOllamaHost", () => {
   it("should return default URL when no host is provided", () => {
@@ -143,5 +152,37 @@ describe("parseOllamaHost", () => {
       const result = parseOllamaHost(input);
       expect(result).toBe("http://example.com:443");
     });
+  });
+});
+
+describe("fetchOllamaModels", () => {
+  it("classifies Ollama connection failures as filtered precondition errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("fetch failed")),
+    );
+
+    await expect(fetchOllamaModels()).rejects.toMatchObject({
+      message:
+        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+      kind: DyadErrorKind.Precondition,
+    });
+  });
+
+  it("preserves classified Ollama response errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        statusText: "Service Unavailable",
+      }),
+    );
+
+    await expect(fetchOllamaModels()).rejects.toEqual(
+      new DyadError(
+        "Failed to fetch model: Service Unavailable",
+        DyadErrorKind.External,
+      ),
+    );
   });
 });

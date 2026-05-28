@@ -19,7 +19,6 @@ describe("classifyOAuthError", () => {
     ["invalid oauth", "Invalid OAuth metadata response"],
     ["not valid json", "Response body is not valid JSON"],
     ["http 404", "HTTP 404 Not Found at /.well-known/..."],
-    ["not found", "Endpoint not found"],
   ])("classifies %s as discovery_failed", (_label, msg) => {
     expect(classifyOAuthError(msg)).toBe("discovery_failed");
   });
@@ -29,6 +28,10 @@ describe("classifyOAuthError", () => {
     ["port 40400 ECONNREFUSED", "ECONNREFUSED http://localhost:40400"],
     ["request id 4042", "trace id 4042"],
     ["server hung up", "socket hang up"],
+    // Bare "not found" must not trigger discovery_failed: validation
+    // errors and other non-discovery failures can contain those words.
+    ["server-not-found validation", "MCP server not found: 999"],
+    ["bare endpoint not found", "Endpoint not found"],
   ])(
     "does NOT classify %s as discovery_failed (word-boundary for 404)",
     (_label, msg) => {

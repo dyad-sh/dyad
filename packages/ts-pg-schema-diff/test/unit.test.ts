@@ -294,6 +294,40 @@ describe("generatePlan", () => {
     ]);
   });
 
+  it("creates added materialized views before added materialized views that depend on them", () => {
+    const dependency = materializedView("z_account_ids");
+    const dependent = materializedView("a_account_ids_snapshot", {}, [
+      {
+        name: schemaQualifiedName("public", "z_account_ids"),
+        columns: ["id"],
+      },
+    ]);
+    const desired: Schema = {
+      ...emptySchema(),
+      tables: [table("accounts", [column("id", "integer", false)])],
+      materializedViews: [
+        {
+          ...dependent,
+          viewDefinition: " SELECT id\n   FROM z_account_ids;",
+          outputColumns: [{ name: "id", type: "integer" }],
+        },
+        {
+          ...dependency,
+          viewDefinition: " SELECT id\n   FROM accounts;",
+          outputColumns: [{ name: "id", type: "integer" }],
+        },
+      ],
+    };
+
+    const result = toSchemaDiffResult(generatePlan(emptySchema(), desired));
+
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      'CREATE TABLE "public"."accounts" (\n\t"id" integer NOT NULL\n)',
+      'CREATE MATERIALIZED VIEW "public"."z_account_ids" AS\n SELECT id\n   FROM accounts;',
+      'CREATE MATERIALIZED VIEW "public"."a_account_ids_snapshot" AS\n SELECT id\n   FROM z_account_ids;',
+    ]);
+  });
+
   it("alters views with CREATE OR REPLACE so dependents do not block the migration", () => {
     const base = view("account_summary");
     const dependent = view("account_summary_public");

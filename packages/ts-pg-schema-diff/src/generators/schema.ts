@@ -1668,9 +1668,6 @@ function orderViewMaterializedViewAdds(
   }
 
   for (const add of adds) {
-    if (add.kind !== "view") {
-      continue;
-    }
     const dependentId = objectName(add.view);
     for (const dependency of add.view.tableDependencies) {
       const dependencyId = fqName(dependency.name);

@@ -4,6 +4,7 @@ import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
+import { getInitialLoadTelemetryProperties } from "@/lib/posthogTelemetry";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 import { queryKeys } from "@/lib/queryKeys";
@@ -24,7 +25,7 @@ export function isDyadProUser(): boolean {
   return window.localStorage.getItem(DYAD_PRO_STATUS_KEY) === "true";
 }
 
-let isInitialLoad = false;
+let initialLoadTelemetryState: "idle" | "sent" = "idle";
 
 export function useSettings() {
   const posthog = usePostHog();
@@ -45,22 +46,76 @@ export function useSettings() {
     queryFn: () => ipc.misc.getEnvVars(),
   });
 
+  const {
+    data: platform,
+    error: platformError,
+    isLoading: isPlatformLoading,
+  } = useQuery({
+    queryKey: queryKeys.system.platform,
+    queryFn: () => ipc.system.getSystemPlatform(),
+    staleTime: Infinity,
+  });
+
+  const {
+    data: initialLoadTelemetryContext,
+    isLoading: isInitialLoadTelemetryContextLoading,
+  } = useQuery({
+    queryKey: queryKeys.system.initialLoadTelemetryContext,
+    queryFn: () => ipc.system.getInitialLoadTelemetryContext(),
+    staleTime: Infinity,
+  });
+
   // Process telemetry side effects when settings load/change
   useEffect(() => {
-    if (settingsQuery.data) {
-      processSettingsForTelemetry(settingsQuery.data);
-      const isPro = hasDyadProKey(settingsQuery.data);
-      posthog.people.set({ isPro });
-      if (!isInitialLoad && appVersion) {
-        posthog.capture("app:initial-load", {
-          isPro,
-          appVersion,
-        });
-        isInitialLoad = true;
-      }
-      setSettingsAtom(settingsQuery.data);
+    if (!settingsQuery.data) {
+      return;
     }
-  }, [settingsQuery.data, appVersion, posthog, setSettingsAtom]);
+
+    processSettingsForTelemetry(settingsQuery.data);
+    const isPro = hasDyadProKey(settingsQuery.data);
+    posthog?.people?.set({ isPro });
+    setSettingsAtom(settingsQuery.data);
+
+    if (
+      initialLoadTelemetryState !== "idle" ||
+      !appVersion ||
+      !posthog ||
+      isPlatformLoading ||
+      isInitialLoadTelemetryContextLoading ||
+      !initialLoadTelemetryContext
+    ) {
+      return;
+    }
+
+    if (platformError) {
+      console.warn(
+        "Failed to get system platform for telemetry",
+        platformError,
+      );
+    }
+
+    const settings = settingsQuery.data;
+    posthog.capture(
+      "app:initial-load",
+      getInitialLoadTelemetryProperties({
+        settings,
+        appVersion,
+        platform: platform ?? null,
+        isFirstSession: initialLoadTelemetryContext.isFirstSession,
+      }),
+    );
+    initialLoadTelemetryState = "sent";
+  }, [
+    settingsQuery.data,
+    appVersion,
+    posthog,
+    isPlatformLoading,
+    isInitialLoadTelemetryContextLoading,
+    platform,
+    platformError,
+    initialLoadTelemetryContext,
+    setSettingsAtom,
+  ]);
 
   // Sync env vars to Jotai atom
   useEffect(() => {
@@ -77,7 +132,7 @@ export function useSettings() {
     onSuccess: (updatedSettings) => {
       queryClient.setQueryData(queryKeys.settings.user, updatedSettings);
       processSettingsForTelemetry(updatedSettings);
-      posthog.people.set({ isPro: hasDyadProKey(updatedSettings) });
+      posthog?.people?.set({ isPro: hasDyadProKey(updatedSettings) });
       setSettingsAtom(updatedSettings);
     },
     meta: { showErrorToast: true },

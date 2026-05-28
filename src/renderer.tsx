@@ -106,8 +106,8 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
-      // For non-Pro users, only send 10% of events (but always send errors and
-      // sandbox.script.* instrumentation — see shouldBypassNonProTelemetrySampling).
+      // For non-Pro users, only send 10% of events (but always send errors,
+      // app:initial-load, and sandbox.script.* — see shouldBypassNonProTelemetrySampling).
       if (!isDyadProUser()) {
         if (
           !shouldBypassNonProTelemetrySampling(event) &&

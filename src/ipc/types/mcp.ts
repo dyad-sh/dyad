@@ -70,7 +70,13 @@ export const CreateMcpServerSchema = z.object({
   oauthClientSecret: z.string().nullable().optional(),
   oauthScope: z.string().nullable().optional(),
   // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
-  oauthCallbackPort: z.number().int().nullable().optional(),
+  oauthCallbackPort: z
+    .number()
+    .int()
+    .min(1024)
+    .max(65535)
+    .nullable()
+    .optional(),
 });
 
 export type CreateMcpServer = z.infer<typeof CreateMcpServerSchema>;

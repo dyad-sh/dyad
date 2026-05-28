@@ -111,6 +111,26 @@ async function writeState(
     .where(eq(mcpServers.id, serverId));
 }
 
+// Per-server queue so concurrent read-modify-write callers on the same
+// `oauth_state` row don't trample each other's writes. Single-process
+// Electron app means an in-memory chain is enough; SQLite doesn't give
+// us row-level locking.
+const stateLocks = new Map<number, Promise<unknown>>();
+
+async function withStateLock<T>(
+  serverId: number,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = stateLocks.get(serverId) ?? Promise.resolve();
+  // Catch so a rejected previous task doesn't block the queue.
+  const next = prev.catch(() => undefined).then(fn);
+  stateLocks.set(
+    serverId,
+    next.catch(() => undefined),
+  );
+  return next;
+}
+
 interface ProviderConfig {
   serverId: number;
   callbackPort?: number;
@@ -190,33 +210,40 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    const state = await readState(this.serverId);
-    state.tokens = tokens;
-    await writeState(this.serverId, state);
+    await withStateLock(this.serverId, async () => {
+      const state = await readState(this.serverId);
+      state.tokens = tokens;
+      await writeState(this.serverId, state);
+    });
   }
 
   async clientInformation(): Promise<OAuthClientInformation | undefined> {
-    const state = await readState(this.serverId);
-    if (state.clientInformation) {
-      this.cachedClientInformation = state.clientInformation;
-      return state.clientInformation;
-    }
-    // If the user gave us a client ID, return it on first read so the
-    // SDK skips its `/register` call. Saved too, so later reads just
-    // load it from storage.
-    if (this.preregisteredClientId) {
-      const seeded: OAuthClientInformation = {
-        client_id: this.preregisteredClientId,
-        ...(this.preregisteredClientSecret
-          ? { client_secret: this.preregisteredClientSecret }
-          : {}),
-      };
-      await writeState(this.serverId, { ...state, clientInformation: seeded });
-      this.cachedClientInformation = seeded;
-      return seeded;
-    }
-    this.cachedClientInformation = undefined;
-    return undefined;
+    return withStateLock(this.serverId, async () => {
+      const state = await readState(this.serverId);
+      if (state.clientInformation) {
+        this.cachedClientInformation = state.clientInformation;
+        return state.clientInformation;
+      }
+      // If the user gave us a client ID, return it on first read so the
+      // SDK skips its `/register` call. Saved too, so later reads just
+      // load it from storage.
+      if (this.preregisteredClientId) {
+        const seeded: OAuthClientInformation = {
+          client_id: this.preregisteredClientId,
+          ...(this.preregisteredClientSecret
+            ? { client_secret: this.preregisteredClientSecret }
+            : {}),
+        };
+        await writeState(this.serverId, {
+          ...state,
+          clientInformation: seeded,
+        });
+        this.cachedClientInformation = seeded;
+        return seeded;
+      }
+      this.cachedClientInformation = undefined;
+      return undefined;
+    });
   }
 
   async saveClientInformation(
@@ -230,9 +257,11 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // can't overwrite an in-flight Connect's client_id between
     // /authorize and /token.
     if (!this.allowInteractive) return;
-    const state = await readState(this.serverId);
-    state.clientInformation = clientInformation;
-    await writeState(this.serverId, state);
+    await withStateLock(this.serverId, async () => {
+      const state = await readState(this.serverId);
+      state.clientInformation = clientInformation;
+      await writeState(this.serverId, state);
+    });
   }
 
   async codeVerifier(): Promise<string> {
@@ -350,14 +379,16 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // Skip for non-interactive so a background 401 path can't nuke
     // tokens or client info out from under an active session.
     if (!this.allowInteractive) return;
-    const state = await readState(this.serverId);
-    delete state.tokens;
-    if (scope === "all") {
-      codeVerifiers.delete(this.serverId);
-      delete state.clientInformation;
-      this.cachedClientInformation = undefined;
-    }
-    await writeState(this.serverId, state);
+    await withStateLock(this.serverId, async () => {
+      const state = await readState(this.serverId);
+      delete state.tokens;
+      if (scope === "all") {
+        codeVerifiers.delete(this.serverId);
+        delete state.clientInformation;
+        this.cachedClientInformation = undefined;
+      }
+      await writeState(this.serverId, state);
+    });
   }
 }
 

@@ -181,9 +181,8 @@ describe("disconnectOAuth", () => {
     expect(row!.oauthState).toBeNull();
   });
 
-  it("returns success=false for an unknown server id", async () => {
-    const result = await disconnectOAuth(404);
-    expect(result.success).toBe(false);
+  it("throws DyadError(NotFound) for an unknown server id", async () => {
+    await expect(disconnectOAuth(404)).rejects.toThrow(/not found/i);
   });
 });
 

@@ -795,6 +795,20 @@ async function handleDeepLinkReturn(url: string) {
     });
     return;
   }
+  // dyad://mcp-oauth-return -- fired by the OAuth callback page so
+  // the browser can hand focus back to Dyad after consent. No payload;
+  // tokens were already persisted by the main-process loopback
+  // listener before this URL is opened.
+  if (parsed.hostname === "mcp-oauth-return") {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    mainWindow?.webContents.send("deep-link-received", {
+      type: parsed.hostname,
+    });
+    return;
+  }
   // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
   if (parsed.hostname === "add-mcp-server") {
     const name = parsed.searchParams.get("name");

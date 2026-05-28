@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { useMcp, type Transport } from "@/hooks/useMcp";
 import { ipc } from "@/ipc/types";
+import { DEFAULT_OAUTH_CALLBACK_PORT } from "@/ipc/types/mcp";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
@@ -355,7 +356,9 @@ export function ToolsMcpSettings() {
         if (!cancelled) setCallbackPort(result.port);
       })
       .catch(() => {
-        // Best-effort -- flow falls back to DEFAULT_OAUTH_CALLBACK_PORT.
+        // Show a concrete fallback in the UI instead of "…" forever;
+        // the OAuth flow itself also falls back to this port server-side.
+        if (!cancelled) setCallbackPort(DEFAULT_OAUTH_CALLBACK_PORT);
       });
     return () => {
       cancelled = true;
@@ -504,11 +507,13 @@ export function ToolsMcpSettings() {
   };
 
   const onDisconnect = async (serverId: number) => {
-    const result = await disconnectOAuth(serverId);
-    if (result.success) {
+    try {
+      await disconnectOAuth(serverId);
       showSuccess("Disconnected OAuth");
-    } else {
-      showError("Failed to disconnect OAuth");
+    } catch (err) {
+      showError(
+        err instanceof Error ? err.message : "Failed to disconnect OAuth",
+      );
     }
   };
 
@@ -711,7 +716,7 @@ export function ToolsMcpSettings() {
                   <Button
                     variant="default"
                     onClick={() => onConnect(s.id)}
-                    disabled={isStartingOAuth}
+                    disabled={isStartingOAuth && connectingServerId === s.id}
                   >
                     {isStartingOAuth && connectingServerId === s.id
                       ? "Connecting…"

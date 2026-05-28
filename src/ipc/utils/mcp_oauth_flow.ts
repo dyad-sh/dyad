@@ -15,6 +15,7 @@ import {
 } from "./mcp_oauth_provider";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
 import { mcpManager } from "./mcp_manager";
+import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
 const logger = log.scope("mcp_oauth_flow");
 
@@ -54,10 +55,10 @@ function escapeHtml(s: string): string {
 }
 
 // Self-contained (no external assets) so it works on the loopback
-// listener. Provides an "Open Dyad" button on success but does not
-// auto-redirect: the user almost always has Dyad already in front,
-// and triggering the protocol handler unconditionally produces a
-// "Open in Dyad?" browser prompt that's more annoying than helpful.
+// listener. On success, auto-fires the `dyad://mcp-oauth-return`
+// deep link to bring Dyad to the foreground, with a visible "Open
+// Dyad" button as a fallback for browsers that block scripted
+// protocol-handler navigation.
 function renderCallbackPage(opts: {
   kind: "success" | "error";
   title: string;
@@ -67,6 +68,7 @@ function renderCallbackPage(opts: {
   const accent = isSuccess ? "#10b981" : "#ef4444";
   const safeTitle = escapeHtml(opts.title);
   const safeMessage = escapeHtml(opts.message);
+  const returnUrl = "dyad://mcp-oauth-return";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -91,6 +93,8 @@ function renderCallbackPage(opts: {
     .card { background: #1f2937; border-color: #374151; }
     .muted { color: #9ca3af; }
     a { color: #93c5fd; }
+    .btn { background: #6366f1; color: #ffffff; }
+    .btn:hover { background: #4f46e5; }
   }
   .card {
     max-width: 480px;
@@ -119,6 +123,19 @@ function renderCallbackPage(opts: {
   p { margin: 0 0 20px; line-height: 1.5; }
   p:last-child { margin-bottom: 0; }
   .muted { color: #475569; font-size: 14px; }
+  .btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 10px;
+    background: #6366f1;
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    margin-bottom: 16px;
+  }
+  .btn:hover { background: #4f46e5; }
 </style>
 </head>
 <body>
@@ -126,7 +143,18 @@ function renderCallbackPage(opts: {
     <div class="badge" aria-hidden="true">${isSuccess ? "&#10003;" : "&#33;"}</div>
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    ${isSuccess ? "" : `<p class="muted">You can close this window and return to Dyad.</p>`}
+    ${
+      isSuccess
+        ? `<a class="btn" href="${returnUrl}">Open Dyad</a>
+    <p class="muted">You can close this window once Dyad is in focus.</p>
+    <script>
+      // Try to hand focus back to Dyad automatically; the button above
+      // is the fallback for browsers that block scripted navigation
+      // to custom protocol handlers.
+      setTimeout(function () { window.location.href = ${JSON.stringify(returnUrl)}; }, 500);
+    </script>`
+        : `<p class="muted">You can close this window and return to Dyad.</p>`
+    }
   </div>
 </body>
 </html>`;
@@ -482,7 +510,12 @@ export async function disconnectOAuth(
     .select({ id: mcpServers.id })
     .from(mcpServers)
     .where(eq(mcpServers.id, serverId));
-  if (!rows[0]) return { success: false };
+  if (!rows[0]) {
+    throw new DyadError(
+      `MCP server not found: ${serverId}`,
+      DyadErrorKind.NotFound,
+    );
+  }
   // `invalidateCredentials` only deletes state; no need to read /
   // decrypt the pre-registered client_id / client_secret.
   // `allowInteractive` so the invalidate guard doesn't no-op this

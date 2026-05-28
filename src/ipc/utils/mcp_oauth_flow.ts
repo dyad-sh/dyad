@@ -318,19 +318,27 @@ async function startCallbackListener(
     }
   };
 
-  const tryBind = (host: string): Promise<Server | null> =>
+  // Distinguish "port owned by another process" (EADDRINUSE) from
+  // "stack unavailable" (e.g. IPv6 disabled). Partial-bind only
+  // remains safe in the second case; with EADDRINUSE on either stack
+  // a `localhost` redirect could resolve to the address we don't own.
+  type BindResult =
+    | { server: Server }
+    | { error: "in_use" }
+    | { error: "other" };
+  const tryBind = (host: string): Promise<BindResult> =>
     new Promise((resolveBind) => {
       const s = createServer(handler);
-      const onError = (err: Error) => {
+      const onError = (err: Error & { code?: string }) => {
         logger.warn(
           `Could not bind OAuth callback listener on ${host}:${port}: ${err.message}`,
         );
-        resolveBind(null);
+        resolveBind({ error: err.code === "EADDRINUSE" ? "in_use" : "other" });
       };
       s.once("error", onError);
       s.listen(port, host, () => {
         s.removeListener("error", onError);
-        resolveBind(s);
+        resolveBind({ server: s });
       });
     });
 
@@ -338,9 +346,9 @@ async function startCallbackListener(
   // after the whole `Promise.all`) so a supersede landing during the
   // bind window can observe and close every bound socket.
   const bindPromises = LOOPBACK_BIND_HOSTS.map(async (host) => {
-    const s = await tryBind(host);
-    if (s) flow.servers.push(s);
-    return s;
+    const result = await tryBind(host);
+    if ("server" in result) flow.servers.push(result.server);
+    return result;
   });
   flow.binding = Promise.all(bindPromises).then(() => undefined);
 
@@ -363,6 +371,21 @@ async function startCallbackListener(
     // could land on the new listener with a mismatching `state` and
     // abort the real flow.
     throw new Error("OAuth flow superseded before listener bound.");
+  }
+  // Already-settled because `flow.binding` awaited the same promises.
+  const bindResults = await Promise.all(bindPromises);
+  // Treat EADDRINUSE on one stack as fatal even if the other bound:
+  // the browser may resolve `localhost` to whichever address is held
+  // by the conflicting process, so the OAuth callback would land
+  // somewhere we can't observe and the flow would hang until timeout.
+  if (bindResults.some((r) => "error" in r && r.error === "in_use")) {
+    for (const s of flow.servers) s.close();
+    if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
+    throw new Error(
+      `Could not bind OAuth callback listener on port ${port}: ` +
+        `another local process is holding one of the loopback stacks (127.0.0.1 / ::1). ` +
+        `Stop the conflicting process or configure a different OAuth callback port.`,
+    );
   }
   if (flow.servers.length === 0) {
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);

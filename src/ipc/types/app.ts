@@ -31,6 +31,10 @@ export const AppBaseSchema = z.object({
   vercelProjectName: z.string().nullable(),
   vercelDeploymentUrl: z.string().nullable(),
   vercelTeamId: z.string().nullable(),
+  vercelLastSyncedBranchType: z.string().nullable(),
+  vercelLastSyncedHash: z.string().nullable(),
+  vercelLastSyncedAt: z.date().nullable(),
+  databaseUrlBranchType: z.string().nullable(),
   installCommand: z.string().nullable(),
   startCommand: z.string().nullable(),
   isFavorite: z.boolean(),
@@ -528,6 +532,15 @@ export const appContracts = {
         }),
       ),
     }),
+  }),
+
+  setDatabaseUrlBranchType: defineContract({
+    channel: "app:set-database-url-branch-type",
+    input: z.object({
+      appId: z.number(),
+      branchType: z.enum(["production", "development"]).nullable(),
+    }),
+    output: z.void(),
   }),
 } as const;
 

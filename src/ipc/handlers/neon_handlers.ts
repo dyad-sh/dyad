@@ -21,6 +21,7 @@ import {
   readEnvFileIfExists,
   removeNeonEnvVars,
 } from "../utils/app_env_var_utils";
+import { removeNeonEnvVarsFromLinkedVercel } from "../utils/vercel_sync_utils";
 import {
   logger,
   combineWarnings,
@@ -639,7 +640,7 @@ export function registerNeonHandlers() {
 
   // Unlink a Neon project from a Dyad app
   createTypedHandler(neonContracts.unsetAppProject, async (_, params) => {
-    const { appId } = params;
+    const { appId, removeVercelEnvVars: shouldRemoveVercelEnvVars } = params;
     logger.info(`Unsetting Neon project for app ${appId}`);
 
     try {
@@ -666,6 +667,19 @@ export function registerNeonHandlers() {
 
       if (appRecord.length > 0) {
         await removeNeonEnvVars({ appPath: appRecord[0].path });
+
+        // Optionally strip the same env vars from the linked Vercel project so
+        // a future deploy doesn't keep talking to the (now-disconnected) Neon
+        // project. Best-effort: errors are logged but don't fail the unlink.
+        if (shouldRemoveVercelEnvVars && appRecord[0].vercelProjectId) {
+          try {
+            await removeNeonEnvVarsFromLinkedVercel({ appId });
+          } catch (vercelError) {
+            logger.warn(
+              `Failed to remove Neon env vars from Vercel for app ${appId}: ${vercelError}`,
+            );
+          }
+        }
       }
 
       logger.info(`Successfully unlinked Neon project from app ${appId}`);

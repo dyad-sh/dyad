@@ -189,6 +189,9 @@ export type {
   CreateVercelProjectParams,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  VercelSyncPlan,
+  VercelSyncResult,
+  VercelDriftStatus,
 } from "./vercel";
 
 // Supabase types

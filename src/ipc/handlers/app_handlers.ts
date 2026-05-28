@@ -1674,6 +1674,24 @@ export function registerAppHandlers() {
     },
   );
 
+  createTypedHandler(
+    appContracts.setDatabaseUrlBranchType,
+    async (_, params) => {
+      const { appId, branchType } = params;
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+      if (!app) {
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
+      }
+      await db
+        .update(apps)
+        .set({ databaseUrlBranchType: branchType })
+        .where(eq(apps.id, appId));
+      logger.info(`Set databaseUrlBranchType=${branchType} for app ${appId}`);
+    },
+  );
+
   createTypedHandler(appContracts.updateAppCommands, async (_, params) => {
     const { appId, installCommand, startCommand } = params;
 

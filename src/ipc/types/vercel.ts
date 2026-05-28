@@ -61,11 +61,62 @@ export type IsVercelProjectAvailableResponse = z.infer<
 export const CreateVercelProjectParamsSchema = z.object({
   name: z.string(),
   appId: z.number(),
+  confirmSync: z.literal(true),
 });
 
 export type CreateVercelProjectParams = z.infer<
   typeof CreateVercelProjectParamsSchema
 >;
+
+// =============================================================================
+// Vercel Sync Schemas
+// =============================================================================
+
+export const VercelSyncTargetSchema = z.enum([
+  "production",
+  "preview",
+  "development",
+]);
+
+export const VercelSyncEnvVarSchema = z.object({
+  key: z.string(),
+  value: z.string(),
+  targets: z.array(VercelSyncTargetSchema),
+});
+
+export const VercelSyncPlanSchema = z.object({
+  envVars: z.array(VercelSyncEnvVarSchema),
+  trustedDomain: z
+    .object({
+      domain: z.string(),
+      branchId: z.string(),
+    })
+    .nullable(),
+  vercelProjectName: z.string(),
+  branchType: z.enum(["production", "development"]),
+  currentHash: z.string(),
+  isFirstSync: z.boolean(),
+  branchTypeChanged: z.boolean(),
+});
+
+export type VercelSyncPlan = z.infer<typeof VercelSyncPlanSchema>;
+
+export const VercelSyncResultSchema = z.object({
+  syncedHash: z.string(),
+  trustedDomain: z.string().nullable(),
+  warning: z.string().optional(),
+});
+
+export type VercelSyncResult = z.infer<typeof VercelSyncResultSchema>;
+
+export const VercelDriftStatusSchema = z.object({
+  hasDrift: z.boolean(),
+  isFirstSync: z.boolean(),
+  branchTypeChanged: z.boolean(),
+  lastSyncedAt: z.date().nullable(),
+});
+
+export type VercelDriftStatus = z.infer<typeof VercelDriftStatusSchema>;
 
 export const GetVercelDeploymentsParamsSchema = z.object({
   appId: z.number(),
@@ -127,6 +178,30 @@ export const vercelContracts = {
   disconnect: defineContract({
     channel: "vercel:disconnect",
     input: DisconnectVercelProjectParamsSchema,
+    output: z.void(),
+  }),
+
+  getSyncPlan: defineContract({
+    channel: "vercel:get-sync-plan",
+    input: z.object({ appId: z.number() }),
+    output: VercelSyncPlanSchema,
+  }),
+
+  syncToVercel: defineContract({
+    channel: "vercel:sync-to-vercel",
+    input: z.object({ appId: z.number() }),
+    output: VercelSyncResultSchema,
+  }),
+
+  getDriftStatus: defineContract({
+    channel: "vercel:get-drift-status",
+    input: z.object({ appId: z.number() }),
+    output: VercelDriftStatusSchema,
+  }),
+
+  removeNeonEnvVars: defineContract({
+    channel: "vercel:remove-neon-env-vars",
+    input: z.object({ appId: z.number() }),
     output: z.void(),
   }),
 } as const;

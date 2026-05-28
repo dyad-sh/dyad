@@ -22,8 +22,21 @@ import {
   DisconnectVercelProjectParams,
   VercelProject,
   VercelDeployment,
+  VercelSyncPlan,
+  VercelSyncResult,
+  VercelDriftStatus,
 } from "../types/vercel";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  addNeonTrustedDomain,
+  applyVercelEnvVars,
+  buildSyncPlan,
+  computeSyncHash,
+  getPrimaryProjectDomain,
+  persistSyncResult,
+  removeNeonEnvVarsFromLinkedVercel,
+  waitForDeploymentReady,
+} from "../utils/vercel_sync_utils";
 
 const logger = log.scope("vercel_handlers");
 
@@ -369,10 +382,33 @@ async function handleCreateProject(
       `Successfully created Vercel project: ${projectData.id} with GitHub repo: ${app.githubOrg}/${app.githubRepo}`,
     );
 
+    // Sync env vars + trusted domain around the first deployment, gated by
+    // the summary card the user just confirmed. Each step is best-effort so a
+    // late-stage failure (e.g. trusted-domain API blip) doesn't roll back the
+    // project the user can now see in their Vercel dashboard.
+    let syncPlan: VercelSyncPlan | null = null;
+    try {
+      const appAfterUpdate = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+      if (appAfterUpdate?.neonProjectId) {
+        syncPlan = await buildSyncPlan({ vercel, app: appAfterUpdate });
+        await applyVercelEnvVars({
+          vercel,
+          projectId: projectData.id,
+          envVars: syncPlan.envVars,
+        });
+      }
+    } catch (syncError: any) {
+      logger.warn(
+        `Pre-deploy env-var sync failed for project ${projectData.id}: ${syncError.message}`,
+      );
+    }
+
     // Trigger the first deployment
     logger.info(`Triggering first deployment for project: ${projectData.id}`);
+    let firstDeploymentUrl: string | undefined;
     try {
-      // Create deployment via Vercel SDK using the project settings we just created
       const deploymentData = await vercel.deployments.createDeployment({
         requestBody: {
           name: projectData.name,
@@ -386,15 +422,63 @@ async function handleCreateProject(
           },
         },
       });
+      firstDeploymentUrl = deploymentData.url;
 
-      if (deploymentData.url) {
-        logger.info(`First deployment successful: ${deploymentData.url}`);
+      if (firstDeploymentUrl) {
+        logger.info(`First deployment triggered: ${firstDeploymentUrl}`);
       } else {
         logger.warn("First deployment failed: No deployment URL returned");
       }
     } catch (deployError: any) {
       logger.warn(`First deployment failed with error: ${deployError.message}`);
       // Don't throw here - project creation was successful, deployment failure is non-critical
+    }
+
+    // Post-deploy: wait for the deployment to be READY and add the resolved
+    // domain to the Neon Auth trusted-domain list.
+    if (syncPlan && firstDeploymentUrl !== undefined) {
+      try {
+        const readyDomain = await waitForDeploymentReady({
+          vercel,
+          projectId: projectData.id,
+        });
+        const domain =
+          readyDomain ??
+          (await getPrimaryProjectDomain({
+            vercel,
+            projectId: projectData.id,
+          }));
+        if (domain && syncPlan.trustedDomain?.branchId) {
+          await addNeonTrustedDomain({
+            projectId: app.neonProjectId!,
+            branchId: syncPlan.trustedDomain.branchId,
+            domain,
+          });
+          await db
+            .update(apps)
+            .set({ vercelDeploymentUrl: `https://${domain}` })
+            .where(eq(apps.id, appId));
+          await persistSyncResult({
+            appId,
+            syncedHash: computeSyncHash({
+              envVars: syncPlan.envVars.map(({ key, value }) => ({
+                key,
+                value,
+              })),
+              trustedDomain: domain,
+            }),
+            branchType: syncPlan.branchType,
+          });
+        } else {
+          logger.warn(
+            `Skipping trusted-domain sync: domain=${domain}, branchId=${syncPlan.trustedDomain?.branchId}`,
+          );
+        }
+      } catch (postDeployError: any) {
+        logger.warn(
+          `Post-deploy trusted-domain sync failed: ${postDeployError.message}`,
+        );
+      }
     }
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
@@ -557,6 +641,138 @@ async function handleDisconnectVercelProject(
     .where(eq(apps.id, appId));
 }
 
+// --- Sync Plan / Drift / Manual Sync / Env removal Handlers ---
+
+async function requireAppWithVercelAndNeon(appId: number) {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) {
+    throw new DyadError("App not found.", DyadErrorKind.NotFound);
+  }
+  if (!app.vercelProjectId || !app.vercelProjectName) {
+    throw new DyadError(
+      "App is not linked to a Vercel project.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  if (!app.neonProjectId) {
+    throw new DyadError(
+      "App is not linked to a Neon project.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  return app;
+}
+
+function requireVercelClient(): Vercel {
+  const settings = readSettings();
+  const accessToken = settings.vercelAccessToken?.value;
+  if (!accessToken) {
+    throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
+  }
+  return createVercelClient(accessToken);
+}
+
+async function handleGetSyncPlan({
+  appId,
+}: {
+  appId: number;
+}): Promise<VercelSyncPlan> {
+  const app = await requireAppWithVercelAndNeon(appId);
+  const vercel = requireVercelClient();
+  return buildSyncPlan({ vercel, app });
+}
+
+async function handleSyncToVercel({
+  appId,
+}: {
+  appId: number;
+}): Promise<VercelSyncResult> {
+  const app = await requireAppWithVercelAndNeon(appId);
+  const vercel = requireVercelClient();
+  const plan = await buildSyncPlan({ vercel, app });
+
+  await applyVercelEnvVars({
+    vercel,
+    projectId: app.vercelProjectId!,
+    envVars: plan.envVars,
+  });
+
+  let trustedDomain: string | null = null;
+  let warning: string | undefined;
+  if (plan.trustedDomain) {
+    try {
+      await addNeonTrustedDomain({
+        projectId: app.neonProjectId!,
+        branchId: plan.trustedDomain.branchId,
+        domain: plan.trustedDomain.domain,
+      });
+      trustedDomain = plan.trustedDomain.domain;
+    } catch (error: any) {
+      warning = `Failed to update Neon trusted domain: ${error.message}`;
+      logger.warn(warning);
+    }
+  } else {
+    warning =
+      "No Vercel deployment URL is available yet — trusted domain was not updated.";
+  }
+
+  const syncedHash = computeSyncHash({
+    envVars: plan.envVars.map(({ key, value }) => ({ key, value })),
+    trustedDomain,
+  });
+  await persistSyncResult({
+    appId,
+    syncedHash,
+    branchType: plan.branchType,
+  });
+
+  return { syncedHash, trustedDomain, warning };
+}
+
+async function handleGetDriftStatus({
+  appId,
+}: {
+  appId: number;
+}): Promise<VercelDriftStatus> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.vercelProjectId || !app.neonProjectId) {
+    return {
+      hasDrift: false,
+      isFirstSync: true,
+      branchTypeChanged: false,
+      lastSyncedAt: null,
+    };
+  }
+  try {
+    const vercel = requireVercelClient();
+    const plan = await buildSyncPlan({ vercel, app });
+    return {
+      hasDrift:
+        app.vercelLastSyncedHash != null &&
+        plan.currentHash !== app.vercelLastSyncedHash,
+      isFirstSync: plan.isFirstSync,
+      branchTypeChanged: plan.branchTypeChanged,
+      lastSyncedAt: app.vercelLastSyncedAt ?? null,
+    };
+  } catch (error: any) {
+    logger.warn(`getDriftStatus failed for app ${appId}: ${error.message}`);
+    return {
+      hasDrift: false,
+      isFirstSync: app.vercelLastSyncedHash == null,
+      branchTypeChanged: false,
+      lastSyncedAt: app.vercelLastSyncedAt ?? null,
+    };
+  }
+}
+
+async function handleRemoveNeonEnvVarsHandler({
+  appId,
+}: {
+  appId: number;
+}): Promise<void> {
+  await removeNeonEnvVarsFromLinkedVercel({ appId });
+}
+
 // --- Registration ---
 export function registerVercelHandlers() {
   // DO NOT LOG this handler because tokens are sensitive
@@ -593,6 +809,25 @@ export function registerVercelHandlers() {
   createTypedHandler(vercelContracts.disconnect, async (event, params) => {
     await handleDisconnectVercelProject(event, params);
   });
+
+  createTypedHandler(vercelContracts.getSyncPlan, async (_event, params) => {
+    return handleGetSyncPlan(params);
+  });
+
+  createTypedHandler(vercelContracts.syncToVercel, async (_event, params) => {
+    return handleSyncToVercel(params);
+  });
+
+  createTypedHandler(vercelContracts.getDriftStatus, async (_event, params) => {
+    return handleGetDriftStatus(params);
+  });
+
+  createTypedHandler(
+    vercelContracts.removeNeonEnvVars,
+    async (_event, params) => {
+      await handleRemoveNeonEnvVarsHandler(params);
+    },
+  );
 
   logger.debug("Registered Vercel IPC handlers");
 }

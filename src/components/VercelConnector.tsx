@@ -15,6 +15,7 @@ import {
 import {} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VercelSyncSummaryCard } from "@/components/VercelSyncSummaryCard";
 
 interface VercelConnectorProps {
   appId: number | null;
@@ -36,6 +37,7 @@ interface ConnectedVercelConnectorProps {
 interface UnconnectedVercelConnectorProps {
   appId: number | null;
   folderName: string;
+  app: App | null | undefined;
   settings: any;
   refreshSettings: () => void;
   refreshApp: () => void;
@@ -215,6 +217,7 @@ function ConnectedVercelConnector({
 function UnconnectedVercelConnector({
   appId,
   folderName,
+  app,
   settings,
   refreshSettings,
   refreshApp,
@@ -350,6 +353,7 @@ function UnconnectedVercelConnector({
         await ipc.vercel.createProject({
           name: projectName,
           appId,
+          confirmSync: true,
         });
       } else {
         await ipc.vercel.connectExistingProject({
@@ -569,6 +573,17 @@ function UnconnectedVercelConnector({
                     </p>
                   )}
                 </div>
+
+                {app?.neonProjectId && (
+                  <VercelSyncSummaryCard
+                    branchType={
+                      app.databaseUrlBranchType === "production"
+                        ? "production"
+                        : "development"
+                    }
+                    vercelProjectName={projectName}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -658,6 +673,7 @@ export function VercelConnector({ appId, folderName }: VercelConnectorProps) {
       <UnconnectedVercelConnector
         appId={appId}
         folderName={folderName}
+        app={app}
         settings={settings}
         refreshSettings={refreshSettings}
         refreshApp={refreshApp}

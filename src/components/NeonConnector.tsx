@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ExternalLink,
   Info,
@@ -75,6 +76,8 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const [isDisconnectAccountDialogOpen, setIsDisconnectAccountDialogOpen] =
     useState(false);
+  const [removeVercelEnvVarsOnDisconnect, setRemoveVercelEnvVarsOnDisconnect] =
+    useState(true);
   const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formatToastError = (error: unknown) => getErrorMessage(error);
   const projectDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -212,7 +215,11 @@ export function NeonConnector({ appId }: { appId: number }) {
   const handleUnsetProject = async () => {
     setIsDisconnecting(true);
     try {
-      await ipc.neon.unsetAppProject({ appId });
+      await ipc.neon.unsetAppProject({
+        appId,
+        removeVercelEnvVars:
+          !!app?.vercelProjectId && removeVercelEnvVarsOnDisconnect,
+      });
       toast.success(t("integrations.neon.projectDisconnected"));
       setIsDisconnectDialogOpen(false);
       await refreshApp();
@@ -555,6 +562,34 @@ export function NeonConnector({ appId }: { appId: number }) {
                     {t("integrations.neon.disconnectConfirmation")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                {app?.vercelProjectId && (
+                  <label
+                    htmlFor="remove-vercel-env-vars"
+                    className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm cursor-pointer"
+                  >
+                    <Checkbox
+                      id="remove-vercel-env-vars"
+                      checked={removeVercelEnvVarsOnDisconnect}
+                      onCheckedChange={(checked) =>
+                        setRemoveVercelEnvVarsOnDisconnect(checked === true)
+                      }
+                      disabled={isDisconnecting}
+                      className="mt-0.5"
+                    />
+                    <span className="leading-snug">
+                      Also remove Neon env vars (
+                      <code className="font-mono text-xs">DATABASE_URL</code>,{" "}
+                      <code className="font-mono text-xs">
+                        NEON_AUTH_BASE_URL
+                      </code>
+                      ,{" "}
+                      <code className="font-mono text-xs">
+                        NEON_AUTH_COOKIE_SECRET
+                      </code>
+                      ) from the linked Vercel project.
+                    </span>
+                  </label>
+                )}
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={isDisconnecting}>
                     {t("integrations.neon.cancel")}

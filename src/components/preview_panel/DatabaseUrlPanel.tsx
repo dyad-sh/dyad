@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   Check,
   Copy,
   Database,
   FlaskConical,
+  Loader2,
+  RefreshCw,
   Server,
 } from "lucide-react";
 import { ipc } from "@/ipc/types";
@@ -14,28 +17,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { queryKeys } from "@/lib/queryKeys";
 import { getErrorMessage } from "@/lib/errors";
+import { useLoadApp } from "@/hooks/useLoadApp";
+import { useDriftStatus, useSyncToVercel } from "@/hooks/useVercelSync";
+import { showSuccess, showError, showWarning } from "@/lib/toast";
 
 type EnvKind = "prod" | "dev";
+type DbBranchType = "production" | "development";
 
 interface DatabaseUrlPanelProps {
   appId: number;
 }
 
-const storageKey = (appId: number) => `dyad.databaseUrlPanel.env.${appId}`;
-
-const readPersistedEnv = (appId: number): EnvKind | null => {
-  try {
-    const raw = localStorage.getItem(storageKey(appId));
-    return raw === "prod" || raw === "dev" ? raw : null;
-  } catch {
-    return null;
-  }
-};
+const LEGACY_STORAGE_KEY = (appId: number) =>
+  `dyad.databaseUrlPanel.env.${appId}`;
 
 const ENV_META: Record<
   EnvKind,
   {
-    branchType: "production" | "development";
+    branchType: DbBranchType;
     title: string;
     description: string;
     icon: typeof Server;
@@ -57,30 +56,71 @@ const ENV_META: Record<
   },
 };
 
+const branchTypeToKind = (branchType: DbBranchType): EnvKind =>
+  branchType === "production" ? "prod" : "dev";
+
 export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
-  const [selectedEnv, setSelectedEnv] = useState<EnvKind | null>(() =>
-    readPersistedEnv(appId),
-  );
+  const { app, refreshApp } = useLoadApp(appId);
+  const queryClient = useQueryClient();
+
+  const persistedBranchType = (app?.databaseUrlBranchType ??
+    null) as DbBranchType | null;
+  const selectedEnv: EnvKind | null = persistedBranchType
+    ? branchTypeToKind(persistedBranchType)
+    : null;
+
   const [pendingEnv, setPendingEnv] = useState<EnvKind | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // One-time migration of the legacy localStorage value into the DB column.
+  // Runs once per app once the loaded app row reveals no persisted choice.
   useEffect(() => {
-    setSelectedEnv(readPersistedEnv(appId));
+    if (!app || appId == null) return;
+    if (app.databaseUrlBranchType != null) return;
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY(appId));
+    } catch {
+      raw = null;
+    }
+    if (raw !== "prod" && raw !== "dev") return;
+    const branchType: DbBranchType =
+      raw === "prod" ? "production" : "development";
+    ipc.app
+      .setDatabaseUrlBranchType({ appId, branchType })
+      .then(() => {
+        try {
+          localStorage.removeItem(LEGACY_STORAGE_KEY(appId));
+        } catch {
+          /* ignore */
+        }
+        refreshApp();
+      })
+      .catch((error) => {
+        console.error("Failed to backfill databaseUrlBranchType:", error);
+      });
+  }, [app, appId, refreshApp]);
+
+  useEffect(() => {
     setPendingEnv(null);
     setCopied(false);
   }, [appId]);
 
-  const confirmEnv = () => {
-    if (pendingEnv === null) return;
-    try {
-      localStorage.setItem(storageKey(appId), pendingEnv);
-    } catch {
-      // ignore — UI still works without persistence
-    }
-    setSelectedEnv(pendingEnv);
+  const setSelectedEnv = async (env: EnvKind) => {
+    await ipc.app.setDatabaseUrlBranchType({
+      appId,
+      branchType: ENV_META[env].branchType,
+    });
+    refreshApp();
   };
 
-  const branchType =
+  const confirmEnv = async () => {
+    if (pendingEnv === null) return;
+    await setSelectedEnv(pendingEnv);
+    setPendingEnv(null);
+  };
+
+  const branchType: DbBranchType | null =
     selectedEnv !== null ? ENV_META[selectedEnv].branchType : null;
 
   const { data, isLoading, error } = useQuery({
@@ -97,13 +137,25 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const handleBack = () => {
-    try {
-      localStorage.removeItem(storageKey(appId));
-    } catch {
-      // ignore
-    }
-    setSelectedEnv(null);
+  const hasVercelProject = !!app?.vercelProjectId;
+  const lastSyncedBranchType = app?.vercelLastSyncedBranchType as
+    | DbBranchType
+    | null
+    | undefined;
+  const branchTypeChanged = useMemo(
+    () =>
+      !!lastSyncedBranchType &&
+      !!branchType &&
+      lastSyncedBranchType !== branchType,
+    [lastSyncedBranchType, branchType],
+  );
+
+  const { data: drift } = useDriftStatus(hasVercelProject ? appId : null);
+  const syncMutation = useSyncToVercel(appId);
+
+  const handleBack = async () => {
+    await ipc.app.setDatabaseUrlBranchType({ appId, branchType: null });
+    refreshApp();
     setPendingEnv(null);
     setCopied(false);
   };
@@ -114,6 +166,27 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleSync = async () => {
+    try {
+      const result = await syncMutation.mutateAsync();
+      if (result.warning) {
+        showWarning(result.warning);
+      } else {
+        showSuccess("Synced to Vercel.");
+      }
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apps.detail({ appId }),
+      });
+      refreshApp();
+    } catch (err) {
+      showError("Sync to Vercel failed: " + getErrorMessage(err));
+    }
+  };
+
+  const showBranchSwitchCta = hasVercelProject && branchTypeChanged;
+  const showDriftBanner =
+    hasVercelProject && !!drift?.hasDrift && !branchTypeChanged;
 
   return (
     <Card data-testid="database-url-panel">
@@ -231,6 +304,90 @@ export const DatabaseUrlPanel = ({ appId }: DatabaseUrlPanelProps) => {
                 </p>
               )}
             </div>
+
+            {showBranchSwitchCta && (
+              <div
+                data-testid="vercel-branch-switch-cta"
+                className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20"
+              >
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-300" />
+                  <div className="flex-1 space-y-2">
+                    <p className="text-amber-900 dark:text-amber-100">
+                      Your Vercel deployment is still using the{" "}
+                      <strong>{lastSyncedBranchType}</strong> branch. Switching
+                      to <strong>{branchType}</strong> will require pushing new
+                      env vars and will invalidate any active sessions on the
+                      live site.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSync}
+                      disabled={syncMutation.isPending}
+                    >
+                      {syncMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Syncing…
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Sync to Vercel
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showDriftBanner && (
+              <div
+                data-testid="vercel-drift-banner"
+                className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm dark:border-yellow-800 dark:bg-yellow-900/20"
+              >
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-300" />
+                  <div className="flex-1">
+                    <p className="text-yellow-900 dark:text-yellow-100">
+                      Vercel env vars or trusted domain differ from the last
+                      successful sync.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {hasVercelProject && !showBranchSwitchCta && (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Push the current connection string and Neon Auth allowlist to
+                  Vercel.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSync}
+                  disabled={syncMutation.isPending}
+                  data-testid="vercel-sync-button"
+                >
+                  {syncMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Syncing…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Sync to Vercel
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </>
         )}
       </CardContent>

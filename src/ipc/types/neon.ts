@@ -77,6 +77,7 @@ export const SetNeonAppProjectParamsSchema = z.object({
 
 export const UnsetNeonAppProjectParamsSchema = z.object({
   appId: z.number(),
+  removeVercelEnvVars: z.boolean().optional(),
 });
 
 export const SetNeonActiveBranchParamsSchema = z.object({

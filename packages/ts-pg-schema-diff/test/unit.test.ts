@@ -259,6 +259,62 @@ describe("generatePlan", () => {
     ]);
   });
 
+  it("alters views with CREATE OR REPLACE so dependents do not block the migration", () => {
+    const base = view("account_summary");
+    const dependent = view("account_summary_public");
+    const changedBase: View = {
+      ...base,
+      viewDefinition: " SELECT id, name\n   FROM accounts;",
+    };
+
+    const result = toSchemaDiffResult(
+      generatePlan(
+        {
+          ...emptySchema(),
+          views: [base, dependent],
+        },
+        {
+          ...emptySchema(),
+          views: [changedBase, dependent],
+        },
+      ),
+    );
+
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      'CREATE OR REPLACE VIEW "public"."account_summary" AS\n SELECT id, name\n   FROM accounts;',
+    ]);
+  });
+
+  it("recreates unchanged indexes after materialized view rebuilds", () => {
+    const currentView = materializedView("account_names");
+    const desiredView: MaterializedView = {
+      ...currentView,
+      viewDefinition: " SELECT name, id\n   FROM accounts;",
+    };
+    const viewIndex = materializedViewIndex("account_names_name_idx");
+
+    const result = toSchemaDiffResult(
+      generatePlan(
+        {
+          ...emptySchema(),
+          materializedViews: [currentView],
+          indexes: [viewIndex],
+        },
+        {
+          ...emptySchema(),
+          materializedViews: [desiredView],
+          indexes: [viewIndex],
+        },
+      ),
+    );
+
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      'DROP MATERIALIZED VIEW "public"."account_names"',
+      'CREATE MATERIALIZED VIEW "public"."account_names" AS\n SELECT name, id\n   FROM accounts;',
+      "CREATE INDEX CONCURRENTLY account_names_name_idx ON public.account_names USING btree (name)",
+    ]);
+  });
+
   it("classifies untrackable routine dependencies as destructive", () => {
     const desired: Schema = {
       ...emptySchema(),
@@ -380,6 +436,28 @@ describe("generatePlan", () => {
     );
   });
 
+  it("rejects generated column changes that cannot be emitted as ALTER COLUMN SQL", () => {
+    const currentColumn = column("full_name", "text", true);
+    const generatedColumn: Column = {
+      ...currentColumn,
+      isGenerated: true,
+      generationExpression: "lower(name)",
+    };
+
+    expect(() =>
+      generatePlan(
+        {
+          ...emptySchema(),
+          tables: [table("users", [currentColumn])],
+        },
+        {
+          ...emptySchema(),
+          tables: [table("users", [generatedColumn])],
+        },
+      ),
+    ).toThrow("changing stored generated columns is not supported");
+  });
+
   it("recreates valid foreign keys when the desired constraint is invalid", () => {
     const currentForeignKey = foreignKeyConstraint({
       constraintDef: 'FOREIGN KEY (user_id) REFERENCES "public"."users"(id)',
@@ -408,6 +486,34 @@ describe("generatePlan", () => {
       'ALTER TABLE "public"."orders" DROP CONSTRAINT "orders_user_id_fkey"',
       'ALTER TABLE "public"."orders" ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY (user_id) REFERENCES "public"."users"(id) NOT VALID',
     ]);
+  });
+
+  it("ignores NOT VALID suffix casing and whitespace when comparing foreign keys", () => {
+    const currentForeignKey = foreignKeyConstraint({
+      constraintDef:
+        'FOREIGN KEY (user_id) REFERENCES "public"."users"(id)   not valid',
+      isValid: false,
+    });
+    const desiredForeignKey = foreignKeyConstraint({
+      constraintDef:
+        'FOREIGN KEY (user_id) REFERENCES "public"."users"(id) NOT VALID',
+      isValid: false,
+    });
+
+    const result = toSchemaDiffResult(
+      generatePlan(
+        {
+          ...emptySchema(),
+          foreignKeyConstraints: [currentForeignKey],
+        },
+        {
+          ...emptySchema(),
+          foreignKeyConstraints: [desiredForeignKey],
+        },
+      ),
+    );
+
+    expect(result.statements).toEqual([]);
   });
 
   it("rejects dropping index partitions that back local constraints", () => {
@@ -627,6 +733,17 @@ function index(
     constraint: null,
     getIndexDefStmt,
     parentIdx: null,
+  };
+}
+
+function materializedViewIndex(name: string): Index {
+  return {
+    ...index(
+      name,
+      `CREATE INDEX ${name} ON public.account_names USING btree (name)`,
+    ),
+    owningRelName: schemaQualifiedName("public", "account_names"),
+    owningRelKind: "m",
   };
 }
 

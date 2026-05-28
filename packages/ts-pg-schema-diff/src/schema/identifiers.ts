@@ -29,10 +29,3 @@ export function procName(
       `"${unescapedName.replaceAll('"', '""')}"(${identityArguments})` as EscapedIdentifier,
   };
 }
-
-export function fqColumnName(
-  table: SchemaQualifiedName,
-  columnName: string,
-): string {
-  return `${fqName(table)}.${escapeIdentifier(columnName)}`;
-}

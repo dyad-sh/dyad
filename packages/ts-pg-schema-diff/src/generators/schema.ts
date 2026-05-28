@@ -3,6 +3,10 @@ import { deepEqual } from "../diff/equality.js";
 import { NotImplementedMigrationError } from "../errors.js";
 import { DirectedGraph } from "../graph/graph.js";
 import { SqlGraph, sqlPriority } from "../graph/sqlGraph.js";
+import {
+  constraintsEqualIgnoringLocality,
+  stripTrailingNotValid,
+} from "../schema/constraints.js";
 import { objectName } from "../schema/objectName.js";
 import { temporaryIndexName } from "../schema/randomIdentifier.js";
 import type {
@@ -49,11 +53,15 @@ export function generateStatements(
   options: GeneratePlanOptions = {},
 ): readonly InternalStatement[] {
   const indexDeletes = diff.indexDiffs.deletes.filter(
-    (index) => !indexOwningRelationDeleted(index, diff),
+    (index) => !indexOwningRelationDroppedOrRecreated(index, diff),
   );
+  const indexAdds = [
+    ...diff.indexDiffs.adds,
+    ...indexesForRecreatedMaterializedViews(diff),
+  ];
   const indexRenamesByName = buildReplacementIndexRenames(
     indexDeletes,
-    diff.indexDiffs.adds,
+    indexAdds,
   );
   const functionAddAlters = orderFunctionsForAddAlter([
     ...diff.functionDiffs.adds,
@@ -84,6 +92,7 @@ export function generateStatements(
   const tableDeletes = diff.tableDiffs.deletes
     .map((table) => deleteTable(table, diff))
     .filter(isStatement);
+  const orderedTableAdds = orderTableAdds(diff.tableDiffs.adds);
   for (const schemaEnum of enumRecreateDeletes) {
     assertEnumCanBeRecreated(schemaEnum, diff);
   }
@@ -147,11 +156,11 @@ export function generateStatements(
     },
     {
       id: "table:add",
-      statements: orderTableAdds(diff.tableDiffs.adds).map(addTable).flat(),
+      statements: orderedTableAdds.map(addTable).flat(),
     },
     {
       id: "table:attach-partition",
-      statements: orderTableAdds(diff.tableDiffs.adds)
+      statements: orderedTableAdds
         .map(addAttachPartitionStatement)
         .filter(isStatement),
     },
@@ -192,9 +201,7 @@ export function generateStatements(
     { id: "view:add", statements: diff.viewDiffs.adds.map(addView) },
     {
       id: "view:alter",
-      statements: diff.viewDiffs.alters
-        .map((viewDiff) => [deleteView(viewDiff.old), addView(viewDiff.next)])
-        .flat(),
+      statements: diff.viewDiffs.alters.map(alterView).flat(),
     },
     {
       id: "materialized-view:add",
@@ -211,13 +218,19 @@ export function generateStatements(
     },
     {
       id: "index:add",
-      statements: orderIndexAdds(diff.indexDiffs.adds)
+      statements: orderIndexAdds(indexAdds)
         .map((index) => addIndex(index, options))
         .flat(),
     },
     {
       id: "index:alter",
-      statements: diff.indexDiffs.alters.map(alterIndex).flat(),
+      statements: diff.indexDiffs.alters
+        .filter(
+          (indexDiff) =>
+            !indexOwningRelationDroppedOrRecreated(indexDiff.next, diff),
+        )
+        .map(alterIndex)
+        .flat(),
     },
     {
       id: "index:delete-replaced",
@@ -329,6 +342,36 @@ function indexOwningRelationDeleted(index: Index, diff: SchemaDiff): boolean {
   }
   return diff.tableDiffs.deletes.some(
     (table) => objectName(table) === owningRelationName,
+  );
+}
+
+function indexOwningRelationDroppedOrRecreated(
+  index: Index,
+  diff: SchemaDiff,
+): boolean {
+  return (
+    indexOwningRelationDeleted(index, diff) ||
+    (index.owningRelKind === "m" &&
+      diff.materializedViewDiffs.alters.some(
+        (viewDiff) => objectName(viewDiff.old) === fqName(index.owningRelName),
+      ))
+  );
+}
+
+function indexesForRecreatedMaterializedViews(
+  diff: SchemaDiff,
+): readonly Index[] {
+  const addedIndexNames = new Set(diff.indexDiffs.adds.map(objectName));
+  const alteredViewNames = new Set(
+    diff.materializedViewDiffs.alters.map((viewDiff) =>
+      objectName(viewDiff.next),
+    ),
+  );
+  return diff.next.indexes.filter(
+    (index) =>
+      index.owningRelKind === "m" &&
+      alteredViewNames.has(fqName(index.owningRelName)) &&
+      !addedIndexNames.has(objectName(index)),
   );
 }
 
@@ -1246,17 +1289,6 @@ function alterIndex(diff: {
   return statements;
 }
 
-function constraintsEqualIgnoringLocality(
-  left: NonNullable<Index["constraint"]>,
-  right: NonNullable<Index["constraint"]>,
-): boolean {
-  return (
-    left.type === right.type &&
-    left.escapedConstraintName === right.escapedConstraintName &&
-    left.constraintDef === right.constraintDef
-  );
-}
-
 function attachIndexPartition(index: Index): InternalStatement {
   if (index.parentIdx === null) {
     throw new Error("expected index partition parent");
@@ -1295,7 +1327,7 @@ function assertMissingConstraint(): never {
 function addForeignKeyConstraint(
   constraint: ForeignKeyConstraint,
 ): readonly InternalStatement[] {
-  const definition = stripNotValid(constraint.constraintDef);
+  const definition = stripTrailingNotValid(constraint.constraintDef);
   const addNotValidStatement = standardStatement(
     `ALTER TABLE ${fqName(constraint.owningTable)} ADD CONSTRAINT ${constraint.escapedName} ${definition} NOT VALID`,
   );
@@ -1308,10 +1340,6 @@ function addForeignKeyConstraint(
       `ALTER TABLE ${fqName(constraint.owningTable)} VALIDATE CONSTRAINT ${constraint.escapedName}`,
     ),
   ];
-}
-
-function stripNotValid(definition: string): string {
-  return definition.replace(/\s+NOT VALID$/iu, "");
 }
 
 function deleteForeignKeyConstraint(
@@ -1556,6 +1584,20 @@ function addView(view: View): InternalStatement {
   return standardStatement(
     `CREATE VIEW ${fqName(view.name)}${relOptionsClause(view.options)} AS\n${view.viewDefinition}`,
   );
+}
+
+function alterView(diff: {
+  readonly old: View;
+  readonly next: View;
+}): readonly InternalStatement[] {
+  if (deepEqual(diff.old, diff.next)) {
+    return [];
+  }
+  return [
+    standardStatement(
+      `CREATE OR REPLACE VIEW ${fqName(diff.next.name)}${relOptionsClause(diff.next.options)} AS\n${diff.next.viewDefinition}`,
+    ),
+  ];
 }
 
 function deleteView(view: View): InternalStatement {

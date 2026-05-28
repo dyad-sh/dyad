@@ -1,5 +1,9 @@
 import { deepEqual } from "./equality.js";
 import { diffLists, type DiffPair, type ListDiff } from "./listDiff.js";
+import {
+  constraintsEqualIgnoringLocality,
+  stripTrailingNotValid,
+} from "../schema/constraints.js";
 import { fqName } from "../schema/identifiers.js";
 import { normalizeSchema } from "../schema/normalize.js";
 import { objectName } from "../schema/objectName.js";
@@ -170,12 +174,12 @@ export function buildSchemaDiff(
         const canValidateInPlace = !oldObject.isValid && newObject.isValid;
         const oldComparable = {
           ...oldObject,
-          constraintDef: stripNotValid(oldObject.constraintDef),
+          constraintDef: stripTrailingNotValid(oldObject.constraintDef),
           ...(canValidateInPlace ? { isValid: newObject.isValid } : {}),
         };
         const newComparable = {
           ...newObject,
-          constraintDef: stripNotValid(newObject.constraintDef),
+          constraintDef: stripTrailingNotValid(newObject.constraintDef),
         };
         return {
           diff: { old: oldObject, next: newObject },
@@ -339,17 +343,6 @@ function indexIsOnPartitionedTable(
   return table !== undefined && table.partitionKeyDef.length > 0;
 }
 
-function constraintsEqualIgnoringLocality(
-  left: NonNullable<Index["constraint"]>,
-  right: NonNullable<Index["constraint"]>,
-): boolean {
-  return (
-    left.type === right.type &&
-    left.escapedConstraintName === right.escapedConstraintName &&
-    left.constraintDef === right.constraintDef
-  );
-}
-
 function isSubsequence(
   values: readonly string[],
   container: readonly string[],
@@ -422,9 +415,7 @@ function diffTableDependentObjectList<
     getName: objectName,
     buildDiff: (oldObject, newObject) => ({
       diff: { old: oldObject, next: newObject },
-      requiresRecreation:
-        !deepEqual(oldObject, newObject) ||
-        hasDeletedTableDependency(oldObject, tableDiffs),
+      requiresRecreation: hasDeletedTableDependency(oldObject, tableDiffs),
     }),
   });
   return {
@@ -496,7 +487,7 @@ function buildTableDiff(
         getName: objectName,
         buildDiff: (oldColumn, newColumn, oldOrdering, newOrdering) => ({
           diff: { old: oldColumn, next: newColumn, oldOrdering, newOrdering },
-          requiresRecreation: false,
+          requiresRecreation: columnRequiresRecreation(oldColumn, newColumn),
         }),
       }),
       checkConstraintDiff: diffLists({
@@ -561,12 +552,21 @@ function policyCanBeAltered(oldPolicy: Policy, newPolicy: Policy): boolean {
   return deepEqual(comparableOld, newPolicy);
 }
 
-function tableIsPartitioned(table: Table): boolean {
-  return table.partitionKeyDef.length > 0;
+function columnRequiresRecreation(
+  oldColumn: Column,
+  newColumn: Column,
+): boolean {
+  if (
+    oldColumn.isGenerated !== newColumn.isGenerated ||
+    oldColumn.generationExpression !== newColumn.generationExpression
+  ) {
+    throw new NotImplementedMigrationError(
+      "changing stored generated columns is not supported",
+    );
+  }
+  return false;
 }
 
-function stripNotValid(value: string): string {
-  return value.endsWith(" NOT VALID")
-    ? value.slice(0, -" NOT VALID".length)
-    : value;
+function tableIsPartitioned(table: Table): boolean {
+  return table.partitionKeyDef.length > 0;
 }

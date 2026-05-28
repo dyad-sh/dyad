@@ -298,6 +298,7 @@ SELECT
     proc_namespace.nspname::TEXT AS func_schema_name,
     proc_lang.lanname::TEXT AS func_lang,
     pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) AS func_identity_arguments,
+    pg_catalog.pg_get_function_result(pg_proc.oid)::TEXT AS func_result,
     pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def
 FROM pg_catalog.pg_proc
 INNER JOIN pg_catalog.pg_namespace AS proc_namespace
@@ -491,10 +492,10 @@ SELECT
     INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid
     INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
     INNER JOIN pg_catalog.pg_class AS dep_c
-        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm')
     INNER JOIN pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    WHERE d.refobjid = c.oid AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
@@ -557,10 +558,10 @@ SELECT
     INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid
     INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
     INNER JOIN pg_catalog.pg_class AS dep_c
-        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm')
     INNER JOIN pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    WHERE d.refobjid = c.oid AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid

@@ -96,6 +96,12 @@ export function generateStatements(
   for (const schemaEnum of enumRecreateDeletes) {
     assertEnumCanBeRecreated(schemaEnum, diff);
   }
+  for (const functionDiff of diff.functionDiffs.alters) {
+    assertFunctionCanBeAltered(functionDiff);
+  }
+  for (const viewDiff of diff.materializedViewDiffs.alters) {
+    assertMaterializedViewCanBeRecreated(viewDiff.old, diff);
+  }
   return orderStatementSections([
     {
       id: "named-schema:add",
@@ -1495,6 +1501,17 @@ function addFunction(fn: FunctionSchema): InternalStatement {
   };
 }
 
+function assertFunctionCanBeAltered(diff: {
+  readonly old: FunctionSchema;
+  readonly next: FunctionSchema;
+}): void {
+  if (diff.old.returnType !== diff.next.returnType) {
+    throw new NotImplementedMigrationError(
+      `changing return type of function ${fqName(diff.next.name)} is not supported`,
+    );
+  }
+}
+
 function deleteFunction(fn: FunctionSchema): InternalStatement {
   return {
     ...standardStatement(`DROP FUNCTION ${fqName(fn.name)}`),
@@ -1639,6 +1656,32 @@ function addMaterializedView(view: MaterializedView): InternalStatement {
 
 function deleteMaterializedView(view: MaterializedView): InternalStatement {
   return standardStatement(`DROP MATERIALIZED VIEW ${fqName(view.name)}`);
+}
+
+function assertMaterializedViewCanBeRecreated(
+  view: MaterializedView,
+  diff: SchemaDiff,
+): void {
+  const viewName = objectName(view);
+  for (const dependent of [
+    ...diff.next.views,
+    ...diff.next.materializedViews,
+  ]) {
+    if (objectName(dependent) === viewName) {
+      continue;
+    }
+    if (
+      dependent.tableDependencies.some(
+        (dependency) => fqName(dependency.name) === viewName,
+      )
+    ) {
+      const dependentKind =
+        dependent.kind === "view" ? "view" : "materialized view";
+      throw new NotImplementedMigrationError(
+        `recreating materialized view ${viewName} is not supported because it is referenced by ${dependentKind} ${objectName(dependent)}`,
+      );
+    }
+  }
 }
 
 function relOptionsClause(options: Readonly<Record<string, string>>): string {

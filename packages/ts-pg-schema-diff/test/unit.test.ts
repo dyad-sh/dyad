@@ -440,6 +440,32 @@ describe("generatePlan", () => {
     ]);
   });
 
+  it("rejects function return type changes before using CREATE OR REPLACE", () => {
+    const currentFunction = functionSchema("answer", "sql");
+    const desiredFunction = functionSchema(
+      "answer",
+      "sql",
+      [],
+      'CREATE OR REPLACE FUNCTION "public"."answer"() RETURNS text LANGUAGE sql RETURN \'1\'',
+      "text",
+    );
+
+    expect(() =>
+      generatePlan(
+        {
+          ...emptySchema(),
+          functions: [currentFunction],
+        },
+        {
+          ...emptySchema(),
+          functions: [desiredFunction],
+        },
+      ),
+    ).toThrow(
+      'changing return type of function "public"."answer"() is not supported',
+    );
+  });
+
   it("preserves millisecond precision when converting bigint epochs to timestamp variants", () => {
     const current: Schema = {
       ...emptySchema(),
@@ -836,6 +862,7 @@ function functionSchema(
   language: string,
   dependsOnFunctions: readonly FunctionSchema["name"][] = [],
   functionDef?: string,
+  returnType = "integer",
 ): FunctionSchema {
   return {
     kind: "function",
@@ -845,6 +872,7 @@ function functionSchema(
       (language === "sql"
         ? `CREATE FUNCTION "public"."${name}"() RETURNS integer LANGUAGE sql RETURN 1`
         : `CREATE FUNCTION "public"."${name}"() RETURNS integer LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END; $$`),
+    returnType,
     language,
     dependsOnFunctions,
   };

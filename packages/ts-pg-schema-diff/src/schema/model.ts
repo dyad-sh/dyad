@@ -151,6 +151,7 @@ export type FunctionSchema = {
   readonly kind: "function";
   readonly name: SchemaQualifiedName;
   readonly functionDef: string;
+  readonly returnType: string;
   readonly language: string;
   readonly dependsOnFunctions: readonly SchemaQualifiedName[];
 };

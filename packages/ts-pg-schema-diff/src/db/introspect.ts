@@ -128,6 +128,7 @@ type ProcRow = {
   readonly func_schema_name: string;
   readonly func_lang: string;
   readonly func_identity_arguments: string;
+  readonly func_result: string;
   readonly func_def: string;
 };
 
@@ -550,6 +551,7 @@ async function fetchFunctions(
         row.func_identity_arguments,
       ),
       functionDef: row.func_def,
+      returnType: row.func_result,
       language: row.func_lang,
       dependsOnFunctions: await fetchDependsOnFunctions(
         client,

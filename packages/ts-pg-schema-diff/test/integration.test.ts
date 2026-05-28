@@ -1005,6 +1005,38 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
+  it("rejects materialized view rebuilds with dependent views", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "matview_dependent_current_db");
+    await createDatabase(pg, "matview_dependent_desired_db");
+
+    await execSql(
+      pg.databaseUrl("matview_dependent_current_db"),
+      `
+        CREATE TABLE accounts (id integer NOT NULL);
+        CREATE MATERIALIZED VIEW account_ids AS SELECT id FROM accounts;
+        CREATE VIEW account_ids_public AS SELECT id FROM account_ids;
+      `,
+    );
+    await execSql(
+      pg.databaseUrl("matview_dependent_desired_db"),
+      `
+        CREATE TABLE accounts (id integer NOT NULL);
+        CREATE MATERIALIZED VIEW account_ids AS SELECT id FROM accounts WHERE id > 0;
+        CREATE VIEW account_ids_public AS SELECT id FROM account_ids;
+      `,
+    );
+
+    await expect(
+      generateSchemaDiff({
+        currentDatabaseUrl: pg.databaseUrl("matview_dependent_current_db"),
+        desiredDatabaseUrl: pg.databaseUrl("matview_dependent_desired_db"),
+      }),
+    ).rejects.toThrow(
+      'recreating materialized view "public"."account_ids" is not supported because it is referenced by view "public"."account_ids_public"',
+    );
+  }, 30_000);
+
   it("classifies untrackable routine dependencies as destructive", async () => {
     const pg = requireHarness();
     await createDatabase(pg, "routine_hazard_current_db");
@@ -1047,6 +1079,30 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       desiredDatabaseUrl: pg.databaseUrl("routine_hazard_desired_db"),
     });
     expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
+  it("rejects function return type changes before replacing functions", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "function_return_current_db");
+    await createDatabase(pg, "function_return_desired_db");
+
+    await execSql(
+      pg.databaseUrl("function_return_current_db"),
+      "CREATE FUNCTION answer() RETURNS integer LANGUAGE sql RETURN 1",
+    );
+    await execSql(
+      pg.databaseUrl("function_return_desired_db"),
+      "CREATE FUNCTION answer() RETURNS text LANGUAGE sql RETURN '1'",
+    );
+
+    await expect(
+      generateSchemaDiff({
+        currentDatabaseUrl: pg.databaseUrl("function_return_current_db"),
+        desiredDatabaseUrl: pg.databaseUrl("function_return_desired_db"),
+      }),
+    ).rejects.toThrow(
+      'changing return type of function "public"."answer"() is not supported',
+    );
   }, 30_000);
 
   it("orders function migrations by tracked dependencies", async () => {
@@ -4583,6 +4639,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       expect(dependentFn).toMatchObject({
         kind: "function",
         name: { schemaName: "app", escapedName: '"dependent_fn"()' },
+        returnType: "integer",
         language: "sql",
         dependsOnFunctions: [{ schemaName: "app", escapedName: '"base_fn"()' }],
       });

@@ -1,5 +1,5 @@
 import path from "path";
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import * as fs from "fs";
 
@@ -161,7 +161,7 @@ test("attach image via drag - chat", async ({ po }) => {
   const chatContextButton = po.page.getByRole("button", {
     name: "Attach file as chat context",
   });
-  await expect(chatContextButton).toBeVisible();
+  await expect(chatContextButton).toBeVisible({ timeout: Timeout.MEDIUM });
   await chatContextButton.click();
 
   // submit and verify

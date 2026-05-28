@@ -25,9 +25,11 @@ test("captures an app screenshot after the first generated commit", async ({
     expect(screenshots.length).toBeGreaterThan(0);
     const size = fs.statSync(path.join(screenshotDir, screenshots[0])).size;
     expect(size).toBeGreaterThan(0);
-  }).toPass({ timeout: Timeout.MEDIUM });
+  }).toPass({ timeout: Timeout.MEDIUM, intervals: [500] });
 
-  await po.appManagement.getTitleBarAppNameButton().click();
+  const appNameButton = po.appManagement.getTitleBarAppNameButton();
+  await expect(appNameButton).toBeVisible({ timeout: Timeout.MEDIUM });
+  await appNameButton.click();
   await expect(po.page.getByRole("img", { name: /Preview of/ })).toBeVisible({
     timeout: Timeout.MEDIUM,
   });

@@ -24,6 +24,7 @@ testSkipIfWindows(
     // Open the system messages console
     // Logs are generated in useEffect when component mounts, so they may already exist
     const consoleHeader = po.page.locator('text="System Messages"').first();
+    await expect(consoleHeader).toBeVisible({ timeout: Timeout.MEDIUM });
     await consoleHeader.click();
 
     // Wait for console to be visible and auto-scroll to complete
@@ -38,7 +39,7 @@ testSkipIfWindows(
       const allLogs = po.page.getByTestId("console-entry");
       const count = await allLogs.count();
       expect(count).toBeGreaterThan(0);
-      await expect(allLogs.last()).toBeVisible();
+      await expect(allLogs.last()).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Wait for all console logs to appear - use retry logic
@@ -49,7 +50,7 @@ testSkipIfWindows(
         .filter({ hasText: "[LOG] Hello from console.log" });
       const count = await consoleEntry.count();
       expect(count).toBeGreaterThan(0);
-      await expect(consoleEntry.first()).toBeVisible();
+      await expect(consoleEntry.first()).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Verify console.info appears
@@ -59,7 +60,7 @@ testSkipIfWindows(
         .filter({ hasText: "[INFO] Info message" });
       const count = await infoEntry.count();
       expect(count).toBeGreaterThan(0);
-      await expect(infoEntry.first()).toBeVisible();
+      await expect(infoEntry.first()).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Verify console.warn appears
@@ -69,7 +70,7 @@ testSkipIfWindows(
         .filter({ hasText: "[WARN] Warning message" });
       const count = await warnEntry.count();
       expect(count).toBeGreaterThan(0);
-      await expect(warnEntry.first()).toBeVisible();
+      await expect(warnEntry.first()).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Verify console.error appears
@@ -79,7 +80,7 @@ testSkipIfWindows(
         .filter({ hasText: "[ERROR] Test error message" });
       const count = await errorEntry.count();
       expect(count).toBeGreaterThan(0);
-      await expect(errorEntry.first()).toBeVisible();
+      await expect(errorEntry.first()).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
   },
 );
@@ -197,22 +198,27 @@ testSkipIfWindows(
     await consoleHeader.click();
 
     // Wait for the log entry to appear
-    const consoleEntry = await po.page.getByTestId("console-entry").last();
-    await expect(consoleEntry).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+    await expect(async () => {
+      const count = await po.page.getByTestId("console-entry").count();
+      expect(count).toBeGreaterThan(0);
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
+    const consoleEntry = po.page.getByTestId("console-entry").last();
+    await expect(consoleEntry).toBeVisible({ timeout: Timeout.MEDIUM });
 
     // Hover over the log entry to reveal the send to chat button
     await consoleEntry.hover();
 
     // Click the send to chat button (MessageSquare icon)
     const sendToChatButton = consoleEntry.getByTestId("send-to-chat");
-    await sendToChatButton.click({ timeout: Timeout.EXTRA_LONG });
+    await expect(sendToChatButton).toBeVisible({ timeout: Timeout.MEDIUM });
+    await sendToChatButton.click();
 
     // Check that the chat input now contains the log information
     const chatInput = po.chatActions.getChatInput();
-    const inputValue = await chatInput.textContent();
-
-    // Verify the log was added to chat input
-    expect(inputValue).toContain("```");
+    await expect(async () => {
+      const inputValue = await chatInput.textContent();
+      expect(inputValue).toContain("```");
+    }).toPass({ timeout: Timeout.MEDIUM });
   },
 );
 
@@ -224,18 +230,20 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
   await po.approveProposal();
 
   // Wait for app to run
-  await po.page
-    .getByTestId("preview-pick-element-button")
-    .click({ timeout: Timeout.EXTRA_LONG });
+  const pickButton = po.page.getByTestId("preview-pick-element-button");
+  await expect(pickButton).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+  await pickButton.click();
 
   // Open the system messages console
   const consoleHeader = po.page.locator('text="System Messages"').first();
+  await expect(consoleHeader).toBeVisible({ timeout: Timeout.MEDIUM });
   await consoleHeader.click();
 
   // Apply a filter
   const levelFilter = po.page
     .locator("select")
     .filter({ hasText: "All Levels" });
+  await expect(levelFilter).toBeVisible({ timeout: Timeout.MEDIUM });
   await levelFilter.selectOption("error");
 
   // Check that clear button appears

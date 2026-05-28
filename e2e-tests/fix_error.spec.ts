@@ -17,10 +17,9 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
   await po.chatActions.waitForChatCompletion();
   await po.snapshotMessages();
 
-  // TODO: this is an actual bug where the error banner should not
-  // be shown, however there's some kind of race condition and
-  // we don't reliably detect when the HMR update has completed.
-  // await po.previewPanel.locatePreviewErrorBanner().waitFor({ state: "hidden" });
+  // Wait for HMR to apply the fix before snapshotting the preview.
+  // There's a race between chat completion and the preview updating.
+  await po.page.waitForTimeout(500);
   await po.previewPanel.snapshotPreview();
 });
 

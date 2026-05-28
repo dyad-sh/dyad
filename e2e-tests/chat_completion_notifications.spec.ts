@@ -154,6 +154,9 @@ testWithNotificationsEnabled(
     await po.browserNotifications.injectFakeNotifications();
 
     await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
+    // Brief wait to ensure the stream has started before switching chats,
+    // otherwise the completion event may not fire for the original chat.
+    await po.page.waitForTimeout(200);
     await triggerDifferentChat(po, chatId);
 
     const notification =

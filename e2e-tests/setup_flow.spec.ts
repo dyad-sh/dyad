@@ -58,7 +58,9 @@ testSetup.describe("Setup Flow", () => {
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Expand the Node.js section to reveal the install button
-    await po.page.getByText("1. Install Node.js (App Runtime)").click();
+    const nodeSection = po.page.getByText("1. Install Node.js (App Runtime)");
+    await expect(nodeSection).toBeVisible({ timeout: Timeout.MEDIUM });
+    await nodeSection.click();
 
     await expect(
       po.page.getByRole("button", { name: "Install Node.js Runtime" }),
@@ -87,11 +89,11 @@ testSetup.describe("Setup Flow", () => {
     const laterButton = po.page.getByRole("button", { name: "Later" });
     if (await laterButton.isVisible({ timeout: 1000 }).catch(() => false)) {
       await laterButton.click();
+      await expect(laterButton).not.toBeVisible({ timeout: Timeout.SHORT });
     }
 
-    // Click the continue button using dispatchEvent to reliably trigger
-    // the React onClick handler regardless of overlapping elements or
-    // accordion positioning issues.
+    // Click the continue button - ensure it's visible and clickable first
+    await expect(continueButton).toBeVisible({ timeout: Timeout.MEDIUM });
     await continueButton.dispatchEvent("click");
 
     // After clicking continue, the app calls reloadEnvPath + getNodejsStatus.
@@ -101,13 +103,14 @@ testSetup.describe("Setup Flow", () => {
       const nodeTrigger = po.page.getByRole("button", {
         name: "1. Install Node.js (App Runtime)",
       });
+      await expect(nodeTrigger).toBeVisible({ timeout: 2_000 });
       const isExpanded = await nodeTrigger.getAttribute("aria-expanded");
       if (isExpanded === "false") {
         await nodeTrigger.click();
       }
       await expect(
         po.page.getByText(/Node\.js \(v[\d.]+\) installed/),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Reset mock

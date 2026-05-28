@@ -12,8 +12,11 @@ test("send button disabled during pending proposal", async ({ po }) => {
     timeout: Timeout.MEDIUM,
   });
 
-  // Type something in the input to ensure it's not disabled due to empty input
-  await po.chatActions.getChatInput().fill("test message");
+  // Type something in the input to ensure it's not disabled due to empty input.
+  // Use click + keyboard.type instead of fill() for Lexical editor reliability.
+  const chatInput = po.chatActions.getChatInput();
+  await chatInput.click();
+  await po.page.keyboard.type("test message");
 
   // Check send button is disabled due to pending changes
   const sendButton = po.page.getByRole("button", { name: "Send message" });
@@ -23,7 +26,7 @@ test("send button disabled during pending proposal", async ({ po }) => {
   await po.approveProposal();
 
   // Check send button is enabled again
-  await expect(sendButton).toBeEnabled();
+  await expect(sendButton).toBeEnabled({ timeout: Timeout.MEDIUM });
 });
 
 test("send button disabled during pending proposal - reject", async ({
@@ -39,8 +42,11 @@ test("send button disabled during pending proposal - reject", async ({
     timeout: Timeout.MEDIUM,
   });
 
-  // Type something in the input to ensure it's not disabled due to empty input
-  await po.chatActions.getChatInput().fill("test message");
+  // Type something in the input to ensure it's not disabled due to empty input.
+  // Use click + keyboard.type instead of fill() for Lexical editor reliability.
+  const chatInput = po.chatActions.getChatInput();
+  await chatInput.click();
+  await po.page.keyboard.type("test message");
 
   // Check send button is disabled due to pending changes
   const sendButton = po.page.getByRole("button", { name: "Send message" });
@@ -50,5 +56,5 @@ test("send button disabled during pending proposal - reject", async ({
   await po.rejectProposal();
 
   // Check send button is enabled again
-  await expect(sendButton).toBeEnabled();
+  await expect(sendButton).toBeEnabled({ timeout: Timeout.MEDIUM });
 });

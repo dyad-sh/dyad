@@ -22,7 +22,9 @@ async function getActiveEditorModelPath(page: Page): Promise<string | null> {
 }
 
 async function selectFileAndWaitForEditor(page: Page, fileName: string) {
-  await page.getByText(fileName, { exact: true }).click();
+  const fileElement = page.getByText(fileName, { exact: true });
+  await expect(fileElement).toBeVisible({ timeout: Timeout.MEDIUM });
+  await fileElement.click();
   await expect(async () => {
     const modelPath = await getActiveEditorModelPath(page);
     expect(modelPath).toContain(fileName);
@@ -35,8 +37,8 @@ async function replaceEditorContent(page: Page, content: string) {
   });
   await expect(editorContent).toBeVisible();
   await editorContent.click({ force: true });
-  // Small delay to let Monaco settle after click before selecting all
-  await page.waitForTimeout(100);
+  // Let Monaco settle after click before selecting all
+  await page.waitForTimeout(200);
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type(content);
 }

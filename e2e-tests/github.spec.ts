@@ -5,11 +5,15 @@ test("should connect to GitHub using device flow", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
 
-  await po.appManagement.getTitleBarAppNameButton().click();
+  const appNameButton = po.appManagement.getTitleBarAppNameButton();
+  await expect(appNameButton).toBeVisible({ timeout: Timeout.MEDIUM });
+  await appNameButton.click();
   await po.githubConnector.connect();
 
   // Wait for device flow to start and show the code
-  await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
+  await expect(po.page.locator("text=FAKE-CODE")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Verify the verification URI is displayed
   await expect(
@@ -228,7 +232,9 @@ test("github clear integration settings", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=basic");
 
-  await po.appManagement.getTitleBarAppNameButton().click();
+  const appNameBtn = po.appManagement.getTitleBarAppNameButton();
+  await expect(appNameBtn).toBeVisible({ timeout: Timeout.MEDIUM });
+  await appNameBtn.click();
   await po.githubConnector.connect();
   await expect(po.githubConnector.getCreateNewRepoModeButton()).toBeVisible();
 

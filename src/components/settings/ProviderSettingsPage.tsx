@@ -18,6 +18,11 @@ import {
   VertexProviderSetting,
   hasDyadProKey,
 } from "@/lib/schemas";
+import {
+  findInvalidProviderApiKeyCharacter,
+  formatInvalidProviderApiKeyMessage,
+  normalizeProviderApiKeyInput,
+} from "@/lib/providerApiKey";
 
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
@@ -119,8 +124,20 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
 
   // --- Save Handler ---
   const handleSaveKey = async (value: string) => {
-    if (!value.trim()) {
+    const normalizedValue = normalizeProviderApiKeyInput(value);
+    if (!normalizedValue) {
       setSaveError("API Key cannot be empty.");
+      return;
+    }
+    const invalidCharacter =
+      findInvalidProviderApiKeyCharacter(normalizedValue);
+    if (invalidCharacter) {
+      setSaveError(
+        formatInvalidProviderApiKeyMessage(
+          providerDisplayName,
+          invalidCharacter,
+        ),
+      );
       return;
     }
     setIsSaving(true);
@@ -135,7 +152,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           [provider]: {
             ...settings?.providerSettings?.[provider],
             apiKey: {
-              value,
+              value: normalizedValue,
             },
           },
         },

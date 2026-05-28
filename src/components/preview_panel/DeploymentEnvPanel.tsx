@@ -24,11 +24,18 @@ interface DeploymentEnvPanelProps {
 }
 
 const storageKey = (appId: number) => `dyad.deploymentEnvPanel.env.${appId}`;
+const legacyStorageKey = (appId: number) =>
+  `dyad.databaseUrlPanel.env.${appId}`;
 
 const readPersistedEnv = (appId: number): EnvKind | null => {
   try {
     const raw = localStorage.getItem(storageKey(appId));
-    return raw === "prod" || raw === "dev" ? raw : null;
+    if (raw === "prod" || raw === "dev") {
+      return raw;
+    }
+
+    const legacyRaw = localStorage.getItem(legacyStorageKey(appId));
+    return legacyRaw === "prod" || legacyRaw === "dev" ? legacyRaw : null;
   } catch {
     return null;
   }
@@ -74,6 +81,7 @@ export const DeploymentEnvPanel = ({ appId }: DeploymentEnvPanelProps) => {
     if (pendingEnv === null) return;
     try {
       localStorage.setItem(storageKey(appId), pendingEnv);
+      localStorage.removeItem(legacyStorageKey(appId));
     } catch {
       // ignore — UI still works without persistence
     }
@@ -100,6 +108,7 @@ export const DeploymentEnvPanel = ({ appId }: DeploymentEnvPanelProps) => {
   const handleBack = () => {
     try {
       localStorage.removeItem(storageKey(appId));
+      localStorage.removeItem(legacyStorageKey(appId));
     } catch {
       // ignore
     }
@@ -189,7 +198,7 @@ export const DeploymentEnvPanel = ({ appId }: DeploymentEnvPanelProps) => {
                 value={data?.connectionUri ?? ""}
                 isLoading={isLoading}
               />
-              {(isLoading || data?.neonAuth) && (
+              {data?.neonAuth && (
                 <EnvVarRow
                   id={`neon-auth-base-url-${appId}-${selectedEnv}`}
                   name="NEON_AUTH_BASE_URL"
@@ -197,7 +206,7 @@ export const DeploymentEnvPanel = ({ appId }: DeploymentEnvPanelProps) => {
                   isLoading={isLoading}
                 />
               )}
-              {(isLoading || data?.neonAuth?.cookieSecret !== undefined) && (
+              {data?.neonAuth?.cookieSecret !== undefined && (
                 <EnvVarRow
                   id={`neon-auth-cookie-secret-${appId}-${selectedEnv}`}
                   name="NEON_AUTH_COOKIE_SECRET"

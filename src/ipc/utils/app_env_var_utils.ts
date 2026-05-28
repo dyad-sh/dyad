@@ -207,25 +207,6 @@ export function generateCookieSecret(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-export async function upsertEnvVarInFile({
-  appPath,
-  key,
-  value,
-}: {
-  appPath: string;
-  key: string;
-  value: string;
-}): Promise<void> {
-  const envVars = await readEnvVarsOrEmpty({ appPath });
-  upsertEnvVar(envVars, key, value);
-  const envFileContents = serializeEnvFile(envVars);
-  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-  queueCloudSandboxSnapshotSync({
-    appPath: getDyadAppPath(appPath),
-    changedPaths: [ENV_FILE_NAME],
-  });
-}
-
 export async function updateNeonEnvVars({
   appPath,
   connectionUri,

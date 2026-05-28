@@ -154,27 +154,19 @@ try {
   );
 }
 
-// Load Service Worker files
-let dyadSwContent = null;
-let dyadSwRegisterContent = null;
+// Load the network monitor (monkey-patches fetch + XHR in the user's app).
+let dyadNetworkMonitorContent = null;
 
 try {
-  const dyadSwPath = path.join(__dirname, "dyad-sw.js");
-  dyadSwContent = fs.readFileSync(dyadSwPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-sw.js loaded.");
-} catch (error) {
-  parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-sw.js: ${error.message}`,
+  const dyadNetworkMonitorPath = path.join(
+    __dirname,
+    "dyad-network-monitor.js",
   );
-}
-
-try {
-  const dyadSwRegisterPath = path.join(__dirname, "dyad-sw-register.js");
-  dyadSwRegisterContent = fs.readFileSync(dyadSwRegisterPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-sw-register.js loaded.");
+  dyadNetworkMonitorContent = fs.readFileSync(dyadNetworkMonitorPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad-network-monitor.js loaded.");
 } catch (error) {
   parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-sw-register.js: ${error.message}`,
+    `[proxy-worker] Failed to read dyad-network-monitor.js: ${error.message}`,
   );
 }
 
@@ -246,18 +238,20 @@ function injectHTML(buf) {
       '<script>console.warn("[proxy-worker] dyad visual editor client was not injected.");</script>',
     );
   }
+  // Network monitor goes before dyad_logs so the fetch/XHR patches are
+  // installed before any user script (or other observability code) runs.
+  if (dyadNetworkMonitorContent) {
+    scripts.push(`<script>${dyadNetworkMonitorContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad-network-monitor.js was not injected.");</script>',
+    );
+  }
   if (dyadLogsContent) {
     scripts.push(`<script>${dyadLogsContent}</script>`);
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad_logs.js was not injected.");</script>',
-    );
-  }
-  if (dyadSwRegisterContent) {
-    scripts.push(`<script>${dyadSwRegisterContent}</script>`);
-  } else {
-    scripts.push(
-      '<script>console.warn("[proxy-worker] dyad-sw-register.js was not injected.");</script>',
     );
   }
   const allScripts = scripts.join("\n");
@@ -306,23 +300,6 @@ function buildTargetURL(clientReq) {
 /* ----------------------------------------------------------------------- */
 
 const server = http.createServer((clientReq, clientRes) => {
-  // Special handling for Service Worker file
-  if (clientReq.url === "/dyad-sw.js") {
-    if (dyadSwContent) {
-      clientRes.writeHead(200, {
-        "content-type": "application/javascript",
-        "service-worker-allowed": "/",
-        "cache-control": "no-cache",
-      });
-      clientRes.end(dyadSwContent);
-      return;
-    } else {
-      clientRes.writeHead(404, { "content-type": "text/plain" });
-      clientRes.end("Service Worker file not found");
-      return;
-    }
-  }
-
   let target;
   try {
     target = buildTargetURL(clientReq);

@@ -105,10 +105,9 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
-    // Wait for service worker to be ready
-    // Service worker registration is async, so we wait for it to be active
-    // We check by waiting for network request logs to appear, which indicates SW is ready
-    // If SW isn't ready, network requests will still work but won't be logged
+    // Network monkey-patches (fetch + XHR) are installed synchronously during
+    // HTML <head> parse, before any user script runs — so there is no
+    // registration race like there was with the old service worker.
 
     // Open the system messages console
     // Network requests happen in useEffect, so they may already be in progress or complete

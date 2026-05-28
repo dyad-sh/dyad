@@ -584,6 +584,50 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
+  it("drops policies before dependent column deletes", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "policy_column_delete_current_db");
+    await createDatabase(pg, "policy_column_delete_desired_db");
+
+    await execSql(
+      pg.databaseUrl("policy_column_delete_current_db"),
+      `
+        CREATE TABLE accounts (tenant_id integer, name text);
+        ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_filter ON accounts USING (tenant_id > 0);
+      `,
+    );
+    await execSql(
+      pg.databaseUrl("policy_column_delete_desired_db"),
+      `
+        CREATE TABLE accounts (name text);
+        ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+      `,
+    );
+
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("policy_column_delete_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("policy_column_delete_desired_db"),
+    });
+    expect(diff.statements.map((statement) => statement.sql)).toEqual([
+      'DROP POLICY "tenant_filter" ON "public"."accounts"',
+      'ALTER TABLE "public"."accounts" DROP COLUMN "tenant_id"',
+    ]);
+
+    for (const statement of diff.statements) {
+      await execSql(
+        pg.databaseUrl("policy_column_delete_current_db"),
+        statement.sql,
+      );
+    }
+
+    const secondDiff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("policy_column_delete_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("policy_column_delete_desired_db"),
+    });
+    expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
   it("recreates table privileges when grant option changes", async () => {
     const pg = requireHarness();
     await createDatabase(pg, "privilege_grant_option_current_db");

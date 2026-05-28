@@ -676,6 +676,9 @@ function alterTable(
   const checkConstraintDeletes = diff.checkConstraintDiff.deletes.map(
     (constraint) => deleteCheckConstraint(diff.next, constraint),
   );
+  const policyDeletes = diff.policiesDiff.deletes.map((policy) =>
+    deletePolicy(diff.next, policy),
+  );
   const columnStatements = [
     ...diff.columnsDiff.deletes.map((column) =>
       deleteColumnStatement(diff.next.name, column),
@@ -696,6 +699,7 @@ function alterTable(
       afterEarlyRlsForced,
     ),
     ...checkConstraintDeletes,
+    ...policyDeletes,
     ...columnStatements,
     ...diff.checkConstraintDiff.adds
       .map((constraint) =>
@@ -705,9 +709,6 @@ function alterTable(
     ...diff.checkConstraintDiff.alters
       .map((constraintDiff) => alterCheckConstraint(diff.next, constraintDiff))
       .flat(),
-    ...diff.policiesDiff.deletes.map((policy) =>
-      deletePolicy(diff.next, policy),
-    ),
     ...diff.policiesDiff.adds.map((policy) => addPolicy(diff.next, policy)),
     ...diff.policiesDiff.alters
       .map((policyDiff) => alterPolicy(diff.next, policyDiff))

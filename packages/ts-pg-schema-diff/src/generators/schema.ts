@@ -667,6 +667,9 @@ function alterTable(
 
   const afterEarlyRlsEnabled = diff.old.rlsEnabled && diff.next.rlsEnabled;
   const afterEarlyRlsForced = diff.old.rlsForced && diff.next.rlsForced;
+  const checkConstraintDeletes = diff.checkConstraintDiff.deletes.map(
+    (constraint) => deleteCheckConstraint(diff.next, constraint),
+  );
   const columnStatements = [
     ...diff.columnsDiff.deletes.map((column) =>
       deleteColumnStatement(diff.next.name, column),
@@ -686,10 +689,8 @@ function alterTable(
       afterEarlyRlsEnabled,
       afterEarlyRlsForced,
     ),
+    ...checkConstraintDeletes,
     ...columnStatements,
-    ...diff.checkConstraintDiff.deletes.map((constraint) =>
-      deleteCheckConstraint(diff.next, constraint),
-    ),
     ...diff.checkConstraintDiff.adds
       .map((constraint) =>
         addCheckConstraintStatements(diff.next, constraint, false),
@@ -1593,11 +1594,33 @@ function alterView(diff: {
   if (deepEqual(diff.old, diff.next)) {
     return [];
   }
+  if (!viewReplacementPreservesOutputColumns(diff.old, diff.next)) {
+    throw new NotImplementedMigrationError(
+      `changing the output columns of view ${fqName(diff.next.name)} is not supported`,
+    );
+  }
   return [
     standardStatement(
       `CREATE OR REPLACE VIEW ${fqName(diff.next.name)}${relOptionsClause(diff.next.options)} AS\n${diff.next.viewDefinition}`,
     ),
   ];
+}
+
+function viewReplacementPreservesOutputColumns(
+  oldView: View,
+  nextView: View,
+): boolean {
+  if (oldView.outputColumns.length > nextView.outputColumns.length) {
+    return false;
+  }
+  return oldView.outputColumns.every((oldColumn, index) => {
+    const nextColumn = nextView.outputColumns[index];
+    return (
+      nextColumn !== undefined &&
+      oldColumn.name === nextColumn.name &&
+      oldColumn.type === nextColumn.type
+    );
+  });
 }
 
 function deleteView(view: View): InternalStatement {

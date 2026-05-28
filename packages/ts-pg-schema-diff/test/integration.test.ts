@@ -335,6 +335,83 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
+  it("drops check constraints before dependent column deletes", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "check_column_delete_current_db");
+    await createDatabase(pg, "check_column_delete_desired_db");
+
+    await execSql(
+      pg.databaseUrl("check_column_delete_current_db"),
+      "CREATE TABLE accounts (id integer, balance integer CONSTRAINT balance_nonnegative CHECK (balance >= 0))",
+    );
+    await execSql(
+      pg.databaseUrl("check_column_delete_desired_db"),
+      "CREATE TABLE accounts (id integer)",
+    );
+
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("check_column_delete_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("check_column_delete_desired_db"),
+    });
+    expect(diff.statements.map((statement) => statement.sql)).toEqual([
+      'ALTER TABLE "public"."accounts" DROP CONSTRAINT "balance_nonnegative"',
+      'ALTER TABLE "public"."accounts" DROP COLUMN "balance"',
+    ]);
+
+    for (const statement of diff.statements) {
+      await execSql(
+        pg.databaseUrl("check_column_delete_current_db"),
+        statement.sql,
+      );
+    }
+
+    const secondDiff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("check_column_delete_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("check_column_delete_desired_db"),
+    });
+    expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
+  it("drops changed check constraints before dependent column type edits", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "check_column_type_current_db");
+    await createDatabase(pg, "check_column_type_desired_db");
+
+    await execSql(
+      pg.databaseUrl("check_column_type_current_db"),
+      "CREATE TABLE accounts (balance integer CONSTRAINT balance_positive CHECK (balance > 0))",
+    );
+    await execSql(
+      pg.databaseUrl("check_column_type_desired_db"),
+      "CREATE TABLE accounts (balance bigint CONSTRAINT balance_nonnegative CHECK (balance >= 0))",
+    );
+
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("check_column_type_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("check_column_type_desired_db"),
+    });
+    expect(diff.statements.map((statement) => statement.sql)).toEqual([
+      'ALTER TABLE "public"."accounts" DROP CONSTRAINT "balance_positive"',
+      'ALTER TABLE "public"."accounts" ALTER COLUMN "balance" SET DATA TYPE bigint using "balance"::bigint',
+      'ANALYZE "public"."accounts" ("balance")',
+      'ALTER TABLE "public"."accounts" ADD CONSTRAINT "balance_nonnegative" CHECK((balance >= 0)) NOT VALID',
+      'ALTER TABLE "public"."accounts" VALIDATE CONSTRAINT "balance_nonnegative"',
+    ]);
+
+    for (const statement of diff.statements) {
+      await execSql(
+        pg.databaseUrl("check_column_type_current_db"),
+        statement.sql,
+      );
+    }
+
+    const secondDiff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("check_column_type_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("check_column_type_desired_db"),
+    });
+    expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
   it("rejects check constraints that depend on user-defined functions", async () => {
     const pg = requireHarness();
     await createDatabase(pg, "check_udf_current_db");
@@ -803,6 +880,31 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       desiredDatabaseUrl: pg.databaseUrl("view_options_desired_db"),
     });
     expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
+  it("rejects view output-shape changes before replacing views", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "view_output_shape_current_db");
+    await createDatabase(pg, "view_output_shape_desired_db");
+
+    const tableSql = "CREATE TABLE accounts (id integer, name text);";
+    await execSql(
+      pg.databaseUrl("view_output_shape_current_db"),
+      `${tableSql} CREATE VIEW account_summary AS SELECT id, name FROM accounts;`,
+    );
+    await execSql(
+      pg.databaseUrl("view_output_shape_desired_db"),
+      `${tableSql} CREATE VIEW account_summary AS SELECT name, id FROM accounts;`,
+    );
+
+    await expect(
+      generateSchemaDiff({
+        currentDatabaseUrl: pg.databaseUrl("view_output_shape_current_db"),
+        desiredDatabaseUrl: pg.databaseUrl("view_output_shape_desired_db"),
+      }),
+    ).rejects.toThrow(
+      'changing the output columns of view "public"."account_summary" is not supported',
+    );
   }, 30_000);
 
   it("preserves materialized view options when recreating changed materialized views", async () => {
@@ -4455,6 +4557,10 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       expect(childView).toMatchObject({
         kind: "view",
         name: schemaQualifiedName("app", "child_view"),
+        outputColumns: [
+          { name: "id", type: "integer" },
+          { name: "parent_id", type: "integer" },
+        ],
         options: { security_barrier: "true" },
         tableDependencies: [
           {
@@ -4466,6 +4572,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       expect(childMaterializedView).toMatchObject({
         kind: "materializedView",
         name: schemaQualifiedName("app", "child_mv"),
+        outputColumns: [{ name: "id", type: "integer" }],
         options: { autovacuum_enabled: "false" },
         tableDependencies: [
           { name: schemaQualifiedName("app", "child"), columns: ["id"] },

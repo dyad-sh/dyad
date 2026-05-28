@@ -453,6 +453,15 @@ SELECT
     n.nspname::TEXT AS schema_name,
     c.relname::TEXT AS view_name,
     c.reloptions::TEXT [] AS rel_options,
+    (SELECT ARRAY_AGG(JSONB_BUILD_OBJECT(
+        'name', a.attname,
+        'type', PG_CATALOG.FORMAT_TYPE(a.atttypid, a.atttypmod)
+    ) ORDER BY a.attnum)
+    FROM pg_catalog.pg_attribute AS a
+    WHERE
+        a.attrelid = c.oid
+        AND a.attnum > 0
+        AND NOT a.attisdropped)::TEXT [] AS output_columns,
     (SELECT ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
         'schema', dep_ns.nspname,
         'name', dep_c.relname,
@@ -510,6 +519,15 @@ SELECT
     c.relname::TEXT AS view_name,
     c.reloptions::TEXT [] AS rel_options,
     COALESCE(ts.spcname, '')::TEXT AS tablespace_name,
+    (SELECT ARRAY_AGG(JSONB_BUILD_OBJECT(
+        'name', a.attname,
+        'type', PG_CATALOG.FORMAT_TYPE(a.atttypid, a.atttypmod)
+    ) ORDER BY a.attnum)
+    FROM pg_catalog.pg_attribute AS a
+    WHERE
+        a.attrelid = c.oid
+        AND a.attnum > 0
+        AND NOT a.attisdropped)::TEXT [] AS output_columns,
     (SELECT ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
         'schema', dep_ns.nspname,
         'name', dep_c.relname,

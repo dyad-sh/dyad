@@ -265,6 +265,7 @@ describe("generatePlan", () => {
     const changedBase: View = {
       ...base,
       viewDefinition: " SELECT id, name\n   FROM accounts;",
+      outputColumns: [...base.outputColumns, { name: "name", type: "text" }],
     };
 
     const result = toSchemaDiffResult(
@@ -283,6 +284,30 @@ describe("generatePlan", () => {
     expect(result.statements.map((statement) => statement.sql)).toEqual([
       'CREATE OR REPLACE VIEW "public"."account_summary" AS\n SELECT id, name\n   FROM accounts;',
     ]);
+  });
+
+  it("rejects view output shape changes before using CREATE OR REPLACE", () => {
+    const base = view("account_summary", {}, [{ name: "id", type: "integer" }]);
+    const changedBase: View = {
+      ...base,
+      viewDefinition: " SELECT name\n   FROM accounts;",
+      outputColumns: [{ name: "name", type: "text" }],
+    };
+
+    expect(() =>
+      generatePlan(
+        {
+          ...emptySchema(),
+          views: [base],
+        },
+        {
+          ...emptySchema(),
+          views: [changedBase],
+        },
+      ),
+    ).toThrow(
+      'changing the output columns of view "public"."account_summary" is not supported',
+    );
   });
 
   it("recreates unchanged indexes after materialized view rebuilds", () => {
@@ -779,11 +804,13 @@ function trigger(
 function view(
   name: string,
   options: Readonly<Record<string, string>> = {},
+  outputColumns: View["outputColumns"] = [{ name: "id", type: "integer" }],
 ): View {
   return {
     kind: "view",
     name: schemaQualifiedName("public", name),
     viewDefinition: " SELECT id\n   FROM accounts;",
+    outputColumns,
     options,
     tableDependencies: [],
   };
@@ -797,6 +824,7 @@ function materializedView(
     kind: "materializedView",
     name: schemaQualifiedName("public", name),
     viewDefinition: " SELECT name\n   FROM accounts;",
+    outputColumns: [{ name: "name", type: "text" }],
     options,
     tablespace: "",
     tableDependencies: [],

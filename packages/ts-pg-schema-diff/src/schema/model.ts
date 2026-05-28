@@ -175,10 +175,16 @@ export type TableDependency = {
   readonly columns: readonly string[];
 };
 
+export type ViewColumn = {
+  readonly name: string;
+  readonly type: string;
+};
+
 export type View = {
   readonly kind: "view";
   readonly name: SchemaQualifiedName;
   readonly viewDefinition: string;
+  readonly outputColumns: readonly ViewColumn[];
   readonly options: Readonly<Record<string, string>>;
   readonly tableDependencies: readonly TableDependency[];
 };
@@ -187,6 +193,7 @@ export type MaterializedView = {
   readonly kind: "materializedView";
   readonly name: SchemaQualifiedName;
   readonly viewDefinition: string;
+  readonly outputColumns: readonly ViewColumn[];
   readonly options: Readonly<Record<string, string>>;
   readonly tablespace: string;
   readonly tableDependencies: readonly TableDependency[];

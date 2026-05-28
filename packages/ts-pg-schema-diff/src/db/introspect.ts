@@ -40,6 +40,7 @@ import {
   type TablePrivilege,
   type Trigger,
   type View,
+  type ViewColumn,
 } from "../schema/model.js";
 import {
   escapeIdentifier,
@@ -178,6 +179,7 @@ type ViewRow = {
   readonly schema_name: string;
   readonly view_name: string;
   readonly rel_options: readonly string[] | null;
+  readonly output_columns: readonly string[] | null;
   readonly table_dependencies: readonly string[] | null;
   readonly view_definition: string;
 };
@@ -615,6 +617,7 @@ async function fetchViews(client: DatabaseClient): Promise<readonly View[]> {
     kind: "view",
     name: schemaQualifiedName(row.schema_name, row.view_name),
     viewDefinition: row.view_definition,
+    outputColumns: parseViewColumns(row.output_columns ?? []),
     options: relOptionsToMap(row.rel_options ?? []),
     tableDependencies: parseTableDependencies(row.table_dependencies ?? []),
   }));
@@ -630,6 +633,7 @@ async function fetchMaterializedViews(
     kind: "materializedView",
     name: schemaQualifiedName(row.schema_name, row.view_name),
     viewDefinition: row.view_definition,
+    outputColumns: parseViewColumns(row.output_columns ?? []),
     options: relOptionsToMap(row.rel_options ?? []),
     tablespace: row.tablespace_name,
     tableDependencies: parseTableDependencies(row.table_dependencies ?? []),
@@ -660,6 +664,25 @@ function parseTableDependencies(
       columns: parsed.columns,
     };
   });
+}
+
+function parseViewColumns(values: readonly string[]): readonly ViewColumn[] {
+  return values.map((value) => {
+    const parsed: unknown = JSON.parse(value);
+    if (!isViewColumnJson(parsed)) {
+      throw new Error(`invalid view column JSON: ${value}`);
+    }
+    return parsed;
+  });
+}
+
+function isViewColumnJson(value: unknown): value is ViewColumn {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { readonly name?: unknown }).name === "string" &&
+    typeof (value as { readonly type?: unknown }).type === "string"
+  );
 }
 
 function parseTableDependency(value: string): {

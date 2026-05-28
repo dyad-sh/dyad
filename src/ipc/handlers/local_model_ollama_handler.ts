@@ -97,7 +97,8 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
       (error as Error).message.includes("fetch failed")
     ) {
       throw new DyadError(
-        "Could not connect to Ollama. Make sure it's running at " + getOllamaApiUrl(),
+        "Could not connect to Ollama. Make sure it's running at " +
+          getOllamaApiUrl(),
         DyadErrorKind.Precondition,
       );
     }

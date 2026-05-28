@@ -1041,6 +1041,50 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     expect(secondDiff.statements).toEqual([]);
   }, 30_000);
 
+  it("creates materialized views before dependent materialized views", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "matview_matview_order_current_db");
+    await createDatabase(pg, "matview_matview_order_desired_db");
+
+    const tableSql = "CREATE TABLE accounts (id integer NOT NULL);";
+    await execSql(pg.databaseUrl("matview_matview_order_current_db"), tableSql);
+    await execSql(
+      pg.databaseUrl("matview_matview_order_desired_db"),
+      `
+        ${tableSql}
+        CREATE MATERIALIZED VIEW z_account_ids AS SELECT id FROM accounts;
+        CREATE MATERIALIZED VIEW a_account_ids_snapshot AS SELECT id FROM z_account_ids;
+      `,
+    );
+
+    const diff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("matview_matview_order_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("matview_matview_order_desired_db"),
+    });
+
+    expect(diff.statements.map((statement) => statement.sql)).toEqual([
+      expect.stringMatching(
+        /^CREATE MATERIALIZED VIEW "public"\."z_account_ids" AS\n/u,
+      ),
+      expect.stringMatching(
+        /^CREATE MATERIALIZED VIEW "public"\."a_account_ids_snapshot" AS\n/u,
+      ),
+    ]);
+
+    for (const statement of diff.statements) {
+      await execSql(
+        pg.databaseUrl("matview_matview_order_current_db"),
+        statement.sql,
+      );
+    }
+
+    const secondDiff = await generateSchemaDiff({
+      currentDatabaseUrl: pg.databaseUrl("matview_matview_order_current_db"),
+      desiredDatabaseUrl: pg.databaseUrl("matview_matview_order_desired_db"),
+    });
+    expect(secondDiff.statements).toEqual([]);
+  }, 30_000);
+
   it("recreates views and materialized views when dependent tables are recreated", async () => {
     const pg = requireHarness();
     await createDatabase(pg, "view_dependency_current_db");

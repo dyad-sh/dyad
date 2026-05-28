@@ -495,7 +495,10 @@ SELECT
         ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm')
     INNER JOIN pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    WHERE d.refobjid = c.oid AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
+    WHERE
+        d.refobjid = c.oid
+        AND r.ev_class = c.oid
+        AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
@@ -561,7 +564,10 @@ SELECT
         ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm')
     INNER JOIN pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    WHERE d.refobjid = c.oid AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
+    WHERE
+        d.refobjid = c.oid
+        AND r.ev_class = c.oid
+        AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid

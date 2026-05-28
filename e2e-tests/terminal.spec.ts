@@ -14,7 +14,7 @@ async function terminalText(page: Page) {
   });
 }
 
-test("in-chat terminal runs commands, reopens previous session, and exits with chord", async ({
+test("in-chat terminal runs commands, reopens previous session, and exits from the banner", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });
@@ -46,8 +46,7 @@ test("in-chat terminal runs commands, reopens previous session, and exits with c
   await po.page.keyboard.press("Escape");
   await expect(po.page.getByText("Terminal", { exact: true })).toBeVisible();
 
-  const closeChord = process.platform === "darwin" ? "Meta+K" : "Control+K";
-  await po.page.keyboard.press(closeChord);
+  await drawer.getByRole("button", { name: "Exit terminal" }).click();
   await expect(po.page.getByTestId("messages-list")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });

@@ -4,6 +4,7 @@ import { ipc } from "@/ipc/types";
 import {
   TerminalDataPayloadSchema,
   TerminalExitPayloadSchema,
+  type TerminalDataPayload,
   type TerminalOpenResult,
 } from "@/ipc/types/terminal";
 import { showSuccess, showWarning } from "@/lib/toast";
@@ -32,17 +33,17 @@ function terminalExitChannel(sessionId: string): string {
   return `terminal:exit:${sessionId}`;
 }
 
-function getBufferedSuffixMissingFromReplay(
-  replay: string,
-  buffered: string,
+function getChunkAfterScrollback(
+  payload: TerminalDataPayload,
+  scrollbackEndOffset: number,
 ): string {
-  const maxOverlap = Math.min(replay.length, buffered.length);
-  for (let overlap = maxOverlap; overlap > 0; overlap--) {
-    if (replay.endsWith(buffered.slice(0, overlap))) {
-      return buffered.slice(overlap);
-    }
+  if (payload.endOffset <= scrollbackEndOffset) {
+    return "";
   }
-  return buffered;
+  if (payload.startOffset >= scrollbackEndOffset) {
+    return payload.chunk;
+  }
+  return payload.chunk.slice(scrollbackEndOffset - payload.startOffset);
 }
 
 function getIpcRenderer():
@@ -62,6 +63,7 @@ export function useTerminalSession({
   onExit,
 }: UseTerminalSessionParams) {
   const { t } = useTranslation("chat");
+  const tRef = useRef(t);
   const onDataRef = useRef(onData);
   const onExitRef = useRef(onExit);
   const latestSizeRef = useRef({ cols, rows });
@@ -70,6 +72,10 @@ export function useTerminalSession({
   const [status, setStatus] = useState<TerminalStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [exit, setExit] = useState<TerminalExitState | null>(null);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     onDataRef.current = onData;
@@ -97,7 +103,7 @@ export function useTerminalSession({
     let unsubscribeData: (() => void) | undefined;
     let unsubscribeExit: (() => void) | undefined;
     let hydrating = true;
-    let bufferedDuringHydration = "";
+    const bufferedDuringHydration: TerminalDataPayload[] = [];
     let latestExit: TerminalExitState | null = null;
 
     setStatus("connecting");
@@ -138,7 +144,7 @@ export function useTerminalSession({
             const parsed = TerminalDataPayloadSchema.safeParse(payload);
             if (parsed.success && parsed.data.sessionId === result.sessionId) {
               if (hydrating) {
-                bufferedDuringHydration += parsed.data.chunk;
+                bufferedDuringHydration.push(parsed.data);
               } else {
                 onDataRef.current(parsed.data.chunk);
               }
@@ -164,19 +170,22 @@ export function useTerminalSession({
         );
 
         try {
-          const { scrollback } = await ipc.terminal.serialize({
-            sessionId: result.sessionId,
-          });
+          const { scrollback, scrollbackEndOffset } =
+            await ipc.terminal.serialize({
+              sessionId: result.sessionId,
+            });
           if (cancelled) return;
           if (scrollback) {
             onDataRef.current(scrollback);
           }
-          const missedChunk = getBufferedSuffixMissingFromReplay(
-            scrollback,
-            bufferedDuringHydration,
-          );
-          if (missedChunk) {
-            onDataRef.current(missedChunk);
+          for (const payload of bufferedDuringHydration) {
+            const missedChunk = getChunkAfterScrollback(
+              payload,
+              scrollbackEndOffset,
+            );
+            if (missedChunk) {
+              onDataRef.current(missedChunk);
+            }
           }
         } finally {
           hydrating = false;
@@ -192,11 +201,15 @@ export function useTerminalSession({
         }
 
         if (result.created) {
-          showSuccess(t("terminal.readyToast", { appName: result.appName }));
+          showSuccess(
+            tRef.current("terminal.readyToast", { appName: result.appName }),
+          );
         }
         if (result.evicted) {
           showWarning(
-            t("terminal.evictedToast", { appName: result.evicted.appName }),
+            tRef.current("terminal.evictedToast", {
+              appName: result.evicted.appName,
+            }),
           );
         }
       })
@@ -214,7 +227,7 @@ export function useTerminalSession({
         void ipc.terminal.close({ sessionId: activeSessionId });
       }
     };
-  }, [appId, enabled, restartNonce, t]);
+  }, [appId, enabled, restartNonce]);
 
   const write = useCallback(
     (data: string) => {

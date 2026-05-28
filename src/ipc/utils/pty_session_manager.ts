@@ -66,7 +66,7 @@ interface TerminalExit {
 
 interface TerminalSubscriber {
   webContents: WebContents;
-  pendingOutputOffset: number;
+  nextOutputOffset: number;
   attachmentCount: number;
 }
 
@@ -83,6 +83,8 @@ interface PtySession {
   subscribers: Map<number, TerminalSubscriber>;
   scrollback: string;
   pendingOutput: string;
+  pendingOutputStartOffset: number;
+  outputEndOffset: number;
   flushTimer: ReturnType<typeof setTimeout> | null;
   exitReapTimer: ReturnType<typeof setTimeout> | null;
   lastUsedAt: number;
@@ -109,6 +111,11 @@ export interface OpenTerminalSessionResult {
     appId: number;
     appName: string;
   };
+}
+
+export interface SerializedTerminalSession {
+  scrollback: string;
+  scrollbackEndOffset: number;
 }
 
 function buildTerminalDataChannel(sessionId: string): string {
@@ -271,6 +278,8 @@ export class PtySessionManager {
       subscribers: new Map(),
       scrollback: "",
       pendingOutput: "",
+      pendingOutputStartOffset: 0,
+      outputEndOffset: 0,
       flushTimer: null,
       exitReapTimer: null,
       lastUsedAt: this.deps.now(),
@@ -278,6 +287,7 @@ export class PtySessionManager {
 
     session.dataSubscription = pty.onData((chunk) => {
       session.scrollback = trimScrollback(session.scrollback + chunk);
+      session.outputEndOffset += chunk.length;
       this.enqueueOutput(session, chunk);
     });
 
@@ -341,7 +351,10 @@ export class PtySessionManager {
     session.pty.resize(cols, rows);
   }
 
-  serialize(sessionId: string, sender?: WebContents): string {
+  serialize(
+    sessionId: string,
+    sender?: WebContents,
+  ): SerializedTerminalSession {
     const session = this.findAuthorizedSession(sessionId, sender);
     if (!session) {
       throw new DyadError("Terminal session not found", DyadErrorKind.NotFound);
@@ -349,10 +362,13 @@ export class PtySessionManager {
     if (sender) {
       const subscriber = session.subscribers.get(sender.id);
       if (subscriber) {
-        subscriber.pendingOutputOffset = session.pendingOutput.length;
+        subscriber.nextOutputOffset = session.outputEndOffset;
       }
     }
-    return session.scrollback;
+    return {
+      scrollback: session.scrollback,
+      scrollbackEndOffset: session.outputEndOffset,
+    };
   }
 
   killSession(sessionId: string, sender?: WebContents): void {
@@ -393,7 +409,7 @@ export class PtySessionManager {
 
     session.subscribers.set(sender.id, {
       webContents: sender,
-      pendingOutputOffset: session.pendingOutput.length,
+      nextOutputOffset: session.outputEndOffset,
       attachmentCount: 1,
     });
   }
@@ -443,6 +459,9 @@ export class PtySessionManager {
   }
 
   private enqueueOutput(session: PtySession, chunk: string): void {
+    if (!session.pendingOutput) {
+      session.pendingOutputStartOffset = session.outputEndOffset - chunk.length;
+    }
     session.pendingOutput += chunk;
     if (session.flushTimer) return;
 
@@ -459,17 +478,25 @@ export class PtySessionManager {
 
     if (!session.pendingOutput) return;
     const chunk = session.pendingOutput;
+    const chunkStartOffset = session.pendingOutputStartOffset;
+    const chunkEndOffset = chunkStartOffset + chunk.length;
     session.pendingOutput = "";
+    session.pendingOutputStartOffset = session.outputEndOffset;
     this.removeDestroyedSubscribers(session);
     const channel = buildTerminalDataChannel(session.sessionId);
     for (const subscriber of session.subscribers.values()) {
-      const offset = Math.min(subscriber.pendingOutputOffset, chunk.length);
-      subscriber.pendingOutputOffset = 0;
+      const offset = Math.min(
+        Math.max(subscriber.nextOutputOffset - chunkStartOffset, 0),
+        chunk.length,
+      );
+      subscriber.nextOutputOffset = chunkEndOffset;
       const visibleChunk = chunk.slice(offset);
       if (!visibleChunk) continue;
       this.deps.send(subscriber.webContents, channel, {
         sessionId: session.sessionId,
         chunk: visibleChunk,
+        startOffset: chunkStartOffset + offset,
+        endOffset: chunkEndOffset,
       });
     }
   }

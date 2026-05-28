@@ -170,9 +170,37 @@ describe("PtySessionManager", () => {
     expect(send).toHaveBeenCalledWith(
       expect.anything(),
       `terminal:data:${session.sessionId}`,
-      { sessionId: session.sessionId, chunk: "ab" },
+      {
+        sessionId: session.sessionId,
+        chunk: "ab",
+        startOffset: 0,
+        endOffset: 2,
+      },
     );
-    expect(manager.serialize(session.sessionId)).toBe("ab");
+    expect(manager.serialize(session.sessionId)).toEqual({
+      scrollback: "ab",
+      scrollbackEndOffset: 2,
+    });
+  });
+
+  it("does not replay pending output after serializing it", async () => {
+    vi.useFakeTimers();
+    const { manager, controllers, send } = createManager();
+    const sender = webContents(1);
+    const session = await manager.openSession({
+      appId: 1,
+      sender,
+    });
+
+    controllers[0].emitData("prompt");
+
+    expect(manager.serialize(session.sessionId, sender)).toEqual({
+      scrollback: "prompt",
+      scrollbackEndOffset: 6,
+    });
+    await vi.advanceTimersByTimeAsync(8);
+
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("writes, resizes, and kills sessions explicitly", async () => {
@@ -219,7 +247,10 @@ describe("PtySessionManager", () => {
     controllers[0].emitData("prompt");
 
     const sameRenderer = webContents(1);
-    expect(manager.serialize(session.sessionId, sameRenderer)).toBe("prompt");
+    expect(manager.serialize(session.sessionId, sameRenderer)).toEqual({
+      scrollback: "prompt",
+      scrollbackEndOffset: 6,
+    });
     manager.write(session.sessionId, "echo ok\n", sameRenderer);
 
     expect(controllers[0].pty.write).toHaveBeenCalledWith("echo ok\n");
@@ -241,7 +272,10 @@ describe("PtySessionManager", () => {
     });
     manager.closeSession(session.sessionId, staleSender);
 
-    expect(manager.serialize(session.sessionId, currentSender)).toBe("prompt");
+    expect(manager.serialize(session.sessionId, currentSender)).toEqual({
+      scrollback: "prompt",
+      scrollbackEndOffset: 6,
+    });
   });
 
   it("prunes destroyed subscribers before sending output", async () => {
@@ -275,7 +309,10 @@ describe("PtySessionManager", () => {
       appId: 1,
       sender: secondSender,
     });
-    expect(manager.serialize(reattach.sessionId, secondSender)).toBe("early");
+    expect(manager.serialize(reattach.sessionId, secondSender)).toEqual({
+      scrollback: "early",
+      scrollbackEndOffset: 5,
+    });
 
     controllers[0].emitData("late");
     await vi.advanceTimersByTimeAsync(8);
@@ -285,13 +322,23 @@ describe("PtySessionManager", () => {
       1,
       firstSender,
       `terminal:data:${session.sessionId}`,
-      { sessionId: session.sessionId, chunk: "earlylate" },
+      {
+        sessionId: session.sessionId,
+        chunk: "earlylate",
+        startOffset: 0,
+        endOffset: 9,
+      },
     );
     expect(send).toHaveBeenNthCalledWith(
       2,
       secondSender,
       `terminal:data:${session.sessionId}`,
-      { sessionId: session.sessionId, chunk: "late" },
+      {
+        sessionId: session.sessionId,
+        chunk: "late",
+        startOffset: 5,
+        endOffset: 9,
+      },
     );
   });
 
@@ -344,7 +391,7 @@ describe("PtySessionManager", () => {
 
     controllers[0].emitData("😀".repeat(600_000));
 
-    const scrollback = manager.serialize(session.sessionId);
+    const { scrollback } = manager.serialize(session.sessionId);
     expect(Buffer.byteLength(scrollback, "utf8")).toBeLessThanOrEqual(
       2 * 1024 * 1024,
     );

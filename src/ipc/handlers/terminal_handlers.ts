@@ -40,7 +40,7 @@ export function registerTerminalHandlers() {
   });
 
   createTypedHandler(terminalContracts.serialize, async (event, params) => {
-    return { scrollback: manager.serialize(params.sessionId, event.sender) };
+    return manager.serialize(params.sessionId, event.sender);
   });
 
   if (!registeredBeforeQuitCleanup) {

@@ -318,6 +318,11 @@ export default function TerminalPanel({
   }, [fitAndResize, fitSignal, hasFitSignal]);
 
   useEffect(() => {
+    if (!session?.sessionId || status !== "ready") return;
+    requestAnimationFrame(fitAndResize);
+  }, [fitAndResize, session?.sessionId, status]);
+
+  useEffect(() => {
     const element = terminalElementRef.current;
     if (!element || !hasFitSignal) return;
 
@@ -359,13 +364,6 @@ export default function TerminalPanel({
       if (!isCommand) return;
 
       const key = event.key.toLowerCase();
-      if (key === "k") {
-        event.preventDefault();
-        event.stopPropagation();
-        onExit();
-        return;
-      }
-
       if (key === "f") {
         event.preventDefault();
         event.stopPropagation();
@@ -390,7 +388,7 @@ export default function TerminalPanel({
         setFontSize(14);
       }
     },
-    [onExit, setFontSize],
+    [setFontSize],
   );
 
   const handleCopy = useCallback(() => {

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { createClient, defineContract } from "../contracts/core";
 
+export const MAX_TERMINAL_WRITE_LENGTH = 1_048_576;
+
 export const TerminalOpenParamsSchema = z.object({
   appId: z.number(),
   cols: z.number().int().positive().max(500),
@@ -12,7 +14,7 @@ export const TerminalSessionParamsSchema = z.object({
 });
 
 export const TerminalWriteParamsSchema = TerminalSessionParamsSchema.extend({
-  data: z.string(),
+  data: z.string().max(MAX_TERMINAL_WRITE_LENGTH),
 });
 
 export const TerminalResizeParamsSchema = TerminalSessionParamsSchema.extend({
@@ -29,6 +31,8 @@ export const TerminalExitPayloadSchema = z.object({
 export const TerminalDataPayloadSchema = z.object({
   sessionId: z.string(),
   chunk: z.string(),
+  startOffset: z.number().int().nonnegative(),
+  endOffset: z.number().int().nonnegative(),
 });
 
 export const TerminalOpenResultSchema = z.object({
@@ -86,7 +90,10 @@ export const terminalContracts = {
   serialize: defineContract({
     channel: "terminal:serialize",
     input: TerminalSessionParamsSchema,
-    output: z.object({ scrollback: z.string() }),
+    output: z.object({
+      scrollback: z.string(),
+      scrollbackEndOffset: z.number().int().nonnegative(),
+    }),
   }),
 } as const;
 

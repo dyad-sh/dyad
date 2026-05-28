@@ -15,7 +15,7 @@ import type {
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
-export type Transport = "stdio" | "http" | "sse";
+export type Transport = "stdio" | "http";
 
 export function useMcp() {
   const queryClient = useQueryClient();

@@ -41,6 +41,89 @@ interface CallbackListener {
 // rather than queueing. Map key is the port number.
 const pendingFlows = new Map<number, PendingFlow>();
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+// Self-contained (no external assets) so it works on the loopback
+// listener. Provides an "Open Dyad" button on success but does not
+// auto-redirect: the user almost always has Dyad already in front,
+// and triggering the protocol handler unconditionally produces a
+// "Open in Dyad?" browser prompt that's more annoying than helpful.
+function renderCallbackPage(opts: {
+  kind: "success" | "error";
+  title: string;
+  message: string;
+}): string {
+  const isSuccess = opts.kind === "success";
+  const accent = isSuccess ? "#10b981" : "#ef4444";
+  const safeTitle = escapeHtml(opts.title);
+  const safeMessage = escapeHtml(opts.message);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${safeTitle} — Dyad</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+    color: #0f172a;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: linear-gradient(135deg, #0b1220 0%, #111827 100%); color: #e5e7eb; }
+    .card { background: #1f2937; border-color: #374151; }
+    .muted { color: #9ca3af; }
+    a { color: #93c5fd; }
+  }
+  .card {
+    max-width: 480px;
+    width: calc(100% - 32px);
+    padding: 32px;
+    border-radius: 16px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    text-align: center;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: ${accent}20;
+    color: ${accent};
+    margin-bottom: 20px;
+    font-size: 28px;
+    line-height: 1;
+  }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  p { margin: 0 0 20px; line-height: 1.5; }
+  p:last-child { margin-bottom: 0; }
+  .muted { color: #475569; font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge" aria-hidden="true">${isSuccess ? "&#10003;" : "&#33;"}</div>
+    <h1>${safeTitle}</h1>
+    <p>${safeMessage}</p>
+    ${isSuccess ? "" : `<p class="muted">You can close this window and return to Dyad.</p>`}
+  </div>
+</body>
+</html>`;
+}
+
 function generateState(): string {
   // 16 random bytes -> 22-char base64url. Used as the OAuth `state`
   // parameter for CSRF protection: verified on callback before we
@@ -137,11 +220,14 @@ async function startCallbackListener(
       const state = url.searchParams.get("state");
 
       if (state !== expectedState) {
-        res
-          .writeHead(400, { "Content-Type": "text/html" })
-          .end(
-            "<html><body><h1>OAuth state mismatch</h1><p>This window can be closed; the flow will be retried.</p></body></html>",
-          );
+        res.writeHead(400, { "Content-Type": "text/html" }).end(
+          renderCallbackPage({
+            kind: "error",
+            title: "Authorization could not be verified",
+            message:
+              "The browser's response didn't match the request Dyad started. You can close this window; the flow will be retried.",
+          }),
+        );
         settle(() =>
           rejectCode(
             new Error(
@@ -153,22 +239,25 @@ async function startCallbackListener(
       }
 
       if (code) {
-        res
-          .writeHead(200, { "Content-Type": "text/html" })
-          .end(
-            "<html><body><h1>Authorization successful</h1><p>You can close this window and return to Dyad.</p></body></html>",
-          );
+        res.writeHead(200, { "Content-Type": "text/html" }).end(
+          renderCallbackPage({
+            kind: "success",
+            title: "Authorization successful",
+            message: "You can close this tab and return to Dyad.",
+          }),
+        );
         settle(() => resolveCode(code));
         return;
       }
 
-      const safeErr = (errParam ?? "missing code").replace(
-        /[&<>"']/g,
-        (c) => `&#${c.charCodeAt(0)};`,
+      const safeErr = escapeHtml(errParam ?? "missing code");
+      res.writeHead(400, { "Content-Type": "text/html" }).end(
+        renderCallbackPage({
+          kind: "error",
+          title: "Authorization failed",
+          message: safeErr,
+        }),
       );
-      res
-        .writeHead(400, { "Content-Type": "text/html" })
-        .end(`<html><body><h1>OAuth error</h1><p>${safeErr}</p></body></html>`);
       settle(() =>
         rejectCode(
           new Error(`OAuth callback error: ${errParam ?? "missing code"}`),
@@ -277,17 +366,18 @@ export async function runOAuthFlow(
   if (!s.url) {
     return {
       success: false,
-      error: `MCP server "${s.name}" has no URL; OAuth requires HTTP or SSE transport.`,
+      error: `MCP server "${s.name}" has no URL; OAuth requires HTTP transport.`,
     };
   }
-  if (s.transport !== "http" && s.transport !== "sse") {
+  if (s.transport !== "http") {
     return {
       success: false,
       error: `OAuth not supported for transport "${s.transport}".`,
     };
   }
 
-  const callbackPort = params.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT;
+  const callbackPort =
+    params.callbackPort ?? s.oauthCallbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT;
   // Scope values are defined by each OAuth server; there is no
   // universal default that works across providers. Pass through
   // whatever the user configured, otherwise omit the `scope`
@@ -370,10 +460,14 @@ export async function disconnectOAuth(
     .from(mcpServers)
     .where(eq(mcpServers.id, serverId));
   if (!rows[0]) return { success: false };
-  // `invalidateCredentials` only deletes state; it doesn't read the
-  // pre-registered client_id / client_secret, so don't decrypt or
-  // pass them.
-  const provider = new DyadOAuthClientProvider({ serverId });
+  // `invalidateCredentials` only deletes state; no need to read /
+  // decrypt the pre-registered client_id / client_secret.
+  // `allowInteractive` so the invalidate guard doesn't no-op this
+  // user-initiated cleanup.
+  const provider = new DyadOAuthClientProvider({
+    serverId,
+    allowInteractive: true,
+  });
   await provider.invalidateCredentials("all");
   mcpManager.dispose(serverId);
   return { success: true };

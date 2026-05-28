@@ -19,7 +19,7 @@ export const DEFAULT_OAUTH_CALLBACK_PORT = 53682;
 // MCP Schemas
 // =============================================================================
 
-export const McpTransportEnum = z.enum(["stdio", "sse", "http"]);
+export const McpTransportEnum = z.enum(["stdio", "http"]);
 export type McpTransport = z.infer<typeof McpTransportEnum>;
 
 export const McpServerSchema = z.object({
@@ -37,6 +37,8 @@ export const McpServerSchema = z.object({
   // Connected / Not connected badge without sending the token blob to
   // the renderer.
   oauthConnected: z.boolean(),
+  // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
+  oauthCallbackPort: z.number().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -67,6 +69,8 @@ export const CreateMcpServerSchema = z.object({
   // before storing and never returns it via `McpServerSchema`.
   oauthClientSecret: z.string().nullable().optional(),
   oauthScope: z.string().nullable().optional(),
+  // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
+  oauthCallbackPort: z.number().int().nullable().optional(),
 });
 
 export type CreateMcpServer = z.infer<typeof CreateMcpServerSchema>;
@@ -83,6 +87,7 @@ export const McpServerUpdateSchema = z.object({
     .optional(),
   url: z.string().optional(),
   enabled: z.boolean().optional(),
+  oauthEnabled: z.boolean().optional(),
 });
 
 export type McpServerUpdate = z.infer<typeof McpServerUpdateSchema>;
@@ -207,6 +212,7 @@ export const mcpContracts = {
       // Set when `success` is false; shown to the user as a toast in
       // `ToolsMcpSettings`.
       error: z.string().nullable(),
+      errorKind: z.enum(["discovery_failed", "other"]).nullable().optional(),
     }),
   }),
 
@@ -214,6 +220,21 @@ export const mcpContracts = {
     channel: "mcp:disconnect-oauth",
     input: z.number(), // serverId
     output: z.object({ success: z.boolean() }),
+  }),
+
+  probeCallbackPort: defineContract({
+    channel: "mcp:probe-callback-port",
+    input: z.void(),
+    output: z.object({ port: z.number().int() }),
+  }),
+
+  probeConnection: defineContract({
+    channel: "mcp:probe-connection",
+    input: z.number(), // serverId
+    output: z.object({
+      status: z.enum(["ok", "unauthorized", "error"]),
+      error: z.string().nullable(),
+    }),
   }),
 } as const;
 

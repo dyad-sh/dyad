@@ -176,6 +176,7 @@ describe("DyadOAuthClientProvider", () => {
     const p = new DyadOAuthClientProvider({
       serverId: 11,
       preregisteredClientId: "from-config",
+      allowInteractive: true,
     });
     await p.saveClientInformation({
       client_id: "from-dcr",
@@ -187,7 +188,10 @@ describe("DyadOAuthClientProvider", () => {
   });
 
   it("holds the PKCE code verifier in memory only and never on disk", async () => {
-    const p = new DyadOAuthClientProvider({ serverId: 3 });
+    const p = new DyadOAuthClientProvider({
+      serverId: 3,
+      allowInteractive: true,
+    });
     await p.saveCodeVerifier("the-verifier");
     expect(await p.codeVerifier()).toBe("the-verifier");
     // Storage row must not contain the verifier — that's the whole
@@ -309,7 +313,10 @@ describe("DyadOAuthClientProvider", () => {
 
   describe("invalidateCredentials", () => {
     async function seedFull(serverId: number) {
-      const p = new DyadOAuthClientProvider({ serverId });
+      const p = new DyadOAuthClientProvider({
+        serverId,
+        allowInteractive: true,
+      });
       await p.saveTokens({ access_token: "t", token_type: "Bearer" });
       await p.saveClientInformation({ client_id: "c" });
       await p.saveCodeVerifier("v");

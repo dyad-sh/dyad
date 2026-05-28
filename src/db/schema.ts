@@ -274,6 +274,10 @@ export const mcpServers = sqliteTable("mcp_servers", {
   // `scope` parameter entirely so the server applies its own default
   // (rather than us guessing a value that fits a minority of providers).
   oauthScope: text("oauth_scope"),
+  // Per-server callback port. Manual (non-DCR) flows pre-register a
+  // redirect URI that includes the port, so it must stay stable for
+  // those rows. Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
+  oauthCallbackPort: integer("oauth_callback_port"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

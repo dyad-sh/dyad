@@ -30,7 +30,7 @@ import {
 type Row = {
   id: number;
   name: string;
-  transport: "stdio" | "http" | "sse";
+  transport: "stdio" | "http";
   url: string | null;
   oauthEnabled: boolean;
   oauthClientId: string | null;

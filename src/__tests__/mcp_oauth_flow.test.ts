@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type Row = {
   id: number;
   name: string;
-  transport: "stdio" | "http" | "sse";
+  transport: "stdio" | "http";
   url: string | null;
   oauthEnabled: boolean;
   oauthClientId: string | null;
@@ -120,7 +120,7 @@ describe("runOAuthFlow validation", () => {
     expect(result.error).toContain("MCP server not found");
   });
 
-  it("rejects stdio transport (OAuth only applies to http / sse)", async () => {
+  it("rejects stdio transport (OAuth only applies to http)", async () => {
     // Stdio rows seeded here have a non-null URL so we exercise the
     // transport-rejection branch rather than the URL-missing one.
     seedRow({ id: 1, transport: "stdio", url: "ignored-for-stdio" });
@@ -133,7 +133,7 @@ describe("runOAuthFlow validation", () => {
     seedRow({ id: 2, transport: "http", url: null });
     const result = await runOAuthFlow({ serverId: 2 });
     expect(result.success).toBe(false);
-    expect(result.error).toContain("OAuth requires HTTP or SSE");
+    expect(result.error).toContain("OAuth requires HTTP");
   });
 });
 

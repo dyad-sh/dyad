@@ -40,11 +40,12 @@ class McpManager {
         env,
       });
       client = await createMCPClient({ transport: stdio });
-    } else if (s.transport === "http" || s.transport === "sse") {
-      if (!s.url) throw new Error(`${s.transport} MCP requires url`);
+    } else if (s.transport === "http") {
+      if (!s.url) throw new Error(`http MCP requires url`);
       const authProvider = s.oauthEnabled
         ? new DyadOAuthClientProvider({
             serverId: s.id,
+            callbackPort: s.oauthCallbackPort ?? undefined,
             scope: s.oauthScope ?? undefined,
             preregisteredClientId: s.oauthClientId ?? undefined,
             preregisteredClientSecret: s.oauthClientSecret

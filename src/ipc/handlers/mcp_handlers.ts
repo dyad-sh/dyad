@@ -15,12 +15,46 @@ import {
 } from "../utils/mcp_oauth_provider";
 import {
   mcpContracts,
+  DEFAULT_OAUTH_CALLBACK_PORT,
   type McpServer,
   type McpTransport,
   type McpConsentValue,
 } from "../types/mcp";
+import { findAvailablePort } from "../utils/port_utils";
+import net from "node:net";
 
 const logger = log.scope("mcp_handlers");
+
+// SDK errors are untyped strings; match liberally across known
+// discovery-failure shapes.
+function classifyOAuthError(
+  msg: string | null,
+): "discovery_failed" | "other" | null {
+  if (!msg) return null;
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("well-known") ||
+    lower.includes("metadata") ||
+    lower.includes("discovery") ||
+    lower.includes("no auth provider") ||
+    lower.includes("invalid oauth") ||
+    lower.includes("not valid json") ||
+    lower.includes("404") ||
+    lower.includes("not found")
+  ) {
+    return "discovery_failed";
+  }
+  return "other";
+}
+
+function looksLikeUnauthorized(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("unauthorized") ||
+    lower.includes("401") ||
+    lower.includes("www-authenticate")
+  );
+}
 
 // Parse a JSON string from the renderer and surface a clear error
 // instead of letting the main process see a raw SyntaxError. Returns
@@ -59,6 +93,7 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
     // registered client ID before any tokens exist.
     // `oauthStateHasTokens` checks for a real access token.
     oauthConnected: oauthStateHasTokens(dbServer.oauthState),
+    oauthCallbackPort: dbServer.oauthCallbackPort,
     createdAt: dbServer.createdAt,
     updatedAt: dbServer.updatedAt,
   };
@@ -85,6 +120,7 @@ export function registerMcpHandlers() {
       oauthClientId,
       oauthClientSecret,
       oauthScope,
+      oauthCallbackPort,
     } = params;
     // Handle args: can be string (JSON), array, or null/undefined
     const parsedArgs =
@@ -118,6 +154,8 @@ export function registerMcpHandlers() {
           ? encryptToString(oauthClientSecret)
           : null,
         oauthScope: oauthScope ?? null,
+        oauthCallbackPort:
+          typeof oauthCallbackPort === "number" ? oauthCallbackPort : null,
       })
       .returning();
     return toMcpServer(result[0]);
@@ -145,6 +183,8 @@ export function registerMcpHandlers() {
           : (params.headersJson ?? null);
     if (params.url !== undefined) update.url = params.url;
     if (params.enabled !== undefined) update.enabled = !!params.enabled;
+    if (params.oauthEnabled !== undefined)
+      update.oauthEnabled = !!params.oauthEnabled;
 
     const result = await db
       .update(mcpServers)
@@ -284,7 +324,49 @@ export function registerMcpHandlers() {
   // `@ai-sdk/mcp` `auth()` function drives PKCE + token exchange, and
   // tokens land in the encrypted `oauth_state` column.
   createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
-    return await runOAuthFlow({ serverId: params.serverId });
+    const result = await runOAuthFlow({ serverId: params.serverId });
+    if (result.success) {
+      return { ...result, errorKind: null };
+    }
+    return { ...result, errorKind: classifyOAuthError(result.error) };
+  });
+
+  // Tries DEFAULT_OAUTH_CALLBACK_PORT first since common
+  // pre-registered redirect URIs use it; falls back to a free
+  // ephemeral port when taken.
+  createTypedHandler(mcpContracts.probeCallbackPort, async () => {
+    const defaultFree = await new Promise<boolean>((resolve) => {
+      const probe = net.createServer();
+      probe.once("error", () => {
+        probe.close(() => resolve(false));
+      });
+      probe.once("listening", () => {
+        probe.close(() => resolve(true));
+      });
+      probe.listen(DEFAULT_OAUTH_CALLBACK_PORT, "localhost");
+    });
+    if (defaultFree) return { port: DEFAULT_OAUTH_CALLBACK_PORT };
+    const fallback = await findAvailablePort(49152, 65535);
+    return { port: fallback };
+  });
+
+  createTypedHandler(mcpContracts.probeConnection, async (_, serverId) => {
+    try {
+      const client = await mcpManager.getClient(serverId);
+      // listTools forces a real request so a 401 surfaces here, not
+      // on the first tool call.
+      await client.tools();
+      return { status: "ok" as const, error: null };
+    } catch (err) {
+      try {
+        mcpManager.dispose(serverId);
+      } catch {}
+      const message = err instanceof Error ? err.message : String(err);
+      if (looksLikeUnauthorized(message)) {
+        return { status: "unauthorized" as const, error: message };
+      }
+      return { status: "error" as const, error: message };
+    }
   });
 
   // OAuth disconnect: clear stored tokens + client info. Forces the

@@ -602,6 +602,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "oauth_callback_port": {
+          "name": "oauth_callback_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",

@@ -226,6 +226,10 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // call `addClientAuthentication` (which reads it) before this
     // returns.
     this.cachedClientInformation = clientInformation;
+    // Skip DB write for non-interactive so a background DCR /register
+    // can't overwrite an in-flight Connect's client_id between
+    // /authorize and /token.
+    if (!this.allowInteractive) return;
     const state = await readState(this.serverId);
     state.clientInformation = clientInformation;
     await writeState(this.serverId, state);
@@ -242,6 +246,9 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    // Skip for non-interactive so a concurrent background path can't
+    // clobber an in-flight Connect's PKCE verifier.
+    if (!this.allowInteractive) return;
     codeVerifiers.set(this.serverId, codeVerifier);
   }
 
@@ -340,6 +347,9 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       );
       return;
     }
+    // Skip for non-interactive so a background 401 path can't nuke
+    // tokens or client info out from under an active session.
+    if (!this.allowInteractive) return;
     const state = await readState(this.serverId);
     delete state.tokens;
     if (scope === "all") {

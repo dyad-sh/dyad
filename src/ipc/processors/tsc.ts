@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ProblemReport } from "@/ipc/types";
 import log from "electron-log";
 import { WorkerInput, WorkerOutput } from "../../../shared/tsc_types";
@@ -13,6 +14,29 @@ import {
 import { getTypeScriptCachePath } from "@/paths/paths";
 
 const logger = log.scope("tsc");
+
+/**
+ * Map expected type-check setup failures to DyadError so they are not sent to
+ * PostHog as `$exception` events (missing deps, no tsconfig, etc.).
+ */
+export function toProblemReportError(error: unknown): Error {
+  if (error instanceof DyadError) {
+    return error;
+  }
+
+  const message =
+    error instanceof Error ? error.message : String(error ?? "Unknown error");
+
+  if (
+    message.startsWith("Failed to load TypeScript from") ||
+    message.includes("Cannot find module 'typescript'") ||
+    message.startsWith("No TypeScript configuration file found")
+  ) {
+    return new DyadError(message, DyadErrorKind.Precondition);
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
 
 export async function generateProblemReport({
   fullResponse,
@@ -39,7 +63,11 @@ export async function generateProblemReport({
         resolve(output.data);
       } else {
         logger.error(`TSC worker failed for app ${appPath}: ${output.error}`);
-        reject(new Error(output.error || "Unknown worker error"));
+        reject(
+          toProblemReportError(
+            new Error(output.error || "Unknown worker error"),
+          ),
+        );
       }
     });
 
@@ -47,14 +75,16 @@ export async function generateProblemReport({
     worker.on("error", (error) => {
       logger.error(`TSC worker error for app ${appPath}:`, error);
       worker.terminate();
-      reject(error);
+      reject(toProblemReportError(error));
     });
 
     // Handle worker exit
     worker.on("exit", (code) => {
       if (code !== 0) {
         logger.error(`TSC worker exited with code ${code} for app ${appPath}`);
-        reject(new Error(`Worker exited with code ${code}`));
+        reject(
+          toProblemReportError(new Error(`Worker exited with code ${code}`)),
+        );
       }
     });
 

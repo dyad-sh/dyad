@@ -626,11 +626,11 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
       expect.stringMatching(
-        /^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+        /^ALTER INDEX "public"\."users_name_idx" RENAME TO "pgschemadiff_tmpidx_users_name_idx_[0-9a-f]{16}"$/u,
       ),
       "CREATE INDEX CONCURRENTLY users_name_idx ON public.users USING btree (name, id)",
       expect.stringMatching(
-        /^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[A-Za-z0-9$_]{22}"$/u,
+        /^DROP INDEX CONCURRENTLY "public"\."pgschemadiff_tmpidx_users_name_idx_[0-9a-f]{16}"$/u,
       ),
     ]);
 
@@ -1634,11 +1634,11 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     const sql = diff.statements.map((statement) => statement.sql);
     expect(sql).toEqual([
       expect.stringMatching(
-        /^ALTER INDEX "tenant_data"\."metrics_2024_local_idx" RENAME TO "pgschemadiff_tmpidx_metrics_2024_local_i_[A-Za-z0-9$_]{22}"$/u,
+        /^ALTER INDEX "tenant_data"\."metrics_2024_local_idx" RENAME TO "pgschemadiff_tmpidx_metrics_2024_local_idx_[0-9a-f]{16}"$/u,
       ),
       "CREATE INDEX CONCURRENTLY metrics_2024_local_idx ON tenant_data.metrics_2024 USING btree (tenant_id, recorded_at)",
       expect.stringMatching(
-        /^DROP INDEX CONCURRENTLY "tenant_data"\."pgschemadiff_tmpidx_metrics_2024_local_i_[A-Za-z0-9$_]{22}"$/u,
+        /^DROP INDEX CONCURRENTLY "tenant_data"\."pgschemadiff_tmpidx_metrics_2024_local_idx_[0-9a-f]{16}"$/u,
       ),
     ]);
 
@@ -1713,14 +1713,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     const sql = diff.statements.map((statement) => statement.sql);
     expect(
       sql.filter((statement) =>
-        /^ALTER INDEX "first_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+        /^ALTER INDEX "first_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[0-9a-f]{16}"$/u.test(
           statement,
         ),
       ),
     ).toHaveLength(1);
     expect(
       sql.filter((statement) =>
-        /^ALTER INDEX "second_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+        /^ALTER INDEX "second_child"\."same_local_idx" RENAME TO "pgschemadiff_tmpidx_same_local_idx_[0-9a-f]{16}"$/u.test(
           statement,
         ),
       ),
@@ -1733,14 +1733,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     );
     expect(
       sql.filter((statement) =>
-        /^DROP INDEX CONCURRENTLY "first_child"\."pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+        /^DROP INDEX CONCURRENTLY "first_child"\."pgschemadiff_tmpidx_same_local_idx_[0-9a-f]{16}"$/u.test(
           statement,
         ),
       ),
     ).toHaveLength(1);
     expect(
       sql.filter((statement) =>
-        /^DROP INDEX CONCURRENTLY "second_child"\."pgschemadiff_tmpidx_same_local_idx_[A-Za-z0-9$_]{22}"$/u.test(
+        /^DROP INDEX CONCURRENTLY "second_child"\."pgschemadiff_tmpidx_same_local_idx_[0-9a-f]{16}"$/u.test(
           statement,
         ),
       ),
@@ -1798,7 +1798,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     const sql = diff.statements.map((statement) => statement.sql);
     expect(sql).toEqual([
       expect.stringMatching(
-        /^ALTER INDEX "public"\."metrics_2024_recorded_at_idx" RENAME TO "pgschemadiff_tmpidx_metrics_2024_recorde_[A-Za-z0-9$_]{22}"$/u,
+        /^ALTER INDEX "public"\."metrics_2024_recorded_at_idx" RENAME TO "pgschemadiff_tmpidx_metrics_2024_recorded_at_i_[0-9a-f]{16}"$/u,
       ),
       'DROP INDEX "public"."metrics_recorded_at_idx"',
       "CREATE INDEX CONCURRENTLY metrics_2024_recorded_at_idx ON public.metrics_2024 USING btree (recorded_at)",
@@ -3856,14 +3856,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
       expect.stringMatching(
-        /^ALTER TABLE "public"\."users" ADD CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}" CHECK\("id" IS NOT NULL\) NOT VALID$/u,
+        /^ALTER TABLE "public"\."users" ADD CONSTRAINT "pgschemadiff_tmpnn_[0-9a-f]{16}" CHECK\("id" IS NOT NULL\) NOT VALID$/u,
       ),
       expect.stringMatching(
-        /^ALTER TABLE "public"\."users" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}"$/u,
+        /^ALTER TABLE "public"\."users" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_[0-9a-f]{16}"$/u,
       ),
       'ALTER TABLE "public"."users" ALTER COLUMN "id" SET NOT NULL',
       expect.stringMatching(
-        /^ALTER TABLE "public"\."users" DROP CONSTRAINT "pgschemadiff_tmpnn_[A-Za-z0-9$_]{22}"$/u,
+        /^ALTER TABLE "public"\."users" DROP CONSTRAINT "pgschemadiff_tmpnn_[0-9a-f]{16}"$/u,
       ),
     ]);
 
@@ -4001,7 +4001,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
     });
 
     expect(diff.statements.map((statement) => statement.sql)).toEqual([
-      'ALTER TABLE "public"."events" ALTER COLUMN "occurred_at" SET DATA TYPE timestamp without time zone using to_timestamp("occurred_at" / 1000)',
+      'ALTER TABLE "public"."events" ALTER COLUMN "occurred_at" SET DATA TYPE timestamp without time zone using to_timestamp("occurred_at" / 1000.0)',
       'ANALYZE "public"."events" ("occurred_at")',
     ]);
 

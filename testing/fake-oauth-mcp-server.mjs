@@ -12,6 +12,12 @@
 //   FAKE_CLIENT_SECRET    optional; when set, /token requires it
 //   FAKE_REQUIRED_SCOPE   optional; /authorize 400s when scope missing
 //   FAKE_TOKEN_TTL_SEC    access-token lifetime, default 3600
+//   FAKE_NO_OAUTH         "1" makes the server look non-OAuth: all
+//                          /.well-known/* + /register + /authorize +
+//                          /token return 404, and /mcp accepts every
+//                          request without a bearer token. Used to
+//                          drive the "Server doesn't support OAuth"
+//                          retry flow.
 //
 // The /authorize endpoint auto-redirects with a code -- no consent
 // UI -- so tests can drive the full flow without a browser. PKCE is
@@ -32,8 +38,9 @@ const REQUIRED_SCOPE = process.env.FAKE_REQUIRED_SCOPE ?? null;
 const TOKEN_TTL_SEC = process.env.FAKE_TOKEN_TTL_SEC
   ? parseInt(process.env.FAKE_TOKEN_TTL_SEC, 10)
   : 3600;
+const NO_OAUTH = process.env.FAKE_NO_OAUTH === "1";
 
-if (!DCR_ENABLED && !STATIC_CLIENT_ID) {
+if (!NO_OAUTH && !DCR_ENABLED && !STATIC_CLIENT_ID) {
   console.error(
     "FAKE_DCR=0 requires FAKE_CLIENT_ID to be set (no DCR + no static client = no clients).",
   );
@@ -174,6 +181,30 @@ const httpServer = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
+    // No-OAuth mode: discovery endpoints + DCR + /authorize + /token
+    // all 404 so the SDK's auth() bails with a discovery failure. The
+    // /mcp endpoint accepts requests without a bearer token.
+    if (NO_OAUTH) {
+      if (
+        url.pathname === "/.well-known/oauth-authorization-server" ||
+        url.pathname === "/.well-known/oauth-protected-resource" ||
+        url.pathname === "/register" ||
+        url.pathname === "/authorize" ||
+        url.pathname === "/token"
+      ) {
+        res.writeHead(404).end("Not Found");
+        return;
+      }
+      if (url.pathname === "/mcp") {
+        await requestContext.run({ clientId: "anonymous" }, async () => {
+          await transport.handleRequest(req, res);
+        });
+        return;
+      }
+      res.writeHead(404).end("Not Found");
+      return;
+    }
+
     // RFC 8414 discovery
     if (
       req.method === "GET" &&
@@ -463,6 +494,9 @@ const httpServer = createServer(async (req, res) => {
 
 httpServer.listen(PORT, "127.0.0.1", () => {
   console.log(`Fake OAuth MCP server listening on ${BASE}`);
+  if (NO_OAUTH) {
+    console.log("  OAuth: disabled (all OAuth endpoints 404; /mcp open)");
+  }
   console.log(
     `  DCR: ${DCR_ENABLED ? "enabled" : "disabled (static client_id only)"}`,
   );

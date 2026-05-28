@@ -22,43 +22,12 @@ import {
 } from "../types/mcp";
 import { findAvailablePort } from "../utils/port_utils";
 import net from "node:net";
+import {
+  classifyOAuthError,
+  looksLikeUnauthorized,
+} from "./mcp_error_classifiers";
 
 const logger = log.scope("mcp_handlers");
-
-// SDK errors are untyped strings; match liberally across known
-// discovery-failure shapes.
-function classifyOAuthError(
-  msg: string | null,
-): "discovery_failed" | "other" | null {
-  if (!msg) return null;
-  const lower = msg.toLowerCase();
-  // Word-boundary for "404" so port numbers like 4040 / 40400 / URL
-  // path fragments don't trip the discovery-failed branch.
-  if (
-    lower.includes("well-known") ||
-    lower.includes("metadata") ||
-    lower.includes("discovery") ||
-    lower.includes("no auth provider") ||
-    lower.includes("invalid oauth") ||
-    lower.includes("not valid json") ||
-    /\b404\b/.test(lower) ||
-    lower.includes("not found")
-  ) {
-    return "discovery_failed";
-  }
-  return "other";
-}
-
-function looksLikeUnauthorized(msg: string): boolean {
-  const lower = msg.toLowerCase();
-  // Word-boundary for "401" so port numbers like 4012 / 14010 in
-  // ECONNREFUSED messages aren't classified as auth failures.
-  return (
-    lower.includes("unauthorized") ||
-    /\b401\b/.test(lower) ||
-    lower.includes("www-authenticate")
-  );
-}
 
 // Parse a JSON string from the renderer and surface a clear error
 // instead of letting the main process see a raw SyntaxError. Returns

@@ -17,6 +17,8 @@ interface ChatActionsPageObject {
   waitForChatCompletion(options?: { timeout?: number }): Promise<void>;
 }
 
+const SLOW_COMPLETION_PROMPT = "hello [sleep=medium]";
+
 const testWithNotificationsEnabled = testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
     const fs = await import("fs");
@@ -153,7 +155,9 @@ testWithNotificationsEnabled(
     const chatId = await createChat(po);
     await po.browserNotifications.injectFakeNotifications();
 
-    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
+    await po.chatActions.sendPrompt(SLOW_COMPLETION_PROMPT, {
+      skipWaitForCompletion: true,
+    });
     await triggerDifferentChat(po, chatId);
 
     const notification =
@@ -229,7 +233,9 @@ testWithNotificationsEnabled(
 
     await po.browserNotifications.injectFakeNotifications();
 
-    await po.chatActions.sendPrompt("test", { skipWaitForCompletion: true });
+    await po.chatActions.sendPrompt(SLOW_COMPLETION_PROMPT, {
+      skipWaitForCompletion: true,
+    });
     await triggerDifferentChat(po, initialChatId);
 
     const tag = `dyad-chat-complete-${initialChatId}`;

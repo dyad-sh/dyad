@@ -25,7 +25,15 @@ const OAUTH_FLOW_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface PendingFlow {
   reject: (err: Error) => void;
+  // Servers are pushed as their bind completes (even if the flow has
+  // since been superseded), so a supersede can enumerate them via
+  // `servers` after awaiting `binding`.
   servers: Server[];
+  // Resolves once the initial bind attempts have all settled. A
+  // supersede awaits this so the previous flow's `listen()` calls
+  // can't win the port between our `pendingFlows.delete` and our own
+  // bind, which would surface as EADDRINUSE.
+  binding: Promise<void>;
   timeout: NodeJS.Timeout | null;
 }
 
@@ -153,6 +161,10 @@ async function startCallbackListener(
     existing.reject(
       new Error("OAuth flow superseded by a new Connect attempt."),
     );
+    // Wait for any in-flight `tryBind` calls so `existing.servers`
+    // includes every socket that successfully bound, even ones that
+    // bound after the supersede flipped `disposed`.
+    await existing.binding;
     await Promise.all(
       existing.servers.map(
         (s) =>
@@ -187,6 +199,8 @@ async function startCallbackListener(
       rejectCode(err);
     },
     servers: [],
+    // Overwritten below before `pendingFlows.set` exposes the flow.
+    binding: Promise.resolve(),
     timeout: null,
   };
 
@@ -291,6 +305,16 @@ async function startCallbackListener(
       });
     });
 
+  // Push to `flow.servers` as soon as a bind succeeds (rather than
+  // after the whole `Promise.all`) so a supersede landing during the
+  // bind window can observe and close every bound socket.
+  const bindPromises = LOOPBACK_BIND_HOSTS.map(async (host) => {
+    const s = await tryBind(host);
+    if (s) flow.servers.push(s);
+    return s;
+  });
+  flow.binding = Promise.all(bindPromises).then(() => undefined);
+
   // Register the pending flow before kicking off the async bind so a
   // concurrent Connect on the same port sees this entry and supersedes
   // it (rather than racing into its own bind and hitting EADDRINUSE).
@@ -299,11 +323,10 @@ async function startCallbackListener(
   // Await the bind so callers can safely open the browser knowing the
   // callback endpoint is actually listening. Without this, `auth()`
   // could redirect before the socket was ready and hit ECONNREFUSED.
-  const bindResults = await Promise.all(LOOPBACK_BIND_HOSTS.map(tryBind));
-  const bound = bindResults.filter((s): s is Server => s !== null);
+  await flow.binding;
 
   if (disposed) {
-    for (const s of bound) s.close();
+    for (const s of flow.servers) s.close();
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
     // Throw rather than return: a returned listener would let
     // `runOAuthFlow` proceed into `auth(provider)` and open the
@@ -312,7 +335,7 @@ async function startCallbackListener(
     // abort the real flow.
     throw new Error("OAuth flow superseded before listener bound.");
   }
-  if (bound.length === 0) {
+  if (flow.servers.length === 0) {
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
     // Don't reject `code` here: we throw before returning, so the
     // caller never gets a listener to attach `code.catch(...)` to,
@@ -323,7 +346,6 @@ async function startCallbackListener(
     );
   }
 
-  flow.servers.push(...bound);
   flow.timeout = setTimeout(() => {
     dispose();
     rejectCode(
@@ -333,7 +355,7 @@ async function startCallbackListener(
     );
   }, OAUTH_FLOW_TIMEOUT_MS);
   logger.info(
-    `OAuth callback listener bound on http://localhost:${port} (${bound.length} stack${bound.length === 1 ? "" : "s"})`,
+    `OAuth callback listener bound on http://localhost:${port} (${flow.servers.length} stack${flow.servers.length === 1 ? "" : "s"})`,
   );
 
   return { code, dispose };

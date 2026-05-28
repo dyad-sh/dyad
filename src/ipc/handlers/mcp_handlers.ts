@@ -158,6 +158,11 @@ export function registerMcpHandlers() {
           typeof oauthCallbackPort === "number" ? oauthCallbackPort : null,
       })
       .returning();
+    if (!result[0])
+      throw new DyadError(
+        "Failed to create MCP server.",
+        DyadErrorKind.Validation,
+      );
     return toMcpServer(result[0]);
   });
 

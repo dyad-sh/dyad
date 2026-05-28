@@ -145,6 +145,10 @@ If `git push`, `gh pr view`, and `gh auth status` fail with only `fetch failed`,
 
 If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, the configured broker URL is returning an HTML error page instead of the token API response. Verify `BROKER_BASE_URL` and broker routes such as `/healthz` or `/mint` before changing remotes or retrying GitHub commands.
 
+## Codex review auth failures
+
+If the `codex-review` GitHub Action fails with `token_expired` or "Your access token could not be refreshed because your refresh token was already used", treat it as review-runner authentication infrastructure rather than a PR code/test failure. Rerunning or pushing can confirm whether the secret recovered, but persistent failures require refreshing the workflow's Codex auth secret.
+
 ## Rebase workflow and conflict resolution
 
 If `git fetch --all` fails on a contributor remote with `would clobber existing tag`, but the output shows `Fetching upstream` completed first, do not treat the rebase as blocked. Run `git fetch upstream` to confirm the base remote is current, then rebase onto `upstream/main`.

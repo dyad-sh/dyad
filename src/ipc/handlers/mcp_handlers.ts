@@ -32,6 +32,8 @@ function classifyOAuthError(
 ): "discovery_failed" | "other" | null {
   if (!msg) return null;
   const lower = msg.toLowerCase();
+  // Word-boundary for "404" so port numbers like 4040 / 40400 / URL
+  // path fragments don't trip the discovery-failed branch.
   if (
     lower.includes("well-known") ||
     lower.includes("metadata") ||
@@ -39,7 +41,7 @@ function classifyOAuthError(
     lower.includes("no auth provider") ||
     lower.includes("invalid oauth") ||
     lower.includes("not valid json") ||
-    lower.includes("404") ||
+    /\b404\b/.test(lower) ||
     lower.includes("not found")
   ) {
     return "discovery_failed";
@@ -49,9 +51,11 @@ function classifyOAuthError(
 
 function looksLikeUnauthorized(msg: string): boolean {
   const lower = msg.toLowerCase();
+  // Word-boundary for "401" so port numbers like 4012 / 14010 in
+  // ECONNREFUSED messages aren't classified as auth failures.
   return (
     lower.includes("unauthorized") ||
-    lower.includes("401") ||
+    /\b401\b/.test(lower) ||
     lower.includes("www-authenticate")
   );
 }

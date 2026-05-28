@@ -443,6 +443,9 @@ export function ToolsMcpSettings() {
   };
 
   const runAutoConnect = async (serverId: number) => {
+    // Clear any prior feedback so a stale "discovery_failed" alert
+    // can't sit next to a fresh error toast on the retry path.
+    setConnectFeedback(null);
     setConnectingServerId(serverId);
     try {
       const result = await startOAuth({ serverId });

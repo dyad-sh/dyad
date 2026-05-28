@@ -4,6 +4,7 @@ import {
   DyadError,
   isDyadErrorKindFilteredFromTelemetry,
 } from "@/errors/dyad_error";
+import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { TelemetryEventPayload } from "@/ipc/types";
 
 const logger = log.scope("telemetry");
@@ -65,6 +66,13 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
     error instanceof Error &&
     error.name === "RateLimitError" &&
     error.message.includes("(429)")
+  ) {
+    return true;
+  }
+
+  if (
+    error instanceof Error &&
+    isGenericFetchFailedError(error.name, error.message)
   ) {
     return true;
   }

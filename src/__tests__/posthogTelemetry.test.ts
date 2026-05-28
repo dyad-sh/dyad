@@ -3,6 +3,7 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
   shouldBypassNonProTelemetrySampling,
+  shouldFilterPostHogExceptionEvent,
 } from "@/lib/posthogTelemetry";
 
 describe("createExceptionFromTelemetry", () => {
@@ -24,6 +25,44 @@ describe("createExceptionFromTelemetry", () => {
 
     expect(error.name).toBe("Error");
     expect(error.message).toBe("Unknown IPC exception");
+  });
+});
+
+describe("shouldFilterPostHogExceptionEvent", () => {
+  it("filters generic TypeError fetch failed from main-process telemetry", () => {
+    expect(
+      shouldFilterPostHogExceptionEvent({
+        event: "$exception",
+        properties: {
+          exception_name: "TypeError",
+          exception_message: "fetch failed",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("filters generic TypeError fetch failed from PostHog autocapture", () => {
+    expect(
+      shouldFilterPostHogExceptionEvent({
+        event: "$exception",
+        properties: {
+          $exception_type: "TypeError",
+          $exception_message: "fetch failed",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not filter fetch failures with actionable messages", () => {
+    expect(
+      shouldFilterPostHogExceptionEvent({
+        event: "$exception",
+        properties: {
+          exception_name: "TypeError",
+          exception_message: "fetch failed: ECONNREFUSED",
+        },
+      }),
+    ).toBe(false);
   });
 });
 

@@ -29,6 +29,21 @@ export const prompts = sqliteTable(
   (table) => [unique("prompts_slug_unique").on(table.slug)],
 );
 
+export const appCollections = sqliteTable(
+  "app_collections",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("app_collections_name_unique").on(table.name)],
+);
+
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -72,6 +87,9 @@ export const apps = sqliteTable("apps", {
   needsAppBlueprint: integer("needs_app_blueprint", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  collectionId: integer("collection_id").references(() => appCollections.id, {
+    onDelete: "set null",
+  }),
 });
 
 export const chats = sqliteTable("chats", {
@@ -148,10 +166,21 @@ export const versions = sqliteTable(
 );
 
 // Define relations
-export const appsRelations = relations(apps, ({ many }) => ({
+export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),
+  collection: one(appCollections, {
+    fields: [apps.collectionId],
+    references: [appCollections.id],
+  }),
 }));
+
+export const appCollectionsRelations = relations(
+  appCollections,
+  ({ many }) => ({
+    apps: many(apps),
+  }),
+);
 
 export const chatsRelations = relations(chats, ({ many, one }) => ({
   messages: many(messages),

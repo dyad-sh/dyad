@@ -14,6 +14,7 @@ export function useLoadApps() {
   });
 
   const refreshApps = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.appCollections.all });
     return queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
   };
 

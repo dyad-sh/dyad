@@ -48,6 +48,7 @@ import {
   appBlueprintContracts,
   appBlueprintEvents,
 } from "../types/app_blueprint";
+import { appCollectionContracts } from "../types/app_collections";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -109,6 +110,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
   ...getInvokeChannels(appBlueprintContracts),
+  ...getInvokeChannels(appCollectionContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

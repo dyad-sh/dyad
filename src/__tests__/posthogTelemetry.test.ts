@@ -108,7 +108,7 @@ describe("getInitialLoadTelemetryProperties", () => {
     });
   });
 
-  it("marks first sessions and falls back to selected chat mode", () => {
+  it("marks first sessions and leaves unset default chat mode as null", () => {
     expect(
       getInitialLoadTelemetryProperties({
         settings: makeSettings({
@@ -125,7 +125,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       releaseChannel: "stable",
       isFirstSession: true,
       modelProvider: "auto",
-      defaultChatMode: "plan",
+      defaultChatMode: null,
       runtimeMode2: "host",
     });
   });

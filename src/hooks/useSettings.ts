@@ -25,7 +25,7 @@ export function isDyadProUser(): boolean {
   return window.localStorage.getItem(DYAD_PRO_STATUS_KEY) === "true";
 }
 
-let initialLoadTelemetryState: "idle" | "pending" | "sent" = "idle";
+let initialLoadTelemetryState: "idle" | "sent" = "idle";
 
 export function useSettings() {
   const posthog = usePostHog();
@@ -46,6 +46,16 @@ export function useSettings() {
     queryFn: () => ipc.misc.getEnvVars(),
   });
 
+  const {
+    data: platform,
+    error: platformError,
+    isLoading: isPlatformLoading,
+  } = useQuery({
+    queryKey: queryKeys.system.platform,
+    queryFn: () => ipc.system.getSystemPlatform(),
+    staleTime: Infinity,
+  });
+
   // Process telemetry side effects when settings load/change
   useEffect(() => {
     if (!settingsQuery.data) {
@@ -57,48 +67,41 @@ export function useSettings() {
     posthog?.people?.set({ isPro });
     setSettingsAtom(settingsQuery.data);
 
-    if (initialLoadTelemetryState !== "idle" || !appVersion || !posthog) {
+    if (
+      initialLoadTelemetryState !== "idle" ||
+      !appVersion ||
+      !posthog ||
+      isPlatformLoading
+    ) {
       return;
     }
 
-    initialLoadTelemetryState = "pending";
-    let cancelled = false;
-    const settings = settingsQuery.data;
-
-    void (async () => {
-      let platform: string | null = null;
-      try {
-        platform = await queryClient.ensureQueryData({
-          queryKey: queryKeys.system.platform,
-          queryFn: () => ipc.system.getSystemPlatform(),
-          staleTime: Infinity,
-        });
-      } catch (error) {
-        console.warn("Failed to get system platform for telemetry", error);
-      }
-
-      if (cancelled) {
-        return;
-      }
-
-      posthog.capture(
-        "app:initial-load",
-        getInitialLoadTelemetryProperties({
-          settings,
-          appVersion,
-          platform,
-        }),
+    if (platformError) {
+      console.warn(
+        "Failed to get system platform for telemetry",
+        platformError,
       );
-      initialLoadTelemetryState = "sent";
-    })();
+    }
 
-    return () => {
-      cancelled = true;
-      if (initialLoadTelemetryState === "pending") {
-        initialLoadTelemetryState = "idle";
-      }
-    };
-  }, [settingsQuery.data, appVersion, posthog, queryClient, setSettingsAtom]);
+    const settings = settingsQuery.data;
+    posthog.capture(
+      "app:initial-load",
+      getInitialLoadTelemetryProperties({
+        settings,
+        appVersion,
+        platform: platform ?? null,
+      }),
+    );
+    initialLoadTelemetryState = "sent";
+  }, [
+    settingsQuery.data,
+    appVersion,
+    posthog,
+    isPlatformLoading,
+    platform,
+    platformError,
+    setSettingsAtom,
+  ]);
 
   // Sync env vars to Jotai atom
   useEffect(() => {

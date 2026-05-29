@@ -256,7 +256,7 @@ async function startCallbackListener(
         res.writeHead(404).end("Not found");
         return;
       }
-      const code = url.searchParams.get("code");
+      const codeParam = url.searchParams.get("code");
       const errParam = url.searchParams.get("error");
       const state = url.searchParams.get("state");
 
@@ -280,7 +280,7 @@ async function startCallbackListener(
         return;
       }
 
-      if (code) {
+      if (codeParam) {
         res.writeHead(200, { "Content-Type": "text/html" }).end(
           renderCallbackPage({
             kind: "success",
@@ -288,7 +288,7 @@ async function startCallbackListener(
             message: "You can close this tab and return to Dyad.",
           }),
         );
-        settle(() => resolveCode(code));
+        settle(() => resolveCode(codeParam));
         return;
       }
 

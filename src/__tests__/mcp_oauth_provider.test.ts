@@ -149,11 +149,9 @@ describe("DyadOAuthClientProvider", () => {
     expect(info?.client_secret).toBe("confidential-secret");
   });
 
-  it("emits clientMetadata.token_endpoint_auth_method=client_secret_post when a secret is configured", async () => {
-    // The SDK reads this from clientMetadata to decide which
-    // authentication method to declare on DCR / advertise to the
-    // server. Declaring "none" while sending a secret -- or vice
-    // versa -- confuses providers and surfaces as invalid_client.
+  it("emits clientMetadata.token_endpoint_auth_method matching the auth method actually used", async () => {
+    // Aligns with `addClientAuthentication` below: Basic for
+    // confidential clients (RFC 6749 §2.3.1), `none` for public.
     const publicProvider = new DyadOAuthClientProvider({
       serverId: 92,
       preregisteredClientId: "id-only",
@@ -168,7 +166,7 @@ describe("DyadOAuthClientProvider", () => {
       preregisteredClientSecret: "sec",
     });
     expect(confidentialProvider.clientMetadata.token_endpoint_auth_method).toBe(
-      "client_secret_post",
+      "client_secret_basic",
     );
   });
 

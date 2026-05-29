@@ -20,9 +20,9 @@ interface StoredOAuthState {
   clientInformation?: OAuthClientInformation;
 }
 
-// PKCE code verifiers are short-lived secrets. Kept in memory only,
-// never in the DB, so they're gone when the app exits.
-const codeVerifiers = new Map<number, string>();
+// PKCE code verifiers live on the provider instance so a superseded
+// Connect's late `saveCodeVerifier` can't overwrite a fresh retry's
+// verifier (a shared per-server map had that race).
 
 // application/x-www-form-urlencoded per RFC 6749 §B / WHATWG URL.
 // Differs from `encodeURIComponent`: ! ' ( ) * are percent-encoded
@@ -182,6 +182,9 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   // it uses this instead. Set by `clientInformation()` and
   // `saveClientInformation()`.
   private cachedClientInformation: OAuthClientInformation | undefined;
+  // PKCE verifier for this flow only. Per-instance so a superseded
+  // flow's late save can't clobber the active flow.
+  private codeVerifierBuf: string | undefined;
 
   constructor(config: ProviderConfig) {
     this.serverId = config.serverId;
@@ -204,11 +207,11 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 
   get clientMetadata(): OAuthClientMetadata {
-    // Pick the auth method from whether we have a client_secret:
-    // "client_secret_post" if so, "none" (plain PKCE) otherwise. The
-    // wrong choice makes the server reject the token exchange.
+    // Match `addClientAuthentication` below: Basic for confidential
+    // clients (RFC 6749 §2.3.1 makes it required), `none` for public
+    // (plain PKCE).
     const tokenEndpointAuthMethod = this.preregisteredClientSecret
-      ? "client_secret_post"
+      ? "client_secret_basic"
       : "none";
     return {
       redirect_uris: [this.redirectUrl],
@@ -288,20 +291,18 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 
   async codeVerifier(): Promise<string> {
-    const v = codeVerifiers.get(this.serverId);
-    if (!v) {
+    if (!this.codeVerifierBuf) {
       throw new Error(
         `No PKCE code verifier in memory for MCP server ${this.serverId}; the OAuth flow must be restarted.`,
       );
     }
-    return v;
+    return this.codeVerifierBuf;
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
-    // Skip for non-interactive so a concurrent background path can't
-    // clobber an in-flight Connect's PKCE verifier.
+    // Non-interactive providers don't drive PKCE.
     if (!this.allowInteractive) return;
-    codeVerifiers.set(this.serverId, codeVerifier);
+    this.codeVerifierBuf = codeVerifier;
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -406,7 +407,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       const state = await readState(this.serverId);
       delete state.tokens;
       if (scope === "all") {
-        codeVerifiers.delete(this.serverId);
+        this.codeVerifierBuf = undefined;
         delete state.clientInformation;
         this.cachedClientInformation = undefined;
       }
@@ -415,7 +416,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 }
 
-// Test helper: clears the in-memory code-verifier map.
-export function _resetCodeVerifiersForTest(): void {
-  codeVerifiers.clear();
-}
+// Kept for backwards compatibility with existing tests; the verifier
+// now lives on each provider instance, so resetting at module scope
+// is a no-op.
+export function _resetCodeVerifiersForTest(): void {}

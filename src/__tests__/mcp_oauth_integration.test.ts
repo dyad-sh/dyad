@@ -117,12 +117,8 @@ const electronImport = await import("electron");
 const flowImport = await import("../ipc/utils/mcp_oauth_flow");
 const providerImport = await import("../ipc/utils/mcp_oauth_provider");
 const { runOAuthFlow } = flowImport;
-const {
-  oauthStateHasTokens,
-  _resetCodeVerifiersForTest,
-  DyadOAuthClientProvider,
-  encryptToString,
-} = providerImport;
+const { oauthStateHasTokens, DyadOAuthClientProvider, encryptToString } =
+  providerImport;
 const { shell } = electronImport;
 
 // --- Fake-server lifecycle ----------------------------------------------
@@ -228,7 +224,6 @@ function setupFakeServer(
   });
   beforeEach(() => {
     dbStore.clear();
-    _resetCodeVerifiersForTest();
     vi.clearAllMocks();
     stubOpenExternalToAutoComplete();
   });
@@ -298,9 +293,6 @@ describe("OAuth integration: DCR mode against fake server", () => {
       // about the storage format.
       const provider = new DyadOAuthClientProvider({ serverId });
       await provider.invalidateCredentials("tokens");
-      // Forget the verifier -- it's flow-scoped and would otherwise
-      // satisfy `codeVerifier()` from the prior flow.
-      _resetCodeVerifiersForTest();
 
       const second = await runOAuthFlow({
         serverId,

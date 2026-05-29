@@ -320,7 +320,6 @@ export function ToolsMcpSettings() {
     toolsByServer,
     consentsMap,
     createServer,
-    isCreating,
     toggleEnabled: toggleServerEnabled,
     deleteServer,
     setToolConsent: updateToolConsent,
@@ -764,11 +763,8 @@ export function ToolsMcpSettings() {
           </div>
         </div>
         <div>
-          <Button
-            onClick={onCreate}
-            disabled={!name.trim() || isAdding || isCreating}
-          >
-            {isAdding || isCreating ? "Adding…" : "Add Server"}
+          <Button onClick={onCreate} disabled={!name.trim() || isAdding}>
+            {isAdding ? "Adding…" : "Add Server"}
           </Button>
         </div>
       </div>

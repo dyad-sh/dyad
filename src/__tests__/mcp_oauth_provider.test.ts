@@ -84,17 +84,12 @@ vi.mock("drizzle-orm", () => ({
 // work; resolve the provider module after mocks are in place.
 const electronImport = await import("electron");
 const providerImport = await import("../ipc/utils/mcp_oauth_provider");
-const {
-  DyadOAuthClientProvider,
-  _resetCodeVerifiersForTest,
-  oauthStateHasTokens,
-} = providerImport;
+const { DyadOAuthClientProvider, oauthStateHasTokens } = providerImport;
 const { shell, safeStorage } = electronImport;
 
 describe("DyadOAuthClientProvider", () => {
   beforeEach(() => {
     dbStore.clear();
-    _resetCodeVerifiersForTest();
     vi.clearAllMocks();
     vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);
   });
@@ -296,6 +291,64 @@ describe("DyadOAuthClientProvider", () => {
       const params = new URLSearchParams();
       unbound(headers, params);
       expect(params.get("client_id")).toBe("cid");
+    });
+
+    it("honors token_endpoint_auth_methods_supported from metadata (Post-only server)", async () => {
+      // Pre-registered confidential client against a server whose
+      // discovery metadata declares only `client_secret_post`. Our
+      // hook must pick Post over our usual Basic default; otherwise
+      // the server rejects token exchange / refresh with
+      // invalid_client.
+      const p = new DyadOAuthClientProvider({
+        serverId: 25,
+        preregisteredClientId: "cid",
+        preregisteredClientSecret: "sec",
+      });
+      // Trigger the seed-on-first-read path so cachedClientInformation
+      // is populated (no `token_endpoint_auth_method` on it).
+      await p.clientInformation();
+      const headers = new Headers();
+      const params = new URLSearchParams();
+      p.addClientAuthentication(headers, params, "https://example.com", {
+        token_endpoint_auth_methods_supported: ["client_secret_post"],
+      });
+      expect(headers.get("Authorization")).toBeNull();
+      expect(params.get("client_id")).toBe("cid");
+      expect(params.get("client_secret")).toBe("sec");
+    });
+
+    it("honors token_endpoint_auth_methods_supported from metadata (Basic-only server)", async () => {
+      const p = new DyadOAuthClientProvider({
+        serverId: 26,
+        preregisteredClientId: "cid",
+        preregisteredClientSecret: "sec",
+      });
+      await p.clientInformation();
+      const headers = new Headers();
+      const params = new URLSearchParams();
+      p.addClientAuthentication(headers, params, "https://example.com", {
+        token_endpoint_auth_methods_supported: ["client_secret_basic"],
+      });
+      const expected = "Basic " + Buffer.from("cid:sec").toString("base64");
+      expect(headers.get("Authorization")).toBe(expected);
+      expect(params.get("client_id")).toBeNull();
+    });
+
+    it("falls back to Basic when metadata is empty and no DCR method stashed", async () => {
+      // No discovery metadata + pre-registered confidential client:
+      // Basic is the safer default per spec, and matches the
+      // historical behavior pre-metadata-aware fix.
+      const p = new DyadOAuthClientProvider({
+        serverId: 27,
+        preregisteredClientId: "cid",
+        preregisteredClientSecret: "sec",
+      });
+      await p.clientInformation();
+      const headers = new Headers();
+      const params = new URLSearchParams();
+      p.addClientAuthentication(headers, params);
+      const expected = "Basic " + Buffer.from("cid:sec").toString("base64");
+      expect(headers.get("Authorization")).toBe(expected);
     });
 
     it("sets client_id synchronously (the SDK does not await this method)", async () => {

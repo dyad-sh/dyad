@@ -384,6 +384,8 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   addClientAuthentication = (
     headers: Headers,
     params: URLSearchParams,
+    _authorizationServerUrl?: string | URL,
+    metadata?: { token_endpoint_auth_methods_supported?: string[] },
   ): void => {
     const info = this.cachedClientInformation;
     if (!info) {
@@ -392,16 +394,32 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       );
       return;
     }
-    const method = (
+    const dcrMethod = (
       info as OAuthClientInformation & { token_endpoint_auth_method?: string }
     ).token_endpoint_auth_method;
     const hasSecret = Boolean(info.client_secret);
-    // RFC 6749 §2.3.1 makes Basic REQUIRED and Post OPTIONAL for
-    // confidential clients, so default to Basic when the server hasn't
-    // told us which method to use (typical for pre-registered clients).
-    // DCR-registered clients get an explicit `token_endpoint_auth_method`
-    // back from the server and take the branch above.
-    const chosen = method ?? (hasSecret ? "client_secret_basic" : "none");
+    const supported = metadata?.token_endpoint_auth_methods_supported ?? [];
+    // Mirror the SDK's `selectClientAuthMethod` preference order
+    // (`node_modules/@ai-sdk/mcp/dist/index.mjs`) so that providing
+    // this hook doesn't bypass the server's declared support. A
+    // pre-registered confidential client against a server that only
+    // declares `client_secret_post` would otherwise have us force
+    // Basic and get rejected with `invalid_client` on both token
+    // exchange and refresh.
+    let chosen: string;
+    if (supported.length === 0) {
+      // No metadata: trust the DCR response's stashed method if any,
+      // then fall back to Basic for confidential / none for public.
+      chosen = dcrMethod ?? (hasSecret ? "client_secret_basic" : "none");
+    } else if (hasSecret && supported.includes("client_secret_basic")) {
+      chosen = "client_secret_basic";
+    } else if (hasSecret && supported.includes("client_secret_post")) {
+      chosen = "client_secret_post";
+    } else if (supported.includes("none")) {
+      chosen = "none";
+    } else {
+      chosen = hasSecret ? "client_secret_basic" : "none";
+    }
 
     if (chosen === "client_secret_basic" && info.client_secret) {
       // RFC 6749 §2.3.1: each credential is form-urlencoded (spaces as
@@ -455,8 +473,3 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     });
   }
 }
-
-// Kept for backwards compatibility with existing tests; the verifier
-// now lives on each provider instance, so resetting at module scope
-// is a no-op.
-export function _resetCodeVerifiersForTest(): void {}

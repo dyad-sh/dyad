@@ -74,6 +74,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     if (isOpen) {
       setGithubAppName("");
       setGithubNameExists(false);
+      // Reset optimize flag when dialog opens so tabs don't carry over state
+      setOptimizeForDyad(true);
     }
   }, [isOpen]);
 
@@ -671,11 +673,17 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                               <Checkbox
                                 id="optimize-for-dyad-repos"
                                 checked={optimizeForDyad}
-                                onCheckedChange={(checked) => setOptimizeForDyad(checked === true)}
+                                onCheckedChange={(checked) =>
+                                  setOptimizeForDyad(checked === true)
+                                }
                                 disabled={importing}
                               />
-                              <Label htmlFor="optimize-for-dyad-repos" className="text-xs sm:text-sm cursor-pointer">
-                                {t("home:autoUpgradeAnnotator")} ({t("common:recommended")})
+                              <Label
+                                htmlFor="optimize-for-dyad-repos"
+                                className="text-xs sm:text-sm cursor-pointer"
+                              >
+                                {t("home:autoUpgradeAnnotator")} (
+                                {t("common:recommended")})
                               </Label>
                             </div>
                             {!commandsValid && (
@@ -762,11 +770,17 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       <Checkbox
                         id="optimize-for-dyad-url"
                         checked={optimizeForDyad}
-                        onCheckedChange={(checked) => setOptimizeForDyad(checked === true)}
+                        onCheckedChange={(checked) =>
+                          setOptimizeForDyad(checked === true)
+                        }
                         disabled={importing}
                       />
-                      <Label htmlFor="optimize-for-dyad-url" className="text-xs sm:text-sm cursor-pointer">
-                        {t("home:autoUpgradeAnnotator")} ({t("common:recommended")})
+                      <Label
+                        htmlFor="optimize-for-dyad-url"
+                        className="text-xs sm:text-sm cursor-pointer"
+                      >
+                        {t("home:autoUpgradeAnnotator")} (
+                        {t("common:recommended")})
                       </Label>
                     </div>
                     {!commandsValid && (

@@ -8,7 +8,6 @@ import { getPackageManagerCommandEnv } from "./socket_firewall";
 
 export const logger = log.scope("app_upgrade_utils");
 
-
 const COMPONENT_TAGGER_VERSION = "^0.9.0";
 
 function findViteConfigPath(appPath: string): string | null {
@@ -31,7 +30,9 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 
   try {
     const viteConfigContent = fs.readFileSync(viteConfigPath, "utf-8");
-    if (!viteConfigContent.toLowerCase().includes("react")) {
+    // Component tagger is React-specific, so only offer it for Vite configs
+    // that already use the React plugin.
+    if (!viteConfigContent.includes("plugin-react")) {
       return false;
     }
     return !viteConfigContent.includes("@dyad-sh/react-vite-component-tagger");
@@ -60,9 +61,12 @@ export async function applyComponentTagger(
     );
   }
 
-
-  const originalViteContent = await fs.promises.readFile(viteConfigPath, "utf-8");
+  const originalViteContent = await fs.promises.readFile(
+    viteConfigPath,
+    "utf-8",
+  );
   let content = originalViteContent;
+  let shouldCommitChanges = false;
 
   if (
     !content.includes(
@@ -124,30 +128,18 @@ export async function applyComponentTagger(
         "Failed to update package.json for component tagger, rolling back vite config changes",
         err,
       );
-     // rollback
+      // Rollback vite config changes
       try {
         await fs.promises.writeFile(viteConfigPath, originalViteContent);
       } catch (rollbackErr) {
         logger.error("Failed to rollback vite config changes", rollbackErr);
       }
-      return;
+      throw new DyadError(
+        `Failed to update package.json for component tagger: ${(err as any).message}`,
+        DyadErrorKind.Internal,
+      );
     }
-  }
-
-
-  try {
-    logger.info("Staging and committing vite config and package.json changes");
-    await gitAddAll({ path: appPath });
-    await gitCommit({
-      path: appPath,
-      message: "[dyad] add Dyad component tagger",
-    });
-    logger.info("Successfully committed component tagger modifications");
-  } catch (err) {
-    logger.warn(
-      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
-      err,
-    );
+    shouldCommitChanges = true;
   }
 
   if (installDependencies) {
@@ -179,26 +171,38 @@ export async function applyComponentTagger(
           "Failed to install component tagger with both pnpm and npm. User may need to run install manually.",
           npmErr,
         );
-        return;
+        try {
+          await fs.promises.writeFile(viteConfigPath, originalViteContent);
+        } catch (rollbackErr) {
+          logger.error("Failed to rollback vite config changes", rollbackErr);
+        }
+        throw new DyadError(
+          "Failed to install component tagger dependency",
+          DyadErrorKind.Internal,
+        );
       }
     }
+    shouldCommitChanges = true;
+  } else {
+    logger.info("Skipping dependency install for component tagger");
+  }
 
-   
+  if (shouldCommitChanges) {
     try {
-      logger.info("Committing updated lock file after package manager install");
+      logger.info(
+        "Staging and committing vite config and package.json changes",
+      );
       await gitAddAll({ path: appPath });
       await gitCommit({
         path: appPath,
-        message: "[dyad] update package lock after component tagger install",
+        message: "[dyad] add Dyad component tagger",
       });
-      logger.info("Successfully committed lock file updates");
+      logger.info("Successfully committed component tagger modifications");
     } catch (err) {
       logger.warn(
-        "Failed to commit lock file after package manager install. The component tagger is installed but lock file changes may not be committed.",
+        `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
         err,
       );
     }
-  } else {
-    logger.info("Skipping dependency install for component tagger");
   }
 }

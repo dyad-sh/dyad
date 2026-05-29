@@ -99,6 +99,7 @@ export const CloneRepoResultSchema = z.union([
   z.object({
     app: AppSchema,
     hasAiRules: z.boolean(),
+    autoUpgradeWarning: z.boolean().optional(),
   }),
   z.object({
     error: z.string(),

@@ -1252,7 +1252,13 @@ async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
 ): Promise<CloneRepoResult> {
-  const { url, installCommand, startCommand, appName, optimizeForDyad = true } = params;
+  const {
+    url,
+    installCommand,
+    startCommand,
+    appName,
+    optimizeForDyad = true,
+  } = params;
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1347,7 +1353,7 @@ async function handleCloneRepoFromUrl(
           `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
         );
       } catch (upgradeError) {
-        // Auto-upgrade is best-effort. Failures are logged but don't block import.
+        // Auto-upgrade  Failures are logged but don't block import.
         // User will be notified via warning toast to manually upgrade if needed.
         autoUpgradeWarning = true;
         logger.warn(

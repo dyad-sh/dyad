@@ -234,7 +234,6 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
     )
     .toBe(true);
 
-
   await expect
     .poll(
       () => {
@@ -268,11 +267,7 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
   const repoRow = po.page.getByTestId("github-repo-row-testuser-existing-app");
   await expect(repoRow).toBeVisible();
 
-
-  await po.page
-    .getByRole("button", { name: "Advanced options" })
-    .click();
-
+  await po.page.getByRole("button", { name: "Advanced options" }).click();
 
   const checkbox = po.page.locator("input#optimize-for-dyad-repos");
   await expect(checkbox).toBeVisible();
@@ -280,7 +275,6 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
   await checkbox.focus();
   await checkbox.press("Space");
   await expect(checkbox).not.toBeChecked();
-
 
   await repoRow.getByRole("button", { name: "Import" }).click();
 
@@ -311,16 +305,13 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
   const appPath = await po.appManagement.getCurrentAppPath();
   await po.page.waitForTimeout(2000);
 
-
   const configPath = path.join(appPath, "vite.config.ts");
-  if (fs.existsSync(configPath)) {
-    const config = fs.readFileSync(configPath, "utf8");
-    expect(config).not.toContain("dyadComponentTagger");
-  }
+  expect(fs.existsSync(configPath)).toBe(true);
+  const config = fs.readFileSync(configPath, "utf8");
+  expect(config).not.toContain("dyadComponentTagger");
 
   const pkgPath = path.join(appPath, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    const pkg = fs.readFileSync(pkgPath, "utf8");
-    expect(pkg).not.toContain("@dyad-sh/react-vite-component-tagger");
-  }
+  expect(fs.existsSync(pkgPath)).toBe(true);
+  const pkg = fs.readFileSync(pkgPath, "utf8");
+  expect(pkg).not.toContain("@dyad-sh/react-vite-component-tagger");
 });

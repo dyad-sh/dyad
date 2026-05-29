@@ -37,6 +37,13 @@ function formUrlEncode(s: string): string {
     .replace(/%20/g, "+");
 }
 
+// Tag for plaintext-fallback blobs so they're still decodable after
+// the OS keyring later becomes available. Without the tag, a later
+// `safeStorage.decryptString` call on plaintext bytes would throw and
+// the user's stored tokens / pre-registered client secret would be
+// silently lost.
+const PLAINTEXT_PREFIX = "plain:";
+
 export function encryptToString(plaintext: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
     // No keyring available (e.g. Linux without libsecret): store as
@@ -44,24 +51,46 @@ export function encryptToString(plaintext: string): string {
     logger.warn(
       "safeStorage encryption unavailable; OAuth state written as plaintext",
     );
-    return Buffer.from(plaintext, "utf8").toString("base64");
+    return PLAINTEXT_PREFIX + Buffer.from(plaintext, "utf8").toString("base64");
   }
   return safeStorage.encryptString(plaintext).toString("base64");
 }
 
 export function decryptFromString(stored: string): string {
+  if (stored.startsWith(PLAINTEXT_PREFIX)) {
+    return Buffer.from(
+      stored.slice(PLAINTEXT_PREFIX.length),
+      "base64",
+    ).toString("utf8");
+  }
   const buf = Buffer.from(stored, "base64");
   if (!safeStorage.isEncryptionAvailable()) {
+    // Keyring still unavailable + no plaintext tag: this row was
+    // written either by an older Dyad without the tag (legacy
+    // plaintext) or by a previous keyring-on run (real ciphertext we
+    // can't decrypt without the keyring). Treat as plaintext -- a
+    // false-positive only surfaces garbage to JSON.parse upstream,
+    // which already handles it as empty state.
     return buf.toString("utf8");
   }
   try {
     return safeStorage.decryptString(buf);
   } catch (err) {
-    // Usually means the data was written on another machine, or the
-    // keychain was reset. Treat as empty so the user just re-runs the
-    // OAuth flow instead of hitting a crash.
-    logger.warn("Failed to decrypt OAuth state; treating as empty", err);
-    return "";
+    // `decryptString` rejected the blob. Two realistic causes:
+    //   1. Legacy untagged plaintext written by an older Dyad on a
+    //      no-keyring host that has since gained a keyring -- in that
+    //      case the bytes are valid UTF-8 JSON and we want to recover.
+    //   2. Genuine ciphertext we can't decrypt (different machine,
+    //      keychain reset). UTF-8 decode produces garbage which fails
+    //      JSON.parse upstream and the caller returns empty state.
+    // Either way, fall back to UTF-8 and let the caller's parse step
+    // decide. Better than the previous behavior of dropping legitimate
+    // plaintext state on the floor.
+    logger.warn(
+      "safeStorage.decryptString rejected OAuth state; treating as plaintext",
+      err,
+    );
+    return buf.toString("utf8");
   }
 }
 

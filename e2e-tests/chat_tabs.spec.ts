@@ -1,5 +1,6 @@
 import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
+import path from "node:path";
 
 test("tabs appear after navigating between chats", async ({ po }) => {
   await po.setUp({ autoApprove: true });
@@ -20,6 +21,47 @@ test("tabs appear after navigating between chats", async ({ po }) => {
     const count = await closeButtons.count();
     expect(count).toBeGreaterThanOrEqual(1);
   }).toPass({ timeout: Timeout.MEDIUM });
+});
+
+test("restores previously open tabs after reload", async ({
+  po,
+  electronApp,
+}) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  await po.sendPrompt("[dump] Restore tab one");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Restore tab two");
+  await po.chatActions.waitForChatCompletion();
+
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  const appPath = await electronApp.evaluate(({ app }) => app.getAppPath());
+  const rendererIndexPath = path.join(
+    appPath,
+    ".vite/renderer/main_window/index.html",
+  );
+  await electronApp.evaluate(async ({ BrowserWindow }, rendererIndexPath) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    await window.loadFile(rendererIndexPath);
+  }, rendererIndexPath);
+  await po.page.waitForLoadState("domcontentloaded");
+
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(2);
+  }).toPass({ timeout: Timeout.EXTRA_LONG });
+
+  await expect(po.page.getByText("Restore tab two")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 });
 
 test("clicking a tab switches to that chat", async ({ po }) => {

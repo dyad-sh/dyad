@@ -433,9 +433,8 @@ export function ToolsMcpSettings() {
       url: url || null,
       enabled,
       oauthEnabled: wantsOAuth,
-      // Skip OAuth fields the user typed and then turned off, so no
-      // stray client secret lands in the DB (and especially not as
-      // plaintext on a no-keyring host).
+      // Skip OAuth fields if the user turned the toggle off — no
+      // stray client secret in the DB (especially not as plaintext).
       oauthClientId: wantsOAuth ? oauthClientId.trim() || null : null,
       oauthClientSecret: wantsOAuth ? oauthClientSecret.trim() || null : null,
       oauthScope: wantsOAuth ? oauthScope.trim() || null : null,

@@ -30,10 +30,9 @@ import {
 
 const logger = log.scope("mcp_handlers");
 
-// True when both loopback stacks bind cleanly, or when one is
-// unavailable system-wide (e.g. IPv6 disabled) and the other is free.
-// EADDRINUSE on either stack disqualifies the port — the OAuth
-// callback listener needs both.
+// EADDRINUSE on either stack disqualifies the port; a stack that's
+// unavailable system-wide (e.g. IPv6 disabled) is OK if the other is
+// free.
 async function isPortFreeOnBothLoopbacks(port: number): Promise<boolean> {
   const probeOne = (host: string): Promise<"free" | "in_use" | "other"> =>
     new Promise((resolve) => {
@@ -186,9 +185,8 @@ export function registerMcpHandlers() {
     if (params.enabled !== undefined) update.enabled = !!params.enabled;
     if (params.oauthEnabled !== undefined) {
       update.oauthEnabled = !!params.oauthEnabled;
-      // Turning OAuth off scrubs the credential columns so a stale
-      // client secret / token blob doesn't linger in the DB without a
-      // UI affordance to clear it.
+      // Scrub OAuth columns so a stale client secret / token blob
+      // doesn't linger without a UI to clear it.
       if (!params.oauthEnabled) {
         update.oauthState = null;
         update.oauthClientId = null;
@@ -226,14 +224,12 @@ export function registerMcpHandlers() {
 
   // Tools listing (dynamic)
   createTypedHandler(mcpContracts.listTools, async (_, serverId) => {
-    // Caps the worst case for a hung server (often an unconnected
-    // OAuth-gated host) so it doesn't freeze the whole tools list.
+    // Caps a hung server (often unconnected OAuth) so it doesn't
+    // freeze the whole tools list.
     const LIST_TOOLS_TIMEOUT_MS = 8_000;
-    // Cleared after the race so a late reject can't surface as
-    // unhandled.
+    // Cleared after the race so a late reject stays unobserved.
     let timeoutId: NodeJS.Timeout | undefined;
-    // No-op handler so a `mainOp` rejection after the timeout wins
-    // the race doesn't surface as unhandled.
+    // Swallow a late `mainOp` reject after the timeout wins.
     const mainOp = (async () => {
       const client = await mcpManager.getClient(serverId);
       const remoteTools = await client.tools();
@@ -259,8 +255,7 @@ export function registerMcpHandlers() {
         LIST_TOOLS_TIMEOUT_MS,
       );
     });
-    // Same guard as `mainOp` for a late timeout reject after the
-    // race resolves.
+    // Same guard for a late timeout reject after the race resolves.
     timeoutPromise.catch(() => undefined);
     try {
       const result = await Promise.race([mainOp, timeoutPromise]);
@@ -346,14 +341,13 @@ export function registerMcpHandlers() {
   });
 
   // Default port first (matches typical pre-registered redirect
-  // URIs); falls back to an ephemeral one that also passes the
-  // both-stacks check.
+  // URIs); ephemeral fallback also passes the both-stacks check.
   createTypedHandler(mcpContracts.probeCallbackPort, async () => {
     if (await isPortFreeOnBothLoopbacks(DEFAULT_OAUTH_CALLBACK_PORT)) {
       return { port: DEFAULT_OAUTH_CALLBACK_PORT };
     }
-    // Single-stack util is the last resort — the listener surfaces a
-    // clear error if even that's busy on the other stack.
+    // Single-stack util is the last resort; the listener surfaces a
+    // clear error if its port is busy on the other stack.
     const MIN = 49152;
     const MAX = 65535;
     for (let i = 0; i < 8; i++) {

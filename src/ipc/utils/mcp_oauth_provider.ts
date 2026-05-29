@@ -69,11 +69,10 @@ export function decryptFromString(stored: string): string {
   try {
     return safeStorage.decryptString(buf);
   } catch (err) {
-    // Rejection means either untagged plaintext on a now-keyring host
-    // (recoverable as UTF-8) or genuine undecryptable ciphertext
-    // (different machine / reset keychain — UTF-8 yields garbage
-    // which JSON.parse upstream treats as empty). Either way, return
-    // the bytes and let the caller decide.
+    // Either untagged plaintext from a no-keyring write
+    // (recoverable) or undecryptable ciphertext (yields garbage that
+    // JSON.parse upstream drops as empty state). Return bytes either
+    // way and let the caller decide.
     logger.warn(
       "safeStorage.decryptString rejected OAuth state; treating as plaintext",
       err,

@@ -353,6 +353,8 @@ export function ToolsMcpSettings() {
 
   // Falls back to the default port on probe failure so the UI
   // doesn't show "…" forever; the OAuth flow uses the same default.
+  // Short staleTime so the redirect-URI hint stays close to a port
+  // the listener can still bind (another process may have grabbed it).
   const callbackPortQuery = useQuery({
     queryKey: ["mcp", "callbackPort"],
     queryFn: () =>
@@ -360,7 +362,8 @@ export function ToolsMcpSettings() {
         .probeCallbackPort()
         .then((r) => r.port)
         .catch(() => DEFAULT_OAUTH_CALLBACK_PORT),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
   const callbackPort = callbackPortQuery.data ?? null;
 
@@ -417,6 +420,23 @@ export function ToolsMcpSettings() {
   };
 
   const runOnCreate = async () => {
+    if (transport === "http") {
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl) {
+        showError("URL is required for HTTP MCP servers.");
+        return;
+      }
+      try {
+        const parsed = new URL(trimmedUrl);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          showError("URL must use http:// or https://");
+          return;
+        }
+      } catch {
+        showError(`Invalid URL: "${trimmedUrl}"`);
+        return;
+      }
+    }
     const parsedArgs = (() => {
       const trimmed = args.trim();
       if (!trimmed) return null;
@@ -567,10 +587,18 @@ export function ToolsMcpSettings() {
     () => (servers || []).some((s) => s.transport === "http" && s.oauthEnabled),
     [servers],
   );
+  // Surface the no-keyring warning as soon as the user is about to
+  // commit an OAuth secret (form has HTTP + OAuth toggle on), not
+  // only after a server already exists.
+  const willPersistOauthSecret =
+    transport === "http" && oauthEnabled && oauthClientSecret.trim().length > 0;
+  const showPlaintextBanner =
+    oauthStorageEncrypted === false &&
+    (hasOauthServer || willPersistOauthSecret);
 
   return (
     <div className="space-y-6">
-      {oauthStorageEncrypted === false && hasOauthServer && (
+      {showPlaintextBanner && (
         <Alert variant="destructive">
           <AlertTitle>
             OAuth tokens and client secrets stored without OS encryption

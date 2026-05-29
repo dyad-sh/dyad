@@ -32,6 +32,11 @@ describe("classifyOAuthError", () => {
     // errors and other non-discovery failures can contain those words.
     ["server-not-found validation", "MCP server not found: 999"],
     ["bare endpoint not found", "Endpoint not found"],
+    // A 404 without discovery context (e.g. tool endpoint or
+    // arbitrary resource on an authenticated server) shouldn't get
+    // tagged as "server doesn't support OAuth".
+    ["tool endpoint 404", "Tool endpoint returned 404"],
+    ["resource 404", "Resource at /api/v2/foo returned 404"],
   ])(
     "does NOT classify %s as discovery_failed (word-boundary for 404)",
     (_label, msg) => {

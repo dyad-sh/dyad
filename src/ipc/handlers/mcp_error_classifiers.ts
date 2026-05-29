@@ -7,9 +7,17 @@ export function classifyOAuthError(
 ): "discovery_failed" | "other" | null {
   if (!msg) return null;
   const lower = msg.toLowerCase();
-  // `\b404\b` so port numbers like 4040 don't trip the branch.
-  // SDK discovery 404s always carry the status code, so no separate
-  // "not found" match (which would catch "server not found: 999").
+  // Match 404 only alongside discovery context so a 404 from a tool
+  // endpoint on an OAuth-authenticated server doesn't get tagged as
+  // "server doesn't support OAuth".
+  const has404 = /\b404\b/.test(lower);
+  const hasDiscoveryContext =
+    lower.includes(".well-known") ||
+    lower.includes("oauth") ||
+    lower.includes("metadata") ||
+    lower.includes("discovery") ||
+    lower.includes("authorization server") ||
+    lower.includes("/register");
   if (
     lower.includes("well-known") ||
     lower.includes("metadata") ||
@@ -17,7 +25,7 @@ export function classifyOAuthError(
     lower.includes("no auth provider") ||
     lower.includes("invalid oauth") ||
     lower.includes("not valid json") ||
-    /\b404\b/.test(lower)
+    (has404 && hasDiscoveryContext)
   ) {
     return "discovery_failed";
   }

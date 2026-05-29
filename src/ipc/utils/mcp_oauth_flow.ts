@@ -485,8 +485,11 @@ export async function runOAuthFlow(
   }
   // Side-handler so an early bind-failure rejection isn't unhandled
   // during the long `await auth()`; the real rejection still
-  // propagates through `await listener.code` below.
-  listener.code.catch(() => undefined);
+  // propagates through `await listener.code` below. Also marks the
+  // provider as aborted so a late SDK write (e.g. a slow DCR
+  // `/register` from a now-superseded flow) becomes a no-op instead
+  // of clobbering the active flow's row.
+  listener.code.catch(() => provider.abort());
 
   try {
     // First call kicks off discovery / DCR and opens the browser.

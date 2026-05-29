@@ -185,6 +185,12 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   // PKCE verifier for this flow only. Per-instance so a superseded
   // flow's late save can't clobber the active flow.
   private codeVerifierBuf: string | undefined;
+  // Flipped to true when the OAuth flow that owns this provider has
+  // been superseded by another Connect. Persistent writes
+  // (`saveTokens`, `saveClientInformation`, seed-on-first-read,
+  // `invalidateCredentials`) become no-ops so a late SDK call from a
+  // stale flow can't overwrite the active flow's row.
+  private aborted = false;
 
   constructor(config: ProviderConfig) {
     this.serverId = config.serverId;
@@ -194,6 +200,13 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     this.preregisteredClientSecret = config.preregisteredClientSecret;
     this.flowState = config.flowState;
     this.allowInteractive = config.allowInteractive ?? false;
+  }
+
+  // Marks this provider's flow as superseded. After this returns, the
+  // persistent writes below short-circuit so a stale SDK callback
+  // can't clobber the row.
+  abort(): void {
+    this.aborted = true;
   }
 
   // The SDK reads this when building the authorize URL. Returns ""
@@ -208,8 +221,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     // Match `addClientAuthentication` below: Basic for confidential
-    // clients (RFC 6749 §2.3.1 makes it required), `none` for public
-    // (plain PKCE).
+    // clients, `none` for public (plain PKCE).
     const tokenEndpointAuthMethod = this.preregisteredClientSecret
       ? "client_secret_basic"
       : "none";
@@ -229,7 +241,9 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    if (this.aborted) return;
     await withStateLock(this.serverId, async () => {
+      if (this.aborted) return;
       const state = await readState(this.serverId);
       // Servers that don't rotate refresh tokens omit `refresh_token`
       // from the response; carry the previous one forward so the SDK
@@ -260,10 +274,14 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
             ? { client_secret: this.preregisteredClientSecret }
             : {}),
         };
-        await writeState(this.serverId, {
-          ...state,
-          clientInformation: seeded,
-        });
+        // Skip the seed write if this flow has been superseded; a
+        // fresh flow will reseed on its own first read.
+        if (!this.aborted) {
+          await writeState(this.serverId, {
+            ...state,
+            clientInformation: seeded,
+          });
+        }
         this.cachedClientInformation = seeded;
         return seeded;
       }
@@ -283,7 +301,9 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // can't overwrite an in-flight Connect's client_id between
     // /authorize and /token.
     if (!this.allowInteractive) return;
+    if (this.aborted) return;
     await withStateLock(this.serverId, async () => {
+      if (this.aborted) return;
       const state = await readState(this.serverId);
       state.clientInformation = clientInformation;
       await writeState(this.serverId, state);
@@ -403,7 +423,9 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // Skip for non-interactive so a background 401 path can't nuke
     // tokens or client info out from under an active session.
     if (!this.allowInteractive) return;
+    if (this.aborted) return;
     await withStateLock(this.serverId, async () => {
+      if (this.aborted) return;
       const state = await readState(this.serverId);
       delete state.tokens;
       if (scope === "all") {

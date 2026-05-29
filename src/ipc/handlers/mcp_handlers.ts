@@ -354,8 +354,6 @@ export function registerMcpHandlers() {
     if (await isPortFreeOnBothLoopbacks(DEFAULT_OAUTH_CALLBACK_PORT)) {
       return { port: DEFAULT_OAUTH_CALLBACK_PORT };
     }
-    // Single-stack util is the last resort; the listener surfaces a
-    // clear error if its port is busy on the other stack.
     const MIN = 49152;
     const MAX = 65535;
     for (let i = 0; i < 8; i++) {
@@ -364,6 +362,17 @@ export function registerMcpHandlers() {
         return { port: candidate };
       }
     }
+    // Retry the single-stack util a few times until it returns a port
+    // that also passes the both-stacks check; the listener would
+    // otherwise EADDRINUSE on the other stack.
+    for (let i = 0; i < 4; i++) {
+      const candidate = await findAvailablePort(MIN, MAX);
+      if (await isPortFreeOnBothLoopbacks(candidate)) {
+        return { port: candidate };
+      }
+    }
+    // No fully-clean port found; surface what we have and let the
+    // listener's error path explain the conflict.
     const fallback = await findAvailablePort(MIN, MAX);
     return { port: fallback };
   });

@@ -307,6 +307,15 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       const state = await readState(this.serverId);
       state.clientInformation = clientInformation;
       await writeState(this.serverId, state);
+      // Persist the callback port the DCR client was registered with.
+      // The provider's `redirectUrl` (hence the registered redirect
+      // URI) is derived from this port, so later Connects must reuse
+      // it or the OAuth server will reject `/authorize` with
+      // "redirect_uri did not match".
+      await db
+        .update(mcpServers)
+        .set({ oauthCallbackPort: this.callbackPort })
+        .where(eq(mcpServers.id, this.serverId));
     });
   }
 
@@ -331,7 +340,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // would have nowhere to land. See `allowInteractive`.
     if (!this.allowInteractive) {
       throw new Error(
-        "OAuth not currently allowed (interactive consent required; click Connect on the server row).",
+        "OAuth not currently allowed (interactive consent required). Open Settings → Tools → MCP and click Connect on the server row.",
       );
     }
     // Superseded flow: skip opening the browser. The callback would

@@ -45,7 +45,12 @@ vi.mock("../db", () => ({
       set: (values: Record<string, unknown>) => ({
         where: () => {
           const id = currentTargetId;
-          dbStore.set(id, (values.oauthState as string | null) ?? null);
+          // Only track `oauth_state` writes here; other column
+          // updates (e.g. `oauth_callback_port`) are ignored so they
+          // don't clobber the test's view of the state row.
+          if ("oauthState" in values) {
+            dbStore.set(id, (values.oauthState as string | null) ?? null);
+          }
           return Promise.resolve([]);
         },
       }),
@@ -54,7 +59,11 @@ vi.mock("../db", () => ({
 }));
 
 vi.mock("../db/schema", () => ({
-  mcpServers: { id: "id", oauthState: "oauth_state" },
+  mcpServers: {
+    id: "id",
+    oauthState: "oauth_state",
+    oauthCallbackPort: "oauth_callback_port",
+  },
 }));
 
 // `eq()` from drizzle-orm normally returns a SQL fragment. The mocked

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -340,11 +341,6 @@ export function ToolsMcpSettings() {
   const [oauthClientId, setOauthClientId] = useState("");
   const [oauthClientSecret, setOauthClientSecret] = useState("");
   const [oauthScope, setOauthScope] = useState("");
-  // Null while the probe is in flight.
-  const [callbackPort, setCallbackPort] = useState<number | null>(null);
-  const [oauthStorageEncrypted, setOauthStorageEncrypted] = useState<
-    boolean | null
-  >(null);
   const [connectingServerId, setConnectingServerId] = useState<number | null>(
     null,
   );
@@ -354,32 +350,31 @@ export function ToolsMcpSettings() {
   const [connectFeedback, setConnectFeedback] =
     useState<ConnectFeedback | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    ipc.mcp
-      .probeCallbackPort()
-      .then((result) => {
-        if (!cancelled) setCallbackPort(result.port);
-      })
-      .catch(() => {
-        // Fall back so the UI shows a concrete port instead of "…"
-        // forever; the OAuth flow uses the same default server-side.
-        if (!cancelled) setCallbackPort(DEFAULT_OAUTH_CALLBACK_PORT);
-      });
-    ipc.mcp
-      .isOauthStorageEncrypted()
-      .then((result) => {
-        if (!cancelled) setOauthStorageEncrypted(result.available);
-      })
-      .catch(() => {
-        // Assume encrypted on probe failure — a false-positive banner
-        // is worse than going silent on a transient IPC hiccup.
-        if (!cancelled) setOauthStorageEncrypted(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Falls back to the default port on probe failure so the UI
+  // doesn't show "…" forever; the OAuth flow uses the same default.
+  const callbackPortQuery = useQuery({
+    queryKey: ["mcp", "callbackPort"],
+    queryFn: () =>
+      ipc.mcp
+        .probeCallbackPort()
+        .then((r) => r.port)
+        .catch(() => DEFAULT_OAUTH_CALLBACK_PORT),
+    staleTime: 5 * 60 * 1000,
+  });
+  const callbackPort = callbackPortQuery.data ?? null;
+
+  // Assume encrypted on probe failure — a false-positive banner is
+  // worse than going silent on a transient IPC hiccup.
+  const oauthStorageEncryptedQuery = useQuery({
+    queryKey: ["mcp", "isOauthStorageEncrypted"],
+    queryFn: () =>
+      ipc.mcp
+        .isOauthStorageEncrypted()
+        .then((r) => r.available)
+        .catch(() => true),
+    staleTime: 5 * 60 * 1000,
+  });
+  const oauthStorageEncrypted = oauthStorageEncryptedQuery.data ?? null;
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   console.log("lastDeepLink!!!", lastDeepLink);
   useEffect(() => {
@@ -470,7 +465,14 @@ export function ToolsMcpSettings() {
     setConnectFeedback(null);
     setConnectingServerId(serverId);
     try {
-      const result = await startOAuth({ serverId });
+      // Pass the probed port so rows with `oauthCallbackPort = null`
+      // (e.g. enabled via "Enable OAuth & retry") get the same
+      // fallback the session already settled on.
+      const result = await startOAuth({
+        serverId,
+        callbackPort:
+          typeof callbackPort === "number" ? callbackPort : undefined,
+      });
       if (result.success) {
         setConnectFeedback(null);
         showSuccess("OAuth connection successful");

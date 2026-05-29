@@ -116,7 +116,7 @@ export function useMcp() {
   });
 
   const startOAuthMutation = useMutation({
-    mutationFn: async (params: { serverId: number }) => {
+    mutationFn: async (params: { serverId: number; callbackPort?: number }) => {
       return ipc.mcp.startOAuth(params);
     },
     onSuccess: async () => {
@@ -177,8 +177,10 @@ export function useMcp() {
     consent: McpToolConsent["consent"],
   ) => setConsentMutation.mutateAsync({ serverId, toolName, consent });
 
-  const startOAuth = async (params: { serverId: number }) =>
-    startOAuthMutation.mutateAsync(params);
+  const startOAuth = async (params: {
+    serverId: number;
+    callbackPort?: number;
+  }) => startOAuthMutation.mutateAsync(params);
 
   const disconnectOAuth = async (serverId: number) =>
     disconnectOAuthMutation.mutateAsync(serverId);

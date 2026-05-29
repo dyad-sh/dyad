@@ -333,7 +333,10 @@ export function registerMcpHandlers() {
   // `@ai-sdk/mcp` `auth()` function drives PKCE + token exchange, and
   // tokens land in the encrypted `oauth_state` column.
   createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
-    const result = await runOAuthFlow({ serverId: params.serverId });
+    const result = await runOAuthFlow({
+      serverId: params.serverId,
+      callbackPort: params.callbackPort,
+    });
     if (result.success) {
       return { ...result, errorKind: null };
     }

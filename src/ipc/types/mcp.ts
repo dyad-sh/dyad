@@ -222,6 +222,10 @@ export const mcpContracts = {
     channel: "mcp:start-oauth",
     input: z.object({
       serverId: z.number(),
+      // Optional per-flow override; lets the renderer pass a freshly
+      // probed port for rows whose stored `oauthCallbackPort` is null
+      // (e.g. created with OAuth off and then enabled via retry).
+      callbackPort: z.number().int().min(1024).max(65535).optional(),
     }),
     output: z.object({
       success: z.boolean(),

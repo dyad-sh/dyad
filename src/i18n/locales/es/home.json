@@ -32,6 +32,7 @@
   "installCommand": "Comando de instalación",
   "startCommand": "Comando de inicio",
   "bothCommandsRequired": "Ambos comandos son necesarios al personalizar.",
+  "autoUpgradeAnnotator": "Actualizar automáticamente la aplicación para habilitar las funciones de anotador de Dyad",
   "noAiRulesFound": "No se encontró AI_RULES.md. Dyad generará uno automáticamente después de la importación.",
   "importingApp": "Importando aplicación...",
   "import": "Importar",

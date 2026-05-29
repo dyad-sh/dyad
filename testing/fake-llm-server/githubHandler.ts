@@ -355,7 +355,7 @@ export function handleClearPushEvents(req: Request, res: Response) {
 // Handle Git operations (push, pull, clone, etc.) using git-http-mock-server
 export function handleGitPush(req: Request, res: Response, next?: Function) {
   console.log("* GitHub Git operation requested:", req.method, req.url);
-
+  // Log request headers to see git operation details
   console.log("* Git Headers:", {
     "git-protocol": req.headers["git-protocol"],
     "content-type": req.headers["content-type"],
@@ -363,32 +363,37 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
   });
 
   console.error(`* Using git repos directory: ${mockReposRoot}`);
-
+  // Create git middleware instance for this request
   const gitHttpMiddleware = gitHttpMiddlewareFactory({
     root: mockReposRoot,
     route: "/github/git",
     glob: "*.git",
   });
-
+  // Extract repo name from URL path like /github/git/testuser/test-repo.git
+  // The middleware expects the repo name as the basename after the route
   const urlPath = req.url;
   const match = urlPath.match(/\/github\/git\/[^/]+\/([^/.]+)\.git/);
   const repoName = match?.[1];
 
   if (repoName) {
     console.log(`* Git operation for repo: ${repoName}`);
-
+    // Track push events if this is a git-receive-pack (push) operation
     if (req.url.includes("/git-receive-pack") && req.method === "POST") {
       console.log("* Git PUSH operation detected for repo:", repoName);
-
+      // Collect request body to parse git protocol
       let body = "";
       req.on("data", (chunk) => {
         body += chunk.toString();
       });
       req.on("end", () => {
         try {
+          // Parse git pack protocol for branch refs
+          // Git protocol sends refs in format: "old-sha new-sha refs/heads/branch-name"
           const lines = body.split("\n");
           lines.forEach((line) => {
+            // Look for lines containing refs/heads/
             const refMatch = line.match(
+              // eslint-disable-next-line
               /([0-9a-f]{40})\s+([0-9a-f]{40})\s+refs\/heads\/([^\s\u0000]+)/,
             );
             if (refMatch) {
@@ -418,7 +423,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         }
       });
     }
-
+    // Ensure the bare git repository exists for this repo
     const bareRepoPath = path.join(mockReposRoot, `${repoName}.git`);
     if (!fs.existsSync(bareRepoPath)) {
       console.log(`* Creating bare git repository at: ${bareRepoPath}`);
@@ -500,7 +505,8 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         });
       }
     }
-
+    // Rewrite the URL to match what the middleware expects
+    // Change /github/git/testuser/test-repo.git/... to /github/git/test-repo.git/...
     const rewrittenUrl = req.url.replace(
       /\/github\/git\/[^/]+\//,
       "/github/git/",
@@ -508,12 +514,13 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     req.url = rewrittenUrl;
     console.log(`* Rewritten URL from ${urlPath} to ${rewrittenUrl}`);
   }
-
+  // Use git-http-mock-server middleware to handle the actual git operations
   gitHttpMiddleware(
     req,
     res,
     next ||
       (() => {
+      // Fallback if middleware doesn't handle the request
         console.log(
           `* Git middleware did not handle request: ${req.method} ${req.url}`,
         );

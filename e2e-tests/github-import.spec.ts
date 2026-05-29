@@ -233,4 +233,94 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
       { timeout: 60_000 },
     )
     .toBe(true);
+
+
+  await expect
+    .poll(
+      () => {
+        const configPath = path.join(appPath, "vite.config.ts");
+        if (!fs.existsSync(configPath)) {
+          return false;
+        }
+        const config = fs.readFileSync(configPath, "utf8");
+        return (
+          config.includes(
+            "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
+          ) && config.includes("dyadComponentTagger()")
+        );
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+});
+
+test("should skip component tagger upgrade when optimize for Dyad is unchecked", async ({
+  po,
+}) => {
+  await po.setUp();
+
+  await po.page.getByRole("button", { name: "Import App" }).click();
+  await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
+  await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
+  await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
+
+  await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
+  const repoRow = po.page.getByTestId("github-repo-row-testuser-existing-app");
+  await expect(repoRow).toBeVisible();
+
+
+  await po.page
+    .getByRole("button", { name: "Advanced options" })
+    .click();
+
+
+  const checkbox = po.page.locator("input#optimize-for-dyad-repos");
+  await expect(checkbox).toBeVisible();
+  await expect(checkbox).toBeChecked();
+  await checkbox.focus();
+  await checkbox.press("Space");
+  await expect(checkbox).not.toBeChecked();
+
+
+  await repoRow.getByRole("button", { name: "Import" }).click();
+
+  await expect
+    .poll(
+      async () => {
+        try {
+          await po.appManagement.showAppList();
+          const item = po.appManagement.getAppListItem({
+            appName: "existing-app",
+          });
+          return await item.isVisible().catch(() => false);
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+  await po.appManagement.clickAppListItem({ appName: "existing-app" });
+
+  await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
+    "data-app-name",
+    "existing-app",
+  );
+  await po.appManagement.getTitleBarAppNameButton().click();
+
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await po.page.waitForTimeout(2000);
+
+
+  const configPath = path.join(appPath, "vite.config.ts");
+  if (fs.existsSync(configPath)) {
+    const config = fs.readFileSync(configPath, "utf8");
+    expect(config).not.toContain("dyadComponentTagger");
+  }
+
+  const pkgPath = path.join(appPath, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    const pkg = fs.readFileSync(pkgPath, "utf8");
+    expect(pkg).not.toContain("@dyad-sh/react-vite-component-tagger");
+  }
 });

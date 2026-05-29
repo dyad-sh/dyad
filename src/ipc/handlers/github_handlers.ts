@@ -1256,7 +1256,7 @@ async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
 ): Promise<CloneRepoResult> {
-  const { url, installCommand, startCommand, appName } = params;
+  const { url, installCommand, startCommand, appName, optimizeForDyad = true } = params;
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1346,7 +1346,7 @@ async function handleCloneRepoFromUrl(
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
 
-    if (isComponentTaggerUpgradeNeeded(appPath)) {
+    if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
       try {
         await applyComponentTagger(appPath, { installDependencies: false });
         logger.log(

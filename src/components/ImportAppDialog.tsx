@@ -26,7 +26,7 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useOpenApp } from "@/hooks/useOpenApp";
+
 import {
   Accordion,
   AccordionContent,
@@ -56,8 +56,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { selectChat } = useSelectChat();
   const { refreshApps } = useLoadApps();
-  const openApp = useOpenApp();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const [optimizeForDyad, setOptimizeForDyad] = useState(true);
   // GitHub import state
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
@@ -118,6 +118,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         installCommand: installCommand.trim() || undefined,
         startCommand: startCommand.trim() || undefined,
         appName,
+        optimizeForDyad,
       });
       if ("error" in result) {
         showError(result.error);
@@ -127,13 +128,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setSelectedAppId(result.app.id);
       // Ensure the app list is refreshed so the imported app appears in the sidebar
       await refreshApps();
-      // Programmatically open the imported app so tests and UI are deterministic
-      try {
-        await openApp(result.app.id);
-      } catch (e) {
-        // Non-fatal; UI selection failing shouldn't block import flow
-        console.warn("Failed to open imported app:", e);
-      }
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });
@@ -164,6 +158,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         installCommand: installCommand.trim() || undefined,
         startCommand: startCommand.trim() || undefined,
         appName,
+        optimizeForDyad,
       });
       if ("error" in result) {
         showError(result.error);
@@ -173,12 +168,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setSelectedAppId(result.app.id);
       // Refresh app list so the newly cloned app is visible immediately
       await refreshApps();
-      // Programmatically open the imported app so tests and UI are deterministic
-      try {
-        await openApp(result.app.id);
-      } catch (e) {
-        console.warn("Failed to open imported app:", e);
-      }
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });
@@ -662,6 +651,17 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                                 disabled={importing}
                               />
                             </div>
+                            <div className="flex items-center space-x-2 pt-2">
+                              <Checkbox
+                                id="optimize-for-dyad-repos"
+                                checked={optimizeForDyad}
+                                onCheckedChange={(checked) => setOptimizeForDyad(checked === true)}
+                                disabled={importing}
+                              />
+                              <Label htmlFor="optimize-for-dyad-repos" className="text-xs sm:text-sm cursor-pointer">
+                                {t("home:autoUpgradeAnnotator")} ({t("common:recommended")})
+                              </Label>
+                            </div>
                             {!commandsValid && (
                               <p className="text-xs sm:text-sm text-red-500">
                                 {t("home:bothCommandsRequired")}
@@ -741,6 +741,17 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                         className="text-sm"
                         disabled={importing}
                       />
+                    </div>
+                    <div className="flex items-center space-x-2 pt-2">
+                      <Checkbox
+                        id="optimize-for-dyad-url"
+                        checked={optimizeForDyad}
+                        onCheckedChange={(checked) => setOptimizeForDyad(checked === true)}
+                        disabled={importing}
+                      />
+                      <Label htmlFor="optimize-for-dyad-url" className="text-xs sm:text-sm cursor-pointer">
+                        {t("home:autoUpgradeAnnotator")} ({t("common:recommended")})
+                      </Label>
                     </div>
                     {!commandsValid && (
                       <p className="text-xs sm:text-sm text-red-500">

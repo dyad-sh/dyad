@@ -27,6 +27,9 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 
   try {
     const viteConfigContent = fs.readFileSync(viteConfigPath, "utf-8");
+    if (!viteConfigContent.toLowerCase().includes("react")) {
+      return false;
+    }
     return !viteConfigContent.includes("@dyad-sh/react-vite-component-tagger");
   } catch (e) {
     logger.error("Error reading vite config", e);
@@ -53,15 +56,15 @@ export async function applyComponentTagger(
     );
   }
 
-  let content = await fs.promises.readFile(viteConfigPath, "utf-8");
 
- 
+  const originalViteContent = await fs.promises.readFile(viteConfigPath, "utf-8");
+  let content = originalViteContent;
+
   if (
     !content.includes(
       "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
     )
   ) {
-   
     const lines = content.split("\n");
     let lastImportIndex = -1;
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -78,7 +81,6 @@ export async function applyComponentTagger(
     content = lines.join("\n");
   }
 
- 
   if (content.includes("plugins: [")) {
     if (!content.includes("dyadComponentTagger()")) {
       content = content.replace(
@@ -95,29 +97,40 @@ export async function applyComponentTagger(
 
   await fs.promises.writeFile(viteConfigPath, content);
 
-  try {
-    const packageJson = JSON.parse(
-      await fs.promises.readFile(packageJsonPath, "utf-8"),
-    );
-    packageJson.devDependencies ??= {};
-    packageJson.devDependencies["@dyad-sh/react-vite-component-tagger"] =
-      "^0.9.0";
-    if (packageJson.dependencies?.["@dyad-sh/react-vite-component-tagger"]) {
-      delete packageJson.dependencies["@dyad-sh/react-vite-component-tagger"];
-      if (Object.keys(packageJson.dependencies).length === 0) {
-        delete packageJson.dependencies;
+  if (!installDependencies) {
+    try {
+      const packageJson = JSON.parse(
+        await fs.promises.readFile(packageJsonPath, "utf-8"),
+      );
+      packageJson.devDependencies ??= {};
+      packageJson.devDependencies["@dyad-sh/react-vite-component-tagger"] =
+        "^0.9.0";
+      if (packageJson.dependencies?.["@dyad-sh/react-vite-component-tagger"]) {
+        delete packageJson.dependencies["@dyad-sh/react-vite-component-tagger"];
+        if (Object.keys(packageJson.dependencies).length === 0) {
+          delete packageJson.dependencies;
+        }
       }
+      await fs.promises.writeFile(
+        packageJsonPath,
+        `${JSON.stringify(packageJson, null, 2)}\n`,
+      );
+    } catch (err) {
+      logger.warn(
+        "Failed to update package.json for component tagger, rolling back vite config changes",
+        err,
+      );
+     // rollback
+      try {
+        await fs.promises.writeFile(viteConfigPath, originalViteContent);
+      } catch (rollbackErr) {
+        logger.error("Failed to rollback vite config changes", rollbackErr);
+      }
+      return;
     }
-    await fs.promises.writeFile(
-      packageJsonPath,
-      `${JSON.stringify(packageJson, null, 2)}\n`,
-    );
-  } catch (err) {
-    logger.warn("Failed to update package.json for component tagger", err);
   }
 
-  // Commit the manual file modifications (vite config + package.json) first
-  // This must complete before pnpm runs to avoid race conditions
+
   try {
     logger.info("Staging and committing vite config and package.json changes");
     await gitAddAll({ path: appPath });
@@ -133,10 +146,8 @@ export async function applyComponentTagger(
     );
   }
 
-
   if (installDependencies) {
     try {
-      // Try pnpm first
       await simpleSpawn({
         command: "pnpm add -D @dyad-sh/react-vite-component-tagger",
         cwd: appPath,
@@ -145,7 +156,6 @@ export async function applyComponentTagger(
         errorPrefix: "Failed to install dependency via pnpm",
       });
     } catch (pnpmErr) {
-      // Fall back to npm if pnpm is not available or fails
       logger.info("pnpm install failed, falling back to npm", pnpmErr);
       try {
         await simpleSpawn({
@@ -165,7 +175,7 @@ export async function applyComponentTagger(
       }
     }
 
-    // After package manager completes successfully, commit the lock file updates
+   
     try {
       logger.info("Committing updated lock file after package manager install");
       await gitAddAll({ path: appPath });

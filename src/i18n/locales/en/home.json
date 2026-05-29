@@ -32,6 +32,7 @@
   "installCommand": "Install command",
   "startCommand": "Start command",
   "bothCommandsRequired": "Both commands are required when customizing.",
+  "autoUpgradeAnnotator": "Auto-upgrade app to enable Dyad annotator features",
   "noAiRulesFound": "No AI_RULES.md found. Dyad will automatically generate one after importing.",
   "importingApp": "Importing app...",
   "import": "Import",

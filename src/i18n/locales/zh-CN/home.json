@@ -29,6 +29,7 @@
   "installCommand": "安装命令",
   "startCommand": "启动命令",
   "bothCommandsRequired": "自定义时两个命令都是必填的。",
+  "autoUpgradeAnnotator": "自动升级应用以启用 Dyad 注释器功能",
   "noAiRulesFound": "未找到 AI_RULES.md。导入后 Dyad 将自动生成一个。",
   "importingApp": "正在导入应用...",
   "import": "导入",

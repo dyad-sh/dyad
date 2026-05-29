@@ -795,10 +795,9 @@ async function handleDeepLinkReturn(url: string) {
     });
     return;
   }
-  // dyad://mcp-oauth-return -- fired by the OAuth callback page so
-  // the browser can hand focus back to Dyad after consent. No payload;
-  // tokens were already persisted by the main-process loopback
-  // listener before this URL is opened.
+  // Fired by the OAuth callback page to hand focus back to Dyad
+  // after consent. No payload — tokens land via the loopback
+  // listener before this URL opens.
   if (parsed.hostname === "mcp-oauth-return") {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();

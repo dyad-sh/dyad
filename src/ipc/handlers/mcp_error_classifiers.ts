@@ -1,22 +1,18 @@
-// Lightweight string classifiers for SDK error messages from the MCP
-// OAuth flow. Extracted so unit tests can exercise them without
-// pulling in IPC handler registration.
+// String classifiers for untyped SDK error messages from the MCP
+// OAuth flow. Extracted so unit tests can hit them without IPC
+// handler registration.
 
-// Heuristic: did the SDK fail discovery (no /.well-known, bad shape,
-// 404, etc.) vs another error path (unsupported grant, network, etc.)?
-// SDK errors are untyped strings, so we match liberally across the
-// known discovery-failure shapes.
+// Match liberally across known discovery-failure shapes (no
+// /.well-known, bad metadata, 404 on discovery, etc.).
 export function classifyOAuthError(
   msg: string | null,
 ): "discovery_failed" | "other" | null {
   if (!msg) return null;
   const lower = msg.toLowerCase();
-  // Word-boundary for "404" so port numbers like 4040 / 40400 / URL
-  // path fragments don't trip the discovery-failed branch. A bare
-  // "not found" match would also catch unrelated validation errors
-  // like "MCP server not found: 999", so we rely on the more specific
-  // patterns below + `\b404\b` (real SDK discovery 404s always carry
-  // the status code).
+  // Word-boundary `\b404\b` so port numbers like 4040 don't trip the
+  // branch. A bare "not found" trigger would also misclassify
+  // unrelated errors like "MCP server not found: 999"; SDK discovery
+  // 404s always carry the status code so the regex suffices.
   if (
     lower.includes("well-known") ||
     lower.includes("metadata") ||
@@ -33,8 +29,8 @@ export function classifyOAuthError(
 
 export function looksLikeUnauthorized(msg: string): boolean {
   const lower = msg.toLowerCase();
-  // Word-boundary for "401" so port numbers like 4012 / 14010 in
-  // ECONNREFUSED messages aren't classified as auth failures.
+  // Word-boundary `\b401\b` so port numbers like 4012 / 14010 in
+  // ECONNREFUSED messages don't match.
   return (
     lower.includes("unauthorized") ||
     /\b401\b/.test(lower) ||

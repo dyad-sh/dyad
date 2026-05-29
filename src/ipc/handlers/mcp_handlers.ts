@@ -30,10 +30,10 @@ import {
 
 const logger = log.scope("mcp_handlers");
 
-// Probes a port on both IPv4 and IPv6 loopback. Returns true only if
-// both stacks bind cleanly OR one is genuinely unavailable (e.g. IPv6
-// disabled) while the other is free. EADDRINUSE on either stack
-// disqualifies the port -- the OAuth callback listener requires both.
+// True when both loopback stacks bind cleanly, or when one is
+// unavailable system-wide (e.g. IPv6 disabled) and the other is free.
+// EADDRINUSE on either stack disqualifies the port — the OAuth
+// callback listener needs both.
 async function isPortFreeOnBothLoopbacks(port: number): Promise<boolean> {
   const probeOne = (host: string): Promise<"free" | "in_use" | "other"> =>
     new Promise((resolve) => {
@@ -184,8 +184,19 @@ export function registerMcpHandlers() {
           : (params.headersJson ?? null);
     if (params.url !== undefined) update.url = params.url;
     if (params.enabled !== undefined) update.enabled = !!params.enabled;
-    if (params.oauthEnabled !== undefined)
+    if (params.oauthEnabled !== undefined) {
       update.oauthEnabled = !!params.oauthEnabled;
+      // Turning OAuth off scrubs the credential columns so a stale
+      // client secret / token blob doesn't linger in the DB without a
+      // UI affordance to clear it.
+      if (!params.oauthEnabled) {
+        update.oauthState = null;
+        update.oauthClientId = null;
+        update.oauthClientSecret = null;
+        update.oauthScope = null;
+        update.oauthCallbackPort = null;
+      }
+    }
 
     const result = await db
       .update(mcpServers)
@@ -215,18 +226,14 @@ export function registerMcpHandlers() {
 
   // Tools listing (dynamic)
   createTypedHandler(mcpContracts.listTools, async (_, serverId) => {
-    // Bounded wait per server: the renderer waits for every server's
-    // listTools to settle before rendering, so one hung server (often
-    // an unconnected OAuth-gated host) would otherwise freeze the
-    // whole tools list. This ceiling caps the worst case.
+    // Caps the worst case for a hung server (often an unconnected
+    // OAuth-gated host) so it doesn't freeze the whole tools list.
     const LIST_TOOLS_TIMEOUT_MS = 8_000;
-    // Clearable so the timer doesn't fire after the main op settles —
-    // a late reject on an unobserved promise surfaces as an
-    // unhandled rejection.
+    // Cleared after the race so a late reject can't surface as
+    // unhandled.
     let timeoutId: NodeJS.Timeout | undefined;
-    // Attach a no-op handler so a rejection from the main op after the
-    // timeout has already won the race doesn't surface as an unhandled
-    // rejection in the Electron main process.
+    // No-op handler so a `mainOp` rejection after the timeout wins
+    // the race doesn't surface as unhandled.
     const mainOp = (async () => {
       const client = await mcpManager.getClient(serverId);
       const remoteTools = await client.tools();
@@ -252,9 +259,8 @@ export function registerMcpHandlers() {
         LIST_TOOLS_TIMEOUT_MS,
       );
     });
-    // Same guard as `mainOp`: if `mainOp` wins the race after the
-    // timer already fired, the timeout rejection has no observer and
-    // would surface as an unhandled rejection.
+    // Same guard as `mainOp` for a late timeout reject after the
+    // race resolves.
     timeoutPromise.catch(() => undefined);
     try {
       const result = await Promise.race([mainOp, timeoutPromise]);
@@ -339,21 +345,15 @@ export function registerMcpHandlers() {
     return { ...result, errorKind: classifyOAuthError(result.error) };
   });
 
-  // Tries DEFAULT_OAUTH_CALLBACK_PORT first since common
-  // pre-registered redirect URIs use it; falls back to a free
-  // ephemeral port when taken. Probes both loopback stacks (127.0.0.1
-  // + ::1) -- the OAuth callback listener requires both, so partial
-  // EADDRINUSE on the default would push the renderer toward
-  // registering a port the flow can't actually bind.
+  // Default port first (matches typical pre-registered redirect
+  // URIs); falls back to an ephemeral one that also passes the
+  // both-stacks check.
   createTypedHandler(mcpContracts.probeCallbackPort, async () => {
     if (await isPortFreeOnBothLoopbacks(DEFAULT_OAUTH_CALLBACK_PORT)) {
       return { port: DEFAULT_OAUTH_CALLBACK_PORT };
     }
-    // Random sampling against the both-stacks check so the fallback
-    // port is one `startCallbackListener` can actually bind. Falls
-    // back to the single-stack util on exhaustion so the flow has
-    // something to attempt; the listener's clear error will surface
-    // if even that turns out to be in use on the other stack.
+    // Single-stack util is the last resort — the listener surfaces a
+    // clear error if even that's busy on the other stack.
     const MIN = 49152;
     const MAX = 65535;
     for (let i = 0; i < 8; i++) {
@@ -391,8 +391,7 @@ export function registerMcpHandlers() {
     return await disconnectOAuth(serverId);
   });
 
-  // Lets the renderer surface a banner when the OS keyring is missing
-  // and OAuth tokens would fall back to plaintext in SQLite.
+  // Drives the no-keyring banner on the MCP settings page.
   createTypedHandler(mcpContracts.isOauthStorageEncrypted, async () => {
     return { available: safeStorage.isEncryptionAvailable() };
   });

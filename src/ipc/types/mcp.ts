@@ -68,12 +68,10 @@ export const CreateMcpServerSchema = z.object({
   // Plaintext OAuth client_secret on create. The handler encrypts it
   // before storing and never returns it via `McpServerSchema`.
   oauthClientSecret: z.string().nullable().optional(),
-  // RFC 6749 §3.3: scope = scope-token *( SP scope-token ), where a
-  // scope-token is one or more characters from %x21 / %x23-5B / %x5D-7E
-  // (printable ASCII minus space, `"`, and `\`). Reject control chars,
-  // newlines, quotes, etc. up front so a typo surfaces here instead of
-  // as a cryptic OAuth provider error mid-flow. Empty string allowed --
-  // the flow treats it like "use the server's default scope".
+  // RFC 6749 §3.3 scope-token characters only. Catches typos
+  // (control chars, quotes, newlines) at validation time so they
+  // don't surface as opaque OAuth provider errors later. Empty
+  // string means "use the server's default scope".
   oauthScope: z
     .string()
     .regex(/^[\x21\x23-\x5b\x5d-\x7e]*(?: [\x21\x23-\x5b\x5d-\x7e]+)*$/, {
@@ -255,9 +253,7 @@ export const mcpContracts = {
     }),
   }),
 
-  // Reports whether the OS keyring is available. When false, OAuth
-  // tokens fall back to plaintext storage in SQLite -- the renderer
-  // surfaces a banner so users know the security degradation.
+  // Drives the no-keyring banner on the MCP settings page.
   isOauthStorageEncrypted: defineContract({
     channel: "mcp:is-oauth-storage-encrypted",
     input: z.void(),

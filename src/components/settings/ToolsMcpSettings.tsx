@@ -362,8 +362,8 @@ export function ToolsMcpSettings() {
         if (!cancelled) setCallbackPort(result.port);
       })
       .catch(() => {
-        // Show a concrete fallback in the UI instead of "…" forever;
-        // the OAuth flow itself also falls back to this port server-side.
+        // Fall back so the UI shows a concrete port instead of "…"
+        // forever; the OAuth flow uses the same default server-side.
         if (!cancelled) setCallbackPort(DEFAULT_OAUTH_CALLBACK_PORT);
       });
     ipc.mcp
@@ -372,8 +372,8 @@ export function ToolsMcpSettings() {
         if (!cancelled) setOauthStorageEncrypted(result.available);
       })
       .catch(() => {
-        // Assume encrypted on probe failure: false alarms here are
-        // worse than silent on a transient IPC hiccup.
+        // Assume encrypted on probe failure — a false-positive banner
+        // is worse than going silent on a transient IPC hiccup.
         if (!cancelled) setOauthStorageEncrypted(true);
       });
     return () => {
@@ -433,11 +433,9 @@ export function ToolsMcpSettings() {
       url: url || null,
       enabled,
       oauthEnabled: wantsOAuth,
-      // Drop any advanced OAuth values the user typed but then turned
-      // off / switched away from -- otherwise a leftover client secret
-      // would land in the DB without a corresponding OAuth row to use
-      // it, and on a host without `safeStorage` it would be stored as
-      // plaintext too.
+      // Skip OAuth fields the user typed and then turned off, so no
+      // stray client secret lands in the DB (and especially not as
+      // plaintext on a no-keyring host).
       oauthClientId: wantsOAuth ? oauthClientId.trim() || null : null,
       oauthClientSecret: wantsOAuth ? oauthClientSecret.trim() || null : null,
       oauthScope: wantsOAuth ? oauthScope.trim() || null : null,
@@ -457,10 +455,8 @@ export function ToolsMcpSettings() {
 
     if (transport === "http" && created) {
       if (wantsOAuth) {
-        // The form has already cleared, and the server row may not
-        // have arrived in `serversQuery` yet, so the per-row
-        // "Connecting…" indicator isn't visible. A toast bridges the
-        // gap until the row renders.
+        // Bridge the gap until the new row arrives in `serversQuery`
+        // and shows its own "Connecting…" state.
         showInfo(`Connecting OAuth for "${created.name}"…`);
         await runAutoConnect(created.id);
       } else {
@@ -780,7 +776,9 @@ export function ToolsMcpSettings() {
                       isDisconnectingOAuth && disconnectingServerId === s.id
                     }
                   >
-                    Disconnect
+                    {isDisconnectingOAuth && disconnectingServerId === s.id
+                      ? "Disconnecting…"
+                      : "Disconnect"}
                   </Button>
                 )}
                 <Switch

@@ -317,10 +317,10 @@ async function startCallbackListener(
     }
   };
 
-  // Distinguish "port owned by another process" (EADDRINUSE) from
-  // "stack unavailable" (e.g. IPv6 disabled). Partial-bind only
-  // remains safe in the second case; with EADDRINUSE on either stack
-  // a `localhost` redirect could resolve to the address we don't own.
+  // Distinguish EADDRINUSE from "stack unavailable" (e.g. IPv6
+  // disabled). Partial-bind is safe only in the second case — with
+  // EADDRINUSE on either stack, `localhost` could resolve to the
+  // address we don't own.
   type BindResult =
     | { server: Server }
     | { error: "in_use" }
@@ -371,12 +371,11 @@ async function startCallbackListener(
     // abort the real flow.
     throw new Error("OAuth flow superseded before listener bound.");
   }
-  // Already-settled because `flow.binding` awaited the same promises.
+  // Already settled — `flow.binding` awaited the same promises.
   const bindResults = await Promise.all(bindPromises);
-  // Treat EADDRINUSE on one stack as fatal even if the other bound:
-  // the browser may resolve `localhost` to whichever address is held
-  // by the conflicting process, so the OAuth callback would land
-  // somewhere we can't observe and the flow would hang until timeout.
+  // EADDRINUSE on either stack is fatal even with a partial bind:
+  // `localhost` could resolve to the busy address and the OAuth
+  // callback would land out of our reach, hanging the flow.
   if (bindResults.some((r) => "error" in r && r.error === "in_use")) {
     for (const s of flow.servers) s.close();
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
@@ -418,9 +417,13 @@ interface RunOAuthFlowParams {
 }
 
 /**
- * Drive the full OAuth flow for a configured MCP server. Validation
- * and flow failures return `{success: false, error}` so the renderer
- * can show the message inline.
+ * Drive the full OAuth flow for a configured MCP server. Returns a
+ * `{success, error}` result for every failure path — validation,
+ * not-found, and live OAuth errors — so the renderer's
+ * `connectFeedback` UI can show the message inline. (This intentionally
+ * differs from `disconnectOAuth`, which throws `DyadError(NotFound)`:
+ * disconnect callers expect an exception they can `try/catch`, while
+ * `startOAuth` callers expect a normal result with an `errorKind` tag.)
  */
 export async function runOAuthFlow(
   params: RunOAuthFlowParams,

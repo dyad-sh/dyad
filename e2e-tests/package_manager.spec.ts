@@ -101,10 +101,35 @@ async function createSupportedPnpmShim(userDataDir: string) {
 }
 
 function warmSocketFirewallCache() {
-  execFileSync("npx", ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"], {
-    encoding: "utf8",
-    timeout: 120_000,
-  });
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      execFileSync(
+        "npx",
+        ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
+        {
+          encoding: "utf8",
+          timeout: 120_000,
+        },
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) {
+        break;
+      }
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        attempt * 1_000,
+      );
+    }
+  }
+
+  throw lastError;
 }
 
 async function restorePackageManagerCache() {

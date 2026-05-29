@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
 import { useMutation } from "@tanstack/react-query";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { Folder, X, Loader2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -129,6 +129,14 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       // Ensure the app list is refreshed so the imported app appears in the sidebar
       await refreshApps();
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
+      if (result.autoUpgradeWarning) {
+        showWarning(
+          t("home:autoUpgradeFailed", {
+            defaultValue:
+              "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
+          }),
+        );
+      }
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });
       if (!result.hasAiRules) {
@@ -168,6 +176,14 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setSelectedAppId(result.app.id);
       // Refresh app list so the newly cloned app is visible immediately
       await refreshApps();
+      if (result.autoUpgradeWarning) {
+        showWarning(
+          t("home:autoUpgradeFailed", {
+            defaultValue:
+              "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
+          }),
+        );
+      }
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });

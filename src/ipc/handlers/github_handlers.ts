@@ -1339,6 +1339,7 @@ async function handleCloneRepoFromUrl(
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
 
+    let autoUpgradeWarning = false;
     if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
       try {
         await applyComponentTagger(appPath, { installDependencies: false });
@@ -1346,11 +1347,13 @@ async function handleCloneRepoFromUrl(
           `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
         );
       } catch (upgradeError) {
-        logger.error(
-          `[GitHub Handler] Failed to auto-apply component tagger upgrade for ${owner}/${repoName}`,
+        // Auto-upgrade is best-effort. Failures are logged but don't block import.
+        // User will be notified via warning toast to manually upgrade if needed.
+        autoUpgradeWarning = true;
+        logger.warn(
+          `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
           upgradeError,
         );
-    
       }
     }
 
@@ -1363,6 +1366,7 @@ async function handleCloneRepoFromUrl(
         vercelTeamSlug: null,
       },
       hasAiRules,
+      autoUpgradeWarning,
     };
   } catch (err: any) {
     logger.error("[GitHub Handler] Unexpected error in clone flow:", err);

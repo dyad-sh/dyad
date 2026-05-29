@@ -399,6 +399,43 @@ describe("DyadOAuthClientProvider", () => {
       await expect(p.codeVerifier()).rejects.toThrow();
     });
 
+    it("clears tokens on non-interactive scope=tokens (background invalid_grant recovery)", async () => {
+      // A cached listTools probe / background refresh hits the SDK
+      // with `allowInteractive: false`. When the refresh returns
+      // `invalid_grant`, the SDK calls `invalidateCredentials("tokens")`.
+      // If we no-op here, the stale tokens stay in oauth_state, the UI
+      // keeps showing Connected, and every later probe repeats the
+      // same dead refresh.
+      const seeded = await seedFull(35);
+      // Re-open with allowInteractive: false to model the background
+      // probe path against the same persisted row.
+      void seeded;
+      const bg = new DyadOAuthClientProvider({
+        serverId: 35,
+        allowInteractive: false,
+      });
+      await bg.invalidateCredentials("tokens");
+      expect(await bg.tokens()).toBeUndefined();
+      // Client info must survive so the next interactive flow can
+      // refresh without re-running DCR.
+      expect((await bg.clientInformation())?.client_id).toBe("c");
+    });
+
+    it("skips scope=all when non-interactive (background can't drop client info)", async () => {
+      const seeded = await seedFull(36);
+      void seeded;
+      const bg = new DyadOAuthClientProvider({
+        serverId: 36,
+        allowInteractive: false,
+      });
+      await bg.invalidateCredentials("all");
+      // Tokens still present -- the scope=all branch is gated off for
+      // non-interactive so the background path can't drop DCR client
+      // info on the floor.
+      expect((await bg.tokens())?.access_token).toBe("t");
+      expect((await bg.clientInformation())?.client_id).toBe("c");
+    });
+
     it("writes NULL to oauth_state after scope=all so the UI sees disconnected", async () => {
       // Critical for the Disconnect button: the UI derives the
       // "connected" badge from `oauth_state IS NOT NULL`. If

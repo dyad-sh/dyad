@@ -456,9 +456,13 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       );
       return;
     }
-    // Skip for non-interactive so a background 401 path can't nuke
-    // tokens or client info out from under an active session.
-    if (!this.allowInteractive) return;
+    // Non-interactive providers (cached listTools probes, background
+    // refreshes) must still clear dead tokens after `invalid_grant`;
+    // otherwise the UI keeps showing Connected and every later probe
+    // repeats the same failed refresh. The `all` scope is interactive-
+    // only so a background path can't drop DCR client info on the
+    // floor.
+    if (scope === "all" && !this.allowInteractive) return;
     if (this.aborted) return;
     await withStateLock(this.serverId, async () => {
       if (this.aborted) return;

@@ -19,7 +19,7 @@ export const DEFAULT_OAUTH_CALLBACK_PORT = 53682;
 // MCP Schemas
 // =============================================================================
 
-export const McpTransportEnum = z.enum(["stdio", "http"]);
+export const McpTransportEnum = z.enum(["stdio", "sse", "http"]);
 export type McpTransport = z.infer<typeof McpTransportEnum>;
 
 export const McpServerSchema = z.object({

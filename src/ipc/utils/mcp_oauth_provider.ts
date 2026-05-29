@@ -334,6 +334,15 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
         "OAuth not currently allowed (interactive consent required; click Connect on the server row).",
       );
     }
+    // Superseded flow: skip opening the browser. The callback would
+    // land on a dead listener and the user would see a stale consent
+    // tab for an aborted attempt.
+    if (this.aborted) {
+      logger.info(
+        `Skipping authorize redirect for MCP server ${this.serverId}: flow was superseded.`,
+      );
+      return;
+    }
     // Refuse non-http(s) schemes so a malicious or misconfigured server
     // can't trick us into handing arbitrary URIs (file:, javascript:,
     // custom protocol handlers) to `shell.openExternal`. http: is

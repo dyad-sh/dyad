@@ -3,7 +3,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Loader2, MoreHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
@@ -18,6 +18,8 @@ import {
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   closeMultipleTabsAtom,
+  hydrateChatTabSessionAtom,
+  persistChatTabSessionAtom,
   type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
@@ -219,7 +221,7 @@ interface ChatTabsProps {
 
 export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const { t } = useTranslation("chat");
-  const { chats } = useChats(null);
+  const { chats, loading } = useChats(null);
   const { apps } = useLoadApps();
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
@@ -229,11 +231,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
   const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
+  const hydrateChatTabSession = useSetAtom(hydrateChatTabSessionAtom);
+  const persistChatTabSession = useSetAtom(persistChatTabSessionAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { reopenClosedTab, hasClosedTabs, lastClosedTab } =
     useReopenClosedTab();
   const { selectChat } = useSelectChat();
   const navigate = useNavigate();
+  const routerState = useRouterState();
   const isMac = useIsMac();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -242,6 +247,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     new Set(),
   );
   const prevStreamingRef = useRef<Map<number, boolean>>(new Map());
+  const hasHydratedTabSessionRef = useRef(false);
 
   const chatsById = useMemo(
     () => new Map(chats.map((chat) => [chat.id, chat])),
@@ -251,8 +257,57 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   // Prune stale IDs from closedChatIds when the chat list changes
   const chatIdSet = useMemo(() => new Set(chats.map((c) => c.id)), [chats]);
   useEffect(() => {
+    if (loading || hasHydratedTabSessionRef.current) {
+      return;
+    }
+
+    hasHydratedTabSessionRef.current = true;
+    const restoredSession = hydrateChatTabSession(chatIdSet);
+    if (
+      selectedChatId === null &&
+      routerState.location.pathname === "/" &&
+      restoredSession.selectedChatId !== null
+    ) {
+      const restoredChat = chatsById.get(restoredSession.selectedChatId);
+      if (restoredChat) {
+        selectChat({
+          chatId: restoredChat.id,
+          appId: restoredChat.appId,
+          preserveTabOrder: true,
+        });
+      }
+    }
+  }, [
+    chatIdSet,
+    chatsById,
+    hydrateChatTabSession,
+    loading,
+    routerState.location.pathname,
+    selectedChatId,
+    selectChat,
+  ]);
+
+  useEffect(() => {
+    if (!hasHydratedTabSessionRef.current) {
+      return;
+    }
+
     pruneClosedChatIds(chatIdSet);
   }, [chatIdSet, pruneClosedChatIds]);
+
+  useEffect(() => {
+    if (!hasHydratedTabSessionRef.current) {
+      return;
+    }
+
+    persistChatTabSession();
+  }, [
+    closedChatIds,
+    persistChatTabSession,
+    recentViewedChatIds,
+    selectedChatId,
+    sessionOpenedChatIds,
+  ]);
 
   const appById = useMemo(
     () => new Map(apps.map((app) => [app.id, app])),

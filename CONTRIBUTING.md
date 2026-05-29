@@ -105,3 +105,5 @@ You can also do local code reviews with the following tools:
 
 - Codex CLI - `codex` -> `/review`
 - Claude Code CLI - `claude` -> `/review`
+
+<!-- Thanks for contributing! -->

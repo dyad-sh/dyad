@@ -520,7 +520,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     res,
     next ||
       (() => {
-      // Fallback if middleware doesn't handle the request
+        // Fallback if middleware doesn't handle the request
         console.log(
           `* Git middleware did not handle request: ${req.method} ${req.url}`,
         );

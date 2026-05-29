@@ -433,13 +433,16 @@ export function ToolsMcpSettings() {
       url: url || null,
       enabled,
       oauthEnabled: wantsOAuth,
-      oauthClientId: oauthClientId.trim() || null,
-      oauthClientSecret: oauthClientSecret.trim() || null,
-      oauthScope: oauthScope.trim() || null,
+      // Drop any advanced OAuth values the user typed but then turned
+      // off / switched away from -- otherwise a leftover client secret
+      // would land in the DB without a corresponding OAuth row to use
+      // it, and on a host without `safeStorage` it would be stored as
+      // plaintext too.
+      oauthClientId: wantsOAuth ? oauthClientId.trim() || null : null,
+      oauthClientSecret: wantsOAuth ? oauthClientSecret.trim() || null : null,
+      oauthScope: wantsOAuth ? oauthScope.trim() || null : null,
       oauthCallbackPort:
-        transport === "http" && typeof callbackPort === "number"
-          ? callbackPort
-          : null,
+        wantsOAuth && typeof callbackPort === "number" ? callbackPort : null,
     });
     setName("");
     setCommand("");
@@ -454,6 +457,11 @@ export function ToolsMcpSettings() {
 
     if (transport === "http" && created) {
       if (wantsOAuth) {
+        // The form has already cleared, and the server row may not
+        // have arrived in `serversQuery` yet, so the per-row
+        // "Connecting…" indicator isn't visible. A toast bridges the
+        // gap until the row renders.
+        showInfo(`Connecting OAuth for "${created.name}"…`);
         await runAutoConnect(created.id);
       } else {
         await runProbe(created.id);

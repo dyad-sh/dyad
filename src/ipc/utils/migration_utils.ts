@@ -208,10 +208,66 @@ function toMigrationDiffDyadError(error: unknown): DyadError {
     error instanceof PgSchemaDiffError || error instanceof Error
       ? error.message
       : String(error);
+  logger.error(
+    "Failed to compute migration plan. Cause chain:",
+    formatErrorCauseChain(error),
+  );
+  const causeSummary = formatErrorCauseSummary(error);
   return new DyadError(
-    `Failed to compute migration plan: ${message}`,
+    causeSummary
+      ? `Failed to compute migration plan: ${message}: ${causeSummary}`
+      : `Failed to compute migration plan: ${message}`,
     DyadErrorKind.External,
   );
+}
+
+function formatErrorCauseSummary(error: unknown): string | null {
+  const seen = new Set<unknown>();
+  const messages: string[] = [];
+  let current =
+    error instanceof Error
+      ? (error as Error & { cause?: unknown }).cause
+      : undefined;
+
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    messages.push(`${current.name}: ${current.message}`);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+
+  if (current !== undefined && !seen.has(current)) {
+    messages.push(String(current));
+  }
+
+  return messages.length === 0 ? null : messages.join(": ");
+}
+
+function formatErrorCauseChain(error: unknown): string {
+  const seen = new Set<unknown>();
+  const lines: string[] = [];
+  let current: unknown = error;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    lines.push(formatErrorForLog(current));
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+
+  if (current !== undefined && !seen.has(current)) {
+    lines.push(String(current));
+  }
+
+  return lines
+    .map((line, index) => (index === 0 ? line : `caused by: ${line}`))
+    .join("\n");
+}
+
+function formatErrorForLog(error: Error): string {
+  const details = [
+    error.name,
+    error.message,
+    error.stack ? `stack: ${error.stack}` : null,
+  ].filter(Boolean);
+  return details.join(": ");
 }
 
 function findErrorInCauseChain(
@@ -267,10 +323,12 @@ export async function prepareMigrationContext({
   const devUri = await getConnectionUri({
     projectId,
     branchId: devBranchId,
+    pooled: false,
   });
   const prodUri = await getConnectionUri({
     projectId,
     branchId: prodBranchId,
+    pooled: false,
   });
 
   logger.info(

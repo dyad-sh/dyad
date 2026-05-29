@@ -11,6 +11,7 @@ import {
   MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
   MIGRATION_SCHEMA_DIFF_INCLUDE_SCHEMAS,
   deriveDestructiveReasons,
+  logger,
 } from "./migration_utils";
 import { DyadErrorKind } from "@/errors/dyad_error";
 
@@ -97,6 +98,9 @@ describe("generateNeonMigrationStatements", () => {
   });
 
   it("maps introspection failures to external errors", async () => {
+    const loggerErrorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => {});
     generateSchemaDiffMock.mockRejectedValue(
       new PgSchemaDiffError("Failed to introspect current database schema", {
         cause: new Error("connect ECONNRESET"),
@@ -111,8 +115,18 @@ describe("generateNeonMigrationStatements", () => {
     ).rejects.toMatchObject({
       kind: DyadErrorKind.External,
       message:
-        "Failed to compute migration plan: Failed to introspect current database schema",
+        "Failed to compute migration plan: Failed to introspect current database schema: Error: connect ECONNRESET",
     });
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      "Failed to compute migration plan. Cause chain:",
+      expect.stringContaining(
+        "PgSchemaDiffError: Failed to introspect current database schema",
+      ),
+    );
+    expect(loggerErrorSpy.mock.calls[0]?.[1]).toContain(
+      "caused by: Error: connect ECONNRESET",
+    );
+    loggerErrorSpy.mockRestore();
   });
 });
 

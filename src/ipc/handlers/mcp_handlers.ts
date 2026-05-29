@@ -349,7 +349,20 @@ export function registerMcpHandlers() {
     if (await isPortFreeOnBothLoopbacks(DEFAULT_OAUTH_CALLBACK_PORT)) {
       return { port: DEFAULT_OAUTH_CALLBACK_PORT };
     }
-    const fallback = await findAvailablePort(49152, 65535);
+    // Random sampling against the both-stacks check so the fallback
+    // port is one `startCallbackListener` can actually bind. Falls
+    // back to the single-stack util on exhaustion so the flow has
+    // something to attempt; the listener's clear error will surface
+    // if even that turns out to be in use on the other stack.
+    const MIN = 49152;
+    const MAX = 65535;
+    for (let i = 0; i < 8; i++) {
+      const candidate = Math.floor(Math.random() * (MAX - MIN + 1)) + MIN;
+      if (await isPortFreeOnBothLoopbacks(candidate)) {
+        return { port: candidate };
+      }
+    }
+    const fallback = await findAvailablePort(MIN, MAX);
     return { port: fallback };
   });
 

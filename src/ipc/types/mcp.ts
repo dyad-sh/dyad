@@ -68,7 +68,19 @@ export const CreateMcpServerSchema = z.object({
   // Plaintext OAuth client_secret on create. The handler encrypts it
   // before storing and never returns it via `McpServerSchema`.
   oauthClientSecret: z.string().nullable().optional(),
-  oauthScope: z.string().nullable().optional(),
+  // RFC 6749 §3.3: scope = scope-token *( SP scope-token ), where a
+  // scope-token is one or more characters from %x21 / %x23-5B / %x5D-7E
+  // (printable ASCII minus space, `"`, and `\`). Reject control chars,
+  // newlines, quotes, etc. up front so a typo surfaces here instead of
+  // as a cryptic OAuth provider error mid-flow. Empty string allowed --
+  // the flow treats it like "use the server's default scope".
+  oauthScope: z
+    .string()
+    .regex(/^[\x21\x23-\x5b\x5d-\x7e]*(?: [\x21\x23-\x5b\x5d-\x7e]+)*$/, {
+      message: "OAuth scope contains invalid characters",
+    })
+    .nullable()
+    .optional(),
   // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
   oauthCallbackPort: z
     .number()

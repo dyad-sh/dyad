@@ -7,6 +7,9 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const logger = log.scope("app_upgrade_utils");
 
+
+const COMPONENT_TAGGER_VERSION = "^0.9.0";
+
 function findViteConfigPath(appPath: string): string | null {
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
@@ -104,7 +107,7 @@ export async function applyComponentTagger(
       );
       packageJson.devDependencies ??= {};
       packageJson.devDependencies["@dyad-sh/react-vite-component-tagger"] =
-        "^0.9.0";
+        COMPONENT_TAGGER_VERSION;
       if (packageJson.dependencies?.["@dyad-sh/react-vite-component-tagger"]) {
         delete packageJson.dependencies["@dyad-sh/react-vite-component-tagger"];
         if (Object.keys(packageJson.dependencies).length === 0) {

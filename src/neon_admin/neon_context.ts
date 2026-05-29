@@ -112,9 +112,11 @@ export async function getBranchDatabaseName({
 export async function getConnectionUri({
   projectId,
   branchId,
+  pooled,
 }: {
   projectId: string;
   branchId: string;
+  pooled?: boolean;
 }): Promise<string> {
   const neonClient = await getNeonClient();
   const [roleName, databaseName] = await Promise.all([
@@ -126,6 +128,7 @@ export async function getConnectionUri({
     branch_id: branchId,
     database_name: databaseName,
     role_name: roleName,
+    pooled,
   });
   return response.data.uri;
 }

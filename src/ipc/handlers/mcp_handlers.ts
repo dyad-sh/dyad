@@ -263,6 +263,11 @@ export function registerMcpHandlers() {
       return result;
     } catch (e) {
       clearTimeout(timeoutId);
+      // Tear down the cached client so a hung transport doesn't leak
+      // an FD on every subsequent poll.
+      try {
+        mcpManager.dispose(serverId);
+      } catch {}
       logger.error(
         `Failed to list tools for server ${serverId}: ${
           e instanceof Error ? `${e.name}: ${e.message}` : String(e)

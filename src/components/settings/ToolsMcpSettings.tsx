@@ -320,6 +320,7 @@ export function ToolsMcpSettings() {
     toolsByServer,
     consentsMap,
     createServer,
+    isCreating,
     toggleEnabled: toggleServerEnabled,
     deleteServer,
     setToolConsent: updateToolConsent,
@@ -403,7 +404,19 @@ export function ToolsMcpSettings() {
     setConsents(consentsMap);
   }, [consentsMap]);
 
+  const [isAdding, setIsAdding] = useState(false);
+
   const onCreate = async () => {
+    if (isAdding) return;
+    setIsAdding(true);
+    try {
+      await runOnCreate();
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const runOnCreate = async () => {
     const parsedArgs = (() => {
       const trimmed = args.trim();
       if (!trimmed) return null;
@@ -723,8 +736,11 @@ export function ToolsMcpSettings() {
           </div>
         </div>
         <div>
-          <Button onClick={onCreate} disabled={!name.trim()}>
-            Add Server
+          <Button
+            onClick={onCreate}
+            disabled={!name.trim() || isAdding || isCreating}
+          >
+            {isAdding || isCreating ? "Adding…" : "Add Server"}
           </Button>
         </div>
       </div>

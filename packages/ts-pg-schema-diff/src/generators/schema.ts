@@ -587,9 +587,12 @@ function checkConstraintUsesAddedEnumLabel(
 }
 
 function findAddedLabelReference(
-  expression: string,
+  expression: string | null | undefined,
   labels: readonly string[],
 ): string | null {
+  if (expression == null) {
+    return null;
+  }
   for (const label of labels) {
     if (expression.includes(`'${escapeStringLiteral(label)}'`)) {
       return label;

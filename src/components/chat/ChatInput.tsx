@@ -96,6 +96,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   ContextLimitBanner,
   shouldShowContextLimitBanner,
 } from "./ContextLimitBanner";
@@ -292,6 +300,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
     needsFreshPlanChatAtom,
   );
+
+  // When switching to plan mode in a chat with messages, we ask the user
+  // whether to start a fresh chat or continue in the same one. The pending
+  // submission is captured here while the choice dialog is open.
+  const [planChatChoiceOpen, setPlanChatChoiceOpen] = useState(false);
+  const pendingPlanSubmissionRef = useRef<{
+    prompt: string;
+    attachments: typeof attachments;
+    imageJobIdsToDismiss: string[];
+  } | null>(null);
 
   // Detect transition to plan mode from another mode in a chat with messages
   const prevModeRef = useRef(chatMode);
@@ -514,6 +532,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         : inputValue
       : imageMentions;
 
+    // If switching to plan mode from another mode in a chat with messages,
+    // let the user choose whether to start a fresh chat or continue here.
+    // Capture the submission and defer it until the choice is made.
+    if (needsFreshPlanChat && chatMode === "plan" && appId) {
+      pendingPlanSubmissionRef.current = {
+        prompt: promptWithImages,
+        attachments,
+        imageJobIdsToDismiss: visibleSuccessfulImageJobs.map((job) => job.id),
+      };
+      setPlanChatChoiceOpen(true);
+      return;
+    }
+
     // Dismiss image jobs that were auto-added
     if (visibleSuccessfulImageJobs.length > 0) {
       setDismissedImageJobIds((prev) => {
@@ -523,33 +554,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         }
         return next;
       });
-    }
-
-    // If switching to plan mode from another mode in a chat with messages,
-    // create a new chat for a clean context.
-    if (needsFreshPlanChat && chatMode === "plan" && appId) {
-      setInputValue("");
-      setNeedsFreshPlanChat(false);
-
-      const newChatId = await ipc.chat.createChat({
-        appId,
-        initialChatMode: "plan",
-      });
-      setSelectedChatId(newChatId);
-      navigate({ to: "/chat", search: { id: newChatId } });
-      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      showInfo("We've switched you to a new chat for a clean context");
-
-      await streamMessage({
-        prompt: promptWithImages,
-        chatId: newChatId,
-        attachments,
-        redo: false,
-        requestedChatMode: "plan",
-      });
-      clearAttachments();
-      posthog.capture("chat:submit", { chatMode });
-      return;
     }
 
     const currentInput = promptWithImages;
@@ -621,6 +625,68 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
     clearAttachments();
     posthog.capture("chat:submit", { chatMode });
+  };
+
+  // Sends the deferred plan-mode submission once the user has chosen whether
+  // to start a fresh chat or continue in the current one.
+  const submitPlanMessage = async (useNewChat: boolean) => {
+    const pending = pendingPlanSubmissionRef.current;
+    if (!pending) {
+      return;
+    }
+    pendingPlanSubmissionRef.current = null;
+    setPlanChatChoiceOpen(false);
+    setNeedsFreshPlanChat(false);
+    setInputValue("");
+
+    // Dismiss image jobs that were auto-added to the prompt
+    if (pending.imageJobIdsToDismiss.length > 0) {
+      setDismissedImageJobIds((prev) => {
+        const next = new Set(prev);
+        for (const id of pending.imageJobIdsToDismiss) {
+          next.add(id);
+        }
+        return next;
+      });
+    }
+
+    let targetChatId = chatId;
+    if (useNewChat) {
+      if (!appId) {
+        return;
+      }
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "plan",
+      });
+      setSelectedChatId(newChatId);
+      navigate({ to: "/chat", search: { id: newChatId } });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+      showInfo("We've switched you to a new chat for a clean context");
+      targetChatId = newChatId;
+    }
+    if (!targetChatId) {
+      return;
+    }
+
+    await streamMessage({
+      prompt: pending.prompt,
+      chatId: targetChatId,
+      attachments: pending.attachments,
+      redo: false,
+      requestedChatMode: "plan",
+    });
+    clearAttachments();
+    posthog.capture("chat:submit", { chatMode });
+  };
+
+  const handlePlanChatChoiceOpenChange = (open: boolean) => {
+    setPlanChatChoiceOpen(open);
+    // If dismissed without choosing, keep the pending input intact so the
+    // user can retry; the message is still in the input box.
+    if (!open) {
+      pendingPlanSubmissionRef.current = null;
+    }
   };
 
   const handleCancel = () => {
@@ -1078,6 +1144,37 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         defaultAppId={appId ?? undefined}
         source="chat"
       />
+
+      {/* Plan mode: choose a fresh chat or continue in the current one */}
+      <AlertDialog
+        open={planChatChoiceOpen}
+        onOpenChange={handlePlanChatChoiceOpenChange}
+      >
+        <AlertDialogContent data-testid="plan-mode-chat-choice-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start planning in a new chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Start a new chat, or continue here to keep this conversation's
+              history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              data-testid="plan-mode-continue-same-chat"
+              onClick={() => submitPlanMessage(false)}
+            >
+              Continue in same chat
+            </Button>
+            <Button
+              data-testid="plan-mode-new-chat"
+              onClick={() => submitPlanMessage(true)}
+            >
+              New chat
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

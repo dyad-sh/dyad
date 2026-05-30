@@ -27,7 +27,16 @@ export interface SandboxReadFileOptions {
   encoding?: "utf8" | "base64";
 }
 
-export type SandboxHostCallName = "read_file" | "list_files" | "file_stats";
+// Names of the built-in file-inspection host functions exposed to
+// MustardScript. Kept as a const tuple so other modules can import
+// the runtime value (e.g. to avoid registering MCP capabilities that
+// would shadow these names) while keeping the union type intact.
+export const SANDBOX_HOST_CALL_NAMES = [
+  "read_file",
+  "list_files",
+  "file_stats",
+] as const;
+export type SandboxHostCallName = (typeof SANDBOX_HOST_CALL_NAMES)[number];
 
 export type SandboxHostCallObserver = (params: {
   name: SandboxHostCallName;

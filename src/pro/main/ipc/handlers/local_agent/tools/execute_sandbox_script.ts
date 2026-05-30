@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
-  runSandboxScript,
+  executeSandboxScriptInProcess,
   isSandboxSupportedPlatform,
-} from "@/ipc/utils/sandbox/runner";
+} from "@/ipc/utils/sandbox/execution";
+import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
+import { buildSandboxCapabilitiesWithObserver } from "@/ipc/utils/sandbox/capabilities";
 import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
@@ -15,6 +17,12 @@ import {
   escapeXmlContent,
   ToolDefinition,
 } from "./types";
+import {
+  collectMcpToolDefs,
+  buildMcpTypeDefsBlock,
+  buildMcpCapabilityMap,
+  type McpToolDef,
+} from "./mcp_type_defs";
 
 const executeSandboxScriptSchema = z.object({
   script: z
@@ -25,7 +33,20 @@ const executeSandboxScriptSchema = z.object({
     .string()
     .max(160)
     .optional()
-    .describe("One-line human-readable summary of what the script reads."),
+    .describe("One-line human-readable summary of what the script does."),
+  execution_thread: z
+    .enum(["main", "worker"])
+    .optional()
+    .default("main")
+    .describe(
+      "Where to run the script. Default 'main' runs in-process and is " +
+        "the only thread that exposes MCP tools — use it for any script " +
+        "that calls MCP host functions, and for small / fast operations. " +
+        "Use 'worker' for compute-heavy work (parsing multi-MB attachments, " +
+        "large aggregations, anything that might take more than a few hundred " +
+        "milliseconds) so chat streaming and other main-process work isn't " +
+        "stalled. MCP host functions are NOT available on the worker thread.",
+    ),
 });
 
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
@@ -96,17 +117,20 @@ function buildScriptXml(params: {
   return `<dyad-script ${attrs.join(" ")}>${escapeXmlContent(payload)}</dyad-script>`;
 }
 
-export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
-  {
-    name: "execute_sandbox_script",
-    description: `Run a small read-only program written in a strict, sandboxed subset of JavaScript to inspect attached files or project files without loading all contents into context.
+// File-inspection-only base. Used as-is when no MCP servers are
+// enabled (or in read-only / plan mode where the sandbox cannot reach
+// MCP), and as the lead-in to the MCP-augmented description otherwise.
+// Keep MCP-specific framing out of this block — if it lands in front
+// of the model when MCP is off, the model will write calls to host
+// functions that don't exist.
+const FILES_ONLY_PREAMBLE = `Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files.
 
 Use this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.
 
 Supported language surface:
 - let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
 - Top-level await is not supported because scripts are not modules. When calling async host functions, wrap the script body in an async function and call it, e.g. \`async function main() { const text = await read_file("attachments:data.csv"); return text.length; } main();\`.
-- The script has no ambient authority. It can only inspect files through the host functions below.
+- The script has no ambient authority. It can only act through the host functions below.
 
 Recommendations:
 - Avoid defining nested helper functions in the main function.
@@ -114,6 +138,7 @@ Recommendations:
 Unsupported / unavailable:
 - No import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, timers, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.
 - String.prototype.localeCompare is not supported; compare with <, >, or === instead.
+- \`console.*\` is not available.
 - Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.
 
 Avoid returning shared references:
@@ -131,6 +156,10 @@ return {
   b: { key: row.key, total: row.total }
 };
 \`\`\`
+
+Execution thread:
+- 'main' (default) runs in-process. Use for small / fast scripts.
+- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations).
 
 Host functions:
 \`\`\`ts
@@ -156,7 +185,46 @@ declare function list_files(dir?: "." | "attachments:" | string): Promise<string
 declare function file_stats(path: string): Promise<FileStats>;
 \`\`\`
 
-Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`,
+Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`;
+
+function buildMcpAddendum(typeDefsBlock: string): string {
+  return `
+
+MCP tools can also be invoked from inside the script. Use this when you need to call one or more MCP tools (optionally chaining their results, or combining them with file reads) before answering.
+- Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
+- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
+
+MCP host functions (TypeScript declarations):
+\`\`\`ts
+${typeDefsBlock}
+\`\`\``;
+}
+
+/**
+ * Build the full tool description, appending the MCP host-function
+ * declarations and usage notes when any MCP server is enabled. The
+ * caller passes in the per-turn defs collected by the local-agent
+ * handler; the standalone `collectMcpToolDefs()` fallback is only for
+ * callers that don't go through the handler. When no MCP defs are
+ * available the description carries no MCP framing at all, so the
+ * model does not try to call host functions that don't exist (e.g. in
+ * read-only / plan-only turns).
+ */
+export async function buildExecuteSandboxScriptDescription(
+  precomputedDefs?: McpToolDef[],
+): Promise<string> {
+  const defs = precomputedDefs ?? (await collectMcpToolDefs());
+  if (defs.length === 0) {
+    return FILES_ONLY_PREAMBLE;
+  }
+  return FILES_ONLY_PREAMBLE + buildMcpAddendum(buildMcpTypeDefsBlock(defs));
+}
+
+export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
+  {
+    name: "execute_sandbox_script",
+    description:
+      "Run a MustardScript program in a sandbox. Supports file inspection and MCP tool calls.",
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
 
@@ -165,19 +233,29 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
       isSandboxScriptExecutionEnabled(readSettings()),
 
     getConsentPreview: (args) =>
-      args.description?.trim() || "Run a read-only script",
+      args.description?.trim() || "Run a sandboxed script",
 
     execute: async (args: ExecuteSandboxScriptArgs, ctx: AgentContext) => {
+      const executionThread = args.execution_thread ?? "main";
+      const observeHostCall = ({ path }: { path?: string }) => {
+        if (isAttachmentHostCallPath(path)) {
+          ctx.onAttachmentAccess?.();
+        }
+      };
       try {
-        const result = await runSandboxScript({
-          appPath: ctx.appPath,
-          script: args.script,
-          onHostCall: ({ path }) => {
-            if (isAttachmentHostCallPath(path)) {
-              ctx.onAttachmentAccess?.();
-            }
-          },
-        });
+        const result =
+          executionThread === "worker"
+            ? // Worker thread builds its own capability map inside the worker;
+              // MCP host functions are intentionally not exposed on this path
+              // because the MCP client + consent flow live on the main thread.
+              // Splitting heavy compute (worker) from MCP follow-up (main) is
+              // documented in the tool prompt.
+              await runSandboxScript({
+                appPath: ctx.appPath,
+                script: args.script,
+                onHostCall: observeHostCall,
+              })
+            : await runInMainThread({ args, ctx, observeHostCall });
 
         ctx.onXmlComplete(
           buildScriptXml({
@@ -194,6 +272,7 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
           appId: ctx.appId,
           executionMs: result.executionMs,
           truncated: result.truncated,
+          executionThread,
         });
 
         if (result.truncated) {
@@ -201,6 +280,7 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
             chatId: ctx.chatId,
             appId: ctx.appId,
             fullOutputPath: result.fullOutputPath,
+            executionThread,
           });
         }
 
@@ -216,6 +296,7 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
             chatId: ctx.chatId,
             appId: ctx.appId,
             error: errorMessage,
+            executionThread,
           },
         );
         throw new DyadError(
@@ -228,3 +309,46 @@ Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment 
       }
     },
   };
+
+/**
+ * Run a sandbox script in the main process with both built-in file
+ * host functions and (when enabled for the turn) MCP host functions
+ * injected as capabilities. Extracted from `execute()` so the worker
+ * path can stay a simple call to `runSandboxScript`.
+ */
+async function runInMainThread(params: {
+  args: ExecuteSandboxScriptArgs;
+  ctx: AgentContext;
+  observeHostCall: (event: { path?: string }) => void;
+}) {
+  // Only inject MCP host functions when the caller has opted in for
+  // this turn (set by `local_agent_handler`). Skipping here keeps
+  // read-only and plan-mode turns from exposing MCP tools through
+  // the sandbox even if the model invents a host-function name.
+  //
+  // The handler populates `ctx.mcpToolDefs` with the same defs used
+  // to build the dynamic tool description, so the prompt and the
+  // capability map can never disagree about which tools exist.
+  const defs: McpToolDef[] = params.ctx.mcpToolsEnabled
+    ? (params.ctx.mcpToolDefs ?? [])
+    : [];
+  const fileCaps = buildSandboxCapabilitiesWithObserver(
+    params.ctx.appPath,
+    params.observeHostCall,
+  );
+  const mcpCaps = buildMcpCapabilityMap({
+    event: params.ctx.event,
+    ctx: params.ctx,
+    defs,
+  });
+  const capabilities = {
+    ...(fileCaps as unknown as Record<string, (...args: unknown[]) => unknown>),
+    ...mcpCaps,
+  };
+
+  return executeSandboxScriptInProcess({
+    appPath: params.ctx.appPath,
+    script: params.args.script,
+    capabilities,
+  });
+}

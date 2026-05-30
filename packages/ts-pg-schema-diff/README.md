@@ -46,7 +46,7 @@ type SchemaDiffResult = {
 ```
 
 Execute statements sequentially against `currentDatabaseUrl` to move it toward `desiredDatabaseUrl`.
-Do not wrap the whole result in one transaction: PostgreSQL rejects `CREATE INDEX CONCURRENTLY` and `DROP INDEX CONCURRENTLY` inside transaction blocks. If your executor requires a single transaction, call `generateSchemaDiff({ currentDatabaseUrl, desiredDatabaseUrl, noConcurrentIndexOperations: true })` and review the stronger locking behavior before applying.
+Do not wrap the whole result in one transaction: PostgreSQL rejects `CREATE INDEX CONCURRENTLY` and `DROP INDEX CONCURRENTLY` inside transaction blocks. If your executor requires a single transaction, call `generateSchemaDiff({ currentDatabaseUrl, desiredDatabaseUrl, noConcurrentIndexOperations: true, rejectEnumValueUsageInSameTransaction: true })` and review the stronger locking behavior before applying. The enum guard rejects plans that add a new enum value and use that value in a later statement, because PostgreSQL does not allow the value to be used until the transaction that added it commits.
 
 Connection options are passed to the underlying `pg` pool for both databases. The default pool size is `1` per database because introspection only needs one checked-out connection per side.
 

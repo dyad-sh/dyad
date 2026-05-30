@@ -7,6 +7,7 @@ import type { InternalStatement, SchemaDiffResult } from "./types.js";
 
 export type GeneratePlanOptions = {
   readonly noConcurrentIndexOperations?: boolean;
+  readonly rejectEnumValueUsageInSameTransaction?: boolean;
 };
 
 export type InternalPlan = {

@@ -24,6 +24,7 @@ export type GenerateSchemaDiffOptions = {
   readonly includeSchemas?: readonly string[];
   readonly excludeSchemas?: readonly string[];
   readonly noConcurrentIndexOperations?: boolean;
+  readonly rejectEnumValueUsageInSameTransaction?: boolean;
   readonly connection?: DatabaseConnectionOptions;
 };
 
@@ -41,10 +42,17 @@ export async function generateSchemaDiff(
     readSchema("desired", options.desiredDatabaseUrl, options),
   ]);
 
-  const planOptions: GeneratePlanOptions =
-    options.noConcurrentIndexOperations === undefined
+  const planOptions: GeneratePlanOptions = {
+    ...(options.noConcurrentIndexOperations === undefined
       ? {}
-      : { noConcurrentIndexOperations: options.noConcurrentIndexOperations };
+      : { noConcurrentIndexOperations: options.noConcurrentIndexOperations }),
+    ...(options.rejectEnumValueUsageInSameTransaction === undefined
+      ? {}
+      : {
+          rejectEnumValueUsageInSameTransaction:
+            options.rejectEnumValueUsageInSameTransaction,
+        }),
+  };
   return toSchemaDiffResult(
     generatePlan(currentSchema, desiredSchema, planOptions),
   );

@@ -108,7 +108,7 @@ export function generateStatements(
   for (const viewDiff of diff.materializedViewDiffs.alters) {
     assertMaterializedViewCanBeRecreated(viewDiff.old, diff);
   }
-  return orderStatementSections([
+  const statements = orderStatementSections([
     {
       id: "named-schema:add",
       statements: diff.namedSchemaDiffs.adds.map(addNamedSchema),
@@ -285,6 +285,12 @@ export function generateStatements(
       statements: diff.namedSchemaDiffs.deletes.map(deleteNamedSchema),
     },
   ]);
+
+  if (options.rejectEnumValueUsageInSameTransaction === true) {
+    assertNoEnumValueUsageInSameTransaction(diff);
+  }
+
+  return statements;
 }
 
 type StatementSection = {
@@ -429,6 +435,167 @@ function assertEnumCanBeRecreated(schemaEnum: Enum, diff: SchemaDiff): void {
       `removing labels from enum ${fqName(schemaEnum.name)} is not supported because it is used by table ${fqName(referencingTable.name)}`,
     );
   }
+}
+
+type EnumValueAddition = {
+  readonly schemaEnum: Enum;
+  readonly labels: readonly string[];
+  readonly typeNames: ReadonlySet<string>;
+};
+
+function assertNoEnumValueUsageInSameTransaction(diff: SchemaDiff): void {
+  const additions = enumValueAdditions(diff);
+  if (additions.length === 0) {
+    return;
+  }
+
+  for (const addition of additions) {
+    const usage = findSameTransactionEnumValueUsage(diff, addition);
+    if (usage === null) {
+      continue;
+    }
+    throw new NotImplementedMigrationError(
+      `adding enum value ${usage.label} to ${fqName(addition.schemaEnum.name)} and using it in ${usage.location} is not supported in a single transaction. Apply the enum value change first, then regenerate the migration preview.`,
+    );
+  }
+}
+
+function enumValueAdditions(diff: SchemaDiff): readonly EnumValueAddition[] {
+  return diff.enumDiffs.alters
+    .map((enumDiff) => {
+      const oldLabels = new Set(enumDiff.old.labels);
+      const labels = enumDiff.next.labels.filter(
+        (label) => !oldLabels.has(label),
+      );
+      return {
+        schemaEnum: enumDiff.next,
+        labels,
+        typeNames: enumTypeNameCandidates(enumDiff.next),
+      };
+    })
+    .filter((addition) => addition.labels.length > 0);
+}
+
+function findSameTransactionEnumValueUsage(
+  diff: SchemaDiff,
+  addition: EnumValueAddition,
+): { readonly label: string; readonly location: string } | null {
+  for (const table of diff.tableDiffs.adds) {
+    const usage = findEnumValueUsageInTable(table, addition);
+    if (usage !== null) {
+      return { ...usage, location: `${fqName(table.name)} ${usage.location}` };
+    }
+  }
+
+  for (const tableDiff of diff.tableDiffs.alters) {
+    for (const column of tableDiff.columnsDiff.adds) {
+      const label = enumColumnDefaultUsesAddedLabel(column, addition);
+      if (label !== null) {
+        return {
+          label,
+          location: `${fqName(tableDiff.next.name)} column ${escapeIdentifier(column.name)} default`,
+        };
+      }
+    }
+
+    for (const columnDiff of tableDiff.columnsDiff.alters) {
+      const label = enumColumnDefaultUsesAddedLabel(columnDiff.next, addition);
+      if (
+        label !== null &&
+        columnDiff.old.default !== columnDiff.next.default
+      ) {
+        return {
+          label,
+          location: `${fqName(tableDiff.next.name)} column ${escapeIdentifier(columnDiff.next.name)} default`,
+        };
+      }
+    }
+
+    for (const constraint of [
+      ...tableDiff.checkConstraintDiff.adds,
+      ...tableDiff.checkConstraintDiff.alters.map(
+        (constraintDiff) => constraintDiff.next,
+      ),
+    ]) {
+      const label = checkConstraintUsesAddedEnumLabel(
+        tableDiff.next,
+        constraint,
+        addition,
+      );
+      if (label !== null) {
+        return {
+          label,
+          location: `${fqName(tableDiff.next.name)} check constraint ${escapeIdentifier(constraint.name)}`,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function findEnumValueUsageInTable(
+  table: Table,
+  addition: EnumValueAddition,
+): { readonly label: string; readonly location: string } | null {
+  for (const column of table.columns) {
+    const label = enumColumnDefaultUsesAddedLabel(column, addition);
+    if (label !== null) {
+      return {
+        label,
+        location: `column ${escapeIdentifier(column.name)} default`,
+      };
+    }
+  }
+  for (const constraint of table.checkConstraints) {
+    const label = checkConstraintUsesAddedEnumLabel(
+      table,
+      constraint,
+      addition,
+    );
+    if (label !== null) {
+      return {
+        label,
+        location: `check constraint ${escapeIdentifier(constraint.name)}`,
+      };
+    }
+  }
+  return null;
+}
+
+function enumColumnDefaultUsesAddedLabel(
+  column: Column,
+  addition: EnumValueAddition,
+): string | null {
+  if (!columnUsesType(column, addition.typeNames)) {
+    return null;
+  }
+  return findAddedLabelReference(column.default, addition.labels);
+}
+
+function checkConstraintUsesAddedEnumLabel(
+  table: Table,
+  constraint: CheckConstraint,
+  addition: EnumValueAddition,
+): string | null {
+  if (
+    !table.columns.some((column) => columnUsesType(column, addition.typeNames))
+  ) {
+    return null;
+  }
+  return findAddedLabelReference(constraint.expression, addition.labels);
+}
+
+function findAddedLabelReference(
+  expression: string,
+  labels: readonly string[],
+): string | null {
+  for (const label of labels) {
+    if (expression.includes(`'${escapeStringLiteral(label)}'`)) {
+      return label;
+    }
+  }
+  return null;
 }
 
 function columnUsesType(

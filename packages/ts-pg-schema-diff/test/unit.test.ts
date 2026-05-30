@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildPoolConfig } from "../src/db/connect.js";
 import { assertSupportedPostgresVersion } from "../src/db/introspect.js";
 import { diffLists } from "../src/diff/listDiff.js";
-import { DuplicateIdentifierError } from "../src/errors.js";
+import {
+  DuplicateIdentifierError,
+  NotImplementedMigrationError,
+} from "../src/errors.js";
 import { toPublicStatement } from "../src/plan/classify.js";
 import { generatePlan, toSchemaDiffResult } from "../src/plan/generate.js";
 import type { InternalStatement, MigrationHazard } from "../src/plan/types.js";
@@ -123,6 +126,58 @@ describe("generatePlan", () => {
         type: "destructive",
       },
     ]);
+  });
+
+  it("rejects enum value additions used by a later statement in one transaction", () => {
+    const current: Schema = {
+      ...emptySchema(),
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad"],
+        },
+      ],
+      tables: [
+        table("messages", [
+          {
+            ...column("mood", "mood", false),
+            default: "'sad'::mood",
+          },
+        ]),
+      ],
+    };
+    const desired: Schema = {
+      ...emptySchema(),
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad", "ok"],
+        },
+      ],
+      tables: [
+        table("messages", [
+          {
+            ...column("mood", "mood", false),
+            default: "'ok'::mood",
+          },
+        ]),
+      ],
+    };
+
+    expect(() =>
+      generatePlan(current, desired, {
+        rejectEnumValueUsageInSameTransaction: true,
+      }),
+    ).toThrow(NotImplementedMigrationError);
+    expect(() =>
+      generatePlan(current, desired, {
+        rejectEnumValueUsageInSameTransaction: true,
+      }),
+    ).toThrow(
+      'adding enum value ok to "public"."mood" and using it in "public"."messages" column "mood" default is not supported in a single transaction',
+    );
   });
 
   it("renames a replaced index before creating the new index and dropping the old one", () => {

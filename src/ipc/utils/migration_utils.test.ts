@@ -55,6 +55,7 @@ describe("generateNeonMigrationStatements", () => {
       desiredDatabaseUrl: "postgresql://dev",
       includeSchemas: MIGRATION_SCHEMA_DIFF_INCLUDE_SCHEMAS,
       noConcurrentIndexOperations: true,
+      rejectEnumValueUsageInSameTransaction: true,
       connection: MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
     });
   });

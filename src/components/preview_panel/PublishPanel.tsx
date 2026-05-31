@@ -4,11 +4,10 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
-import { MigrationPanel } from "@/components/MigrationPanel";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
-import { DatabaseUrlPanel } from "@/components/preview_panel/DatabaseUrlPanel";
+import { DatabaseSection } from "@/components/preview_panel/DatabaseSection";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -82,11 +81,12 @@ export const PublishPanel = () => {
           </h1>
         </div>
 
-        {/* Database Migration - Show MigrationPanel if app has neon project and active branch,
-            otherwise fall back to PortalMigrate for portal template apps. Only one is shown. */}
+        {/* Unified Database section - branch selection + migration + env vars when the
+            app has a neon project and branch context, otherwise fall back to PortalMigrate
+            for portal template apps. Only one is shown. */}
         {app.neonProjectId &&
         (app.neonActiveBranchId || app.neonDevelopmentBranchId) ? (
-          <MigrationPanel appId={selectedAppId} />
+          <DatabaseSection appId={selectedAppId} />
         ) : app.neonProjectId &&
           app.files.some((f) => f === "payload.config.ts") ? (
           <PortalMigrate appId={selectedAppId} />
@@ -122,8 +122,6 @@ export const PublishPanel = () => {
             )}
           </CardContent>
         </Card>
-
-        {app.neonProjectId && <DatabaseUrlPanel appId={selectedAppId} />}
 
         {/* Vercel Section */}
         <Card>

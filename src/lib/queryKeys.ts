@@ -344,13 +344,13 @@ export const queryKeys = {
       appId: number | null;
       branchId: string | null;
     }) => ["neon", "emailPasswordConfig", appId, branchId] as const,
-    branchConnectionUri: ({
+    branchEnvVars: ({
       appId,
       branchType,
     }: {
       appId: number | null;
       branchType: "production" | "development";
-    }) => ["neon", "branch-connection-uri", appId, branchType] as const,
+    }) => ["neon", "branch-env-vars", appId, branchType] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

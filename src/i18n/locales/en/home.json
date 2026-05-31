@@ -636,6 +636,27 @@
         }
       }
     },
+    "database": {
+      "title": "Database",
+      "pickDatabase": "Pick the database your deployed app should connect to.",
+      "continue": "Continue",
+      "backToSelection": "Back to selection",
+      "loading": "Loading database…",
+      "productionActiveMessage": "Your app is on the production branch, so the production database will be used for deployment. No migration is needed.",
+      "production": {
+        "title": "Production",
+        "description": "Pick this once real users are using the app and you need their data kept safe."
+      },
+      "development": {
+        "title": "Development",
+        "description": "Pick this if you're still experimenting and no real users are testing the app yet."
+      },
+      "envVars": {
+        "title": "Environment variables",
+        "description": "Add these to your hosting provider's environment variables for the deployed app.",
+        "loading": "Loading…"
+      }
+    },
     "migration": {
       "title": "Database Migration",
       "description": "Copy the schema from your active development branch to your production branch.",

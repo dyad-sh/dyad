@@ -41,6 +41,7 @@ import {
 import { getDyadAppPath } from "@/paths/paths";
 import { getProductionBranchId } from "../utils/migration_utils";
 import { getConnectionUri } from "../../neon_admin/neon_context";
+import { detectFrameworkType } from "../utils/framework_utils";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
@@ -857,52 +858,75 @@ export function registerNeonHandlers() {
   );
 
   // Do not use log handler because there's sensitive data in the response
-  createTypedHandler(
-    neonContracts.getBranchConnectionUri,
-    async (_, params) => {
-      const { appId, branchType } = params;
+  createTypedHandler(neonContracts.getBranchEnvVars, async (_, params) => {
+    const { appId, branchType } = params;
 
-      const appRows = await db
-        .select()
-        .from(apps)
-        .where(eq(apps.id, appId))
-        .limit(1);
-      if (appRows.length === 0) {
+    const appRows = await db
+      .select()
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (appRows.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+    const appData = appRows[0];
+    if (!appData.neonProjectId) {
+      throw new DyadError(
+        "This app is not connected to a Neon project.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    let branchId: string;
+    if (branchType === "production") {
+      const result = await getProductionBranchId(appData.neonProjectId);
+      branchId = result.branchId;
+    } else {
+      if (!appData.neonDevelopmentBranchId) {
         throw new DyadError(
-          `App with ID ${appId} not found`,
-          DyadErrorKind.NotFound,
-        );
-      }
-      const appData = appRows[0];
-      if (!appData.neonProjectId) {
-        throw new DyadError(
-          "This app is not connected to a Neon project.",
+          "This app has no development branch. Create one in Neon before requesting a development connection URI.",
           DyadErrorKind.Precondition,
         );
       }
+      branchId = appData.neonDevelopmentBranchId;
+    }
 
-      let branchId: string;
-      if (branchType === "production") {
-        const result = await getProductionBranchId(appData.neonProjectId);
-        branchId = result.branchId;
-      } else {
-        if (!appData.neonDevelopmentBranchId) {
-          throw new DyadError(
-            "This app has no development branch. Create one in Neon before requesting a development connection URI.",
-            DyadErrorKind.Precondition,
-          );
-        }
-        branchId = appData.neonDevelopmentBranchId;
-      }
+    const databaseUrl = await getConnectionUri({
+      projectId: appData.neonProjectId,
+      branchId,
+    });
 
-      const connectionUri = await getConnectionUri({
+    // Provision-on-view: ensure Neon Auth is active for the branch and, for
+    // Next.js apps, ensure a per-branch cookie secret exists. Mirrors
+    // autoInjectNeonEnvVars so the previewed values match what gets injected.
+    let neonAuthBaseUrl: string | undefined;
+    try {
+      neonAuthBaseUrl = await ensureNeonAuth({
         projectId: appData.neonProjectId,
         branchId,
       });
+    } catch {
+      // Auth activation failed or is unavailable on this branch — show only
+      // DATABASE_URL rather than failing the whole request.
+      neonAuthBaseUrl = undefined;
+    }
 
-      return { connectionUri };
-    },
-  );
+    let neonAuthCookieSecret: string | undefined;
+    if (
+      neonAuthBaseUrl &&
+      detectFrameworkType(getDyadAppPath(appData.path)) === "nextjs"
+    ) {
+      neonAuthCookieSecret = await getOrCreateNeonAuthCookieSecret({
+        appData,
+        branchType,
+      });
+    }
+
+    return { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret };
+  });
 
   testOnlyHandle("neon:fake-connect", async (event) => {
     // Call handleNeonOAuthReturn with fake data

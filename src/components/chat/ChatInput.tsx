@@ -308,6 +308,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const pendingPlanSubmissionRef = useRef<{
     prompt: string;
     attachments: typeof attachments;
+    selectedComponents: NonNullable<typeof selectedComponents>;
     imageJobIdsToDismiss: string[];
   } | null>(null);
 
@@ -539,6 +540,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       pendingPlanSubmissionRef.current = {
         prompt: promptWithImages,
         attachments,
+        selectedComponents:
+          selectedComponents && selectedComponents.length > 0
+            ? selectedComponents
+            : [],
         imageJobIdsToDismiss: visibleSuccessfulImageJobs.map((job) => job.id),
       };
       setPlanChatChoiceOpen(true);
@@ -638,6 +643,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setPlanChatChoiceOpen(false);
     setNeedsFreshPlanChat(false);
     setInputValue("");
+    setSelectedComponents([]);
+    setVisualEditingSelectedComponent(null);
+    // Clear overlays in the preview iframe
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
 
     // Dismiss image jobs that were auto-added to the prompt
     if (pending.imageJobIdsToDismiss.length > 0) {
@@ -674,6 +688,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId: targetChatId,
       attachments: pending.attachments,
       redo: false,
+      // A fresh chat starts with a clean context, so don't carry over the
+      // selected components; only send them when continuing in the same chat.
+      selectedComponents: useNewChat ? [] : pending.selectedComponents,
       requestedChatMode: "plan",
     });
     clearAttachments();

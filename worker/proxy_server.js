@@ -154,7 +154,8 @@ try {
   );
 }
 
-// Load the network monitor (monkey-patches fetch + XHR in the user's app).
+// Load the network monitor (conditionally registers the Dyad SW or falls
+// back to fetch/XHR monkey-patching when the user app has its own SW).
 let dyadNetworkMonitorContent = null;
 
 try {
@@ -167,6 +168,21 @@ try {
 } catch (error) {
   parentPort?.postMessage(
     `[proxy-worker] Failed to read dyad-network-monitor.js: ${error.message}`,
+  );
+}
+
+// Load the Dyad service worker body. Served from /__dyad-sw__.js so the
+// unique pathname acts as the marker that distinguishes it from any SW the
+// user app registers (see dyad-network-monitor.js).
+let dyadSwContent = null;
+
+try {
+  const dyadSwPath = path.join(__dirname, "__dyad-sw__.js");
+  dyadSwContent = fs.readFileSync(dyadSwPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] __dyad-sw__.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read __dyad-sw__.js: ${error.message}`,
   );
 }
 
@@ -300,6 +316,25 @@ function buildTargetURL(clientReq) {
 /* ----------------------------------------------------------------------- */
 
 const server = http.createServer((clientReq, clientRes) => {
+  // Serve the Dyad service worker file. The marker pathname /__dyad-sw__.js
+  // is what dyad-network-monitor.js uses to distinguish Dyad's SW from any
+  // SW the user app may register.
+  if (clientReq.url === "/__dyad-sw__.js") {
+    if (dyadSwContent) {
+      clientRes.writeHead(200, {
+        "content-type": "application/javascript",
+        "service-worker-allowed": "/",
+        "cache-control": "no-cache",
+      });
+      clientRes.end(dyadSwContent);
+      return;
+    } else {
+      clientRes.writeHead(404, { "content-type": "text/plain" });
+      clientRes.end("Service Worker file not found");
+      return;
+    }
+  }
+
   let target;
   try {
     target = buildTargetURL(clientReq);

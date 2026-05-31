@@ -1,16 +1,24 @@
 /**
- * dyad-network-monitor.js – Network request interception via monkey-patching
+ * dyad-network-monitor.js – Conditional network observability bootstrap
  *
- * Replaces the previous service-worker-based approach. Patches `window.fetch`
- * and `XMLHttpRequest` so both request types are observed, and unregisters
- * any leftover Dyad service worker from prior versions.
+ * Default path: register Dyad's service worker at /__dyad-sw__.js and forward
+ * its postMessages to window.parent. The SW sees more than fetch/XHR (images,
+ * stylesheets, fonts) so it's the preferred observer.
  *
- * Emits the same { network-request | network-response | network-error }
- * postMessage protocol consumed by PreviewIframe.tsx.
+ * Fallback path: if the user app has its own service worker (already
+ * installed from a prior session, or registered at runtime), the Dyad SW
+ * cannot coexist with it at the same scope — so we activate monkey-patches
+ * on window.fetch and XMLHttpRequest instead. Dyad's SW is identified by the
+ * `/__dyad-sw__.js` scriptURL; anything else is treated as a user SW.
+ *
+ * Either path emits the same { network-request | network-response |
+ * network-error } message protocol consumed by PreviewIframe.tsx.
  */
 
 (function () {
-  // Skip noisy dev-server paths (mirrors the old service worker's filter).
+  const DYAD_SW_PATH = "/__dyad-sw__.js";
+
+  // Skip noisy dev-server paths (mirrors the service worker's filter list).
   const SKIP_PATTERNS = [
     "/node_modules",
     "/@vite/",
@@ -43,23 +51,22 @@
 
   const nowIso = () => new Date().toISOString();
 
-  // ---- Unregister any previously-installed Dyad service worker -----------
-  // Upgrade path: older Dyad versions registered "/dyad-sw.js". Removing it
-  // ensures we don't run two interceptors in parallel.
-  if ("serviceWorker" in navigator) {
-    Promise.resolve()
-      .then(() => navigator.serviceWorker.getRegistrations())
-      .then((regs) => {
-        for (const reg of regs) {
-          reg.unregister().catch(() => {});
-        }
-      })
-      .catch(() => {});
+  function isDyadSw(scriptURL) {
+    if (!scriptURL) return false;
+    try {
+      return new URL(scriptURL, window.location.href).pathname === DYAD_SW_PATH;
+    } catch {
+      return false;
+    }
   }
 
-  // ---- Patch window.fetch -----------------------------------------------
-  const origFetch = window.fetch;
-  if (typeof origFetch === "function") {
+  // ---- fetch / XHR monkey-patches (only installed if needed) ------------
+
+  let patchedAlready = false;
+
+  function patchFetch() {
+    const origFetch = window.fetch;
+    if (typeof origFetch !== "function") return;
     window.fetch = function (input, init) {
       let method = "GET";
       let url = "";
@@ -68,7 +75,7 @@
           url = String(input);
           method = (init && init.method) || "GET";
         } else if (input && typeof input.url === "string") {
-          // Request object: reading .url / .method does NOT consume the body.
+          // Request object — reading .url/.method does NOT consume the body.
           url = input.url;
           method = (init && init.method) || input.method || "GET";
         }
@@ -121,9 +128,9 @@
     };
   }
 
-  // ---- Patch XMLHttpRequest ---------------------------------------------
-  const OrigXHR = window.XMLHttpRequest;
-  if (typeof OrigXHR === "function" && OrigXHR.prototype) {
+  function patchXhr() {
+    const OrigXHR = window.XMLHttpRequest;
+    if (typeof OrigXHR !== "function" || !OrigXHR.prototype) return;
     const origOpen = OrigXHR.prototype.open;
     const origSend = OrigXHR.prototype.send;
 
@@ -184,8 +191,8 @@
         timestamp: nowIso(),
       });
 
-      // `loadend` fires once after any terminal outcome (load/error/abort/
-      // timeout). status === 0 at that point indicates network/CORS/abort.
+      // `loadend` fires once after any terminal outcome. status === 0 at that
+      // point indicates a network/CORS/abort/timeout failure.
       this.addEventListener("loadend", () => {
         if (this.readyState === 4 && this.status !== 0) {
           finishResponse();
@@ -198,5 +205,78 @@
 
       return origSend.apply(this, arguments);
     };
+  }
+
+  function activateMonkeyPatches() {
+    if (patchedAlready) return;
+    patchedAlready = true;
+    patchFetch();
+    patchXhr();
+
+    // Drop the Dyad SW once patches are live so we don't double-log. If the
+    // user SW is at the same scope the browser already replaced ours, but if
+    // scopes differ both can coexist — be explicit.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((regs) => {
+          for (const reg of regs) {
+            const sw = reg.active || reg.installing || reg.waiting;
+            if (sw && isDyadSw(sw.scriptURL)) {
+              reg.unregister().catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }
+
+  // ---- SW message forwarder ---------------------------------------------
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      try {
+        window.parent.postMessage(event.data, "*");
+      } catch {
+        // Cross-origin or detached parent — ignore.
+      }
+    });
+  }
+
+  // ---- Wrap register() to detect user SW registrations at runtime -------
+  // Install the wrapper BEFORE any user script runs (this script is injected
+  // at the top of <head>). Ignore Dyad's own scriptURL so we don't self-fire
+  // when we call register() below.
+  if ("serviceWorker" in navigator) {
+    const origRegister = navigator.serviceWorker.register.bind(
+      navigator.serviceWorker,
+    );
+    navigator.serviceWorker.register = function (scriptURL, options) {
+      if (!isDyadSw(scriptURL)) {
+        activateMonkeyPatches();
+      }
+      return origRegister(scriptURL, options);
+    };
+  }
+
+  // ---- Decide what to do at page load -----------------------------------
+  if (!("serviceWorker" in navigator)) {
+    activateMonkeyPatches();
+  } else {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => {
+        const hasUserSw = regs.some((r) => {
+          const sw = r.active || r.installing || r.waiting;
+          return sw && !isDyadSw(sw.scriptURL);
+        });
+        if (hasUserSw) {
+          activateMonkeyPatches();
+          return;
+        }
+        navigator.serviceWorker
+          .register(DYAD_SW_PATH, { scope: "/" })
+          .catch(() => activateMonkeyPatches());
+      })
+      .catch(() => activateMonkeyPatches());
   }
 })();

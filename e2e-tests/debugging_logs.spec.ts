@@ -105,9 +105,12 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
-    // Network monkey-patches (fetch + XHR) are installed synchronously during
-    // HTML <head> parse, before any user script runs — so there is no
-    // registration race like there was with the old service worker.
+    // Wait for service worker to be ready.
+    // Dyad's SW handles observability when the user app doesn't ship its own
+    // SW (this fixture doesn't). Registration is async, so we wait for it to
+    // activate by polling for the first network request log to appear below.
+    // (If the user app had its own SW, dyad-network-monitor.js would fall
+    // back to fetch/XHR monkey-patching, which is synchronous and race-free.)
 
     // Open the system messages console
     // Network requests happen in useEffect, so they may already be in progress or complete

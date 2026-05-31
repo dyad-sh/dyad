@@ -30,6 +30,7 @@ Prefer **`DyadError`** over growing `FILTERED_EXCEPTION_MESSAGES` in `telemetry.
 
 - **`createTypedHandler` / `createLoggedTypedHandler`** rethrow the original error after telemetry — `DyadError` is preserved.
 - **`createLoggedHandler` (`safe_handle.ts`)** rethrows `DyadError` unchanged so the renderer keeps `instanceof DyadError`.
+- In broad `catch` blocks that convert unknown failures to `DyadError`, first rethrow existing `DyadError` instances. Otherwise an already-classified error (for example `Precondition` or `External`) can be wrapped as the wrong kind and change telemetry filtering.
 
 ## Migration
 
@@ -37,7 +38,7 @@ Most IPC/main paths and shared utilities (`git_utils`, Supabase admin, local age
 
 **Do not** import `DyadError` inside preload (`src/preload.ts`) without verifying the preload bundle; preload continues to use plain `Error` for invalid channels.
 
-**Legacy:** `FILTERED_EXCEPTION_MESSAGES` and `RateLimitError` (429) handling in `telemetry.ts` remain for any plain `Error` paths not yet migrated.
+**Legacy:** `FILTERED_EXCEPTION_MESSAGES`, `RateLimitError` (429) handling in `telemetry.ts`, and bare `TypeError: fetch failed` (via `isGenericFetchFailedError` in `posthogTelemetry.ts`) remain for plain `Error` paths not yet migrated. Renderer PostHog `before_send` uses `shouldFilterPostHogExceptionEvent` for the same fetch noise from autocapture.
 
 ## Automation pitfalls
 

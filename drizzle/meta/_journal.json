@@ -211,6 +211,20 @@
       "when": 1777940628484,
       "tag": "0029_remarkable_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1779757340027,
+      "tag": "0030_giant_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1779757340028,
+      "tag": "0031_remarkable_spacker_dave",
+      "breakpoints": true
     }
   ]
 }

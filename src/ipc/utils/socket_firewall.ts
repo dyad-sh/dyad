@@ -781,6 +781,7 @@ export function buildAddDependencyCommand(
       ? [
           ...PNPM_INSTALL_POLICY_ARGS,
           "add",
+          "--ignore-workspace-root-check",
           ...(dev ? ["-D"] : []),
           ...packages,
         ]

@@ -39,6 +39,7 @@ export interface SandboxExecutionParams {
   timeoutMs?: number;
   persistFullOutput?: boolean;
   onHostCall?: SandboxHostCallObserver;
+  capabilities?: Record<string, (...args: unknown[]) => unknown>;
 }
 
 export function isSandboxSupportedPlatform(): boolean {
@@ -146,11 +147,11 @@ export async function executeSandboxScriptInProcess(
 
   try {
     const program = new Mustard(params.script);
+    const capabilityMap =
+      params.capabilities ??
+      buildSandboxCapabilitiesWithObserver(params.appPath, params.onHostCall);
     const context = new ExecutionContext({
-      capabilities: buildSandboxCapabilitiesWithObserver(
-        params.appPath,
-        params.onHostCall,
-      ) as unknown as Record<string, Capability>,
+      capabilities: capabilityMap as unknown as Record<string, Capability>,
       limits: {
         instructionBudget: SANDBOX_INSTRUCTION_BUDGET,
         heapLimitBytes: SANDBOX_HEAP_LIMIT_BYTES,

@@ -145,6 +145,8 @@ Do not treat "pnpm is available but older than the minimumReleaseAge-supporting 
 
 When generating `pnpm-workspace.yaml` for install policy (`allowBuilds`, `minimumReleaseAge`), include a top-level `packages:` block such as `packages: ["." ]` if one does not already exist. pnpm 9 treats `pnpm-workspace.yaml` as a workspace manifest and fails with `packages field missing or empty` when the file only contains config keys.
 
+Automated `pnpm add` commands that run in an app root with a generated `pnpm-workspace.yaml` must pass `--ignore-workspace-root-check`. Otherwise older pnpm versions can fail with `ERR_PNPM_ADDING_TO_ROOT` even though Dyad intentionally installs into that app root.
+
 ## React + IPC integration pattern
 
 When creating hooks/components that call IPC handlers:
@@ -152,3 +154,4 @@ When creating hooks/components that call IPC handlers:
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - Synchronize TanStack Query data with any global state (like Jotai atoms) via `useEffect` only if required.
+- For renderer launch telemetry that needs first-run state, do not infer it from `settings.hasRunBefore` after startup. `onFirstRunMaybe` flips that setting before `createWindow()`, so expose the pre-write value through an IPC/query context instead.

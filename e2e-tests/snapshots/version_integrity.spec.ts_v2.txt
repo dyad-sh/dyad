@@ -70,8 +70,5 @@ end of new-file
   "packageManager": "<scrubbed>"
 }
 
-=== pnpm-workspace.yaml ===
-[10 lines]
-
 === to-be-edited.txt ===
 after-edit

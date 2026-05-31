@@ -149,6 +149,14 @@ export const systemContracts = {
     output: z.string(),
   }),
 
+  getInitialLoadTelemetryContext: defineContract({
+    channel: "get-initial-load-telemetry-context",
+    input: z.void(),
+    output: z.object({
+      isFirstSession: z.boolean(),
+    }),
+  }),
+
   getSystemDebugInfo: defineContract({
     channel: "get-system-debug-info",
     input: z.void(),

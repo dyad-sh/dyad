@@ -643,8 +643,6 @@
       "migrateToProduction": "Migrate to Production",
       "migrateToProductionDestructive": "I understand, migrate to production",
       "migrating": "Migrating...",
-      "installingDependencies": "Installing dependencies, then migrating...",
-      "installDependenciesNote": "First migration will install drizzle-kit and drizzle-orm. This may take a few minutes.",
       "success": "Migration applied successfully.",
       "errorMessage": "Migration couldn't be applied.",
       "showDetails": "Show details",
@@ -681,7 +679,8 @@
             "drop_column": "A column will be dropped.",
             "alter_column_type": "A column's type will be changed (data conversion).",
             "truncate": "A table will be truncated.",
-            "drop_schema": "A schema will be dropped."
+            "drop_schema": "A schema will be dropped.",
+            "schema_hazard": "This statement includes a database hazard such as a permission, lock, dependency, or data-safety risk."
           }
         }
       },

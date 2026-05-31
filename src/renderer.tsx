@@ -33,6 +33,7 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
   shouldBypassNonProTelemetrySampling,
+  shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
 
 // @ts-ignore
@@ -89,6 +90,13 @@ const posthogClient = posthog.init(
         console.debug("Telemetry not opted in, skipping event");
         return null;
       }
+
+      if (shouldFilterPostHogExceptionEvent(event)) {
+        console.debug(
+          "Filtering generic fetch failed exception from telemetry",
+        );
+        return null;
+      }
       const telemetryUserId = getTelemetryUserId();
       if (telemetryUserId) {
         posthogClient.identify(telemetryUserId);
@@ -98,8 +106,8 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
-      // For non-Pro users, only send 10% of events (but always send errors and
-      // sandbox.script.* instrumentation — see shouldBypassNonProTelemetrySampling).
+      // For non-Pro users, only send 10% of events (but always send errors,
+      // app:initial-load, and sandbox.script.* — see shouldBypassNonProTelemetrySampling).
       if (!isDyadProUser()) {
         if (
           !shouldBypassNonProTelemetrySampling(event) &&

@@ -186,9 +186,15 @@ export async function syncNeonConfigToVercel({
   const vercelProjectId = appData.vercelProjectId;
   const vercelTeamId = appData.vercelTeamId;
   const neonProjectId = appData.neonProjectId;
-  if (!vercelProjectId || !vercelTeamId) {
+  if (!vercelProjectId) {
     throw new DyadError(
       "This app is not connected to a Vercel project.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  if (!vercelTeamId) {
+    throw new DyadError(
+      "Vercel team ID is missing — reconnect your Vercel project to fix this.",
       DyadErrorKind.Precondition,
     );
   }

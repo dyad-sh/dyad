@@ -79,9 +79,17 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
       await refreshApp();
       setOverride(undefined);
     },
-    onError: () => {
-      setOverride(undefined);
-      toast.error(t("integrations.database.selectBranchError"));
+    onError: (_error, branchType) => {
+      if (branchType === null) {
+        // The user pressed "Back": honor that intent by keeping the picker
+        // visible (override stays null) rather than snapping back to the
+        // branch they were trying to leave.
+        setOverride(null);
+        toast.error(t("integrations.database.clearBranchError"));
+      } else {
+        setOverride(undefined);
+        toast.error(t("integrations.database.selectBranchError"));
+      }
     },
   });
 
@@ -227,6 +235,7 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
                 size="sm"
                 onClick={handleBack}
                 className="-ml-2"
+                disabled={setBranchMutation.isPending}
               >
                 <ArrowLeft className="w-4 h-4" />
                 {t("integrations.database.backToSelection")}

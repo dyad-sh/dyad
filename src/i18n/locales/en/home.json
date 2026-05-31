@@ -664,7 +664,8 @@
       "syncing": "Syncing…",
       "syncSuccess": "Synced database configuration to Vercel.",
       "syncError": "Failed to sync to Vercel.",
-      "selectBranchError": "Failed to save your database branch selection."
+      "selectBranchError": "Failed to save your database branch selection.",
+      "clearBranchError": "Failed to clear your database branch selection."
     },
     "migration": {
       "title": "Database Migration",

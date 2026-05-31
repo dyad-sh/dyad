@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Copy } from "lucide-react";
+import { Check, ChevronDown, Copy, Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ interface DatabaseEnvVarsProps {
 interface EnvVarRow {
   key: string;
   value: string;
+  // Contains credentials/secrets — masked behind a show/hide toggle.
+  secret: boolean;
 }
 
 export const DatabaseEnvVars = ({
@@ -25,6 +27,7 @@ export const DatabaseEnvVars = ({
   const { t } = useTranslation("home");
   const [expanded, setExpanded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
 
   // Lazy fetch: only resolve (and provision) env vars once the user expands.
   const { data, isLoading, error } = useQuery({
@@ -36,20 +39,39 @@ export const DatabaseEnvVars = ({
 
   const rows: EnvVarRow[] = data
     ? [
-        { key: "DATABASE_URL", value: data.databaseUrl },
+        { key: "DATABASE_URL", value: data.databaseUrl, secret: true },
         ...(data.neonAuthBaseUrl
-          ? [{ key: "NEON_AUTH_BASE_URL", value: data.neonAuthBaseUrl }]
+          ? [
+              {
+                key: "NEON_AUTH_BASE_URL",
+                value: data.neonAuthBaseUrl,
+                secret: false,
+              },
+            ]
           : []),
         ...(data.neonAuthCookieSecret
           ? [
               {
                 key: "NEON_AUTH_COOKIE_SECRET",
                 value: data.neonAuthCookieSecret,
+                secret: true,
               },
             ]
           : []),
       ]
     : [];
+
+  const toggleReveal = (key: string) => {
+    setRevealedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const handleCopy = async (row: EnvVarRow) => {
     await navigator.clipboard.writeText(row.value);
@@ -102,10 +124,32 @@ export const DatabaseEnvVars = ({
                 <Input
                   id={`env-${appId}-${branchType}-${row.key}`}
                   readOnly
-                  type="text"
+                  type={
+                    row.secret && !revealedKeys.has(row.key)
+                      ? "password"
+                      : "text"
+                  }
                   value={row.value}
                   className="font-mono text-xs"
                 />
+                {row.secret && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleReveal(row.key)}
+                    aria-label={`${
+                      revealedKeys.has(row.key) ? "Hide" : "Show"
+                    } ${row.key}`}
+                    aria-pressed={revealedKeys.has(row.key)}
+                  >
+                    {revealedKeys.has(row.key) ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"

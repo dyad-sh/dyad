@@ -7,6 +7,7 @@ import { ipc, App } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useVercelDeployments } from "@/hooks/useVercelDeployments";
+import { queryKeys } from "@/lib/queryKeys";
 import {
   Select,
   SelectContent,
@@ -278,7 +279,7 @@ function UnconnectedVercelConnector({
   const showSyncPreview =
     !!neonProjectId && appId !== null && projectSetupMode === "create";
   const { data: syncPreview } = useQuery({
-    queryKey: ["vercel", "syncPreview", appId],
+    queryKey: queryKeys.vercel.syncPreview({ appId }),
     queryFn: () => ipc.vercel.getSyncPreview({ appId: appId! }),
     enabled: showSyncPreview,
     staleTime: 60 * 1000,

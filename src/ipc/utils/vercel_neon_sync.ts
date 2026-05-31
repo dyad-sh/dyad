@@ -92,15 +92,23 @@ async function getProjectDomainHosts(
     idOrName: projectId,
   });
   const domains =
-    (response as { domains?: Array<{ name?: string }> }).domains ?? [];
+    (response as { domains?: Array<{ name?: string }> } | undefined)?.domains ??
+    [];
   return domains
     .map((d) => d.name)
     .filter((name): name is string => Boolean(name));
 }
 
 /**
- * Read-only computation of what `syncNeonConfigToVercel` would push. Used by
- * the pre-deploy summary card. Returns env-var KEYS only — never secret values.
+ * Computes what `syncNeonConfigToVercel` would push, for the pre-deploy summary
+ * card. Returns env-var KEYS only — never secret values.
+ *
+ * NOTE: this is NOT side-effect-free. Like the `getBranchEnvVars` handler, it
+ * follows the "provision-on-view" pattern: resolving the branch env vars calls
+ * `resolveNeonBranchEnvVars`, which activates Neon Auth on the branch if
+ * inactive and generates/persists a per-branch cookie secret. Opening the
+ * connector's create view with a Neon project attached triggers this
+ * provisioning before the user approves anything.
  */
 export async function previewNeonVercelSync({
   appId,
@@ -138,7 +146,7 @@ export async function previewNeonVercelSync({
         appData.neonProjectId,
         resolved.branchId,
       );
-      const existingDomains = (existing.data.domains ?? []).map(
+      const existingDomains = (existing.data?.domains ?? []).map(
         (d) => d.domain,
       );
       trustedDomainOrigins = reconcileTrustedDomains(existingDomains, hosts);
@@ -233,7 +241,7 @@ export async function syncNeonConfigToVercel({
         neonProjectId,
         resolved.branchId,
       );
-      const existingDomains = (existing.data.domains ?? []).map(
+      const existingDomains = (existing.data?.domains ?? []).map(
         (d) => d.domain,
       );
       const originsToAdd = reconcileTrustedDomains(existingDomains, hosts);
@@ -293,7 +301,8 @@ export async function removeNeonEnvVarsFromVercel({
       teamId: vercelTeamId,
     });
     envs =
-      (response as { envs?: Array<{ id?: string; key?: string }> }).envs ?? [];
+      (response as { envs?: Array<{ id?: string; key?: string }> } | undefined)
+        ?.envs ?? [];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {

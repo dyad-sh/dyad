@@ -293,6 +293,7 @@ export function registerNeonHandlers() {
               neonActiveBranchId: null,
               neonProductionAuthCookieSecret: null,
               neonDevelopmentAuthCookieSecret: null,
+              selectedDatabaseBranchType: null,
             })
             .where(eq(apps.id, appId));
         } catch (dbCleanupError) {
@@ -584,6 +585,7 @@ export function registerNeonHandlers() {
               neonActiveBranchId: null,
               neonProductionAuthCookieSecret: null,
               neonDevelopmentAuthCookieSecret: null,
+              selectedDatabaseBranchType: null,
             })
             .where(eq(apps.id, appId));
         } catch (revertError) {
@@ -660,6 +662,7 @@ export function registerNeonHandlers() {
           neonActiveBranchId: null,
           neonProductionAuthCookieSecret: null,
           neonDevelopmentAuthCookieSecret: null,
+          selectedDatabaseBranchType: null,
         })
         .where(eq(apps.id, appId));
 

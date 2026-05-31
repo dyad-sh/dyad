@@ -21,7 +21,7 @@ describe("prompt guide files", () => {
       const content = await readFile(join(GUIDES_DIR, file), "utf-8");
       expect(content.trim().length, `${file} should not be empty`).toBeGreaterThan(0);
       expect(
-        content.startsWith("## "),
+        content.trimStart().startsWith("## "),
         `${file} should start with a top-level heading (## Title)`,
       ).toBe(true);
     }
@@ -35,11 +35,10 @@ describe("prompt guide files", () => {
 
     for (const file of mdFiles) {
       const content = await readFile(join(GUIDES_DIR, file), "utf-8");
-      if (!content.includes("<nextjs-only>")) continue;
-
-      const open = (content.match(/<nextjs-only>/g) ?? []).length;
-      const close = (content.match(/<\/nextjs-only>/g) ?? []).length;
-      expect(open, `${file}: <nextjs-only> open tags`).toBe(close);
+      const openNextjs = (content.match(/<nextjs-only>/g) ?? []).length;
+      const closeNextjs = (content.match(/<\/nextjs-only>/g) ?? []).length;
+      expect(closeNextjs, `${file}: </nextjs-only> closing tags`).toBe(0);
+      expect(openNextjs, `${file}: <nextjs-only> open tags`).toBe(closeNextjs);
     }
   });
 
@@ -51,11 +50,10 @@ describe("prompt guide files", () => {
 
     for (const file of mdFiles) {
       const content = await readFile(join(GUIDES_DIR, file), "utf-8");
-      if (!content.includes("<vite-nitro-only>")) continue;
-
-      const open = (content.match(/<vite-nitro-only>/g) ?? []).length;
-      const close = (content.match(/<\/vite-nitro-only>/g) ?? []).length;
-      expect(open, `${file}: <vite-nitro-only> open tags`).toBe(close);
+      const openVite = (content.match(/<vite-nitro-only>/g) ?? []).length;
+      const closeVite = (content.match(/<\/vite-nitro-only>/g) ?? []).length;
+      expect(closeVite, `${file}: </vite-nitro-only> closing tags`).toBe(0);
+      expect(openVite, `${file}: <vite-nitro-only> open tags`).toBe(closeVite);
     }
   });
 });

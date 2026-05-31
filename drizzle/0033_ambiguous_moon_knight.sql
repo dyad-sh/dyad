@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `selected_database_branch_type` text;

@@ -602,7 +602,10 @@
       "signInTimedOut": "Sign-in timed out — try again or check your browser",
       "connecting": "Connecting...",
       "disconnectAccountTitle": "Disconnect Neon Account",
-      "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect."
+      "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect.",
+      "removeVercelEnvVars": "Remove Neon environment variables from Vercel",
+      "removeVercelEnvVarsHelp": "Deletes DATABASE_URL and Neon Auth variables from the linked Vercel project so they don't point at a disconnected database.",
+      "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel."
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",
@@ -655,7 +658,13 @@
         "title": "Environment variables",
         "description": "Add these to your hosting provider's environment variables for the deployed app.",
         "loading": "Loading…"
-      }
+      },
+      "syncToVercel": "Sync to Vercel",
+      "syncToVercelHelp": "Push database env vars to Vercel and add your deployment domain to Neon's auth redirect allowlist.",
+      "syncing": "Syncing…",
+      "syncSuccess": "Synced database configuration to Vercel.",
+      "syncError": "Failed to sync to Vercel.",
+      "selectBranchError": "Failed to save your database branch selection."
     },
     "migration": {
       "title": "Database Migration",

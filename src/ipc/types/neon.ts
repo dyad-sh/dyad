@@ -107,6 +107,16 @@ export const UpdateNeonEmailVerificationParamsSchema = z.object({
   requireEmailVerification: z.boolean(),
 });
 
+export const SetSelectedDatabaseBranchTypeParamsSchema = z.object({
+  appId: z.number(),
+  // Null clears the choice (treated as production by the backend sync).
+  branchType: z.enum(["production", "development"]).nullable(),
+});
+
+export type SetSelectedDatabaseBranchTypeParams = z.infer<
+  typeof SetSelectedDatabaseBranchTypeParamsSchema
+>;
+
 export const GetNeonBranchEnvVarsParamsSchema = z.object({
   appId: z.number(),
   branchType: z.enum(["production", "development"]),
@@ -195,6 +205,12 @@ export const neonContracts = {
     channel: "neon:get-branch-env-vars",
     input: GetNeonBranchEnvVarsParamsSchema,
     output: GetNeonBranchEnvVarsResponseSchema,
+  }),
+
+  setSelectedDatabaseBranchType: defineContract({
+    channel: "neon:set-selected-database-branch-type",
+    input: SetSelectedDatabaseBranchTypeParamsSchema,
+    output: z.object({ success: z.boolean() }),
   }),
 } as const;
 

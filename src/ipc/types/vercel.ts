@@ -83,6 +83,54 @@ export type DisconnectVercelProjectParams = z.infer<
   typeof DisconnectVercelProjectParamsSchema
 >;
 
+// --- Neon → Vercel sync ---
+
+export const VercelSyncAppParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export type VercelSyncAppParams = z.infer<typeof VercelSyncAppParamsSchema>;
+
+export const VercelSyncPreviewSchema = z.object({
+  vercelProjectName: z.string().nullable(),
+  branchType: z.enum(["production", "development"]),
+  envKeys: z.array(z.string()),
+  cookieSecretIncluded: z.boolean(),
+  target: z.array(z.enum(["production", "preview", "development"])),
+  trustedDomainOrigins: z.array(z.string()),
+  authActive: z.boolean(),
+});
+
+export type VercelSyncPreview = z.infer<typeof VercelSyncPreviewSchema>;
+
+export const VercelSyncResultSchema = z.object({
+  envPushed: z.boolean(),
+  domainsAdded: z.array(z.string()),
+  skipped: z.array(z.string()),
+  warning: z.string().optional(),
+});
+
+export type VercelSyncResult = z.infer<typeof VercelSyncResultSchema>;
+
+export const RemoveNeonEnvVarsFromVercelResultSchema = z.object({
+  removedKeys: z.array(z.string()),
+  warning: z.string().optional(),
+});
+
+export type RemoveNeonEnvVarsFromVercelResult = z.infer<
+  typeof RemoveNeonEnvVarsFromVercelResultSchema
+>;
+
+export const CreateVercelProjectResultSchema = z
+  .object({
+    syncWarning: z.string().optional(),
+  })
+  .optional();
+
+export type CreateVercelProjectResult = z.infer<
+  typeof CreateVercelProjectResultSchema
+>;
+
 // =============================================================================
 // Vercel Contracts
 // =============================================================================
@@ -109,7 +157,7 @@ export const vercelContracts = {
   createProject: defineContract({
     channel: "vercel:create-project",
     input: CreateVercelProjectParamsSchema,
-    output: z.void(),
+    output: CreateVercelProjectResultSchema,
   }),
 
   connectExistingProject: defineContract({
@@ -128,6 +176,24 @@ export const vercelContracts = {
     channel: "vercel:disconnect",
     input: DisconnectVercelProjectParamsSchema,
     output: z.void(),
+  }),
+
+  getSyncPreview: defineContract({
+    channel: "vercel:get-sync-preview",
+    input: VercelSyncAppParamsSchema,
+    output: VercelSyncPreviewSchema,
+  }),
+
+  syncNeonConfig: defineContract({
+    channel: "vercel:sync-neon-config",
+    input: VercelSyncAppParamsSchema,
+    output: VercelSyncResultSchema,
+  }),
+
+  removeNeonEnvVars: defineContract({
+    channel: "vercel:remove-neon-env-vars",
+    input: VercelSyncAppParamsSchema,
+    output: RemoveNeonEnvVarsFromVercelResultSchema,
   }),
 } as const;
 

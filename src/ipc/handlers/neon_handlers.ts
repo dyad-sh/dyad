@@ -32,6 +32,7 @@ import {
   assertNoNeonProject,
   getOrCreateNeonAuthCookieSecret,
   syncActiveNeonAuthCookieSecretFromEnv,
+  resolveNeonBranchEnvVars,
   type NeonBranchType,
 } from "../utils/neon_utils";
 import {
@@ -39,9 +40,6 @@ import {
   type EnsureNitroResult,
 } from "../utils/nitro_setup";
 import { getDyadAppPath } from "@/paths/paths";
-import { getProductionBranchId } from "../utils/migration_utils";
-import { getConnectionUri } from "../../neon_admin/neon_context";
-import { detectFrameworkType } from "../utils/framework_utils";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
@@ -872,61 +870,43 @@ export function registerNeonHandlers() {
         DyadErrorKind.NotFound,
       );
     }
-    const appData = appRows[0];
-    if (!appData.neonProjectId) {
-      throw new DyadError(
-        "This app is not connected to a Neon project.",
-        DyadErrorKind.Precondition,
-      );
-    }
-
-    let branchId: string;
-    if (branchType === "production") {
-      const result = await getProductionBranchId(appData.neonProjectId);
-      branchId = result.branchId;
-    } else {
-      if (!appData.neonDevelopmentBranchId) {
-        throw new DyadError(
-          "This app has no development branch. Create one in Neon before requesting a development connection URI.",
-          DyadErrorKind.Precondition,
-        );
-      }
-      branchId = appData.neonDevelopmentBranchId;
-    }
-
-    const databaseUrl = await getConnectionUri({
-      projectId: appData.neonProjectId,
-      branchId,
-    });
-
-    // Provision-on-view: ensure Neon Auth is active for the branch and, for
-    // Next.js apps, ensure a per-branch cookie secret exists. Mirrors
-    // autoInjectNeonEnvVars so the previewed values match what gets injected.
-    let neonAuthBaseUrl: string | undefined;
-    try {
-      neonAuthBaseUrl = await ensureNeonAuth({
-        projectId: appData.neonProjectId,
-        branchId,
-      });
-    } catch {
-      // Auth activation failed or is unavailable on this branch — show only
-      // DATABASE_URL rather than failing the whole request.
-      neonAuthBaseUrl = undefined;
-    }
-
-    let neonAuthCookieSecret: string | undefined;
-    if (
-      neonAuthBaseUrl &&
-      detectFrameworkType(getDyadAppPath(appData.path)) === "nextjs"
-    ) {
-      neonAuthCookieSecret = await getOrCreateNeonAuthCookieSecret({
-        appData,
-        branchType,
-      });
-    }
+    // Provision-on-view: resolveNeonBranchEnvVars ensures Neon Auth is active
+    // and (for Next.js) a per-branch cookie secret exists, so the previewed
+    // values match what gets injected into .env.local / Vercel.
+    const { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret } =
+      await resolveNeonBranchEnvVars({ appData: appRows[0], branchType });
 
     return { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret };
   });
+
+  // Persist which Neon branch the unified database section deploys/syncs
+  // against. This is a lightweight view/deploy preference, intentionally
+  // distinct from neonActiveBranchId (the SQL-execution branch). The main
+  // process reads it when syncing env vars + trusted domains to Vercel.
+  createTypedHandler(
+    neonContracts.setSelectedDatabaseBranchType,
+    async (_, params) => {
+      const { appId, branchType } = params;
+      logger.info(
+        `Setting selected database branch type for app ${appId}: ${branchType}`,
+      );
+
+      const updated = await db
+        .update(apps)
+        .set({ selectedDatabaseBranchType: branchType })
+        .where(eq(apps.id, appId))
+        .returning({ id: apps.id });
+
+      if (updated.length === 0) {
+        throw new DyadError(
+          `App with ID ${appId} not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      return { success: true };
+    },
+  );
 
   testOnlyHandle("neon:fake-connect", async (event) => {
     // Call handleNeonOAuthReturn with fake data

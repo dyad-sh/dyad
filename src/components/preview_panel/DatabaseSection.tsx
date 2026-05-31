@@ -5,10 +5,14 @@ import {
   FlaskConical,
   Loader2,
   Server,
+  UploadCloud,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { MigrationPanelBody } from "@/components/MigrationPanel";
@@ -20,16 +24,15 @@ interface DatabaseSectionProps {
   appId: number;
 }
 
-const storageKey = (appId: number) => `dyad.databaseSection.env.${appId}`;
-
-const readPersistedEnv = (appId: number): EnvKind | null => {
-  try {
-    const raw = localStorage.getItem(storageKey(appId));
-    return raw === "prod" || raw === "dev" ? raw : null;
-  } catch {
-    return null;
-  }
+const ENV_TO_BRANCH: Record<EnvKind, "production" | "development"> = {
+  prod: "production",
+  dev: "development",
 };
+
+const branchTypeToEnv = (
+  value: "production" | "development" | null | undefined,
+): EnvKind | null =>
+  value === "development" ? "dev" : value === "production" ? "prod" : null;
 
 const ENV_META: Record<
   EnvKind,
@@ -44,7 +47,7 @@ const ENV_META: Record<
 
 export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const { t } = useTranslation("home");
-  const { app } = useLoadApp(appId);
+  const { app, refreshApp } = useLoadApp(appId);
   const { branches, isLoadingBranches } = useNeon(appId);
 
   const productionBranch = branches.find((b) => b.type === "production");
@@ -53,35 +56,69 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const isProductionBranchActive =
     !!effectiveBranchId && effectiveBranchId === productionBranch?.branchId;
 
-  const [selectedEnv, setSelectedEnv] = useState<EnvKind | null>(() =>
-    readPersistedEnv(appId),
+  // The persisted deploy-branch choice lives on the app row. `override` holds an
+  // optimistic value for instant UI until the app query refetches; `undefined`
+  // means "use the persisted value".
+  const persistedEnv = branchTypeToEnv(app?.selectedDatabaseBranchType);
+  const [override, setOverride] = useState<EnvKind | null | undefined>(
+    undefined,
   );
   const [pendingEnv, setPendingEnv] = useState<EnvKind | null>(null);
 
   useEffect(() => {
-    setSelectedEnv(readPersistedEnv(appId));
+    setOverride(undefined);
     setPendingEnv(null);
   }, [appId]);
 
+  const selectedEnv = override !== undefined ? override : persistedEnv;
+
+  const setBranchMutation = useMutation({
+    mutationFn: (branchType: "production" | "development" | null) =>
+      ipc.neon.setSelectedDatabaseBranchType({ appId, branchType }),
+    onSuccess: async () => {
+      await refreshApp();
+      setOverride(undefined);
+    },
+    onError: () => {
+      setOverride(undefined);
+      toast.error(t("integrations.database.selectBranchError"));
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => ipc.vercel.syncNeonConfig({ appId }),
+    onSuccess: (result) => {
+      if (result.warning) {
+        toast.warning(result.warning);
+      } else {
+        toast.success(t("integrations.database.syncSuccess"));
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || t("integrations.database.syncError"));
+    },
+  });
+
   const confirmEnv = () => {
     if (pendingEnv === null) return;
-    try {
-      localStorage.setItem(storageKey(appId), pendingEnv);
-    } catch {
-      // ignore — UI still works without persistence
-    }
-    setSelectedEnv(pendingEnv);
+    setOverride(pendingEnv);
+    setBranchMutation.mutate(ENV_TO_BRANCH[pendingEnv]);
   };
 
   const handleBack = () => {
-    try {
-      localStorage.removeItem(storageKey(appId));
-    } catch {
-      // ignore
-    }
-    setSelectedEnv(null);
+    setOverride(null);
     setPendingEnv(null);
+    setBranchMutation.mutate(null);
   };
+
+  // A branch is "selected" once the app is on production or an env was picked.
+  // Don't surface the sync action on the branch-selection screen.
+  const hasBranchSelected = isProductionBranchActive || selectedEnv !== null;
+  const showSync =
+    !!app?.vercelProjectId &&
+    !!app?.neonProjectId &&
+    !isLoadingBranches &&
+    hasBranchSelected;
 
   return (
     <Card data-testid="database-section">
@@ -92,6 +129,35 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {showSync && (
+          <div
+            className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
+            data-testid="sync-to-vercel"
+          >
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              {t("integrations.database.syncToVercelHelp")}
+            </p>
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+            >
+              {syncMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {t("integrations.database.syncing")}
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="w-4 h-4" />
+                  {t("integrations.database.syncToVercel")}
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
         {isLoadingBranches ? (
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -146,7 +212,7 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
               <Button
                 type="button"
                 onClick={confirmEnv}
-                disabled={pendingEnv === null}
+                disabled={pendingEnv === null || setBranchMutation.isPending}
               >
                 {t("integrations.database.continue")}
               </Button>

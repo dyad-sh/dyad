@@ -268,6 +268,21 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           base_url: getMockAuthBaseUrl(branchId),
         },
       }),
+      listBranchNeonAuthTrustedDomains: async (
+        _projectId: string,
+        _branchId: string,
+      ) => ({
+        data: {
+          domains: [] as Array<{ domain: string; auth_provider: string }>,
+        },
+      }),
+      addBranchNeonAuthTrustedDomain: async (
+        _projectId: string,
+        _branchId: string,
+        _data: any,
+      ) => ({
+        data: undefined,
+      }),
       listProjectBranchRoles: async () => ({
         data: {
           roles: [{ name: "neondb_owner", protected: false }],

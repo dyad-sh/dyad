@@ -320,3 +320,120 @@ export async function assertNoNeonProject(appId: number): Promise<void> {
     );
   }
 }
+
+/**
+ * Resolves the production (default) branch ID for a Neon project.
+ * Lives here (not migration_utils) so it can be shared by env-var resolution
+ * without a circular import.
+ */
+export async function getProductionBranchId(
+  projectId: string,
+): Promise<{ branchId: string; updatedAt: string }> {
+  const neonClient = await getNeonClient();
+  const response = await neonClient.listProjectBranches({ projectId });
+
+  if (!response.data.branches) {
+    throw new DyadError(
+      "Failed to list branches: No branch data returned.",
+      DyadErrorKind.External,
+    );
+  }
+
+  const prodBranch = response.data.branches.find((b) => b.default);
+  if (!prodBranch) {
+    throw new DyadError(
+      "No production (default) branch found for this Neon project.",
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  return { branchId: prodBranch.id, updatedAt: prodBranch.updated_at };
+}
+
+/**
+ * The branch the unified database section is set to deploy/sync against.
+ * Null (e.g. the user never opened the section, or before first deploy) is
+ * treated as production.
+ */
+export function getSelectedDeployBranchType(appData: AppRow): NeonBranchType {
+  return appData.selectedDatabaseBranchType === "development"
+    ? "development"
+    : "production";
+}
+
+export interface ResolvedNeonBranchEnvVars {
+  databaseUrl: string;
+  neonAuthBaseUrl?: string;
+  neonAuthCookieSecret?: string;
+  branchId: string;
+  isNextJs: boolean;
+}
+
+/**
+ * Resolves the Neon env vars (connection URI + auth) for an app's branch.
+ * Shared by the `getBranchEnvVars` IPC handler (which renders them in the UI)
+ * and the Vercel sync (which pushes them). Tolerant of Neon Auth being
+ * inactive on the branch — returns only `databaseUrl` in that case.
+ *
+ * `branchId` and `isNextJs` are returned so callers (e.g. trusted-domain sync)
+ * can reuse the resolved branch and framework without re-resolving.
+ */
+export async function resolveNeonBranchEnvVars({
+  appData,
+  branchType,
+}: {
+  appData: AppRow;
+  branchType: NeonBranchType;
+}): Promise<ResolvedNeonBranchEnvVars> {
+  if (!appData.neonProjectId) {
+    throw new DyadError(
+      "This app is not connected to a Neon project.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  const projectId = appData.neonProjectId;
+
+  let branchId: string;
+  if (branchType === "production") {
+    branchId = (await getProductionBranchId(projectId)).branchId;
+  } else {
+    if (!appData.neonDevelopmentBranchId) {
+      throw new DyadError(
+        "This app has no development branch. Create one in Neon before requesting a development connection URI.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    branchId = appData.neonDevelopmentBranchId;
+  }
+
+  const databaseUrl = await getConnectionUri({ projectId, branchId });
+
+  // Provision-on-view: ensure Neon Auth is active and, for Next.js apps, that a
+  // per-branch cookie secret exists. Tolerant of failure so a transient Neon
+  // outage still yields DATABASE_URL.
+  let neonAuthBaseUrl: string | undefined;
+  try {
+    neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
+  } catch {
+    neonAuthBaseUrl = undefined;
+  }
+
+  const isNextJs =
+    detectFrameworkType(getDyadAppPath(appData.path)) === "nextjs";
+
+  let neonAuthCookieSecret: string | undefined;
+  if (neonAuthBaseUrl && isNextJs) {
+    neonAuthCookieSecret = await getOrCreateNeonAuthCookieSecret({
+      appData,
+      branchType,
+    });
+  }
+
+  return {
+    databaseUrl,
+    neonAuthBaseUrl,
+    neonAuthCookieSecret,
+    branchId,
+    isNextJs,
+  };
+}

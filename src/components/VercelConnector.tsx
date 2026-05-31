@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Globe } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ipc, App } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -37,6 +39,7 @@ interface UnconnectedVercelConnectorProps {
   appId: number | null;
   folderName: string;
   settings: any;
+  neonProjectId: string | null;
   refreshSettings: () => void;
   refreshApp: () => void;
 }
@@ -216,6 +219,7 @@ function UnconnectedVercelConnector({
   appId,
   folderName,
   settings,
+  neonProjectId,
   refreshSettings,
   refreshApp,
 }: UnconnectedVercelConnectorProps) {
@@ -268,6 +272,17 @@ function UnconnectedVercelConnector({
       }
     };
   }, []);
+
+  // For Neon-connected apps, preview what will be auto-configured on Vercel
+  // (env var keys + trusted domains) so the user approves before deploying.
+  const showSyncPreview =
+    !!neonProjectId && appId !== null && projectSetupMode === "create";
+  const { data: syncPreview } = useQuery({
+    queryKey: ["vercel", "syncPreview", appId],
+    queryFn: () => ipc.vercel.getSyncPreview({ appId: appId! }),
+    enabled: showSyncPreview,
+    staleTime: 60 * 1000,
+  });
 
   const loadAvailableProjects = async () => {
     setIsLoadingProjects(true);
@@ -347,10 +362,13 @@ function UnconnectedVercelConnector({
 
     try {
       if (projectSetupMode === "create") {
-        await ipc.vercel.createProject({
+        const result = await ipc.vercel.createProject({
           name: projectName,
           appId,
         });
+        if (result?.syncWarning) {
+          toast.warning(result.syncWarning);
+        }
       } else {
         await ipc.vercel.connectExistingProject({
           projectId: selectedProject,
@@ -569,6 +587,34 @@ function UnconnectedVercelConnector({
                     </p>
                   )}
                 </div>
+
+                {showSyncPreview && syncPreview && (
+                  <div
+                    className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3"
+                    data-testid="vercel-sync-preview"
+                  >
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                      Database auto-configuration
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                      When you create this project, Dyad will push these
+                      environment variables from your {syncPreview.branchType}{" "}
+                      database to Vercel (secret values are hidden and sent
+                      securely):
+                    </p>
+                    <ul className="list-disc list-inside text-xs font-mono text-blue-800 dark:text-blue-200 space-y-0.5">
+                      {syncPreview.envKeys.map((key) => (
+                        <li key={key}>{key}</li>
+                      ))}
+                    </ul>
+                    {syncPreview.authActive && (
+                      <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                        Your live deployment domain will be added to Neon's
+                        trusted redirect domains after the first deploy.
+                      </p>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -659,6 +705,7 @@ export function VercelConnector({ appId, folderName }: VercelConnectorProps) {
         appId={appId}
         folderName={folderName}
         settings={settings}
+        neonProjectId={app?.neonProjectId ?? null}
         refreshSettings={refreshSettings}
         refreshApp={refreshApp}
       />

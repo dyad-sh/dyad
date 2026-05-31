@@ -72,6 +72,12 @@ export const apps = sqliteTable("apps", {
   neonActiveBranchId: text("neon_active_branch_id"),
   neonProductionAuthCookieSecret: text("neon_production_auth_cookie_secret"),
   neonDevelopmentAuthCookieSecret: text("neon_development_auth_cookie_secret"),
+  // Which Neon branch the unified database section is set to deploy/sync
+  // against ("production" | "development"). Null is treated as production.
+  // Read by the main process when syncing env vars + trusted domains to Vercel.
+  selectedDatabaseBranchType: text("selected_database_branch_type").$type<
+    "production" | "development"
+  >(),
   vercelProjectId: text("vercel_project_id"),
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),

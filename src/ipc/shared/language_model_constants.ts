@@ -16,14 +16,24 @@ export interface ModelOption {
 }
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
+export const GPT_5_5_MODEL_NAME = "gpt-5.5";
 export const SONNET_4_6 = "claude-sonnet-4-6";
 export const OPUS_4_6 = "claude-opus-4-6";
+export const OPUS_4_8 = "claude-opus-4-8";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
 export const GPT_5_NANO = "gpt-5-nano";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
+    {
+      name: GPT_5_5_MODEL_NAME,
+      displayName: "GPT 5.5",
+      description: "OpenAI's most capable coding model",
+      contextWindow: 400_000,
+      temperature: 1,
+      dollarSigns: 6,
+    },
     // https://platform.openai.com/docs/models/gpt-5.1
     {
       name: GPT_5_2_MODEL_NAME,
@@ -113,6 +123,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   ],
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
+    {
+      name: OPUS_4_8,
+      displayName: "Claude Opus 4.8",
+      description: "Anthropic most capable model",
+      maxOutputTokens: 64_000,
+      contextWindow: 1_000_000,
+      temperature: 1,
+      dollarSigns: 6,
+    },
     {
       name: "claude-opus-4-6",
       displayName: "Claude Opus 4.6",

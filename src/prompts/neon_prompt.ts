@@ -111,17 +111,7 @@ ${authSection}
 
 ### How Migrations Happen (informational)
 
-Reference material so you can explain Dyad's migration mechanism when the user asks, or help debug when a migration fails or behaves unexpectedly:
-
-- A Dyad app backed by Neon has a **production** branch (the project's default branch) and is normally pointed at a separate **development** branch via the app's "active branch" setting. The intended workflow is: iterate on the dev branch, then promote to prod via Dyad's migration UI.
-- SQL run via \`<dyad-execute-sql>\` is applied to whichever branch is currently set as the app's **active branch**. That is usually a dev branch, but nothing prevents the user from setting the active branch to the production branch — in which case \`<dyad-execute-sql>\` writes directly to prod with no migration step.
-- The migration UI only works when the active branch is **not** the production branch. If they match, Dyad's migration preview refuses with "Active branch is the production branch. Create a development branch first."
-- When the user previews a migration, Dyad introspects both branches with \`drizzle-kit introspect\`, then runs \`drizzle-kit generate\` to compute a SQL diff between dev and prod. The resulting statements are shown to the user, with warnings for destructive operations (\`DROP TABLE\`, \`DROP SCHEMA\`, \`DROP COLUMN\`, \`TRUNCATE\`, \`ALTER COLUMN ... TYPE\`).
-- On confirm, Dyad executes every statement against the production branch inside a single Neon HTTP transaction (all-or-nothing). The diff is recomputed fresh from the live branches each time, so no migration files are committed to the repo.
-- **Nothing about a migration is persisted to disk in the user's app.** Specifically:
-  - All drizzle-kit artifacts are written to a per-app scratch directory under the OS temp dir (\`os.tmpdir()/dyad-migration-app-<id>\`). That directory is wiped at the start of every preview and deleted again in a \`finally\` block once preview completes — successful or not.
-  - The introspected prod schema is cached **in memory only** for 5 minutes (keyed by appId + prod branch id, invalidated on every apply attempt and whenever the branch's \`updated_at\` advances). Dev is always re-introspected fresh.
-  - The pending migration plan (the array of SQL statements the user is reviewing) lives **in memory only** in a Map keyed by a one-shot \`migrationId\`, with a 30-minute TTL. It is deleted on successful apply, and lost entirely if the Dyad process restarts.
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
 
 ## Authorization and RLS
 

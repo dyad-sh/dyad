@@ -6,9 +6,12 @@ import {
   clearPreviewRuntimeForAppAtom,
   currentAppUrlAtom,
   currentConsoleEntriesAtom,
+  currentPreviewErrorAtom,
   currentPreviewLoadingAtom,
+  previewCurrentUrlAtom,
   previewRunStateByAppIdAtom,
   setAppUrlForAppAtom,
+  setPreviewErrorForAppAtom,
   setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 
@@ -61,6 +64,10 @@ describe("preview runtime atoms", () => {
         mode: "host",
       },
     });
+    store.set(
+      previewCurrentUrlAtom,
+      new Map([[1, "http://localhost:3000/foo"]]),
+    );
 
     expect(store.get(currentPreviewLoadingAtom)).toBe(true);
     expect(store.get(currentAppUrlAtom).appUrl).toBe("http://localhost:3000");
@@ -70,5 +77,34 @@ describe("preview runtime atoms", () => {
     expect(store.get(previewRunStateByAppIdAtom).has(1)).toBe(false);
     expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+    expect(store.get(previewCurrentUrlAtom).has(1)).toBe(false);
+  });
+
+  it("applies preview error function updates to the latest app value", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+
+    store.set(setPreviewErrorForAppAtom, {
+      appId: 1,
+      error: {
+        message: "Preview app error",
+        source: "preview-app",
+      },
+    });
+    store.set(setPreviewErrorForAppAtom, {
+      appId: 1,
+      error: (current) =>
+        current && current.source !== "dyad-sync"
+          ? current
+          : {
+              message: "Sync error",
+              source: "dyad-sync",
+            },
+    });
+
+    expect(store.get(currentPreviewErrorAtom)).toEqual({
+      message: "Preview app error",
+      source: "preview-app",
+    });
   });
 });

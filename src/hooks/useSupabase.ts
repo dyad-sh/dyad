@@ -182,11 +182,12 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       ? logs.filter((log) => log.timestamp > lastTimestamp)
       : logs;
     if (newLogs.length === 0) return;
+    if (selectedAppId === null) return;
 
     newLogs.forEach((log) => {
       ipc.misc.addLog(log);
     });
-    appendConsoleEntries({ appId: selectedAppId!, entries: newLogs });
+    appendConsoleEntries({ appId: selectedAppId, entries: newLogs });
 
     const latestLog = newLogs.reduce((latest, log) =>
       log.timestamp > latest.timestamp ? log : latest,

@@ -325,6 +325,30 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
+  it("does not show pnpm warning toast for a background app", () => {
+    settingsMock.current = {
+      enablePnpmMinimumReleaseAgeWarning: true,
+    };
+    const { Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "package-manager-warning",
+          message: "Install pnpm 10.16.0 or newer for the strongest protection",
+          appId: 2,
+        });
+      }
+    });
+
+    expect(showPnpmMinimumReleaseAgeWarningMock).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
   it("stores app output by app so background logs do not overwrite the selected app", () => {
     const { store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {

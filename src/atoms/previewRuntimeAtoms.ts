@@ -42,6 +42,13 @@ export interface PreviewErrorMessage {
   source: "preview-app" | "dyad-app" | "dyad-sync";
 }
 
+export type PreviewErrorUpdate =
+  | PreviewErrorMessage
+  | undefined
+  | ((
+      current: PreviewErrorMessage | undefined,
+    ) => PreviewErrorMessage | undefined);
+
 export const previewRunStateByAppIdAtom = atom<Map<number, PreviewRunState>>(
   new Map(),
 );
@@ -61,7 +68,7 @@ export const consoleEntriesByAppIdAtom = atom<Map<number, ConsoleEntry[]>>(
 
 // Stores the current preview URL to preserve route across HMR-induced remounts.
 // This tracks the current iframe route per app, not the app's base URL.
-export const previewCurrentUrlAtom = atom<Record<number, string>>({});
+export const previewCurrentUrlAtom = atom<Map<number, string>>(new Map());
 
 export const currentPreviewRunStateAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
@@ -133,14 +140,16 @@ export const setPreviewRunStateForAppAtom = atom(
 export const setPreviewErrorForAppAtom = atom(
   null,
   (
-    _get,
+    get,
     set,
-    { appId, error }: { appId: number; error: PreviewErrorMessage | undefined },
+    { appId, error }: { appId: number; error: PreviewErrorUpdate },
   ) => {
     set(previewErrorByAppIdAtom, (prev) => {
+      const current = get(previewErrorByAppIdAtom).get(appId);
+      const nextError = typeof error === "function" ? error(current) : error;
       const next = new Map(prev);
-      if (error) {
-        next.set(appId, error);
+      if (nextError) {
+        next.set(appId, nextError);
       } else {
         next.delete(appId);
       }
@@ -265,8 +274,8 @@ export const clearPreviewRuntimeForAppAtom = atom(
       return next;
     });
     set(previewCurrentUrlAtom, (prev) => {
-      const next = { ...prev };
-      delete next[appId];
+      const next = new Map(prev);
+      next.delete(appId);
       return next;
     });
   },

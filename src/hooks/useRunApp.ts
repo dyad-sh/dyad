@@ -6,7 +6,6 @@ import {
   bumpPreviewReloadTokenForAppAtom,
   currentPreviewLoadingAtom,
   previewCurrentUrlAtom,
-  previewErrorByAppIdAtom,
   setAppUrlForAppAtom,
   setConsoleEntriesForAppAtom,
   setPreviewAppExitForAppAtom,
@@ -79,8 +78,8 @@ export function useRebuildAppAfterPnpmInstall() {
         });
 
         setPreservedUrls((prev) => {
-          const next = { ...prev };
-          delete next[appId];
+          const next = new Map(prev);
+          next.delete(appId);
           return next;
         });
 
@@ -143,7 +142,7 @@ export function useAppOutputSubscription() {
   const { settings, updateSettings } = useSettings();
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   const setAppUrl = useSetAtom(setAppUrlForAppAtom);
-  const setPreviewErrorByAppId = useSetAtom(previewErrorByAppIdAtom);
+  const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
   const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
   const bumpPreviewReloadToken = useSetAtom(bumpPreviewReloadTokenForAppAtom);
   const appId = useAtomValue(selectedAppIdAtom);
@@ -246,29 +245,26 @@ export function useAppOutputSubscription() {
           });
         }
 
-        setPreviewErrorByAppId((prev) => {
-          const current = prev.get(output.appId);
-          if (current && current.source !== "dyad-sync") {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(output.appId, {
-            message: output.message,
-            source: "dyad-sync",
-          });
-          return next;
+        setPreviewError({
+          appId: output.appId,
+          error: (current) => {
+            if (current && current.source !== "dyad-sync") {
+              return current;
+            }
+            return {
+              message: output.message,
+              source: "dyad-sync",
+            };
+          },
         });
       }
 
       if (output.type === "sync-recovered") {
         syncErrorToastRef.current.delete(output.appId);
-        setPreviewErrorByAppId((prev) => {
-          if (prev.get(output.appId)?.source !== "dyad-sync") {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.delete(output.appId);
-          return next;
+        setPreviewError({
+          appId: output.appId,
+          error: (current) =>
+            current?.source === "dyad-sync" ? undefined : current,
         });
       }
 
@@ -286,6 +282,7 @@ export function useAppOutputSubscription() {
 
       if (
         output.type === "package-manager-warning" &&
+        selectedAppIdRef.current === output.appId &&
         pnpmWarningSettingRef.current.hasSettings &&
         pnpmWarningSettingRef.current.showWarning
       ) {
@@ -332,7 +329,7 @@ export function useAppOutputSubscription() {
       processProxyServerOutput,
       rebuildAppAfterPnpmInstall,
       setPreviewAppExit,
-      setPreviewErrorByAppId,
+      setPreviewError,
       updateSettings,
     ],
   );
@@ -500,8 +497,8 @@ export function useRunApp() {
         });
 
         setPreservedUrls((prev) => {
-          const next = { ...prev };
-          delete next[appId];
+          const next = new Map(prev);
+          next.delete(appId);
           return next;
         });
 

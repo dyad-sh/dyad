@@ -5,7 +5,7 @@ import {
   currentPreviewErrorAtom,
   previewCurrentUrlAtom,
   setPreviewErrorForAppAtom,
-  type PreviewErrorMessage,
+  type PreviewErrorUpdate,
 } from "@/atoms/previewRuntimeAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -206,22 +206,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const errorMessage = useAtomValue(currentPreviewErrorAtom);
   const setPreviewErrorForApp = useSetAtom(setPreviewErrorForAppAtom);
   const setErrorMessage = useCallback(
-    (
-      update:
-        | PreviewErrorMessage
-        | undefined
-        | ((
-            current: PreviewErrorMessage | undefined,
-          ) => PreviewErrorMessage | undefined),
-    ) => {
+    (update: PreviewErrorUpdate) => {
       if (selectedAppId === null) {
         return;
       }
-      const error =
-        typeof update === "function" ? update(errorMessage) : update;
-      setPreviewErrorForApp({ appId: selectedAppId, error });
+      setPreviewErrorForApp({ appId: selectedAppId, error: update });
     },
-    [errorMessage, selectedAppId, setPreviewErrorForApp],
+    [selectedAppId, setPreviewErrorForApp],
   );
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -240,7 +231,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [preservedUrls, setPreservedUrls] = useAtom(previewCurrentUrlAtom);
 
   // Get the initial URL to use - check if we have a preserved URL from before HMR remount
-  const initialUrl = selectedAppId ? preservedUrls[selectedAppId] : null;
+  const initialUrl = selectedAppId
+    ? (preservedUrls.get(selectedAppId) ?? null)
+    : null;
 
   // Navigation state - initialize with preserved URL if available
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -1116,15 +1109,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                setPreservedUrls((prev) => ({
-                  ...prev,
-                  [selectedAppId]: resolvedUrl,
-                }));
+                setPreservedUrls((prev) => {
+                  const next = new Map(prev);
+                  next.set(selectedAppId, resolvedUrl);
+                  return next;
+                });
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
                 setPreservedUrls((prev) => {
-                  const next = { ...prev };
-                  delete next[selectedAppId];
+                  const next = new Map(prev);
+                  next.delete(selectedAppId);
                   return next;
                 });
               }
@@ -1150,15 +1144,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                setPreservedUrls((prev) => ({
-                  ...prev,
-                  [selectedAppId]: resolvedUrl,
-                }));
+                setPreservedUrls((prev) => {
+                  const next = new Map(prev);
+                  next.set(selectedAppId, resolvedUrl);
+                  return next;
+                });
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
                 setPreservedUrls((prev) => {
-                  const next = { ...prev };
-                  delete next[selectedAppId];
+                  const next = new Map(prev);
+                  next.delete(selectedAppId);
                   return next;
                 });
               }
@@ -1178,7 +1173,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     selectedAppId,
     appUrl,
     appendConsoleEntries,
-    errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
@@ -1292,15 +1286,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             // Clear preserved URL if navigating back to root, otherwise update it
             if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
               setPreservedUrls((prev) => {
-                const newUrls = { ...prev };
-                delete newUrls[selectedAppId];
-                return newUrls;
+                const next = new Map(prev);
+                next.delete(selectedAppId);
+                return next;
               });
             } else {
-              setPreservedUrls((prev) => ({
-                ...prev,
-                [selectedAppId]: targetUrl,
-              }));
+              setPreservedUrls((prev) => {
+                const next = new Map(prev);
+                next.set(selectedAppId, targetUrl);
+                return next;
+              });
             }
           }
         } catch {
@@ -1343,15 +1338,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             // Clear preserved URL if navigating forward to root, otherwise update it
             if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
               setPreservedUrls((prev) => {
-                const newUrls = { ...prev };
-                delete newUrls[selectedAppId];
-                return newUrls;
+                const next = new Map(prev);
+                next.delete(selectedAppId);
+                return next;
               });
             } else {
-              setPreservedUrls((prev) => ({
-                ...prev,
-                [selectedAppId]: targetUrl,
-              }));
+              setPreservedUrls((prev) => {
+                const next = new Map(prev);
+                next.set(selectedAppId, targetUrl);
+                return next;
+              });
             }
           }
         } catch {
@@ -1433,15 +1429,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Clear preserved URL if navigating to root, otherwise update it
         if (path === "/" || path === "") {
           setPreservedUrls((prev) => {
-            const newUrls = { ...prev };
-            delete newUrls[selectedAppId];
-            return newUrls;
+            const next = new Map(prev);
+            next.delete(selectedAppId);
+            return next;
           });
         } else {
-          setPreservedUrls((prev) => ({
-            ...prev,
-            [selectedAppId]: newUrl,
-          }));
+          setPreservedUrls((prev) => {
+            const next = new Map(prev);
+            next.set(selectedAppId, newUrl);
+            return next;
+          });
         }
       }
     }

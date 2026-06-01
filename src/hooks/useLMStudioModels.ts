@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ipc } from "@/ipc/types";
+import { ipc, type LocalModel } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useLocalLMSModels() {
-  const { data, isFetching, error, refetch } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery<LocalModel[], Error>({
     queryKey: queryKeys.languageModels.lmStudioLocal,
     queryFn: async () => {
       const { models } = await ipc.languageModel.listLMStudioModels();

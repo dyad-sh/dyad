@@ -509,6 +509,8 @@ export async function runOAuthFlow(
       authorizationCode: code,
     });
     if (final !== "AUTHORIZED") {
+      // The listener already closed when its callback delivered the
+      // code (settle disposes), so there's nothing to free here.
       return {
         success: false,
         error: "OAuth completed without authorization; please try again.",

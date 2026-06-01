@@ -143,7 +143,8 @@ export function registerMcpHandlers() {
         headersJson: parsedHeadersJson,
         url: url || null,
         enabled: !!enabled,
-        oauthEnabled: !!oauthEnabled,
+        // OAuth only applies to HTTP transport.
+        oauthEnabled: transport === "http" ? !!oauthEnabled : false,
         oauthClientId: oauthClientId ?? null,
         oauthClientSecret: oauthClientSecret
           ? encryptToString(oauthClientSecret)

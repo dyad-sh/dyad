@@ -162,7 +162,7 @@ export function useMcp() {
         }),
       ]);
     },
-    meta: { showErrorToast: true },
+    // onDisconnect shows its own error toast, so no global one here.
   });
 
   const setConsentMutation = useMutation({

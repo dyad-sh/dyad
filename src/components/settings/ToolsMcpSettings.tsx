@@ -486,7 +486,11 @@ export function ToolsMcpSettings() {
         // Bridge the gap until the new row arrives in `serversQuery`
         // and shows its own "Connecting…" state.
         showInfo(`Connecting OAuth for "${created.name}"…`);
-        await runAutoConnect(created.id, { showToast: true });
+        await runAutoConnect(created.id, {
+          showToast: true,
+          callbackPort:
+            typeof callbackPort === "number" ? callbackPort : undefined,
+        });
       } else {
         await runProbe(created.id, { showToast: true });
       }
@@ -495,24 +499,19 @@ export function ToolsMcpSettings() {
 
   const runAutoConnect = async (
     serverId: number,
-    opts?: { showToast?: boolean },
+    opts?: { showToast?: boolean; callbackPort?: number },
   ) => {
     // Clear any prior feedback so a stale "discovery_failed" alert
     // can't sit next to a fresh error toast on the retry path.
     setConnectFeedback(null);
     setConnectingServerId(serverId);
     try {
-      // A server's saved port matches the redirect URI registered with
-      // its OAuth client, so reuse it. Fall back to the probed port for
-      // rows with no saved port (e.g. enabled via "Enable OAuth & retry").
-      const storedPort = servers.find(
-        (sv) => sv.id === serverId,
-      )?.oauthCallbackPort;
+      // No port means the flow uses the server's saved port, which
+      // matches its registered redirect URI. Callers pass the probed
+      // port only for rows with none saved yet.
       const result = await startOAuth({
         serverId,
-        callbackPort:
-          storedPort ??
-          (typeof callbackPort === "number" ? callbackPort : undefined),
+        callbackPort: opts?.callbackPort,
       });
       if (result.success) {
         setConnectFeedback(null);
@@ -572,7 +571,10 @@ export function ToolsMcpSettings() {
   const onEnableOAuthAndRetry = async (serverId: number) => {
     await updateServer({ id: serverId, oauthEnabled: true });
     setConnectFeedback(null);
-    await runAutoConnect(serverId);
+    // Just enabled, so no saved port yet -- use the probed one.
+    await runAutoConnect(serverId, {
+      callbackPort: typeof callbackPort === "number" ? callbackPort : undefined,
+    });
   };
 
   const onDisableOAuthAndRetry = async (serverId: number) => {

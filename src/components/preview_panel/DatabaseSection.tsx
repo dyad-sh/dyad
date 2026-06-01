@@ -10,7 +10,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -18,6 +18,7 @@ import { useNeon } from "@/hooks/useNeon";
 import { MigrationPanelBody } from "@/components/MigrationPanel";
 import { DatabaseEnvVars } from "@/components/preview_panel/DatabaseEnvVars";
 import { getErrorMessage } from "@/lib/errors";
+import { queryKeys } from "@/lib/queryKeys";
 
 type EnvKind = "prod" | "dev";
 
@@ -48,6 +49,7 @@ const ENV_META: Record<
 
 export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const { t } = useTranslation("home");
+  const queryClient = useQueryClient();
   const { app, refreshApp } = useLoadApp(appId);
   const { branches, isLoadingBranches } = useNeon(appId);
 
@@ -79,6 +81,13 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
     onSuccess: async () => {
       await refreshApp();
       setOverride(undefined);
+      // The Vercel create-project sync preview is keyed only by appId, but its
+      // contents are derived server-side from the persisted deploy-branch
+      // choice. Invalidate it so the preview doesn't show the previous branch's
+      // configuration after the selection changes.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.vercel.syncPreview({ appId }),
+      });
     },
     onError: (_error, branchType) => {
       if (branchType === null) {

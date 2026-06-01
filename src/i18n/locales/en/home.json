@@ -512,7 +512,12 @@
       "failedCreateProject": "Failed to create project.",
       "failedConnectProject": "Failed to connect to project.",
       "failedSaveToken": "Failed to save access token.",
-      "failedCheckAvailability": "Failed to check project availability."
+      "failedCheckAvailability": "Failed to check project availability.",
+      "syncPreviewTitle": "Database auto-configuration",
+      "syncPreviewLoading": "Loading database configuration…",
+      "syncPreviewError": "Couldn't load the database auto-configuration preview. You can still create the project.",
+      "syncPreviewIntro": "When you create this project, Dyad will push these environment variables from your {{branchType}} database to Vercel (secret values are hidden and sent securely):",
+      "syncPreviewAuthDomain": "Your live deployment domain will be added to Neon's trusted redirect domains after the first deploy."
     },
     "supabase": {
       "title": "Supabase Integration",

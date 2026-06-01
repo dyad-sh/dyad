@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Globe, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -224,6 +225,7 @@ function UnconnectedVercelConnector({
   refreshSettings,
   refreshApp,
 }: UnconnectedVercelConnectorProps) {
+  const { t } = useTranslation("home");
   // --- Manual Token Entry State ---
   const [accessToken, setAccessToken] = useState("");
   const [isSavingToken, setIsSavingToken] = useState(false);
@@ -600,25 +602,23 @@ function UnconnectedVercelConnector({
                       data-testid="vercel-sync-preview"
                     >
                       <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                        Database auto-configuration
+                        {t("integrations.vercel.syncPreviewTitle")}
                       </p>
                       {isSyncPreviewLoading ? (
                         <p className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Loading database configuration…
+                          {t("integrations.vercel.syncPreviewLoading")}
                         </p>
                       ) : syncPreviewError ? (
                         <p className="text-xs text-red-600 dark:text-red-400">
-                          Couldn't load the database auto-configuration preview.
-                          You can still create the project.
+                          {t("integrations.vercel.syncPreviewError")}
                         </p>
                       ) : syncPreview ? (
                         <>
                           <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
-                            When you create this project, Dyad will push these
-                            environment variables from your{" "}
-                            {syncPreview.branchType} database to Vercel (secret
-                            values are hidden and sent securely):
+                            {t("integrations.vercel.syncPreviewIntro", {
+                              branchType: syncPreview.branchType,
+                            })}
                           </p>
                           <ul className="list-disc list-inside text-xs font-mono text-blue-800 dark:text-blue-200 space-y-0.5">
                             {syncPreview.envKeys.map((key) => (
@@ -627,9 +627,7 @@ function UnconnectedVercelConnector({
                           </ul>
                           {syncPreview.authActive && (
                             <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
-                              Your live deployment domain will be added to
-                              Neon's trusted redirect domains after the first
-                              deploy.
+                              {t("integrations.vercel.syncPreviewAuthDomain")}
                             </p>
                           )}
                         </>

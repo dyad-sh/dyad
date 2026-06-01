@@ -109,6 +109,10 @@ ${authSection}
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
+
 ## Authorization and RLS
 
 Do not assume every Neon app should use the same authorization pattern.

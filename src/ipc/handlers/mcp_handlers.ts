@@ -186,7 +186,9 @@ export function registerMcpHandlers() {
     if (params.oauthEnabled !== undefined) {
       update.oauthEnabled = !!params.oauthEnabled;
       // Scrub OAuth columns so a stale client secret / token blob
-      // doesn't linger without a UI to clear it.
+      // doesn't linger without a UI to clear it. An in-flight loopback
+      // listener for this server frees its port when the flow times
+      // out, so there's nothing to cancel here.
       if (!params.oauthEnabled) {
         update.oauthState = null;
         update.oauthClientId = null;

@@ -353,8 +353,9 @@ export function ToolsMcpSettings() {
 
   // Falls back to the default port on probe failure so the UI
   // doesn't show "…" forever; the OAuth flow uses the same default.
-  // Short staleTime so the redirect-URI hint stays close to a port
-  // the listener can still bind (another process may have grabbed it).
+  // The port stays stable while the form is open so the redirect-URI
+  // hint matches the value saved on submit -- the user may register it
+  // at their provider mid-form. A taken port surfaces on bind instead.
   const callbackPortQuery = useQuery({
     queryKey: ["mcp", "callbackPort"],
     queryFn: () =>
@@ -362,8 +363,8 @@ export function ToolsMcpSettings() {
         .probeCallbackPort()
         .then((r) => r.port)
         .catch(() => DEFAULT_OAUTH_CALLBACK_PORT),
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
   const callbackPort = callbackPortQuery.data ?? null;
 
@@ -501,13 +502,17 @@ export function ToolsMcpSettings() {
     setConnectFeedback(null);
     setConnectingServerId(serverId);
     try {
-      // Pass the probed port so rows with `oauthCallbackPort = null`
-      // (e.g. enabled via "Enable OAuth & retry") get the same
-      // fallback the session already settled on.
+      // A server's saved port matches the redirect URI registered with
+      // its OAuth client, so reuse it. Fall back to the probed port for
+      // rows with no saved port (e.g. enabled via "Enable OAuth & retry").
+      const storedPort = servers.find(
+        (sv) => sv.id === serverId,
+      )?.oauthCallbackPort;
       const result = await startOAuth({
         serverId,
         callbackPort:
-          typeof callbackPort === "number" ? callbackPort : undefined,
+          storedPort ??
+          (typeof callbackPort === "number" ? callbackPort : undefined),
       });
       if (result.success) {
         setConnectFeedback(null);

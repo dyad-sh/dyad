@@ -292,12 +292,11 @@ async function startCallbackListener(
         return;
       }
 
-      const safeErr = escapeHtml(errParam ?? "missing code");
       res.writeHead(400, { "Content-Type": "text/html" }).end(
         renderCallbackPage({
           kind: "error",
           title: "Authorization failed",
-          message: safeErr,
+          message: errParam ?? "missing code",
         }),
       );
       settle(() =>

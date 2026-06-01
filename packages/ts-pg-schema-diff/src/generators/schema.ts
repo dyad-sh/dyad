@@ -578,8 +578,17 @@ function checkConstraintUsesAddedEnumLabel(
   constraint: CheckConstraint,
   addition: EnumValueAddition,
 ): string | null {
+  const enumColumnNames = new Set(
+    table.columns
+      .filter((column) => columnUsesType(column, addition.typeNames))
+      .map((column) => column.name),
+  );
+  if (enumColumnNames.size === 0) {
+    return null;
+  }
   if (
-    !table.columns.some((column) => columnUsesType(column, addition.typeNames))
+    constraint.keyColumns.length > 0 &&
+    !constraint.keyColumns.some((columnName) => enumColumnNames.has(columnName))
   ) {
     return null;
   }

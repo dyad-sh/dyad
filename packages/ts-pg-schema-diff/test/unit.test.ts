@@ -17,6 +17,7 @@ import {
 } from "../src/schema/identifiers.js";
 import {
   emptySchema,
+  type CheckConstraint,
   type Column,
   type ForeignKeyConstraint,
   type FunctionSchema,
@@ -178,6 +179,92 @@ describe("generatePlan", () => {
     ).toThrow(
       'adding enum value ok to "public"."mood" and using it in "public"."messages" column "mood" default is not supported in a single transaction',
     );
+  });
+
+  it("rejects enum value additions used by a later check constraint", () => {
+    const current: Schema = {
+      ...emptySchema(),
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad"],
+        },
+      ],
+      tables: [table("messages", [column("mood", "mood", false)])],
+    };
+    const desired: Schema = {
+      ...emptySchema(),
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad", "ok"],
+        },
+      ],
+      tables: [
+        {
+          ...table("messages", [column("mood", "mood", false)]),
+          checkConstraints: [
+            checkConstraint("messages_mood_check", ["mood"], "mood = 'ok'"),
+          ],
+        },
+      ],
+    };
+
+    expect(() =>
+      generatePlan(current, desired, {
+        rejectEnumValueUsageInSameTransaction: true,
+      }),
+    ).toThrow(
+      'adding enum value ok to "public"."mood" and using it in "public"."messages" check constraint "messages_mood_check" is not supported in a single transaction',
+    );
+  });
+
+  it("ignores unrelated check constraints when guarding enum value additions", () => {
+    const current: Schema = {
+      ...emptySchema(),
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad"],
+        },
+      ],
+      tables: [
+        table("messages", [
+          column("mood", "mood", false),
+          column("note", "text", false),
+        ]),
+      ],
+    };
+    const desired: Schema = {
+      ...emptySchema(),
+      enums: [
+        {
+          kind: "enum",
+          name: schemaQualifiedName("public", "mood"),
+          labels: ["sad", "ok"],
+        },
+      ],
+      tables: [
+        {
+          ...table("messages", [
+            column("mood", "mood", false),
+            column("note", "text", false),
+          ]),
+          checkConstraints: [
+            checkConstraint("messages_note_check", ["note"], "note <> 'ok'"),
+          ],
+        },
+      ],
+    };
+
+    expect(() =>
+      generatePlan(current, desired, {
+        rejectEnumValueUsageInSameTransaction: true,
+      }),
+    ).not.toThrow();
   });
 
   it("renames a replaced index before creating the new index and dropping the old one", () => {
@@ -861,6 +948,22 @@ function table(name: string, columns: readonly Column[]): Table {
     partitionKeyDef: "",
     parentTable: null,
     forValues: "",
+  };
+}
+
+function checkConstraint(
+  name: string,
+  keyColumns: readonly string[],
+  expression: string,
+): CheckConstraint {
+  return {
+    kind: "checkConstraint",
+    name,
+    keyColumns,
+    expression,
+    isValid: true,
+    isInheritable: true,
+    dependsOnFunctions: [],
   };
 }
 

@@ -318,6 +318,7 @@ export function ToolsMcpSettings() {
   const {
     servers,
     toolsByServer,
+    statusByServer,
     consentsMap,
     createServer,
     toggleEnabled: toggleServerEnabled,
@@ -484,14 +485,17 @@ export function ToolsMcpSettings() {
         // Bridge the gap until the new row arrives in `serversQuery`
         // and shows its own "Connecting…" state.
         showInfo(`Connecting OAuth for "${created.name}"…`);
-        await runAutoConnect(created.id);
+        await runAutoConnect(created.id, { showToast: true });
       } else {
-        await runProbe(created.id);
+        await runProbe(created.id, { showToast: true });
       }
     }
   };
 
-  const runAutoConnect = async (serverId: number) => {
+  const runAutoConnect = async (
+    serverId: number,
+    opts?: { showToast?: boolean },
+  ) => {
     // Clear any prior feedback so a stale "discovery_failed" alert
     // can't sit next to a fresh error toast on the retry path.
     setConnectFeedback(null);
@@ -517,6 +521,14 @@ export function ToolsMcpSettings() {
           kind: "discovery_failed",
           message,
         });
+        // Toast only on the initial post-registration attempt so the
+        // failure is visible even when the new row is scrolled out of
+        // view. Manual retries show the inline panel in place.
+        if (opts?.showToast) {
+          showError(
+            "OAuth connection failed. This server doesn't support OAuth.",
+          );
+        }
       } else {
         showError(message);
       }
@@ -525,7 +537,7 @@ export function ToolsMcpSettings() {
     }
   };
 
-  const runProbe = async (serverId: number) => {
+  const runProbe = async (serverId: number, opts?: { showToast?: boolean }) => {
     try {
       const result = await ipc.mcp.probeConnection(serverId);
       if (result.status === "unauthorized") {
@@ -535,6 +547,11 @@ export function ToolsMcpSettings() {
           message:
             "This server requires authentication. Enable OAuth and try again.",
         });
+        if (opts?.showToast) {
+          showError(
+            "Server connection failed. This server requires authentication. Try enabling OAuth.",
+          );
+        }
       } else {
         setConnectFeedback(null);
       }
@@ -770,177 +787,195 @@ export function ToolsMcpSettings() {
       </div>
 
       <div className="space-y-3">
-        {servers.map((s) => (
-          <div key={s.id} className="border rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium flex items-center gap-2">
-                  {s.name}
-                  {s.oauthEnabled && (
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        s.oauthConnected
-                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
-                          : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100"
-                      }`}
-                    >
-                      OAuth: {s.oauthConnected ? "connected" : "not connected"}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {s.transport}
-                  {s.url ? ` · ${s.url}` : ""}
-                  {s.command ? ` · ${s.command}` : ""}
-                  {Array.isArray(s.args) && s.args.length
-                    ? ` · ${s.args.join(" ")}`
-                    : ""}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {s.oauthEnabled && !s.oauthConnected && (
-                  <Button
-                    variant="default"
-                    onClick={() => onConnect(s.id)}
-                    disabled={isStartingOAuth && connectingServerId === s.id}
-                  >
-                    {isStartingOAuth && connectingServerId === s.id
-                      ? "Connecting…"
-                      : "Connect"}
-                  </Button>
-                )}
-                {s.oauthEnabled && s.oauthConnected && (
-                  <Button
-                    variant="outline"
-                    onClick={() => onDisconnect(s.id)}
-                    disabled={
-                      isDisconnectingOAuth && disconnectingServerId === s.id
-                    }
-                  >
-                    {isDisconnectingOAuth && disconnectingServerId === s.id
-                      ? "Disconnecting…"
-                      : "Disconnect"}
-                  </Button>
-                )}
-                <Switch
-                  aria-label={`Toggle ${s.name}`}
-                  checked={!!s.enabled}
-                  onCheckedChange={() => toggleServerEnabled(s.id, !!s.enabled)}
-                />
-                <Button variant="outline" onClick={() => deleteServer(s.id)}>
-                  Delete
-                </Button>
-              </div>
-            </div>
-            {s.transport === "stdio" && (
-              <div className="mt-3">
-                <div className="text-sm font-medium mb-2">
-                  Environment Variables
-                </div>
-                <KeyValueEditor
-                  id={s.id}
-                  json={s.envJson}
-                  disabled={!s.enabled}
-                  isSaving={!!isUpdatingServer}
-                  onSave={async (pairs) => {
-                    await updateServer({
-                      id: s.id,
-                      envJson: arrayToJsonObject(pairs),
-                    });
-                  }}
-                />
-              </div>
-            )}
-            {connectFeedback && connectFeedback.serverId === s.id && (
-              <div className="mt-3">
-                <Alert variant="destructive">
-                  <AlertTitle>
-                    {connectFeedback.kind === "unauthorized"
-                      ? "Server requires authentication"
-                      : connectFeedback.kind === "discovery_failed"
-                        ? "Server doesn't support OAuth"
-                        : "Connection failed"}
-                  </AlertTitle>
-                  <AlertDescription className="gap-2">
-                    <span>{connectFeedback.message}</span>
-                    {connectFeedback.kind === "unauthorized" && (
-                      <Button
-                        size="sm"
-                        onClick={() => onEnableOAuthAndRetry(s.id)}
-                        disabled={isUpdatingServer || isStartingOAuth}
+        {servers.map((s) => {
+          // An OAuth-off server that returns 401 needs auth; surface
+          // that from the live probe status so the alert stays put.
+          const rowFeedback: ConnectFeedback | null =
+            connectFeedback && connectFeedback.serverId === s.id
+              ? connectFeedback
+              : !s.oauthEnabled && statusByServer[s.id] === "unauthorized"
+                ? {
+                    serverId: s.id,
+                    kind: "unauthorized",
+                    message:
+                      "This server requires authentication. Enable OAuth and try again.",
+                  }
+                : null;
+          return (
+            <div key={s.id} className="border rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium flex items-center gap-2">
+                    {s.name}
+                    {s.oauthEnabled && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          s.oauthConnected
+                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100"
+                        }`}
                       >
-                        Enable OAuth & retry
-                      </Button>
+                        OAuth:{" "}
+                        {s.oauthConnected ? "connected" : "not connected"}
+                      </span>
                     )}
-                    {connectFeedback.kind === "discovery_failed" && (
-                      <Button
-                        size="sm"
-                        onClick={() => onDisableOAuthAndRetry(s.id)}
-                        disabled={isUpdatingServer}
-                      >
-                        Disable OAuth & retry
-                      </Button>
-                    )}
-                  </AlertDescription>
-                </Alert>
-              </div>
-            )}
-            {s.transport === "http" && (
-              <div className="mt-3">
-                <div className="text-sm font-medium mb-2">Headers</div>
-                <KeyValueEditor
-                  id={s.id}
-                  json={s.headersJson}
-                  disabled={!s.enabled}
-                  isSaving={!!isUpdatingServer}
-                  itemLabel="Header"
-                  onSave={async (pairs) => {
-                    await updateServer({
-                      id: s.id,
-                      headersJson: arrayToJsonObject(pairs),
-                    });
-                  }}
-                />
-              </div>
-            )}
-            <div className="mt-3 space-y-2">
-              {(toolsByServer[s.id] || []).map((t) => (
-                <div key={t.name} className="border rounded p-2">
-                  <div className="flex items-center gap-4">
-                    <div className="font-mono text-sm truncate">{t.name}</div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={consents[`${s.id}:${t.name}`] || "ask"}
-                        onValueChange={(v) =>
-                          onSetToolConsent(s.id, t.name, v as any)
-                        }
-                      >
-                        <SelectTrigger className="w-[140px] h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ask">Ask</SelectItem>
-                          <SelectItem value="always">Always allow</SelectItem>
-                          <SelectItem value="denied">Deny</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
                   </div>
-                  {t.description && (
-                    <div className="mt-1 text-xs max-w-[500px] text-muted-foreground truncate">
-                      {t.description}
-                    </div>
-                  )}
+                  <div className="text-xs text-muted-foreground">
+                    {s.transport}
+                    {s.url ? ` · ${s.url}` : ""}
+                    {s.command ? ` · ${s.command}` : ""}
+                    {Array.isArray(s.args) && s.args.length
+                      ? ` · ${s.args.join(" ")}`
+                      : ""}
+                  </div>
                 </div>
-              ))}
-              {(toolsByServer[s.id] || []).length === 0 && (
-                <div className="text-xs text-muted-foreground">
-                  No tools discovered.
+                <div className="flex items-center gap-2">
+                  {s.oauthEnabled && !s.oauthConnected && (
+                    <Button
+                      variant="default"
+                      onClick={() => onConnect(s.id)}
+                      disabled={isStartingOAuth && connectingServerId === s.id}
+                    >
+                      {isStartingOAuth && connectingServerId === s.id
+                        ? "Connecting…"
+                        : "Connect"}
+                    </Button>
+                  )}
+                  {s.oauthEnabled && s.oauthConnected && (
+                    <Button
+                      variant="outline"
+                      onClick={() => onDisconnect(s.id)}
+                      disabled={
+                        isDisconnectingOAuth && disconnectingServerId === s.id
+                      }
+                    >
+                      {isDisconnectingOAuth && disconnectingServerId === s.id
+                        ? "Disconnecting…"
+                        : "Disconnect"}
+                    </Button>
+                  )}
+                  <Switch
+                    aria-label={`Toggle ${s.name}`}
+                    checked={!!s.enabled}
+                    onCheckedChange={() =>
+                      toggleServerEnabled(s.id, !!s.enabled)
+                    }
+                  />
+                  <Button variant="outline" onClick={() => deleteServer(s.id)}>
+                    Delete
+                  </Button>
+                </div>
+              </div>
+              {s.transport === "stdio" && (
+                <div className="mt-3">
+                  <div className="text-sm font-medium mb-2">
+                    Environment Variables
+                  </div>
+                  <KeyValueEditor
+                    id={s.id}
+                    json={s.envJson}
+                    disabled={!s.enabled}
+                    isSaving={!!isUpdatingServer}
+                    onSave={async (pairs) => {
+                      await updateServer({
+                        id: s.id,
+                        envJson: arrayToJsonObject(pairs),
+                      });
+                    }}
+                  />
                 </div>
               )}
+              {rowFeedback && (
+                <div className="mt-3">
+                  <Alert variant="destructive">
+                    <AlertTitle>
+                      {rowFeedback.kind === "unauthorized"
+                        ? "Server requires authentication"
+                        : rowFeedback.kind === "discovery_failed"
+                          ? "Server doesn't support OAuth"
+                          : "Connection failed"}
+                    </AlertTitle>
+                    <AlertDescription className="gap-2">
+                      <span>{rowFeedback.message}</span>
+                      {rowFeedback.kind === "unauthorized" && (
+                        <Button
+                          size="sm"
+                          onClick={() => onEnableOAuthAndRetry(s.id)}
+                          disabled={isUpdatingServer || isStartingOAuth}
+                        >
+                          Enable OAuth & retry
+                        </Button>
+                      )}
+                      {rowFeedback.kind === "discovery_failed" && (
+                        <Button
+                          size="sm"
+                          onClick={() => onDisableOAuthAndRetry(s.id)}
+                          disabled={isUpdatingServer}
+                        >
+                          Disable OAuth & retry
+                        </Button>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+              {s.transport === "http" && (
+                <div className="mt-3">
+                  <div className="text-sm font-medium mb-2">Headers</div>
+                  <KeyValueEditor
+                    id={s.id}
+                    json={s.headersJson}
+                    disabled={!s.enabled}
+                    isSaving={!!isUpdatingServer}
+                    itemLabel="Header"
+                    onSave={async (pairs) => {
+                      await updateServer({
+                        id: s.id,
+                        headersJson: arrayToJsonObject(pairs),
+                      });
+                    }}
+                  />
+                </div>
+              )}
+              <div className="mt-3 space-y-2">
+                {(toolsByServer[s.id] || []).map((t) => (
+                  <div key={t.name} className="border rounded p-2">
+                    <div className="flex items-center gap-4">
+                      <div className="font-mono text-sm truncate">{t.name}</div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={consents[`${s.id}:${t.name}`] || "ask"}
+                          onValueChange={(v) =>
+                            onSetToolConsent(s.id, t.name, v as any)
+                          }
+                        >
+                          <SelectTrigger className="w-[140px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ask">Ask</SelectItem>
+                            <SelectItem value="always">Always allow</SelectItem>
+                            <SelectItem value="denied">Deny</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    {t.description && (
+                      <div className="mt-1 text-xs max-w-[500px] text-muted-foreground truncate">
+                        {t.description}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {(toolsByServer[s.id] || []).length === 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    No tools discovered.
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {servers.length === 0 && (
           <div className="text-sm text-muted-foreground">
             No servers configured yet.

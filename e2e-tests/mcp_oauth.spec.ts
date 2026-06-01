@@ -272,6 +272,12 @@ testSkipIfWindows(
         .fill(`${base}/mcp`);
       await po.page.getByRole("button", { name: "Add Server" }).click();
 
+      // Toast fires once at registration and auto-dismisses; assert it
+      // before the persistent panel below.
+      await po.toastNotifications.waitForToastWithText(
+        "OAuth connection failed. This server doesn't support OAuth.",
+      );
+
       await expect(
         po.page.getByText("Server doesn't support OAuth", { exact: true }),
       ).toBeVisible({ timeout: 15_000 });
@@ -376,6 +382,10 @@ testSkipIfWindows(
       // retry flow.
       await po.page.getByRole("switch", { name: "Use OAuth" }).click();
       await po.page.getByRole("button", { name: "Add Server" }).click();
+
+      await po.toastNotifications.waitForToastWithText(
+        "Server connection failed. This server requires authentication. Try enabling OAuth.",
+      );
 
       await expect(
         po.page.getByText("Server requires authentication", { exact: true }),

@@ -233,7 +233,7 @@ export function registerMcpHandlers() {
     const mainOp = (async () => {
       const client = await mcpManager.getClient(serverId);
       const remoteTools = await client.tools();
-      return Promise.all(
+      const tools = await Promise.all(
         Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
           name,
           description: mcpTool.description ?? null,
@@ -242,6 +242,7 @@ export function registerMcpHandlers() {
             | undefined,
         })),
       );
+      return { tools, status: "ok" as const };
     })();
     mainOp.catch(() => undefined);
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -268,12 +269,13 @@ export function registerMcpHandlers() {
       try {
         mcpManager.dispose(serverId);
       } catch {}
-      logger.error(
-        `Failed to list tools for server ${serverId}: ${
-          e instanceof Error ? `${e.name}: ${e.message}` : String(e)
-        }`,
-      );
-      return [];
+      const message =
+        e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      logger.error(`Failed to list tools for server ${serverId}: ${message}`);
+      // Report a 401 so the UI can persistently flag a server that
+      // needs auth; everything else is a generic error.
+      const status = looksLikeUnauthorized(message) ? "unauthorized" : "error";
+      return { tools: [], status: status as "unauthorized" | "error" };
     }
   });
 

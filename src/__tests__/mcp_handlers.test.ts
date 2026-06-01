@@ -248,8 +248,8 @@ describe("mcp listTools handler", () => {
       ),
     );
 
-    const result = await invoke<unknown[]>("mcp:list-tools", 1);
-    expect(result).toEqual([]);
+    const result = await invoke("mcp:list-tools", 1);
+    expect(result).toEqual({ tools: [], status: "error" });
   });
 
   it("returns an empty list when the underlying client.tools() throws", async () => {
@@ -262,8 +262,8 @@ describe("mcp listTools handler", () => {
       .mockRejectedValueOnce(new Error("401 Unauthorized"));
     getClientMock.mockResolvedValueOnce({ tools: failingTools });
 
-    const result = await invoke<unknown[]>("mcp:list-tools", 2);
-    expect(result).toEqual([]);
+    const result = await invoke("mcp:list-tools", 2);
+    expect(result).toEqual({ tools: [], status: "unauthorized" });
     expect(failingTools).toHaveBeenCalled();
   });
 });

@@ -172,6 +172,7 @@ export type {
   CreateMcpServer,
   McpServerUpdate,
   McpTool,
+  McpListToolsResult,
   McpToolConsent,
   McpConsentValue,
   McpConsentDecision,

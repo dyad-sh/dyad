@@ -12,6 +12,7 @@ import type {
   McpTool,
   McpToolConsent,
   CreateMcpServer,
+  McpListToolsResult,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -34,7 +35,10 @@ export function useMcp() {
     [serversQuery.data],
   );
 
-  const toolsByServerQuery = useQuery<Record<number, McpTool[]>, Error>({
+  const toolsByServerQuery = useQuery<
+    Record<number, McpListToolsResult>,
+    Error
+  >({
     queryKey: queryKeys.mcp.toolsByServer.list({ serverIds }),
     enabled: serverIds.length > 0,
     queryFn: async () => {
@@ -50,7 +54,7 @@ export function useMcp() {
       const entries = settled.flatMap((r) =>
         r.status === "fulfilled" ? [r.value] : [],
       );
-      return Object.fromEntries(entries) as Record<number, McpTool[]>;
+      return Object.fromEntries(entries) as Record<number, McpListToolsResult>;
     },
     // `serverIds` is part of the query key, so adding/removing a
     // server makes React Query see a brand-new query. keepPreviousData
@@ -67,6 +71,22 @@ export function useMcp() {
     },
     meta: { showErrorToast: true },
   });
+
+  const toolsByServer = useMemo(() => {
+    const map: Record<number, McpTool[]> = {};
+    for (const [id, result] of Object.entries(toolsByServerQuery.data || {})) {
+      map[Number(id)] = result.tools;
+    }
+    return map;
+  }, [toolsByServerQuery.data]);
+
+  const statusByServer = useMemo(() => {
+    const map: Record<number, McpListToolsResult["status"]> = {};
+    for (const [id, result] of Object.entries(toolsByServerQuery.data || {})) {
+      map[Number(id)] = result.status;
+    }
+    return map;
+  }, [toolsByServerQuery.data]);
 
   const consentsMap = useMemo(() => {
     const map: Record<string, McpToolConsent["consent"]> = {};
@@ -197,7 +217,8 @@ export function useMcp() {
 
   return {
     servers: serversQuery.data || [],
-    toolsByServer: toolsByServerQuery.data || {},
+    toolsByServer,
+    statusByServer,
     consentsList: consentsQuery.data || [],
     consentsMap,
     isLoading:

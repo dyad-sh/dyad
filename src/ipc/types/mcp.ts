@@ -120,6 +120,16 @@ export const McpToolSchema = z.object({
 
 export type McpTool = z.infer<typeof McpToolSchema>;
 
+// Result of a tools-listing attempt. `status` reports the outcome of
+// the live connection so the UI can flag a server that needs auth
+// without a separate probe.
+export const McpListToolsResultSchema = z.object({
+  tools: z.array(McpToolSchema),
+  status: z.enum(["ok", "unauthorized", "error"]),
+});
+
+export type McpListToolsResult = z.infer<typeof McpListToolsResultSchema>;
+
 export const McpToolConsentRecordSchema = z.object({
   id: z.number(),
   serverId: z.number(),
@@ -198,7 +208,7 @@ export const mcpContracts = {
   listTools: defineContract({
     channel: "mcp:list-tools",
     input: z.number(), // serverId
-    output: z.array(McpToolSchema),
+    output: McpListToolsResultSchema,
   }),
 
   getToolConsents: defineContract({

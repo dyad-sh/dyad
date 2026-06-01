@@ -63,7 +63,11 @@ export function decryptFromString(stored: string): string {
   const buf = Buffer.from(stored, "base64");
   if (!safeStorage.isEncryptionAvailable()) {
     // Untagged blob without a keyring: best-effort UTF-8. Garbage
-    // bytes fall through JSON.parse upstream as empty state.
+    // bytes fall through JSON.parse upstream as empty state. Log so a
+    // keyring that disappeared after an encrypted write is diagnosable.
+    logger.warn(
+      "safeStorage encryption unavailable while reading OAuth state; treating stored blob as plaintext",
+    );
     return buf.toString("utf8");
   }
   try {

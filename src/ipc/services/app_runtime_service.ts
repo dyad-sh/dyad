@@ -270,11 +270,13 @@ export async function ensureProxyForRunningApp({
     appInfo.proxyWorker = undefined;
   }
 
-  // Pin the port so the iframe origin stays stable across restarts —
-  // otherwise origin-scoped browser state (auth sessions, localStorage)
-  // gets orphaned and users appear logged out.
+  // Prefer the deterministic port so the iframe origin stays stable across
+  // restarts — otherwise origin-scoped browser state (auth sessions,
+  // localStorage) gets orphaned and users appear logged out. If that port is
+  // already taken (by a foreign service, or another Dyad app in the rare 10k
+  // overlap), the proxy worker scans the fallback band upward rather than
+  // killing whatever holds the port.
   const proxyPort = getAppProxyPort(appId);
-  await killProcessOnPort(proxyPort);
 
   const proxyWorker = await startProxy(originalUrl, {
     port: proxyPort,
@@ -291,6 +293,14 @@ export async function ensureProxyForRunningApp({
         proxyUrl,
         originalUrl,
         mode,
+      });
+    },
+    onError: (error) => {
+      logger.error(`Failed to start proxy for app ${appId}:`, error);
+      safeSend(event.sender, "app:output", {
+        type: "stderr",
+        message: `[dyad-proxy-server] ${error.message}`,
+        appId,
       });
     },
     fixedHeaders:

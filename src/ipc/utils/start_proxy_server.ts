@@ -4,6 +4,10 @@ import { Worker } from "worker_threads";
 import path from "path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  PROXY_FALLBACK_PORT_START,
+  PROXY_FALLBACK_MAX_ATTEMPTS,
+} from "../../../shared/ports";
 
 const logger = log.scope("start_proxy_server");
 
@@ -12,6 +16,7 @@ export async function startProxy(
   opts: {
     port: number;
     onStarted?: (proxyUrl: string) => void;
+    onError?: (error: DyadError) => void;
     fixedHeaders?: Record<string, string>;
   },
 ) {
@@ -20,7 +25,7 @@ export async function startProxy(
       "startProxy: targetOrigin must be absolute http/https URL",
       DyadErrorKind.Validation,
     );
-  const { port, onStarted, fixedHeaders } = opts;
+  const { port, onStarted, onError, fixedHeaders } = opts;
   logger.info("Starting proxy on port", port);
 
   const worker = new Worker(
@@ -29,6 +34,8 @@ export async function startProxy(
       workerData: {
         targetOrigin,
         port,
+        fallbackPortStart: PROXY_FALLBACK_PORT_START,
+        maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
         fixedHeaders,
       },
     },
@@ -39,6 +46,14 @@ export async function startProxy(
     if (typeof m === "string" && m.startsWith("proxy-server-start url=")) {
       const url = m.substring("proxy-server-start url=".length);
       onStarted?.(url);
+    } else if (typeof m === "string" && m.startsWith("proxy-server-error")) {
+      logger.error("[proxy] failed to bind:", m);
+      onError?.(
+        new DyadError(
+          `Could not start the preview proxy: every port from ${port} to ${PROXY_FALLBACK_PORT_START + PROXY_FALLBACK_MAX_ATTEMPTS - 1} is in use. Free up a port and restart the app.`,
+          DyadErrorKind.Conflict,
+        ),
+      );
     }
   });
   worker.on("error", (e) => logger.error("[proxy] error:", e));

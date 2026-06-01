@@ -97,6 +97,7 @@ vi.mock("@/ipc/utils/start_proxy_server", () => ({
 
 import { ensureProxyForRunningApp, executeApp } from "./app_runtime_service";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 class FakeChildProcess extends EventEmitter {
   pid: number;
@@ -246,7 +247,7 @@ describe("executeApp", () => {
     );
   });
 
-  it("cleans up the deterministic proxy port before starting a proxy worker", async () => {
+  it("starts the proxy on the deterministic port without killing the occupant", async () => {
     const terminate = vi.fn();
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {
       opts.onStarted?.("http://localhost:42142");
@@ -267,15 +268,46 @@ describe("executeApp", () => {
       mode: "host",
     });
 
-    expect(killPortMock).toHaveBeenCalledWith(42142, "tcp");
     expect(startProxyMock).toHaveBeenCalledWith(
       "http://localhost:32142",
       expect.objectContaining({
         port: 42142,
       }),
     );
-    expect(killPortMock.mock.invocationCallOrder[0]).toBeLessThan(
-      startProxyMock.mock.invocationCallOrder[0],
+    // We must never evict whatever already holds the deterministic proxy port —
+    // the worker scans the fallback band instead.
+    expect(killPortMock).not.toHaveBeenCalledWith(42142, "tcp");
+  });
+
+  it("surfaces a proxy port-exhaustion error to the renderer", async () => {
+    const terminate = vi.fn();
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      opts.onError?.(new DyadError("all ports in use", DyadErrorKind.Conflict));
+      return { terminate };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    const event = createEvent();
+    await ensureProxyForRunningApp({
+      appId: 42,
+      event,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+
+    expect(safeSendMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "app:output",
+      expect.objectContaining({
+        type: "stderr",
+        message: expect.stringContaining("all ports in use"),
+        appId: 42,
+      }),
     );
   });
 });

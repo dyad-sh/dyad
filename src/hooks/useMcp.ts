@@ -43,11 +43,9 @@ export function useMcp() {
     enabled: serverIds.length > 0,
     queryFn: async () => {
       // Promise.allSettled (not all) so one server's listTools
-      // rejection doesn't poison the batch -- an unconnected
-      // OAuth-gated server can hang on its 401 path, which would
-      // otherwise hold every other server's tools hostage. The
-      // handler-side timeout caps the worst case; this is the
-      // renderer-side safety net.
+      // rejection doesn't fail the whole batch. The handler returns a
+      // per-server status for its own errors; a rejection here is rare
+      // (IPC-level) and that server is simply omitted from the map.
       const settled = await Promise.allSettled(
         serverIds.map(async (id) => [id, await ipc.mcp.listTools(id)] as const),
       );

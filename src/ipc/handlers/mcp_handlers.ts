@@ -277,8 +277,10 @@ export function registerMcpHandlers() {
       logger.error(`Failed to list tools for server ${serverId}: ${message}`);
       // Report a 401 so the UI can persistently flag a server that
       // needs auth; everything else is a generic error.
-      const status = looksLikeUnauthorized(message) ? "unauthorized" : "error";
-      return { tools: [], status: status as "unauthorized" | "error" };
+      const status: "unauthorized" | "error" = looksLikeUnauthorized(message)
+        ? "unauthorized"
+        : "error";
+      return { tools: [], status };
     }
   });
 

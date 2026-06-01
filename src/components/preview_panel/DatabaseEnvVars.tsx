@@ -61,6 +61,15 @@ export const DatabaseEnvVars = ({
       ]
     : [];
 
+  const toggleExpanded = () => {
+    if (expanded) {
+      // Collapsing: re-mask any revealed secrets so they aren't visible the
+      // next time the panel is expanded.
+      setRevealedKeys(new Set());
+    }
+    setExpanded((v) => !v);
+  };
+
   const toggleReveal = (key: string) => {
     setRevealedKeys((prev) => {
       const next = new Set(prev);
@@ -86,7 +95,7 @@ export const DatabaseEnvVars = ({
     >
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={toggleExpanded}
         aria-expanded={expanded}
         className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-lg"
       >

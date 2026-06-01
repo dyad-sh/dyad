@@ -612,9 +612,12 @@ export function registerVercelHandlers() {
     return previewNeonVercelSync({ appId });
   });
 
-  createTypedHandler(vercelContracts.syncNeonConfig, async (_, { appId }) => {
-    return syncNeonConfigToVercel({ appId });
-  });
+  createTypedHandler(
+    vercelContracts.syncNeonConfig,
+    async (_, { appId, branchType }) => {
+      return syncNeonConfigToVercel({ appId, branchType });
+    },
+  );
 
   createTypedHandler(
     vercelContracts.removeNeonEnvVars,

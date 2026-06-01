@@ -95,7 +95,8 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   });
 
   const syncMutation = useMutation({
-    mutationFn: () => ipc.vercel.syncNeonConfig({ appId }),
+    mutationFn: (branchType: "production" | "development") =>
+      ipc.vercel.syncNeonConfig({ appId, branchType }),
     onSuccess: (result) => {
       if (!result.envPushed) {
         // Env push is the primary operation; surface its failure as an error
@@ -134,6 +135,15 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
     !isLoadingBranches &&
     hasBranchSelected;
 
+  // Sync against the branch the UI is actually displaying, not the persisted
+  // selection. When the production branch is active (Case 2) the UI shows the
+  // production database regardless of the stored choice, so pass it explicitly
+  // to avoid pushing a stale `selectedDatabaseBranchType` to Vercel.
+  const syncBranchType: "production" | "development" =
+    isProductionBranchActive || selectedEnv === "prod"
+      ? "production"
+      : "development";
+
   return (
     <Card data-testid="database-section">
       <CardHeader className="pb-3">
@@ -154,8 +164,8 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
             <Button
               size="sm"
               className="shrink-0"
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
+              onClick={() => syncMutation.mutate(syncBranchType)}
+              disabled={syncMutation.isPending || setBranchMutation.isPending}
             >
               {syncMutation.isPending ? (
                 <>

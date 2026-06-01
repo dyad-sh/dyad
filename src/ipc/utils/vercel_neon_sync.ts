@@ -177,9 +177,11 @@ export async function previewNeonVercelSync({
  */
 export async function syncNeonConfigToVercel({
   appId,
+  branchType: branchTypeOverride,
   includeDomainHosts = [],
 }: {
   appId: number;
+  branchType?: NeonBranchType;
   includeDomainHosts?: string[];
 }): Promise<VercelSyncResult> {
   const appData = await loadSyncableApp(appId);
@@ -205,7 +207,7 @@ export async function syncNeonConfigToVercel({
     );
   }
 
-  const branchType = getSelectedDeployBranchType(appData);
+  const branchType = branchTypeOverride ?? getSelectedDeployBranchType(appData);
   const resolved = await resolveNeonBranchEnvVars({ appData, branchType });
   const vercel = createVercelClient(getVercelAccessToken());
 
@@ -237,11 +239,19 @@ export async function syncNeonConfigToVercel({
       "Neon Auth is not active on this branch, so the Vercel domain was not added to the redirect allowlist.",
     );
   } else {
+    // Fetching the project's existing domains is best-effort: if it fails we
+    // still process the explicitly-provided includeDomainHosts (e.g. a
+    // freshly-created deployment URL) rather than dropping them because of an
+    // unrelated listing failure.
+    const hosts = [...includeDomainHosts];
     try {
-      const hosts = [
-        ...(await getProjectDomainHosts(vercel, vercelProjectId)),
-        ...includeDomainHosts,
-      ];
+      hosts.push(...(await getProjectDomainHosts(vercel, vercelProjectId)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      warnings.push(`Failed to fetch Vercel project domains: ${message}`);
+    }
+
+    try {
       const neonClient = await getNeonClient();
       const existing = await neonClient.listBranchNeonAuthTrustedDomains(
         neonProjectId,

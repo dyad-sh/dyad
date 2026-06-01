@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Globe } from "lucide-react";
+import { Globe, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ipc, App } from "@/ipc/types";
@@ -278,7 +278,11 @@ function UnconnectedVercelConnector({
   // (env var keys + trusted domains) so the user approves before deploying.
   const showSyncPreview =
     !!neonProjectId && appId !== null && projectSetupMode === "create";
-  const { data: syncPreview } = useQuery({
+  const {
+    data: syncPreview,
+    isLoading: isSyncPreviewLoading,
+    error: syncPreviewError,
+  } = useQuery({
     queryKey: queryKeys.vercel.syncPreview({ appId }),
     queryFn: () => ipc.vercel.getSyncPreview({ appId: appId! }),
     enabled: showSyncPreview,
@@ -589,33 +593,49 @@ function UnconnectedVercelConnector({
                   )}
                 </div>
 
-                {showSyncPreview && syncPreview && (
-                  <div
-                    className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3"
-                    data-testid="vercel-sync-preview"
-                  >
-                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                      Database auto-configuration
-                    </p>
-                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
-                      When you create this project, Dyad will push these
-                      environment variables from your {syncPreview.branchType}{" "}
-                      database to Vercel (secret values are hidden and sent
-                      securely):
-                    </p>
-                    <ul className="list-disc list-inside text-xs font-mono text-blue-800 dark:text-blue-200 space-y-0.5">
-                      {syncPreview.envKeys.map((key) => (
-                        <li key={key}>{key}</li>
-                      ))}
-                    </ul>
-                    {syncPreview.authActive && (
-                      <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
-                        Your live deployment domain will be added to Neon's
-                        trusted redirect domains after the first deploy.
+                {showSyncPreview &&
+                  (isSyncPreviewLoading || syncPreviewError || syncPreview) && (
+                    <div
+                      className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3"
+                      data-testid="vercel-sync-preview"
+                    >
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                        Database auto-configuration
                       </p>
-                    )}
-                  </div>
-                )}
+                      {isSyncPreviewLoading ? (
+                        <p className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Loading database configuration…
+                        </p>
+                      ) : syncPreviewError ? (
+                        <p className="text-xs text-red-600 dark:text-red-400">
+                          Couldn't load the database auto-configuration preview.
+                          You can still create the project.
+                        </p>
+                      ) : syncPreview ? (
+                        <>
+                          <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                            When you create this project, Dyad will push these
+                            environment variables from your{" "}
+                            {syncPreview.branchType} database to Vercel (secret
+                            values are hidden and sent securely):
+                          </p>
+                          <ul className="list-disc list-inside text-xs font-mono text-blue-800 dark:text-blue-200 space-y-0.5">
+                            {syncPreview.envKeys.map((key) => (
+                              <li key={key}>{key}</li>
+                            ))}
+                          </ul>
+                          {syncPreview.authActive && (
+                            <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                              Your live deployment domain will be added to
+                              Neon's trusted redirect domains after the first
+                              deploy.
+                            </p>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  )}
               </>
             ) : (
               <>

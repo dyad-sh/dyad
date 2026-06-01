@@ -91,6 +91,19 @@ export const VercelSyncAppParamsSchema = z.object({
 
 export type VercelSyncAppParams = z.infer<typeof VercelSyncAppParamsSchema>;
 
+export const VercelSyncNeonConfigParamsSchema = z.object({
+  appId: z.number(),
+  // Optional explicit branch override. The Database section passes the branch
+  // it is actually displaying so a stale persisted selection can't be pushed.
+  // When omitted, the backend falls back to selectedDatabaseBranchType
+  // (treated as production when null).
+  branchType: z.enum(["production", "development"]).optional(),
+});
+
+export type VercelSyncNeonConfigParams = z.infer<
+  typeof VercelSyncNeonConfigParamsSchema
+>;
+
 export const VercelSyncPreviewSchema = z.object({
   vercelProjectName: z.string().nullable(),
   branchType: z.enum(["production", "development"]),
@@ -186,7 +199,7 @@ export const vercelContracts = {
 
   syncNeonConfig: defineContract({
     channel: "vercel:sync-neon-config",
-    input: VercelSyncAppParamsSchema,
+    input: VercelSyncNeonConfigParamsSchema,
     output: VercelSyncResultSchema,
   }),
 

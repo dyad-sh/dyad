@@ -894,6 +894,28 @@ export function registerNeonHandlers() {
         `Setting selected database branch type for app ${appId}: ${branchType}`,
       );
 
+      // Reject "development" when the app has no development branch — persisting
+      // it would later cause env-var/deploy resolution to fail.
+      if (branchType === "development") {
+        const rows = await db
+          .select({ neonDevelopmentBranchId: apps.neonDevelopmentBranchId })
+          .from(apps)
+          .where(eq(apps.id, appId))
+          .limit(1);
+        if (rows.length === 0) {
+          throw new DyadError(
+            `App with ID ${appId} not found`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        if (!rows[0].neonDevelopmentBranchId) {
+          throw new DyadError(
+            "This app has no development branch, so it can't be selected for deployment. Create one in Neon first.",
+            DyadErrorKind.Precondition,
+          );
+        }
+      }
+
       const updated = await db
         .update(apps)
         .set({ selectedDatabaseBranchType: branchType })

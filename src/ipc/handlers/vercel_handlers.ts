@@ -5,8 +5,7 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
-import { IS_TEST_BUILD } from "../utils/test_utils";
-import { createVercelClient } from "../utils/vercel_utils";
+import { createVercelClient, VERCEL_API_BASE } from "../utils/vercel_utils";
 import * as fs from "fs";
 import * as path from "path";
 import { CreateProjectFramework } from "@vercel/sdk/models/createprojectop.js";
@@ -32,13 +31,6 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("vercel_handlers");
-
-// Use test server URLs when in test mode
-const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
-
-const VERCEL_API_BASE = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/vercel/api`
-  : "https://api.vercel.com";
 
 // --- Helper Functions ---
 

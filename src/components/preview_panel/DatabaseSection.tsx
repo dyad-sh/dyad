@@ -17,6 +17,7 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { MigrationPanelBody } from "@/components/MigrationPanel";
 import { DatabaseEnvVars } from "@/components/preview_panel/DatabaseEnvVars";
+import { getErrorMessage } from "@/lib/errors";
 
 type EnvKind = "prod" | "dev";
 
@@ -96,14 +97,19 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const syncMutation = useMutation({
     mutationFn: () => ipc.vercel.syncNeonConfig({ appId }),
     onSuccess: (result) => {
-      if (result.warning) {
+      if (!result.envPushed) {
+        // Env push is the primary operation; surface its failure as an error
+        // rather than a warning so it isn't mistaken for a non-critical
+        // (e.g. trusted-domain) skip.
+        toast.error(result.warning ?? t("integrations.database.syncError"));
+      } else if (result.warning) {
         toast.warning(result.warning);
       } else {
         toast.success(t("integrations.database.syncSuccess"));
       }
     },
-    onError: (error: any) => {
-      toast.error(error?.message || t("integrations.database.syncError"));
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
     },
   });
 

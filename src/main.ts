@@ -799,6 +799,16 @@ async function handleDeepLinkReturn(url: string) {
     });
     return;
   }
+  // Fired by the OAuth callback page to hand focus back to Dyad
+  // after consent. Tokens land via the loopback listener; focusing
+  // the window is the only side-effect needed here.
+  if (parsed.hostname === "mcp-oauth-return") {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    return;
+  }
   // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
   if (parsed.hostname === "add-mcp-server") {
     const name = parsed.searchParams.get("name");

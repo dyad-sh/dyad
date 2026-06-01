@@ -1922,8 +1922,21 @@ async function getMcpTools(
       .where(eq(mcpServers.enabled, true as any));
 
     for (const s of servers) {
-      const client = await mcpManager.getClient(s.id);
-      const toolSet = await client.tools();
+      // One bad server (e.g. unconnected OAuth) must not strip tools
+      // from every later enabled server in the same agent run.
+      const toolSet = await (async () => {
+        try {
+          const client = await mcpManager.getClient(s.id);
+          return await client.tools();
+        } catch (e) {
+          logger.warn(
+            `Failed to load tools for MCP server ${s.id} (${s.name})`,
+            e,
+          );
+          return null;
+        }
+      })();
+      if (!toolSet) continue;
 
       for (const [name, mcpTool] of Object.entries(toolSet)) {
         const key = `${sanitizeMcpName(s.name || "")}__${sanitizeMcpName(name)}`;

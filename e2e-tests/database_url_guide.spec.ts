@@ -34,18 +34,23 @@ testSkipIfWindows(
 
     await panel.getByRole("button", { name: "Environment variables" }).click();
 
-    const devDatabaseUrl = panel.getByLabel("DATABASE_URL");
+    // Match the input by its exact label — the row also renders "Copy
+    // DATABASE_URL" and "Show DATABASE_URL" buttons whose aria-labels would
+    // otherwise make getByLabel ambiguous.
+    const devDatabaseUrl = panel.getByLabel("DATABASE_URL", { exact: true });
     await expect(devDatabaseUrl).toHaveValue(
       "postgresql://test:test@test-development.neon.tech/test",
       { timeout: Timeout.MEDIUM },
     );
-    await expect(panel.getByLabel("NEON_AUTH_BASE_URL")).toHaveValue(
+    await expect(
+      panel.getByLabel("NEON_AUTH_BASE_URL", { exact: true }),
+    ).toHaveValue(
       "https://test-development.neonauth.us-east-2.aws.neon.tech/neondb/auth",
     );
     // The Next.js template surfaces a per-branch cookie secret.
-    await expect(panel.getByLabel("NEON_AUTH_COOKIE_SECRET")).toHaveValue(
-      /^[a-f0-9]{64}$/,
-    );
+    await expect(
+      panel.getByLabel("NEON_AUTH_COOKIE_SECRET", { exact: true }),
+    ).toHaveValue(/^[a-f0-9]{64}$/);
 
     // Copy button writes DATABASE_URL to the clipboard.
     await panel.getByRole("button", { name: "Copy DATABASE_URL" }).click();
@@ -65,7 +70,7 @@ testSkipIfWindows(
 
     await panel.getByRole("button", { name: "Environment variables" }).click();
 
-    const prodDatabaseUrl = panel.getByLabel("DATABASE_URL");
+    const prodDatabaseUrl = panel.getByLabel("DATABASE_URL", { exact: true });
     await expect(prodDatabaseUrl).toHaveValue(
       "postgresql://test:test@test-main.neon.tech/test",
       { timeout: Timeout.MEDIUM },

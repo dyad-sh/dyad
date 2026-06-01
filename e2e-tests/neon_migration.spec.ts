@@ -105,9 +105,10 @@ testSkipIfWindows(
     await databaseSection
       .getByRole("button", { name: "Environment variables" })
       .click();
-    await expect(databaseSection.getByLabel("DATABASE_URL")).toHaveValue(
-      "postgresql://test:test@test-main.neon.tech/test",
-      { timeout: Timeout.MEDIUM },
-    );
+    await expect(
+      databaseSection.getByLabel("DATABASE_URL", { exact: true }),
+    ).toHaveValue("postgresql://test:test@test-main.neon.tech/test", {
+      timeout: Timeout.MEDIUM,
+    });
   },
 );

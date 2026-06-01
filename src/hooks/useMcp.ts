@@ -60,6 +60,11 @@ export function useMcp() {
     // server makes React Query see a brand-new query. keepPreviousData
     // keeps existing servers' tools visible while the new key loads.
     placeholderData: keepPreviousData,
+    // Avoid re-probing on every window focus; connect/disconnect and
+    // CRUD mutations already invalidate this query. A focus refetch
+    // would otherwise hit the listTools timeout on unconnected OAuth
+    // servers on each return to the app.
+    refetchOnWindowFocus: false,
     meta: { showErrorToast: true },
   });
 

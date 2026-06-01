@@ -236,7 +236,12 @@ async function startCallbackListener(
   const dispose = (): void => {
     disposed = true;
     if (flow.timeout) clearTimeout(flow.timeout);
-    for (const s of flow.servers) s.close();
+    for (const s of flow.servers) {
+      // close() stops new connections; closeAllConnections() also drops
+      // a keep-alive socket the browser left open on an abandoned flow.
+      s.close();
+      s.closeAllConnections();
+    }
     if (pendingFlows.get(port) === flow) pendingFlows.delete(port);
   };
 

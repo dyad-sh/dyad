@@ -30,7 +30,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: GPT_5_5_MODEL_NAME,
       displayName: "GPT 5.5",
       description: "OpenAI's most capable coding model",
-      contextWindow: 400_000,
+      contextWindow: 1_000_000,
       temperature: 1,
       dollarSigns: 6,
     },

@@ -2,7 +2,13 @@
   "body": {
     "model": "claude-sonnet-4-20250514",
     "max_tokens": 32000,
-    "temperature": 0,
+    "thinking": {
+      "type": "adaptive",
+      "display": "summarized"
+    },
+    "output_config": {
+      "effort": "medium"
+    },
     "system": [
       {
         "type": "text",
@@ -21,11 +27,6 @@
       }
     ],
     "stream": true,
-    "thinking": {
-      "type": "adaptive",
-      "display": "summarized"
-    },
-    "reasoning_effort": "medium",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

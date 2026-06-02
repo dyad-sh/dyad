@@ -57,6 +57,18 @@ function isTodoReminderMessage(msg: any): boolean {
   return content?.includes("incomplete todo(s)") ?? false;
 }
 
+function isToolResultMessage(msg: any): boolean {
+  if (msg?.role === "tool") {
+    return true;
+  }
+  return (
+    Array.isArray(msg?.content) &&
+    msg.content.some(
+      (p: any) => p.type === "tool-result" || p.type === "tool_result",
+    )
+  );
+}
+
 /**
  * Count the number of todo reminder messages in the conversation.
  * This determines which outer loop pass we're on.
@@ -71,10 +83,11 @@ function countTodoReminderMessages(messages: any[]): number {
  * This ensures each new user prompt (fixture trigger) starts fresh at turn 0.
  */
 function countToolResultRounds(messages: any[]): number {
-  // Find the index of the last user message
+  // Find the index of the last user prompt. Anthropic encodes tool results as
+  // user messages, so skip those or every tool-result follow-up resets to turn 0.
   let lastUserIndex = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.role === "user") {
+    if (messages[i]?.role === "user" && !isToolResultMessage(messages[i])) {
       lastUserIndex = i;
       break;
     }
@@ -84,12 +97,8 @@ function countToolResultRounds(messages: any[]): number {
   let rounds = 0;
   for (let i = lastUserIndex + 1; i < messages.length; i++) {
     const msg = messages[i];
-    if (msg?.role === "tool") {
+    if (isToolResultMessage(msg)) {
       rounds++;
-    } else if (Array.isArray(msg?.content)) {
-      if (msg.content.some((p: any) => p.type === "tool-result")) {
-        rounds++;
-      }
     }
   }
   return rounds;
@@ -226,7 +235,13 @@ async function streamTextResponse(
   res: Response,
   text: string,
   usage?: Turn["usage"],
+  protocol: "openai" | "anthropic" = "openai",
 ) {
+  if (protocol === "anthropic") {
+    await streamAnthropicTextResponse(res, text, usage);
+    return;
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -253,8 +268,18 @@ async function streamTextResponse(
 async function streamToolCallResponse(
   res: Response,
   turn: Turn,
-  options?: { dropAfterToolCalls?: boolean },
+  options?: {
+    dropAfterToolCalls?: boolean;
+    protocol?: "openai" | "anthropic";
+  },
 ) {
+  if (options?.protocol === "anthropic") {
+    await streamAnthropicToolCallResponse(res, turn, {
+      dropAfterToolCalls: options.dropAfterToolCalls,
+    });
+    return;
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -363,6 +388,148 @@ async function streamToolCallResponse(
   res.end();
 }
 
+function writeAnthropicEvent(res: Response, event: string, data: any) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function startAnthropicStream(res: Response, usage?: Turn["usage"]) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  writeAnthropicEvent(res, "message_start", {
+    type: "message_start",
+    message: {
+      id: `msg_${Date.now()}`,
+      type: "message",
+      role: "assistant",
+      model: "fake-local-agent-model",
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: {
+        input_tokens: usage?.prompt_tokens ?? 1,
+        output_tokens: 0,
+      },
+    },
+  });
+}
+
+async function streamAnthropicTextBlock(
+  res: Response,
+  index: number,
+  text: string,
+) {
+  writeAnthropicEvent(res, "content_block_start", {
+    type: "content_block_start",
+    index,
+    content_block: { type: "text", text: "" },
+  });
+  const batchSize = 32;
+  for (let i = 0; i < text.length; i += batchSize) {
+    const batch = text.slice(i, i + batchSize);
+    writeAnthropicEvent(res, "content_block_delta", {
+      type: "content_block_delta",
+      index,
+      delta: { type: "text_delta", text: batch },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  writeAnthropicEvent(res, "content_block_stop", {
+    type: "content_block_stop",
+    index,
+  });
+}
+
+function finishAnthropicStream(
+  res: Response,
+  stopReason: "end_turn" | "tool_use",
+  usage?: Turn["usage"],
+) {
+  writeAnthropicEvent(res, "message_delta", {
+    type: "message_delta",
+    delta: { stop_reason: stopReason, stop_sequence: null },
+    usage: {
+      input_tokens: usage?.prompt_tokens ?? 1,
+      output_tokens: usage?.completion_tokens ?? 1,
+    },
+  });
+  writeAnthropicEvent(res, "message_stop", { type: "message_stop" });
+  res.end();
+}
+
+async function streamAnthropicTextResponse(
+  res: Response,
+  text: string,
+  usage?: Turn["usage"],
+) {
+  startAnthropicStream(res, usage);
+  await streamAnthropicTextBlock(res, 0, text);
+  finishAnthropicStream(res, "end_turn", usage);
+}
+
+async function streamAnthropicToolCallResponse(
+  res: Response,
+  turn: Turn,
+  options?: { dropAfterToolCalls?: boolean },
+) {
+  startAnthropicStream(res, turn.usage);
+
+  let blockIndex = 0;
+  if (turn.text) {
+    await streamAnthropicTextBlock(res, blockIndex++, turn.text);
+  }
+
+  if (turn.toolCalls && turn.toolCalls.length > 0) {
+    for (let idx = 0; idx < turn.toolCalls.length; idx++) {
+      const toolCall = turn.toolCalls[idx];
+      const toolCallId = `call_${Date.now()}_${idx}`;
+      writeAnthropicEvent(res, "content_block_start", {
+        type: "content_block_start",
+        index: blockIndex,
+        content_block: {
+          type: "tool_use",
+          id: toolCallId,
+          name: toolCall.name,
+          input: {},
+        },
+      });
+
+      const args = JSON.stringify(toolCall.args);
+      const argBatchSize = 20;
+      for (let i = 0; i < args.length; i += argBatchSize) {
+        const part = args.slice(i, i + argBatchSize);
+        writeAnthropicEvent(res, "content_block_delta", {
+          type: "content_block_delta",
+          index: blockIndex,
+          delta: { type: "input_json_delta", partial_json: part },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+
+      writeAnthropicEvent(res, "content_block_stop", {
+        type: "content_block_stop",
+        index: blockIndex,
+      });
+      blockIndex++;
+    }
+  }
+
+  if (options?.dropAfterToolCalls) {
+    console.log(
+      `[local-agent] Simulating Anthropic connection drop after streaming tool calls`,
+    );
+    res.socket?.destroy();
+    return;
+  }
+
+  finishAnthropicStream(
+    res,
+    turn.toolCalls && turn.toolCalls.length > 0 ? "tool_use" : "end_turn",
+    turn.usage,
+  );
+}
+
 /**
  * Handle a local-agent fixture request
  */
@@ -370,8 +537,10 @@ export async function handleLocalAgentFixture(
   req: Request,
   res: Response,
   fixtureName: string,
+  options: { protocol?: "openai" | "anthropic" } = {},
 ): Promise<void> {
   const { messages = [] } = req.body;
+  const protocol = options.protocol ?? "openai";
 
   console.log(`[local-agent] Loading fixture: ${fixtureName}`);
   console.log(`[local-agent] Messages count: ${messages.length}`);
@@ -456,15 +625,32 @@ export async function handleLocalAgentFixture(
           `[local-agent] Simulating connection drop on attempt ${currentAttempt}`,
         );
         // Stream partial data then destroy the socket to simulate a network interruption
-        res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
-        res.write(
-          createStreamChunk(
-            "Partial response before connection dr",
-            "assistant",
-          ),
-        );
+        if (protocol === "anthropic") {
+          startAnthropicStream(res);
+          writeAnthropicEvent(res, "content_block_start", {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          });
+          writeAnthropicEvent(res, "content_block_delta", {
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "text_delta",
+              text: "Partial response before connection dr",
+            },
+          });
+        } else {
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.write(
+            createStreamChunk(
+              "Partial response before connection dr",
+              "assistant",
+            ),
+          );
+        }
         // Destroy the underlying socket to trigger a "terminated" error on the client
         res.socket?.destroy();
         return;
@@ -489,10 +675,11 @@ export async function handleLocalAgentFixture(
 
       await streamToolCallResponse(res, turn, {
         dropAfterToolCalls,
+        protocol,
       });
     } else {
       // Text-only turn
-      await streamTextResponse(res, turn.text || "Done.", turn.usage);
+      await streamTextResponse(res, turn.text || "Done.", turn.usage, protocol);
     }
   } catch (error) {
     console.error(`[local-agent] Error handling fixture:`, error);

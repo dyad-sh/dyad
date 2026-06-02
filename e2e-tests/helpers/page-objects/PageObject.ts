@@ -443,6 +443,16 @@ export class PageObject {
         },
       );
     }
+    if (parsedDump["body"]["system"]) {
+      parsedDump["body"]["system"] = parsedDump["body"]["system"].map(
+        (message: any) => {
+          if (message.type === "text") {
+            message.text = "[[SYSTEM_MESSAGE]]";
+          }
+          return message;
+        },
+      );
+    }
     if (type === "request") {
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);

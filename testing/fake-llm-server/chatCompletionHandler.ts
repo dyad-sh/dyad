@@ -525,7 +525,7 @@ export default Index;
     }, 10);
   };
 
-function generateDump(req: Request) {
+export function generateDump(req: Request) {
   const timestamp = Date.now();
   const generatedDir = path.join(__dirname, "generated");
 

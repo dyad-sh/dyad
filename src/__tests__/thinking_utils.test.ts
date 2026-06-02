@@ -65,7 +65,7 @@ describe("getExtraProviderOptions", () => {
           type: "adaptive",
           display: "summarized",
         },
-        reasoning_effort: "medium",
+        output_config: { effort: "medium" },
       },
     );
   });
@@ -81,7 +81,7 @@ describe("getExtraProviderOptions", () => {
         type: "adaptive",
         display: "summarized",
       },
-      reasoning_effort: "low",
+      output_config: { effort: "low" },
     });
 
     expect(
@@ -94,7 +94,7 @@ describe("getExtraProviderOptions", () => {
         type: "adaptive",
         display: "summarized",
       },
-      reasoning_effort: "high",
+      output_config: { effort: "high" },
     });
   });
 

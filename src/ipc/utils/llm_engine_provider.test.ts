@@ -82,7 +82,7 @@ describe("createDyadEngine", () => {
       messages: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
       system: [{ type: "text", text: "You are concise." }],
       thinking: { type: "adaptive", display: "summarized" },
-      reasoning_effort: "medium",
+      output_config: { effort: "medium" },
       dyad_options: {
         app_id: 42,
         enable_lazy_edits: true,
@@ -94,5 +94,6 @@ describe("createDyadEngine", () => {
     expect(body).not.toHaveProperty("dyadAppId");
     expect(body).not.toHaveProperty("dyadRequestId");
     expect(body).not.toHaveProperty("dyadFiles");
+    expect(body).not.toHaveProperty("reasoning_effort");
   });
 });

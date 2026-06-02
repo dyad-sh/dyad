@@ -140,12 +140,12 @@ export const setPreviewRunStateForAppAtom = atom(
 export const setPreviewErrorForAppAtom = atom(
   null,
   (
-    get,
+    _get,
     set,
     { appId, error }: { appId: number; error: PreviewErrorUpdate },
   ) => {
     set(previewErrorByAppIdAtom, (prev) => {
-      const current = get(previewErrorByAppIdAtom).get(appId);
+      const current = prev.get(appId);
       const nextError = typeof error === "function" ? error(current) : error;
       const next = new Map(prev);
       if (nextError) {

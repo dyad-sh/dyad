@@ -125,26 +125,40 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const lastLogTimestampRef = useRef(lastLogTimestamp);
   lastLogTimestampRef.current = lastLogTimestamp;
 
+  const edgeLogsActiveAppId =
+    edgeLogsAppId !== null && edgeLogsAppId !== undefined
+      ? edgeLogsAppId
+      : null;
   const edgeLogsEnabled =
-    !!edgeLogsProjectId && !!selectedAppId && edgeLogsAppId === selectedAppId;
-  const edgeLogsQuery = useQuery<ConsoleEntry[], Error>({
+    !!edgeLogsProjectId &&
+    edgeLogsActiveAppId !== null &&
+    edgeLogsActiveAppId === selectedAppId;
+  const edgeLogsQuery = useQuery<
+    { appId: number; logs: ConsoleEntry[] },
+    Error
+  >({
     queryKey: edgeLogsEnabled
       ? queryKeys.supabase.edgeLogs({
           projectId: edgeLogsProjectId!,
-          appId: selectedAppId,
+          appId: edgeLogsActiveAppId,
           organizationSlug: edgeLogsOrganizationSlug ?? null,
         })
       : ["supabase", "edgeLogs", "disabled"],
     queryFn: async () => {
       const projectId = edgeLogsProjectId!;
+      const appId = edgeLogsActiveAppId;
+      if (appId === null) {
+        throw new Error("Cannot fetch Supabase edge logs without an app id");
+      }
       const lastTimestamp = lastLogTimestampRef.current[projectId];
       const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000;
-      return ipc.supabase.getEdgeLogs({
+      const logs = await ipc.supabase.getEdgeLogs({
         projectId,
         timestampStart,
-        appId: selectedAppId!,
+        appId,
         organizationSlug: edgeLogsOrganizationSlug ?? null,
       });
+      return { appId, logs };
     },
     enabled: edgeLogsEnabled,
     refetchInterval: EDGE_LOGS_POLL_INTERVAL_MS,
@@ -159,8 +173,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   useEffect(() => {
     if (!edgeLogsEnabled || !edgeLogsDataUpdatedAt) return;
     const projectId = edgeLogsProjectId!;
-    const logs = edgeLogsQuery.data;
-    if (!logs) return;
+    const edgeLogsResult = edgeLogsQuery.data;
+    if (!edgeLogsResult) return;
+    const { appId, logs } = edgeLogsResult;
 
     const lastTimestamp = lastLogTimestampRef.current[projectId];
 
@@ -182,12 +197,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       ? logs.filter((log) => log.timestamp > lastTimestamp)
       : logs;
     if (newLogs.length === 0) return;
-    if (selectedAppId === null) return;
 
     newLogs.forEach((log) => {
       ipc.misc.addLog(log);
     });
-    appendConsoleEntries({ appId: selectedAppId, entries: newLogs });
+    appendConsoleEntries({ appId, entries: newLogs });
 
     const latestLog = newLogs.reduce((latest, log) =>
       log.timestamp > latest.timestamp ? log : latest,

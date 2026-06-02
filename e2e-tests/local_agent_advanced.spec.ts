@@ -56,6 +56,7 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
     .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
     .fill(testMcpServerPath);
   await po.page.getByRole("button", { name: "Add Server" }).click();
+  await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
 
   await po.navigation.goToAppsTab();
   await po.importApp("minimal");

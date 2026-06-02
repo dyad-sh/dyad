@@ -6,6 +6,7 @@
 import { Page, expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
+import { Timeout } from "../../constants";
 
 export class Settings {
   constructor(
@@ -180,6 +181,15 @@ export class Settings {
     const section = this.page.locator(`#${sectionId}`);
     await expect(section).toBeVisible();
     await section.scrollIntoViewIfNeeded();
+  }
+
+  async waitForMcpTool(serverName: string, toolName: string) {
+    await expect(this.page.getByText(serverName, { exact: true })).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(this.page.getByText(toolName, { exact: true })).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async setUpTestProvider() {

@@ -25,6 +25,7 @@ import {
   recordRendererCrash,
   readRendererCrashRecord,
   clearRendererCrashRecord,
+  setInitialLoadIsFirstSession,
 } from "./main/settings";
 import { sendTelemetryEvent } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
@@ -323,7 +324,10 @@ export async function onReady() {
 }
 
 export async function onFirstRunMaybe(settings: UserSettings) {
-  if (!settings.hasRunBefore) {
+  const isFirstSession = settings.hasRunBefore === false;
+  setInitialLoadIsFirstSession(isFirstSession);
+
+  if (isFirstSession) {
     await promptMoveToApplicationsFolder();
     writeSettings({
       hasRunBefore: true,
@@ -793,6 +797,16 @@ async function handleDeepLinkReturn(url: string) {
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
     });
+    return;
+  }
+  // Fired by the OAuth callback page to hand focus back to Dyad
+  // after consent. Tokens land via the loopback listener; focusing
+  // the window is the only side-effect needed here.
+  if (parsed.hostname === "mcp-oauth-return") {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
     return;
   }
   // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D

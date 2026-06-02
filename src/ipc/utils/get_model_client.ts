@@ -29,6 +29,11 @@ import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  findInvalidProviderApiKeyCharacter,
+  formatInvalidProviderApiKeyMessage,
+  normalizeProviderApiKeyInput,
+} from "@/lib/providerApiKey";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -55,7 +60,12 @@ export async function getModelClient(
 }> {
   const allProviders = await getLanguageModelProviders();
 
-  const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
+  const dyadApiKey = settings.enableDyadPro
+    ? getProviderApiKeyForRequest(
+        settings.providerSettings?.auto?.apiKey?.value,
+        "Dyad",
+      )
+    : undefined;
 
   // --- Handle specific provider ---
   const providerConfig = allProviders.find((p) => p.id === model.provider);
@@ -159,9 +169,11 @@ export async function getModelClient(
       );
       const envVarName = providerInfo?.envVarName;
 
-      const apiKey =
+      const apiKey = getProviderApiKeyForRequest(
         settings.providerSettings?.[resolvedModel.providerId]?.apiKey?.value ||
-        (envVarName ? getEnvVar(envVarName) : undefined);
+          (envVarName ? getEnvVar(envVarName) : undefined),
+        providerInfo?.name ?? resolvedModel.providerId,
+      );
 
       if (apiKey) {
         logger.log(
@@ -273,14 +285,19 @@ function getRegularModelClient(
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
 } {
-  // Get API key for the specific provider
-  const apiKey =
-    settings.providerSettings?.[model.provider]?.apiKey?.value ||
-    (providerConfig.envVarName
-      ? getEnvVar(providerConfig.envVarName)
-      : undefined);
-
   const providerId = providerConfig.id;
+  // Get API key for the specific provider. Azure is handled in its own branch
+  // because it has additional config and test-mode bypass behavior.
+  const apiKey =
+    providerId === "azure"
+      ? undefined
+      : getProviderApiKeyForRequest(
+          settings.providerSettings?.[model.provider]?.apiKey?.value ||
+            (providerConfig.envVarName
+              ? getEnvVar(providerConfig.envVarName)
+              : undefined),
+          providerConfig.name ?? providerConfig.id,
+        );
   // Create client based on provider ID or type
   switch (providerId) {
     case "openai": {
@@ -400,17 +417,22 @@ function getRegularModelClient(
       const azureSettings = settings.providerSettings?.azure as
         | AzureProviderSetting
         | undefined;
-      const azureApiKeyFromSettings = (
-        azureSettings?.apiKey?.value ?? ""
-      ).trim();
+      const azureApiKeyFromSettings = normalizeProviderApiKeyInput(
+        azureSettings?.apiKey?.value,
+      );
       const azureResourceNameFromSettings = (
         azureSettings?.resourceName ?? ""
       ).trim();
       const envResourceName = (getEnvVar("AZURE_RESOURCE_NAME") ?? "").trim();
-      const envAzureApiKey = (getEnvVar("AZURE_API_KEY") ?? "").trim();
+      const envAzureApiKey = normalizeProviderApiKeyInput(
+        getEnvVar("AZURE_API_KEY"),
+      );
 
       const resourceName = azureResourceNameFromSettings || envResourceName;
-      const azureApiKey = azureApiKeyFromSettings || envAzureApiKey;
+      const azureApiKey = getProviderApiKeyForRequest(
+        azureApiKeyFromSettings || envAzureApiKey,
+        providerConfig.name ?? providerConfig.id,
+      );
 
       if (!resourceName) {
         throw new Error(
@@ -518,4 +540,22 @@ function getRegularModelClient(
       );
     }
   }
+}
+
+function getProviderApiKeyForRequest(
+  value: string | null | undefined,
+  providerDisplayName: string,
+): string | undefined {
+  const normalizedValue = normalizeProviderApiKeyInput(value);
+  if (!normalizedValue) {
+    return undefined;
+  }
+  const invalidCharacter = findInvalidProviderApiKeyCharacter(normalizedValue);
+  if (invalidCharacter) {
+    throw new DyadError(
+      formatInvalidProviderApiKeyMessage(providerDisplayName, invalidCharacter),
+      DyadErrorKind.Validation,
+    );
+  }
+  return normalizedValue;
 }

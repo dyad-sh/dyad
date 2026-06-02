@@ -7,6 +7,7 @@ export const SECTION_IDS = {
   integrations: "integrations",
   agentPermissions: "agent-permissions",
   toolsMcp: "tools-mcp",
+  advanced: "advanced",
   experiments: "experiments",
   dangerZone: "danger-zone",
 } as const;
@@ -373,16 +374,66 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Tools (MCP)",
   },
 
-  // Experiments
+  // Advanced
+  {
+    id: SECTION_IDS.advanced,
+    label: "Advanced",
+    description: "Power-user settings for Git, sandboxing, packages, and MCP",
+    keywords: [
+      "advanced",
+      "git",
+      "sandbox",
+      "npm",
+      "mcp",
+      "security",
+      "native",
+    ],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
   {
     id: SETTING_IDS.nativeGit,
     label: "Enable Native Git",
     description:
       "Use native Git for faster performance without external installation",
-    keywords: ["git", "native", "experiment", "beta", "performance"],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
+    keywords: ["git", "native", "performance"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
   },
+  {
+    id: SETTING_IDS.enableSandboxScriptExecution,
+    label: "Enable sandbox script execution",
+    description:
+      "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
+    keywords: [
+      "script",
+      "scripts",
+      "sandbox",
+      "attachments",
+      "mustard",
+      "agent",
+    ],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+  {
+    id: SETTING_IDS.blockUnsafeNpmPackages,
+    label: "Block unsafe npm packages",
+    description: "Uses socket.dev to detect unsafe packages and blocks them",
+    keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+  {
+    id: SETTING_IDS.enableMcpServersForBuildMode,
+    label: "Enable MCP servers for Build mode",
+    description: "Allow MCP servers to be used when in Build mode",
+    keywords: ["mcp", "build", "agent", "tools", "server"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+
+  // Experiments
   {
     id: SETTING_IDS.enableCloudSandbox,
     label: "Enable Cloud Sandbox (Pro)",
@@ -397,31 +448,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "credits",
       "secure",
     ],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
-  },
-  {
-    id: SETTING_IDS.enableSandboxScriptExecution,
-    label: "Enable sandbox script execution",
-    description:
-      "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
-    keywords: [
-      "script",
-      "scripts",
-      "sandbox",
-      "attachments",
-      "mustard",
-      "agent",
-      "experiment",
-    ],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
-  },
-  {
-    id: SETTING_IDS.blockUnsafeNpmPackages,
-    label: "Block unsafe npm packages",
-    description: "Uses socket.dev to detect unsafe packages and blocks them",
-    keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },
@@ -444,14 +470,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Experiments",
   },
 
-  {
-    id: SETTING_IDS.enableMcpServersForBuildMode,
-    label: "Enable MCP servers for Build mode",
-    description: "Allow MCP servers to be used when in Build mode",
-    keywords: ["mcp", "build", "agent", "tools", "experiment", "server"],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
-  },
   {
     id: SETTING_IDS.enableSelectAppFromHomeChatInput,
     label: "Enable Select App from Home Chat Input",

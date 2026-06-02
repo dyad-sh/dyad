@@ -2,8 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
+  getInitialLoadTelemetryProperties,
   shouldBypassNonProTelemetrySampling,
+  shouldFilterPostHogExceptionEvent,
 } from "@/lib/posthogTelemetry";
+import type { UserSettings } from "@/lib/schemas";
+
+function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
+  return {
+    selectedModel: { provider: "auto", name: "auto" },
+    providerSettings: {},
+    selectedTemplateId: "react",
+    enableAutoUpdate: true,
+    releaseChannel: "stable",
+    ...overrides,
+  } as UserSettings;
+}
 
 describe("createExceptionFromTelemetry", () => {
   it("uses exception telemetry fields when present", () => {
@@ -24,6 +38,96 @@ describe("createExceptionFromTelemetry", () => {
 
     expect(error.name).toBe("Error");
     expect(error.message).toBe("Unknown IPC exception");
+  });
+});
+
+describe("shouldFilterPostHogExceptionEvent", () => {
+  it("filters generic TypeError fetch failed from main-process telemetry", () => {
+    expect(
+      shouldFilterPostHogExceptionEvent({
+        event: "$exception",
+        properties: {
+          exception_name: "TypeError",
+          exception_message: "fetch failed",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("filters generic TypeError fetch failed from PostHog autocapture", () => {
+    expect(
+      shouldFilterPostHogExceptionEvent({
+        event: "$exception",
+        properties: {
+          $exception_type: "TypeError",
+          $exception_message: "fetch failed",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not filter fetch failures with actionable messages", () => {
+    expect(
+      shouldFilterPostHogExceptionEvent({
+        event: "$exception",
+        properties: {
+          exception_name: "TypeError",
+          exception_message: "fetch failed: ECONNREFUSED",
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("getInitialLoadTelemetryProperties", () => {
+  it("includes high-value launch properties from settings", () => {
+    expect(
+      getInitialLoadTelemetryProperties({
+        settings: makeSettings({
+          releaseChannel: "beta",
+          defaultChatMode: "ask",
+          selectedChatMode: "build",
+          runtimeMode2: "docker",
+          providerSettings: {
+            auto: { apiKey: { value: "secret" } },
+          },
+        }),
+        appVersion: "1.1.0",
+        platform: "darwin",
+        isFirstSession: false,
+      }),
+    ).toEqual({
+      isPro: true,
+      appVersion: "1.1.0",
+      platform: "darwin",
+      releaseChannel: "beta",
+      isFirstSession: false,
+      modelProvider: "auto",
+      defaultChatMode: "ask",
+      runtimeMode2: "docker",
+    });
+  });
+
+  it("marks first sessions and leaves unset default chat mode as null", () => {
+    expect(
+      getInitialLoadTelemetryProperties({
+        settings: makeSettings({
+          selectedChatMode: "plan",
+        }),
+        appVersion: "1.1.0",
+        platform: null,
+        isFirstSession: true,
+      }),
+    ).toEqual({
+      isPro: false,
+      appVersion: "1.1.0",
+      platform: null,
+      releaseChannel: "stable",
+      isFirstSession: true,
+      modelProvider: "auto",
+      defaultChatMode: null,
+      runtimeMode2: "host",
+    });
   });
 });
 
@@ -51,6 +155,15 @@ describe("shouldBypassNonProTelemetrySampling", () => {
       shouldBypassNonProTelemetrySampling({
         event: "sandbox.script.timeout",
         properties: { error: "Script timed out" },
+      }),
+    ).toBe(true);
+  });
+
+  it("always sends app:initial-load for non-Pro sampling", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "app:initial-load",
+        properties: { isPro: false, appVersion: "1.0.0" },
       }),
     ).toBe(true);
   });

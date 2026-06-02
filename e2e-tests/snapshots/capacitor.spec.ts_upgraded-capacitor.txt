@@ -2166,7 +2166,7 @@ end
 }
 
 === pnpm-workspace.yaml ===
-[10 lines]
+[Dyad-managed pnpm workspace config]
 
 === postcss.config.js ===
 export default {

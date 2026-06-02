@@ -67,6 +67,16 @@ const RENDERER_CRASH_FILE = "renderer-crash.json";
 const SETTINGS_FILE = "user-settings.json";
 const RESTORE_SETTINGS_DOCS_URL =
   "https://www.dyad.sh/docs/guides/migrate-restore#restoring-settings-from-backup";
+let initialLoadIsFirstSession = false;
+
+export function setInitialLoadIsFirstSession(value: boolean): void {
+  initialLoadIsFirstSession = value;
+}
+
+export function getInitialLoadIsFirstSession(): boolean {
+  return initialLoadIsFirstSession;
+}
+
 interface RendererErrorToast {
   message: string;
   action?: {
@@ -336,6 +346,7 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   const combinedSettings: UserSettings = {
     ...DEFAULT_SETTINGS,
     ...rawSettings,
+    hasRunBefore: rawSettings.hasRunBefore ?? true,
   };
   const supabase = combinedSettings.supabase;
   if (supabase) {

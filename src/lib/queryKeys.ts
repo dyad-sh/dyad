@@ -23,6 +23,10 @@ export const queryKeys = {
     appVersion: ["system", "appVersion"] as const,
     nodejsStatus: ["system", "nodejsStatus"] as const,
     platform: ["system", "platform"] as const,
+    initialLoadTelemetryContext: [
+      "system",
+      "initialLoadTelemetryContext",
+    ] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +50,13 @@ export const queryKeys = {
     thumbnails: ["apps", "thumbnails"] as const,
     search: ({ query }: { query: string }) =>
       ["apps", "search", query] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // App Collections
+  // ─────────────────────────────────────────────────────────────────────────────
+  appCollections: {
+    all: ["appCollections"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -314,8 +325,6 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   migration: {
     all: ["migration"] as const,
-    dependenciesStatus: ({ appId }: { appId: number }) =>
-      ["migration", "dependencies-status", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -374,6 +383,9 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.system)[keyof typeof queryKeys.system]>
   | QueryKeyOf<(typeof queryKeys.settings)[keyof typeof queryKeys.settings]>
   | QueryKeyOf<(typeof queryKeys.apps)[keyof typeof queryKeys.apps]>
+  | QueryKeyOf<
+      (typeof queryKeys.appCollections)[keyof typeof queryKeys.appCollections]
+    >
   | QueryKeyOf<(typeof queryKeys.chats)[keyof typeof queryKeys.chats]>
   | QueryKeyOf<(typeof queryKeys.plans)[keyof typeof queryKeys.plans]>
   | QueryKeyOf<(typeof queryKeys.proposals)[keyof typeof queryKeys.proposals]>

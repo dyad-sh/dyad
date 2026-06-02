@@ -7,14 +7,16 @@ import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   MoreVertical,
   MessageCircle,
   Pencil,
+  Plus,
   Folder,
   Star,
+  Trash2,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import {
@@ -56,6 +58,8 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { useAppCollections } from "@/hooks/useAppCollections";
+import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectionDialog";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
@@ -140,6 +144,17 @@ export default function AppDetailsPage() {
     setScreenshotLoadFailed(false);
   }, [latestScreenshotUrl]);
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
+
+  const { collections, assignApps } = useAppCollections();
+  const [isAssignCollectionDialogOpen, setIsAssignCollectionDialogOpen] =
+    useState(false);
+  const currentCollection = useMemo(
+    () =>
+      selectedApp?.collectionId != null
+        ? (collections.find((c) => c.id === selectedApp.collectionId) ?? null)
+        : null,
+    [collections, selectedApp?.collectionId],
+  );
 
   useEffect(() => {
     if (appId) {
@@ -516,6 +531,56 @@ export default function AppDetailsPage() {
                 <TooltipContent>Show in folder</TooltipContent>
               </Tooltip>
               <span className="text-sm break-all">{currentAppPath}</span>
+            </div>
+          </div>
+          <div className="col-span-2">
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
+              Collection
+            </span>
+            <div className="flex items-center gap-1">
+              <Folder className="h-3.5 w-3.5 text-muted-foreground" />
+              <span
+                className="text-sm"
+                data-testid="app-details-collection-name"
+              >
+                {currentCollection?.name ?? "No collection yet"}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-1 h-auto text-muted-foreground cursor-pointer hover:bg-transparent hover:text-foreground transition-colors"
+                onClick={() => setIsAssignCollectionDialogOpen(true)}
+                data-testid="app-details-edit-collection-button"
+              >
+                {selectedApp.collectionId == null ? (
+                  <Plus className="h-3.5 w-3.5" />
+                ) : (
+                  <Pencil className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              {selectedApp.collectionId != null && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 h-auto text-muted-foreground cursor-pointer hover:bg-transparent hover:text-destructive transition-colors"
+                  onClick={async () => {
+                    try {
+                      await assignApps({
+                        collectionId: null,
+                        appIds: [selectedApp.id],
+                      });
+                      showSuccess("Removed from collection");
+                    } catch (error) {
+                      showError(error);
+                    }
+                  }}
+                  title="Remove from collection"
+                  aria-label="Remove from collection"
+                  data-testid="app-details-remove-collection-button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -959,6 +1024,13 @@ export default function AppDetailsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <AssignAppsToCollectionDialog
+          open={isAssignCollectionDialogOpen}
+          onOpenChange={setIsAssignCollectionDialogOpen}
+          apps={selectedApp ? [selectedApp] : []}
+          collections={collections}
+        />
       </div>
     </div>
   );

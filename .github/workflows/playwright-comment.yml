@@ -73,7 +73,7 @@ jobs:
         if: ${{ steps.pr.outputs.number != '' }}
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: v24.13.1
 
       - name: Download Playwright HTML report
         if: ${{ steps.pr.outputs.number != '' }}

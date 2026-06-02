@@ -13,11 +13,12 @@ import {
   CLOUD_PROVIDERS,
   GEMINI_3_1_PRO_PREVIEW,
   GPT_5_2_MODEL_NAME,
+  GPT_5_5_MODEL_NAME,
   GPT_5_NANO,
   MODEL_OPTIONS,
   OPUS_4_6,
+  OPUS_4_8,
   PROVIDER_TO_ENV_VAR,
-  SONNET_4_6,
   GEMINI_3_FLASH,
 } from "./language_model_constants";
 
@@ -200,7 +201,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         id: "dyad/auto/openai",
         resolvedModel: {
           providerId: "openai",
-          apiName: GPT_5_2_MODEL_NAME,
+          apiName: GPT_5_5_MODEL_NAME,
         },
         displayName: "Auto OpenAI",
         purpose: "auto-mode",
@@ -209,7 +210,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         id: "dyad/auto/anthropic",
         resolvedModel: {
           providerId: "anthropic",
-          apiName: SONNET_4_6,
+          apiName: OPUS_4_8,
         },
         displayName: "Auto Anthropic",
         purpose: "auto-mode",

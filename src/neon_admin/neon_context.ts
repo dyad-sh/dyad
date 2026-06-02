@@ -112,9 +112,11 @@ export async function getBranchDatabaseName({
 export async function getConnectionUri({
   projectId,
   branchId,
+  pooled,
 }: {
   projectId: string;
   branchId: string;
+  pooled?: boolean;
 }): Promise<string> {
   const neonClient = await getNeonClient();
   const [roleName, databaseName] = await Promise.all([
@@ -126,6 +128,7 @@ export async function getConnectionUri({
     branch_id: branchId,
     database_name: databaseName,
     role_name: roleName,
+    pooled,
   });
   return response.data.uri;
 }
@@ -167,9 +170,9 @@ export async function executeNeonSql({
  * this is safe for migration apply.
  *
  * Caveat: a small set of statements (e.g. `CREATE INDEX CONCURRENTLY`) cannot
- * run inside a transaction. drizzle-kit's default output does not produce
- * those, but the error message surfaces the failing statement index so the
- * user can act on it.
+ * run inside a transaction. The Neon migration preview calls
+ * ts-pg-schema-diff with `noConcurrentIndexOperations: true` so this executor
+ * can stay transactional.
  */
 export async function executeNeonStatementsInTransaction({
   projectId,

@@ -55,6 +55,7 @@ export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export { imageGenerationContracts } from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
+export { appCollectionContracts } from "./app_collections";
 
 // =============================================================================
 // Client Exports
@@ -89,6 +90,7 @@ export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export { imageGenerationClient } from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
+export { appCollectionClient } from "./app_collections";
 
 // =============================================================================
 // Type Exports
@@ -170,6 +172,7 @@ export type {
   CreateMcpServer,
   McpServerUpdate,
   McpTool,
+  McpListToolsResult,
   McpToolConsent,
   McpConsentValue,
   McpConsentDecision,
@@ -402,6 +405,7 @@ import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
+import { appCollectionClient } from "./app_collections";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -462,6 +466,7 @@ export const ipc = {
   media: mediaClient,
   imageGeneration: imageGenerationClient,
   appBlueprint: appBlueprintClient,
+  appCollection: appCollectionClient,
 
   // Event clients for main->renderer pub/sub
   events: {

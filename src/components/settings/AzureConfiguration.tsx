@@ -10,6 +10,11 @@ import {
 } from "@/components/ui/accordion";
 import { CheckCircle2, Info, KeyRound } from "lucide-react";
 import type { AzureProviderSetting, UserSettings } from "@/lib/schemas";
+import {
+  findInvalidProviderApiKeyCharacter,
+  formatInvalidProviderApiKeyMessage,
+  normalizeProviderApiKeyInput,
+} from "@/lib/providerApiKey";
 
 interface AzureConfigurationProps {
   settings: UserSettings | null | undefined;
@@ -59,8 +64,21 @@ export function AzureConfiguration({
     setSaved(false);
     setError(null);
     try {
-      const trimmedApiKey = apiKey.trim();
+      const trimmedApiKey = normalizeProviderApiKeyInput(apiKey);
       const trimmedResourceName = resourceName.trim();
+      if (trimmedApiKey) {
+        const invalidCharacter =
+          findInvalidProviderApiKeyCharacter(trimmedApiKey);
+        if (invalidCharacter) {
+          setError(
+            formatInvalidProviderApiKeyMessage(
+              "Azure OpenAI",
+              invalidCharacter,
+            ),
+          );
+          return;
+        }
+      }
 
       const azureSettings: AzureProviderSetting = {
         ...existing,

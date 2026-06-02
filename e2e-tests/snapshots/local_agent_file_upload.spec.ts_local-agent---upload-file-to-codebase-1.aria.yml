@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 2: (1 files changed)"
+- text: "/Version 2: \\(\\d+ files changed\\)/"
 - button "Copy Request ID":
   - img
   - text: ""
@@ -38,7 +38,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: "Version 3: (2 files changed)"
+- text: "/Version 3: \\(\\d+ files changed\\)/"
 - button "Copy Request ID":
   - img
   - text: ""

@@ -39,6 +39,9 @@ async function configurePackageManagerCache(userDataDir: string) {
 async function createOldPnpmShim(userDataDir: string) {
   const fakeBinDir = path.join(userDataDir, "fake-old-pnpm-bin");
   const pnpmPath = path.join(fakeBinDir, "pnpm");
+  const systemPnpmPath = execFileSync("which", ["pnpm"], {
+    encoding: "utf8",
+  }).trim();
 
   await fs.mkdir(fakeBinDir, { recursive: true });
   await fs.writeFile(
@@ -49,8 +52,7 @@ async function createOldPnpmShim(userDataDir: string) {
       '  echo "10.15.0"',
       "  exit 0",
       "fi",
-      'echo "fake pnpm only supports --version" >&2',
-      "exit 1",
+      `exec "${systemPnpmPath}" "$@"`,
       "",
     ].join("\n"),
   );
@@ -96,6 +98,38 @@ async function createSupportedPnpmShim(userDataDir: string) {
   );
   await fs.chmod(pnpmPath, 0o755);
   process.env.PATH = `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+function warmSocketFirewallCache() {
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      execFileSync(
+        "npx",
+        ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
+        {
+          encoding: "utf8",
+          timeout: 120_000,
+        },
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) {
+        break;
+      }
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        attempt * 1_000,
+      );
+    }
+  }
+
+  throw lastError;
 }
 
 async function restorePackageManagerCache() {
@@ -149,6 +183,7 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
     await createSupportedPnpmShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
     process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
+    warmSocketFirewallCache();
   },
   postLaunchHook: restorePackageManagerCache,
 });
@@ -312,7 +347,7 @@ testSkipIfWindows(
 );
 
 oldPnpmTestSkipIfWindows(
-  "app run falls back to npm and hides the pnpm minimum release age warning after opt-out",
+  "app run uses old pnpm and hides the pnpm minimum release age warning after opt-out",
   async ({ po }, testInfo) => {
     testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
 
@@ -336,7 +371,7 @@ oldPnpmTestSkipIfWindows(
     const appPath = await po.appManagement.getCurrentAppPath();
     await expect(async () => {
       await expect(
-        fs.stat(path.join(appPath, "package-lock.json")),
+        fs.stat(path.join(appPath, "pnpm-workspace.yaml")),
       ).resolves.toBeTruthy();
     }).toPass({ timeout: Timeout.EXTRA_LONG });
 

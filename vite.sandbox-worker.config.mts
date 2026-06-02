@@ -9,6 +9,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "ts-pg-schema-diff": path.resolve(
+        __dirname,
+        "./packages/ts-pg-schema-diff/src/index.ts",
+      ),
     },
   },
   build: {
@@ -20,7 +24,7 @@ export default defineConfig({
       formats: ["cjs"],
     },
     rollupOptions: {
-      external: [...nodeBuiltins, "mustardscript"],
+      external: [...nodeBuiltins, "mustardscript", "pg"],
     },
   },
 });

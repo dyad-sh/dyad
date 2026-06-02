@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
+      should_run_schema_diff_tests: ${{ steps.check.outputs.should_run_schema_diff_tests }}
       build_os: ${{ steps.matrix.outputs.build_os }}
       e2e_os: ${{ steps.matrix.outputs.e2e_os }}
       e2e_shard: ${{ steps.matrix.outputs.e2e_shard }}
@@ -33,16 +34,9 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
           fetch-depth: 0
-      - name: Check if only .claude files changed
+      - name: Check changed files
         id: check
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            # Always run tests on pushes to main
-            echo "should_run_tests=true" >> $GITHUB_OUTPUT
-            echo "Running tests: push to main branch"
-            exit 0
-          fi
-
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
@@ -57,12 +51,29 @@ jobs:
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "should_run_schema_diff_tests=false" >> $GITHUB_OUTPUT
             echo "Running tests: could not determine changed files"
+            echo "Skipping ts-pg-schema-diff tests: could not determine changed files"
             exit 0
           fi
 
           echo "Changed files:"
           echo "$CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -q "^packages/ts-pg-schema-diff/"; then
+            echo "should_run_schema_diff_tests=true" >> $GITHUB_OUTPUT
+            echo "Running ts-pg-schema-diff tests: package files changed"
+          else
+            echo "should_run_schema_diff_tests=false" >> $GITHUB_OUTPUT
+            echo "Skipping ts-pg-schema-diff tests: no package files changed"
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Always run app tests on pushes to main.
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: push to main branch"
+            exit 0
+          fi
 
           # Check if all changed files are in config-only directories (.claude, rules)
           NON_CONFIG_FILES=$(echo "$CHANGED_FILES" | grep -v "^\.claude/" | grep -v "^rules/" || true)
@@ -103,12 +114,9 @@ jobs:
       # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
       #
       # Privileged authors (wwwillchen, keppo-bot/keppo-bot[bot], dyad-assistant, azizmejri1, ryangroch):
-      #   - Self-hosted macOS ARM64 runners, no Windows, no sharding.
+      #   - Self-hosted macOS ARM64 runners, no Windows, 4 shards.
       #
-      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shard 1/1)
-      #                                          │
-      #                                          v
-      #                                    merge-reports
+      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shards 1-4) ──> merge-reports
       #
       # All other authors:
       #   - GitHub-hosted runners for macOS + Windows, 4 shards each.
@@ -123,14 +131,63 @@ jobs:
           if [ "${{ steps.author-check.outputs.is_privileged }}" = "true" ]; then
             echo 'build_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard=[1,2]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard_total=[2]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           else
             echo 'build_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
             echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           fi
+
+  ts-pg-schema-diff-tests:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_schema_diff_tests == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Type-check ts-pg-schema-diff
+        run: npm --prefix packages/ts-pg-schema-diff run typecheck
+      - name: Unit tests
+        run: npm --prefix packages/ts-pg-schema-diff test
+      - name: Integration tests
+        run: npm --prefix packages/ts-pg-schema-diff run test:integration
+        env:
+          PG_SCHEMA_DIFF_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   build:
     needs: [check-changes]

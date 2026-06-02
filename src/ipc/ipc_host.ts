@@ -45,6 +45,7 @@ import { registerMediaHandlers } from "./handlers/media_handlers";
 import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
 import { registerMiscHandlers } from "./handlers/misc_handlers";
 import { registerAppBlueprintHandlers } from "./handlers/app_blueprint_handlers";
+import { registerAppCollectionHandlers } from "./handlers/app_collection_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -95,4 +96,5 @@ export function registerIpcHandlers() {
   registerImageGenerationHandlers();
   registerMiscHandlers();
   registerAppBlueprintHandlers();
+  registerAppCollectionHandlers();
 }

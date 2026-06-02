@@ -35,8 +35,9 @@ import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useChatMode } from "@/hooks/useChatMode";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
-import { currentAppAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
+import { useLoadApps } from "@/hooks/useLoadApps";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
@@ -59,7 +60,8 @@ export function ChatPanel({
     terminalOpenByChatIdAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const currentApp = useAtomValue(currentAppAtom);
+  const { apps } = useLoadApps();
+  const currentApp = apps.find((app) => app.id === selectedAppId);
   const reducedMotion = useReducedMotionPref();
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [terminalFitSignal, setTerminalFitSignal] = useState(0);

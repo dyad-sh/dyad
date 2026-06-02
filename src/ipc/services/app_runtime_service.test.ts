@@ -9,6 +9,8 @@ const {
   readSettingsMock,
   safeSendMock,
   spawnMock,
+  killPortMock,
+  startProxyMock,
 } = vi.hoisted(() => ({
   getPnpmMinimumReleaseAgeSupportMock: vi.fn<
     () => Promise<{
@@ -27,6 +29,8 @@ const {
   })),
   safeSendMock: vi.fn(),
   spawnMock: vi.fn(),
+  killPortMock: vi.fn<() => Promise<void>>(async () => {}),
+  startProxyMock: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -53,7 +57,7 @@ vi.mock("fix-path", () => ({
 }));
 
 vi.mock("kill-port", () => ({
-  default: vi.fn(),
+  default: killPortMock,
 }));
 
 vi.mock("@/main/settings", () => ({
@@ -87,8 +91,13 @@ vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
   uploadCloudSandboxFiles: vi.fn(),
 }));
 
-import { executeApp } from "./app_runtime_service";
+vi.mock("@/ipc/utils/start_proxy_server", () => ({
+  startProxy: (...args: unknown[]) => startProxyMock(...args),
+}));
+
+import { ensureProxyForRunningApp, executeApp } from "./app_runtime_service";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 class FakeChildProcess extends EventEmitter {
   pid: number;
@@ -131,6 +140,9 @@ describe("executeApp", () => {
     });
     safeSendMock.mockReset();
     spawnMock.mockReset();
+    killPortMock.mockReset();
+    killPortMock.mockResolvedValue(undefined);
+    startProxyMock.mockReset();
   });
 
   it("does not emit app-exit when a replaced process closes later", async () => {
@@ -231,6 +243,70 @@ describe("executeApp", () => {
       expect.objectContaining({
         type: "package-manager-warning",
         message: "Install pnpm 10.16.0 or newer for the strongest protection",
+      }),
+    );
+  });
+
+  it("starts the proxy on the deterministic port without killing the occupant", async () => {
+    const terminate = vi.fn();
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      opts.onStarted?.("http://localhost:42142");
+      return { terminate };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    const event = createEvent();
+    await ensureProxyForRunningApp({
+      appId: 42,
+      event,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+
+    expect(startProxyMock).toHaveBeenCalledWith(
+      "http://localhost:32142",
+      expect.objectContaining({
+        port: 42142,
+      }),
+    );
+    // We must never evict whatever already holds the deterministic proxy port —
+    // the worker scans the fallback band instead.
+    expect(killPortMock).not.toHaveBeenCalledWith(42142, "tcp");
+  });
+
+  it("surfaces a proxy port-exhaustion error to the renderer", async () => {
+    const terminate = vi.fn();
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      opts.onError?.(new DyadError("all ports in use", DyadErrorKind.Conflict));
+      return { terminate };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    const event = createEvent();
+    await ensureProxyForRunningApp({
+      appId: 42,
+      event,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+
+    expect(safeSendMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "app:output",
+      expect.objectContaining({
+        type: "stderr",
+        message: expect.stringContaining("all ports in use"),
+        appId: 42,
       }),
     );
   });

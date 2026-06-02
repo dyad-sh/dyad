@@ -6,7 +6,7 @@ import fixPath from "fix-path";
 import killPort from "kill-port";
 import log from "electron-log";
 
-import { getAppPort } from "../../../shared/ports";
+import { getAppPort, getAppProxyPort } from "../../../shared/ports";
 import { readSettings } from "@/main/settings";
 import {
   shouldShowPnpmMinimumReleaseAgeWarning,
@@ -270,7 +270,16 @@ export async function ensureProxyForRunningApp({
     appInfo.proxyWorker = undefined;
   }
 
+  // Prefer the deterministic port so the iframe origin stays stable across
+  // restarts — otherwise origin-scoped browser state (auth sessions,
+  // localStorage) gets orphaned and users appear logged out. If that port is
+  // already taken (by a foreign service, or another Dyad app in the rare 10k
+  // overlap), the proxy worker scans the fallback band upward rather than
+  // killing whatever holds the port.
+  const proxyPort = getAppProxyPort(appId);
+
   const proxyWorker = await startProxy(originalUrl, {
+    port: proxyPort,
     onStarted: (proxyUrl) => {
       const latestAppInfo = runningApps.get(appId);
       if (latestAppInfo) {
@@ -284,6 +293,14 @@ export async function ensureProxyForRunningApp({
         proxyUrl,
         originalUrl,
         mode,
+      });
+    },
+    onError: (error) => {
+      logger.error(`Failed to start proxy for app ${appId}:`, error);
+      safeSend(event.sender, "app:output", {
+        type: "stderr",
+        message: `[dyad-proxy-server] ${error.message}`,
+        appId,
       });
     },
     fixedHeaders:

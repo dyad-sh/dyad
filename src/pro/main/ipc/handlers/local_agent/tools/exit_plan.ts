@@ -1,8 +1,11 @@
 import { z } from "zod";
 import log from "electron-log";
+import { eq } from "drizzle-orm";
 import { ToolDefinition, AgentContext } from "./types";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { db } from "@/db";
+import { apps } from "@/db/schema";
 
 const logger = log.scope("exit_plan");
 
@@ -62,6 +65,18 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
     }
 
     logger.log("Exiting plan mode, transitioning to implementation");
+
+    try {
+      await db
+        .update(apps)
+        .set({ needsAppBlueprint: false })
+        .where(eq(apps.id, ctx.appId));
+    } catch (error) {
+      logger.warn(
+        `Failed to clear needsAppBlueprint for app ${ctx.appId} on plan exit`,
+        error,
+      );
+    }
 
     safeSend(ctx.event.sender, "plan:exit", {
       chatId: ctx.chatId,

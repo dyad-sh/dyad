@@ -209,3 +209,5 @@ When rebasing past an upstream release tag, `package-lock.json` may conflict onl
 ## Re-run `npm install` after taking either side of a `package-lock.json` conflict
 
 If a `package-lock.json` conflict during rebase isn't a pure version-bump and you resolve it by taking one side wholesale (`git checkout --ours package-lock.json` or `--theirs`), run `npm install` before `npm run ts` / tests. Otherwise `node_modules` still reflects the _pre-rebase_ lockfile, and tsc fails with `Cannot find module '<pkg>'` for any dependency that was added upstream during the rebase window. Symptom: typecheck errors on packages you never touched in your branch.
+
+Even without an explicit lockfile conflict, if a rebase brings in a new local package dependency and tests fail with Vite import resolution like `Failed to resolve import "pg" from "packages/ts-pg-schema-diff/..."`, run `npm install` before retrying tests so `node_modules` matches the rebased lockfile.

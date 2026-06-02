@@ -1,6 +1,4 @@
-import { useEffect } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { versionsListAtom } from "@/atoms/appAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
 import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -12,7 +10,6 @@ import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
 
 export function useVersions(appId: number | null) {
-  const [, setVersionsAtom] = useAtom(versionsListAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const queryClient = useQueryClient();
@@ -36,12 +33,6 @@ export function useVersions(appId: number | null) {
     placeholderData: [],
     meta: { showErrorToast: true },
   });
-
-  useEffect(() => {
-    if (versions) {
-      setVersionsAtom(versions);
-    }
-  }, [versions, setVersionsAtom]);
 
   const revertVersionMutation = useMutation<
     RevertVersionResponse,

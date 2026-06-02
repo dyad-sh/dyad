@@ -1,4 +1,8 @@
-import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  currentConsoleEntriesAtom,
+  setConsoleEntriesForAppAtom,
+} from "@/atoms/previewRuntimeAtoms";
 import type { ConsoleEntry } from "@/ipc/types";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ipc } from "@/ipc/types";
@@ -65,8 +69,8 @@ ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
 export const Console = () => {
-  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
-  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
+  const setConsoleEntries = useSetAtom(setConsoleEntriesForAppAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { settings } = useSettings();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -109,7 +113,7 @@ export const Console = () => {
         // Clear logs from backend store
         await ipc.misc.clearLogs({ appId: selectedAppId });
         // Clear logs from UI
-        setConsoleEntries([]);
+        setConsoleEntries({ appId: selectedAppId, entries: [] });
       } catch (error) {
         showError(
           error instanceof Error ? error.message : "Failed to clear logs",

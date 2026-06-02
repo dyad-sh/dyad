@@ -12,7 +12,8 @@ import {
   DyadCardContent,
 } from "./DyadCardPrimitives";
 import { ImageLightbox } from "./ImageLightbox";
-import { currentAppAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface DyadImageGenerationNode {
   properties: {
@@ -44,7 +45,8 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
   const inProgress = state === "pending";
   const aborted = state === "aborted";
 
-  const app = useAtomValue(currentAppAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { app } = useLoadApp(selectedAppId);
   const appPath = app?.resolvedPath ?? app?.path ?? "";
   const normalizedImagePath = imagePath.split("\\").join("/");
   const hasTraversal = normalizedImagePath

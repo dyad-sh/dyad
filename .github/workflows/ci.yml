@@ -29,7 +29,7 @@ jobs:
       e2e_shard_total: ${{ steps.matrix.outputs.e2e_shard_total }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
@@ -158,12 +158,12 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
           cache: npm
@@ -203,12 +203,12 @@ jobs:
     runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
           cache: npm
@@ -245,7 +245,7 @@ jobs:
         run: tar -cvf out-macos.tar out/
       - name: Upload build artifacts (macOS)
         if: contains(matrix.os.name, 'macos')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: build-${{ matrix.os.name }}
           path: |
@@ -255,7 +255,7 @@ jobs:
           retention-days: 1
       - name: Upload build artifacts (Windows)
         if: contains(matrix.os.name, 'windows')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: build-${{ matrix.os.name }}
           path: |
@@ -278,12 +278,12 @@ jobs:
     runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
           cache: npm
@@ -307,7 +307,7 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
       - name: Setup pnpm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -319,7 +319,7 @@ jobs:
       - name: Install nextjs-template dependencies
         run: cd nextjs-template && pnpm install
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: build-${{ matrix.os.name }}
       # macOS: Extract tar archive to restore app bundle with preserved metadata
@@ -349,14 +349,14 @@ jobs:
           }
           EOF
       - name: Upload shard results
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
           path: blob-report
           retention-days: 1
       - name: Upload flakiness report (for fork PRs)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: flakiness-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
@@ -378,11 +378,11 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
       - name: Install npm 11.8.0
@@ -394,7 +394,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download blob reports from GitHub Actions Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: all-blob-reports
           pattern: blob-report-*
@@ -418,7 +418,7 @@ jobs:
           ls -la
 
       - name: Upload HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: html-report
           path: playwright-report
@@ -426,7 +426,7 @@ jobs:
           overwrite: true
 
       - name: Generate Playwright summary
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
         with:

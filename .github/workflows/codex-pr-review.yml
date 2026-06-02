@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
 
@@ -83,7 +83,7 @@ jobs:
         run: bash scripts/codex-commit-review/run-codex.sh
 
       - name: Upload Codex review artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: codex-pr-review
           path: |
@@ -107,7 +107,7 @@ jobs:
       REVIEW_FINDINGS_PATH: tmp/pr-review/codex-findings.json
     steps:
       - name: Download Codex review artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: codex-pr-review
           path: tmp/pr-review
@@ -146,7 +146,7 @@ jobs:
 
       - name: Create fresh post-review token
         id: post-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
@@ -173,7 +173,7 @@ jobs:
 
       - name: Post Codex review comment
         if: ${{ always() && steps.post-token.outcome == 'success' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           REVIEW_PATH: ${{ env.REVIEW_OUTPUT_PATH }}
         with:

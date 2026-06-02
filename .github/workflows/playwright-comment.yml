@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Find PR number for this CI run (works for forks)
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -64,20 +64,20 @@ jobs:
 
       - name: Checkout repository (base branch)
         if: ${{ steps.pr.outputs.number != '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # base_ref is typically the target branch (e.g., main) and is safe to fetch
           ref: ${{ github.event.workflow_run.base_ref }}
 
       - name: Setup Node.js
         if: ${{ steps.pr.outputs.number != '' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
 
       - name: Download Playwright HTML report
         if: ${{ steps.pr.outputs.number != '' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: html-report
           path: playwright-report
@@ -87,7 +87,7 @@ jobs:
 
       - name: Download blob reports
         if: ${{ steps.pr.outputs.number != '' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: all-blob-reports
           pattern: blob-report-*
@@ -98,7 +98,7 @@ jobs:
 
       - name: Generate Playwright summary comment
         if: ${{ steps.pr.outputs.number != '' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PLAYWRIGHT_RUN_ID: ${{ github.event.workflow_run.id }}

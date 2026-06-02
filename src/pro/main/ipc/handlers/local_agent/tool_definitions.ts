@@ -47,7 +47,7 @@ import {
   type FileEditToolName,
   FILE_EDIT_TOOL_NAMES,
 } from "./tools/types";
-import { AgentToolConsent } from "@/lib/schemas";
+import type { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -110,6 +110,19 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
 // ============================================================================
 
 export type AgentToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
+
+function getAgentToolConsentSettings(
+  toolName: AgentToolName,
+  consent: AgentToolConsent,
+) {
+  const settings = readSettings();
+  return {
+    agentToolConsents: {
+      ...settings.agentToolConsents,
+      [toolName]: consent,
+    },
+  };
+}
 
 // ============================================================================
 // Agent Tool Consent Management
@@ -175,13 +188,7 @@ export function setAgentToolConsent(
   toolName: AgentToolName,
   consent: AgentToolConsent,
 ): void {
-  const settings = readSettings();
-  writeSettings({
-    agentToolConsents: {
-      ...settings.agentToolConsents,
-      [toolName]: consent,
-    },
-  });
+  writeSettings(getAgentToolConsentSettings(toolName, consent));
 }
 
 export function getAllAgentToolConsents(): Record<

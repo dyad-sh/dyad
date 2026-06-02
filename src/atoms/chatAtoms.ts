@@ -7,6 +7,7 @@ import type {
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 
 // Chat completion events - used to notify when a stream has completed
 export type ChatCompletionEvent = {
@@ -72,6 +73,65 @@ export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
 // Track chats opened in the current session - tabs are only shown for these
 export const sessionOpenedChatIdsAtom = atom<Set<number>>(new Set<number>());
 
+export interface ChatTabSession {
+  openChatIds: number[];
+  selectedChatId: number | null;
+  closedChatIds: number[];
+  updatedAt: number;
+}
+
+export const EMPTY_CHAT_TAB_SESSION: ChatTabSession = {
+  openChatIds: [],
+  selectedChatId: null,
+  closedChatIds: [],
+  updatedAt: 0,
+};
+
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "number")
+  );
+}
+
+function isChatTabSession(value: unknown): value is ChatTabSession {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+
+  const session = value as Partial<ChatTabSession>;
+  return (
+    isNumberArray(session.openChatIds) &&
+    (session.selectedChatId === null ||
+      typeof session.selectedChatId === "number") &&
+    isNumberArray(session.closedChatIds) &&
+    typeof session.updatedAt === "number"
+  );
+}
+
+function sessionsHaveSameShape(
+  left: ChatTabSession,
+  right: ChatTabSession,
+): boolean {
+  return (
+    left.selectedChatId === right.selectedChatId &&
+    left.openChatIds.length === right.openChatIds.length &&
+    left.openChatIds.every(
+      (chatId, index) => right.openChatIds[index] === chatId,
+    ) &&
+    left.closedChatIds.length === right.closedChatIds.length &&
+    left.closedChatIds.every(
+      (chatId, index) => right.closedChatIds[index] === chatId,
+    )
+  );
+}
+
+export const chatTabSessionStorageAtom = atomWithStorage<ChatTabSession>(
+  "chat-tab-session",
+  EMPTY_CHAT_TAB_SESSION,
+  undefined,
+  { getOnInit: true },
+);
+
 // Closed tab history for "Reopen closed tab"
 export interface ClosedTabRecord {
   chatId: number;
@@ -84,6 +144,81 @@ export interface ClosedTabRecord {
 export const closedTabHistoryAtom = atom<ClosedTabRecord[]>([]);
 const MAX_CLOSED_TAB_HISTORY = 10;
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
+
+function dedupeValidChatIds(chatIds: number[], validChatIds: Set<number>) {
+  const deduped: number[] = [];
+  const seen = new Set<number>();
+
+  for (const chatId of chatIds) {
+    if (!validChatIds.has(chatId) || seen.has(chatId)) {
+      continue;
+    }
+    seen.add(chatId);
+    deduped.push(chatId);
+    if (deduped.length >= MAX_RECENT_VIEWED_CHAT_IDS) {
+      break;
+    }
+  }
+
+  return deduped;
+}
+
+export const hydrateChatTabSessionAtom = atom(
+  null,
+  (get, set, validChatIds: Set<number>) => {
+    const storedSession = get(chatTabSessionStorageAtom);
+    const session = isChatTabSession(storedSession)
+      ? storedSession
+      : EMPTY_CHAT_TAB_SESSION;
+    const openChatIds = dedupeValidChatIds(session.openChatIds, validChatIds);
+    const closedChatIds = dedupeValidChatIds(
+      session.closedChatIds,
+      validChatIds,
+    );
+    const selectedChatId =
+      session.selectedChatId !== null &&
+      openChatIds.includes(session.selectedChatId)
+        ? session.selectedChatId
+        : null;
+
+    set(recentViewedChatIdsAtom, openChatIds);
+    set(sessionOpenedChatIdsAtom, new Set(openChatIds));
+    set(closedChatIdsAtom, new Set(closedChatIds));
+
+    return {
+      ...session,
+      openChatIds,
+      selectedChatId,
+      closedChatIds,
+    };
+  },
+);
+
+export const persistChatTabSessionAtom = atom(null, (get, set) => {
+  const openChatIds = get(recentViewedChatIdsAtom).filter((chatId) =>
+    get(sessionOpenedChatIdsAtom).has(chatId),
+  );
+  const selectedChatId = get(selectedChatIdAtom);
+  const currentSession = get(chatTabSessionStorageAtom);
+  const session: ChatTabSession = {
+    openChatIds,
+    selectedChatId:
+      selectedChatId !== null && openChatIds.includes(selectedChatId)
+        ? selectedChatId
+        : null,
+    closedChatIds: Array.from(get(closedChatIdsAtom)),
+    updatedAt: Date.now(),
+  };
+
+  if (
+    isChatTabSession(currentSession) &&
+    sessionsHaveSameShape(currentSession, session)
+  ) {
+    return;
+  }
+
+  set(chatTabSessionStorageAtom, session);
+});
 
 // Atom to pop the most recent closed tab from history
 export const popClosedTabAtom = atom(

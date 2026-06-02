@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { createStore } from "jotai";
 import {
   recentViewedChatIdsAtom,
@@ -11,6 +11,11 @@ import {
   addSessionOpenedChatIdAtom,
   closeMultipleTabsAtom,
   popClosedTabAtom,
+  chatTabSessionStorageAtom,
+  hydrateChatTabSessionAtom,
+  persistChatTabSessionAtom,
+  selectedChatIdAtom,
+  type ChatTabSession,
 } from "@/atoms/chatAtoms";
 import {
   applySelectionToOrderedChatIds,
@@ -32,6 +37,10 @@ function chat(id: number, appId = 1): ChatSummary {
     chatMode: null,
   };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("ChatTabs helpers", () => {
   it("keeps MRU order and appends chats that were never viewed (session filter)", () => {
@@ -223,6 +232,143 @@ describe("session opened chat atoms", () => {
     store.set(addSessionOpenedChatIdAtom, 1);
     const sessionIds = store.get(sessionOpenedChatIdsAtom);
     expect(sessionIds.size).toBe(1);
+  });
+});
+
+describe("chat tab session persistence", () => {
+  it("hydrates persisted tabs after pruning deleted and duplicate chat IDs", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [4, 2, 2, 99, 1],
+      selectedChatId: 2,
+      closedChatIds: [3, 99, 3],
+      updatedAt: 123,
+    });
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([1, 2, 3, 4]),
+    );
+
+    expect(restoredSession).toEqual({
+      openChatIds: [4, 2, 1],
+      selectedChatId: 2,
+      closedChatIds: [3],
+      updatedAt: 123,
+    });
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([4, 2, 1]);
+    expect(Array.from(store.get(sessionOpenedChatIdsAtom))).toEqual([4, 2, 1]);
+    expect(Array.from(store.get(closedChatIdsAtom))).toEqual([3]);
+  });
+
+  it("clears restored selection when the selected chat is no longer open", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [1],
+      selectedChatId: 2,
+      closedChatIds: [],
+      updatedAt: 123,
+    });
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([1, 2]),
+    );
+
+    expect(restoredSession.selectedChatId).toBeNull();
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([1]);
+  });
+
+  it("falls back to an empty session when stored data has an invalid shape", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: "1,2",
+      selectedChatId: 1,
+      closedChatIds: [],
+      updatedAt: 123,
+    } as unknown as ChatTabSession);
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([1, 2]),
+    );
+
+    expect(restoredSession).toEqual({
+      openChatIds: [],
+      selectedChatId: null,
+      closedChatIds: [],
+      updatedAt: 0,
+    });
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([]);
+    expect(Array.from(store.get(sessionOpenedChatIdsAtom))).toEqual([]);
+    expect(Array.from(store.get(closedChatIdsAtom))).toEqual([]);
+  });
+
+  it("persists only currently open tab IDs and the active open chat", () => {
+    const store = createStore();
+    store.set(recentViewedChatIdsAtom, [3, 2, 1]);
+    store.set(sessionOpenedChatIdsAtom, new Set([3, 1]));
+    store.set(closedChatIdsAtom, new Set([2]));
+    store.set(selectedChatIdAtom, 3);
+
+    store.set(persistChatTabSessionAtom);
+
+    expect(store.get(chatTabSessionStorageAtom)).toMatchObject({
+      openChatIds: [3, 1],
+      selectedChatId: 3,
+      closedChatIds: [2],
+    });
+    expect(store.get(chatTabSessionStorageAtom).updatedAt).toEqual(
+      expect.any(Number),
+    );
+  });
+
+  it("skips persistence when the current tab session has not meaningfully changed", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [3, 1],
+      selectedChatId: 3,
+      closedChatIds: [2],
+      updatedAt: 123,
+    });
+    store.set(recentViewedChatIdsAtom, [3, 2, 1]);
+    store.set(sessionOpenedChatIdsAtom, new Set([3, 1]));
+    store.set(closedChatIdsAtom, new Set([2]));
+    store.set(selectedChatIdAtom, 3);
+
+    store.set(persistChatTabSessionAtom);
+
+    expect(store.get(chatTabSessionStorageAtom)).toEqual({
+      openChatIds: [3, 1],
+      selectedChatId: 3,
+      closedChatIds: [2],
+      updatedAt: 123,
+    });
+  });
+
+  it("updates persistence when tab session shape changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(456);
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [3, 1],
+      selectedChatId: 3,
+      closedChatIds: [2],
+      updatedAt: 123,
+    });
+    store.set(recentViewedChatIdsAtom, [1, 3]);
+    store.set(sessionOpenedChatIdsAtom, new Set([3, 1]));
+    store.set(closedChatIdsAtom, new Set([2]));
+    store.set(selectedChatIdAtom, 1);
+
+    store.set(persistChatTabSessionAtom);
+
+    expect(store.get(chatTabSessionStorageAtom)).toEqual({
+      openChatIds: [1, 3],
+      selectedChatId: 1,
+      closedChatIds: [2],
+      updatedAt: 456,
+    });
   });
 });
 

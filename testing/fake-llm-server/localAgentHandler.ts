@@ -568,7 +568,7 @@ export async function handleLocalAgentFixture(
       console.log(
         `[local-agent] All turns exhausted for pass ${passIndex}, sending completion`,
       );
-      await streamTextResponse(res, "Task completed.");
+      await streamTextResponse(res, "Task completed.", undefined, protocol);
       return;
     }
 

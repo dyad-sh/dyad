@@ -109,6 +109,31 @@ export function createDyadEngine(
     fetch: options.fetch,
   });
 
+  const appendQueryParams = (input: RequestInfo | URL): RequestInfo | URL => {
+    if (!options.queryParams) {
+      return input;
+    }
+
+    const appendToUrl = (urlValue: string) => {
+      const url = new URL(urlValue);
+      for (const [key, value] of Object.entries(options.queryParams ?? {})) {
+        url.searchParams.set(key, value);
+      }
+      return url.toString();
+    };
+
+    if (typeof input === "string") {
+      return appendToUrl(input);
+    }
+    if (input instanceof URL) {
+      return new URL(appendToUrl(input.toString()));
+    }
+    if (input instanceof Request) {
+      return new Request(appendToUrl(input.url), input);
+    }
+    return input;
+  };
+
   // Custom fetch implementation that adds dyad-specific options to the request
   const createDyadFetch = ({
     providerId,
@@ -118,9 +143,11 @@ export function createDyadEngine(
     dyadProviderOptions?: DyadEngineProviderOptions;
   }): FetchFunction => {
     return (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestInput = appendQueryParams(input);
+
       // Use default fetch if no init or body
       if (!init || !init.body || typeof init.body !== "string") {
-        return (options.fetch || fetch)(input, init);
+        return (options.fetch || fetch)(requestInput, init);
       }
 
       try {
@@ -209,11 +236,11 @@ export function createDyadEngine(
         };
 
         // Use the provided fetch or default fetch
-        return (options.fetch || fetch)(input, modifiedInit);
+        return (options.fetch || fetch)(requestInput, modifiedInit);
       } catch (e) {
         logger.error("Error parsing request body", e);
         // If parsing fails, use original request
-        return (options.fetch || fetch)(input, init);
+        return (options.fetch || fetch)(requestInput, init);
       }
     };
   };
@@ -268,7 +295,7 @@ export function createDyadEngine(
         | DyadEngineProviderOptions
         | undefined;
 
-    return {
+    const wrappedModel = {
       specificationVersion: model.specificationVersion,
       provider: model.provider,
       modelId: model.modelId,
@@ -280,6 +307,15 @@ export function createDyadEngine(
       doStream: (callOptions) =>
         createModel(getDyadProviderOptions(callOptions)).doStream(callOptions),
     } satisfies LanguageModel;
+
+    const defaultObjectGenerationMode = (
+      model as LanguageModel & { defaultObjectGenerationMode?: unknown }
+    ).defaultObjectGenerationMode;
+    if (defaultObjectGenerationMode !== undefined) {
+      Object.assign(wrappedModel, { defaultObjectGenerationMode });
+    }
+
+    return wrappedModel;
   };
 
   const provider = (modelId: ExampleChatModelId, chatParams: ChatParams) =>

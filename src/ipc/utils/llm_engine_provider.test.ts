@@ -96,4 +96,58 @@ describe("createDyadEngine", () => {
     expect(body).not.toHaveProperty("dyadFiles");
     expect(body).not.toHaveProperty("reasoning_effort");
   });
+
+  test("applies query params to Anthropic engine requests", async () => {
+    const requests: Array<{
+      input: RequestInfo | URL;
+      init?: RequestInit;
+    }> = [];
+
+    const provider = createDyadEngine({
+      apiKey: "dyad-pro-key",
+      baseURL: "https://engine.example.test/v1",
+      queryParams: {
+        feature: "anthropic-direct",
+        source: "test",
+      },
+      dyadOptions: {},
+      settings: {} as UserSettings,
+      fetch: async (input, init) => {
+        requests.push({ input, init });
+
+        return new Response(
+          JSON.stringify({
+            type: "message",
+            id: "msg_123",
+            model: "claude-sonnet-4-20250514",
+            content: [{ type: "text", text: "ok", citations: [] }],
+            stop_reason: "end_turn",
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+            },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        );
+      },
+    });
+
+    const model = provider.anthropic("claude-sonnet-4-20250514", {
+      providerId: "anthropic",
+    }) as LanguageModelV3;
+
+    await model.doGenerate({
+      prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+    } satisfies LanguageModelV3CallOptions);
+
+    expect(requests).toHaveLength(1);
+    const url = new URL(String(requests[0].input));
+    expect(url.origin + url.pathname).toBe(
+      "https://engine.example.test/v1/messages",
+    );
+    expect(url.searchParams.get("feature")).toBe("anthropic-direct");
+    expect(url.searchParams.get("source")).toBe("test");
+  });
 });

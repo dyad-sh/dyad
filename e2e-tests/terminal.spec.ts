@@ -17,6 +17,9 @@ async function terminalText(page: Page) {
 test("in-chat terminal runs commands, reopens previous session, and exits from the banner", async ({
   po,
 }) => {
+  await po.page.evaluate(() => {
+    (window as any).__DYAD_E2E__ = true;
+  });
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
 

@@ -271,7 +271,13 @@ export default function TerminalPanel({
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
-    (window as any).__DYAD_TERMINAL__ = terminal;
+    const isDevelopment =
+      (import.meta as { env?: { MODE?: string } }).env?.MODE === "development";
+    const shouldExposeTerminalForDebug =
+      isDevelopment || (window as any).__DYAD_E2E__;
+    if (shouldExposeTerminalForDebug) {
+      (window as any).__DYAD_TERMINAL__ = terminal;
+    }
 
     const dataDisposable = terminal.onData((data) => {
       writeRef.current(data);
@@ -290,7 +296,10 @@ export default function TerminalPanel({
       terminalRef.current = null;
       fitAddonRef.current = null;
       searchAddonRef.current = null;
-      if ((window as any).__DYAD_TERMINAL__ === terminal) {
+      if (
+        shouldExposeTerminalForDebug &&
+        (window as any).__DYAD_TERMINAL__ === terminal
+      ) {
         delete (window as any).__DYAD_TERMINAL__;
       }
     };

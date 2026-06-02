@@ -1,7 +1,3 @@
 ===
-role: system
-message: [[SYSTEM_MESSAGE]]
-
-===
 role: user
-message: /security-review
+message: [{"type":"text","text":"/security-review"}]

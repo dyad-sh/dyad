@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: "/Version 2: \\(\\d+ files changed\\)/"
+- text: "Version 2: (1 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""
@@ -30,7 +30,15 @@
     - text: ""
   - img
   - text: ""
-- paragraph: Marking the first task as done.I've completed the utility module. I'll continue with the remaining tasks.I see there are remaining tasks. I'll pick these up in the next turn.
+- paragraph: Marking the first task as done.I've completed the utility module. I'll continue with the remaining tasks.
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+- paragraph: More EOM
 - button "Copy":
   - img
 - img
@@ -40,30 +48,27 @@
 - img
 - text: less than a minute ago
 - img
-- text: "/Version 3: \\(\\d+ files changed\\)/"
+- text: "Version 3: (2 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""
 - paragraph: tc=local-agent/persistent-todos-resume
-- paragraph: I see there are unfinished todos from last time. Let me continue.Adding error handling to the utility module.
-- 'button "utils.ts src/lib/utils.ts Edit Summary: Add error handling utility"':
+- button "file1.txt file1.txt Edit":
   - img
   - text: ""
   - button "Edit":
     - img
     - text: ""
   - img
-  - text: ""
-- paragraph: Now writing the tests.
-- 'button "utils.test.ts src/lib/utils.test.ts Edit Summary: Write tests for utility module"':
+- paragraph: More EOM
+- button "file1.txt file1.txt Edit":
   - img
   - text: ""
   - button "Edit":
     - img
     - text: ""
   - img
-  - text: ""
-- paragraph: Marking all remaining tasks as done.All tasks from the previous turn are now complete! I created the utility module, added error handling, and wrote the tests.
+- paragraph: More EOM
 - button "Copy":
   - img
 - img
@@ -72,8 +77,6 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- img
-- text: "/Version 4: \\(\\d+ files changed\\)/"
 - button "Copy Request ID":
   - img
   - text: ""

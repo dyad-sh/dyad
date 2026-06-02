@@ -3,11 +3,22 @@ import path from "node:path";
 import { expect } from "@playwright/test";
 import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 
+async function finishPlanPresentation(po: any) {
+  await po.page.getByRole("button", { name: "Keep going" }).click();
+  await po.chatActions.waitForChatCompletion();
+  await expect(
+    po.page.getByText(
+      "I've presented the implementation plan. You can review it in the preview panel and accept it when ready.",
+    ),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+}
+
 testSkipIfWindows(
   "plan mode - accept plan redirects to new chat and saves to disk",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.clickNewChat();
     await po.chatActions.selectChatMode("plan");
 
     // Get app path before accepting (needed to check saved plan)
@@ -15,6 +26,7 @@ testSkipIfWindows(
 
     // Trigger write_plan fixture
     await po.sendPrompt("tc=local-agent/accept-plan");
+    await finishPlanPresentation(po);
 
     // Capture current chat ID from URL
     const initialUrl = po.page.url();
@@ -72,6 +84,7 @@ testSkipIfWindows(
 testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
   await po.importApp("minimal");
+  await po.chatActions.clickNewChat();
   await po.chatActions.selectChatMode("plan");
 
   // Trigger questionnaire fixture
@@ -108,9 +121,11 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.clickNewChat();
     await po.chatActions.selectChatMode("plan");
 
     await po.sendPrompt("tc=local-agent/accept-plan");
+    await finishPlanPresentation(po);
 
     await expect(
       po.page.getByRole("button", { name: "Accept Plan" }),
@@ -222,6 +237,7 @@ testSkipIfWindows(
     // Set up app
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.clickNewChat();
 
     // Switch to plan mode
     await po.chatActions.selectChatMode("plan");

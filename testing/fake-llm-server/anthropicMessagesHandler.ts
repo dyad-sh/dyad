@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
 import { generateDump } from "./chatCompletionHandler";
 import {
   extractLocalAgentFixture,
@@ -25,6 +27,40 @@ function getTextContent(message: any): string {
       .join("\n");
   }
   return "";
+}
+
+function isToolResultMessage(message: any): boolean {
+  return (
+    Array.isArray(message?.content) &&
+    message.content.some((part: any) => part.type === "tool_result")
+  );
+}
+
+function getLastRealUserMessage(messages: any[]): any {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role === "user" && !isToolResultMessage(message)) {
+      return message;
+    }
+  }
+  return undefined;
+}
+
+function getLatestMatchingUserText(
+  messages: any[],
+  predicate: (text: string) => boolean,
+): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role !== "user" || isToolResultMessage(message)) {
+      continue;
+    }
+    const text = getTextContent(message);
+    if (predicate(text)) {
+      return text;
+    }
+  }
+  return undefined;
 }
 
 function writeEvent(res: Response, event: string, data: any) {
@@ -103,12 +139,19 @@ export const createAnthropicMessagesHandler =
     const userMessages = Array.isArray(messages)
       ? messages.filter((m: any) => m.role === "user")
       : [];
-    const lastUserMessage = userMessages[userMessages.length - 1];
+    const lastUserMessage = getLastRealUserMessage(messages);
     const userTextContent = getTextContent(lastUserMessage);
 
     let localAgentFixture = extractLocalAgentFixture(userTextContent);
-    if (!localAgentFixture) {
-      for (const msg of userMessages) {
+    const lastMessage = Array.isArray(messages)
+      ? messages[messages.length - 1]
+      : undefined;
+    if (!localAgentFixture && isToolResultMessage(lastMessage)) {
+      for (let index = userMessages.length - 1; index >= 0; index--) {
+        const msg = userMessages[index];
+        if (isToolResultMessage(msg)) {
+          continue;
+        }
         const fixture = extractLocalAgentFixture(getTextContent(msg));
         if (fixture) {
           localAgentFixture = fixture;
@@ -117,31 +160,60 @@ export const createAnthropicMessagesHandler =
       }
     }
 
-    if (localAgentFixture) {
-      return handleLocalAgentFixture(req, res, localAgentFixture, {
-        protocol: "anthropic",
-      });
-    }
-
-    if (userTextContent.includes("I accept this plan")) {
+    if (
+      getLatestMatchingUserText(messages, (text) =>
+        text.includes("I accept this plan"),
+      )
+    ) {
       return handleLocalAgentFixture(req, res, "exit-plan", {
         protocol: "anthropic",
       });
     }
 
     let messageContent = CANNED_MESSAGE;
-    if (userTextContent.includes("I have the following comments on the plan")) {
+    const planCommentsMessage = getLatestMatchingUserText(messages, (text) =>
+      text.includes("I have the following comments on the plan"),
+    );
+    if (planCommentsMessage) {
       messageContent =
         "I'll update the plan based on your comments.\n\n" + generateDump(req);
     }
     if (userTextContent.includes("[dump]")) {
       messageContent = generateDump(req);
     }
+    if (userTextContent.startsWith("/security-review")) {
+      messageContent =
+        fs.readFileSync(
+          path.join(
+            __dirname,
+            "..",
+            "..",
+            "..",
+            "e2e-tests",
+            "fixtures",
+            "security-review",
+            "findings.md",
+          ),
+          "utf-8",
+        ) +
+        "\n\n" +
+        generateDump(req);
+    }
     if (
       userTextContent.startsWith("Please summarize the following conversation:")
     ) {
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
+    }
+
+    if (
+      localAgentFixture &&
+      messageContent === CANNED_MESSAGE &&
+      !userTextContent.includes("I have the following comments on the plan")
+    ) {
+      return handleLocalAgentFixture(req, res, localAgentFixture, {
+        protocol: "anthropic",
+      });
     }
 
     if (stream) {

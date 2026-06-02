@@ -71,7 +71,7 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
 vi.mock("@/ipc/utils/socket_firewall", () => ({
   ensurePnpmAllowBuildsConfigured: (args: unknown) =>
     ensurePnpmAllowBuildsConfiguredMock(args),
-  getPnpmCommandEnv: () => ({
+  getPackageManagerCommandEnv: () => ({
     ...process.env,
     COREPACK_ENABLE_PROJECT_SPEC: "0",
   }),

@@ -26,6 +26,7 @@ import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 
 // Shared function to get system debug info
 async function getSystemDebugInfo({
@@ -48,7 +49,9 @@ async function getSystemDebugInfo({
   }
 
   try {
-    pnpmVersion = await runShellCommand("pnpm --version");
+    pnpmVersion = await runShellCommand("pnpm --version", {
+      env: getPackageManagerCommandEnv(),
+    });
   } catch (err) {
     console.error("Failed to get pnpm version:", err);
   }
@@ -295,7 +298,9 @@ export function registerDebugHandlers() {
       // Get runtime info in parallel
       const [nodeVersion, pnpmVersion, nodePathResult] = await Promise.all([
         runShellCommand("node --version").catch(() => null),
-        runShellCommand("pnpm --version").catch(() => null),
+        runShellCommand("pnpm --version", {
+          env: getPackageManagerCommandEnv(),
+        }).catch(() => null),
         (platform() === "win32"
           ? runShellCommand("where.exe node")
           : runShellCommand("which node")

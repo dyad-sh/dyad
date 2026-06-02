@@ -34,7 +34,7 @@ import {
 } from "@/ipc/utils/process_manager";
 import {
   ensurePnpmAllowBuildsConfigured,
-  getPnpmCommandEnv,
+  getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
@@ -349,7 +349,7 @@ async function executeAppLocalNode({
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
-    env: hasCustomCommands ? process.env : getPnpmCommandEnv(),
+    env: hasCustomCommands ? process.env : getPackageManagerCommandEnv(),
     shell: true,
     stdio: "pipe",
     detached: false,

@@ -26,7 +26,7 @@ import {
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
-  getPnpmCommandEnv,
+  getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   resolveExecutableName,
@@ -62,9 +62,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("getPnpmCommandEnv", () => {
+describe("getPackageManagerCommandEnv", () => {
   it("disables Corepack project packageManager pins while preserving the rest of the env", () => {
-    expect(getPnpmCommandEnv({ PATH: "/bin", FOO: "bar" })).toEqual({
+    expect(getPackageManagerCommandEnv({ PATH: "/bin", FOO: "bar" })).toEqual({
       PATH: "/bin",
       FOO: "bar",
       COREPACK_ENABLE_PROJECT_SPEC: "0",
@@ -80,6 +80,9 @@ describe("detectPreferredPackageManager", () => {
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      env: expect.objectContaining({
+        COREPACK_ENABLE_PROJECT_SPEC: "0",
+      }),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
   });
@@ -91,6 +94,9 @@ describe("detectPreferredPackageManager", () => {
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      env: expect.objectContaining({
+        COREPACK_ENABLE_PROJECT_SPEC: "0",
+      }),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
   });
@@ -102,6 +108,9 @@ describe("detectPreferredPackageManager", () => {
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
+      env: expect.objectContaining({
+        COREPACK_ENABLE_PROJECT_SPEC: "0",
+      }),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
   });
@@ -713,6 +722,9 @@ describe("ensureSocketFirewallInstalled", () => {
       "npx",
       ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
       {
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+        }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
       },
     );
@@ -732,6 +744,9 @@ describe("ensureSocketFirewallInstalled", () => {
       "npx",
       ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
       {
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+        }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
       },
     );

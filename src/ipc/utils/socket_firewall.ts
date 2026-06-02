@@ -101,7 +101,7 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
-export function getPnpmCommandEnv(
+export function getPackageManagerCommandEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return {
@@ -711,6 +711,7 @@ export async function ensureSocketFirewallInstalled(
 }> {
   try {
     await runner("npx", [...SOCKET_FIREWALL_NPX_ARGS, "--help"], {
+      env: getPackageManagerCommandEnv(),
       timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
     });
     return { available: true };
@@ -758,6 +759,7 @@ export async function getPnpmMinimumReleaseAgeSupport(
 
   try {
     const result = await runner("pnpm", ["--version"], {
+      env: getPackageManagerCommandEnv(),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
     const version = result.stdout.trim();

@@ -21,7 +21,9 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
   // a picker. Choosing Production reveals the migration panel.
   const databaseSection = po.page.getByTestId("database-section");
   await expect(databaseSection).toBeVisible({ timeout: Timeout.MEDIUM });
-  await databaseSection.getByRole("button", { name: /^Production/ }).click();
+  await databaseSection
+    .getByRole("button", { name: /^Separate production database/ })
+    .click();
   await databaseSection.getByRole("button", { name: "Continue" }).click();
 
   // Verify the migration panel is visible

@@ -233,6 +233,11 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
                       <span className="font-medium">
                         {t(`integrations.database.${metaKey}.title`)}
                       </span>
+                      {kind === "prod" && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                          {t("integrations.database.recommended")}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       {t(`integrations.database.${metaKey}.description`)}

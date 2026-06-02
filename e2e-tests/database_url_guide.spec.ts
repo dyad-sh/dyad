@@ -28,7 +28,9 @@ testSkipIfWindows(
     await expect(continueButton).toBeDisabled();
 
     // Pick Development → expand env vars → development branch values appear.
-    await panel.getByRole("button", { name: /^Development/ }).click();
+    await panel
+      .getByRole("button", { name: /^Use development database/ })
+      .click();
     await expect(continueButton).toBeEnabled();
     await continueButton.click();
 
@@ -61,7 +63,9 @@ testSkipIfWindows(
     // Go back, pick Production → the migration panel appears and the env vars
     // reflect the default (production) branch instead.
     await panel.getByRole("button", { name: "Back to selection" }).click();
-    await panel.getByRole("button", { name: /^Production/ }).click();
+    await panel
+      .getByRole("button", { name: /^Separate production database/ })
+      .click();
     await panel.getByRole("button", { name: "Continue" }).click();
 
     await expect(

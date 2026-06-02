@@ -7,14 +7,15 @@
 export type VercelEnvTarget = "production" | "preview" | "development";
 
 /**
- * Env vars are written to every Vercel environment (per product decision), so
- * preview/dev deployments boot with a working DB connection.
+ * Env vars are written ONLY to the production Vercel environment. We
+ * deliberately don't target preview/development: the synced DATABASE_URL is
+ * usually the production branch, and exposing it to non-prod environments
+ * (e.g. via a local `vercel env pull`) makes it easy to accidentally mutate the
+ * production DB. Local development doesn't pull from Vercel, and Dyad apps
+ * rarely use Vercel preview deployments, so production-only is the safer
+ * default.
  */
-export const VERCEL_ENV_TARGETS: VercelEnvTarget[] = [
-  "production",
-  "preview",
-  "development",
-];
+export const VERCEL_ENV_TARGETS: VercelEnvTarget[] = ["production"];
 
 export interface VercelEnvVar {
   key: string;

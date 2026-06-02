@@ -651,13 +651,14 @@
       "backToSelection": "Back to selection",
       "loading": "Loading database…",
       "productionActiveMessage": "Your app is on the production branch, so the production database will be used for deployment. No migration is needed.",
+      "recommended": "Recommended",
       "production": {
-        "title": "Production",
-        "description": "Pick this once real users are using the app and you need their data kept safe."
+        "title": "Separate production database",
+        "description": "Keeps live data separate from development. Safest for real users, but database changes require a migration step."
       },
       "development": {
-        "title": "Development",
-        "description": "Pick this if you're still experimenting and no real users are testing the app yet."
+        "title": "Use development database",
+        "description": "Uses one database for development and production. Faster setup, but dev changes affect live data."
       },
       "envVars": {
         "title": "Environment variables",

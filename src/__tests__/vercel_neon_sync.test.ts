@@ -24,10 +24,11 @@ describe("buildVercelEnvPayload", () => {
       "NEON_AUTH_BASE_URL",
       "NEON_AUTH_COOKIE_SECRET",
     ]);
-    // Every var targets all three Vercel environments and is encrypted.
+    // Every var targets only the production Vercel environment and is
+    // encrypted (preview/development are intentionally excluded).
     for (const entry of payload) {
       expect(entry.type).toBe("encrypted");
-      expect(entry.target).toEqual(["production", "preview", "development"]);
+      expect(entry.target).toEqual(["production"]);
     }
   });
 

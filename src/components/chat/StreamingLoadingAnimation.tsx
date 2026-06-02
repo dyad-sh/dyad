@@ -84,7 +84,7 @@ function useRotatingVerb(verbs: string[]) {
   return verbs[index];
 }
 
-function useScrambleText(text: string) {
+export function useScrambleText(text: string) {
   const [display, setDisplay] = useState(text + "...");
   const rafRef = useRef<number>(0);
   const prevTextRef = useRef(text);

@@ -56,6 +56,7 @@ export { mediaContracts } from "./media";
 export { imageGenerationContracts } from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
 export { appCollectionContracts } from "./app_collections";
+export { terminalContracts } from "./terminal";
 
 // =============================================================================
 // Client Exports
@@ -91,6 +92,7 @@ export { mediaClient } from "./media";
 export { imageGenerationClient } from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 export { appCollectionClient } from "./app_collections";
+export { terminalClient } from "./terminal";
 
 // =============================================================================
 // Type Exports
@@ -135,6 +137,13 @@ export type {
   TokenCountResult,
   StreamingPatch,
 } from "./chat";
+
+export type {
+  TerminalOpenParams,
+  TerminalOpenResult,
+  TerminalDataPayload,
+  TerminalExitPayload,
+} from "./terminal";
 
 // Agent types
 export type {
@@ -406,6 +415,7 @@ import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
+import { terminalClient } from "./terminal";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -467,6 +477,7 @@ export const ipc = {
   imageGeneration: imageGenerationClient,
   appBlueprint: appBlueprintClient,
   appCollection: appCollectionClient,
+  terminal: terminalClient,
 
   // Event clients for main->renderer pub/sub
   events: {

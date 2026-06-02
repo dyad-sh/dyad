@@ -50,6 +50,7 @@ import {
   registerCloudSandboxSyncUpdateListener,
   startCloudSandboxLogStream,
 } from "../services/app_runtime_service";
+import { getPtySessionManager } from "../utils/pty_session_manager";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -342,6 +343,7 @@ async function deleteAppById(appId: number): Promise<void> {
 
     // Clear logs for this app to prevent memory leak
     clearLogs(appId);
+    getPtySessionManager().killForApp(appId);
 
     try {
       await db.delete(apps).where(eq(apps.id, appId));

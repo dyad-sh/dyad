@@ -13,6 +13,20 @@ import {
 const validInvokeChannels = VALID_INVOKE_CHANNELS;
 const validReceiveChannels = VALID_RECEIVE_CHANNELS;
 
+function isValidReceiveChannel(
+  channel: string,
+): channel is ValidReceiveChannel {
+  return validReceiveChannels.includes(channel as ValidReceiveChannel);
+}
+
+function isValidDynamicReceiveChannel(channel: string): boolean {
+  // Terminal stream suffixes must stay server-generated, unpredictable session
+  // IDs. Do not extend this pattern to renderer-controlled channel names.
+  return (
+    channel.startsWith("terminal:data:") || channel.startsWith("terminal:exit:")
+  );
+}
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld("electron", {
@@ -24,10 +38,13 @@ contextBridge.exposeInMainWorld("electron", {
       throw new Error(`Invalid channel: ${channel}`);
     },
     on: (
-      channel: ValidReceiveChannel,
+      channel: ValidReceiveChannel | string,
       listener: (...args: unknown[]) => void,
     ) => {
-      if (validReceiveChannels.includes(channel)) {
+      if (
+        isValidReceiveChannel(channel) ||
+        isValidDynamicReceiveChannel(channel)
+      ) {
         const subscription = (
           _event: Electron.IpcRendererEvent,
           ...args: unknown[]
@@ -39,16 +56,22 @@ contextBridge.exposeInMainWorld("electron", {
       }
       throw new Error(`Invalid channel: ${channel}`);
     },
-    removeAllListeners: (channel: ValidReceiveChannel) => {
-      if (validReceiveChannels.includes(channel)) {
+    removeAllListeners: (channel: ValidReceiveChannel | string) => {
+      if (
+        isValidReceiveChannel(channel) ||
+        isValidDynamicReceiveChannel(channel)
+      ) {
         ipcRenderer.removeAllListeners(channel);
       }
     },
     removeListener: (
-      channel: ValidReceiveChannel,
+      channel: ValidReceiveChannel | string,
       listener: (...args: unknown[]) => void,
     ) => {
-      if (validReceiveChannels.includes(channel)) {
+      if (
+        isValidReceiveChannel(channel) ||
+        isValidDynamicReceiveChannel(channel)
+      ) {
         ipcRenderer.removeListener(channel, listener);
       }
     },

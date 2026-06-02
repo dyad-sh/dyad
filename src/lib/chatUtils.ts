@@ -23,7 +23,9 @@ export async function resolveChatSummary(
   for (const [, cachedChats] of chatsCaches) {
     if (!Array.isArray(cachedChats)) continue;
     const found = cachedChats.find((c) => c.id === chatId);
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
 
   if (options.cacheOnly) return null;

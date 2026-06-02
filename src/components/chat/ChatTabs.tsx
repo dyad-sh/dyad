@@ -238,7 +238,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     useReopenClosedTab();
   const { selectChat } = useSelectChat();
   const navigate = useNavigate();
-  const routerState = useRouterState();
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   const isMac = useIsMac();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -248,6 +250,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   );
   const prevStreamingRef = useRef<Map<number, boolean>>(new Map());
   const hasHydratedTabSessionRef = useRef(false);
+  const [hasHydratedTabSession, setHasHydratedTabSession] = useState(false);
 
   const chatsById = useMemo(
     () => new Map(chats.map((chat) => [chat.id, chat])),
@@ -263,9 +266,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
     hasHydratedTabSessionRef.current = true;
     const restoredSession = hydrateChatTabSession(chatIdSet);
+    setHasHydratedTabSession(true);
     if (
       selectedChatId === null &&
-      routerState.location.pathname === "/" &&
+      pathname === "/" &&
       restoredSession.selectedChatId !== null
     ) {
       const restoredChat = chatsById.get(restoredSession.selectedChatId);
@@ -282,27 +286,28 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     chatsById,
     hydrateChatTabSession,
     loading,
-    routerState.location.pathname,
+    pathname,
     selectedChatId,
     selectChat,
   ]);
 
   useEffect(() => {
-    if (!hasHydratedTabSessionRef.current) {
+    if (!hasHydratedTabSession) {
       return;
     }
 
     pruneClosedChatIds(chatIdSet);
-  }, [chatIdSet, pruneClosedChatIds]);
+  }, [chatIdSet, hasHydratedTabSession, pruneClosedChatIds]);
 
   useEffect(() => {
-    if (!hasHydratedTabSessionRef.current) {
+    if (!hasHydratedTabSession) {
       return;
     }
 
     persistChatTabSession();
   }, [
     closedChatIds,
+    hasHydratedTabSession,
     persistChatTabSession,
     recentViewedChatIds,
     selectedChatId,

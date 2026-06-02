@@ -87,6 +87,44 @@ export const EMPTY_CHAT_TAB_SESSION: ChatTabSession = {
   updatedAt: 0,
 };
 
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "number")
+  );
+}
+
+function isChatTabSession(value: unknown): value is ChatTabSession {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+
+  const session = value as Partial<ChatTabSession>;
+  return (
+    isNumberArray(session.openChatIds) &&
+    (session.selectedChatId === null ||
+      typeof session.selectedChatId === "number") &&
+    isNumberArray(session.closedChatIds) &&
+    typeof session.updatedAt === "number"
+  );
+}
+
+function sessionsHaveSameShape(
+  left: ChatTabSession,
+  right: ChatTabSession,
+): boolean {
+  return (
+    left.selectedChatId === right.selectedChatId &&
+    left.openChatIds.length === right.openChatIds.length &&
+    left.openChatIds.every(
+      (chatId, index) => right.openChatIds[index] === chatId,
+    ) &&
+    left.closedChatIds.length === right.closedChatIds.length &&
+    left.closedChatIds.every(
+      (chatId, index) => right.closedChatIds[index] === chatId,
+    )
+  );
+}
+
 export const chatTabSessionStorageAtom = atomWithStorage<ChatTabSession>(
   "chat-tab-session",
   EMPTY_CHAT_TAB_SESSION,
@@ -128,7 +166,10 @@ function dedupeValidChatIds(chatIds: number[], validChatIds: Set<number>) {
 export const hydrateChatTabSessionAtom = atom(
   null,
   (get, set, validChatIds: Set<number>) => {
-    const session = get(chatTabSessionStorageAtom);
+    const storedSession = get(chatTabSessionStorageAtom);
+    const session = isChatTabSession(storedSession)
+      ? storedSession
+      : EMPTY_CHAT_TAB_SESSION;
     const openChatIds = dedupeValidChatIds(session.openChatIds, validChatIds);
     const closedChatIds = dedupeValidChatIds(
       session.closedChatIds,
@@ -158,6 +199,7 @@ export const persistChatTabSessionAtom = atom(null, (get, set) => {
     get(sessionOpenedChatIdsAtom).has(chatId),
   );
   const selectedChatId = get(selectedChatIdAtom);
+  const currentSession = get(chatTabSessionStorageAtom);
   const session: ChatTabSession = {
     openChatIds,
     selectedChatId:
@@ -167,6 +209,13 @@ export const persistChatTabSessionAtom = atom(null, (get, set) => {
     closedChatIds: Array.from(get(closedChatIdsAtom)),
     updatedAt: Date.now(),
   };
+
+  if (
+    isChatTabSession(currentSession) &&
+    sessionsHaveSameShape(currentSession, session)
+  ) {
+    return;
+  }
 
   set(chatTabSessionStorageAtom, session);
 });

@@ -1,0 +1,28 @@
+===
+role: system
+message: [[SYSTEM_MESSAGE]]
+
+===
+role: user
+message: [call_tool=calculator_add]
+
+===
+role: assistant
+message: <dyad-mcp-tool-call server="testing-mcp-server" tool="calculator_add">
+{"a":1,"b":2}
+</dyad-mcp-tool-call>
+
+  <dyad-write path="file1.txt">
+  A file (2)
+  </dyad-write>
+  More
+  EOM
+  <dyad-write path="file1.txt">
+  A file (2)
+  </dyad-write>
+  More
+  EOM
+
+===
+role: user
+message: [dump]

@@ -40,7 +40,7 @@ jobs:
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: v24.13.1
           cache: npm
           cache-dependency-path: package-lock.json
 

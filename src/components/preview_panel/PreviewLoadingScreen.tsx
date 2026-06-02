@@ -11,12 +11,12 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
 import {
-  appConsoleEntriesAtom,
-  previewAppExitAtom,
-  previewRunStartedAtAtom,
-  selectedAppIdAtom,
-} from "@/atoms/appAtoms";
-import type { PreviewAppExit } from "@/atoms/appAtoms";
+  currentConsoleEntriesAtom,
+  currentPreviewAppExitAtom,
+  currentPreviewRunStartedAtAtom,
+  type PreviewAppExit,
+} from "@/atoms/previewRuntimeAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -157,9 +157,9 @@ export function PreviewLoadingScreen({
   hasStartupError,
 }: PreviewLoadingScreenProps) {
   const { t } = useTranslation("home");
-  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
-  const previewAppExit = useAtomValue(previewAppExitAtom);
-  const previewRunStartedAt = useAtomValue(previewRunStartedAtAtom);
+  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
+  const previewAppExit = useAtomValue(currentPreviewAppExitAtom);
+  const previewRunStartedAt = useAtomValue(currentPreviewRunStartedAtAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();

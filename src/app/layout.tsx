@@ -7,11 +7,7 @@ import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
 import { useRunApp, useAppOutputSubscription } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
-import {
-  appConsoleEntriesAtom,
-  previewModeAtom,
-  selectedAppIdAtom,
-} from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
@@ -37,7 +33,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     selectedComponentsPreviewAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
 
   // Initialize plan events listener
   usePlanEvents();
@@ -124,8 +119,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setSelectedComponentsPreview([]);
-    setConsoleEntries([]);
-  }, [selectedAppId]);
+  }, [selectedAppId, setSelectedComponentsPreview]);
 
   return (
     <>

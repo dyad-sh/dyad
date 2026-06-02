@@ -1,10 +1,9 @@
-import { useAtom, useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
+import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
 import {
-  appConsoleEntriesAtom,
-  previewModeAtom,
-  previewPanelKeyAtom,
-  selectedAppIdAtom,
-} from "../../atoms/appAtoms";
+  currentConsoleEntriesAtom,
+  currentPreviewReloadTokenAtom,
+} from "@/atoms/previewRuntimeAtoms";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
@@ -22,6 +21,7 @@ import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -60,12 +60,13 @@ const ConsoleHeader = ({
 
 // Main PreviewPanel component
 export function PreviewPanel() {
-  const [previewMode] = useAtom(previewModeAtom);
+  const previewMode = useAtomValue(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, loading, app } = useRunApp();
-  const key = useAtomValue(previewPanelKeyAtom);
-  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
+  const { runApp, loading } = useRunApp();
+  const { app } = useLoadApp(selectedAppId);
+  const key = useAtomValue(currentPreviewReloadTokenAtom);
+  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
 
   const latestMessage =
     consoleEntries.length > 0
@@ -140,7 +141,7 @@ export function PreviewPanel() {
                 {previewMode === "preview" ? (
                   <PreviewIframe key={key} loading={loading} />
                 ) : previewMode === "code" ? (
-                  <CodeView loading={loading} app={app} />
+                  <CodeView loading={loading} app={app ?? null} />
                 ) : previewMode === "configure" ? (
                   <ConfigurePanel />
                 ) : previewMode === "publish" ? (

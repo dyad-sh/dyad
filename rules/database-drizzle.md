@@ -10,6 +10,12 @@ npm run db:generate
 
 IMPORTANT: Do NOT generate SQL migration files by hand! This is wrong.
 
+## Neon migration preview
+
+When diffing Neon branches with `ts-pg-schema-diff`, use unpooled connection
+URIs. Neon pooled `-pooler` hosts reject PostgreSQL startup `options` like
+`statement_timeout` with `unsupported startup parameter in options`.
+
 ## Drizzle migration conflicts during rebase
 
 When rebasing a branch that has drizzle migrations conflicting with upstream (e.g., both have `0028_*.sql`), prefer regenerating over manually editing snapshot/journal files:

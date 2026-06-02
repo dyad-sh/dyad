@@ -455,8 +455,33 @@ server.on("upgrade", (req, socket, _head) => {
 
 /* ----------------------------------------------------------------------- */
 
-server.listen(LISTEN_PORT, LISTEN_HOST, () => {
-  parentPort?.postMessage(
-    `proxy-server-start url=http://${LISTEN_HOST}:${LISTEN_PORT}`,
-  );
-});
+// Prefer the deterministic port (LISTEN_PORT). If it is already in use, scan
+// the fallback band upward instead of evicting whatever already holds the port.
+const FALLBACK_PORT_START = workerData?.fallbackPortStart || LISTEN_PORT + 1;
+const MAX_PORT_ATTEMPTS = workerData?.maxPortAttempts || 50;
+
+function listenWithFallback(port, nextFallback, attemptsLeft) {
+  function onError(err) {
+    if (err && err.code === "EADDRINUSE" && attemptsLeft > 1) {
+      parentPort?.postMessage(
+        `[proxy-worker] port ${port} in use, trying ${nextFallback}`,
+      );
+      listenWithFallback(nextFallback, nextFallback + 1, attemptsLeft - 1);
+      return;
+    }
+    parentPort?.postMessage(
+      `proxy-server-error code=${err?.code || "UNKNOWN"} base=${LISTEN_PORT} lastTried=${port}`,
+    );
+  }
+
+  server.once("error", onError);
+  server.listen(port, LISTEN_HOST, () => {
+    server.removeListener("error", onError);
+    const boundPort = server.address()?.port ?? port;
+    parentPort?.postMessage(
+      `proxy-server-start url=http://${LISTEN_HOST}:${boundPort}`,
+    );
+  });
+}
+
+listenWithFallback(LISTEN_PORT, FALLBACK_PORT_START, MAX_PORT_ATTEMPTS);

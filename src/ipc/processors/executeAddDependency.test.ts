@@ -374,7 +374,12 @@ describe("executeAddDependency", () => {
 
     expect(runCommandMock).toHaveBeenCalledWith(
       "pnpm",
-      [...PNPM_INSTALL_POLICY_ARGS, "add", "react"],
+      [
+        ...PNPM_INSTALL_POLICY_ARGS,
+        "add",
+        "--ignore-workspace-root-check",
+        "react",
+      ],
       {
         cwd: "/tmp/app",
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,

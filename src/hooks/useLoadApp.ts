@@ -1,13 +1,8 @@
-import { useEffect } from "react";
 import { useQuery, QueryClient } from "@tanstack/react-query";
 import { ipc, type App } from "@/ipc/types";
-import { useAtom } from "jotai";
-import { currentAppAtom } from "@/atoms/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useLoadApp(appId: number | null) {
-  const [, setApp] = useAtom(currentAppAtom);
-
   const {
     data: appData,
     isLoading: loading,
@@ -26,14 +21,6 @@ export function useLoadApp(appId: number | null) {
     // this will pop up when app is deleted.
     // meta: { showErrorToast: true },
   });
-
-  useEffect(() => {
-    if (appId === null) {
-      setApp(null);
-    } else if (appData !== undefined) {
-      setApp(appData);
-    }
-  }, [appId, appData, setApp]);
 
   return { app: appData, loading, error, refreshApp };
 }

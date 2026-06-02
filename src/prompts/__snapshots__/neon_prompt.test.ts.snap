@@ -356,6 +356,10 @@ router.push('/auth/sign-in');
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
+
 ## Authorization and RLS
 
 Do not assume every Neon app should use the same authorization pattern.
@@ -508,6 +512,10 @@ When the task involves authentication, login, sign-up, user sessions, or auth UI
 - Use \`<dyad-execute-sql>\` for schema changes.
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
+
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
 
 ## Authorization and RLS
 
@@ -974,6 +982,10 @@ router.push('/auth/sign-in');
 - Use \`<dyad-execute-sql>\` for schema changes.
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
+
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
 
 ## Authorization and RLS
 
@@ -1625,6 +1637,10 @@ router.push('/auth/sign-in');
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
+
 ## Authorization and RLS
 
 Do not assume every Neon app should use the same authorization pattern.
@@ -2269,6 +2285,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
+
 ## Authorization and RLS
 
 Do not assume every Neon app should use the same authorization pattern.
@@ -2876,6 +2896,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
+
 ## Authorization and RLS
 
 Do not assume every Neon app should use the same authorization pattern.
@@ -3263,6 +3287,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
+
 ## Authorization and RLS
 
 Do not assume every Neon app should use the same authorization pattern.
@@ -3427,6 +3455,10 @@ When the task involves authentication, login, sign-up, user sessions, or auth UI
 - Use \`<dyad-execute-sql>\` for schema changes.
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
+
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
 
 ## Authorization and RLS
 
@@ -3954,6 +3986,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 - Use \`<dyad-execute-sql>\` for schema changes.
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
+
+### How Migrations Happen (informational)
+
+Dyad does not keep a schema-of-record file in the codebase for migrations. Migrations are not generated from a TypeScript or SQL schema file in the repo — they're computed by diffing the live Neon branches directly. We execute SQL against the database to update the schema: typically we apply changes to the development branch, then compute a schema diff between dev and production and apply that diff to the production branch as part of the migration process.
 
 ## Authorization and RLS
 

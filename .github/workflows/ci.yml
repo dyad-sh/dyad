@@ -114,12 +114,9 @@ jobs:
       # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
       #
       # Privileged authors (wwwillchen, keppo-bot/keppo-bot[bot], dyad-assistant, azizmejri1, ryangroch):
-      #   - Self-hosted macOS ARM64 runners, no Windows, no sharding.
+      #   - Self-hosted macOS ARM64 runners, no Windows, 4 shards.
       #
-      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shard 1/1)
-      #                                          │
-      #                                          v
-      #                                    merge-reports
+      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shards 1-4) ──> merge-reports
       #
       # All other authors:
       #   - GitHub-hosted runners for macOS + Windows, 4 shards each.
@@ -134,8 +131,8 @@ jobs:
           if [ "${{ steps.author-check.outputs.is_privileged }}" = "true" ]; then
             echo 'build_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard=[1,2]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard_total=[2]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           else
             echo 'build_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT

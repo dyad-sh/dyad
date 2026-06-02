@@ -234,6 +234,12 @@ async function getProModelClient({
           });
         }
 
+        if (resolvedModel.providerId === "anthropic") {
+          return provider.anthropic(resolvedModel.apiName, {
+            providerId: resolvedModel.providerId,
+          });
+        }
+
         return provider(resolvedModelId, {
           providerId: resolvedModel.providerId,
         });
@@ -268,6 +274,16 @@ async function getProModelClient({
   ) {
     return {
       model: provider.responses(modelId, { providerId: model.provider }),
+      builtinProviderId: model.provider,
+    };
+  }
+  if (model.provider === "anthropic") {
+    const modelName = modelId.startsWith("anthropic/")
+      ? modelId.slice("anthropic/".length)
+      : modelId;
+
+    return {
+      model: provider.anthropic(modelName, { providerId: model.provider }),
       builtinProviderId: model.provider,
     };
   }

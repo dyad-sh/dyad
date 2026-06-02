@@ -17,6 +17,7 @@ describe("getThinkingBudgetEffort", () => {
     expect(getThinkingBudgetEffort("low")).toBe("low");
     expect(getThinkingBudgetEffort("medium")).toBe("medium");
     expect(getThinkingBudgetEffort("high")).toBe("high");
+    expect(getThinkingBudgetEffort("xhigh")).toBe("xhigh");
     expect(getThinkingBudgetEffort(undefined)).toBe("medium");
   });
 });
@@ -25,6 +26,14 @@ describe("getOpenAIProviderOptions", () => {
   it("maps thinking budget to reasoning_effort for build mode", () => {
     expect(getOpenAIProviderOptions(baseSettings)).toEqual({
       reasoning_effort: "medium",
+    });
+  });
+
+  it("maps xhigh thinking budget to reasoning_effort", () => {
+    expect(
+      getOpenAIProviderOptions({ ...baseSettings, thinkingBudget: "xhigh" }),
+    ).toEqual({
+      reasoning_effort: "xhigh",
     });
   });
 
@@ -104,6 +113,21 @@ describe("getExtraProviderOptions", () => {
         type: "enabled",
         include_thoughts: true,
         budget_tokens: 4_000,
+      },
+    });
+  });
+
+  it("maps Gemini xhigh thinking budget to dynamic budget", () => {
+    expect(
+      getExtraProviderOptionsForEngine("google", {
+        ...baseSettings,
+        thinkingBudget: "xhigh",
+      }),
+    ).toEqual({
+      thinking: {
+        type: "enabled",
+        include_thoughts: true,
+        budget_tokens: -1,
       },
     });
   });

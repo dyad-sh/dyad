@@ -3,7 +3,7 @@ import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
 import type { UserSettings } from "../../lib/schemas";
 
 type ThinkingBudget = NonNullable<UserSettings["thinkingBudget"]>;
-type ReasoningEffort = "low" | "medium" | "high";
+type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 // The Dyad Engine is backed by LiteLLM using the
 // OpenAI-compatible chat completions API. This means
@@ -51,6 +51,9 @@ function getGeminiThinkingBudgetTokens(
     case "medium":
       return 4_000;
     case "high":
+    case "xhigh":
+      // -1 lets Gemini dynamically decide its budget (its max). It has no
+      // tier above this, so high and xhigh both map to dynamic thinking.
       return -1;
     default:
       return 4_000; // Default to medium
@@ -65,6 +68,8 @@ export function getThinkingBudgetEffort(
       return "low";
     case "high":
       return "high";
+    case "xhigh":
+      return "xhigh";
     case "medium":
     default:
       return "medium";

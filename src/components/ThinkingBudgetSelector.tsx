@@ -8,49 +8,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "react-i18next";
-
-interface OptionInfo {
-  value: string;
-  label: string;
-  description: string;
-}
-
-const defaultValue = "medium";
-
-const options: OptionInfo[] = [
-  {
-    value: "low",
-    label: "Low",
-    description:
-      "Minimal thinking tokens for faster responses and lower costs.",
-  },
-  {
-    value: defaultValue,
-    label: "Medium (default)",
-    description: "Balanced thinking for most conversations.",
-  },
-  {
-    value: "high",
-    label: "High",
-    description:
-      "Extended thinking for complex problems requiring deep analysis.",
-  },
-];
+import {
+  THINKING_EFFORT_DEFAULT,
+  THINKING_EFFORT_OPTIONS,
+  getThinkingEffortOption,
+  type ThinkingEffortLevel,
+} from "@/lib/thinkingEffort";
 
 export const ThinkingBudgetSelector: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
 
   const handleValueChange = (value: string) => {
-    updateSettings({ thinkingBudget: value as "low" | "medium" | "high" });
+    updateSettings({ thinkingBudget: value as ThinkingEffortLevel });
   };
 
   // Determine the current value
-  const currentValue = settings?.thinkingBudget || defaultValue;
+  const currentValue = settings?.thinkingBudget || THINKING_EFFORT_DEFAULT;
 
   // Find the current option to display its description
-  const currentOption =
-    options.find((opt) => opt.value === currentValue) || options[1];
+  const currentOption = getThinkingEffortOption(currentValue);
 
   return (
     <div className="space-y-1">
@@ -69,9 +46,11 @@ export const ThinkingBudgetSelector: React.FC = () => {
             <SelectValue placeholder={t("ai.selectThinkingBudget")} />
           </SelectTrigger>
           <SelectContent>
-            {options.map((option) => (
+            {THINKING_EFFORT_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                {option.value === THINKING_EFFORT_DEFAULT
+                  ? `${option.label} (default)`
+                  : option.label}
               </SelectItem>
             ))}
           </SelectContent>

@@ -34,7 +34,7 @@ jobs:
         run: rm -f .claude/settings.json .claude/settings.local.json
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: v24.13.1
 
@@ -63,7 +63,7 @@ jobs:
           prompt: ${{ steps.render-prompt.outputs.prompt }}
 
       - name: Upload issue triage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: issue-triage-${{ github.event.issue.number }}
           path: ${{ env.TRIAGE_OUTPUT_PATH }}
@@ -81,7 +81,7 @@ jobs:
       TRIAGE_OUTPUT_PATH: tmp/issue-triage/triage.json
     steps:
       - name: Download issue triage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ needs.triage.outputs.triage_artifact }}
           path: tmp/issue-triage
@@ -97,7 +97,7 @@ jobs:
 
       - name: Create issue triage token
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}

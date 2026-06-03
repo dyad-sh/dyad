@@ -71,6 +71,10 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
 vi.mock("@/ipc/utils/socket_firewall", () => ({
   ensurePnpmAllowBuildsConfigured: (args: unknown) =>
     ensurePnpmAllowBuildsConfiguredMock(args),
+  getPackageManagerCommandEnv: () => ({
+    ...process.env,
+    COREPACK_ENABLE_PROJECT_SPEC: "0",
+  }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
   PNPM_INSTALL_POLICY_ARGS: ["--minimum-release-age=1440"],
 }));
@@ -121,6 +125,23 @@ function createEvent(): Electron.IpcMainInvokeEvent {
   } as unknown as WebContents;
 
   return { sender } as IpcMainInvokeEvent;
+}
+
+async function withCorepackProjectSpecEnv<T>(
+  value: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const originalValue = process.env.COREPACK_ENABLE_PROJECT_SPEC;
+  process.env.COREPACK_ENABLE_PROJECT_SPEC = value;
+  try {
+    return await callback();
+  } finally {
+    if (originalValue === undefined) {
+      delete process.env.COREPACK_ENABLE_PROJECT_SPEC;
+    } else {
+      process.env.COREPACK_ENABLE_PROJECT_SPEC = originalValue;
+    }
+  }
 }
 
 describe("executeApp", () => {
@@ -231,6 +252,9 @@ describe("executeApp", () => {
       [],
       expect.objectContaining({
         cwd: "/tmp/app",
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+        }),
         shell: true,
       }),
     );
@@ -245,6 +269,63 @@ describe("executeApp", () => {
         message: "Install pnpm 10.16.0 or newer for the strongest protection",
       }),
     );
+  });
+
+  it("does not disable Corepack project specs for npm fallback commands", async () => {
+    await withCorepackProjectSpecEnv("1", async () => {
+      const process = new FakeChildProcess(101);
+      spawnMock.mockReturnValueOnce(process);
+
+      await executeApp({
+        appPath: "/tmp/app",
+        appId: 1,
+        event: createEvent(),
+        isNeon: false,
+      });
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        "(npm install --legacy-peer-deps && npm run dev -- --port 32101)",
+        [],
+        expect.objectContaining({
+          cwd: "/tmp/app",
+          env: expect.objectContaining({
+            COREPACK_ENABLE_PROJECT_SPEC: "1",
+          }),
+          shell: true,
+        }),
+      );
+      expect(ensurePnpmAllowBuildsConfiguredMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("does not disable Corepack project specs for custom commands", async () => {
+    await withCorepackProjectSpecEnv("1", async () => {
+      const process = new FakeChildProcess(101);
+      spawnMock.mockReturnValueOnce(process);
+
+      await executeApp({
+        appPath: "/tmp/app",
+        appId: 1,
+        event: createEvent(),
+        isNeon: false,
+        installCommand: "pnpm install --frozen-lockfile",
+        startCommand: "pnpm run preview -- --port 32101",
+      });
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        "pnpm install --frozen-lockfile && pnpm run preview -- --port 32101",
+        [],
+        expect.objectContaining({
+          cwd: "/tmp/app",
+          env: expect.objectContaining({
+            COREPACK_ENABLE_PROJECT_SPEC: "1",
+          }),
+          shell: true,
+        }),
+      );
+      expect(getPnpmMinimumReleaseAgeSupportMock).not.toHaveBeenCalled();
+      expect(ensurePnpmAllowBuildsConfiguredMock).not.toHaveBeenCalled();
+    });
   });
 
   it("starts the proxy on the deterministic port without killing the occupant", async () => {

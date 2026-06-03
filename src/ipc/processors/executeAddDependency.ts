@@ -10,6 +10,7 @@ import {
   commitPnpmAllowBuildsConfigIfChanged,
   ensureSocketFirewallInstalled,
   getCommandExecutionDisplayDetails,
+  getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
@@ -139,10 +140,16 @@ async function runAddDependencyCommand(
   lastError: unknown;
 }> {
   try {
-    const { stdout, stderr } = await runCommand(command.command, command.args, {
+    const options = {
       cwd: appPath,
+      env: getPackageManagerCommandEnv(),
       timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
-    });
+    };
+    const { stdout, stderr } = await runCommand(
+      command.command,
+      command.args,
+      options,
+    );
     return {
       succeeded: true,
       installResults: stdout + (stderr ? `\n${stderr}` : ""),

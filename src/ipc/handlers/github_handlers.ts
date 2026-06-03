@@ -39,17 +39,20 @@ import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { slugifyAppPath } from "@/shared/slugify";
 
 const logger = log.scope("github_handlers");
 
 /**
- * Normalizes a GitHub repository name to match GitHub's automatic normalization rules.
- * GitHub converts spaces to hyphens when creating repositories.
+ * Normalizes a repository name to a kebab-case slug so it is a valid GitHub repo
+ * name AND a valid Vercel project name (Vercel requires lowercase names). This
+ * mirrors how app folder paths are derived (via `slugifyAppPath`), keeping the
+ * repo and Vercel project names consistent with the app's folder.
  * @param repoName - The original repository name
- * @returns The normalized repository name with spaces replaced by hyphens
+ * @returns The kebab-case repository name (e.g. "TaskMaster Pro" -> "task-master-pro")
  */
 export function normalizeGitHubRepoName(repoName: string): string {
-  return repoName.trim().replace(/\s+/g, "-");
+  return slugifyAppPath(repoName);
 }
 
 // --- GitHub Device Flow Constants ---

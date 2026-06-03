@@ -14,12 +14,12 @@ describe("normalizeGitHubRepoName", () => {
     expect(normalizeGitHubRepoName("my  app")).toBe("my-app");
   });
 
-  it("should not modify names without spaces", () => {
+  it("should not modify names that are already kebab-case", () => {
     expect(normalizeGitHubRepoName("my-app")).toBe("my-app");
   });
 
-  it("should handle empty string", () => {
-    expect(normalizeGitHubRepoName("")).toBe("");
+  it("should fall back to 'untitled' for an empty string", () => {
+    expect(normalizeGitHubRepoName("")).toBe("untitled");
   });
 
   it("should handle leading and trailing spaces", () => {
@@ -28,5 +28,17 @@ describe("normalizeGitHubRepoName", () => {
 
   it("should handle tabs as whitespace", () => {
     expect(normalizeGitHubRepoName("my\tapp")).toBe("my-app");
+  });
+
+  it("should lowercase capitalized names", () => {
+    expect(normalizeGitHubRepoName("My App")).toBe("my-app");
+  });
+
+  it("should split camelCase boundaries before lowercasing", () => {
+    expect(normalizeGitHubRepoName("TaskMaster Pro")).toBe("task-master-pro");
+  });
+
+  it("should split acronym boundaries", () => {
+    expect(normalizeGitHubRepoName("APIClient")).toBe("api-client");
   });
 });

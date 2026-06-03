@@ -1,12 +1,5 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-export function slugify(text: string): string {
-  const result = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .substring(0, 60);
-  return result || "untitled";
-}
+export { slugify } from "@/shared/slugify";
 
 export function buildFrontmatter(meta: Record<string, string>): string {
   const lines = Object.entries(meta).map(

@@ -10,6 +10,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { CreateProjectFramework } from "@vercel/sdk/models/createprojectop.js";
 import { getDyadAppPath } from "@/paths/paths";
+import { slugifyAppPath } from "@/shared/slugify";
 import { createTypedHandler } from "./base";
 import {
   vercelContracts,
@@ -254,8 +255,11 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
 // --- Vercel Project Availability Handler ---
 async function handleIsProjectAvailable(
   event: IpcMainInvokeEvent,
-  { name }: IsVercelProjectAvailableParams,
+  { name: rawName }: IsVercelProjectAvailableParams,
 ): Promise<{ available: boolean; error?: string }> {
+  // Normalize to the same kebab-case slug `handleCreateProject` will use, so
+  // the availability check reflects the name that will actually be created.
+  const name = slugifyAppPath(rawName);
   try {
     const settings = readSettings();
     const accessToken = settings.vercelAccessToken?.value;
@@ -289,8 +293,11 @@ async function handleIsProjectAvailable(
 // --- Vercel Create Project Handler ---
 async function handleCreateProject(
   event: IpcMainInvokeEvent,
-  { name, appId }: CreateVercelProjectParams,
+  { name: rawName, appId }: CreateVercelProjectParams,
 ): Promise<CreateVercelProjectResult> {
+  // Normalize to a kebab-case slug so the project name is valid for Vercel
+  // (which requires lowercase names) regardless of how it was entered.
+  const name = slugifyAppPath(rawName);
   const settings = readSettings();
   const accessToken = settings.vercelAccessToken?.value;
   if (!accessToken) {

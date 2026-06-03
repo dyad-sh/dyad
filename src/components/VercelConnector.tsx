@@ -19,6 +19,7 @@ import {
 import {} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { slugifyAppPath } from "@/shared/slugify";
 
 interface VercelConnectorProps {
   appId: number | null;
@@ -242,8 +243,12 @@ function UnconnectedVercelConnector({
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string>("");
 
-  // Create new project state
-  const [projectName, setProjectName] = useState(folderName);
+  // Create new project state. Seed with a kebab-case slug of the app name (the
+  // same transform used for the app folder path) since Vercel requires
+  // lowercase project names.
+  const [projectName, setProjectName] = useState(() =>
+    slugifyAppPath(folderName),
+  );
   const [projectAvailable, setProjectAvailable] = useState<boolean | null>(
     null,
   );

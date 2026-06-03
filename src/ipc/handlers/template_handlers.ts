@@ -16,19 +16,7 @@ import { withLock } from "../utils/lock_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { createFromTemplate } from "./createFromTemplate";
 import { ensureDyadGitignored } from "./gitignoreUtils";
-import { slugify } from "./planUtils";
-
-// App-path-specific slug. Splits camelCase / acronym boundaries before
-// `slugify` lowercases, so `DraftName` becomes `draft-name` instead of
-// `draftname`. Avoiding capitalization is important on Windows where the
-// filesystem is case-insensitive but case-preserving — `DraftName` and
-// `draftName` collide there but are confusing to distinguish elsewhere.
-function slugifyAppPath(name: string): string {
-  const split = name
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2");
-  return slugify(split);
-}
+import { slugifyAppPath } from "@/shared/slugify";
 import {
   gitAdd,
   gitCommit,

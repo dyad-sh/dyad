@@ -33,6 +33,7 @@ import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 import { showSuccess, showError } from "@/lib/toast";
 import { useGithubSyncState } from "@/atoms/githubSyncAtoms";
+import { slugifyAppPath } from "@/shared/slugify";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -704,8 +705,10 @@ export function UnconnectedGitHubConnector({
   );
   const [customBranchName, setCustomBranchName] = useState<string>("");
 
-  // Create new repo state
-  const [repoName, setRepoName] = useState(folderName);
+  // Create new repo state. Seed with a kebab-case slug of the app name (the
+  // same transform used for the app folder path) so the repo name is a valid
+  // Vercel project name by default.
+  const [repoName, setRepoName] = useState(() => slugifyAppPath(folderName));
   const [repoAvailable, setRepoAvailable] = useState<boolean | null>(null);
   const [repoCheckError, setRepoCheckError] = useState<string | null>(null);
   const [isCheckingRepo, setIsCheckingRepo] = useState(false);

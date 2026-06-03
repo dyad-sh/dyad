@@ -63,6 +63,33 @@ function getLatestMatchingUserText(
   return undefined;
 }
 
+function isSyntheticContinuationUserText(text: string): boolean {
+  return (
+    text.includes("incomplete todo(s)") ||
+    text.includes("unfinished todos from your previous turn") ||
+    text.includes("previous response stream was interrupted") ||
+    text.includes("did not finish completely")
+  );
+}
+
+function findOriginalLocalAgentFixture(messages: any[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role !== "user" || isToolResultMessage(message)) {
+      continue;
+    }
+    const textContent = getTextContent(message);
+    const fixture =
+      extractLocalAgentFixture(textContent) ??
+      textContent.match(/tc=local-agent\/([^\s"\\]+)/)?.[1] ??
+      JSON.stringify(message.content).match(/tc=local-agent\/([^\s"\\]+)/)?.[1];
+    if (fixture) {
+      return fixture;
+    }
+  }
+  return null;
+}
+
 function writeEvent(res: Response, event: string, data: any) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -146,18 +173,12 @@ export const createAnthropicMessagesHandler =
     const lastMessage = Array.isArray(messages)
       ? messages[messages.length - 1]
       : undefined;
-    if (!localAgentFixture && isToolResultMessage(lastMessage)) {
-      for (let index = userMessages.length - 1; index >= 0; index--) {
-        const msg = userMessages[index];
-        if (isToolResultMessage(msg)) {
-          continue;
-        }
-        const fixture = extractLocalAgentFixture(getTextContent(msg));
-        if (fixture) {
-          localAgentFixture = fixture;
-          break;
-        }
-      }
+    if (
+      !localAgentFixture &&
+      (isToolResultMessage(lastMessage) ||
+        isSyntheticContinuationUserText(userTextContent))
+    ) {
+      localAgentFixture = findOriginalLocalAgentFixture(userMessages);
     }
 
     if (

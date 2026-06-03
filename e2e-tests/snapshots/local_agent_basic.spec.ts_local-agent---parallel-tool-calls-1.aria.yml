@@ -38,7 +38,11 @@
     - text: ""
   - img
   - text: ""
-- paragraph: Task completed.
+- paragraph: "I've created both utility files:"
+- list:
+  - listitem: src/utils/math.ts - Contains add and subtract functions
+  - listitem: src/utils/string.ts - Contains capitalize and lowercase functions
+- paragraph: Both files are now ready to use in your project.
 - button "Copy":
   - img
 - img

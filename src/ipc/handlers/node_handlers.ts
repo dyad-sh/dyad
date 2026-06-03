@@ -13,6 +13,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   getCommandExecutionDisplayDetails,
+  getPackageManagerCommandEnv,
   PNPM_GLOBAL_INSTALL_PACKAGE,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
@@ -128,6 +129,7 @@ export function registerNodeHandlers() {
       // If both fail, then pnpm is not available.
       runShellCommand(
         `pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g ${PNPM_GLOBAL_INSTALL_PACKAGE} && pnpm --version)`,
+        { env: getPackageManagerCommandEnv() },
       ),
     ]);
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
@@ -146,15 +148,18 @@ export function registerNodeHandlers() {
 
       // Use --force in case pnpm is already installed, but user
       // wants to upgrade.
-      await runCommand("npm", [
-        "install",
-        "-g",
-        "--force",
-        PNPM_GLOBAL_INSTALL_PACKAGE,
-      ]);
+      await runCommand(
+        "npm",
+        ["install", "-g", "--force", PNPM_GLOBAL_INSTALL_PACKAGE],
+        {
+          env: getPackageManagerCommandEnv(),
+        },
+      );
       reloadNodePath();
 
-      const result = await runCommand("pnpm", ["--version"]);
+      const result = await runCommand("pnpm", ["--version"], {
+        env: getPackageManagerCommandEnv(),
+      });
       const pnpmVersion = result.stdout.trim();
       if (!pnpmVersion) {
         throw new Error(

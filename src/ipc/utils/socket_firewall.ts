@@ -16,6 +16,7 @@ export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
 export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
 export const PNPM_GLOBAL_INSTALL_PACKAGE = "pnpm@latest-11";
+export const COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV = "0";
 const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
   MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
@@ -99,6 +100,15 @@ export type CommandRunner = (
   args: string[],
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
+
+export function getPackageManagerCommandEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    COREPACK_ENABLE_PROJECT_SPEC: COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV,
+  };
+}
 
 export type PackageManager = "pnpm" | "npm";
 type AllowBuildsChannel = "local" | "remote";
@@ -701,6 +711,7 @@ export async function ensureSocketFirewallInstalled(
 }> {
   try {
     await runner("npx", [...SOCKET_FIREWALL_NPX_ARGS, "--help"], {
+      env: getPackageManagerCommandEnv(),
       timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
     });
     return { available: true };
@@ -748,6 +759,7 @@ export async function getPnpmMinimumReleaseAgeSupport(
 
   try {
     const result = await runner("pnpm", ["--version"], {
+      env: getPackageManagerCommandEnv(),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
     const version = result.stdout.trim();

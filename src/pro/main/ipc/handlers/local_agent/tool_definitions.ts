@@ -219,6 +219,7 @@ export async function requireAgentToolConsent(
     toolName: AgentToolName;
     toolDescription?: string | null;
     inputPreview?: string | null;
+    metadata?: { sqlMutatesSchema?: boolean } | null;
   },
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);
@@ -504,6 +505,7 @@ export function buildAgentToolSet(
             toolName: tool.name,
             toolDescription: tool.description,
             inputPreview: tool.getConsentPreview?.(processedArgs) ?? null,
+            metadata: tool.getConsentMetadata?.(processedArgs) ?? null,
           });
           if (!allowed) {
             throw new DyadError(

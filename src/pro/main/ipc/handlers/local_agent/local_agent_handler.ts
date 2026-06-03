@@ -656,12 +656,14 @@ export async function handleLocalAgentStream(
         toolName: string;
         toolDescription?: string | null;
         inputPreview?: string | null;
+        metadata?: { sqlMutatesSchema?: boolean } | null;
       }) => {
         return requireAgentToolConsent(event, {
           chatId: chat.id,
           toolName: params.toolName as AgentToolName,
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
+          metadata: params.metadata,
         });
       },
       appendUserMessage: (content: UserMessageContentPart[]) => {

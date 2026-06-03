@@ -96,6 +96,7 @@
   "reject": "Reject",
   "noChanges": "No changes",
   "sqlQuery": "SQL Query",
+  "changesDatabaseSchema": "Changes database schema",
   "approved": "Approved",
   "rejected": "Rejected",
   "copy": "Copy",

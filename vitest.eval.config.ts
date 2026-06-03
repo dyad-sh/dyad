@@ -12,6 +12,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
+      "pg-schema-classifier": resolve(
+        __dirname,
+        "./packages/pg-schema-classifier/src/index.ts",
+      ),
       "ts-pg-schema-diff": resolve(
         __dirname,
         "./packages/ts-pg-schema-diff/src/index.ts",

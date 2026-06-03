@@ -23,6 +23,7 @@ jobs:
     outputs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
       should_run_schema_diff_tests: ${{ steps.check.outputs.should_run_schema_diff_tests }}
+      should_run_schema_classifier_tests: ${{ steps.check.outputs.should_run_schema_classifier_tests }}
       build_os: ${{ steps.matrix.outputs.build_os }}
       e2e_os: ${{ steps.matrix.outputs.e2e_os }}
       e2e_shard: ${{ steps.matrix.outputs.e2e_shard }}
@@ -52,8 +53,10 @@ jobs:
           if [ -z "$CHANGED_FILES" ]; then
             echo "should_run_tests=true" >> $GITHUB_OUTPUT
             echo "should_run_schema_diff_tests=false" >> $GITHUB_OUTPUT
+            echo "should_run_schema_classifier_tests=false" >> $GITHUB_OUTPUT
             echo "Running tests: could not determine changed files"
             echo "Skipping ts-pg-schema-diff tests: could not determine changed files"
+            echo "Skipping pg-schema-classifier tests: could not determine changed files"
             exit 0
           fi
 
@@ -66,6 +69,14 @@ jobs:
           else
             echo "should_run_schema_diff_tests=false" >> $GITHUB_OUTPUT
             echo "Skipping ts-pg-schema-diff tests: no package files changed"
+          fi
+
+          if echo "$CHANGED_FILES" | grep -q "^packages/pg-schema-classifier/"; then
+            echo "should_run_schema_classifier_tests=true" >> $GITHUB_OUTPUT
+            echo "Running pg-schema-classifier tests: package files changed"
+          else
+            echo "should_run_schema_classifier_tests=false" >> $GITHUB_OUTPUT
+            echo "Skipping pg-schema-classifier tests: no package files changed"
           fi
 
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -188,6 +199,34 @@ jobs:
         run: npm --prefix packages/ts-pg-schema-diff run test:integration
         env:
           PG_SCHEMA_DIFF_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+  pg-schema-classifier-tests:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_schema_classifier_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Type-check pg-schema-classifier
+        run: npm --prefix packages/pg-schema-classifier run typecheck
+      - name: Unit tests
+        run: npm --prefix packages/pg-schema-classifier test
 
   build:
     needs: [check-changes]

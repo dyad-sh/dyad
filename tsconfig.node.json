@@ -13,6 +13,8 @@
     "resolveJsonModule": true,
     "paths": {
       "*": ["./*"],
+      "pg-schema-classifier": ["./packages/pg-schema-classifier/src/index.ts"],
+      "pg-schema-classifier/*": ["./packages/pg-schema-classifier/src/*"],
       "ts-pg-schema-diff": ["./packages/ts-pg-schema-diff/src/index.ts"],
       "ts-pg-schema-diff/*": ["./packages/ts-pg-schema-diff/src/*"]
     }
@@ -32,5 +34,9 @@
     // "noFallthroughCasesInSwitch": true,
     // "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "packages/ts-pg-schema-diff/src"]
+  "include": [
+    "src",
+    "packages/ts-pg-schema-diff/src",
+    "packages/pg-schema-classifier/src"
+  ]
 }

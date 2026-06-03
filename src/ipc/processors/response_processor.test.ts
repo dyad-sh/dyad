@@ -9,12 +9,16 @@ const mocks = vi.hoisted(() => ({
   executeAddDependencyMock: vi.fn(),
   queueCloudSandboxSnapshotSyncMock: vi.fn(),
   readSettingsMock: vi.fn(),
+  executeSupabaseSqlMock: vi.fn(),
+  writeMigrationFileMock: vi.fn(),
 }));
 
 const {
   executeAddDependencyMock,
   queueCloudSandboxSnapshotSyncMock,
   readSettingsMock,
+  executeSupabaseSqlMock,
+  writeMigrationFileMock,
 } = mocks;
 
 const dbUpdates: Array<Record<string, unknown>> = [];
@@ -72,6 +76,16 @@ vi.mock("../utils/cloud_sandbox_provider", () => ({
   queueCloudSandboxSnapshotSync: mocks.queueCloudSandboxSnapshotSyncMock,
 }));
 
+vi.mock("../../supabase_admin/supabase_management_client", () => ({
+  executeSupabaseSql: mocks.executeSupabaseSqlMock,
+  deleteSupabaseFunction: vi.fn(),
+  deploySupabaseFunction: vi.fn(),
+}));
+
+vi.mock("../utils/file_utils", () => ({
+  writeMigrationFile: mocks.writeMigrationFileMock,
+}));
+
 vi.mock("./executeAddDependency", async () => {
   const actual = await vi.importActual<typeof import("./executeAddDependency")>(
     "./executeAddDependency",
@@ -95,6 +109,10 @@ describe("processFullResponseActions add dependency errors", () => {
     readSettingsMock.mockReturnValue({
       enableSupabaseWriteSqlMigration: false,
     });
+    executeSupabaseSqlMock.mockResolvedValue([]);
+    writeMigrationFileMock.mockResolvedValue(
+      "supabase/migrations/0000_test.sql",
+    );
 
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
@@ -108,6 +126,74 @@ describe("processFullResponseActions add dependency errors", () => {
       id: 1,
       content: '<dyad-add-dependency packages="react"></dyad-add-dependency>',
     } as any);
+  });
+
+  it("writes a Supabase migration file for schema-mutating SQL", async () => {
+    readSettingsMock.mockReturnValue({
+      enableSupabaseWriteSqlMigration: true,
+    });
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: "org",
+      },
+    } as any);
+
+    await processFullResponseActions(
+      '<dyad-execute-sql description="create users">CREATE TABLE users (id bigint);</dyad-execute-sql>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(executeSupabaseSqlMock).toHaveBeenCalledWith({
+      supabaseProjectId: "supabase-project",
+      query: "CREATE TABLE users (id bigint);",
+      organizationSlug: "org",
+    });
+    expect(writeMigrationFileMock).toHaveBeenCalledWith(
+      "/mock/apps/test-app",
+      "CREATE TABLE users (id bigint);",
+      "create users",
+    );
+  });
+
+  it("skips Supabase migration files for non-schema SQL", async () => {
+    readSettingsMock.mockReturnValue({
+      enableSupabaseWriteSqlMigration: true,
+    });
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: null,
+      },
+    } as any);
+
+    await processFullResponseActions(
+      '<dyad-execute-sql description="lookup users">SELECT * FROM users;</dyad-execute-sql>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(executeSupabaseSqlMock).toHaveBeenCalledWith({
+      supabaseProjectId: "supabase-project",
+      query: "SELECT * FROM users;",
+      organizationSlug: null,
+    });
+    expect(writeMigrationFileMock).not.toHaveBeenCalled();
   });
 
   it("stores the relevant combined PTY verdict in the appended error card", async () => {

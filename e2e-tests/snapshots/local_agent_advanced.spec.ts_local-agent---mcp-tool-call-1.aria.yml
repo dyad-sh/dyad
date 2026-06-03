@@ -21,20 +21,7 @@
   - img
   - text: ""
 - paragraph: tc=local-agent/mcp-calculator
-- paragraph: I'll calculate the sum of 5 and 3 using the calculator.
-- button "Tool Call testing-mcp-server calculator_add":
-  - img
-  - text: ""
-  - img
-- button "Tool Result testing-mcp-server calculator_add":
-  - img
-  - text: ""
-  - img
-- button /Script Call calculator_add through MCP \d+[hmsp]+/:
-  - img
-  - text: ""
-  - img
-- paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
+- paragraph: I'll calculate the sum of 5 and 3 using the calculator.The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
 - button "Copy":
   - img
 - img
@@ -43,6 +30,8 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
+- img
+- text: "Version 3: (1 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""

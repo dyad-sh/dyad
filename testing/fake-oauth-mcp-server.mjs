@@ -28,7 +28,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { z } from "zod/v3";
+import { z } from "zod";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
 const DCR_ENABLED = (process.env.FAKE_DCR ?? "1") === "1";

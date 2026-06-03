@@ -235,7 +235,7 @@ async function getProModelClient({
         }
 
         if (resolvedModel.providerId === "anthropic") {
-          return provider.anthropic(resolvedModel.apiName, {
+          return provider.anthropic(resolvedModelId, {
             providerId: resolvedModel.providerId,
           });
         }

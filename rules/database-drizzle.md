@@ -24,6 +24,6 @@ When rebasing a branch that has drizzle migrations conflicting with upstream (e.
 2. Force-remove the PR's conflicting `drizzle/00XX_*.sql` with `git rm -f` (it's staged as a new file and must be unstaged via `-f`).
 3. Stage the resolved metadata and run `git rebase --continue`. Verify `src/db/schema.ts` still contains the PR's schema additions (e.g., `nitroEnabled` column) — the rebase usually merges these correctly.
 4. After the rebase completes, run `npm run db:generate` — drizzle-kit will compare the schema to the latest snapshot and emit a fresh `00YY_*.sql` and `00YY_snapshot.json` with the correct next index and `prevId`.
-5. Commit the regenerated migration as a separate commit (e.g., `chore(db): renumber migration to 00YY after rebase`).
+5. Commit the regenerated migration. Either as a separate commit (e.g., `chore(db): renumber migration to 00YY after rebase`), or — to keep each commit's schema and migration self-consistent — fold it back into the commit that introduced the schema change: `git add drizzle/ && git commit --fixup=<schema-commit-sha>` then `GIT_SEQUENCE_EDITOR=true GIT_EDITOR=true git rebase -i --autosquash upstream/main`. The autosquash is conflict-free since the regenerated files are new.
 
-This avoids manual snapshot/journal editing and `prevId` mistakes.
+This avoids manual snapshot/journal editing and `prevId` mistakes. Verify afterward with `npm run db:generate` — it should report `No schema changes, nothing to migrate` if the snapshot is cumulative and consistent.

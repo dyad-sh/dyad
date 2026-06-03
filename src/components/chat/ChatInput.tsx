@@ -31,7 +31,6 @@ import {
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
-  needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -58,7 +57,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
+import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -95,14 +94,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   ContextLimitBanner,
   shouldShowContextLimitBanner,
@@ -297,55 +288,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     onError: (message) => showErrorToast(message),
   });
 
-  const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
-    needsFreshPlanChatAtom,
-  );
-
-  // When switching to plan mode in a chat with messages, we ask the user
-  // whether to start a fresh chat or continue in the same one. The pending
-  // submission is captured here while the choice dialog is open.
-  const [planChatChoiceOpen, setPlanChatChoiceOpen] = useState(false);
-  const pendingPlanSubmissionRef = useRef<{
-    prompt: string;
-    attachments: typeof attachments;
-    selectedComponents: NonNullable<typeof selectedComponents>;
-    imageJobIdsToDismiss: string[];
-  } | null>(null);
-
-  // Detect transition to plan mode from another mode in a chat with messages
-  const prevModeRef = useRef(chatMode);
-  const prevModeChatIdRef = useRef(chatId);
-  const hasInitializedModeRef = useRef(false);
-  useEffect(() => {
-    if (isChatModeLoading) return;
-    if (
-      !hasInitializedModeRef.current ||
-      prevModeChatIdRef.current !== chatId
-    ) {
-      hasInitializedModeRef.current = true;
-      prevModeChatIdRef.current = chatId;
-      prevModeRef.current = chatMode;
-      return;
-    }
-
-    const prevMode = prevModeRef.current;
-    const currentMode = chatMode;
-    prevModeRef.current = currentMode;
-
-    if (prevMode && prevMode !== "plan" && currentMode === "plan") {
-      const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
-      if (messages.length > 0) {
-        setNeedsFreshPlanChat(true);
-      }
-    }
-  }, [
-    chatMode,
-    chatId,
-    isChatModeLoading,
-    messagesById,
-    setNeedsFreshPlanChat,
-  ]);
-
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
     !isStreaming ? (chatId ?? null) : null,
@@ -533,23 +475,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         : inputValue
       : imageMentions;
 
-    // If switching to plan mode from another mode in a chat with messages,
-    // let the user choose whether to start a fresh chat or continue here.
-    // Capture the submission and defer it until the choice is made.
-    if (needsFreshPlanChat && chatMode === "plan" && appId) {
-      pendingPlanSubmissionRef.current = {
-        prompt: promptWithImages,
-        attachments,
-        selectedComponents:
-          selectedComponents && selectedComponents.length > 0
-            ? selectedComponents
-            : [],
-        imageJobIdsToDismiss: visibleSuccessfulImageJobs.map((job) => job.id),
-      };
-      setPlanChatChoiceOpen(true);
-      return;
-    }
-
     // Dismiss image jobs that were auto-added
     if (visibleSuccessfulImageJobs.length > 0) {
       setDismissedImageJobIds((prev) => {
@@ -630,80 +555,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
     clearAttachments();
     posthog.capture("chat:submit", { chatMode });
-  };
-
-  // Sends the deferred plan-mode submission once the user has chosen whether
-  // to start a fresh chat or continue in the current one.
-  const submitPlanMessage = async (useNewChat: boolean) => {
-    const pending = pendingPlanSubmissionRef.current;
-    if (!pending) {
-      return;
-    }
-    pendingPlanSubmissionRef.current = null;
-    setPlanChatChoiceOpen(false);
-    setNeedsFreshPlanChat(false);
-    setInputValue("");
-    setSelectedComponents([]);
-    setVisualEditingSelectedComponent(null);
-    // Clear overlays in the preview iframe
-    if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
-    }
-
-    // Dismiss image jobs that were auto-added to the prompt
-    if (pending.imageJobIdsToDismiss.length > 0) {
-      setDismissedImageJobIds((prev) => {
-        const next = new Set(prev);
-        for (const id of pending.imageJobIdsToDismiss) {
-          next.add(id);
-        }
-        return next;
-      });
-    }
-
-    let targetChatId = chatId;
-    if (useNewChat) {
-      if (!appId) {
-        return;
-      }
-      const newChatId = await ipc.chat.createChat({
-        appId,
-        initialChatMode: "plan",
-      });
-      setSelectedChatId(newChatId);
-      navigate({ to: "/chat", search: { id: newChatId } });
-      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      showInfo("We've switched you to a new chat for a clean context");
-      targetChatId = newChatId;
-    }
-    if (!targetChatId) {
-      return;
-    }
-
-    await streamMessage({
-      prompt: pending.prompt,
-      chatId: targetChatId,
-      attachments: pending.attachments,
-      redo: false,
-      // A fresh chat starts with a clean context, so don't carry over the
-      // selected components; only send them when continuing in the same chat.
-      selectedComponents: useNewChat ? [] : pending.selectedComponents,
-      requestedChatMode: "plan",
-    });
-    clearAttachments();
-    posthog.capture("chat:submit", { chatMode });
-  };
-
-  const handlePlanChatChoiceOpenChange = (open: boolean) => {
-    setPlanChatChoiceOpen(open);
-    // If dismissed without choosing, keep the pending input intact so the
-    // user can retry; the message is still in the input box.
-    if (!open) {
-      pendingPlanSubmissionRef.current = null;
-    }
   };
 
   const handleCancel = () => {
@@ -1161,37 +1012,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         defaultAppId={appId ?? undefined}
         source="chat"
       />
-
-      {/* Plan mode: choose a fresh chat or continue in the current one */}
-      <AlertDialog
-        open={planChatChoiceOpen}
-        onOpenChange={handlePlanChatChoiceOpenChange}
-      >
-        <AlertDialogContent data-testid="plan-mode-chat-choice-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Start planning in a new chat?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Start a new chat, or continue here to keep this conversation's
-              history.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              data-testid="plan-mode-continue-same-chat"
-              onClick={() => submitPlanMessage(false)}
-            >
-              Continue in same chat
-            </Button>
-            <Button
-              data-testid="plan-mode-new-chat"
-              onClick={() => submitPlanMessage(true)}
-            >
-              New chat
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

@@ -41,9 +41,9 @@ async function sendPromptAndWaitForResponse(
 }
 
 async function waitForPlanGenerationToFinish(po: PageObject) {
-  await expect(
-    po.page.getByRole("button", { name: "Accept Plan" }),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
   await waitForNoActiveGeneration(po);
 }
 
@@ -70,21 +70,19 @@ testSkipIfWindows(
     // Switch to plan mode within the existing chat.
     await po.chatActions.selectChatMode("plan");
 
-    // Send a prompt that triggers a plan in the now plan-mode chat. Switching to
-    // plan mode in a chat with messages prompts the user to choose between a
-    // fresh chat or continuing here, so don't wait for completion yet.
+    // Send a prompt that triggers a plan in the now plan-mode chat. The plan is
+    // generated in the same chat; the new-vs-same-chat choice now happens when
+    // accepting the plan, not when switching modes.
     await po.sendPrompt("tc=local-agent/accept-plan", {
       skipWaitForCompletion: true,
     });
 
-    // Choose to continue in the same chat, then let the plan finish streaming.
-    await po.page.getByTestId("plan-mode-continue-same-chat").click();
     await waitForPlanGenerationToFinish(po);
 
     // The plan should be presented in the same chat.
-    await expect(
-      po.page.getByRole("button", { name: "Accept Plan" }),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     const planContent = po.previewPanel.getPlanContent();
     await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
@@ -96,7 +94,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "plan mode - switch to plan mode in an existing chat (new chat)",
+  "plan mode - accept plan and start a new chat",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
@@ -115,34 +113,67 @@ testSkipIfWindows(
     expect(initialChatIdMatch).not.toBeNull();
     const initialChatId = initialChatIdMatch![1];
 
-    // Switch to plan mode within the existing chat.
+    // Switch to plan mode and generate a plan in the same chat.
     await po.chatActions.selectChatMode("plan");
-
-    // Sending a prompt after switching to plan mode in a chat with messages
-    // opens the choice dialog instead of submitting immediately.
     await po.sendPrompt("tc=local-agent/accept-plan", {
       skipWaitForCompletion: true,
     });
+    await waitForPlanGenerationToFinish(po);
 
-    // Choose to start a fresh chat for a clean context.
-    await po.page.getByTestId("plan-mode-new-chat").click();
+    // Accept the plan and choose to implement it in a brand-new chat.
+    await po.page.getByTestId("accept-plan-new-chat").click();
 
-    // We should be redirected to a different, brand-new chat.
+    // We should be redirected to a different, brand-new chat for implementation.
     await expect(async () => {
       const currentChatId = new URL(po.page.url()).searchParams.get("id");
       expect(currentChatId).not.toBeNull();
       expect(currentChatId).not.toEqual(initialChatId);
     }).toPass({ timeout: Timeout.MEDIUM });
 
+    await waitForNoActiveGeneration(po);
+  },
+);
+
+testSkipIfWindows(
+  "plan mode - accept plan and continue here",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await waitForInitialImportedChatCompletion(po);
+
+    // Start an existing chat in the default (Agent v2) mode.
+    await sendPromptAndWaitForResponse(
+      po,
+      "tc=local-agent/simple-response",
+      "Hello! I understand your request.",
+    );
+
+    // Capture the existing chat ID so we can confirm we stay in the same chat.
+    const initialUrl = po.page.url();
+    const initialChatIdMatch = initialUrl.match(/[?&]id=(\d+)/);
+    expect(initialChatIdMatch).not.toBeNull();
+    const initialChatId = initialChatIdMatch![1];
+
+    // Switch to plan mode and generate a plan in the same chat.
+    await po.chatActions.selectChatMode("plan");
+    await po.sendPrompt("tc=local-agent/accept-plan", {
+      skipWaitForCompletion: true,
+    });
     await waitForPlanGenerationToFinish(po);
 
-    // The plan should be presented in the new chat.
-    await expect(
-      po.page.getByRole("button", { name: "Accept Plan" }),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    // Accept the plan and choose to continue implementing in this same chat.
+    await po.page.getByTestId("accept-plan-continue-here").click();
 
-    const planContent = po.previewPanel.getPlanContent();
-    await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
+    // The accept buttons disappear once the plan has been accepted.
+    await expect(po.page.getByTestId("accept-plan-continue-here")).toBeHidden({
+      timeout: Timeout.MEDIUM,
+    });
+
+    // We should still be in the same chat (no redirect to a fresh chat).
+    const currentChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(currentChatId).toEqual(initialChatId);
+
+    await waitForNoActiveGeneration(po);
   },
 );
 
@@ -156,10 +187,6 @@ testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
   await po.sendPrompt("tc=local-agent/questionnaire", {
     skipWaitForCompletion: true,
   });
-
-  // Imported chats already contain the initial import message, so switching to
-  // plan mode triggers the new-chat choice dialog. Continue in the same chat.
-  await po.page.getByTestId("plan-mode-continue-same-chat").click();
 
   // Wait for questionnaire UI to appear
   await expect(po.page.getByText("Which framework do you prefer?")).toBeVisible(
@@ -197,14 +224,9 @@ testSkipIfWindows(
       skipWaitForCompletion: true,
     });
 
-    // Imported chats already contain the initial import message, so switching to
-    // plan mode triggers the new-chat choice dialog. Continue in the same chat.
-    await po.page.getByTestId("plan-mode-continue-same-chat").click();
     await waitForPlanGenerationToFinish(po);
 
-    await expect(
-      po.page.getByRole("button", { name: "Accept Plan" }),
-    ).toBeVisible({
+    await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
@@ -323,9 +345,6 @@ testSkipIfWindows(
       skipWaitForCompletion: true,
     });
 
-    // Imported chats already contain the initial import message, so switching to
-    // plan mode triggers the new-chat choice dialog. Continue in the same chat.
-    await po.page.getByTestId("plan-mode-continue-same-chat").click();
     await waitForPlanGenerationToFinish(po);
 
     // Wait for the "View Plan" button to appear

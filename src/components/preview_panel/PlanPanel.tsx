@@ -11,6 +11,7 @@ import { Check, FileText } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import {
   clearPlanAnnotations,
+  planAcceptInNewChatByChatIdAtom,
   planAnnotationsAtom,
   planStateAtom,
 } from "@/atoms/planAtoms";
@@ -56,7 +57,13 @@ export const PlanPanel: React.FC = () => {
   }, [currentPlan, previewMode, setPreviewMode]);
 
   const setAnnotations = useSetAtom(planAnnotationsAtom);
+  const setPlanAcceptInNewChat = useSetAtom(planAcceptInNewChatByChatIdAtom);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Remember which way the plan was accepted so the confirmation message can
+  // say whether implementation continued here or started in a new chat.
+  const [acceptedInNewChat, setAcceptedInNewChat] = useState<boolean | null>(
+    null,
+  );
   const [isSendingComments, setIsSendingComments] = useState(false);
 
   const chatAnnotations = useMemo(
@@ -152,11 +159,20 @@ export const PlanPanel: React.FC = () => {
     });
   }, [chatId, isSendingComments, annotations, streamMessage, setAnnotations]);
 
-  const handleAccept = () => {
+  const handleAccept = (useNewChat: boolean) => {
     if (!chatId) return;
     if (selectedMode !== "plan") return;
     if (isSubmitting) return;
     setIsSubmitting(true);
+    setAcceptedInNewChat(useNewChat);
+
+    // Record the choice so usePlanEvents can route the implementation to a new
+    // chat or continue in the current one once the exit_plan event fires.
+    setPlanAcceptInNewChat((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, useNewChat);
+      return next;
+    });
 
     streamMessage({
       chatId,
@@ -234,18 +250,30 @@ export const PlanPanel: React.FC = () => {
           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
             <Check size={16} />
             <span className="text-sm font-medium">
-              Plan accepted — implementation started in a new chat
+              {acceptedInNewChat === false
+                ? "Plan accepted — implementation started in this chat"
+                : "Plan accepted — implementation started in a new chat"}
             </span>
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
             <Button
-              onClick={handleAccept}
+              onClick={() => handleAccept(true)}
               disabled={isStreaming || isSubmitting}
-              className="flex-1"
+              className="w-full"
+              data-testid="accept-plan-new-chat"
             >
               <Check size={16} className="mr-2" />
-              Accept Plan
+              Accept plan and start a new chat
+            </Button>
+            <Button
+              onClick={() => handleAccept(false)}
+              disabled={isStreaming || isSubmitting}
+              variant="outline"
+              className="w-full"
+              data-testid="accept-plan-continue-here"
+            >
+              Accept plan and continue here
             </Button>
           </div>
         )}

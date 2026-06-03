@@ -89,6 +89,7 @@ If the output under test contains non-deterministic or platform-specific content
 
 When regenerating one failing snapshot by running an entire spec file, review `git diff` before committing. Neighboring request-dump snapshots in the same file can be rewritten too; keep only the updates needed for the failing assertion unless the broader fixture output intentionally changed.
 
+If app-file snapshots unexpectedly include `dist/` assets after running `pnpm --dir scaffold build`, delete `scaffold/dist` and rerun `npm run build` before regenerating E2E baselines. The packaged Electron app snapshots the scaffold contents from the last package build, so a stale packaged `scaffold/dist` can keep contaminating snapshots even after the source directory is cleaned.
 When changing provider request model IDs, search all request-dump snapshots for the old model value. Local-agent snapshots can include the same engine model payloads as `engine.spec.ts`, so updating only the obvious engine snapshot may leave stale expected dumps.
 
 ## Accordion-wrapped settings in E2E tests

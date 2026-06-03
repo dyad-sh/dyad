@@ -360,6 +360,7 @@ const BaseUserSettingsFields = {
   enableNativeGit: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),
+  enableMcpToolSearch: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

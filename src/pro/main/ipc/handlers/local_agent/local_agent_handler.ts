@@ -44,6 +44,7 @@ import {
   buildAgentToolSet,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
+  getAgentToolConsent,
 } from "./tool_definitions";
 import {
   questionnaireResolver,
@@ -82,7 +83,10 @@ import {
   parseAiMessagesJson,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
-import { buildExecuteSandboxScriptDescription } from "./tools/execute_sandbox_script";
+import {
+  buildExecuteSandboxScriptDescription,
+  executeSandboxScriptTool,
+} from "./tools/execute_sandbox_script";
 import { collectMcpToolDefs } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
@@ -684,6 +688,17 @@ export async function handleLocalAgentStream(
       abortSignal: abortController.signal,
     };
 
+    // Pre-compute whether MCP-in-sandbox is active so tools registered inside
+    // buildAgentToolSet (e.g. search_mcp_tools) can gate on `ctx.mcpToolsEnabled`.
+    // Mirrors the authoritative `mcpInSandboxEnabled` derived below from the
+    // built tool set; `getAgentToolConsent` accounts for the same "never"
+    // consent that would keep execute_sandbox_script out of the set.
+    ctx.mcpToolsEnabled =
+      !readOnly &&
+      !planModeOnly &&
+      (executeSandboxScriptTool.isEnabled?.(ctx) ?? true) &&
+      getAgentToolConsent(executeSandboxScriptTool.name) !== "never";
+
     // Build tool set (agent tools + MCP tools)
     // In read-only mode, only include read-only tools and skip MCP tools
     // (since we can't determine if MCP tools modify state)
@@ -715,6 +730,12 @@ export async function handleLocalAgentStream(
       !planModeOnly &&
       agentTools.execute_sandbox_script !== undefined;
     ctx.mcpToolsEnabled = mcpInSandboxEnabled;
+    // When the tool-search experiment is on, the sandbox description points
+    // the model at `search_mcp_tools` instead of inlining every MCP tool's
+    // declarations. `ctx.mcpToolDefs` still holds ALL defs below, so the
+    // sandbox capability map can resolve whatever the model finds.
+    const useMcpToolSearch =
+      mcpInSandboxEnabled && !!settings.enableMcpToolSearch;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
@@ -725,7 +746,9 @@ export async function handleLocalAgentStream(
       // the syntax + file-inspection docs (rather than the one-line
       // placeholder from the tool definition).
       agentTools.execute_sandbox_script.description =
-        await buildExecuteSandboxScriptDescription([]);
+        await buildExecuteSandboxScriptDescription([], {
+          useSearch: useMcpToolSearch,
+        });
       if (mcpInSandboxEnabled) {
         try {
           // Collect MCP defs once per turn and reuse for both the
@@ -735,7 +758,9 @@ export async function handleLocalAgentStream(
           const defs = await collectMcpToolDefs();
           ctx.mcpToolDefs = defs;
           agentTools.execute_sandbox_script.description =
-            await buildExecuteSandboxScriptDescription(defs);
+            await buildExecuteSandboxScriptDescription(defs, {
+              useSearch: useMcpToolSearch,
+            });
         } catch (e) {
           logger.warn(
             "Failed to build dynamic execute_sandbox_script description",

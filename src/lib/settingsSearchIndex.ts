@@ -43,6 +43,7 @@ export const SETTING_IDS = {
   enablePnpmMinimumReleaseAgeWarning:
     "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
+  enableMcpToolSearch: "setting-enable-mcp-tool-search",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -431,6 +432,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["mcp", "build", "agent", "tools", "server"],
     sectionId: SECTION_IDS.advanced,
     sectionLabel: "Advanced",
+  },
+  {
+    id: SETTING_IDS.enableMcpToolSearch,
+    label: "Enable MCP tool search",
+    description:
+      "Let the agent search for MCP tools on demand instead of listing every tool in its context",
+    keywords: ["mcp", "search", "tools", "bm25", "agent", "sandbox", "context"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
   },
 
   // Experiments

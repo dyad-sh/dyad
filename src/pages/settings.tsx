@@ -270,6 +270,31 @@ export default function SettingsPage() {
                 <CloudSandboxExperimentSwitch />
               </div>
               <div
+                id={SETTING_IDS.enableMcpToolSearch}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-mcp-tool-search"
+                    aria-label="Enable MCP tool search"
+                    checked={!!settings?.enableMcpToolSearch}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableMcpToolSearch: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-mcp-tool-search">
+                    Enable MCP tool search
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  In Agent mode, let the model search for MCP tools instead of
+                  listing every tool's definition in its context. Requires
+                  sandbox script execution.
+                </div>
+              </div>
+              <div
                 id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
                 className="space-y-1 mt-4"
               >

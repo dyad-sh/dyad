@@ -36,6 +36,7 @@ import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
 import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
+import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
@@ -98,6 +99,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   runTypeChecksTool,
   readGuideTool,
   executeSandboxScriptTool,
+  searchMcpToolsTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,

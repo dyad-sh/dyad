@@ -1,3 +1,4 @@
+import { Vercel } from "@vercel/sdk";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "./test_utils";
@@ -7,9 +8,16 @@ const logger = log.scope("vercel_utils");
 // Use test server URLs when in test mode
 const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
 
-const VERCEL_API_BASE = IS_TEST_BUILD
+export const VERCEL_API_BASE = IS_TEST_BUILD
   ? `${TEST_SERVER_BASE}/vercel/api`
   : "https://api.vercel.com";
+
+export function createVercelClient(token: string): Vercel {
+  return new Vercel({
+    bearerToken: token,
+    ...(IS_TEST_BUILD && { serverURL: VERCEL_API_BASE }),
+  });
+}
 
 export async function getVercelTeamSlug(
   teamId: string,

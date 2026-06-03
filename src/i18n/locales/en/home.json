@@ -512,7 +512,12 @@
       "failedCreateProject": "Failed to create project.",
       "failedConnectProject": "Failed to connect to project.",
       "failedSaveToken": "Failed to save access token.",
-      "failedCheckAvailability": "Failed to check project availability."
+      "failedCheckAvailability": "Failed to check project availability.",
+      "syncPreviewTitle": "Database auto-configuration",
+      "syncPreviewLoading": "Loading database configuration…",
+      "syncPreviewError": "Couldn't load the database auto-configuration preview. You can still create the project.",
+      "syncPreviewIntro": "When you create this project, Dyad will push these environment variables from your {{branchType}} database to Vercel (secret values are hidden and sent securely):",
+      "syncPreviewAuthDomain": "Your live deployment domain will be added to Neon's trusted redirect domains after the first deploy."
     },
     "supabase": {
       "title": "Supabase Integration",
@@ -602,7 +607,10 @@
       "signInTimedOut": "Sign-in timed out — try again or check your browser",
       "connecting": "Connecting...",
       "disconnectAccountTitle": "Disconnect Neon Account",
-      "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect."
+      "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect.",
+      "removeVercelEnvVars": "Remove Neon environment variables from Vercel",
+      "removeVercelEnvVarsHelp": "Deletes DATABASE_URL and Neon Auth variables from the linked Vercel project so they don't point at a disconnected database.",
+      "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel."
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",
@@ -635,6 +643,35 @@
           "description": "Serverless Postgres database with time-travel and generous free project limits."
         }
       }
+    },
+    "database": {
+      "title": "Database",
+      "pickDatabase": "Pick the database your deployed app should connect to.",
+      "continue": "Continue",
+      "backToSelection": "Back to selection",
+      "loading": "Loading database…",
+      "productionActiveMessage": "Your app is on the production branch, so the production database will be used for deployment. No migration is needed.",
+      "recommended": "Recommended",
+      "production": {
+        "title": "Separate production database",
+        "description": "Keeps live data separate from development. Safest for real users, but database changes require a migration step."
+      },
+      "development": {
+        "title": "Use development database",
+        "description": "Uses one database for development and production. Faster setup, but dev changes affect live data."
+      },
+      "envVars": {
+        "title": "Environment variables",
+        "description": "Add these to your hosting provider's environment variables for the deployed app.",
+        "loading": "Loading…"
+      },
+      "syncToVercel": "Sync to Vercel",
+      "syncToVercelHelp": "Push database env vars to Vercel and add your deployment domain to Neon's auth redirect allowlist.",
+      "syncing": "Syncing…",
+      "syncSuccess": "Synced database configuration to Vercel, but a redeploy is required for your live app to use it.",
+      "syncError": "Failed to sync to Vercel.",
+      "selectBranchError": "Failed to save your database branch selection.",
+      "clearBranchError": "Failed to clear your database branch selection."
     },
     "migration": {
       "title": "Database Migration",

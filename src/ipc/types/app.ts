@@ -27,6 +27,7 @@ export const AppBaseSchema = z.object({
   neonDevelopmentBranchId: z.string().nullable(),
   neonPreviewBranchId: z.string().nullable(),
   neonActiveBranchId: z.string().nullable(),
+  selectedDatabaseBranchType: z.enum(["production", "development"]).nullable(),
   vercelProjectId: z.string().nullable(),
   vercelProjectName: z.string().nullable(),
   vercelDeploymentUrl: z.string().nullable(),

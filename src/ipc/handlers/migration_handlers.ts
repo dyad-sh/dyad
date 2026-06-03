@@ -7,9 +7,11 @@ import {
   generateNeonMigrationStatements,
   detectDestructiveStatements,
   deriveDestructiveReasons,
-  getProductionBranchId,
 } from "../utils/migration_utils";
-import { getAppWithNeonBranch } from "../utils/neon_utils";
+import {
+  getAppWithNeonBranch,
+  getProductionBranchId,
+} from "../utils/neon_utils";
 import { executeNeonStatementsInTransaction } from "../../neon_admin/neon_context";
 import {
   storePreview,

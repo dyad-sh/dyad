@@ -1,12 +1,11 @@
 import log from "electron-log";
-import { getNeonClient } from "../../neon_admin/neon_management_client";
 import {
   getConnectionUri,
   executeNeonSql,
 } from "../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import { getAppWithNeonBranch } from "./neon_utils";
+import { getAppWithNeonBranch, getProductionBranchId } from "./neon_utils";
 import type {
   DestructiveStatement,
   DestructiveStatementReason,
@@ -41,30 +40,6 @@ export const MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS = {
  * the branch's `updated_at` timestamp from Neon, captured at preview time
  * and re-checked at apply time to reject stale plans.
  */
-export async function getProductionBranchId(
-  projectId: string,
-): Promise<{ branchId: string; updatedAt: string }> {
-  const neonClient = await getNeonClient();
-  const response = await neonClient.listProjectBranches({ projectId });
-
-  if (!response.data.branches) {
-    throw new DyadError(
-      "Failed to list branches: No branch data returned.",
-      DyadErrorKind.External,
-    );
-  }
-
-  const prodBranch = response.data.branches.find((b) => b.default);
-  if (!prodBranch) {
-    throw new DyadError(
-      "No production (default) branch found for this Neon project.",
-      DyadErrorKind.Precondition,
-    );
-  }
-
-  return { branchId: prodBranch.id, updatedAt: prodBranch.updated_at };
-}
-
 // =============================================================================
 // Destructive statement detection
 // =============================================================================

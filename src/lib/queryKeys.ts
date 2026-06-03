@@ -260,9 +260,11 @@ export const queryKeys = {
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
-    all: ["vercel-deployments"] as const,
+    all: ["vercel"] as const,
     deployments: ({ appId }: { appId: number }) =>
-      ["vercel-deployments", appId] as const,
+      ["vercel", "deployments", appId] as const,
+    syncPreview: ({ appId }: { appId: number | null }) =>
+      ["vercel", "syncPreview", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -344,13 +346,13 @@ export const queryKeys = {
       appId: number | null;
       branchId: string | null;
     }) => ["neon", "emailPasswordConfig", appId, branchId] as const,
-    branchConnectionUri: ({
+    branchEnvVars: ({
       appId,
       branchType,
     }: {
       appId: number | null;
       branchType: "production" | "development";
-    }) => ["neon", "branch-connection-uri", appId, branchType] as const,
+    }) => ["neon", "branch-env-vars", appId, branchType] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

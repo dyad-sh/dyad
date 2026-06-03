@@ -1,12 +1,11 @@
 import { IpcMainInvokeEvent } from "electron";
-import { Vercel } from "@vercel/sdk";
 import { writeSettings, readSettings } from "../../main/settings";
 import * as schema from "../../db/schema";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
-import { IS_TEST_BUILD } from "../utils/test_utils";
+import { createVercelClient, VERCEL_API_BASE } from "../utils/vercel_utils";
 import * as fs from "fs";
 import * as path from "path";
 import { CreateProjectFramework } from "@vercel/sdk/models/createprojectop.js";
@@ -17,31 +16,23 @@ import {
   SaveVercelAccessTokenParams,
   IsVercelProjectAvailableParams,
   CreateVercelProjectParams,
+  CreateVercelProjectResult,
   ConnectToExistingVercelProjectParams,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
   VercelProject,
   VercelDeployment,
 } from "../types/vercel";
+import {
+  previewNeonVercelSync,
+  syncNeonConfigToVercel,
+  removeNeonEnvVarsFromVercel,
+} from "../utils/vercel_neon_sync";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("vercel_handlers");
 
-// Use test server URLs when in test mode
-const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
-
-const VERCEL_API_BASE = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/vercel/api`
-  : "https://api.vercel.com";
-
 // --- Helper Functions ---
-
-function createVercelClient(token: string): Vercel {
-  return new Vercel({
-    bearerToken: token,
-    ...(IS_TEST_BUILD && { serverURL: VERCEL_API_BASE }),
-  });
-}
 
 interface VercelProjectResponse {
   id: string;
@@ -299,7 +290,7 @@ async function handleIsProjectAvailable(
 async function handleCreateProject(
   event: IpcMainInvokeEvent,
   { name, appId }: CreateVercelProjectParams,
-): Promise<void> {
+): Promise<CreateVercelProjectResult> {
   const settings = readSettings();
   const accessToken = settings.vercelAccessToken?.value;
   if (!accessToken) {
@@ -369,6 +360,26 @@ async function handleCreateProject(
       `Successfully created Vercel project: ${projectData.id} with GitHub repo: ${app.githubOrg}/${app.githubRepo}`,
     );
 
+    // First-deploy auto-config: for Neon-connected apps, push env vars and add
+    // the new deployment domain to Neon Auth's trusted domains BEFORE the first
+    // build runs so it picks them up. Non-fatal, like the deployment trigger.
+    let syncWarning: string | undefined;
+    if (app.neonProjectId) {
+      try {
+        const syncResult = await syncNeonConfigToVercel({
+          appId,
+          includeDomainHosts: [projectUrl],
+        });
+        syncWarning = syncResult.warning;
+      } catch (syncError: any) {
+        logger.warn(
+          `Neon→Vercel sync failed during project creation: ${syncError.message}`,
+        );
+        syncWarning =
+          syncError.message || "Failed to sync Neon config to Vercel.";
+      }
+    }
+
     // Trigger the first deployment
     logger.info(`Triggering first deployment for project: ${projectData.id}`);
     try {
@@ -396,6 +407,8 @@ async function handleCreateProject(
       logger.warn(`First deployment failed with error: ${deployError.message}`);
       // Don't throw here - project creation was successful, deployment failure is non-critical
     }
+
+    return syncWarning ? { syncWarning } : undefined;
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to create project:", err);
@@ -576,7 +589,7 @@ export function registerVercelHandlers() {
   );
 
   createTypedHandler(vercelContracts.createProject, async (event, params) => {
-    await handleCreateProject(event, params);
+    return handleCreateProject(event, params);
   });
 
   createTypedHandler(
@@ -593,6 +606,25 @@ export function registerVercelHandlers() {
   createTypedHandler(vercelContracts.disconnect, async (event, params) => {
     await handleDisconnectVercelProject(event, params);
   });
+
+  // DO NOT LOG these handlers — they resolve sensitive env var values.
+  createTypedHandler(vercelContracts.getSyncPreview, async (_, { appId }) => {
+    return previewNeonVercelSync({ appId });
+  });
+
+  createTypedHandler(
+    vercelContracts.syncNeonConfig,
+    async (_, { appId, branchType }) => {
+      return syncNeonConfigToVercel({ appId, branchType });
+    },
+  );
+
+  createTypedHandler(
+    vercelContracts.removeNeonEnvVars,
+    async (_, { appId }) => {
+      return removeNeonEnvVarsFromVercel({ appId });
+    },
+  );
 
   logger.debug("Registered Vercel IPC handlers");
 }

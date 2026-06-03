@@ -107,21 +107,33 @@ export const UpdateNeonEmailVerificationParamsSchema = z.object({
   requireEmailVerification: z.boolean(),
 });
 
-export const GetNeonBranchConnectionUriParamsSchema = z.object({
+export const SetSelectedDatabaseBranchTypeParamsSchema = z.object({
+  appId: z.number(),
+  // Null clears the choice (treated as production by the backend sync).
+  branchType: z.enum(["production", "development"]).nullable(),
+});
+
+export type SetSelectedDatabaseBranchTypeParams = z.infer<
+  typeof SetSelectedDatabaseBranchTypeParamsSchema
+>;
+
+export const GetNeonBranchEnvVarsParamsSchema = z.object({
   appId: z.number(),
   branchType: z.enum(["production", "development"]),
 });
 
-export type GetNeonBranchConnectionUriParams = z.infer<
-  typeof GetNeonBranchConnectionUriParamsSchema
+export type GetNeonBranchEnvVarsParams = z.infer<
+  typeof GetNeonBranchEnvVarsParamsSchema
 >;
 
-export const GetNeonBranchConnectionUriResponseSchema = z.object({
-  connectionUri: z.string(),
+export const GetNeonBranchEnvVarsResponseSchema = z.object({
+  databaseUrl: z.string(),
+  neonAuthBaseUrl: z.string().optional(),
+  neonAuthCookieSecret: z.string().optional(),
 });
 
-export type GetNeonBranchConnectionUriResponse = z.infer<
-  typeof GetNeonBranchConnectionUriResponseSchema
+export type GetNeonBranchEnvVarsResponse = z.infer<
+  typeof GetNeonBranchEnvVarsResponseSchema
 >;
 
 // =============================================================================
@@ -189,10 +201,16 @@ export const neonContracts = {
     output: z.void(),
   }),
 
-  getBranchConnectionUri: defineContract({
-    channel: "neon:get-branch-connection-uri",
-    input: GetNeonBranchConnectionUriParamsSchema,
-    output: GetNeonBranchConnectionUriResponseSchema,
+  getBranchEnvVars: defineContract({
+    channel: "neon:get-branch-env-vars",
+    input: GetNeonBranchEnvVarsParamsSchema,
+    output: GetNeonBranchEnvVarsResponseSchema,
+  }),
+
+  setSelectedDatabaseBranchType: defineContract({
+    channel: "neon:set-selected-database-branch-type",
+    input: SetSelectedDatabaseBranchTypeParamsSchema,
+    output: z.object({ success: z.boolean() }),
   }),
 } as const;
 

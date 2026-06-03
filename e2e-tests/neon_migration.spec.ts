@@ -17,7 +17,16 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
   await po.navigation.clickBackButton();
   await po.previewPanel.selectPreviewMode("publish");
 
-  // Verify the MigrationPanel is visible
+  // The app is on the development branch, so the unified Database section shows
+  // a picker. Choosing Production reveals the migration panel.
+  const databaseSection = po.page.getByTestId("database-section");
+  await expect(databaseSection).toBeVisible({ timeout: Timeout.MEDIUM });
+  await databaseSection
+    .getByRole("button", { name: /^Separate production database/ })
+    .click();
+  await databaseSection.getByRole("button", { name: "Continue" }).click();
+
+  // Verify the migration panel is visible
   const migrateButton = po.page.getByRole("button", {
     name: "Migrate to Production",
   });
@@ -65,7 +74,7 @@ testSkipIfWindows("neon migration push from publish panel", async ({ po }) => {
 });
 
 testSkipIfWindows(
-  "neon migration stays disabled on the production branch",
+  "neon migration is skipped on the production branch",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.navigation.goToHubAndSelectTemplate("Next.js Template");
@@ -81,14 +90,27 @@ testSkipIfWindows(
     await po.navigation.clickBackButton();
     await po.previewPanel.selectPreviewMode("publish");
 
-    const migrateButton = po.page.getByRole("button", {
-      name: "Migrate to Production",
-    });
-    await expect(migrateButton).toBeDisabled({ timeout: Timeout.MEDIUM });
+    // On the production branch (Case 2) there is no branch picker and no
+    // migration step — just an explanatory message plus the env vars section.
+    const databaseSection = po.page.getByTestId("database-section");
+    await expect(databaseSection).toBeVisible({ timeout: Timeout.MEDIUM });
     await expect(
-      po.page.getByText(
-        "Switch to a non-production branch in the Neon panel before migrating.",
-      ),
+      databaseSection.getByText("Your app is on the production branch", {
+        exact: false,
+      }),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(
+      po.page.getByRole("button", { name: "Migrate to Production" }),
+    ).toHaveCount(0);
+
+    // The env vars section is still available for the production branch.
+    await databaseSection
+      .getByRole("button", { name: "Environment variables" })
+      .click();
+    await expect(
+      databaseSection.getByLabel("DATABASE_URL", { exact: true }),
+    ).toHaveValue("postgresql://test:test@test-main.neon.tech/test", {
+      timeout: Timeout.MEDIUM,
+    });
   },
 );

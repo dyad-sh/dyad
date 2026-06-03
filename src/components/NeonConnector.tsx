@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
@@ -73,6 +74,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDisconnectingAccount, setIsDisconnectingAccount] = useState(false);
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
+  const [removeFromVercel, setRemoveFromVercel] = useState(true);
   const [isDisconnectAccountDialogOpen, setIsDisconnectAccountDialogOpen] =
     useState(false);
   const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -211,8 +213,28 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   const handleUnsetProject = async () => {
     setIsDisconnecting(true);
+    const shouldRemoveFromVercel = removeFromVercel && !!app?.vercelProjectId;
     try {
       await ipc.neon.unsetAppProject({ appId });
+
+      // Clean up the Neon env vars we pushed to Vercel (default-on, opt-out).
+      // Non-fatal: the Neon project is already unlinked, so a Vercel cleanup
+      // failure only warrants a warning, not a failed disconnect.
+      if (shouldRemoveFromVercel) {
+        try {
+          const result = await ipc.vercel.removeNeonEnvVars({ appId });
+          if (result.warning) {
+            toast.warning(result.warning);
+          }
+        } catch (vercelError) {
+          console.error(
+            "Failed to remove Neon env vars from Vercel:",
+            vercelError,
+          );
+          toast.warning(t("integrations.neon.failedRemoveVercelEnvVars"));
+        }
+      }
+
       toast.success(t("integrations.neon.projectDisconnected"));
       setIsDisconnectDialogOpen(false);
       await refreshApp();
@@ -537,7 +559,9 @@ export function NeonConnector({ appId }: { appId: number }) {
             <AlertDialog
               open={isDisconnectDialogOpen}
               onOpenChange={(open) => {
-                if (!isDisconnecting) setIsDisconnectDialogOpen(open);
+                if (isDisconnecting) return;
+                setIsDisconnectDialogOpen(open);
+                if (open) setRemoveFromVercel(true);
               }}
             >
               <AlertDialogTrigger
@@ -555,6 +579,26 @@ export function NeonConnector({ appId }: { appId: number }) {
                     {t("integrations.neon.disconnectConfirmation")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                {app?.vercelProjectId && (
+                  <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+                    <Checkbox
+                      checked={removeFromVercel}
+                      onCheckedChange={(checked) =>
+                        setRemoveFromVercel(checked === true)
+                      }
+                      disabled={isDisconnecting}
+                      className="mt-0.5"
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-medium">
+                        {t("integrations.neon.removeVercelEnvVars")}
+                      </span>
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        {t("integrations.neon.removeVercelEnvVarsHelp")}
+                      </span>
+                    </span>
+                  </label>
+                )}
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={isDisconnecting}>
                     {t("integrations.neon.cancel")}

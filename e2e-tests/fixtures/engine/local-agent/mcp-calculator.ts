@@ -11,9 +11,8 @@ export const fixture: LocalAgentFixture = {
           args: {
             description: "Call calculator_add through MCP",
             script: [
-              "async function main() {",
-              "  const result = await testing_mcp_server__calculator_add({ a: 5, b: 3 });",
-              "  return JSON.stringify(result);",
+              "function main() {",
+              "  return testing_mcp_server__calculator_add({ a: 5, b: 3 });",
               "}",
               "main();",
             ].join("\n"),

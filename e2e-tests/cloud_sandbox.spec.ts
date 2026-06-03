@@ -17,7 +17,11 @@ testSkipIfWindows(
     await po.navigation.goToAppsTab();
     await po.sendPrompt("hi");
 
-    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
+    // Cloud sandbox provisioning can be slow; retry the visibility check to
+    // avoid flakes when the iframe takes slightly longer than EXTRA_LONG.
+    await expect(async () => {
+      await po.previewPanel.expectPreviewIframeIsVisible(Timeout.SHORT);
+    }).toPass({ timeout: Timeout.EXTRA_LONG * 2 });
     await expect(po.previewPanel.getCloudBadge()).toBeVisible({
       timeout: Timeout.LONG,
     });

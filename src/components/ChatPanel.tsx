@@ -299,7 +299,7 @@ export function ChatPanel({
       <div className="flex flex-1 overflow-hidden">
         {!isVersionPaneOpen && (
           <div className="relative flex-1 min-w-0 overflow-hidden">
-            <AnimatePresence initial={false}>
+            <AnimatePresence>
               {!showTerminalDrawer && (
                 <motion.div
                   key="chat"

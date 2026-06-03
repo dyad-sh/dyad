@@ -107,6 +107,21 @@ describe("getExtraProviderOptions", () => {
       },
     });
   });
+
+  it("maps Gemini high thinking budget to dynamic budget", () => {
+    expect(
+      getExtraProviderOptionsForEngine("google", {
+        ...baseSettings,
+        thinkingBudget: "high",
+      }),
+    ).toEqual({
+      thinking: {
+        type: "enabled",
+        include_thoughts: true,
+        budget_tokens: -1,
+      },
+    });
+  });
 });
 
 describe("getAnthropicProviderOptions", () => {

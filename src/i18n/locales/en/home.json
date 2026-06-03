@@ -668,7 +668,7 @@
       "syncToVercel": "Sync to Vercel",
       "syncToVercelHelp": "Push database env vars to Vercel and add your deployment domain to Neon's auth redirect allowlist.",
       "syncing": "Syncing…",
-      "syncSuccess": "Synced database configuration to Vercel.",
+      "syncSuccess": "Synced database configuration to Vercel, but a redeploy is required for your live app to use it.",
       "syncError": "Failed to sync to Vercel.",
       "selectBranchError": "Failed to save your database branch selection.",
       "clearBranchError": "Failed to clear your database branch selection."

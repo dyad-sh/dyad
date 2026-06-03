@@ -771,9 +771,22 @@ export function registerNeonHandlers() {
       // Update DB first, then inject env vars.
       // If env injection fails, revert the DB update so the app and env stay in sync.
       const previousActiveBranchId = appData.neonActiveBranchId;
+      const previousSelectedDatabaseBranchType =
+        appData.selectedDatabaseBranchType;
+      // When production becomes active, the DatabaseSection renders the
+      // production-only state and ignores any prior deploy-branch pick. Clear
+      // the stored selection so backend consumers (Vercel sync, sync preview)
+      // that fall back to `getSelectedDeployBranchType` don't push a stale
+      // "development" choice on the first deploy. Null is treated as production
+      // by those consumers.
       await db
         .update(apps)
-        .set({ neonActiveBranchId: branchId })
+        .set({
+          neonActiveBranchId: branchId,
+          ...(branchType === "production"
+            ? { selectedDatabaseBranchType: null }
+            : {}),
+        })
         .where(eq(apps.id, appId));
 
       let warning: string | undefined;
@@ -792,7 +805,10 @@ export function registerNeonHandlers() {
         try {
           await db
             .update(apps)
-            .set({ neonActiveBranchId: previousActiveBranchId })
+            .set({
+              neonActiveBranchId: previousActiveBranchId,
+              selectedDatabaseBranchType: previousSelectedDatabaseBranchType,
+            })
             .where(eq(apps.id, appId));
         } catch (revertError) {
           logger.error(

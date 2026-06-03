@@ -278,12 +278,8 @@ async function getProModelClient({
     };
   }
   if (model.provider === "anthropic") {
-    const modelName = modelId.startsWith("anthropic/")
-      ? modelId.slice("anthropic/".length)
-      : modelId;
-
     return {
-      model: provider.anthropic(modelName, { providerId: model.provider }),
+      model: provider.anthropic(modelId, { providerId: model.provider }),
       builtinProviderId: model.provider,
     };
   }

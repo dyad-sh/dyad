@@ -27,6 +27,12 @@ describe("slugify", () => {
   it("truncates to 60 characters", () => {
     expect(slugify("a".repeat(100))).toBe("a".repeat(60));
   });
+
+  it("strips a trailing hyphen left behind by truncation", () => {
+    // The 60-char cut lands on the hyphen before "bcde", which must be removed
+    // so the slug never ends in a dangling hyphen.
+    expect(slugify("a".repeat(59) + "-bcde")).toBe("a".repeat(59));
+  });
 });
 
 describe("slugifyAppPath", () => {

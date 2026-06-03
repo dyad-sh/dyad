@@ -1,12 +1,15 @@
 // Lowercases, replaces any run of non-alphanumerics with a single hyphen,
-// strips leading/trailing hyphens, and truncates to 60 chars. Returns
+// strips leading/trailing hyphens, and truncates to 60 chars. The final
+// trailing-hyphen strip removes a hyphen the truncation may have landed on
+// (e.g. cutting "...word-more" mid-word leaves a dangling "-"). Returns
 // "untitled" if the input slugifies to empty.
 export function slugify(text: string): string {
   const result = text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .substring(0, 60);
+    .substring(0, 60)
+    .replace(/-+$/g, "");
   return result || "untitled";
 }
 

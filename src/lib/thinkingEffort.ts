@@ -28,11 +28,6 @@ export const THINKING_EFFORT_OPTIONS: ThinkingEffortOption[] = [
     label: "High",
     description: "Deeper reasoning",
   },
-  {
-    value: "xhigh",
-    label: "X-High",
-    description: "Maximum reasoning",
-  },
 ];
 
 const DEFAULT_OPTION =

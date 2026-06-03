@@ -67,9 +67,25 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
     skipWaitForCompletion: true,
   });
 
-  // MCP tools require consent - wait for the consent banner
-  await po.agentConsent.waitForAgentConsentBanner();
-  await po.agentConsent.clickAgentConsentAlwaysAllow();
+  // Depending on saved MCP consent state, the tool may either pause for
+  // consent or complete directly.
+  const alwaysAllowButton = po.page.getByRole("button", {
+    name: "Always allow",
+  });
+  const consentAppeared = await Promise.race([
+    alwaysAllowButton
+      .waitFor({ state: "visible", timeout: Timeout.MEDIUM })
+      .then(() => true)
+      .catch(() => false),
+    po.page
+      .getByRole("button", { name: "Retry" })
+      .waitFor({ state: "visible", timeout: Timeout.MEDIUM })
+      .then(() => false)
+      .catch(() => false),
+  ]);
+  if (consentAppeared) {
+    await po.agentConsent.clickAgentConsentAlwaysAllow();
+  }
 
   // Wait for chat to complete
   await po.chatActions.waitForChatCompletion();

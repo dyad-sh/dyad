@@ -1,24 +1,32 @@
 {
   "body": {
-    "model": "anthropic/claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-20250514",
     "max_tokens": 32000,
-    "temperature": 0,
-    "messages": [
-      {
-        "role": "system",
-        "content": "[[SYSTEM_MESSAGE]]"
-      },
-      {
-        "role": "user",
-        "content": "[dump] tc=turbo-edits"
-      }
-    ],
-    "stream": true,
     "thinking": {
       "type": "adaptive",
       "display": "summarized"
     },
-    "reasoning_effort": "medium",
+    "output_config": {
+      "effort": "medium"
+    },
+    "system": [
+      {
+        "type": "text",
+        "text": "[[SYSTEM_MESSAGE]]"
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "[dump] tc=turbo-edits"
+          }
+        ]
+      }
+    ],
+    "stream": true,
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

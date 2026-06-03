@@ -443,13 +443,25 @@ export class PageObject {
         },
       );
     }
+    if (parsedDump["body"]["system"]) {
+      parsedDump["body"]["system"] = parsedDump["body"]["system"].map(
+        (message: any) => {
+          if (message.type === "text") {
+            message.text = "[[SYSTEM_MESSAGE]]";
+          }
+          return message;
+        },
+      );
+    }
+    // Normalize tool call IDs across both raw request snapshots and prettified
+    // message dumps. Anthropic direct passthrough stores tool IDs inside content
+    // blocks instead of OpenAI-style message.tool_calls arrays.
+    normalizeToolCallIds(parsedDump);
     if (type === "request") {
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
       // Normalize item_reference IDs (e.g., msg_1234567890) to be deterministic
       normalizeItemReferences(parsedDump);
-      // Normalize tool_call IDs (e.g., call_1234567890_0) to be deterministic
-      normalizeToolCallIds(parsedDump);
       expect(
         JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
       ).toMatchSnapshot(name);

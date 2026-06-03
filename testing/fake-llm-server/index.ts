@@ -4,6 +4,7 @@ import cors from "cors";
 import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { createResponsesHandler } from "./responsesHandler";
+import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import {
   handleDeviceCode,
   handleAccessToken,
@@ -492,6 +493,10 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
   );
   // Also add responses API endpoints for each provider
   app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
+  app.post(
+    `/${provider}/v1/messages`,
+    createAnthropicMessagesHandler(provider),
+  );
 });
 
 // Azure-specific endpoints (Azure client uses different URL patterns)
@@ -504,6 +509,7 @@ app.post(
 // Default test provider handler:
 app.post("/v1/chat/completions", createChatCompletionHandler("."));
 app.post("/v1/responses", createResponsesHandler("."));
+app.post("/v1/messages", createAnthropicMessagesHandler("."));
 
 // GitHub API Mock Endpoints
 console.log("Setting up GitHub mock endpoints");

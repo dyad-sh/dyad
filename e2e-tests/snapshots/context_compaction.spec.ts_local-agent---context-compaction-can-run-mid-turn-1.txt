@@ -1,36 +1,19 @@
 ===
-role: system
-message: [[SYSTEM_MESSAGE]]
+role: user
+message: [{"type":"text","text":"tc=local-agent/compaction-mid-turn"}]
+
+===
+role: assistant
+message: [{"type":"text","text":"<dyad-compaction title=\"Conversation compacted\" state=\"finished\">\n## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.\n</dyad-compaction>\n\nIf you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]\nNote: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file."},{"type":"text","text":"post-compaction step"},{"type":"tool_use","id":"[[TOOL_CALL_0]]","name":"read_file","input":{"path":"SOMEFILE.md"}}]
 
 ===
 role: user
-message: tc=local-agent/compaction-mid-turn
+message: [{"type":"tool_result","tool_use_id":"[[TOOL_CALL_0]]","content":"File does not exist: SOMEFILE.md","is_error":true}]
 
 ===
 role: assistant
-message: <dyad-compaction title="Conversation compacted" state="finished">
-## Key Decisions Made
-- Completed initial task as requested
-
-## Current Task State
-Conversation was compacted to save context space.
-</dyad-compaction>
-
-If you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]
-Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.
-
-===
-role: assistant
-message: post-compaction step
-
-===
-role: tool
-message: File does not exist: SOMEFILE.md
-
-===
-role: assistant
-message: END OF COMPACTED TURN.
+message: [{"type":"text","text":"END OF COMPACTED TURN."}]
 
 ===
 role: user
-message: [dump] hi
+message: [{"type":"text","text":"[dump] hi"}]

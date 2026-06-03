@@ -1,10 +1,3 @@
 ===
 role: user
-message: I have the following comments on the plan:
-
-**Comment 1:**
-> Step two
-
-Add more detail for step two.
-
-Please update the plan based on these comments.
+message: [{"type":"text","text":"I have the following comments on the plan:\n\n**Comment 1:**\n> Step two\n\nAdd more detail for step two.\n\nPlease update the plan based on these comments."}]

@@ -78,9 +78,8 @@ function getAnthropicEngineThinkingOptions(settings: UserSettings) {
       type: "adaptive",
       display: "summarized",
     },
-    // We use reasoning_effort because it should get mapped to output_config.effort
-    // acording to https://docs.litellm.ai/docs/providers/anthropic_effort
-    reasoning_effort: getThinkingBudgetEffort(settings.thinkingBudget),
+    // Use anthropic's native effort config.
+    output_config: { effort: getThinkingBudgetEffort(settings.thinkingBudget) },
   };
 }
 

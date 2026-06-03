@@ -27,39 +27,66 @@ export function normalizeItemReferences(dump: any): void {
  * Tool call IDs have the format "call_[timestamp]_[index]" which changes between runs.
  */
 export function normalizeToolCallIds(dump: any): void {
-  const messages = dump?.body?.messages;
-  if (!Array.isArray(messages)) {
-    return;
-  }
-
   const oldToNewId: Record<string, string> = {};
   let toolCallIndex = 0;
 
+  const addMapping = (id: unknown) => {
+    if (typeof id !== "string" || !/^call_\d+_\d+$/.test(id)) {
+      return;
+    }
+    if (!oldToNewId[id]) {
+      oldToNewId[id] = `[[TOOL_CALL_${toolCallIndex}]]`;
+      toolCallIndex++;
+    }
+  };
+
+  const visit = (value: unknown, visitor: (object: any) => void) => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item, visitor);
+      }
+      return;
+    }
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    visitor(value);
+    for (const child of Object.values(value)) {
+      visit(child, visitor);
+    }
+  };
+
   // First pass: collect all tool_call IDs and create mapping
-  for (const message of messages) {
-    if (message?.tool_calls && Array.isArray(message.tool_calls)) {
-      for (const toolCall of message.tool_calls) {
-        if (toolCall?.id && !oldToNewId[toolCall.id]) {
-          oldToNewId[toolCall.id] = `[[TOOL_CALL_${toolCallIndex}]]`;
-          toolCallIndex++;
-        }
+  visit(dump, (object) => {
+    if (Array.isArray(object?.tool_calls)) {
+      for (const toolCall of object.tool_calls) {
+        addMapping(toolCall?.id);
       }
     }
-  }
+    if (object?.type === "tool_use") {
+      addMapping(object.id);
+    }
+  });
 
   // Second pass: replace all IDs
-  for (const message of messages) {
-    if (message?.tool_calls && Array.isArray(message.tool_calls)) {
-      for (const toolCall of message.tool_calls) {
+  visit(dump, (object) => {
+    if (Array.isArray(object?.tool_calls)) {
+      for (const toolCall of object.tool_calls) {
         if (toolCall?.id && oldToNewId[toolCall.id]) {
           toolCall.id = oldToNewId[toolCall.id];
         }
       }
     }
-    if (message?.tool_call_id && oldToNewId[message.tool_call_id]) {
-      message.tool_call_id = oldToNewId[message.tool_call_id];
+    if (object?.id && oldToNewId[object.id]) {
+      object.id = oldToNewId[object.id];
     }
-  }
+    if (object?.tool_call_id && oldToNewId[object.tool_call_id]) {
+      object.tool_call_id = oldToNewId[object.tool_call_id];
+    }
+    if (object?.tool_use_id && oldToNewId[object.tool_use_id]) {
+      object.tool_use_id = oldToNewId[object.tool_use_id];
+    }
+  });
 }
 
 /**

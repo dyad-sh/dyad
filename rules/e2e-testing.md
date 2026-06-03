@@ -87,6 +87,8 @@ Snapshots must be **deterministic** and **platform-agnostic**. They must not con
 
 If the output under test contains non-deterministic or platform-specific content, add sanitization logic in the test helper (e.g. in `test_helper.ts`) to normalize it before snapshotting.
 
+When regenerating one failing snapshot by running an entire spec file, review `git diff` before committing. Neighboring request-dump snapshots in the same file can be rewritten too; keep only the updates needed for the failing assertion unless the broader fixture output intentionally changed.
+
 ## Accordion-wrapped settings in E2E tests
 
 The Pro mode build settings (Web Access, Turbo Edits, Smart Context) are inside a collapsed `<Accordion>` in `ProModeSelector`. E2E test helpers must expand the accordion before interacting with elements inside it. The `ProModesDialog` class in `e2e-tests/helpers/page-objects/dialogs/ProModesDialog.ts` has an `expandBuildModeSettings()` method that handles this — call it before clicking any build mode setting buttons.
@@ -168,6 +170,8 @@ If `npm run build` / Electron Forge packaging fails with `Failed to locate modul
 - **Uncommitted-files banner clean state / renderer restarts**: If a prompt/app startup creates Dyad-managed runtime files before a banner test asserts a clean worktree, commit that runtime baseline first. Avoid `page.reload()` for packaged Electron app restart simulations; SPA file routes can fail with `net::ERR_FILE_NOT_FOUND`. If a test needs to recreate the renderer, ask the main process to `BrowserWindow.loadFile(path.join(app.getAppPath(), ".vite/renderer/main_window/index.html"))`.
 - **Version restore clean state**: If a restore/switch-version test fails with `Cannot revert: working tree has uncommitted changes` from a runtime `pnpm-workspace.yaml`, and exact version numbers are under test, amend that runtime file into the current generated commit instead of adding a new baseline commit that shifts `Version N`.
 - **Completion notifications for another chat**: When testing completion notifications while viewing a different chat, make the fake LLM response slow (for example `[sleep=medium]`) or otherwise prove navigation has settled before completion. Fast canned responses can complete while the route still points at the original chat, so the notification handler correctly treats it as the active chat.
+- **Updating E2E snapshots**: Pass the update flag directly to the project script, e.g. `PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec>.ts --update-snapshots`. Do not insert an extra `--` before `--update-snapshots`; Playwright will compare instead of updating.
+- **Fake Anthropic engine routes**: When app code uses Anthropic direct passthrough, the fake LLM server must handle `/v1/messages` (and provider-prefixed variants like `/engine/v1/messages`), not just `/chat/completions`. Anthropic tool results come back as user messages with `tool_result` content blocks, so fixture turn counting must skip those as user prompts.
 
 ## Real Socket Firewall E2E tests
 

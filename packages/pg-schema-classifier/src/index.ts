@@ -27,6 +27,13 @@ type Token =
   | { readonly type: "word"; readonly value: string }
   | { readonly type: "symbol"; readonly value: "(" | ")" | "," | ";" };
 
+type SqlWalkerCallbacks = {
+  readonly onNormalChar?: (context: {
+    readonly char: string;
+    readonly index: number;
+  }) => number | void;
+};
+
 export function detectSqlSchemaMutation(
   sql: string,
 ): SqlSchemaMutationAnalysis {
@@ -144,104 +151,16 @@ function hasTopLevelSelectInto(tokens: readonly Token[]): boolean {
 function splitSqlStatements(sql: string): SplitStatement[] {
   const statements: SplitStatement[] = [];
   let start = 0;
-  let state:
-    | "normal"
-    | "single_quote"
-    | "double_quote"
-    | "line_comment"
-    | "block_comment"
-    | "dollar_quote" = "normal";
-  let blockDepth = 0;
-  let dollarTag = "";
 
-  for (let i = 0; i < sql.length; i += 1) {
-    const char = sql[i];
-    const next = sql[i + 1];
+  const incomplete = walkSql(sql, {
+    onNormalChar: ({ char, index }) => {
+      if (char !== ";") return;
+      pushStatement(statements, sql.slice(start, index), false);
+      start = index + 1;
+    },
+  });
 
-    if (state === "line_comment") {
-      if (char === "\n") state = "normal";
-      continue;
-    }
-
-    if (state === "block_comment") {
-      if (char === "/" && next === "*") {
-        blockDepth += 1;
-        i += 1;
-        continue;
-      }
-      if (char === "*" && next === "/") {
-        blockDepth -= 1;
-        i += 1;
-        if (blockDepth === 0) state = "normal";
-      }
-      continue;
-    }
-
-    if (state === "single_quote") {
-      if (char === "'") {
-        if (next === "'") {
-          i += 1;
-        } else {
-          state = "normal";
-        }
-      }
-      continue;
-    }
-
-    if (state === "double_quote") {
-      if (char === '"') {
-        if (next === '"') {
-          i += 1;
-        } else {
-          state = "normal";
-        }
-      }
-      continue;
-    }
-
-    if (state === "dollar_quote") {
-      if (sql.startsWith(dollarTag, i)) {
-        i += dollarTag.length - 1;
-        state = "normal";
-      }
-      continue;
-    }
-
-    if (char === "-" && next === "-") {
-      state = "line_comment";
-      i += 1;
-      continue;
-    }
-    if (char === "/" && next === "*") {
-      state = "block_comment";
-      blockDepth = 1;
-      i += 1;
-      continue;
-    }
-    if (char === "'") {
-      state = "single_quote";
-      continue;
-    }
-    if (char === '"') {
-      state = "double_quote";
-      continue;
-    }
-    if (char === "$") {
-      const tag = readDollarTag(sql, i);
-      if (tag !== null) {
-        dollarTag = tag;
-        state = "dollar_quote";
-        i += tag.length - 1;
-        continue;
-      }
-    }
-    if (char === ";") {
-      pushStatement(statements, sql.slice(start, i), false);
-      start = i + 1;
-    }
-  }
-
-  pushStatement(statements, sql.slice(start), state !== "normal");
+  pushStatement(statements, sql.slice(start), incomplete);
   return statements;
 }
 
@@ -268,6 +187,33 @@ function readDollarTag(sql: string, start: number): string | null {
 
 function tokenizeStatement(sql: string): Token[] {
   const tokens: Token[] = [];
+
+  walkSql(sql, {
+    onNormalChar: ({ char, index }) => {
+      if (char === "(" || char === ")" || char === "," || char === ";") {
+        tokens.push({ type: "symbol", value: char });
+        return undefined;
+      }
+
+      if (/[A-Za-z_]/u.test(char)) {
+        let end = index + 1;
+        while (end < sql.length && /[A-Za-z0-9_$]/u.test(sql[end] ?? "")) {
+          end += 1;
+        }
+        tokens.push({
+          type: "word",
+          value: sql.slice(index, end).toUpperCase(),
+        });
+        return end - 1;
+      }
+      return undefined;
+    },
+  });
+
+  return tokens;
+}
+
+function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
   let state:
     | "normal"
     | "single_quote"
@@ -279,7 +225,7 @@ function tokenizeStatement(sql: string): Token[] {
   let dollarTag = "";
 
   for (let i = 0; i < sql.length; i += 1) {
-    const char = sql[i];
+    const char = sql[i] ?? "";
     const next = sql[i + 1];
 
     if (state === "line_comment") {
@@ -356,24 +302,11 @@ function tokenizeStatement(sql: string): Token[] {
       }
     }
 
-    if (char === "(" || char === ")" || char === "," || char === ";") {
-      tokens.push({ type: "symbol", value: char });
-      continue;
-    }
-
-    if (/[A-Za-z_]/u.test(char ?? "")) {
-      const start = i;
-      i += 1;
-      while (i < sql.length && /[A-Za-z0-9_$]/u.test(sql[i] ?? "")) {
-        i += 1;
-      }
-      tokens.push({
-        type: "word",
-        value: sql.slice(start, i).toUpperCase(),
-      });
-      i -= 1;
+    const nextIndex = callbacks.onNormalChar?.({ char, index: i });
+    if (typeof nextIndex === "number") {
+      i = nextIndex;
     }
   }
 
-  return tokens;
+  return state !== "normal";
 }

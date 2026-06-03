@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { Children, useMemo, useState } from "react";
 import { AlertTriangle, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CodeHighlight } from "./CodeHighlight";
@@ -21,6 +21,13 @@ interface DyadExecuteSqlProps {
   description?: string;
 }
 
+function extractSqlText(children: ReactNode): string {
+  if (typeof children === "string") return children;
+  return Children.toArray(children)
+    .map((child) => (typeof child === "string" ? child : ""))
+    .join("");
+}
+
 export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
   children,
   node,
@@ -32,7 +39,7 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
   const inProgress = state === "pending";
   const aborted = state === "aborted";
   const queryDescription = description || node?.properties?.description;
-  const sqlText = typeof children === "string" ? children : "";
+  const sqlText = extractSqlText(children);
   const sqlMutatesSchema = useMemo(
     () => (sqlText ? doesSqlMutateSchema(sqlText) : false),
     [sqlText],

@@ -18,6 +18,18 @@ describe("DyadExecuteSql", () => {
     expect(screen.getByText("Changes database schema")).toBeTruthy();
   });
 
+  it("extracts SQL text from string children mixed with React nodes", () => {
+    render(
+      <DyadExecuteSql>
+        {"CREATE "}
+        <span>ignored</span>
+        {"TABLE users (id bigint);"}
+      </DyadExecuteSql>,
+    );
+
+    expect(screen.getByText("Changes database schema")).toBeTruthy();
+  });
+
   it("omits the schema mutation indicator for ordinary queries", () => {
     render(<DyadExecuteSql>SELECT * FROM users;</DyadExecuteSql>);
 

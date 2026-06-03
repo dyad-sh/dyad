@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "claude-opus-4-5",
+    "model": "anthropic/claude-opus-4-5",
     "max_tokens": 32000,
     "thinking": {
       "type": "adaptive",

@@ -51,6 +51,7 @@ function getGeminiThinkingBudgetTokens(
     case "medium":
       return 4_000;
     case "high":
+      // -1 lets Gemini dynamically decide its budget (its max).
       return -1;
     default:
       return 4_000; // Default to medium

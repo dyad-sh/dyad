@@ -101,7 +101,12 @@ async function createSupportedPnpmShim(userDataDir: string) {
 }
 
 function warmSocketFirewallCache() {
-  const maxAttempts = 3;
+  const maxAttempts = 5;
+  const warmupEnv = {
+    ...process.env,
+    npm_config_store_dir: undefined,
+    pnpm_config_store_dir: undefined,
+  };
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -111,6 +116,7 @@ function warmSocketFirewallCache() {
         ["--prefer-offline", "--yes", "sfw@2.0.4", "--help"],
         {
           encoding: "utf8",
+          env: warmupEnv,
           timeout: 120_000,
         },
       );
@@ -124,7 +130,7 @@ function warmSocketFirewallCache() {
         new Int32Array(new SharedArrayBuffer(4)),
         0,
         0,
-        attempt * 1_000,
+        attempt * 5_000,
       );
     }
   }

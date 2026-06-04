@@ -296,6 +296,7 @@ export const FileEditor = ({
         <Editor
           height="100%"
           path={modelPath}
+          keepCurrentModel
           defaultLanguage={getLanguage(filePath)}
           value={value}
           theme={editorTheme}

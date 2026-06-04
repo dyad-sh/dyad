@@ -31,6 +31,7 @@ import {
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
+  needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -57,7 +58,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showWarning } from "@/lib/toast";
+import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -288,6 +289,44 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     onError: (message) => showErrorToast(message),
   });
 
+  const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
+    needsFreshPlanChatAtom,
+  );
+
+  // Detect transition to plan mode from another mode in a chat with messages
+  const prevModeRef = useRef(chatMode);
+  const prevModeChatIdRef = useRef(chatId);
+  const hasInitializedModeRef = useRef(false);
+  useEffect(() => {
+    if (isChatModeLoading) return;
+    if (
+      !hasInitializedModeRef.current ||
+      prevModeChatIdRef.current !== chatId
+    ) {
+      hasInitializedModeRef.current = true;
+      prevModeChatIdRef.current = chatId;
+      prevModeRef.current = chatMode;
+      return;
+    }
+
+    const prevMode = prevModeRef.current;
+    const currentMode = chatMode;
+    prevModeRef.current = currentMode;
+
+    if (prevMode && prevMode !== "plan" && currentMode === "plan") {
+      const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+      if (messages.length > 0) {
+        setNeedsFreshPlanChat(true);
+      }
+    }
+  }, [
+    chatMode,
+    chatId,
+    isChatModeLoading,
+    messagesById,
+    setNeedsFreshPlanChat,
+  ]);
+
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
     !isStreaming ? (chatId ?? null) : null,
@@ -320,13 +359,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   }, [chatId, setMessagesById]);
 
-  // Shared cleanup for exiting queued message editing state
-  const resetEditingState = useCallback(() => {
-    setEditingQueuedMessageId(null);
+  // Shared cleanup run after a submit consumes the composer's contents: clears
+  // the input, any selected/visual-editing components, and the preview overlay.
+  // Attachments are cleared separately because their timing varies by path
+  // (they must be handed to stream/queue first, then cleared).
+  const clearComposerAfterSubmit = useCallback(() => {
     setInputValue("");
-    clearAttachments();
     setSelectedComponents([]);
     setVisualEditingSelectedComponent(null);
+    // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
         { type: "clear-dyad-component-overlays" },
@@ -335,11 +376,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
   }, [
     setInputValue,
-    clearAttachments,
     setSelectedComponents,
     setVisualEditingSelectedComponent,
     previewIframeRef,
   ]);
+
+  // Shared cleanup for exiting queued message editing state
+  const resetEditingState = useCallback(() => {
+    setEditingQueuedMessageId(null);
+    clearComposerAfterSubmit();
+    clearAttachments();
+  }, [setEditingQueuedMessageId, clearComposerAfterSubmit, clearAttachments]);
 
   // Clear editing state if the edited queued message is auto-dequeued
   useEffect(() => {
@@ -486,6 +533,33 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
     }
 
+    // If switching to plan mode from another mode in a chat with messages,
+    // create a new chat for a clean context.
+    if (needsFreshPlanChat && chatMode === "plan" && appId) {
+      clearComposerAfterSubmit();
+      setNeedsFreshPlanChat(false);
+
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "plan",
+      });
+      setSelectedChatId(newChatId);
+      navigate({ to: "/chat", search: { id: newChatId } });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+      showInfo("We've switched you to a new chat for a clean context");
+
+      await streamMessage({
+        prompt: promptWithImages,
+        chatId: newChatId,
+        attachments,
+        redo: false,
+        requestedChatMode: "plan",
+      });
+      clearAttachments();
+      posthog.capture("chat:submit", { chatMode });
+      return;
+    }
+
     const currentInput = promptWithImages;
 
     // Use all selected components for multi-component editing
@@ -515,17 +589,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
       if (queued) {
         // Only clear input, attachments, and components on successful queue
-        setInputValue("");
+        clearComposerAfterSubmit();
         clearAttachments();
-        setSelectedComponents([]);
-        setVisualEditingSelectedComponent(null);
-        // Clear overlays in the preview iframe
-        if (previewIframeRef?.contentWindow) {
-          previewIframeRef.contentWindow.postMessage(
-            { type: "clear-dyad-component-overlays" },
-            "*",
-          );
-        }
       }
       // If queue failed, leave input/attachments intact for the user
       return;
@@ -533,16 +598,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // Not streaming - send immediately
     // Clear input and components before sending
-    setInputValue("");
-    setSelectedComponents([]);
-    setVisualEditingSelectedComponent(null);
-    // Clear overlays in the preview iframe
-    if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
-    }
+    clearComposerAfterSubmit();
 
     // Send message with attachments and clear them after sending
     await streamMessage({

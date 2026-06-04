@@ -456,8 +456,8 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     id: SETTING_IDS.enableMcpToolSearch,
     label: "Enable MCP tool search",
     description:
-      "Let the agent search for MCP tools on demand instead of listing every tool in its context",
-    keywords: ["mcp", "search", "tools", "bm25", "agent", "sandbox", "context"],
+      "Let the agent search for MCP tools on demand instead of listing every tool in its context. Requires sandbox script execution",
+    keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

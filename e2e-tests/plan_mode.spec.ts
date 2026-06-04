@@ -1,7 +1,53 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 import { expect } from "@playwright/test";
-import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
+import {
+  type PageObject,
+  Timeout,
+  testSkipIfWindows,
+} from "./helpers/test_helper";
+
+function getCancelGenerationButton(po: PageObject) {
+  return po.page.getByRole("button", { name: "Cancel generation" });
+}
+
+async function waitForNoActiveGeneration(po: PageObject) {
+  await expect(getCancelGenerationButton(po)).toBeHidden({
+    timeout: Timeout.MEDIUM,
+  });
+}
+
+async function waitForInitialImportedChatCompletion(po: PageObject) {
+  await expect(po.page.getByTestId("messages-list")).toContainText("More EOM", {
+    timeout: Timeout.MEDIUM,
+  });
+  await waitForNoActiveGeneration(po);
+}
+
+async function sendPromptAndWaitForResponse(
+  po: PageObject,
+  prompt: string,
+  responseText: string,
+) {
+  await po.sendPrompt(prompt, {
+    skipWaitForCompletion: true,
+  });
+
+  await expect(po.page.getByTestId("messages-list")).toContainText(
+    responseText,
+    {
+      timeout: Timeout.MEDIUM,
+    },
+  );
+  await waitForNoActiveGeneration(po);
+}
+
+async function waitForPlanGenerationToFinish(po: PageObject) {
+  await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await waitForNoActiveGeneration(po);
+}
 
 async function finishPlanPresentation(po: any) {
   await po.page.getByRole("button", { name: "Keep going" }).click();
@@ -14,70 +60,115 @@ async function finishPlanPresentation(po: any) {
 }
 
 testSkipIfWindows(
-  "plan mode - accept plan redirects to new chat and saves to disk",
+  "plan mode - accept plan and start a new chat",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
-    await po.chatActions.clickNewChat();
+    await waitForInitialImportedChatCompletion(po);
+
+    // Start an existing chat in the default (Agent v2) mode.
+    await sendPromptAndWaitForResponse(
+      po,
+      "tc=local-agent/simple-response",
+      "Hello! I understand your request.",
+    );
+
+    // Switch to plan mode and generate a plan.
     await po.chatActions.selectChatMode("plan");
+    await po.sendPrompt("tc=local-agent/accept-plan", {
+      skipWaitForCompletion: true,
+    });
+    await waitForPlanGenerationToFinish(po);
 
-    // Get app path before accepting (needed to check saved plan)
-    const appPath = await po.appManagement.getCurrentAppPath();
-
-    // Trigger write_plan fixture
-    await po.sendPrompt("tc=local-agent/accept-plan");
+    // Continue past the plan presentation so the write_plan tool turn is
+    // flushed; otherwise the acceptance message gets bundled with the pending
+    // tool result and the exit_plan transition never fires.
     await finishPlanPresentation(po);
 
-    // Capture current chat ID from URL
-    const initialUrl = po.page.url();
-    const initialChatIdMatch = initialUrl.match(/[?&]id=(\d+)/);
-    expect(initialChatIdMatch).not.toBeNull();
-    const initialChatId = initialChatIdMatch![1];
+    // Capture the plan chat ID so we can confirm we get redirected away to a
+    // brand-new implementation chat.
+    const planChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(planChatId).not.toBeNull();
 
-    // Wait for plan panel to appear
-    const acceptButton = po.page.getByRole("button", { name: "Accept Plan" });
-    await expect(acceptButton).toBeVisible({ timeout: Timeout.MEDIUM });
+    // Accept the plan and choose to implement it in a brand-new chat.
+    const appPath = await po.appManagement.getCurrentAppPath();
+    await po.page.getByTestId("accept-plan-new-chat").click();
 
-    // The "We've switched you to a new chat" sonner toast at the bottom-right
-    // can overlap the Accept Plan button. Dismiss it so a normal click works
-    // and Playwright's actionability checks are honored.
+    // We should be redirected to a different, brand-new chat for implementation.
     await expect(async () => {
-      await po.toastNotifications.dismissAllToasts();
-      await expect(acceptButton).toBeEnabled({ timeout: 2_000 });
-      try {
-        await acceptButton.click({ timeout: 2_000 });
-      } catch (error) {
-        const currentChatId = new URL(po.page.url()).searchParams.get("id");
-        if (currentChatId && currentChatId !== initialChatId) {
-          return;
-        }
-        throw error;
-      }
+      const currentChatId = new URL(po.page.url()).searchParams.get("id");
+      expect(currentChatId).not.toBeNull();
+      expect(currentChatId).not.toEqual(planChatId);
     }).toPass({ timeout: Timeout.MEDIUM });
 
-    // Wait for navigation to a different chat
+    // Accepting a plan persists it to .dyad/plans/ as a Markdown file.
+    const planDir = path.join(appPath, ".dyad", "plans");
     await expect(async () => {
-      const currentUrl = po.page.url();
-      const match = currentUrl.match(/[?&]id=(\d+)/);
-      expect(match).not.toBeNull();
-      expect(match![1]).not.toEqual(initialChatId);
-    }).toPass({ timeout: Timeout.MEDIUM });
-
-    // Verify plan was saved to .dyad/plans/
-    const planDir = path.join(appPath!, ".dyad", "plans");
-    let mdFiles: string[] = [];
-    await expect(async () => {
-      const files = fs.readdirSync(planDir);
-      mdFiles = files.filter((f) => f.endsWith(".md"));
+      const mdFiles = fs.readdirSync(planDir).filter((f) => f.endsWith(".md"));
       expect(mdFiles.length).toBeGreaterThan(0);
+      const planContent = fs.readFileSync(
+        path.join(planDir, mdFiles[0]),
+        "utf-8",
+      );
+      expect(planContent).toContain("Test Plan");
     }).toPass({ timeout: Timeout.MEDIUM });
 
-    // Verify plan content
-    const planContent = fs.readFileSync(
-      path.join(planDir, mdFiles[0]),
-      "utf-8",
+    await waitForNoActiveGeneration(po);
+  },
+);
+
+testSkipIfWindows(
+  "plan mode - accept plan and continue here",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await waitForInitialImportedChatCompletion(po);
+
+    // Start an existing chat in the default (Agent v2) mode.
+    await sendPromptAndWaitForResponse(
+      po,
+      "tc=local-agent/simple-response",
+      "Hello! I understand your request.",
     );
-    expect(planContent).toContain("Test Plan");
+
+    // Switch to plan mode and generate a plan.
+    await po.chatActions.selectChatMode("plan");
+    await po.sendPrompt("tc=local-agent/accept-plan", {
+      skipWaitForCompletion: true,
+    });
+    await waitForPlanGenerationToFinish(po);
+
+    // Continue past the plan presentation so the write_plan tool turn is
+    // flushed; otherwise the acceptance message gets bundled with the pending
+    // tool result and the exit_plan transition never fires.
+    await finishPlanPresentation(po);
+
+    // Capture the plan chat ID so we can confirm implementation continues in it.
+    const planChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(planChatId).not.toBeNull();
+
+    // Accept the plan and choose to continue implementing in this same chat.
+    await po.page.getByTestId("accept-plan-continue-here").click();
+
+    // The accept buttons disappear once the plan has been accepted.
+    await expect(po.page.getByTestId("accept-plan-continue-here")).toBeHidden({
+      timeout: Timeout.MEDIUM,
+    });
+
+    // We should still be in the plan chat (no redirect to a fresh chat).
+    const currentChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(currentChatId).toEqual(planChatId);
+
+    // Continuing here switches the chat out of plan mode into Agent mode so the
+    // implementation turn runs in Agent rather than re-entering planning. A
+    // silently failing updateChat IPC would leave this stuck on "Plan".
+    await expect(po.page.getByTestId("chat-mode-selector")).toHaveAttribute(
+      "aria-label",
+      "Chat mode: Agent",
+      { timeout: Timeout.MEDIUM },
+    );
+
+    await waitForNoActiveGeneration(po);
   },
 );
 
@@ -127,9 +218,7 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/accept-plan");
     await finishPlanPresentation(po);
 
-    await expect(
-      po.page.getByRole("button", { name: "Accept Plan" }),
-    ).toBeVisible({
+    await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 

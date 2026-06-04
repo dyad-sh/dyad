@@ -8,6 +8,7 @@ import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 
 // Chat completion events - used to notify when a stream has completed
 export type ChatCompletionEvent = {
@@ -452,6 +453,13 @@ export const removeChatIdFromAllTrackingAtom = atom(
       const next = new Map(inputs);
       next.delete(chatId);
       set(chatInputValuesByIdAtom, next);
+    }
+    // Clear the recorded plan-acceptance choice (new chat vs. continue here)
+    const planAcceptChoices = get(planAcceptInNewChatByChatIdAtom);
+    if (planAcceptChoices.has(chatId)) {
+      const next = new Map(planAcceptChoices);
+      next.delete(chatId);
+      set(planAcceptInNewChatByChatIdAtom, next);
     }
   },
 );

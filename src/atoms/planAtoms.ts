@@ -28,6 +28,14 @@ export interface PendingPlanImplementation {
 export const pendingPlanImplementationAtom =
   atom<PendingPlanImplementation | null>(null);
 
+// Records, per plan chatId, whether the user chose to implement in a brand-new
+// chat (true) or to continue in the current chat (false) when accepting the
+// plan. Read by usePlanEvents once the exit_plan event fires so it can route
+// the implementation accordingly.
+export const planAcceptInNewChatByChatIdAtom = atom<Map<number, boolean>>(
+  new Map(),
+);
+
 export const pendingQuestionnaireAtom = atom<
   Map<number, PlanQuestionnairePayload>
 >(new Map());

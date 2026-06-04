@@ -9,6 +9,7 @@ import { ElectronApplication, _electron as electron } from "playwright";
 import os from "os";
 import path from "path";
 import { execSync } from "child_process";
+import treeKill from "tree-kill";
 
 import { showDebugLogs } from "./constants";
 import { PageObject } from "./page-objects";
@@ -25,6 +26,74 @@ export interface ElectronConfig {
   postLaunchHook?: () => Promise<void>;
   showSetupScreen?: boolean;
   showPnpmMinimumReleaseAgeWarning?: boolean;
+}
+
+// Some Electron states emit the Playwright close event but leave
+// electronApp.close() pending until the worker timeout. Terminating the process
+// tree keeps teardown bounded and also cleans up preview dev-server children.
+async function terminateElectronApp(electronApp: ElectronApplication) {
+  const childProcess = electronApp.process();
+  const pid = childProcess.pid;
+  console.log(
+    `[cleanup:start] Terminating Electron app${pid ? ` ${pid}` : ""}`,
+  );
+
+  if (!pid || childProcess.exitCode !== null || childProcess.signalCode) {
+    console.log("[cleanup:end] Electron app already exited");
+    return;
+  }
+
+  let closed = false;
+  const waitForClose = new Promise<void>((resolve) => {
+    const done = () => {
+      closed = true;
+      resolve();
+    };
+    electronApp.once("close", done);
+    childProcess.once("exit", done);
+  });
+
+  await new Promise<void>((resolve) => {
+    treeKill(pid, "SIGTERM", (error) => {
+      if (error) {
+        console.warn(`tree-kill SIGTERM error for Electron PID ${pid}:`, error);
+      }
+      resolve();
+    });
+  });
+
+  await Promise.race([
+    waitForClose,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 5_000);
+    }),
+  ]);
+
+  if (!closed) {
+    console.warn(
+      `[cleanup:timeout] Electron app did not exit after SIGTERM; killing process tree ${pid}`,
+    );
+    await new Promise<void>((resolve) => {
+      treeKill(pid, "SIGKILL", (error) => {
+        if (error) {
+          console.warn(
+            `tree-kill SIGKILL error for Electron PID ${pid}:`,
+            error,
+          );
+        }
+        resolve();
+      });
+    });
+
+    await Promise.race([
+      waitForClose,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 2_000);
+      }),
+    ]);
+  }
+
+  console.log("[cleanup:end] Electron app terminated");
 }
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
@@ -195,7 +264,7 @@ export const test = base.extend<{
           );
         }
       } else {
-        await electronApp.close();
+        await terminateElectronApp(electronApp);
       }
     },
     { auto: true },

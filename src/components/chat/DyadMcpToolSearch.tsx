@@ -66,7 +66,7 @@ export const DyadMcpToolSearch: React.FC<DyadMcpToolSearchProps> = ({
                 Matching tools:
               </span>
               <pre className="mt-0.5 whitespace-pre-wrap font-mono text-xs text-foreground overflow-x-auto">
-                {children}
+                {typeof children === "string" ? children.trimEnd() : children}
               </pre>
             </div>
           )}

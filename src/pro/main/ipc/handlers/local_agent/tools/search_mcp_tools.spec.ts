@@ -83,14 +83,6 @@ describe("searchMcpToolsTool.isEnabled", () => {
     expect(searchMcpToolsTool.isEnabled?.(baseCtx)).toBe(false);
   });
 
-  it("is disabled when sandbox script execution is off", () => {
-    readSettingsMock.mockReturnValue({
-      enableMcpToolSearch: true,
-      enableSandboxScriptExecution: false,
-    });
-    expect(searchMcpToolsTool.isEnabled?.(baseCtx)).toBe(false);
-  });
-
   it("is disabled when MCP-in-sandbox is not active for the turn", () => {
     expect(
       searchMcpToolsTool.isEnabled?.({

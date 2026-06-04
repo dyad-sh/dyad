@@ -8,7 +8,6 @@ import {
 import { buildMcpTypeDefsBlock, type McpToolDef } from "./mcp_type_defs";
 import { bm25Ranker, type ToolRanker } from "./bm25";
 import { sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
-import { isSandboxScriptExecutionEnabled } from "./execute_sandbox_script";
 import { readSettings } from "@/main/settings";
 
 /**
@@ -75,19 +74,11 @@ export const searchMcpToolsTool: ToolDefinition<SearchMcpToolsArgs> = {
   inputSchema: searchMcpToolsSchema,
   defaultConsent: "always",
 
-  isEnabled: (ctx) => {
-    // `ctx.mcpToolsEnabled` is set by the handler only when
-    // execute_sandbox_script is registered for the turn, which already implies
-    // sandbox-script execution is on. The explicit isSandboxScriptExecutionEnabled
-    // check is kept as defense-in-depth so this tool can never be enabled without
-    // the sandbox, independent of how `ctx.mcpToolsEnabled` was derived.
-    const settings = readSettings();
-    return (
-      !!ctx.mcpToolsEnabled &&
-      !!isSandboxScriptExecutionEnabled(settings) &&
-      !!settings.enableMcpToolSearch
-    );
-  },
+  // ctx.mcpToolsEnabled is derived from shouldIncludeTool(executeSandboxScriptTool),
+  // so it already implies sandbox-script execution is on this turn. Only the
+  // experiment flag needs a separate check here.
+  isEnabled: (ctx) =>
+    !!ctx.mcpToolsEnabled && !!readSettings().enableMcpToolSearch,
 
   getConsentPreview: (args) =>
     args.server

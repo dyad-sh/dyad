@@ -53,6 +53,9 @@ function stem(token: string): string {
   // Naive plural folding only — keep short tokens intact so we don't collapse
   // meaningful words (e.g. "ls", "is"). Handles the common cases that show up
   // in tool/param names: "repositories" -> "repository", "issues" -> "issue".
+  // Verb suffixes (-ing/-ed/-er) and abbreviations aren't folded, so "creating"
+  // and "create" stay distinct; swap in a real stemmer if recall gets poor as
+  // tool sets grow.
   if (token.length > 4 && token.endsWith("ies")) {
     return `${token.slice(0, -3)}y`;
   }

@@ -72,6 +72,6 @@ export const enableNitroTool: ToolDefinition<
       throw error;
     }
 
-    return "Nitro server layer added: vite.config.ts has been updated with the Nitro plugin, nitro.config.ts and server/routes/api/ have been created, the nitro and jiti packages have been installed, and AI_RULES.md has been updated with Nitro conventions. Write the requested API route(s) under server/routes/api/ following the 'Nitro Server Layer' conventions in AI_RULES.md.";
+    return "Nitro server layer added: vite.config.ts has been updated with the Nitro plugin, nitro.config.ts and server/routes/api/ have been created, the nitro package has been installed, and AI_RULES.md has been updated with Nitro conventions. Write the requested API route(s) under server/routes/api/ following the 'Nitro Server Layer' conventions in AI_RULES.md.";
   },
 };

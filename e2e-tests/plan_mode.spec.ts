@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { expect } from "@playwright/test";
 import {
   type PageObject,
@@ -89,6 +91,7 @@ testSkipIfWindows(
     expect(planChatId).not.toBeNull();
 
     // Accept the plan and choose to implement it in a brand-new chat.
+    const appPath = await po.appManagement.getCurrentAppPath();
     await po.page.getByTestId("accept-plan-new-chat").click();
 
     // We should be redirected to a different, brand-new chat for implementation.
@@ -96,6 +99,18 @@ testSkipIfWindows(
       const currentChatId = new URL(po.page.url()).searchParams.get("id");
       expect(currentChatId).not.toBeNull();
       expect(currentChatId).not.toEqual(planChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    // Accepting a plan persists it to .dyad/plans/ as a Markdown file.
+    const planDir = path.join(appPath, ".dyad", "plans");
+    await expect(async () => {
+      const mdFiles = fs.readdirSync(planDir).filter((f) => f.endsWith(".md"));
+      expect(mdFiles.length).toBeGreaterThan(0);
+      const planContent = fs.readFileSync(
+        path.join(planDir, mdFiles[0]),
+        "utf-8",
+      );
+      expect(planContent).toContain("Test Plan");
     }).toPass({ timeout: Timeout.MEDIUM });
 
     await waitForNoActiveGeneration(po);
@@ -143,6 +158,15 @@ testSkipIfWindows(
     // We should still be in the plan chat (no redirect to a fresh chat).
     const currentChatId = new URL(po.page.url()).searchParams.get("id");
     expect(currentChatId).toEqual(planChatId);
+
+    // Continuing here switches the chat out of plan mode into Agent mode so the
+    // implementation turn runs in Agent rather than re-entering planning. A
+    // silently failing updateChat IPC would leave this stuck on "Plan".
+    await expect(po.page.getByTestId("chat-mode-selector")).toHaveAttribute(
+      "aria-label",
+      "Chat mode: Agent",
+      { timeout: Timeout.MEDIUM },
+    );
 
     await waitForNoActiveGeneration(po);
   },

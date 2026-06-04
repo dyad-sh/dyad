@@ -74,9 +74,8 @@ export const searchMcpToolsTool: ToolDefinition<SearchMcpToolsArgs> = {
   inputSchema: searchMcpToolsSchema,
   defaultConsent: "always",
 
-  // ctx.mcpToolsEnabled is derived from shouldIncludeTool(executeSandboxScriptTool),
-  // so it already implies sandbox-script execution is on this turn. Only the
-  // experiment flag needs a separate check here.
+  // ctx.mcpToolsEnabled already implies sandbox-script execution is on, so only
+  // the experiment flag needs a separate check.
   isEnabled: (ctx) =>
     !!ctx.mcpToolsEnabled && !!readSettings().enableMcpToolSearch,
 
@@ -99,10 +98,8 @@ export const searchMcpToolsTool: ToolDefinition<SearchMcpToolsArgs> = {
       return result;
     };
 
-    // The handler populates `ctx.mcpToolDefs` with the same defs used to build
-    // the sandbox capability map. If it's missing, the sandbox has no MCP host
-    // functions this turn, so returning declarations here would point the model
-    // at functions it can't call. Surface that instead of guessing.
+    // No defs means the handler's collection failed and the sandbox has no MCP
+    // host functions this turn, so don't hand the model tools it can't call.
     if (ctx.mcpToolDefs === undefined) {
       return finish("MCP tools are temporarily unavailable. Try again.");
     }

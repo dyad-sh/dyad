@@ -27,6 +27,11 @@ export const DyadMcpToolSearch: React.FC<DyadMcpToolSearchProps> = ({
   const server = node?.properties?.server || "";
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
+  const resultText = typeof children === "string" ? children.trimEnd() : "";
+  // No-match results start with "No MCP"; "Matching tools:" would mislabel them.
+  const resultsLabel = resultText.startsWith("No MCP")
+    ? "Results:"
+    : "Matching tools:";
 
   return (
     <DyadCard
@@ -63,10 +68,10 @@ export const DyadMcpToolSearch: React.FC<DyadMcpToolSearchProps> = ({
           {children && (
             <div>
               <span className="text-xs font-medium text-muted-foreground">
-                Matching tools:
+                {resultsLabel}
               </span>
               <pre className="mt-0.5 whitespace-pre-wrap font-mono text-xs text-foreground overflow-x-auto">
-                {typeof children === "string" ? children.trimEnd() : children}
+                {resultText || children}
               </pre>
             </div>
           )}

@@ -142,6 +142,16 @@ describe("searchMcpToolsTool.execute", () => {
     expect(result).toContain('No MCP tools matched "zzzznomatch"');
   });
 
+  it("reports tools unavailable when the handler did not populate defs", async () => {
+    const ctx = makeCtx(undefined);
+    const result = await searchMcpToolsTool.execute(
+      { query: "create github issue" },
+      ctx,
+    );
+    expect(result).toContain("temporarily unavailable");
+    expect(result).not.toContain("declare function");
+  });
+
   it("includes a refine footer when more tools match than are returned", async () => {
     // Build 8 similar tools so more than MAX_RESULTS (5) match the query.
     const many: McpToolDef[] = Array.from({ length: 8 }, (_, i) =>

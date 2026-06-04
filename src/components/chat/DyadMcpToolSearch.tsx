@@ -23,8 +23,7 @@ export const DyadMcpToolSearch: React.FC<DyadMcpToolSearchProps> = ({
   node,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const query =
-    node?.properties?.query || (typeof children === "string" ? children : "");
+  const query = node?.properties?.query || "";
   const server = node?.properties?.server || "";
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";

@@ -5,11 +5,7 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import {
-  collectMcpToolDefs,
-  buildMcpTypeDefsBlock,
-  type McpToolDef,
-} from "./mcp_type_defs";
+import { buildMcpTypeDefsBlock, type McpToolDef } from "./mcp_type_defs";
 import { bm25Ranker, type ToolRanker } from "./bm25";
 import { sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { isSandboxScriptExecutionEnabled } from "./execute_sandbox_script";
@@ -105,21 +101,25 @@ export const searchMcpToolsTool: ToolDefinition<SearchMcpToolsArgs> = {
   },
 
   execute: async (args: SearchMcpToolsArgs, ctx: AgentContext) => {
-    // Prefer the per-turn defs collected by the handler so search and the
-    // sandbox capability map agree on which tools exist; fall back to a fresh
-    // collection if the handler didn't populate them.
-    const allDefs = ctx.mcpToolDefs ?? (await collectMcpToolDefs());
-
-    const scoped = args.server
-      ? allDefs.filter((d) => matchesServer(d, args.server!))
-      : allDefs;
-
     const finish = (result: string) => {
       ctx.onXmlComplete(
         `<dyad-mcp-tool-search${buildSearchAttributes(args)}>${escapeXmlContent(result)}</dyad-mcp-tool-search>`,
       );
       return result;
     };
+
+    // The handler populates `ctx.mcpToolDefs` with the same defs used to build
+    // the sandbox capability map. If it's missing, the sandbox has no MCP host
+    // functions this turn, so returning declarations here would point the model
+    // at functions it can't call. Surface that instead of guessing.
+    if (ctx.mcpToolDefs === undefined) {
+      return finish("MCP tools are temporarily unavailable. Try again.");
+    }
+    const allDefs = ctx.mcpToolDefs;
+
+    const scoped = args.server
+      ? allDefs.filter((d) => matchesServer(d, args.server!))
+      : allDefs;
 
     if (scoped.length === 0) {
       const servers = uniqueServerNames(allDefs);

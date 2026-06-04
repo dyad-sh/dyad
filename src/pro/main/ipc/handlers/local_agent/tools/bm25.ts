@@ -140,8 +140,9 @@ export const bm25Ranker: ToolRanker = (query, defs) => {
       const f = doc.termFreqs.get(term);
       if (!f) continue;
       const df = docFreq.get(term) ?? 0;
-      // BM25 idf with the standard +0.5 smoothing. Clamped at 0 so a term
-      // present in every document doesn't push scores negative.
+      // BM25 idf with +0.5 smoothing, using the log(1 + x) form (as in Lucene)
+      // rather than the classic Okapi log so the weight is always >= 0 even for
+      // a term present in every document. Math.max keeps that floor explicit.
       const idf = Math.max(0, Math.log((N - df + 0.5) / (df + 0.5) + 1));
       const denom = f + K1 * (1 - B + (B * doc.length) / avgdl);
       score += idf * ((f * (K1 + 1)) / denom);

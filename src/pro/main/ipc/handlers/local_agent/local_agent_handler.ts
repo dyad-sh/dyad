@@ -693,6 +693,13 @@ export async function handleLocalAgentStream(
     // Mirrors the authoritative `mcpInSandboxEnabled` derived below from the
     // built tool set; `getAgentToolConsent` accounts for the same "never"
     // consent that would keep execute_sandbox_script out of the set.
+    //
+    // This only mirrors the readOnly, planMode, isEnabled and "never"-consent
+    // filters. It does not mirror buildAgentToolSet's basicAgentMode
+    // (PRO_AGENT_ONLY_TOOLS) or enableAppBlueprint (APP_BLUEPRINT_TOOLS) filters,
+    // because execute_sandbox_script is in none of those sets. If that changes,
+    // mirror the relevant filter here; the dev-only divergence check below flags
+    // the mismatch in the meantime.
     const preComputedMcpToolsEnabled =
       !readOnly &&
       !planModeOnly &&

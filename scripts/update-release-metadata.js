@@ -11,17 +11,12 @@ function isPrereleaseVersion(version) {
   return version.includes("-");
 }
 
-function makeLatestForVersion(version) {
-  return isPrereleaseVersion(version) ? "false" : "true";
-}
-
 function releasePayloadForVersion({ generatedNotes, version }) {
   return {
     name: generatedNotes.name,
     body: generatedNotes.body,
     draft: true,
     prerelease: isPrereleaseVersion(version),
-    make_latest: makeLatestForVersion(version),
   };
 }
 
@@ -232,7 +227,6 @@ async function updateReleaseMetadata({
   });
 
   return {
-    makeLatest: makeLatestForVersion(version),
     previousRun,
     previousTagName,
     prerelease: isPrereleaseVersion(version),
@@ -251,7 +245,7 @@ async function main() {
     `Updated ${result.tagName} release metadata using ${result.previousTagName} as the release-notes boundary.`,
   );
   console.log(
-    `Release flags: prerelease=${result.prerelease}, make_latest=${result.makeLatest}`,
+    `Release flags: draft=true, prerelease=${result.prerelease}; make_latest is omitted for draft releases.`,
   );
 }
 
@@ -264,7 +258,6 @@ if (require.main === module) {
 
 module.exports = {
   isPrereleaseVersion,
-  makeLatestForVersion,
   releasePayloadForVersion,
   selectPreviousDifferentVersionRun,
   updateReleaseMetadata,

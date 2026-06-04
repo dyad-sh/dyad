@@ -294,6 +294,11 @@ export default function SettingsPage() {
                   listing every tool's definition in its context. Requires
                   sandbox script execution.
                 </div>
+                {!settings?.enableSandboxScriptExecution && (
+                  <div className="text-xs text-amber-500">
+                    Enable sandbox script execution first.
+                  </div>
+                )}
               </div>
               <div
                 id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}

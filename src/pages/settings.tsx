@@ -299,7 +299,7 @@ export default function SettingsPage() {
                 </div>
                 {!settings?.enableSandboxScriptExecution && (
                   <div className="text-xs text-amber-500">
-                    Cannot be enabled until sandbox script execution is on.
+                    Cannot be enabled unless sandbox script execution is on.
                   </div>
                 )}
               </div>

@@ -3,6 +3,7 @@
 # Need to write to repo contents to upload the app to GitHub Release
 # See: https://www.electronforge.io/config/publishers/github#authentication
 permissions:
+  actions: read
   contents: write
 
 name: Release app
@@ -154,6 +155,11 @@ jobs:
         run: ./node_modules/.bin/electron-forge publish --from-dry-run
         env:
           DEBUG: "@electron/*,electron-forge:*"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update draft release metadata
+        run: node scripts/update-release-metadata.js
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   verify-assets:

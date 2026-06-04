@@ -59,6 +59,13 @@ async function verifyReleaseAssets() {
     console.log(`📦 Found ${assets.length} assets in release ${tagName}`);
     console.log(`📄 Release status: ${release.draft ? "DRAFT" : "PUBLISHED"}`);
 
+    const expectedPrerelease = version.includes("-");
+    if (release.prerelease !== expectedPrerelease) {
+      throw new Error(
+        `Release ${tagName} prerelease flag is ${release.prerelease}, expected ${expectedPrerelease}`,
+      );
+    }
+
     // Handle different beta naming conventions across platforms
     const normalizeVersionForPlatform = (version, platform) => {
       if (!version.includes("beta")) {

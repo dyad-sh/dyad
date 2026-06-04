@@ -10,8 +10,14 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import { readFileSync } from "fs";
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
+
+const packageJson = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string };
+const isPrerelease = packageJson.version.includes("-");
 
 const pgRuntimeDependencies = [
   "pg",
@@ -204,7 +210,7 @@ const config: ForgeConfig = {
         },
         draft: true,
         force: true,
-        prerelease: true,
+        prerelease: isPrerelease,
       },
     },
   ],

@@ -49,6 +49,7 @@ import { executeNeonSql } from "../../neon_admin/neon_context";
 import { executeCopyFile } from "../utils/copy_file_utils";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
+import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -250,7 +251,10 @@ export async function processFullResponseActions(
             });
 
             // Only write migration file if SQL execution succeeded
-            if (settings.enableSupabaseWriteSqlMigration) {
+            if (
+              settings.enableSupabaseWriteSqlMigration &&
+              doesSqlMutateSchema(query.content)
+            ) {
               try {
                 const migrationFilePath = await writeMigrationFile(
                   appPath,

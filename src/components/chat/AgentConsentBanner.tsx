@@ -1,6 +1,14 @@
 import React from "react";
 import { Button } from "../ui/button";
-import { X, Bot, Info, ShieldCheck, Check, Ban } from "lucide-react";
+import {
+  X,
+  Bot,
+  Info,
+  ShieldCheck,
+  Check,
+  Ban,
+  AlertTriangle,
+} from "lucide-react";
 import type { PendingAgentConsent } from "@/atoms/chatAtoms";
 import {
   Tooltip,
@@ -8,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+import { useTranslation } from "react-i18next";
 
 interface AgentConsentBannerProps {
   consent: PendingAgentConsent;
@@ -23,7 +32,9 @@ export function AgentConsentBanner({
   onClose,
   queueTotal = 1,
 }: AgentConsentBannerProps) {
+  const { t } = useTranslation("chat");
   const { toolName, toolDescription, inputPreview } = consent;
+  const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
@@ -43,7 +54,10 @@ export function AgentConsentBanner({
 
     const compute = () => {
       const computedStyle = window.getComputedStyle(element);
-      const lineHeight = parseFloat(computedStyle.lineHeight || "16");
+      const parsedLineHeight = parseFloat(computedStyle.lineHeight || "16");
+      const lineHeight = Number.isFinite(parsedLineHeight)
+        ? parsedLineHeight
+        : 16;
       const maxLines = 6;
       const maxHeightPx = Math.max(0, Math.round(lineHeight * maxLines));
       setInputCollapsedMaxHeight(maxHeightPx);
@@ -91,6 +105,12 @@ export function AgentConsentBanner({
         </div>
         {inputPreview && (
           <div className="ml-6 mb-1.5">
+            {sqlMutatesSchema && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>{t("changesDatabaseSchema")}</span>
+              </div>
+            )}
             <div
               ref={inputRef}
               className="bg-muted p-1.5 rounded text-sm whitespace-pre-wrap"

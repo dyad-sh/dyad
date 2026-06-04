@@ -465,6 +465,7 @@ export interface PendingAgentConsent {
   toolName: string;
   toolDescription?: string | null;
   inputPreview?: string | null;
+  metadata?: { sqlMutatesSchema?: boolean } | null;
 }
 
 export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);

@@ -8,6 +8,8 @@ The pre-commit hook runs `tsgo` (via `npm run ts`), which is stricter than `tsc 
 
 If `npm run ts` fails because installed dependency types are missing APIs the repo already uses (for example `@neondatabase/api-client` missing `getNeonAuth` or `BetterAuth`), run `npm install` before editing source. Stale `node_modules` can lag behind the lockfile even when `package.json` is unchanged.
 
+If `npm run ts` crashes with a Go `SIGSEGV`/segmentation fault inside `tsgo` instead of reporting TypeScript diagnostics, remove the stale incremental build cache and retry: `rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo && npm run ts`. This can happen after package/alias changes and is not necessarily a source type error.
+
 ## ES2020 target limitations
 
 The project's `tsconfig.app.json` targets ES2020 with `lib: ["ES2020"]`. Methods introduced in ES2021+ (like `String.prototype.replaceAll`) are not available on the `string` type. If code uses `replaceAll`, it needs an `as any` cast to avoid `TS2550: Property 'replaceAll' does not exist on type 'string'`. Do not remove these casts without updating the tsconfig target.

@@ -20,6 +20,12 @@ export const AgentToolConsentRequestSchema = z.object({
   toolName: z.string(),
   toolDescription: z.string().nullable().optional(),
   inputPreview: z.string().nullable().optional(),
+  metadata: z
+    .object({
+      sqlMutatesSchema: z.boolean().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type AgentToolConsentRequestPayload = z.infer<

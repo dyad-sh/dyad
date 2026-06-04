@@ -236,6 +236,7 @@ function App() {
           toolName: payload.toolName,
           toolDescription: payload.toolDescription,
           inputPreview: payload.inputPreview,
+          metadata: payload.metadata,
         },
       ]);
     });

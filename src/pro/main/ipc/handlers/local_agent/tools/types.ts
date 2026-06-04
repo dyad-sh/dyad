@@ -84,6 +84,7 @@ export interface AgentContext {
     toolName: string;
     toolDescription?: string | null;
     inputPreview?: string | null;
+    metadata?: { sqlMutatesSchema?: boolean } | null;
   }) => Promise<boolean>;
   /**
    * Append a user message to be sent after the tool result.
@@ -200,6 +201,14 @@ export interface ToolDefinition<T = any> {
    * @returns A human-readable description of the operation
    */
   getConsentPreview?: (args: T) => string;
+
+  /**
+   * Returns structured metadata for consent prompts. Keep this small and
+   * renderer-safe; it is sent over IPC.
+   */
+  getConsentMetadata?: (
+    args: T,
+  ) => { sqlMutatesSchema?: boolean } | null | undefined;
 
   /**
    * Build XML from parsed partial args.

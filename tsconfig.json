@@ -12,6 +12,8 @@
     "paths": {
       "*": ["./*"],
       "@/*": ["./src/*"],
+      "pg-schema-classifier": ["./packages/pg-schema-classifier/src/index.ts"],
+      "pg-schema-classifier/*": ["./packages/pg-schema-classifier/src/*"],
       "ts-pg-schema-diff": ["./packages/ts-pg-schema-diff/src/index.ts"],
       "ts-pg-schema-diff/*": ["./packages/ts-pg-schema-diff/src/*"]
     },

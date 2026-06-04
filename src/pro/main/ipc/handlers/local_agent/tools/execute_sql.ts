@@ -10,6 +10,7 @@ import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -30,6 +31,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
 
     getConsentPreview: (args) =>
       args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
+
+    getConsentMetadata: (args) => ({
+      sqlMutatesSchema: doesSqlMutateSchema(args.query),
+    }),
 
     buildXml: (args, isComplete) => {
       if (args.query == undefined) return undefined;
@@ -66,7 +71,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         });
 
         const settings = readSettings();
-        if (settings.enableSupabaseWriteSqlMigration) {
+        if (
+          settings.enableSupabaseWriteSqlMigration &&
+          doesSqlMutateSchema(args.query)
+        ) {
           try {
             await writeMigrationFile(ctx.appPath, args.query, args.description);
           } catch (error) {

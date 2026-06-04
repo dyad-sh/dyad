@@ -105,7 +105,7 @@ testSkipIfWindows("local-agent - enable nitro", async ({ po }) => {
     skipWaitForCompletion: true,
   });
 
-  // Install of `nitro` goes through socket firewall, which can be slow on first run.
+  // Install of Nitro dependencies goes through socket firewall, which can be slow on first run.
   await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
   await po.snapshotMessages();

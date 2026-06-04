@@ -17,6 +17,8 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("nitro_setup");
 
+const NITRO_DEPENDENCIES = ["nitro", "jiti"];
+
 const NITRO_CONFIG_CONTENTS = `import { defineConfig } from "nitro";
 
 export default defineConfig({
@@ -55,7 +57,7 @@ export interface EnsureNitroResult {
  *   - `nitro.config.ts` at the app root (`serverDir: "./server"`)
  *   - `server/routes/api/.gitkeep` to materialize the routes directory
  *   - Nitro plugin wired into `vite.config.ts`
- *   - `nitro` package installed
+ *   - `nitro` and `jiti` packages installed
  *   - "Nitro Server Layer" section appended to `AI_RULES.md`
  *
  * Idempotent: skips file/section creation if already present. Rolls back its
@@ -116,7 +118,7 @@ export async function ensureNitroOnViteApp(
     viteConfigBackup = await addNitroToViteConfig(appPath);
 
     const result = await installPackages({
-      packages: ["nitro"],
+      packages: NITRO_DEPENDENCIES,
       appPath,
     });
 

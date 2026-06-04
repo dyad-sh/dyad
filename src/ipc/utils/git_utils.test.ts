@@ -22,6 +22,11 @@ vi.mock("@/main/settings", () => ({
 }));
 
 import { gitListFilesNative } from "@/ipc/utils/git_utils";
+import {
+  getGitUncommittedFiles,
+  getGitUncommittedFilesWithStatus,
+} from "@/ipc/utils/git_utils";
+import { readSettings } from "@/main/settings";
 
 const execFileAsync = promisify(execFile);
 
@@ -90,5 +95,58 @@ describe("gitListFilesNative", () => {
     });
 
     expect(files).toEqual(["src/index.ts"]);
+  });
+});
+
+describe("getGitUncommittedFiles", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  it("ignores Dyad-managed runtime files in native git status", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await fs.promises.mkdir(path.join(repoDir, ".dyad"), { recursive: true });
+    await fs.promises.writeFile(
+      path.join(repoDir, "pnpm-workspace.yaml"),
+      'packages: ["."]\n',
+    );
+    await fs.promises.writeFile(
+      path.join(repoDir, ".dyad", "screenshot.png"),
+      "generated",
+    );
+    await fs.promises.writeFile(path.join(repoDir, "src.ts"), "user change");
+
+    await expect(getGitUncommittedFiles({ path: repoDir })).resolves.toEqual([
+      "src.ts",
+    ]);
+  });
+
+  it("ignores Dyad-managed runtime files in native status details", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await fs.promises.mkdir(path.join(repoDir, ".dyad"), { recursive: true });
+    await fs.promises.writeFile(
+      path.join(repoDir, "pnpm-workspace.yaml"),
+      'packages: ["."]\n',
+    );
+    await fs.promises.writeFile(
+      path.join(repoDir, ".dyad", "screenshot.png"),
+      "generated",
+    );
+    await fs.promises.writeFile(path.join(repoDir, "src.ts"), "user change");
+
+    await expect(
+      getGitUncommittedFilesWithStatus({ path: repoDir }),
+    ).resolves.toEqual([{ path: "src.ts", status: "added" }]);
   });
 });

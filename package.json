@@ -115,7 +115,7 @@
     "lexical-beautiful-mentions": "^0.1.47",
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
-    "mustardscript": "^0.1.3",
+    "mustardscript": "^0.2.0",
     "node-pty": "^1.1.0",
     "perfect-freehand": "^1.2.2",
     "pg-schema-classifier": "file:packages/pg-schema-classifier",

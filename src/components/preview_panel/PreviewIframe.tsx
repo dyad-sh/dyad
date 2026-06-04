@@ -88,6 +88,10 @@ import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
+import {
+  formatPreviewAddressPath,
+  normalizePreviewAddressPath,
+} from "./previewAddressPath";
 
 interface ErrorBannerProps {
   error:
@@ -276,6 +280,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
+  const currentAddressPath = formatPreviewAddressPath(
+    navigationHistory[currentHistoryPosition],
+  );
+  const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
+  const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
@@ -308,6 +317,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   useEffect(() => {
     selectedAppIdRef.current = selectedAppId;
   }, [selectedAppId]);
+
+  useEffect(() => {
+    if (!isEditingAddressBar) {
+      setAddressBarValue(currentAddressPath);
+    }
+  }, [currentAddressPath, isEditingAddressBar]);
 
   // Drop any in-flight request state when the user switches apps so a stale
   // guard from a replaced iframe doesn't block future captures.
@@ -1399,7 +1414,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (iframeRef.current?.contentWindow && appUrl) {
       // Create the full URL by combining the base URL with the path
       const baseUrl = new URL(appUrl).origin;
-      const newUrl = `${baseUrl}${path}`;
+      const newUrl = new URL(path, baseUrl).href;
 
       // Use postMessage to navigate (same as back/forward) - this uses location.replace()
       // which provides smooth navigation without the black screen flicker that location.href causes
@@ -1427,7 +1442,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // Update preservedUrls to match navigation (for HMR remounts)
       if (selectedAppId) {
         // Clear preserved URL if navigating to root, otherwise update it
-        if (path === "/" || path === "") {
+        const navigatedPath = formatPreviewAddressPath(newUrl);
+        if (navigatedPath === "/") {
           setPreservedUrls((prev) => {
             const next = new Map(prev);
             next.delete(selectedAppId);
@@ -1442,6 +1458,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }
       }
     }
+  };
+
+  const submitAddressBarValue = () => {
+    const result = normalizePreviewAddressPath(addressBarValue);
+    if (result.type === "empty") {
+      setAddressBarValue(currentAddressPath);
+      setIsEditingAddressBar(false);
+      return;
+    }
+
+    if (result.type === "invalid") {
+      showError(result.message);
+      setAddressBarValue(currentAddressPath);
+      setIsEditingAddressBar(false);
+      return;
+    }
+
+    navigateToRoute(result.path);
+    setAddressBarValue(result.path);
+    setIsEditingAddressBar(false);
   };
 
   // Freeze iframe src between remounts so in-iframe SPA navigation (pushState/replaceState)
@@ -1629,25 +1665,42 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 </ToggleGroup>
               </PopoverContent>
             </Popover>
+            <input
+              aria-label="Preview path"
+              className="flex-1 min-w-[2rem] bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
+              data-testid="preview-address-bar-input"
+              disabled={loading || !selectedAppId}
+              onBlur={() => {
+                setAddressBarValue(currentAddressPath);
+                setIsEditingAddressBar(false);
+              }}
+              onChange={(event) => setAddressBarValue(event.target.value)}
+              onFocus={(event) => {
+                setIsEditingAddressBar(true);
+                event.currentTarget.select();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submitAddressBarValue();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  setAddressBarValue(currentAddressPath);
+                  setIsEditingAddressBar(false);
+                  event.currentTarget.blur();
+                }
+              }}
+              spellCheck={false}
+              value={addressBarValue}
+            />
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center flex-1 min-w-[2rem] py-1 pl-2 pr-1 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
-                <span
-                  className="truncate flex-1 min-w-0 text-left"
-                  data-testid="preview-address-bar-path"
-                >
-                  {(() => {
-                    try {
-                      return new URL(navigationHistory[currentHistoryPosition])
-                        .pathname;
-                    } catch {
-                      return "/";
-                    }
-                  })()}
-                </span>
-                <ChevronDown
-                  size={12}
-                  className="flex-shrink-0 ml-1 opacity-50"
-                />
+              <DropdownMenuTrigger
+                aria-label="Show detected routes"
+                className="flex-shrink-0 rounded-full p-1 text-gray-700 opacity-70 hover:bg-gray-200 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700"
+                data-testid="preview-address-bar-routes-button"
+                disabled={loading || !selectedAppId}
+              >
+                <ChevronDown size={12} />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-full">
                 {routesLoading ? (

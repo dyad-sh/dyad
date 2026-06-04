@@ -42,7 +42,9 @@ export function tokenize(text: string): string[] {
     .replace(/([0-9])([A-Za-z])/g, "$1 $2");
   const raw = withBoundaries
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    // Split on any non-letter/non-number so words in non-Latin scripts
+    // (accented, Cyrillic, CJK, etc.) survive instead of being stripped.
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
   return raw.map(stem);
 }

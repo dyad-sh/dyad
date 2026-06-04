@@ -79,10 +79,19 @@ export const searchMcpToolsTool: ToolDefinition<SearchMcpToolsArgs> = {
   inputSchema: searchMcpToolsSchema,
   defaultConsent: "always",
 
-  isEnabled: (ctx) =>
-    !!ctx.mcpToolsEnabled &&
-    !!isSandboxScriptExecutionEnabled(readSettings()) &&
-    !!readSettings().enableMcpToolSearch,
+  isEnabled: (ctx) => {
+    // `ctx.mcpToolsEnabled` is set by the handler only when
+    // execute_sandbox_script is registered for the turn, which already implies
+    // sandbox-script execution is on. The explicit isSandboxScriptExecutionEnabled
+    // check is kept as defense-in-depth so this tool can never be enabled without
+    // the sandbox, independent of how `ctx.mcpToolsEnabled` was derived.
+    const settings = readSettings();
+    return (
+      !!ctx.mcpToolsEnabled &&
+      !!isSandboxScriptExecutionEnabled(settings) &&
+      !!settings.enableMcpToolSearch
+    );
+  },
 
   getConsentPreview: (args) =>
     args.server

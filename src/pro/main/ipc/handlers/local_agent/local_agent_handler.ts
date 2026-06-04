@@ -693,11 +693,12 @@ export async function handleLocalAgentStream(
     // Mirrors the authoritative `mcpInSandboxEnabled` derived below from the
     // built tool set; `getAgentToolConsent` accounts for the same "never"
     // consent that would keep execute_sandbox_script out of the set.
-    ctx.mcpToolsEnabled =
+    const preComputedMcpToolsEnabled =
       !readOnly &&
       !planModeOnly &&
       (executeSandboxScriptTool.isEnabled?.(ctx) ?? true) &&
       getAgentToolConsent(executeSandboxScriptTool.name) !== "never";
+    ctx.mcpToolsEnabled = preComputedMcpToolsEnabled;
 
     // Build tool set (agent tools + MCP tools)
     // In read-only mode, only include read-only tools and skip MCP tools
@@ -729,13 +730,31 @@ export async function handleLocalAgentStream(
       !readOnly &&
       !planModeOnly &&
       agentTools.execute_sandbox_script !== undefined;
+    // The pre-computed gate above mirrors only a subset of buildAgentToolSet's
+    // filters. If they ever diverge (e.g. a new filter drops
+    // execute_sandbox_script from the set), search_mcp_tools could be
+    // registered against a stale `ctx.mcpToolsEnabled`. Surface that in dev
+    // rather than shipping a silent inconsistency.
+    if (
+      process.env.NODE_ENV !== "production" &&
+      preComputedMcpToolsEnabled !== mcpInSandboxEnabled
+    ) {
+      logger.error(
+        `mcpToolsEnabled pre-compute (${preComputedMcpToolsEnabled}) diverged from authoritative value (${mcpInSandboxEnabled}); search_mcp_tools gating may be stale.`,
+      );
+    }
     ctx.mcpToolsEnabled = mcpInSandboxEnabled;
     // When the tool-search experiment is on, the sandbox description points
     // the model at `search_mcp_tools` instead of inlining every MCP tool's
     // declarations. `ctx.mcpToolDefs` still holds ALL defs below, so the
-    // sandbox capability map can resolve whatever the model finds.
+    // sandbox capability map can resolve whatever the model finds. Gate on the
+    // tool actually being in `agentTools`: if its consent is set to "never",
+    // buildAgentToolSet drops it, and we must keep inlining the declarations so
+    // enabled MCP tools stay discoverable.
     const useMcpToolSearch =
-      mcpInSandboxEnabled && !!settings.enableMcpToolSearch;
+      mcpInSandboxEnabled &&
+      !!settings.enableMcpToolSearch &&
+      agentTools.search_mcp_tools !== undefined;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)

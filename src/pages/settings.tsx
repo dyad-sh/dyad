@@ -277,6 +277,7 @@ export default function SettingsPage() {
                   <Switch
                     id="enable-mcp-tool-search"
                     aria-label="Enable MCP tool search"
+                    disabled={!settings?.enableSandboxScriptExecution}
                     checked={!!settings?.enableMcpToolSearch}
                     onCheckedChange={(checked) => {
                       updateSettings({

@@ -40,7 +40,7 @@ export const DyadMcpToolSearch: React.FC<DyadMcpToolSearchProps> = ({
         <DyadBadge color="indigo">MCP Tools</DyadBadge>
         {server && <DyadBadge color="sky">{server}</DyadBadge>}
         {!isExpanded && query && (
-          <span className="text-sm text-muted-foreground italic truncate">
+          <span className="text-sm text-muted-foreground italic truncate min-w-0">
             {query}
           </span>
         )}

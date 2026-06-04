@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stylesToTailwind } from "../utils/style-utils";
+import { stylesToTailwind } from "@/utils/style-utils";
 
 describe("convertSpacingToTailwind", () => {
   describe("margin conversion", () => {

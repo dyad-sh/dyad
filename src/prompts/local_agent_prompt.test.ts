@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { constructLocalAgentPrompt } from "../prompts/local_agent_prompt";
+import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 
 describe("local_agent_prompt", () => {
   it("agent mode system prompt", () => {

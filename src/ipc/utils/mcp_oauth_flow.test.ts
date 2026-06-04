@@ -39,7 +39,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: () => ({
@@ -63,7 +63,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-vi.mock("../db/schema", () => ({
+vi.mock("@/db/schema", () => ({
   mcpServers: { id: "id", oauthState: "oauth_state" },
 }));
 
@@ -86,11 +86,11 @@ vi.mock("@ai-sdk/mcp", () => ({
 // mcp_manager.dispose is called after a successful flow to force the
 // cached client to rebuild. Mock it to a no-op so the test doesn't
 // pull in the whole manager.
-vi.mock("../ipc/utils/mcp_manager", () => ({
+vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: { dispose: vi.fn() },
 }));
 
-const flowImport = await import("../ipc/utils/mcp_oauth_flow");
+const flowImport = await import("@/ipc/utils/mcp_oauth_flow");
 const { disconnectOAuth, runOAuthFlow } = flowImport;
 
 function seedRow(row: Partial<Row> & { id: number }): void {

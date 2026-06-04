@@ -5,7 +5,7 @@ import {
   resetSupabaseDeployQueuesForTests,
 } from "@/supabase_admin/supabase_deploy_queue";
 
-vi.mock("../main/settings", () => ({
+vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({
     supabase: {
       accessToken: { value: "test-token" },

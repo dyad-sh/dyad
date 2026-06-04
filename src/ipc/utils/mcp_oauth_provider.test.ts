@@ -31,7 +31,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: () => ({
@@ -58,7 +58,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-vi.mock("../db/schema", () => ({
+vi.mock("@/db/schema", () => ({
   mcpServers: {
     id: "id",
     oauthState: "oauth_state",
@@ -83,7 +83,7 @@ vi.mock("drizzle-orm", () => ({
 // Resolve electron mock so the provider's shell + safeStorage refs
 // work; resolve the provider module after mocks are in place.
 const electronImport = await import("electron");
-const providerImport = await import("../ipc/utils/mcp_oauth_provider");
+const providerImport = await import("@/ipc/utils/mcp_oauth_provider");
 const { DyadOAuthClientProvider, oauthStateHasTokens } = providerImport;
 const { shell, safeStorage } = electronImport;
 

@@ -60,7 +60,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: {
     update: vi.fn(() => ({
       set: (values: Record<string, unknown>) => ({
@@ -104,7 +104,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-vi.mock("../db/schema", () => ({
+vi.mock("@/db/schema", () => ({
   mcpServers: { id: "id" },
 }));
 
@@ -117,7 +117,7 @@ vi.mock("drizzle-orm", () => ({
 
 const getClientMock = vi.fn();
 const disposeMock = vi.fn();
-vi.mock("../ipc/utils/mcp_manager", () => ({
+vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
     getClient: getClientMock,
     dispose: disposeMock,
@@ -127,7 +127,7 @@ vi.mock("../ipc/utils/mcp_manager", () => ({
 // Import the module under test last -- the vi.mock factories close
 // over file-scope variables (handlers, getClientMock, ...) that must
 // exist first. A static import would load too early and crash them.
-const handlersModule = await import("../ipc/handlers/mcp_handlers");
+const handlersModule = await import("@/ipc/handlers/mcp_handlers");
 handlersModule.registerMcpHandlers();
 
 function invoke<T>(channel: string, input: unknown): Promise<T> {

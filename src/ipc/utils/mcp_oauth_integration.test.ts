@@ -73,7 +73,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: () => ({
@@ -97,7 +97,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-vi.mock("../db/schema", () => ({
+vi.mock("@/db/schema", () => ({
   mcpServers: { id: "id", oauthState: "oauth_state" },
 }));
 
@@ -108,14 +108,14 @@ vi.mock("drizzle-orm", () => ({
   },
 }));
 
-vi.mock("../ipc/utils/mcp_manager", () => ({
+vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: { dispose: vi.fn() },
 }));
 
 // Resolve mocks before importing modules under test.
 const electronImport = await import("electron");
-const flowImport = await import("../ipc/utils/mcp_oauth_flow");
-const providerImport = await import("../ipc/utils/mcp_oauth_provider");
+const flowImport = await import("@/ipc/utils/mcp_oauth_flow");
+const providerImport = await import("@/ipc/utils/mcp_oauth_provider");
 const { runOAuthFlow } = flowImport;
 const { oauthStateHasTokens, DyadOAuthClientProvider, encryptToString } =
   providerImport;

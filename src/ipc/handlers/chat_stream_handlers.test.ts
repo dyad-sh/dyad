@@ -5,17 +5,17 @@ import {
   getDyadRenameTags,
   getDyadAddDependencyTags,
   getDyadDeleteTags,
-} from "../ipc/utils/dyad_tag_parser";
+} from "@/ipc/utils/dyad_tag_parser";
 
-import { processFullResponseActions } from "../ipc/processors/response_processor";
+import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import {
   removeDyadTags,
   hasUnclosedDyadWrite,
-} from "../ipc/handlers/chat_stream_handlers";
+} from "@/ipc/handlers/chat_stream_handlers";
 import fs from "node:fs";
-import { db } from "../db";
-import { cleanFullResponse } from "../ipc/utils/cleanFullResponse";
-import { gitAdd, gitRemove, gitCommit } from "../ipc/utils/git_utils";
+import { db } from "@/db";
+import { cleanFullResponse } from "@/ipc/utils/cleanFullResponse";
+import { gitAdd, gitRemove, gitCommit } from "@/ipc/utils/git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // Mock fs with default export
@@ -45,7 +45,7 @@ vi.mock("node:fs", async () => {
 });
 
 // Mock Git utils
-vi.mock("../ipc/utils/git_utils", () => ({
+vi.mock("@/ipc/utils/git_utils", () => ({
   gitAdd: vi.fn(),
   gitCommit: vi.fn(),
   gitRemove: vi.fn(),
@@ -61,7 +61,7 @@ vi.mock("../ipc/utils/git_utils", () => ({
 }));
 
 // Mock paths module to control getDyadAppPath
-vi.mock("../paths/paths", () => ({
+vi.mock("@/paths/paths", () => ({
   getDyadAppPath: vi.fn().mockImplementation((appPath) => {
     return `/mock/user/data/path/${appPath}`;
   }),
@@ -69,7 +69,7 @@ vi.mock("../paths/paths", () => ({
 }));
 
 // Mock db
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: {
     query: {
       chats: {

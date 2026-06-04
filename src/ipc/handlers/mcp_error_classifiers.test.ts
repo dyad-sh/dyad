@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyOAuthError,
   looksLikeUnauthorized,
-} from "../ipc/handlers/mcp_error_classifiers";
+} from "@/ipc/handlers/mcp_error_classifiers";
 
 // Positive cases below are real `@ai-sdk/mcp` error strings copied
 // out of `node_modules/@ai-sdk/mcp/dist/index.mjs`. Negative cases

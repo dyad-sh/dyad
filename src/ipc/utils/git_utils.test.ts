@@ -17,11 +17,11 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("../main/settings", () => ({
+vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
 }));
 
-import { gitListFilesNative } from "../ipc/utils/git_utils";
+import { gitListFilesNative } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
 

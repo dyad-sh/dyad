@@ -5,7 +5,7 @@ import {
   reconcileTrustedDomains,
   VERCEL_ENV_TARGETS,
   type NeonBranchEnvValues,
-} from "../ipc/utils/vercel_neon_sync_helpers";
+} from "@/ipc/utils/vercel_neon_sync_helpers";
 
 const baseVars: NeonBranchEnvValues = {
   databaseUrl: "postgresql://user:pass@host.neon.tech/db",

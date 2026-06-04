@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: mocks.db,
 }));
 
-vi.mock("../db/schema", () => ({
+vi.mock("@/db/schema", () => ({
   apps: { id: "id" },
 }));
 
@@ -30,17 +30,17 @@ vi.mock("drizzle-orm", async (importOriginal) => {
   };
 });
 
-vi.mock("../ipc/utils/app_env_var_utils", () => ({
+vi.mock("@/ipc/utils/app_env_var_utils", () => ({
   generateCookieSecret: mocks.generateCookieSecret,
   readEnvVarsOrEmpty: mocks.readEnvVarsOrEmpty,
   updateNeonEnvVars: vi.fn(),
 }));
 
-vi.mock("../neon_admin/neon_management_client", () => ({
+vi.mock("@/neon_admin/neon_management_client", () => ({
   getNeonClient: vi.fn(),
 }));
 
-vi.mock("../neon_admin/neon_context", () => ({
+vi.mock("@/neon_admin/neon_context", () => ({
   getConnectionUri: vi.fn(),
 }));
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseMediaMentions,
   stripResolvedMediaMentions,
-} from "../shared/parse_media_mentions";
+} from "@/shared/parse_media_mentions";
 
 describe("parseMediaMentions", () => {
   it("parses @media mentions from prompt text", () => {

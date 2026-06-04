@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createProblemFixPrompt } from "../shared/problem_prompt";
+import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import type { ProblemReport } from "@/ipc/types";
 
 const snippet = `SNIPPET`;

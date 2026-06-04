@@ -4,14 +4,14 @@ import {
   getCompactionThreshold,
   getTemperature,
   shouldTriggerCompaction,
-} from "../ipc/utils/token_utils";
-import { findLanguageModel } from "../ipc/utils/findLanguageModel";
+} from "@/ipc/utils/token_utils";
+import { findLanguageModel } from "@/ipc/utils/findLanguageModel";
 
-vi.mock("../../src/main/settings", () => ({
+vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
 }));
 
-vi.mock("../ipc/utils/findLanguageModel", () => ({
+vi.mock("@/ipc/utils/findLanguageModel", () => ({
   findLanguageModel: vi.fn(),
 }));
 

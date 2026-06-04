@@ -4,7 +4,7 @@ import {
   formatAsTranscript,
   TOOL_RESULT_TRUNCATION_LIMIT,
   type CompactionMessage,
-} from "../ipc/handlers/compaction/compaction_storage";
+} from "@/ipc/handlers/compaction/compaction_storage";
 
 describe("transformToolTags", () => {
   it("passes through content without tool tags unchanged", () => {

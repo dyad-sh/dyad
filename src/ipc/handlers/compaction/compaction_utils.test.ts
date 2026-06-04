@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getPostCompactionMessages } from "../ipc/handlers/compaction/compaction_utils";
+import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 
 type Msg = { id: number; role: string; isCompactionSummary: boolean | null };
 

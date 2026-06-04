@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { IpcMainInvokeEvent } from "electron";
 
-vi.mock("../ipc/utils/git_utils", () => ({
+vi.mock("@/ipc/utils/git_utils", () => ({
   gitListBranches: vi.fn(),
   gitListRemoteBranches: vi.fn(),
   gitDeleteBranch: vi.fn(),
@@ -22,11 +22,11 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitCommit: vi.fn(),
 }));
 
-vi.mock("../paths/paths", () => ({
+vi.mock("@/paths/paths", () => ({
   getDyadAppPath: vi.fn((p: string) => `/mock/apps/${p}`),
 }));
 
-vi.mock("../db", () => ({
+vi.mock("@/db", () => ({
   db: {
     query: {
       apps: {
@@ -36,7 +36,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-vi.mock("../db/schema", () => ({
+vi.mock("@/db/schema", () => ({
   apps: { id: "id" },
 }));
 
@@ -58,35 +58,35 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("../ipc/utils/lock_utils", () => ({
+vi.mock("@/ipc/utils/lock_utils", () => ({
   withLock: vi.fn(),
 }));
 
-vi.mock("../ipc/handlers/github_handlers", () => ({
+vi.mock("@/ipc/handlers/github_handlers", () => ({
   updateAppGithubRepo: vi.fn(),
   ensureCleanWorkspace: vi.fn(),
 }));
 
-vi.mock("../ipc/handlers/base", () => ({
+vi.mock("@/ipc/handlers/base", () => ({
   createTypedHandler: vi.fn(),
 }));
 
-vi.mock("../ipc/types/github", () => ({
+vi.mock("@/ipc/types/github", () => ({
   githubContracts: {},
   gitContracts: {},
 }));
 
-vi.mock("../main/settings", () => ({
+vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
 }));
 
-import { handleDeleteBranch } from "../ipc/handlers/git_branch_handlers";
+import { handleDeleteBranch } from "@/ipc/handlers/git_branch_handlers";
 import {
   gitListBranches,
   gitListRemoteBranches,
   gitDeleteBranch,
-} from "../ipc/utils/git_utils";
-import { db } from "../db";
+} from "@/ipc/utils/git_utils";
+import { db } from "@/db";
 
 const mockEvent = {} as IpcMainInvokeEvent;
 

@@ -9,14 +9,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "pg-schema-classifier": path.resolve(
-        __dirname,
-        "./packages/pg-schema-classifier/src/index.ts",
-      ),
-      "ts-pg-schema-diff": path.resolve(
-        __dirname,
-        "./packages/ts-pg-schema-diff/src/index.ts",
-      ),
     },
   },
   build: {

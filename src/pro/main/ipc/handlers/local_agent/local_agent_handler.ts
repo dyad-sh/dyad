@@ -42,9 +42,9 @@ import {
 import {
   AgentToolName,
   buildAgentToolSet,
+  shouldIncludeTool,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
-  getAgentToolConsent,
 } from "./tool_definitions";
 import {
   questionnaireResolver,
@@ -688,60 +688,41 @@ export async function handleLocalAgentStream(
       abortSignal: abortController.signal,
     };
 
-    // Set before buildAgentToolSet so search_mcp_tools.isEnabled can read it
-    // mid-build, then replaced with the authoritative value once the set exists.
-    // The dev-only check below flags any drift between the two.
-    const preComputedMcpToolsEnabled =
-      !readOnly &&
-      !planModeOnly &&
-      (executeSandboxScriptTool.isEnabled?.(ctx) ?? true) &&
-      getAgentToolConsent(executeSandboxScriptTool.name) !== "never";
-    ctx.mcpToolsEnabled = preComputedMcpToolsEnabled;
-
-    // Build tool set (agent tools + MCP tools)
-    // In read-only mode, only include read-only tools and skip MCP tools
-    // (since we can't determine if MCP tools modify state)
-    // In plan mode, only include planning tools (read + questionnaire/plan tools)
-    const agentTools = buildAgentToolSet(ctx, {
+    // Build the tool set (agent tools + MCP tools).
+    // In read-only mode, only include read-only tools and skip MCP tools (we
+    // can't tell whether MCP tools modify state). In plan mode, only include
+    // planning tools (read + questionnaire/plan tools).
+    const buildOptions = {
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
-    });
-    // MCP tool exposure depends on whether `execute_sandbox_script` is
-    // available this turn (which already accounts for the sandbox-script
-    // experiment AND `isSandboxSupportedPlatform()` via the tool's
-    // `isEnabled` check):
-    //   - Sandbox tool present and not read-only/plan-mode: MCP tools are
-    //     NOT registered individually with the LLM. Instead, they're
-    //     exposed as host functions inside `execute_sandbox_script`'s
-    //     MustardScript sandbox so the model can chain MCP calls and file
-    //     reads in one script. The tool's description is built per-turn so
-    //     the type declarations reflect the currently enabled MCP servers.
-    //   - Otherwise (experiment off, platform unsupported, read-only, or
-    //     plan mode): fall back to the pre-branch behavior of registering
-    //     each MCP tool individually with the LLM, so users do not lose
-    //     access to their MCP servers on a platform that cannot run the
-    //     sandbox.
+    };
+    // search_mcp_tools.isEnabled reads ctx.mcpToolsEnabled while
+    // buildAgentToolSet is still running, so compute the value up front from the
+    // same predicate the builder uses. MCP-in-sandbox stays off in read-only and
+    // plan mode regardless of whether execute_sandbox_script survives the other
+    // filters.
     const mcpInSandboxEnabled =
       !readOnly &&
       !planModeOnly &&
-      agentTools.execute_sandbox_script !== undefined;
-    // The pre-computed gate above mirrors only a subset of buildAgentToolSet's
-    // filters. If they ever diverge (e.g. a new filter drops
-    // execute_sandbox_script from the set), search_mcp_tools could be
-    // registered against a stale `ctx.mcpToolsEnabled`. Surface that in dev
-    // rather than shipping a silent inconsistency.
-    if (
-      process.env.NODE_ENV !== "production" &&
-      preComputedMcpToolsEnabled !== mcpInSandboxEnabled
-    ) {
-      logger.error(
-        `mcpToolsEnabled pre-compute (${preComputedMcpToolsEnabled}) diverged from authoritative value (${mcpInSandboxEnabled}); search_mcp_tools gating may be stale.`,
-      );
-    }
+      shouldIncludeTool(executeSandboxScriptTool, ctx, buildOptions);
     ctx.mcpToolsEnabled = mcpInSandboxEnabled;
+
+    const agentTools = buildAgentToolSet(ctx, buildOptions);
+    // MCP tool exposure depends on whether execute_sandbox_script is available
+    // this turn (which accounts for the sandbox-script experiment AND
+    // isSandboxSupportedPlatform() via the tool's isEnabled check):
+    //   - Sandbox tool present and not read-only/plan mode: MCP tools are NOT
+    //     registered individually with the LLM. They're exposed as host
+    //     functions inside execute_sandbox_script's MustardScript sandbox so the
+    //     model can chain MCP calls and file reads in one script. The tool's
+    //     description is built per-turn so the type declarations reflect the
+    //     currently enabled MCP servers.
+    //   - Otherwise (experiment off, platform unsupported, read-only, or plan
+    //     mode): register each MCP tool individually with the LLM so users keep
+    //     access to their MCP servers on a platform that cannot run the sandbox.
     // When the tool-search experiment is on, the sandbox description points
     // the model at `search_mcp_tools` instead of inlining every MCP tool's
     // declarations. `ctx.mcpToolDefs` still holds ALL defs below, so the

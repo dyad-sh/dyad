@@ -55,6 +55,59 @@ describe("detectSqlSchemaMutation", () => {
     ).toBe(true);
   });
 
+  it("flags known extension functions that mutate schema", () => {
+    for (const sql of [
+      "SELECT AddGeometryColumn('public', 'roads', 'geom', 4326, 'LINESTRING', 2)",
+      "SELECT public.DropGeometryColumn('roads', 'geom')",
+      "SELECT create_hypertable('metrics', 'ts')",
+      "SELECT * FROM create_hypertable('metrics', by_range('ts'))",
+      "SELECT create_distributed_table('events', 'tenant_id')",
+      "SELECT partman.create_parent('public.events', 'created_at', 'native', 'daily')",
+      "SELECT CreateTopology('my_topo', 4326)",
+      "SELECT dblink_exec('dbname=app', 'CREATE TABLE remote_t (id int)')",
+    ]) {
+      const result = detectSqlSchemaMutation(sql);
+      expect(result.mutatesSchema, sql).toBe(true);
+      expect(result.statements[0]?.reason, sql).toBe("schema_function");
+    }
+  });
+
+  it("flags cron functions only when schema-qualified", () => {
+    expect(
+      detectSqlSchemaMutation(
+        "SELECT cron.schedule('nightly', '0 3 * * *', 'VACUUM')",
+      ).mutatesSchema,
+    ).toBe(true);
+
+    // A user-defined function that happens to be named `schedule` is not pg_cron.
+    expect(
+      detectSqlSchemaMutation("SELECT schedule(meeting_id, '2026-01-01')")
+        .mutatesSchema,
+    ).toBe(false);
+  });
+
+  it("does not flag ordinary or read-only function calls", () => {
+    for (const sql of [
+      "SELECT count(*) FROM users",
+      "SELECT avg(price), max(created_at) FROM orders",
+      "SELECT ST_Distance(a.geom, b.geom) FROM places a, places b",
+      "SELECT similarity(name, 'ada') FROM users",
+      "SELECT * FROM generate_series(1, 100)",
+      "SELECT calculate_tax(subtotal, region) FROM cart",
+      "SELECT nextval('orders_id_seq')",
+    ]) {
+      expect(detectSqlSchemaMutation(sql).mutatesSchema, sql).toBe(false);
+    }
+  });
+
+  it("detects an extension function nested in DML", () => {
+    expect(
+      detectSqlSchemaMutation(
+        "INSERT INTO log SELECT create_hypertable('metrics', 'ts')",
+      ).mutatesSchema,
+    ).toBe(true);
+  });
+
   it("handles mixed multi-statement SQL", () => {
     const result = detectSqlSchemaMutation(`
       SELECT * FROM users;

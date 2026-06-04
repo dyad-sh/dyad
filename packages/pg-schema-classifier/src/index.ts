@@ -3,6 +3,7 @@ export type SqlSchemaMutationReason =
   | "authorization"
   | "metadata"
   | "dynamic_execution"
+  | "schema_function"
   | "select_into"
   | "unparseable_or_incomplete";
 
@@ -33,6 +34,56 @@ type SqlWalkerCallbacks = {
     readonly index: number;
   }) => number | void;
 };
+
+// Extension-provided functions that perform DDL/catalog mutation inside their
+// body. A first-keyword classifier can't see these, so `SELECT add_dimension(...)`
+// would otherwise look like an ordinary read. Names are stored uppercased to
+// match `tokenizeStatement` output. Keep this list to distinctive names only:
+// generic-sounding ones (e.g. cron's `schedule`) belong in
+// QUALIFIED_SCHEMA_FUNCTIONS so a user function of the same name isn't flagged.
+const SCHEMA_FUNCTIONS: ReadonlySet<string> = new Set([
+  // PostGIS (core)
+  "ADDGEOMETRYCOLUMN",
+  "DROPGEOMETRYCOLUMN",
+  "DROPGEOMETRYTABLE",
+  "POPULATE_GEOMETRY_COLUMNS",
+  // PostGIS topology (these create/drop whole schemas)
+  "CREATETOPOLOGY",
+  "DROPTOPOLOGY",
+  "ADDTOPOGEOMETRYCOLUMN",
+  "DROPTOPOGEOMETRYCOLUMN",
+  // PostGIS raster
+  "ADDRASTERCONSTRAINTS",
+  "DROPRASTERCONSTRAINTS",
+  // TimescaleDB
+  "CREATE_HYPERTABLE",
+  "CREATE_DISTRIBUTED_HYPERTABLE",
+  "ADD_DIMENSION",
+  // Citus
+  "CREATE_DISTRIBUTED_TABLE",
+  "CREATE_REFERENCE_TABLE",
+  "UNDISTRIBUTE_TABLE",
+  "ALTER_DISTRIBUTED_TABLE",
+  "CREATE_DISTRIBUTED_FUNCTION",
+  // pg_partman
+  "CREATE_PARENT",
+  "CREATE_SUB_PARENT",
+  "RUN_MAINTENANCE",
+  "UNDO_PARTITION",
+  // Arbitrary-DDL escape hatch: the payload is opaque, so flag the call.
+  "DBLINK_EXEC",
+]);
+
+// Functions whose bare names are too generic to match safely. They only count
+// when written schema-qualified (e.g. `cron.schedule(...)`). The tokenizer drops
+// the `.`, so a qualified call tokenizes as two adjacent words — the value is the
+// function name and the key's qualifier must immediately precede it.
+const QUALIFIED_SCHEMA_FUNCTIONS: ReadonlyMap<string, string> = new Map([
+  ["SCHEDULE", "CRON"],
+  ["SCHEDULE_IN_DATABASE", "CRON"],
+  ["UNSCHEDULE", "CRON"],
+  ["ALTER_JOB", "CRON"],
+]);
 
 export function detectSqlSchemaMutation(
   sql: string,
@@ -94,12 +145,41 @@ function classifyStatement(
       break;
   }
 
+  // Fallback for statements that didn't classify on their leading keyword: a
+  // known extension function (e.g. `SELECT create_hypertable(...)`) mutates
+  // schema even though the statement reads like a plain SELECT/DML.
+  const schemaFunction = findSchemaFunctionCall(tokens);
+  if (schemaFunction !== null) {
+    return mutating(trimmed, "schema_function", schemaFunction);
+  }
+
   return {
     sql: trimmed,
     mutatesSchema: false,
     reason: null,
     command: first,
   };
+}
+
+function findSchemaFunctionCall(tokens: readonly Token[]): string | null {
+  for (let i = 0; i < tokens.length; i += 1) {
+    const open = tokens[i];
+    if (open?.type !== "symbol" || open.value !== "(") continue;
+
+    const name = tokens[i - 1];
+    if (!name || name.type !== "word") continue;
+
+    if (SCHEMA_FUNCTIONS.has(name.value)) return name.value;
+
+    const requiredQualifier = QUALIFIED_SCHEMA_FUNCTIONS.get(name.value);
+    if (requiredQualifier !== undefined) {
+      const qualifier = tokens[i - 2];
+      if (qualifier?.type === "word" && qualifier.value === requiredQualifier) {
+        return name.value;
+      }
+    }
+  }
+  return null;
 }
 
 function mutating(

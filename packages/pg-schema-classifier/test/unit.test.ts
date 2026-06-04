@@ -60,6 +60,7 @@ describe("detectSqlSchemaMutation", () => {
       "SELECT AddGeometryColumn('public', 'roads', 'geom', 4326, 'LINESTRING', 2)",
       "SELECT public.DropGeometryColumn('roads', 'geom')",
       "SELECT create_hypertable('metrics', 'ts')",
+      `SELECT "create_hypertable"('metrics', 'ts')`,
       "SELECT * FROM create_hypertable('metrics', by_range('ts'))",
       "SELECT create_distributed_table('events', 'tenant_id')",
       "SELECT partman.create_parent('public.events', 'created_at', 'native', 'daily')",
@@ -78,17 +79,28 @@ describe("detectSqlSchemaMutation", () => {
         "SELECT cron.schedule('nightly', '0 3 * * *', 'VACUUM')",
       ).mutatesSchema,
     ).toBe(true);
+    expect(
+      detectSqlSchemaMutation(
+        `SELECT "cron"."schedule"('nightly', '0 3 * * *', 'VACUUM')`,
+      ).mutatesSchema,
+    ).toBe(true);
 
     // A user-defined function that happens to be named `schedule` is not pg_cron.
     expect(
       detectSqlSchemaMutation("SELECT schedule(meeting_id, '2026-01-01')")
         .mutatesSchema,
     ).toBe(false);
+    expect(
+      detectSqlSchemaMutation(
+        "SELECT cron = schedule(meeting_id, '2026-01-01') FROM meetings",
+      ).mutatesSchema,
+    ).toBe(false);
   });
 
   it("does not flag ordinary or read-only function calls", () => {
     for (const sql of [
       "SELECT count(*) FROM users",
+      `SELECT "into" FROM users`,
       "SELECT avg(price), max(created_at) FROM orders",
       "SELECT ST_Distance(a.geom, b.geom) FROM places a, places b",
       "SELECT similarity(name, 'ada') FROM users",
@@ -106,6 +118,27 @@ describe("detectSqlSchemaMutation", () => {
         "INSERT INTO log SELECT create_hypertable('metrics', 'ts')",
       ).mutatesSchema,
     ).toBe(true);
+  });
+
+  it("does not flag non-executing EXPLAIN wrappers", () => {
+    for (const sql of [
+      "EXPLAIN SELECT create_hypertable('metrics', 'ts')",
+      "EXPLAIN (FORMAT JSON) SELECT create_hypertable('metrics', 'ts')",
+      "EXPLAIN (ANALYZE false) SELECT create_hypertable('metrics', 'ts')",
+      "EXPLAIN (ANALYZE off) SELECT create_hypertable('metrics', 'ts')",
+    ]) {
+      expect(detectSqlSchemaMutation(sql).mutatesSchema, sql).toBe(false);
+    }
+  });
+
+  it("flags executing EXPLAIN ANALYZE wrappers", () => {
+    for (const sql of [
+      "EXPLAIN ANALYZE SELECT create_hypertable('metrics', 'ts')",
+      "EXPLAIN (ANALYZE, BUFFERS) SELECT create_hypertable('metrics', 'ts')",
+      "EXPLAIN (VERBOSE, ANALYZE true) SELECT create_hypertable('metrics', 'ts')",
+    ]) {
+      expect(detectSqlSchemaMutation(sql).mutatesSchema, sql).toBe(true);
+    }
   });
 
   it("handles mixed multi-statement SQL", () => {

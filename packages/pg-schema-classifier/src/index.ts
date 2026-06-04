@@ -25,14 +25,24 @@ type SplitStatement = {
 };
 
 type Token =
-  | { readonly type: "word"; readonly value: string }
-  | { readonly type: "symbol"; readonly value: "(" | ")" | "," | ";" };
+  | {
+      readonly type: "word";
+      readonly value: string;
+      readonly quoted?: true;
+      readonly raw?: string;
+    }
+  | { readonly type: "symbol"; readonly value: "(" | ")" | "," | ";" | "." };
 
 type SqlWalkerCallbacks = {
   readonly onNormalChar?: (context: {
     readonly char: string;
     readonly index: number;
   }) => number | void;
+  readonly onDoubleQuotedIdentifier?: (context: {
+    readonly identifier: string;
+    readonly startIndex: number;
+    readonly endIndex: number;
+  }) => void;
 };
 
 // Extension-provided functions that perform DDL/catalog mutation inside their
@@ -75,9 +85,7 @@ const SCHEMA_FUNCTIONS: ReadonlySet<string> = new Set([
 ]);
 
 // Functions whose bare names are too generic to match safely. They only count
-// when written schema-qualified (e.g. `cron.schedule(...)`). The tokenizer drops
-// the `.`, so a qualified call tokenizes as two adjacent words — the value is the
-// function name and the key's qualifier must immediately precede it.
+// when written schema-qualified (e.g. `cron.schedule(...)`).
 const QUALIFIED_SCHEMA_FUNCTIONS: ReadonlyMap<string, string> = new Map([
   ["SCHEDULE", "CRON"],
   ["SCHEDULE_IN_DATABASE", "CRON"],
@@ -145,12 +153,14 @@ function classifyStatement(
       break;
   }
 
-  // Fallback for statements that didn't classify on their leading keyword: a
-  // known extension function (e.g. `SELECT create_hypertable(...)`) mutates
-  // schema even though the statement reads like a plain SELECT/DML.
-  const schemaFunction = findSchemaFunctionCall(tokens);
-  if (schemaFunction !== null) {
-    return mutating(trimmed, "schema_function", schemaFunction);
+  if (shouldScanForSchemaFunctions(first, tokens)) {
+    // Fallback for statements that didn't classify on their leading keyword: a
+    // known extension function (e.g. `SELECT create_hypertable(...)`) mutates
+    // schema even though the statement reads like a plain SELECT/DML.
+    const schemaFunction = findSchemaFunctionCall(tokens);
+    if (schemaFunction !== null) {
+      return mutating(trimmed, "schema_function", schemaFunction);
+    }
   }
 
   return {
@@ -167,19 +177,138 @@ function findSchemaFunctionCall(tokens: readonly Token[]): string | null {
     if (open?.type !== "symbol" || open.value !== "(") continue;
 
     const name = tokens[i - 1];
-    if (!name || name.type !== "word") continue;
+    const nameValue = identifierTokenValue(name);
+    if (nameValue === null) continue;
 
-    if (SCHEMA_FUNCTIONS.has(name.value)) return name.value;
+    if (SCHEMA_FUNCTIONS.has(nameValue)) return nameValue;
 
-    const requiredQualifier = QUALIFIED_SCHEMA_FUNCTIONS.get(name.value);
+    const requiredQualifier = QUALIFIED_SCHEMA_FUNCTIONS.get(nameValue);
     if (requiredQualifier !== undefined) {
-      const qualifier = tokens[i - 2];
-      if (qualifier?.type === "word" && qualifier.value === requiredQualifier) {
-        return name.value;
+      const dot = tokens[i - 2];
+      const qualifier = tokens[i - 3];
+      if (
+        dot?.type === "symbol" &&
+        dot.value === "." &&
+        identifierTokenValue(qualifier) === requiredQualifier
+      ) {
+        return nameValue;
       }
     }
   }
   return null;
+}
+
+function shouldScanForSchemaFunctions(
+  first: string,
+  tokens: readonly Token[],
+): boolean {
+  switch (first) {
+    case "SELECT":
+    case "WITH":
+    case "INSERT":
+    case "UPDATE":
+    case "DELETE":
+    case "MERGE":
+    case "VALUES":
+    case "COPY":
+      return true;
+    case "EXPLAIN":
+      return explainExecutesStatement(tokens);
+  }
+
+  return false;
+}
+
+function explainExecutesStatement(tokens: readonly Token[]): boolean {
+  const explainIndex = tokens.findIndex((token) =>
+    isUnquotedWord(token, "EXPLAIN"),
+  );
+  if (explainIndex === -1) return false;
+
+  const next = tokens[explainIndex + 1];
+  if (isUnquotedWord(next, "ANALYZE")) return true;
+
+  if (next?.type === "symbol" && next.value === "(") {
+    return explainOptionsEnableAnalyze(tokens, explainIndex + 1);
+  }
+
+  return false;
+}
+
+function explainOptionsEnableAnalyze(
+  tokens: readonly Token[],
+  openIndex: number,
+): boolean {
+  let depth = 1;
+
+  for (let i = openIndex + 1; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token?.type === "symbol") {
+      if (token.value === "(") {
+        depth += 1;
+      } else if (token.value === ")") {
+        depth -= 1;
+        if (depth === 0) return false;
+      }
+      continue;
+    }
+
+    if (depth !== 1 || !isUnquotedWord(token, "ANALYZE")) continue;
+
+    const value = nextTopLevelToken(tokens, i + 1, depth);
+    if (
+      isUnquotedWord(value, "FALSE") ||
+      isUnquotedWord(value, "OFF") ||
+      isUnquotedWord(value, "NO")
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+function nextTopLevelToken(
+  tokens: readonly Token[],
+  startIndex: number,
+  initialDepth: number,
+): Token | undefined {
+  let depth = initialDepth;
+
+  for (let i = startIndex; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token?.type === "symbol") {
+      if (token.value === "(") {
+        depth += 1;
+        continue;
+      }
+      if (token.value === ")") {
+        depth -= 1;
+        if (depth < initialDepth) return token;
+        continue;
+      }
+      if (depth === initialDepth) return token;
+      continue;
+    }
+
+    if (depth === initialDepth) return token;
+  }
+
+  return undefined;
+}
+
+function identifierTokenValue(token: Token | undefined): string | null {
+  if (token?.type !== "word") return null;
+  if (token.quoted !== true) return token.value;
+
+  // PostgreSQL folds unquoted identifiers to lowercase. A quoted call to an
+  // extension function is equivalent only when the quoted spelling is already
+  // lowercase, e.g. "create_hypertable"().
+  const raw = token.raw;
+  if (raw === undefined || raw !== raw.toLowerCase()) return null;
+  return raw.toUpperCase();
 }
 
 function mutating(
@@ -196,12 +325,23 @@ function mutating(
 }
 
 function firstWord(tokens: readonly Token[]): string | null {
-  return tokens.find((token) => token.type === "word")?.value ?? null;
+  return tokens.find((token) => isUnquotedWord(token))?.value ?? null;
 }
 
 function wordAt(tokens: readonly Token[], index: number): string | null {
-  const words = tokens.filter((token) => token.type === "word");
+  const words = tokens.filter((token) => isUnquotedWord(token));
   return words[index]?.value ?? null;
+}
+
+function isUnquotedWord(
+  token: Token | undefined,
+  value?: string,
+): token is Extract<Token, { readonly type: "word" }> {
+  return (
+    token?.type === "word" &&
+    token.quoted !== true &&
+    (value === undefined || token.value === value)
+  );
 }
 
 function hasTopLevelSelectInto(tokens: readonly Token[]): boolean {
@@ -215,7 +355,7 @@ function hasTopLevelSelectInto(tokens: readonly Token[]): boolean {
       continue;
     }
 
-    if (depth !== 0) continue;
+    if (depth !== 0 || !isUnquotedWord(token)) continue;
     if (token.value === "SELECT") {
       sawTopLevelSelect = true;
       continue;
@@ -270,7 +410,13 @@ function tokenizeStatement(sql: string): Token[] {
 
   walkSql(sql, {
     onNormalChar: ({ char, index }) => {
-      if (char === "(" || char === ")" || char === "," || char === ";") {
+      if (
+        char === "(" ||
+        char === ")" ||
+        char === "," ||
+        char === ";" ||
+        char === "."
+      ) {
         tokens.push({ type: "symbol", value: char });
         return undefined;
       }
@@ -288,6 +434,15 @@ function tokenizeStatement(sql: string): Token[] {
       }
       return undefined;
     },
+    onDoubleQuotedIdentifier: ({ identifier }) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_$]*$/u.test(identifier)) return;
+      tokens.push({
+        type: "word",
+        value: identifier.toUpperCase(),
+        quoted: true,
+        raw: identifier,
+      });
+    },
   });
 
   return tokens;
@@ -303,6 +458,8 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     | "dollar_quote" = "normal";
   let blockDepth = 0;
   let dollarTag = "";
+  let doubleQuotedIdentifier = "";
+  let doubleQuotedIdentifierStart = -1;
 
   for (let i = 0; i < sql.length; i += 1) {
     const char = sql[i] ?? "";
@@ -338,10 +495,18 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     if (state === "double_quote") {
       if (char === '"') {
         if (next === '"') {
+          doubleQuotedIdentifier += '"';
           i += 1;
         } else {
           state = "normal";
+          callbacks.onDoubleQuotedIdentifier?.({
+            identifier: doubleQuotedIdentifier,
+            startIndex: doubleQuotedIdentifierStart,
+            endIndex: i,
+          });
         }
+      } else {
+        doubleQuotedIdentifier += char;
       }
       continue;
     }
@@ -370,6 +535,8 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     }
     if (char === '"') {
       state = "double_quote";
+      doubleQuotedIdentifier = "";
+      doubleQuotedIdentifierStart = i;
       continue;
     }
     if (char === "$") {

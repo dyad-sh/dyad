@@ -280,9 +280,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
-  const currentAddressPath = formatPreviewAddressPath(
-    navigationHistory[currentHistoryPosition],
-  );
+  const currentHistoryUrl = navigationHistory[currentHistoryPosition] ?? null;
+  const currentAddressPath = formatPreviewAddressPath(currentHistoryUrl);
   const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
   const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
 
@@ -307,6 +306,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Track which apps have already had the on-load fallback attempted this
   // session so the check doesn't re-run on every HMR/reload.
   const fallbackAttemptedAppIdsRef = useRef<Set<number>>(new Set());
+  const skipNextAddressBarBlurRef = useRef(false);
 
   // Keep refs in sync so the message handler and timeout callbacks always read
   // the latest values.
@@ -1412,9 +1412,18 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to navigate to a specific route
   const navigateToRoute = (path: string) => {
     if (iframeRef.current?.contentWindow && appUrl) {
+      const normalized = normalizePreviewAddressPath(path);
+      if (normalized.type === "empty") {
+        return;
+      }
+      if (normalized.type === "invalid") {
+        showError(normalized.message);
+        return;
+      }
+
       // Create the full URL by combining the base URL with the path
       const baseUrl = new URL(appUrl).origin;
-      const newUrl = new URL(path, baseUrl).href;
+      const newUrl = new URL(normalized.path, baseUrl).href;
 
       // Use postMessage to navigate (same as back/forward) - this uses location.replace()
       // which provides smooth navigation without the black screen flicker that location.href causes
@@ -1475,6 +1484,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       return;
     }
 
+    skipNextAddressBarBlurRef.current = true;
     navigateToRoute(result.path);
     setAddressBarValue(result.path);
     setIsEditingAddressBar(false);
@@ -1667,10 +1677,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </Popover>
             <input
               aria-label="Preview path"
-              className="flex-1 min-w-[2rem] bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
+              className="flex-1 min-w-[2rem] rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 focus-visible:ring-1 focus-visible:ring-ring dark:text-gray-200"
               data-testid="preview-address-bar-input"
               disabled={loading || !selectedAppId}
               onBlur={() => {
+                if (skipNextAddressBarBlurRef.current) {
+                  skipNextAddressBarBlurRef.current = false;
+                  return;
+                }
                 setAddressBarValue(currentAddressPath);
                 setIsEditingAddressBar(false);
               }}

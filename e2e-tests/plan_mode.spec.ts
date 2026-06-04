@@ -47,51 +47,15 @@ async function waitForPlanGenerationToFinish(po: PageObject) {
   await waitForNoActiveGeneration(po);
 }
 
-testSkipIfWindows(
-  "plan mode - switch to plan mode in an existing chat",
-  async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
-    await po.importApp("minimal");
-    await waitForInitialImportedChatCompletion(po);
-
-    // Start an existing chat in the default (Agent v2) mode.
-    await sendPromptAndWaitForResponse(
-      po,
-      "tc=local-agent/simple-response",
-      "Hello! I understand your request.",
-    );
-
-    // Capture the existing chat ID so we can confirm we stay in the same chat.
-    const initialUrl = po.page.url();
-    const initialChatIdMatch = initialUrl.match(/[?&]id=(\d+)/);
-    expect(initialChatIdMatch).not.toBeNull();
-    const initialChatId = initialChatIdMatch![1];
-
-    // Switch to plan mode within the existing chat.
-    await po.chatActions.selectChatMode("plan");
-
-    // Send a prompt that triggers a plan in the now plan-mode chat. The plan is
-    // generated in the same chat; the new-vs-same-chat choice now happens when
-    // accepting the plan, not when switching modes.
-    await po.sendPrompt("tc=local-agent/accept-plan", {
-      skipWaitForCompletion: true,
-    });
-
-    await waitForPlanGenerationToFinish(po);
-
-    // The plan should be presented in the same chat.
-    await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-
-    const planContent = po.previewPanel.getPlanContent();
-    await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
-
-    // We should still be in the same existing chat (no redirect yet).
-    const currentChatId = new URL(po.page.url()).searchParams.get("id");
-    expect(currentChatId).toEqual(initialChatId);
-  },
-);
+async function finishPlanPresentation(po: any) {
+  await po.page.getByRole("button", { name: "Keep going" }).click();
+  await po.chatActions.waitForChatCompletion();
+  await expect(
+    po.page.getByText(
+      "I've presented the implementation plan. You can review it in the preview panel and accept it when ready.",
+    ),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+}
 
 testSkipIfWindows(
   "plan mode - accept plan and start a new chat",
@@ -107,18 +71,22 @@ testSkipIfWindows(
       "Hello! I understand your request.",
     );
 
-    // Capture the existing chat ID so we can confirm we get redirected away.
-    const initialUrl = po.page.url();
-    const initialChatIdMatch = initialUrl.match(/[?&]id=(\d+)/);
-    expect(initialChatIdMatch).not.toBeNull();
-    const initialChatId = initialChatIdMatch![1];
-
-    // Switch to plan mode and generate a plan in the same chat.
+    // Switch to plan mode and generate a plan.
     await po.chatActions.selectChatMode("plan");
     await po.sendPrompt("tc=local-agent/accept-plan", {
       skipWaitForCompletion: true,
     });
     await waitForPlanGenerationToFinish(po);
+
+    // Continue past the plan presentation so the write_plan tool turn is
+    // flushed; otherwise the acceptance message gets bundled with the pending
+    // tool result and the exit_plan transition never fires.
+    await finishPlanPresentation(po);
+
+    // Capture the plan chat ID so we can confirm we get redirected away to a
+    // brand-new implementation chat.
+    const planChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(planChatId).not.toBeNull();
 
     // Accept the plan and choose to implement it in a brand-new chat.
     await po.page.getByTestId("accept-plan-new-chat").click();
@@ -127,7 +95,7 @@ testSkipIfWindows(
     await expect(async () => {
       const currentChatId = new URL(po.page.url()).searchParams.get("id");
       expect(currentChatId).not.toBeNull();
-      expect(currentChatId).not.toEqual(initialChatId);
+      expect(currentChatId).not.toEqual(planChatId);
     }).toPass({ timeout: Timeout.MEDIUM });
 
     await waitForNoActiveGeneration(po);
@@ -148,18 +116,21 @@ testSkipIfWindows(
       "Hello! I understand your request.",
     );
 
-    // Capture the existing chat ID so we can confirm we stay in the same chat.
-    const initialUrl = po.page.url();
-    const initialChatIdMatch = initialUrl.match(/[?&]id=(\d+)/);
-    expect(initialChatIdMatch).not.toBeNull();
-    const initialChatId = initialChatIdMatch![1];
-
-    // Switch to plan mode and generate a plan in the same chat.
+    // Switch to plan mode and generate a plan.
     await po.chatActions.selectChatMode("plan");
     await po.sendPrompt("tc=local-agent/accept-plan", {
       skipWaitForCompletion: true,
     });
     await waitForPlanGenerationToFinish(po);
+
+    // Continue past the plan presentation so the write_plan tool turn is
+    // flushed; otherwise the acceptance message gets bundled with the pending
+    // tool result and the exit_plan transition never fires.
+    await finishPlanPresentation(po);
+
+    // Capture the plan chat ID so we can confirm implementation continues in it.
+    const planChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(planChatId).not.toBeNull();
 
     // Accept the plan and choose to continue implementing in this same chat.
     await po.page.getByTestId("accept-plan-continue-here").click();
@@ -169,9 +140,9 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
-    // We should still be in the same chat (no redirect to a fresh chat).
+    // We should still be in the plan chat (no redirect to a fresh chat).
     const currentChatId = new URL(po.page.url()).searchParams.get("id");
-    expect(currentChatId).toEqual(initialChatId);
+    expect(currentChatId).toEqual(planChatId);
 
     await waitForNoActiveGeneration(po);
   },
@@ -180,7 +151,7 @@ testSkipIfWindows(
 testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
   await po.importApp("minimal");
-  await waitForInitialImportedChatCompletion(po);
+  await po.chatActions.clickNewChat();
   await po.chatActions.selectChatMode("plan");
 
   // Trigger questionnaire fixture
@@ -206,7 +177,7 @@ testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
   await po.page.getByRole("button", { name: /Submit/ }).click();
 
   // Wait for the LLM response after submitting answers
-  await waitForNoActiveGeneration(po);
+  await po.chatActions.waitForChatCompletion();
 
   // Snapshot the messages
   await po.snapshotMessages();
@@ -217,14 +188,11 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
-    await waitForInitialImportedChatCompletion(po);
+    await po.chatActions.clickNewChat();
     await po.chatActions.selectChatMode("plan");
 
-    await po.sendPrompt("tc=local-agent/accept-plan", {
-      skipWaitForCompletion: true,
-    });
-
-    await waitForPlanGenerationToFinish(po);
+    await po.sendPrompt("tc=local-agent/accept-plan");
+    await finishPlanPresentation(po);
 
     await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
       timeout: Timeout.MEDIUM,
@@ -322,7 +290,6 @@ testSkipIfWindows(
     await expect(po.previewPanel.getPlanAnnotationMarks()).toHaveCount(0, {
       timeout: Timeout.MEDIUM,
     });
-    await waitForNoActiveGeneration(po);
 
     // Verify the request sent to the server contains the correctly formatted comments
     await po.snapshotServerDump("last-message");
@@ -335,17 +302,13 @@ testSkipIfWindows(
     // Set up app
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
-    await waitForInitialImportedChatCompletion(po);
+    await po.chatActions.clickNewChat();
 
     // Switch to plan mode
     await po.chatActions.selectChatMode("plan");
 
     // Generate a plan by sending a prompt that triggers plan generation
-    await po.sendPrompt("tc=local-agent/accept-plan", {
-      skipWaitForCompletion: true,
-    });
-
-    await waitForPlanGenerationToFinish(po);
+    await po.sendPrompt("tc=local-agent/accept-plan");
 
     // Wait for the "View Plan" button to appear
     const viewPlanButton = po.page

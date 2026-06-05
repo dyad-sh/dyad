@@ -300,7 +300,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
 
   const handleFieldEdit = useCallback(
     (field: AppBlueprintEditableField, value: string) => {
-      if (!chatId || isApproved) return Promise.resolve();
+      if (!chatId || isApproved) return Promise.resolve(false);
 
       // Update local state immediately
       setAppBlueprintState((prev) => {
@@ -312,13 +312,16 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         return { ...prev, plansByChatId: nextPlans };
       });
 
-      // Persist to main process. The returned promise lets callers that need
-      // the write to land before a follow-up IPC (e.g. approval) await it.
+      // Persist to main process. Resolves to `true` only when the write lands
+      // and `false` when it fails, so callers that gate a follow-up IPC (e.g.
+      // approval) can bail instead of proceeding with an unsaved value.
       return ipc.appBlueprint
         .editField({ chatId, field, value })
+        .then(() => true)
         .catch((error) => {
           console.error("Failed to persist app blueprint field edit:", error);
           showError("Could not save app blueprint changes. Please try again.");
+          return false;
         });
     },
     [chatId, isApproved, setAppBlueprintState],
@@ -343,15 +346,26 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
       const override =
         typeof overrideAppName === "string" ? overrideAppName.trim() : "";
       const effectiveAppName = override || plan.appName;
-      if (override && effectiveAppName !== plan.appName) {
-        // Await the persist so the blueprint and the app row can't disagree
-        // about the name if the edit and approve IPC calls race.
-        await handleFieldEdit("appName", effectiveAppName);
-      }
 
+      // Set the in-progress guard before any await so a slow name-persist can't
+      // leave the underlying "Approve Plan" button live for a second click that
+      // would start a concurrent approval.
       approvingRef.current = true;
       setIsApproving(true);
       setApprovalError(null);
+
+      if (override && effectiveAppName !== plan.appName) {
+        // Await the persist so the blueprint and the app row can't disagree
+        // about the name if the edit and approve IPC calls race. Bail if it
+        // fails so we never approve under a name that was never saved (the
+        // edit handler already surfaced the error to the user).
+        const persisted = await handleFieldEdit("appName", effectiveAppName);
+        if (!persisted) {
+          approvingRef.current = false;
+          setIsApproving(false);
+          return;
+        }
+      }
 
       // Optimistically mark as approved so UI updates immediately
       setAppBlueprintState((prev) => {

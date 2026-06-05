@@ -260,6 +260,8 @@ export type {
   RevertVersionResponse,
   VersionChangedFile,
   CheckoutVersionResponse,
+  RestoreToMessageParams,
+  RestoreToMessageResponse,
 } from "./version";
 
 // Language model types

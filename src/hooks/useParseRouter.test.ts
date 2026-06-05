@@ -311,6 +311,7 @@ describe("parseRoutesFromAstroFiles", () => {
       "src/pages/index.astro",
       "src/pages/posts/[slug].astro",
       "src/pages/api/users.ts",
+      "src/pages/api/readme.mdx",
       "src/components/Card.astro",
       "src/pages/_draft.astro",
     ];
@@ -382,6 +383,32 @@ describe("parseRoutesFromTanStackStartFiles", () => {
     expect(routes.map((r) => r.path).sort()).toEqual(
       ["/docs/guide", "/posts/new"].sort(),
     );
+  });
+
+  it("should skip route group folders from route paths", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/(marketing)/about.tsx",
+      "src/routes/(dashboard)/settings.profile.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/about", "/settings/profile"].sort(),
+    );
+  });
+
+  it("should exclude dash-prefixed ignored route files and folders", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/about.tsx",
+      "src/routes/-components/Button.tsx",
+      "src/routes/posts/-helpers.tsx",
+      "src/routes/admin.-utils.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path)).toEqual(["/about"]);
   });
 });
 

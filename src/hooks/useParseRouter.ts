@@ -215,6 +215,7 @@ export function parseRoutesFromAstroFiles(files: string[]): ParsedRoute[] {
 
   for (const file of files) {
     if (!file.startsWith("src/pages/")) continue;
+    if (file.startsWith("src/pages/api/")) continue;
 
     const extension = file.split(".").pop()?.toLowerCase();
     if (!extension || !ASTRO_PAGE_FILE_EXTENSIONS.has(extension)) continue;
@@ -280,8 +281,11 @@ export function parseRoutesFromTanStackStartFiles(
       .split("/")
       .flatMap((segment) => segment.split("."))
       .filter((segment) => segment);
+    if (rawSegments.some((segment) => segment.startsWith("-"))) continue;
+
     const segments = rawSegments
       .filter((segment) => !TANSTACK_ROUTE_FILE_SEGMENTS.has(segment))
+      .filter((segment) => !/^\(.+\)$/.test(segment))
       .filter((segment) => !segment.startsWith("_"))
       .map((segment) => segment.replace(/_$/, ""))
       .map((segment) => (segment === "index" ? "" : segment));
@@ -364,6 +368,8 @@ export function useParseRouter(appId: number | null) {
     })),
   });
 
+  // Prefer more specific file-based routers before falling back to generic
+  // React Router parsing when multiple framework signals are present.
   const routes =
     isNextApp && app?.files
       ? parseRoutesFromNextFiles(app.files)

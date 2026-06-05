@@ -32,7 +32,23 @@ import { AppBlueprintUserPrompt } from "./AppBlueprintUserPrompt";
 import { AppBlueprintDesignDirection } from "./AppBlueprintDesignDirection";
 import { AppBlueprintVisuals } from "./AppBlueprintVisuals";
 import { getAppBlueprintTemplateOptions } from "./appBlueprintTemplateOptions";
+import { AppBlueprintNameConflictDialog } from "./AppBlueprintNameConflictDialog";
 import type { CustomTagState } from "./stateTypes";
+
+/**
+ * The rename handler throws a name or path conflict (both surface as
+ * "already exists") when the app's name is taken. The DyadError `kind` doesn't
+ * survive the IPC boundary, so we detect the conflict from the message.
+ */
+function isNameConflictError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return /already exists/i.test(message);
+}
 
 interface DyadAppBlueprintCardProps {
   node: {
@@ -123,6 +139,9 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
   const [colorTextValue, setColorTextValue] = useState(primaryColor);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  // When non-null, the name-conflict dialog is open and holds the rejected name
+  // (the name that was already in use) to pre-fill into the dialog's input.
+  const [nameConflictName, setNameConflictName] = useState<string | null>(null);
   // Synchronous guard against fast double-clicks on Approve — `isApproving`
   // state wouldn't see a second click within the same render tick.
   const approvingRef = useRef(false);
@@ -304,237 +323,276 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
     [chatId, isApproved, setAppBlueprintState],
   );
 
-  const handleApprove = useCallback(async () => {
-    if (!chatId || isApproved) return;
-    if (approvingRef.current) return;
+  const handleApprove = useCallback(
+    async (overrideAppName?: string) => {
+      if (!chatId || isApproved) return;
+      if (approvingRef.current) return;
 
-    const plan = appBlueprintState.plansByChatId.get(chatId);
-    if (!plan) {
-      showError("Blueprint data is unavailable. Please regenerate the plan.");
-      return;
-    }
-
-    approvingRef.current = true;
-    setIsApproving(true);
-    setApprovalError(null);
-
-    // Optimistically mark as approved so UI updates immediately
-    setAppBlueprintState((prev) => {
-      const nextApproved = new Set(prev.approvedChatIds);
-      nextApproved.add(chatId);
-      return { ...prev, approvedChatIds: nextApproved };
-    });
-    try {
-      const applyErrors: string[] = [];
-      let templateApplyFailed = false;
-      let renameFailed = false;
-      const recordApplyError = (message: string, error: unknown) => {
-        console.error(message, error);
-        const detail =
-          error instanceof Error
-            ? error.message
-            : typeof error === "string"
-              ? error
-              : undefined;
-        applyErrors.push(detail ? `${message} (${detail})` : message);
-      };
-
-      // Apply plan settings to the app before resolving the agent's promise
-      if (selectedAppId) {
-        let currentApp = app;
-        let templateNeedsRestart = false;
-
-        if (!currentApp) {
-          try {
-            currentApp = await ipc.app.getApp(selectedAppId);
-          } catch (error) {
-            recordApplyError(
-              "Could not load the app before applying the app blueprint.",
-              error,
-            );
-          }
-        }
-
-        // Rename the app and its folder to match the new name. The handler
-        // moves files when the path differs and no-ops when the sanitized
-        // folder name already matches the current path's leaf.
-        if (currentApp && plan.appName) {
-          const desiredFolder = sanitizeAppFolderName(plan.appName);
-          const currentFolder =
-            currentApp.path.split(/[\\/]/).filter(Boolean).pop() ??
-            currentApp.path;
-          const folderChanged = desiredFolder !== currentFolder;
-          const nameChanged = plan.appName !== currentApp.name;
-          if (nameChanged || folderChanged) {
-            try {
-              await ipc.app.renameApp({
-                appId: selectedAppId,
-                appName: plan.appName,
-                appPath: desiredFolder,
-              });
-            } catch (error) {
-              // A rename failure for a user-editable field (name conflict,
-              // invalid path) means the agent would later build under the old
-              // name/path. Treat it as fatal so the user can fix the
-              // blueprint and re-approve.
-              renameFailed = true;
-              recordApplyError("Could not rename the app.", error);
-            }
-          }
-        }
-
-        if (!renameFailed) {
-          try {
-            const { needsRestart } = await ipc.template.applyAppTemplate({
-              appId: selectedAppId,
-              templateId: plan.templateId,
-              chatId: chatId ?? undefined,
-            });
-            templateNeedsRestart = needsRestart;
-          } catch (error) {
-            templateApplyFailed = true;
-            recordApplyError("Could not apply the selected template.", error);
-          }
-        }
-
-        // Set the theme if it differs
-        try {
-          const currentTheme = await ipc.template.getAppTheme({
-            appId: selectedAppId,
-          });
-          if (plan.themeId !== (currentTheme ?? "default")) {
-            await ipc.template.setAppTheme({
-              appId: selectedAppId,
-              themeId: plan.themeId,
-            });
-          }
-        } catch (error) {
-          recordApplyError("Could not apply the selected theme.", error);
-        }
-
-        if (templateNeedsRestart) {
-          try {
-            await ipc.app.restartApp({
-              appId: selectedAppId,
-              removeNodeModules: true,
-            });
-          } catch (error) {
-            recordApplyError(
-              "Could not restart the app after the template change.",
-              error,
-            );
-          }
-        }
-
-        // Refresh app data so the sidebar/header reflect the new name. Also
-        // invalidate token counts since AI_RULES.md changes with the
-        // template, which alters the system-prompt size.
-        await Promise.all([
-          refreshApp(),
-          queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tokenCount.all,
-          }),
-        ]);
+      const plan = appBlueprintState.plansByChatId.get(chatId);
+      if (!plan) {
+        showError("Blueprint data is unavailable. Please regenerate the plan.");
+        return;
       }
 
-      // Template application and rename are critical — if either failed,
-      // don't unblock the agent so the user can fix the plan and re-approve.
-      // Otherwise the agent would build for the wrong framework or under the
-      // wrong app name/path.
-      if (templateApplyFailed || renameFailed) {
+      // When re-approving after a name conflict, the user supplied a new name
+      // in the dialog. Use it for the rename + follow-up and persist it back
+      // into the blueprint so the agent builds under the corrected name. Guard
+      // on `typeof string` so an accidental event arg (e.g. onClick passing the
+      // MouseEvent) can never be mistaken for an override.
+      const override =
+        typeof overrideAppName === "string" ? overrideAppName.trim() : "";
+      const effectiveAppName = override || plan.appName;
+      if (override && effectiveAppName !== plan.appName) {
+        handleFieldEdit("appName", effectiveAppName);
+      }
+
+      approvingRef.current = true;
+      setIsApproving(true);
+      setApprovalError(null);
+
+      // Optimistically mark as approved so UI updates immediately
+      setAppBlueprintState((prev) => {
+        const nextApproved = new Set(prev.approvedChatIds);
+        nextApproved.add(chatId);
+        return { ...prev, approvedChatIds: nextApproved };
+      });
+      try {
+        const applyErrors: string[] = [];
+        let templateApplyFailed = false;
+        let renameFailed = false;
+        let nameConflictDetected = false;
+        const recordApplyError = (message: string, error: unknown) => {
+          console.error(message, error);
+          const detail =
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : undefined;
+          applyErrors.push(detail ? `${message} (${detail})` : message);
+        };
+
+        // Apply plan settings to the app before resolving the agent's promise
+        if (selectedAppId) {
+          let currentApp = app;
+          let templateNeedsRestart = false;
+
+          if (!currentApp) {
+            try {
+              currentApp = await ipc.app.getApp(selectedAppId);
+            } catch (error) {
+              recordApplyError(
+                "Could not load the app before applying the app blueprint.",
+                error,
+              );
+            }
+          }
+
+          // Rename the app and its folder to match the new name. The handler
+          // moves files when the path differs and no-ops when the sanitized
+          // folder name already matches the current path's leaf.
+          if (currentApp && effectiveAppName) {
+            const desiredFolder = sanitizeAppFolderName(effectiveAppName);
+            const currentFolder =
+              currentApp.path.split(/[\\/]/).filter(Boolean).pop() ??
+              currentApp.path;
+            const folderChanged = desiredFolder !== currentFolder;
+            const nameChanged = effectiveAppName !== currentApp.name;
+            if (nameChanged || folderChanged) {
+              try {
+                await ipc.app.renameApp({
+                  appId: selectedAppId,
+                  appName: effectiveAppName,
+                  appPath: desiredFolder,
+                });
+              } catch (error) {
+                // A name (or derived-path) conflict is recoverable: prompt the
+                // user to pick a different name in a dialog and re-approve,
+                // instead of failing with a toast they have to decode.
+                if (isNameConflictError(error)) {
+                  nameConflictDetected = true;
+                } else {
+                  // Other rename failures (e.g. invalid path) mean the agent
+                  // would build under the old name/path. Treat them as fatal so
+                  // the user can fix the blueprint and re-approve.
+                  renameFailed = true;
+                  recordApplyError("Could not rename the app.", error);
+                }
+              }
+            }
+          }
+
+          if (nameConflictDetected) {
+            // Roll back the optimistic approval and open the rename dialog so the
+            // user can choose a different name and re-approve. We bail before
+            // touching the template/theme so nothing is half-applied.
+            setAppBlueprintState((prev) => {
+              const nextApproved = new Set(prev.approvedChatIds);
+              nextApproved.delete(chatId);
+              return { ...prev, approvedChatIds: nextApproved };
+            });
+            setNameConflictName(effectiveAppName);
+            return;
+          }
+
+          if (!renameFailed) {
+            try {
+              const { needsRestart } = await ipc.template.applyAppTemplate({
+                appId: selectedAppId,
+                templateId: plan.templateId,
+                chatId: chatId ?? undefined,
+              });
+              templateNeedsRestart = needsRestart;
+            } catch (error) {
+              templateApplyFailed = true;
+              recordApplyError("Could not apply the selected template.", error);
+            }
+          }
+
+          // Set the theme if it differs
+          try {
+            const currentTheme = await ipc.template.getAppTheme({
+              appId: selectedAppId,
+            });
+            if (plan.themeId !== (currentTheme ?? "default")) {
+              await ipc.template.setAppTheme({
+                appId: selectedAppId,
+                themeId: plan.themeId,
+              });
+            }
+          } catch (error) {
+            recordApplyError("Could not apply the selected theme.", error);
+          }
+
+          if (templateNeedsRestart) {
+            try {
+              await ipc.app.restartApp({
+                appId: selectedAppId,
+                removeNodeModules: true,
+              });
+            } catch (error) {
+              recordApplyError(
+                "Could not restart the app after the template change.",
+                error,
+              );
+            }
+          }
+
+          // Refresh app data so the sidebar/header reflect the new name. Also
+          // invalidate token counts since AI_RULES.md changes with the
+          // template, which alters the system-prompt size.
+          await Promise.all([
+            refreshApp(),
+            queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tokenCount.all,
+            }),
+          ]);
+        }
+
+        // Template application and rename are critical — if either failed,
+        // don't unblock the agent so the user can fix the plan and re-approve.
+        // Otherwise the agent would build for the wrong framework or under the
+        // wrong app name/path.
+        if (templateApplyFailed || renameFailed) {
+          setAppBlueprintState((prev) => {
+            const nextApproved = new Set(prev.approvedChatIds);
+            nextApproved.delete(chatId);
+            return { ...prev, approvedChatIds: nextApproved };
+          });
+          const errorPrefix = renameFailed
+            ? "Could not rename the app. Please choose a different name and try again"
+            : "Could not apply the selected template. Please review the plan and try again";
+          const errorMessage = `${errorPrefix}:\n- ${applyErrors.join("\n- ")}`;
+          setApprovalError(errorMessage);
+          showError(errorMessage);
+          return;
+        }
+
+        if (applyErrors.length > 0) {
+          const errorMessage = `Blueprint approved, but some changes could not be applied:\n- ${applyErrors.join("\n- ")}`;
+          setApprovalError(errorMessage);
+          showError(errorMessage);
+        }
+
+        // Flip the per-app `needsAppBlueprint` flag and notify the renderer.
+        // The agent's previous turn already ended (the write_app_blueprint tool
+        // returned immediately and `stopWhen` stopped the generation), so we can
+        // start a fresh chat stream right away — it will rebuild `AgentContext`
+        // from the renamed app row.
+        await ipc.appBlueprint.approve({ chatId });
+
+        // Build the follow-up user message with the approved blueprint inline.
+        const visualsSummary =
+          plan.visuals.length > 0
+            ? plan.visuals
+                .map(
+                  (v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
+                )
+                .join("\n")
+            : "No visuals planned";
+
+        const followUpPrompt = [
+          "The app blueprint has been approved. Please build the app based on the following approved blueprint:",
+          "",
+          `App Name: ${effectiveAppName}`,
+          `Template: ${plan.templateId}`,
+          `Theme: ${plan.themeId}`,
+          `Primary Color: ${plan.primaryColor}`,
+          `Design Direction: ${plan.designDirection}`,
+          "",
+          "Visual Assets:",
+          visualsSummary,
+          "",
+          `Original Prompt: ${plan.userPrompt}`,
+        ].join("\n");
+
+        // Send the follow-up message in its own try/catch — the blueprint is
+        // already approved and persisted at this point, so a failure here is a
+        // separate "follow-up message failed" condition. Rolling back approval
+        // would be misleading (the rename, template, theme, and DB flag have
+        // all succeeded) and would block the user from continuing.
+        try {
+          await streamMessage({ chatId, prompt: followUpPrompt });
+        } catch (error) {
+          console.error(
+            "Failed to send app blueprint follow-up message:",
+            error,
+          );
+          const followUpError =
+            "Blueprint approved, but the follow-up message could not be sent. You can type your next message to continue building.";
+          setApprovalError(followUpError);
+          showError(followUpError);
+        }
+      } catch (error) {
+        console.error("Failed to approve app blueprint:", error);
         setAppBlueprintState((prev) => {
           const nextApproved = new Set(prev.approvedChatIds);
           nextApproved.delete(chatId);
           return { ...prev, approvedChatIds: nextApproved };
         });
-        const errorPrefix = renameFailed
-          ? "Could not rename the app. Please choose a different name and try again"
-          : "Could not apply the selected template. Please review the plan and try again";
-        const errorMessage = `${errorPrefix}:\n- ${applyErrors.join("\n- ")}`;
-        setApprovalError(errorMessage);
-        showError(errorMessage);
-        return;
+        setApprovalError(
+          "Failed to approve the app blueprint. Please try again.",
+        );
+        showError("Failed to approve the app blueprint. Please try again.");
+      } finally {
+        setIsApproving(false);
+        approvingRef.current = false;
       }
-
-      if (applyErrors.length > 0) {
-        const errorMessage = `Blueprint approved, but some changes could not be applied:\n- ${applyErrors.join("\n- ")}`;
-        setApprovalError(errorMessage);
-        showError(errorMessage);
-      }
-
-      // Flip the per-app `needsAppBlueprint` flag and notify the renderer.
-      // The agent's previous turn already ended (the write_app_blueprint tool
-      // returned immediately and `stopWhen` stopped the generation), so we can
-      // start a fresh chat stream right away — it will rebuild `AgentContext`
-      // from the renamed app row.
-      await ipc.appBlueprint.approve({ chatId });
-
-      // Build the follow-up user message with the approved blueprint inline.
-      const visualsSummary =
-        plan.visuals.length > 0
-          ? plan.visuals
-              .map(
-                (v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
-              )
-              .join("\n")
-          : "No visuals planned";
-
-      const followUpPrompt = [
-        "The app blueprint has been approved. Please build the app based on the following approved blueprint:",
-        "",
-        `App Name: ${plan.appName}`,
-        `Template: ${plan.templateId}`,
-        `Theme: ${plan.themeId}`,
-        `Primary Color: ${plan.primaryColor}`,
-        `Design Direction: ${plan.designDirection}`,
-        "",
-        "Visual Assets:",
-        visualsSummary,
-        "",
-        `Original Prompt: ${plan.userPrompt}`,
-      ].join("\n");
-
-      // Send the follow-up message in its own try/catch — the blueprint is
-      // already approved and persisted at this point, so a failure here is a
-      // separate "follow-up message failed" condition. Rolling back approval
-      // would be misleading (the rename, template, theme, and DB flag have
-      // all succeeded) and would block the user from continuing.
-      try {
-        await streamMessage({ chatId, prompt: followUpPrompt });
-      } catch (error) {
-        console.error("Failed to send app blueprint follow-up message:", error);
-        const followUpError =
-          "Blueprint approved, but the follow-up message could not be sent. You can type your next message to continue building.";
-        setApprovalError(followUpError);
-        showError(followUpError);
-      }
-    } catch (error) {
-      console.error("Failed to approve app blueprint:", error);
-      setAppBlueprintState((prev) => {
-        const nextApproved = new Set(prev.approvedChatIds);
-        nextApproved.delete(chatId);
-        return { ...prev, approvedChatIds: nextApproved };
-      });
-      setApprovalError(
-        "Failed to approve the app blueprint. Please try again.",
-      );
-      showError("Failed to approve the app blueprint. Please try again.");
-    } finally {
-      setIsApproving(false);
-      approvingRef.current = false;
-    }
-  }, [
-    chatId,
-    isApproved,
-    appBlueprintState,
-    selectedAppId,
-    app,
-    refreshApp,
-    queryClient,
-    setAppBlueprintState,
-    streamMessage,
-  ]);
+    },
+    [
+      chatId,
+      isApproved,
+      appBlueprintState,
+      selectedAppId,
+      app,
+      refreshApp,
+      queryClient,
+      setAppBlueprintState,
+      streamMessage,
+      handleFieldEdit,
+    ],
+  );
 
   const handleNameSubmit = useCallback(() => {
     setEditingName(false);
@@ -885,7 +943,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
             </p>
             <button
               type="button"
-              onClick={handleApprove}
+              onClick={() => handleApprove()}
               disabled={!isReady || !appName || isApproving || isTimedOut}
               aria-describedby={statusId}
               className="flex items-center gap-1.5 text-sm font-medium text-primary-foreground px-5 py-2 bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -914,6 +972,18 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
           </>
         )}
       </div>
+
+      <AppBlueprintNameConflictDialog
+        rejectedName={nameConflictName ?? ""}
+        isOpen={nameConflictName !== null}
+        onOpenChange={(open) => {
+          if (!open) setNameConflictName(null);
+        }}
+        onSubmit={(newName) => {
+          setNameConflictName(null);
+          void handleApprove(newName);
+        }}
+      />
     </div>
   );
 };

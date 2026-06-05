@@ -28,6 +28,21 @@ async function run() {
         hostCall,
       } satisfies SandboxWorkerMessage);
     },
+    onVmBudgetStart: () => {
+      port.postMessage({
+        type: "vmBudgetStart",
+      } satisfies SandboxWorkerMessage);
+    },
+    onVmBudgetPause: () => {
+      port.postMessage({
+        type: "vmBudgetPause",
+      } satisfies SandboxWorkerMessage);
+    },
+    onVmBudgetResume: () => {
+      port.postMessage({
+        type: "vmBudgetResume",
+      } satisfies SandboxWorkerMessage);
+    },
   });
 
   port.postMessage({

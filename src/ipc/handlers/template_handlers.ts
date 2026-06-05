@@ -20,8 +20,8 @@ import { slugifyAppPath } from "@/shared/slugify";
 import {
   gitAdd,
   gitCommit,
+  getGitUncommittedFiles,
   hasStagedChanges,
-  isGitStatusClean,
 } from "../utils/git_utils";
 
 const logger = log.scope("template_handlers");
@@ -177,9 +177,11 @@ export function registerTemplateHandlers() {
       }
 
       const oldAbsPath = getDyadAppPath(appRecord.path);
-      const isClean = await isGitStatusClean({ path: oldAbsPath });
+      const uncommittedFiles = await getGitUncommittedFiles({
+        path: oldAbsPath,
+      });
 
-      if (!isClean) {
+      if (uncommittedFiles.length > 0) {
         throw new DyadError(
           "Cannot change templates after local modifications. Please commit or discard your changes first.",
           DyadErrorKind.Precondition,

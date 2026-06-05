@@ -31,6 +31,7 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
+import { exploreCodeTool } from "./tools/explore_code";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -54,6 +55,7 @@ import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
+import { recordCodeExplorerBenchmarkEvent } from "./benchmark_recorder";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -84,6 +86,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   listFilesTool,
   grepTool,
   codeSearchTool,
+  exploreCodeTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,
@@ -530,10 +533,31 @@ export function buildAgentToolSet(
           // (including failures) for retry/fallback telemetry
           trackFileEditTool(ctx, tool.name, processedArgs);
 
+          recordCodeExplorerBenchmarkEvent({
+            type: "tool_call_start",
+            chatId: ctx.chatId,
+            appId: ctx.appId,
+            toolName: tool.name,
+          });
+          const startedAt = Date.now();
           const result = await tool.execute(processedArgs, ctx);
+          recordCodeExplorerBenchmarkEvent({
+            type: "tool_call_end",
+            chatId: ctx.chatId,
+            appId: ctx.appId,
+            toolName: tool.name,
+            elapsedMs: Date.now() - startedAt,
+          });
 
           return convertToolResultForAiSdk(result);
         } catch (error) {
+          recordCodeExplorerBenchmarkEvent({
+            type: "tool_call_error",
+            chatId: ctx.chatId,
+            appId: ctx.appId,
+            toolName: tool.name,
+            error: getToolErrorSummary(error),
+          });
           const errorMessage = getToolErrorSummary(error);
           const errorDetails = getToolErrorDisplayDetails(error);
 

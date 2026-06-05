@@ -246,6 +246,11 @@ const config: ForgeConfig = {
           target: "main",
         },
         {
+          entry: "workers/code_explorer/code_explorer_worker.ts",
+          config: "vite.code-explorer-worker.config.mts",
+          target: "main",
+        },
+        {
           entry: "src/ipc/utils/sandbox/sandbox_worker.ts",
           config: "vite.sandbox-worker.config.mts",
           target: "main",

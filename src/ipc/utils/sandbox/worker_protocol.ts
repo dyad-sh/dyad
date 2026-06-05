@@ -22,6 +22,9 @@ export interface SerializedSandboxWorkerError {
 }
 
 export type SandboxWorkerMessage =
+  | { type: "vmBudgetStart" }
+  | { type: "vmBudgetPause" }
+  | { type: "vmBudgetResume" }
   | { type: "hostCall"; hostCall: SandboxWorkerHostCall }
   | { type: "result"; result: SandboxRunResult }
   | { type: "error"; error: SerializedSandboxWorkerError };

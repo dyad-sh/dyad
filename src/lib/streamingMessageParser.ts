@@ -37,6 +37,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-chat-summary",
   "dyad-edit",
   "dyad-grep",
+  "dyad-explore-code",
   "dyad-search-replace",
   "dyad-codebase-context",
   "dyad-web-search-result",

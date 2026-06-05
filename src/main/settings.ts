@@ -58,6 +58,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
   enableSandboxScriptExecution: true,
+  enableCodeExplorer: false,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: false,

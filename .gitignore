@@ -116,3 +116,5 @@ storybook-static/
 
 # Eval framework — run results
 eval-results/
+benchmark-results/
+benchmarks/code-explorer/repos/

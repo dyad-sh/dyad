@@ -1,0 +1,29 @@
+- paragraph: tc=local-agent/explore-code
+- paragraph: I'll inspect the TypeScript symbols around the app component.
+- 'button /CODE "App component render flow" \(1 file, 2 symbols\) \d+[hmsp]+ index, \d+[hmsp]+ search markdown Copy ## Code exploration: App component render flow Found 2 symbols across 1 files\. Indexed 2 files in \d+[hmsp]+; searched in \d+[hmsp]+\. #### src\/App\.tsx - App \(variable:1\) ```ts 1 const App = \(\) => <div>Minimal imported app<\/div>; 2 3 export default App; 4 ```/ [expanded]':
+  - img
+  - text: ""
+  - img
+  - text: ""
+  - button "Copy":
+    - img
+    - text: ""
+  - code: "/## Code exploration: App component render flow Found 2 symbols across 1 files\\. Indexed 2 files in \\d+[hmsp]+; searched in \\d+[hmsp]+\\. #### src\\/App\\.tsx - App \\(variable:1\\) ```ts 1 const App = \\(\\) => <div>Minimal imported app<\\/div>; 2 3 export default App; 4 ```/"
+- paragraph: The app component is defined in src/App.tsx and rendered from src/main.tsx.
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: ""
+- button "Undo":
+  - img
+  - text: ""
+- button "Retry":
+  - img
+  - text: ""

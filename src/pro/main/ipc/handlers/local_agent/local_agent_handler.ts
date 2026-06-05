@@ -38,6 +38,7 @@ import {
   getAiHeaders,
   DYAD_INTERNAL_REQUEST_ID_HEADER,
 } from "@/ipc/utils/provider_options";
+import { recordCodeExplorerBenchmarkEvent } from "./benchmark_recorder";
 
 import {
   AgentToolName,
@@ -1035,6 +1036,15 @@ export async function handleLocalAgentStream(
               return result;
             },
             onStepFinish: async (step) => {
+              recordCodeExplorerBenchmarkEvent({
+                type: "stream_step_finish",
+                chatId: req.chatId,
+                appId: chat.app.id,
+                toolCallCount: step.toolCalls.length,
+                toolNames: step.toolCalls.map((toolCall) => toolCall.toolName),
+                usage: step.usage,
+              });
+
               if (!hasInjectedPlanningQuestionnaireReflection) {
                 const questionnaireError =
                   getPlanningQuestionnaireErrorFromStep(step);
@@ -1083,6 +1093,12 @@ export async function handleLocalAgentStream(
               const totalTokens = response.usage?.totalTokens;
               const inputTokens = response.usage?.inputTokens;
               const cachedInputTokens = response.usage?.cachedInputTokens;
+              recordCodeExplorerBenchmarkEvent({
+                type: "stream_finish",
+                chatId: req.chatId,
+                appId: chat.app.id,
+                usage: response.usage,
+              });
               logger.log(
                 "Total tokens used:",
                 totalTokens,

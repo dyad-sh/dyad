@@ -68,6 +68,10 @@ When passing a PR body inline via `gh pr create --body "..."`, unescaped backtic
 formatting, check `git status` and revert unrelated skill-file churn before
 committing unless the task intentionally changes those skill docs.
 
+## Commit hooks and untracked artifacts
+
+After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useCheckName } from "@/hooks/useCheckName";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface AppBlueprintNameConflictDialogProps {
   /** The rejected app name that is already in use, pre-filled into the input. */
@@ -39,13 +40,28 @@ export function AppBlueprintNameConflictDialog({
   }, [isOpen, rejectedName]);
 
   const trimmedName = name.trim();
-  const { data: nameCheckResult } = useCheckName(trimmedName);
-  const nameExists = !!nameCheckResult?.exists;
+  // Debounce before hitting the name-check IPC so we don't fire a request on
+  // every keystroke. Skip the query for the rejected name since we already
+  // know it's taken.
+  const debouncedName = useDebounce(trimmedName, 300);
+  const { data: nameCheckResult, isLoading: isCheckingName } = useCheckName(
+    debouncedName !== rejectedName ? debouncedName : "",
+  );
+  const nameExists =
+    trimmedName !== rejectedName &&
+    debouncedName === trimmedName &&
+    !!nameCheckResult?.exists;
   // Disable submit until the user picks a different, non-empty name that
   // isn't already taken. The initial value equals the rejected name, so the
-  // button stays disabled until they actually change it.
+  // button stays disabled until they actually change it. We also wait for the
+  // debounce to settle and the name-check to finish so a conflicting name
+  // can't slip through while the query is still in flight.
   const canSubmit =
-    trimmedName.length > 0 && trimmedName !== rejectedName && !nameExists;
+    trimmedName.length > 0 &&
+    trimmedName !== rejectedName &&
+    !nameExists &&
+    debouncedName === trimmedName &&
+    !isCheckingName;
 
   const handleSubmit = () => {
     if (!canSubmit) return;

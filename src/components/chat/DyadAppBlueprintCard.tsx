@@ -300,7 +300,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
 
   const handleFieldEdit = useCallback(
     (field: AppBlueprintEditableField, value: string) => {
-      if (!chatId || isApproved) return;
+      if (!chatId || isApproved) return Promise.resolve();
 
       // Update local state immediately
       setAppBlueprintState((prev) => {
@@ -312,8 +312,9 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         return { ...prev, plansByChatId: nextPlans };
       });
 
-      // Persist to main process
-      void ipc.appBlueprint
+      // Persist to main process. The returned promise lets callers that need
+      // the write to land before a follow-up IPC (e.g. approval) await it.
+      return ipc.appBlueprint
         .editField({ chatId, field, value })
         .catch((error) => {
           console.error("Failed to persist app blueprint field edit:", error);
@@ -343,7 +344,9 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         typeof overrideAppName === "string" ? overrideAppName.trim() : "";
       const effectiveAppName = override || plan.appName;
       if (override && effectiveAppName !== plan.appName) {
-        handleFieldEdit("appName", effectiveAppName);
+        // Await the persist so the blueprint and the app row can't disagree
+        // about the name if the edit and approve IPC calls race.
+        await handleFieldEdit("appName", effectiveAppName);
       }
 
       approvingRef.current = true;

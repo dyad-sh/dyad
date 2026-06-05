@@ -36,6 +36,7 @@ import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
 import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
+import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
@@ -98,6 +99,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   runTypeChecksTool,
   readGuideTool,
   executeSandboxScriptTool,
+  searchMcpToolsTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,
@@ -410,6 +412,53 @@ const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
 
 /**
+ * Whether a tool belongs in this turn's tool set. Single source of truth for
+ * inclusion, so a caller that needs the answer before the set is built (e.g. a
+ * tool whose availability depends on another tool) can ask the same question
+ * the builder does.
+ */
+export function shouldIncludeTool(
+  tool: (typeof TOOL_DEFINITIONS)[number],
+  ctx: AgentContext,
+  options: BuildAgentToolSetOptions = {},
+): boolean {
+  if (getAgentToolConsent(tool.name) === "never") {
+    return false;
+  }
+  // In plan mode, skip state-modifying tools unless they're planning-specific.
+  if (
+    options.planModeOnly &&
+    tool.modifiesState &&
+    !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+  ) {
+    return false;
+  }
+  // Skip plan-mode-only tools when NOT in plan mode.
+  if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  // Skip Pro-only tools in basic agent mode.
+  if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  // Skip app blueprint tools when the feature is disabled.
+  if (
+    options.enableAppBlueprint === false &&
+    APP_BLUEPRINT_TOOLS.has(tool.name)
+  ) {
+    return false;
+  }
+  // In read-only mode, skip tools that modify state.
+  if (options.readOnly && tool.modifiesState) {
+    return false;
+  }
+  if (tool.isEnabled && !tool.isEnabled(ctx)) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
 export function buildAgentToolSet(
@@ -419,44 +468,7 @@ export function buildAgentToolSet(
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
-    const consent = getAgentToolConsent(tool.name);
-    if (consent === "never") {
-      continue;
-    }
-
-    // In plan mode, skip state-modifying tools unless they're planning-specific
-    if (
-      options.planModeOnly &&
-      tool.modifiesState &&
-      !PLANNING_SPECIFIC_TOOLS.has(tool.name)
-    ) {
-      continue;
-    }
-
-    // Skip plan-mode-only tools when NOT in plan mode
-    if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
-      continue;
-    }
-
-    // Skip Pro-only tools in basic agent mode
-    if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
-      continue;
-    }
-
-    // Skip app blueprint tools when the feature is disabled
-    if (
-      options.enableAppBlueprint === false &&
-      APP_BLUEPRINT_TOOLS.has(tool.name)
-    ) {
-      continue;
-    }
-
-    // In read-only mode, skip tools that modify state
-    if (options.readOnly && tool.modifiesState) {
-      continue;
-    }
-
-    if (tool.isEnabled && !tool.isEnabled(ctx)) {
+    if (!shouldIncludeTool(tool, ctx, options)) {
       continue;
     }
 

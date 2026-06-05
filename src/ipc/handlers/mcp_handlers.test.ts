@@ -8,6 +8,7 @@
 // process.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "@/ipc/contracts/core";
 
 // --- ipcMain capture ----------------------------------------------------
 const handlers = new Map<string, (event: unknown, input: unknown) => unknown>();
@@ -133,7 +134,9 @@ handlersModule.registerMcpHandlers();
 function invoke<T>(channel: string, input: unknown): Promise<T> {
   const fn = handlers.get(channel);
   if (!fn) throw new Error(`No handler registered for channel ${channel}`);
-  return Promise.resolve(fn({}, input)) as Promise<T>;
+  return Promise.resolve(fn({}, input)).then((result) =>
+    isIpcInvokeEnvelope(result) ? unwrapIpcEnvelope(result) : result,
+  ) as Promise<T>;
 }
 
 function seedRow(row: Partial<Row> & { id: number }): void {

@@ -21,6 +21,7 @@ import { useThemes } from "@/hooks/useThemes";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
 import { sanitizeAppFolderName } from "@/shared/sanitizeAppFolderName";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type {
   AppBlueprintEditableField,
   AppBlueprintVisualEditableField,
@@ -35,19 +36,8 @@ import { getAppBlueprintTemplateOptions } from "./appBlueprintTemplateOptions";
 import { AppBlueprintNameConflictDialog } from "./AppBlueprintNameConflictDialog";
 import type { CustomTagState } from "./stateTypes";
 
-/**
- * The rename handler throws a name or path conflict (both surface as
- * "already exists") when the app's name is taken. The DyadError `kind` doesn't
- * survive the IPC boundary, so we detect the conflict from the message.
- */
 function isNameConflictError(error: unknown): boolean {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  return /already exists/i.test(message);
+  return error instanceof DyadError && error.kind === DyadErrorKind.Conflict;
 }
 
 interface DyadAppBlueprintCardProps {

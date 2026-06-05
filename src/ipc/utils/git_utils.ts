@@ -17,6 +17,10 @@ import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
 
+function isUserVisibleGitPath(filePath: string) {
+  return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
+}
+
 /**
  * Returns a sanitized environment for git commands on Windows.
  * Filters out WSL-related PATH entries that can cause WSL interop issues.
@@ -659,8 +663,6 @@ export async function gitRemove({
 export async function getGitUncommittedFiles({
   path,
 }: GitBaseParams): Promise<string[]> {
-  const isUserVisiblePath = (filePath: string) =>
-    !filePath.startsWith(".dyad/");
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await execGit(["status", "--porcelain"], path);
@@ -675,13 +677,13 @@ export async function getGitUncommittedFiles({
       .split("\n")
       .filter((line) => line.trim() !== "")
       .map((line) => line.slice(3).trim())
-      .filter(isUserVisiblePath);
+      .filter(isUserVisibleGitPath);
   } else {
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
     return statusMatrix
       .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
       .map((row) => row[0])
-      .filter(isUserVisiblePath);
+      .filter(isUserVisibleGitPath);
   }
 }
 
@@ -692,8 +694,6 @@ export async function getGitUncommittedFiles({
 export async function getGitUncommittedFilesWithStatus({
   path,
 }: GitBaseParams): Promise<UncommittedFile[]> {
-  const isUserVisiblePath = (filePath: string) =>
-    !filePath.startsWith(".dyad/");
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await execGit(["status", "--porcelain"], path);
@@ -709,7 +709,7 @@ export async function getGitUncommittedFilesWithStatus({
       .filter((line) => line.trim() !== "")
       .filter((line) => {
         const filePath = line.slice(3).trim();
-        return isUserVisiblePath(
+        return isUserVisibleGitPath(
           filePath.includes(" -> ")
             ? filePath.substring(filePath.indexOf(" -> ") + 4)
             : filePath,
@@ -754,7 +754,7 @@ export async function getGitUncommittedFilesWithStatus({
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
     return statusMatrix
       .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
-      .filter((row) => isUserVisiblePath(row[0]))
+      .filter((row) => isUserVisibleGitPath(row[0]))
       .map((row) => {
         const filePath = row[0];
         const head = row[1];

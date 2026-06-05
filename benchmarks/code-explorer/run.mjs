@@ -144,6 +144,8 @@ async function runTrial(trial) {
   const userDataDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "dyad-code-bench-"),
   );
+  const xdgConfigHome = path.join(userDataDir, "xdg-config");
+  fs.mkdirSync(xdgConfigHome, { recursive: true });
   const latestBuild = eph.findLatestBuild();
   const appInfo = eph.parseElectronApp(latestBuild);
   const startedAt = Date.now();
@@ -151,98 +153,134 @@ async function runTrial(trial) {
     ...process.env,
     DYAD_BENCHMARK_RUN_ID: benchmarkRunId,
     DYAD_PRO_KEY: process.env.DYAD_PRO_KEY,
+    XDG_CONFIG_HOME: xdgConfigHome,
+    GIT_CONFIG_GLOBAL: path.join(userDataDir, ".gitconfig"),
+    E2E_TEST_BUILD: "true",
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "benchmark-placeholder",
   };
 
   let electronApp;
   try {
-    electronApp = await electron.launch({
-      args: [
-        appInfo.main,
-        "--enable-logging",
-        `--user-data-dir=${userDataDir}`,
-      ],
-      executablePath: appInfo.executable,
-      env,
+    logTrial(trial, "launching packaged Dyad");
+    electronApp = await withTimeout(
+      electron.launch({
+        args: [
+          appInfo.main,
+          "--enable-logging",
+          `--user-data-dir=${userDataDir}`,
+        ],
+        executablePath: appInfo.executable,
+        env,
+      }),
+      60_000,
+      "launching packaged Dyad",
+    );
+    electronApp.process().stdout?.on("data", (data) => {
+      console.log(`[electron stdout] ${data.toString().trim()}`);
     });
-    const page = await electronApp.firstWindow();
+    electronApp.process().stderr?.on("data", (data) => {
+      console.error(`[electron stderr] ${data.toString().trim()}`);
+    });
+    electronApp.on("window", (page) => {
+      console.log(`[electron window] ${page.url()}`);
+    });
+    const page = await withTimeout(
+      electronApp.firstWindow({ timeout: 120_000 }),
+      120_000,
+      "waiting for first Electron window",
+    );
     await page.waitForLoadState("domcontentloaded");
 
-    const importResult = await page.evaluate(
-      async ({ repoPath, repoName, apiKey, model, enableCodeExplorer }) => {
-        await window.electron.ipcRenderer.invoke("set-user-settings", {
-          enableDyadPro: true,
-          enableCodeExplorer,
-          selectedChatMode: "local-agent",
-          selectedModel: { provider: "auto", name: model },
-          providerSettings: {
-            auto: {
-              apiKey: { value: apiKey },
+    logTrial(trial, "configuring settings and importing app");
+    const importResult = await withTimeout(
+      page.evaluate(
+        async ({ repoPath, repoName, apiKey, model, enableCodeExplorer }) => {
+          await window.electron.ipcRenderer.invoke("set-user-settings", {
+            enableDyadPro: true,
+            enableCodeExplorer,
+            selectedChatMode: "local-agent",
+            selectedModel: { provider: "auto", name: model },
+            providerSettings: {
+              auto: {
+                apiKey: { value: apiKey },
+              },
             },
-          },
-        });
-        return window.electron.ipcRenderer.invoke("import-app", {
-          path: repoPath,
-          appName: `bench-${repoName}`,
-          skipCopy: true,
-        });
-      },
-      {
-        repoPath,
-        repoName: `${trial.repo.name}-${trial.arm}-${trial.repeat}`,
-        apiKey: process.env.DYAD_PRO_KEY,
-        model: values.model,
-        enableCodeExplorer: trial.arm === "explore",
-      },
+          });
+          return window.electron.ipcRenderer.invoke("import-app", {
+            path: repoPath,
+            appName: `bench-${repoName}`,
+            skipCopy: true,
+          });
+        },
+        {
+          repoPath,
+          repoName: `${trial.repo.name}-${trial.arm}-${trial.repeat}`,
+          apiKey: process.env.DYAD_PRO_KEY,
+          model: values.model,
+          enableCodeExplorer: trial.arm === "explore",
+        },
+      ),
+      120_000,
+      "settings/import-app",
     );
 
-    await page.evaluate(
-      ({ chatId, prompt, timeoutMs }) =>
-        new Promise((resolve, reject) => {
-          const timer = setTimeout(() => {
-            cleanup();
-            reject(new Error(`chat stream timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-          const cleanup = () => {
-            clearTimeout(timer);
-            window.electron.ipcRenderer.removeAllListeners("chat:response:end");
-            window.electron.ipcRenderer.removeAllListeners(
-              "chat:response:error",
+    logTrial(trial, `starting chat ${importResult.chatId}`);
+    await withTimeout(
+      page.evaluate(
+        ({ chatId, prompt, timeoutMs }) =>
+          new Promise((resolve, reject) => {
+            let unsubscribeEnd;
+            let unsubscribeError;
+            const timer = setTimeout(() => {
+              cleanup();
+              reject(new Error(`chat stream timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+            const cleanup = () => {
+              clearTimeout(timer);
+              unsubscribeEnd?.();
+              unsubscribeError?.();
+            };
+            const getPayload = (first, second) => second ?? first;
+            unsubscribeEnd = window.electron.ipcRenderer.on(
+              "chat:response:end",
+              (first, second) => {
+                const payload = getPayload(first, second);
+                if (payload.chatId !== chatId) return;
+                cleanup();
+                resolve(payload);
+              },
             );
-          };
-          window.electron.ipcRenderer.on(
-            "chat:response:end",
-            (_event, payload) => {
-              if (payload.chatId !== chatId) return;
-              cleanup();
-              resolve(payload);
-            },
-          );
-          window.electron.ipcRenderer.on(
-            "chat:response:error",
-            (_event, payload) => {
-              if (payload.chatId !== chatId) return;
-              cleanup();
-              reject(new Error(payload.error || "chat stream failed"));
-            },
-          );
-          window.electron.ipcRenderer
-            .invoke("chat:stream", {
-              chatId,
-              prompt,
-              requestedChatMode: "local-agent",
-            })
-            .catch((error) => {
-              cleanup();
-              reject(error);
-            });
-        }),
-      {
-        chatId: importResult.chatId,
-        prompt: trial.task.prompt,
-        timeoutMs,
-      },
+            unsubscribeError = window.electron.ipcRenderer.on(
+              "chat:response:error",
+              (first, second) => {
+                const payload = getPayload(first, second);
+                if (payload.chatId !== chatId) return;
+                cleanup();
+                reject(new Error(payload.error || "chat stream failed"));
+              },
+            );
+            window.electron.ipcRenderer
+              .invoke("chat:stream", {
+                chatId,
+                prompt,
+                requestedChatMode: "local-agent",
+              })
+              .catch((error) => {
+                cleanup();
+                reject(error);
+              });
+          }),
+        {
+          chatId: importResult.chatId,
+          prompt: trial.task.prompt,
+          timeoutMs,
+        },
+      ),
+      timeoutMs + 15_000,
+      "chat stream",
     );
 
+    logTrial(trial, "reading final chat");
     const chat = await page.evaluate((chatId) => {
       return window.electron.ipcRenderer.invoke("get-chat", chatId);
     }, importResult.chatId);
@@ -276,7 +314,40 @@ async function runTrial(trial) {
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    await electronApp?.close().catch(() => {});
+    await withTimeout(
+      electronApp?.close() ?? Promise.resolve(),
+      15_000,
+      "closing Electron app",
+    ).catch(() => {
+      electronApp?.process()?.kill("SIGKILL");
+    });
+    killProcessesForUserDataDir(userDataDir);
+  }
+}
+
+function logTrial(trial, message) {
+  console.log(
+    `[${trial.repo.name}/${trial.task.id}/${trial.arm}/repeat-${trial.repeat}] ${message}`,
+  );
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+function killProcessesForUserDataDir(userDataDir) {
+  try {
+    execFileSync("pkill", ["-f", userDataDir], { stdio: "ignore" });
+  } catch {
+    // pkill exits non-zero when no processes match.
   }
 }
 

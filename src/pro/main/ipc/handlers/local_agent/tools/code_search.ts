@@ -9,6 +9,8 @@ import {
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { readSettings } from "@/main/settings";
+import { isCodeExplorerReady } from "@/ipc/processors/code_explorer";
 import {
   filterDyadInternalFiles,
   resolveTargetAppPath,
@@ -103,8 +105,11 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
   inputSchema: codeSearchSchema,
   defaultConsent: "always",
 
-  // Requires Dyad Pro engine API
-  isEnabled: (ctx) => ctx.isDyadPro,
+  // Requires Dyad Pro engine API. When the compiler-backed code explorer is
+  // available, prefer that instead of exposing both code search tools.
+  isEnabled: (ctx) =>
+    ctx.isDyadPro &&
+    !(readSettings().enableCodeExplorer && isCodeExplorerReady(ctx.appPath)),
 
   getConsentPreview: (args) =>
     args.app_name

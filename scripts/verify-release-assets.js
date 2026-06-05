@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { isPrereleaseVersion } = require("./release-version-utils.js");
 
 /**
  * Verifies that all expected binary assets are present in the GitHub release
@@ -58,6 +59,13 @@ async function verifyReleaseAssets() {
 
     console.log(`📦 Found ${assets.length} assets in release ${tagName}`);
     console.log(`📄 Release status: ${release.draft ? "DRAFT" : "PUBLISHED"}`);
+
+    const expectedPrerelease = isPrereleaseVersion(version);
+    if (release.prerelease !== expectedPrerelease) {
+      throw new Error(
+        `Release ${tagName} prerelease flag is ${release.prerelease}, expected ${expectedPrerelease}`,
+      );
+    }
 
     // Handle different beta naming conventions across platforms
     const normalizeVersionForPlatform = (version, platform) => {

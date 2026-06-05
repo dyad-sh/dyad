@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
+import type { editor as MonacoEditor } from "monaco-editor";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ChevronRight, Circle, Save } from "lucide-react";
@@ -31,6 +32,44 @@ interface BreadcrumbProps {
   hasUnsavedChanges: boolean;
   onSave: () => void;
   isSaving: boolean;
+}
+
+const retainedMonacoModels = new Map<
+  string,
+  { model: MonacoEditor.ITextModel; count: number }
+>();
+
+function retainMonacoModel(
+  modelPath: string,
+  model: MonacoEditor.ITextModel,
+): () => void {
+  const retainedModel = retainedMonacoModels.get(modelPath);
+  if (retainedModel?.model === model) {
+    retainedModel.count += 1;
+  } else {
+    retainedMonacoModels.set(modelPath, { model, count: 1 });
+  }
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+
+    const retainedModel = retainedMonacoModels.get(modelPath);
+    if (!retainedModel || retainedModel.model !== model) {
+      return;
+    }
+
+    retainedModel.count -= 1;
+    if (retainedModel.count <= 0) {
+      retainedMonacoModels.delete(modelPath);
+      if (!model.isDisposed()) {
+        model.dispose();
+      }
+    }
+  };
 }
 
 const Breadcrumb: React.FC<BreadcrumbProps> = ({
@@ -115,6 +154,7 @@ export const FileEditor = ({
   const currentValueRef = useRef<string | undefined>(undefined);
   const hasInitializedContentRef = useRef(false);
   const isMountedRef = useRef(false);
+  const releaseModelRef = useRef<(() => void) | null>(null);
 
   const queryClient = useQueryClient();
   const { checkProblems } = useCheckProblems(appId);
@@ -123,6 +163,8 @@ export const FileEditor = ({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      releaseModelRef.current?.();
+      releaseModelRef.current = null;
     };
   }, []);
 
@@ -173,6 +215,10 @@ export const FileEditor = ({
   // Handle editor mount
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
+    const model = editor.getModel();
+    if (model) {
+      releaseModelRef.current = retainMonacoModel(modelPath, model);
+    }
 
     // Navigate to initialLine if provided (handles case when editor mounts after initialLine is set)
     if (initialLine != null) {

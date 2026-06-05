@@ -712,12 +712,12 @@ export async function handleLocalAgentStream(
     const useMcpToolSearch =
       mcpInSandboxEnabled &&
       !!settings.enableMcpToolSearch &&
-      agentTools.search_mcp_tools !== undefined;
+      agentTools.search_mcp_tools != undefined;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
-    if (agentTools.execute_sandbox_script !== undefined) {
+    if (agentTools.execute_sandbox_script != undefined) {
       // Initialize with the MustardScript-only preamble so even a
       // failure in the MCP collection path below leaves the model with
       // the syntax + file-inspection docs (rather than the one-line

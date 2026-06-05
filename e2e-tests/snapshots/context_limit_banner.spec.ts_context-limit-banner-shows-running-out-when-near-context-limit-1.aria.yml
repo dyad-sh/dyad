@@ -1,13 +1,6 @@
-- paragraph: Summarize from chat-id=1
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-- button "Retry":
-  - img
+- paragraph: tc=context-limit-response [high-tokens=110000]
+- paragraph: Here is a simple response to test the context limit banner functionality.
+- paragraph: This message simulates being close to the model's context window limit.
+- button "Copy"
+- button "Undo"
+- button "Retry"

@@ -1,4 +1,5 @@
 - paragraph: "[increment]"
 - paragraph: counter=1
-- button "Retry":
-  - img
+- button "Copy"
+- button "Undo"
+- button "Retry"

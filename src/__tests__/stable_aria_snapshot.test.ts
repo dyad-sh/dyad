@@ -44,6 +44,21 @@ describe("normalizeMessagesAriaSnapshot", () => {
     );
   });
 
+  it("elides expanded button descendants while preserving state", () => {
+    expect(
+      normalizeMessagesAriaSnapshot(`- 'button "GREP \\"createRoot\\" (2 matches) log Copy src/main.tsx:1: import { createRoot } from \\"react-dom/client\\";" [expanded]':
+  - img
+  - text: GREP "createRoot" (2 matches)
+  - img
+  - text: log
+  - button "Copy":
+    - img
+    - text: Copy
+  - code: "src/main.tsx:1: import { createRoot } from \\"react-dom/client\\";"
+`),
+    ).toBe(`- button "GREP \\"createRoot\\" (2 matches)" [expanded]\n`);
+  });
+
   it("drops repeated chat metadata and nameless icons", () => {
     expect(
       normalizeMessagesAriaSnapshot(`- img

@@ -1,4 +1,7 @@
-- region "Notifications (F8)":
-  - list
-- region "Notifications alt+T"
-- text: Testing:write-index!
+- paragraph: tc=write-index
+- paragraph: OK, I'm going to do some writing now...
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: write-description"'
+- paragraph: And it's done!
+- button "Copy"
+- button "Undo"
+- button "Retry"

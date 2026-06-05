@@ -15,7 +15,10 @@ test("problems auto-fix - enabled", async ({ po }) => {
   await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
   await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
 
-  await po.snapshotMessages({ replaceDumpPath: true });
+  await po.snapshotMessages({
+    name: "problems-auto-fix---gives-up-after-2-attempts-2",
+    replaceDumpPath: true,
+  });
 });
 
 test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {

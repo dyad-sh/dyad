@@ -34,33 +34,50 @@ function normalizeTextLine(line: string) {
 
 function parseButtonLine(
   line: string,
-): { indent: string; name: string; quoteKey: boolean } | undefined {
-  const quotedMatch = line.match(/^(\s*)- 'button "(.+)"':\s*$/);
+):
+  | { indent: string; name: string; quoteKey: boolean; state: string }
+  | undefined {
+  const quotedMatch = line.match(
+    /^(\s*)- 'button "((?:\\.|[^"])*)"(\s+\[[^\]]+\])?'(?::\s*)?$/,
+  );
   if (quotedMatch) {
-    return { indent: quotedMatch[1], name: quotedMatch[2], quoteKey: true };
+    return {
+      indent: quotedMatch[1],
+      name: quotedMatch[2],
+      quoteKey: true,
+      state: quotedMatch[3] ?? "",
+    };
   }
 
-  const match = line.match(/^(\s*)- button "([^"]+)"(?::\s*)?$/);
+  const match = line.match(
+    /^(\s*)- button "((?:\\.|[^"])*)"(\s+\[[^\]]+\])?(?::\s*)?$/,
+  );
   if (match) {
-    return { indent: match[1], name: match[2], quoteKey: false };
+    return {
+      indent: match[1],
+      name: match[2],
+      quoteKey: false,
+      state: match[3] ?? "",
+    };
   }
 }
 
 function formatButtonLine({
   indent,
   name,
-  quoteKey,
+  state,
 }: {
   indent: string;
   name: string;
-  quoteKey: boolean;
+  state: string;
 }) {
   name = name.replace(/\b\d+ms\b/g, "[[duration]]");
+  name = name.replace(/\s+log Copy .+$/g, "");
 
-  if (quoteKey || name.includes(":")) {
-    return `${indent}- 'button "${name.replace(/'/g, "''")}"'`;
+  if (name.includes(":")) {
+    return `${indent}- 'button "${name.replace(/'/g, "''")}"${state}'`;
   }
-  return `${indent}- button "${name}"`;
+  return `${indent}- button "${name}"${state}`;
 }
 
 function shouldDropLine(line: string) {

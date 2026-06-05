@@ -4,7 +4,7 @@
  * to component page objects (e.g., po.chatActions.sendPrompt()).
  */
 
-import { Page, expect, type TestInfo } from "@playwright/test";
+import { Page, expect, type Locator, type TestInfo } from "@playwright/test";
 import { ElectronApplication } from "playwright";
 import fs from "fs";
 
@@ -56,7 +56,7 @@ export class PageObject {
   public appManagement: AppManagement;
   public promptLibrary: PromptLibrary;
   public browserNotifications: BrowserNotifications;
-  private stableSnapshotIndex = 0;
+  private stableMessageSnapshotIndex = 0;
 
   constructor(
     public electronApp: ElectronApplication,
@@ -89,15 +89,59 @@ export class PageObject {
 
   private testInfo?: TestInfo;
 
-  private nextStableSnapshotName(extension: string) {
-    this.stableSnapshotIndex++;
+  private nextStableMessageSnapshotPath(name?: string) {
+    if (name) {
+      const snapshotName = name.endsWith(".aria.yml")
+        ? name
+        : `${name}.aria.yml`;
+      return this.testInfo?.snapshotPath(snapshotName, {
+        kind: "aria",
+      });
+    }
+
+    this.stableMessageSnapshotIndex++;
+    if (!this.testInfo) {
+      return undefined;
+    }
     const title = this.testInfo?.title ?? "messages";
     const normalizedTitle =
       title
-        .replace(/[^a-zA-Z0-9]/g, "-")
+        .replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, "-")
         .replace(/^-+/, "")
         .replace(/-+$/, "") || "messages";
-    return `${normalizedTitle}-${this.stableSnapshotIndex}.stable${extension}`;
+    return this.testInfo.snapshotPath(
+      `${normalizedTitle}-${this.stableMessageSnapshotIndex}.aria.yml`,
+      { kind: "aria" },
+    );
+  }
+
+  private expectStableMessageAriaSnapshot(
+    actualSnapshot: string,
+    name?: string,
+  ) {
+    const snapshotPath = this.nextStableMessageSnapshotPath(name);
+    if (!snapshotPath) {
+      expect(actualSnapshot).toMatchSnapshot();
+      return;
+    }
+
+    const updateSnapshots = this.testInfo?.config.updateSnapshots ?? "none";
+    const snapshotExists = fs.existsSync(snapshotPath);
+    const shouldUpdate =
+      updateSnapshots === "all" ||
+      updateSnapshots === "changed" ||
+      (updateSnapshots === "missing" && !snapshotExists);
+
+    if (shouldUpdate) {
+      fs.writeFileSync(snapshotPath, actualSnapshot);
+      return;
+    }
+
+    if (!snapshotExists) {
+      throw new Error(`ARIA snapshot does not exist: ${snapshotPath}`);
+    }
+
+    expect(actualSnapshot).toBe(fs.readFileSync(snapshotPath, "utf8"));
   }
 
   // ================================
@@ -358,9 +402,15 @@ export class PageObject {
 
   async snapshotMessages({
     replaceDumpPath = false,
+    name,
     stable = true,
     timeout,
-  }: { replaceDumpPath?: boolean; stable?: boolean; timeout?: number } = {}) {
+  }: {
+    replaceDumpPath?: boolean;
+    name?: string;
+    stable?: boolean;
+    timeout?: number;
+  } = {}) {
     // NOTE: once you have called this, you can NOT manipulate the UI anymore or React will break.
     if (replaceDumpPath) {
       await this.page.evaluate(() => {
@@ -390,9 +440,18 @@ export class PageObject {
     }
 
     const rawSnapshot = await messagesList.ariaSnapshot({ timeout });
-    expect(normalizeMessagesAriaSnapshot(rawSnapshot)).toMatchSnapshot(
-      this.nextStableSnapshotName(".aria.yml"),
-    );
+    const normalizedSnapshot = `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
+    this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
+  }
+
+  async snapshotStableAria(
+    locator: Locator,
+    name: string,
+    { timeout }: { timeout?: number } = {},
+  ) {
+    const rawSnapshot = await locator.ariaSnapshot({ timeout });
+    const normalizedSnapshot = `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
+    this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
   }
 
   async snapshotServerDump(

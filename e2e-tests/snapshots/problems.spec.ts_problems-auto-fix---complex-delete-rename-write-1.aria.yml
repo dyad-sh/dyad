@@ -1,53 +1,15 @@
 - paragraph: tc=create-ts-errors-complex
 - paragraph: Tests delete-rename-write order
-- img
 - text: main.tsx Delete src/main.tsx
-- img
 - text: "App.tsx → main.tsx Rename From: src/App.tsx To: src/main.tsx"
-- 'button "main.tsx src/main.tsx Edit Summary: final main.tsx file."':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
+- 'button "main.tsx src/main.tsx Edit Summary: final main.tsx file."'
 - paragraph: EOM
-- button "Auto-fix 1 problems":
-  - img
-  - text: ""
-  - img
-- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
+- button "Auto-fix 1 problems"
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."'
 - paragraph: "[[dyad-dump-path=*]]"
-- button "Auto-fix 1 problems":
-  - img
-  - text: ""
-  - img
-- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
+- button "Auto-fix 1 problems"
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."'
 - paragraph: "[[dyad-dump-path=*]]"
-- button "Copy":
-  - img
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Undo"
+- button "Retry"

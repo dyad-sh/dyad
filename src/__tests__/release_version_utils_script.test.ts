@@ -13,5 +13,7 @@ describe("release version utils script", () => {
     expect(isPrereleaseVersion("1.3.0-beta.1")).toBe(true);
     expect(isPrereleaseVersion("1.3.0-rc.1")).toBe(true);
     expect(isPrereleaseVersion("1.3.0")).toBe(false);
+    expect(isPrereleaseVersion("1.3.0+build-1")).toBe(false);
+    expect(isPrereleaseVersion("1.3.0-rc.1+build-1")).toBe(true);
   });
 });

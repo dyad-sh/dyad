@@ -1,5 +1,6 @@
 function isPrereleaseVersion(version) {
-  return version.includes("-");
+  const [coreAndPrerelease] = version.split("+", 1);
+  return coreAndPrerelease.includes("-");
 }
 
 module.exports = {

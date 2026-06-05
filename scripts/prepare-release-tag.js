@@ -7,6 +7,16 @@ const { execFileSync } = require("child_process");
 const DEFAULT_OWNER = "dyad-sh";
 const DEFAULT_REPO = "dyad";
 
+class GithubRequestError extends Error {
+  constructor({ path, response, text }) {
+    super(
+      `GitHub API GET ${path} failed: ${response.status} ${response.statusText}\n${text}`,
+    );
+    this.name = "GithubRequestError";
+    this.status = response.status;
+  }
+}
+
 function readPackageVersion(packageJsonPath) {
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   if (typeof packageJson.version !== "string" || !packageJson.version) {
@@ -31,15 +41,26 @@ async function githubRequest({ owner, path, repo, token }) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `GitHub API GET ${path} failed: ${response.status} ${response.statusText}\n${text}`,
-    );
+    throw new GithubRequestError({ path, response, text });
   }
 
   return response.json();
 }
 
 async function findReleaseByTag({ owner, repo, tagName, token }) {
+  try {
+    return await githubRequest({
+      owner,
+      path: `/releases/tags/${tagName}`,
+      repo,
+      token,
+    });
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error;
+    }
+  }
+
   for (let page = 1; page <= 5; page += 1) {
     const releases = await githubRequest({
       owner,
@@ -80,6 +101,26 @@ function pushTagToSha({ currentSha, tagName }) {
   runGit(["push", "origin", `refs/tags/${tagName}`, "--force"]);
 }
 
+function getRemoteTagShaFromOutput({ output, tagName }) {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const dereferencedLine = lines.find((line) =>
+    line.endsWith(`refs/tags/${tagName}^{}`),
+  );
+  const tagLine =
+    dereferencedLine ??
+    lines.find((line) => line.endsWith(`refs/tags/${tagName}`));
+
+  if (!tagLine) {
+    return null;
+  }
+
+  const [sha] = tagLine.split(/\s+/);
+  return sha || null;
+}
+
 function getRemoteTagSha(tagName) {
   const output = runGit([
     "ls-remote",
@@ -91,8 +132,7 @@ function getRemoteTagSha(tagName) {
     return null;
   }
 
-  const [sha] = output.split(/\s+/);
-  return sha || null;
+  return getRemoteTagShaFromOutput({ output, tagName });
 }
 
 function verifyRemoteTagSha({ currentSha, tagName }) {
@@ -116,7 +156,15 @@ function writeGithubOutputs({ outputPath, outputs }) {
   fs.appendFileSync(
     outputPath,
     Object.entries(outputs)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([key, value]) => {
+        const stringValue = String(value);
+        if (stringValue.includes("\n")) {
+          throw new Error(
+            `GitHub output values must not contain newlines: ${key}`,
+          );
+        }
+        return `${key}=${stringValue}`;
+      })
       .join("\n") + "\n",
   );
 }
@@ -225,7 +273,10 @@ module.exports = {
   findReleaseByTag,
   getRepoParts,
   getRemoteTagSha,
+  getRemoteTagShaFromOutput,
+  GithubRequestError,
   prepareReleaseTag,
   readPackageVersion,
   verifyPreparedReleaseTag,
+  writeGithubOutputs,
 };

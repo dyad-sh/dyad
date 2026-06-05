@@ -10,6 +10,8 @@ export interface ParsedRoute {
 }
 
 const ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
+const ASTRO_PAGE_FILE_EXTENSIONS = new Set(["astro", "md", "mdx"]);
+const TANSTACK_ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
 
 function hasRouteFileExtension(filePath: string): boolean {
   const extension = filePath.split(".").pop()?.toLowerCase();
@@ -198,6 +200,104 @@ export function parseRoutesFromNextFiles(files: string[]): ParsedRoute[] {
 }
 
 /**
+ * Parses routes from Astro file-based routing (src/pages directory).
+ */
+export function parseRoutesFromAstroFiles(files: string[]): ParsedRoute[] {
+  const astroRoutes = new Set<string>();
+
+  for (const file of files) {
+    if (!file.startsWith("src/pages/")) continue;
+
+    const extension = file.split(".").pop()?.toLowerCase();
+    if (!extension || !ASTRO_PAGE_FILE_EXTENSIONS.has(extension)) continue;
+
+    let routePath = file
+      .slice("src/pages/".length)
+      .replace(/\.(?:astro|md|mdx)$/i, "");
+
+    if (!routePath || routePath.includes("[")) continue;
+    if (routePath.split("/").some((segment) => segment.startsWith("_"))) {
+      continue;
+    }
+
+    if (routePath === "index") {
+      astroRoutes.add("/");
+      continue;
+    }
+
+    if (routePath.endsWith("/index")) {
+      routePath = routePath.slice(0, -"/index".length);
+    }
+
+    astroRoutes.add("/" + routePath);
+  }
+
+  return Array.from(astroRoutes).map((path) => ({
+    path,
+    label: buildRouteLabel(path),
+  }));
+}
+
+/**
+ * Parses routes from TanStack Start / TanStack Router file-based routing.
+ */
+export function parseRoutesFromTanStackStartFiles(
+  files: string[],
+): ParsedRoute[] {
+  const tanStackRoutes = new Set<string>();
+
+  for (const file of files) {
+    if (!file.startsWith("src/routes/")) continue;
+
+    const extension = file.split(".").pop()?.toLowerCase();
+    if (!extension || !TANSTACK_ROUTE_FILE_EXTENSIONS.has(extension)) continue;
+
+    let routePath = file.slice("src/routes/".length);
+    if (
+      routePath === "__root.tsx" ||
+      routePath === "__root.jsx" ||
+      routePath === "__root.ts" ||
+      routePath === "__root.js" ||
+      routePath.toLowerCase() === "routetree.gen.ts" ||
+      routePath.toLowerCase() === "routetree.gen.js"
+    ) {
+      continue;
+    }
+
+    routePath = routePath.replace(/\.(?:js|jsx|ts|tsx)$/i, "");
+
+    if (!routePath || routePath.includes("$")) continue;
+
+    const rawSegments = routePath
+      .split("/")
+      .flatMap((segment) => segment.split("."))
+      .filter((segment) => segment);
+    const segments = rawSegments
+      .filter((segment) => segment !== "route")
+      .filter((segment) => !segment.startsWith("_"))
+      .map((segment) => (segment === "index" ? "" : segment));
+
+    if (
+      segments.every((segment) => segment === "") &&
+      rawSegments.some((segment) => segment === "index" || segment === "route")
+    ) {
+      tanStackRoutes.add("/");
+      continue;
+    }
+
+    const cleaned = segments.filter(Boolean).join("/");
+    if (cleaned) {
+      tanStackRoutes.add("/" + cleaned);
+    }
+  }
+
+  return Array.from(tanStackRoutes).map((path) => ({
+    path,
+    label: buildRouteLabel(path),
+  }));
+}
+
+/**
  * Loads the app router file and parses available routes for quick navigation.
  */
 export function useParseRouter(appId: number | null) {
@@ -215,13 +315,35 @@ export function useParseRouter(appId: number | null) {
     return app.files.some((f) => f.toLowerCase().includes("next.config"));
   }, [app?.files]);
 
+  const isAstroApp = useMemo(() => {
+    if (!app?.files) return false;
+    return app.files.some((f) => /^astro\.config\./i.test(f));
+  }, [app?.files]);
+
+  const isTanStackStartApp = useMemo(() => {
+    if (!app?.files) return false;
+    return app.files.some((f) => {
+      const lower = f.toLowerCase();
+      return (
+        lower === "app.config.ts" ||
+        lower === "app.config.js" ||
+        lower === "src/routetree.gen.ts" ||
+        lower === "src/routetree.gen.js" ||
+        lower === "src/routes/__root.tsx" ||
+        lower === "src/routes/__root.jsx" ||
+        lower === "src/routes/__root.ts" ||
+        lower === "src/routes/__root.js"
+      );
+    });
+  }, [app?.files]);
+
   const candidateRouterFiles = useMemo(() => {
-    if (!app?.files || isNextApp) {
+    if (!app?.files || isNextApp || isAstroApp || isTanStackStartApp) {
       return [];
     }
 
     return getReactRouterCandidateFiles(app.files);
-  }, [app?.files, isNextApp]);
+  }, [app?.files, isAstroApp, isNextApp, isTanStackStartApp]);
 
   const routerFileQueries = useQueries({
     queries: candidateRouterFiles.map((filePath) => ({
@@ -236,17 +358,24 @@ export function useParseRouter(appId: number | null) {
   const routes =
     isNextApp && app?.files
       ? parseRoutesFromNextFiles(app.files)
-      : parseRoutesFromRouterFiles(
-          routerFileQueries.map((query) => query.data ?? null),
-        );
+      : isAstroApp && app?.files
+        ? parseRoutesFromAstroFiles(app.files)
+        : isTanStackStartApp && app?.files
+          ? parseRoutesFromTanStackStartFiles(app.files)
+          : parseRoutesFromRouterFiles(
+              routerFileQueries.map((query) => query.data ?? null),
+            );
 
   const routerFileLoading =
     !isNextApp &&
+    !isAstroApp &&
+    !isTanStackStartApp &&
     candidateRouterFiles.length > 0 &&
     routerFileQueries.some((query) => query.isLoading);
-  const routerFileError = !isNextApp
-    ? (routerFileQueries.find((query) => query.error)?.error ?? null)
-    : null;
+  const routerFileError =
+    !isNextApp && !isAstroApp && !isTanStackStartApp
+      ? (routerFileQueries.find((query) => query.error)?.error ?? null)
+      : null;
   const combinedLoading = appLoading || routerFileLoading;
   const combinedError = appError || routerFileError || null;
   const refresh = async () => {

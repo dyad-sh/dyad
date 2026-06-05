@@ -5,6 +5,8 @@ import {
   parseRoutesFromRouterFile,
   parseRoutesFromRouterFiles,
   parseRoutesFromNextFiles,
+  parseRoutesFromAstroFiles,
+  parseRoutesFromTanStackStartFiles,
 } from "@/hooks/useParseRouter";
 
 describe("buildRouteLabel", () => {
@@ -283,5 +285,70 @@ describe("parseRoutesFromNextFiles", () => {
         ["/about", "/settings"].sort(),
       );
     });
+  });
+});
+
+describe("parseRoutesFromAstroFiles", () => {
+  it("should parse static routes from src/pages", () => {
+    const files = [
+      "astro.config.mjs",
+      "src/pages/index.astro",
+      "src/pages/about.astro",
+      "src/pages/blog/index.md",
+      "src/pages/docs/getting-started.mdx",
+    ];
+
+    const routes = parseRoutesFromAstroFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/about", "/blog", "/docs/getting-started"].sort(),
+    );
+  });
+
+  it("should skip dynamic routes and non-page files", () => {
+    const files = [
+      "src/pages/index.astro",
+      "src/pages/posts/[slug].astro",
+      "src/pages/api/users.ts",
+      "src/components/Card.astro",
+      "src/pages/_draft.astro",
+    ];
+
+    const routes = parseRoutesFromAstroFiles(files);
+    expect(routes.map((r) => r.path)).toEqual(["/"]);
+  });
+});
+
+describe("parseRoutesFromTanStackStartFiles", () => {
+  it("should parse static file routes from src/routes", () => {
+    const files = [
+      "app.config.ts",
+      "src/routeTree.gen.ts",
+      "src/routes/__root.tsx",
+      "src/routes/index.tsx",
+      "src/routes/about.tsx",
+      "src/routes/dashboard/index.tsx",
+      "src/routes/settings.profile.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/about", "/dashboard", "/settings/profile"].sort(),
+    );
+  });
+
+  it("should skip dynamic and pathless routes", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/index.tsx",
+      "src/routes/posts/$postId.tsx",
+      "src/routes/_auth.tsx",
+      "src/routes/_auth/login.tsx",
+      "src/routes/users/route.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/login", "/users"].sort(),
+    );
   });
 });

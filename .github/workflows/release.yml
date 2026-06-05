@@ -8,8 +8,36 @@ permissions:
 name: Release app
 on:
   workflow_dispatch:
+
+concurrency:
+  group: release-app-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  prepare-release:
+    name: Prepare Release Tag
+    runs-on: ubuntu-latest
+    environment: release
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+      version: ${{ steps.prepare.outputs.version }}
+      release-state: ${{ steps.prepare.outputs.release_state }}
+    steps:
+      - name: Github checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Use Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: v24.13.1
+          package-manager-cache: false # Do NOT use GitHub Actions cache in release builds: https://adnanthekhan.com/2024/12/21/cacheract-the-monster-in-your-build-cache/
+      - name: Create or update unpublished release tag
+        id: prepare
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/prepare-release-tag.js prepare
+
   build:
+    needs: prepare-release
     environment: release
     strategy:
       # Continue building other platforms even if one fails
@@ -168,6 +196,8 @@ jobs:
         with:
           node-version: v24.13.1
           package-manager-cache: false # Do NOT use GitHub Actions cache in release builds: https://adnanthekhan.com/2024/12/21/cacheract-the-monster-in-your-build-cache/
+      - name: Verify release tag still points to this workflow commit
+        run: node scripts/prepare-release-tag.js verify
       - name: Verify all release assets are uploaded
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

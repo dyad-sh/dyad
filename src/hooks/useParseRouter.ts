@@ -277,14 +277,28 @@ export function parseRoutesFromTanStackStartFiles(
 
     if (!routePath || routePath.includes("$")) continue;
 
-    const rawSegments = routePath
-      .split("/")
-      .flatMap((segment) => segment.split("."))
-      .filter((segment) => segment);
+    const routeSegments = routePath.split("/").filter((segment) => segment);
+    const rawSegments = routeSegments.flatMap((segment) =>
+      segment.split(".").filter((part) => part),
+    );
     if (rawSegments.some((segment) => segment.startsWith("-"))) continue;
 
-    const segments = rawSegments
-      .filter((segment) => !TANSTACK_ROUTE_FILE_SEGMENTS.has(segment))
+    const segments = routeSegments
+      .flatMap((segment, index) => {
+        if (segment === "route" && index === routeSegments.length - 1) {
+          return [];
+        }
+
+        const parts = segment.split(".").filter((part) => part);
+        if (
+          parts.length > 1 &&
+          TANSTACK_ROUTE_FILE_SEGMENTS.has(parts[parts.length - 1])
+        ) {
+          return parts.slice(0, -1);
+        }
+
+        return parts;
+      })
       .filter((segment) => !/^\(.+\)$/.test(segment))
       .filter((segment) => !segment.startsWith("_"))
       .map((segment) => segment.replace(/_$/, ""))

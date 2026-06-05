@@ -372,6 +372,20 @@ describe("parseRoutesFromTanStackStartFiles", () => {
     );
   });
 
+  it("should preserve literal route segments that match module suffix names", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/component.tsx",
+      "src/routes/docs/loader.tsx",
+      "src/routes/docs/loader.route.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/component", "/docs/loader"].sort(),
+    );
+  });
+
   it("should strip non-nested trailing underscores from route segments", () => {
     const files = [
       "src/routes/__root.tsx",

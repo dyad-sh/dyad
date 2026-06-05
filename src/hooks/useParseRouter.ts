@@ -285,11 +285,18 @@ export function parseRoutesFromTanStackStartFiles(
 
     const segments = routeSegments
       .flatMap((segment, index) => {
-        if (segment === "route" && index === routeSegments.length - 1) {
+        const parts = segment.split(".").filter((part) => part);
+        if (
+          parts[0] === "route" &&
+          index === routeSegments.length - 1 &&
+          parts.every(
+            (part, partIndex) =>
+              partIndex === 0 || TANSTACK_ROUTE_FILE_SEGMENTS.has(part),
+          )
+        ) {
           return [];
         }
 
-        const parts = segment.split(".").filter((part) => part);
         if (
           parts.length > 1 &&
           TANSTACK_ROUTE_FILE_SEGMENTS.has(parts[parts.length - 1])

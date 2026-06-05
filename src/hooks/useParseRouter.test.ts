@@ -386,6 +386,20 @@ describe("parseRoutesFromTanStackStartFiles", () => {
     );
   });
 
+  it("should strip route before module suffixes for directory route files", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/posts/route.tsx",
+      "src/routes/posts/route.lazy.tsx",
+      "src/routes/users/route.component.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/posts", "/users"].sort(),
+    );
+  });
+
   it("should strip non-nested trailing underscores from route segments", () => {
     const files = [
       "src/routes/__root.tsx",

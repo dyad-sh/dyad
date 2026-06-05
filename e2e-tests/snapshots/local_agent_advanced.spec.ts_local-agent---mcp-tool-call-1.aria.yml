@@ -43,8 +43,6 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- img
-- text: "Version 3: (1 files changed)"
 - button "Copy Request ID":
   - img
   - text: ""

@@ -1677,7 +1677,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </Popover>
             <input
               aria-label="Preview path"
-              className="flex-1 min-w-[2rem] rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 focus-visible:ring-1 focus-visible:ring-ring dark:text-gray-200"
+              className="flex-1 min-w-[2rem] rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
               data-testid="preview-address-bar-input"
               disabled={loading || !selectedAppId}
               onBlur={() => {

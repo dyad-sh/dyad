@@ -295,13 +295,14 @@ describe("parseRoutesFromAstroFiles", () => {
       "astro.config.mjs",
       "src/pages/index.astro",
       "src/pages/about.astro",
+      "src/pages/privacy.html",
       "src/pages/blog/index.md",
       "src/pages/docs/getting-started.mdx",
     ];
 
     const routes = parseRoutesFromAstroFiles(files);
     expect(routes.map((r) => r.path).sort()).toEqual(
-      ["/", "/about", "/blog", "/docs/getting-started"].sort(),
+      ["/", "/about", "/blog", "/docs/getting-started", "/privacy"].sort(),
     );
   });
 
@@ -367,6 +368,19 @@ describe("parseRoutesFromTanStackStartFiles", () => {
     const routes = parseRoutesFromTanStackStartFiles(files);
     expect(routes.map((r) => r.path).sort()).toEqual(
       ["/", "/admin", "/about", "/posts", "/settings/profile", "/users"].sort(),
+    );
+  });
+
+  it("should strip non-nested trailing underscores from route segments", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/posts_.new.tsx",
+      "src/routes/docs_/guide.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/docs/guide", "/posts/new"].sort(),
     );
   });
 });

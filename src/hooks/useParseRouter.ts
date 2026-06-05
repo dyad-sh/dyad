@@ -10,7 +10,7 @@ export interface ParsedRoute {
 }
 
 const ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
-const ASTRO_PAGE_FILE_EXTENSIONS = new Set(["astro", "md", "mdx"]);
+const ASTRO_PAGE_FILE_EXTENSIONS = new Set(["astro", "html", "md", "mdx"]);
 const TANSTACK_ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
 const TANSTACK_ROUTE_FILE_SEGMENTS = new Set([
   "route",
@@ -221,7 +221,7 @@ export function parseRoutesFromAstroFiles(files: string[]): ParsedRoute[] {
 
     let routePath = file
       .slice("src/pages/".length)
-      .replace(/\.(?:astro|md|mdx)$/i, "");
+      .replace(/\.(?:astro|html|md|mdx)$/i, "");
 
     if (!routePath || routePath.includes("[")) continue;
     if (routePath.split("/").some((segment) => segment.startsWith("_"))) {
@@ -283,6 +283,7 @@ export function parseRoutesFromTanStackStartFiles(
     const segments = rawSegments
       .filter((segment) => !TANSTACK_ROUTE_FILE_SEGMENTS.has(segment))
       .filter((segment) => !segment.startsWith("_"))
+      .map((segment) => segment.replace(/_$/, ""))
       .map((segment) => (segment === "index" ? "" : segment));
 
     if (

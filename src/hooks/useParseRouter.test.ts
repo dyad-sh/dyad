@@ -7,6 +7,7 @@ import {
   parseRoutesFromNextFiles,
   parseRoutesFromAstroFiles,
   parseRoutesFromTanStackStartFiles,
+  isTanStackStartAppFile,
 } from "@/hooks/useParseRouter";
 
 describe("buildRouteLabel", () => {
@@ -350,5 +351,36 @@ describe("parseRoutesFromTanStackStartFiles", () => {
     expect(routes.map((r) => r.path).sort()).toEqual(
       ["/", "/login", "/users"].sort(),
     );
+  });
+
+  it("should strip TanStack route module suffixes from flat routes", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/index.lazy.tsx",
+      "src/routes/posts.lazy.tsx",
+      "src/routes/about.component.tsx",
+      "src/routes/settings.profile.loader.tsx",
+      "src/routes/users.errorComponent.tsx",
+      "src/routes/admin.pendingComponent.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/admin", "/about", "/posts", "/settings/profile", "/users"].sort(),
+    );
+  });
+});
+
+describe("isTanStackStartAppFile", () => {
+  it("detects TanStack Start-specific generated and root route files", () => {
+    expect(isTanStackStartAppFile("src/routeTree.gen.ts")).toBe(true);
+    expect(isTanStackStartAppFile("src/routeTree.gen.js")).toBe(true);
+    expect(isTanStackStartAppFile("src/routes/__root.tsx")).toBe(true);
+    expect(isTanStackStartAppFile("src/routes/__root.jsx")).toBe(true);
+  });
+
+  it("does not treat generic app config files as TanStack Start signals", () => {
+    expect(isTanStackStartAppFile("app.config.ts")).toBe(false);
+    expect(isTanStackStartAppFile("app.config.js")).toBe(false);
   });
 });

@@ -12,6 +12,14 @@ export interface ParsedRoute {
 const ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
 const ASTRO_PAGE_FILE_EXTENSIONS = new Set(["astro", "md", "mdx"]);
 const TANSTACK_ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
+const TANSTACK_ROUTE_FILE_SEGMENTS = new Set([
+  "route",
+  "lazy",
+  "component",
+  "errorComponent",
+  "pendingComponent",
+  "loader",
+]);
 
 function hasRouteFileExtension(filePath: string): boolean {
   const extension = filePath.split(".").pop()?.toLowerCase();
@@ -273,7 +281,7 @@ export function parseRoutesFromTanStackStartFiles(
       .flatMap((segment) => segment.split("."))
       .filter((segment) => segment);
     const segments = rawSegments
-      .filter((segment) => segment !== "route")
+      .filter((segment) => !TANSTACK_ROUTE_FILE_SEGMENTS.has(segment))
       .filter((segment) => !segment.startsWith("_"))
       .map((segment) => (segment === "index" ? "" : segment));
 
@@ -295,6 +303,18 @@ export function parseRoutesFromTanStackStartFiles(
     path,
     label: buildRouteLabel(path),
   }));
+}
+
+export function isTanStackStartAppFile(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return (
+    lower === "src/routetree.gen.ts" ||
+    lower === "src/routetree.gen.js" ||
+    lower === "src/routes/__root.tsx" ||
+    lower === "src/routes/__root.jsx" ||
+    lower === "src/routes/__root.ts" ||
+    lower === "src/routes/__root.js"
+  );
 }
 
 /**
@@ -322,19 +342,7 @@ export function useParseRouter(appId: number | null) {
 
   const isTanStackStartApp = useMemo(() => {
     if (!app?.files) return false;
-    return app.files.some((f) => {
-      const lower = f.toLowerCase();
-      return (
-        lower === "app.config.ts" ||
-        lower === "app.config.js" ||
-        lower === "src/routetree.gen.ts" ||
-        lower === "src/routetree.gen.js" ||
-        lower === "src/routes/__root.tsx" ||
-        lower === "src/routes/__root.jsx" ||
-        lower === "src/routes/__root.ts" ||
-        lower === "src/routes/__root.js"
-      );
-    });
+    return app.files.some(isTanStackStartAppFile);
   }, [app?.files]);
 
   const candidateRouterFiles = useMemo(() => {

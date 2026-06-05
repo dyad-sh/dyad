@@ -17,7 +17,9 @@ const red = (s) => `\x1b[31m${s}\x1b[0m`;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgPath = resolve(__dirname, "../package.json");
+const pkgLockPath = resolve(__dirname, "../package-lock.json");
 const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+const pkgLock = JSON.parse(readFileSync(pkgLockPath, "utf-8"));
 const currentVersion = pkg.version;
 
 function parseVersion(version) {
@@ -107,16 +109,20 @@ rl.question(`  ${bold("Select option:")} `, (answer) => {
   console.log(`  Bumping to ${green(tag)}`);
   console.log();
 
-  // Update package.json
-  pkg.version = newVersion;
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-  step("Updated package.json");
-
   // Git operations
+  deleteExistingBranch(branch);
   run(`git checkout -b ${branch}`);
   step("Created branch " + cyan(branch));
 
-  run(`git add package.json`);
+  // Update package.json and package-lock.json
+  pkg.version = newVersion;
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+  pkgLock.version = newVersion;
+  pkgLock.packages[""].version = newVersion;
+  writeFileSync(pkgLockPath, JSON.stringify(pkgLock, null, 2) + "\n");
+  step("Updated package.json and package-lock.json");
+
+  run(`git add package.json package-lock.json`);
   run(`git commit -m "Bump to ${tag}"`);
   step("Committed changes");
 
@@ -136,6 +142,37 @@ rl.question(`  ${bold("Select option:")} `, (answer) => {
 
 function step(msg) {
   console.log(`  ${green("✔")} ${msg}`);
+}
+
+function deleteExistingBranch(branch) {
+  const currentBranch = run("git branch --show-current").trim();
+
+  if (currentBranch === branch) {
+    run("git checkout main");
+    step("Checked out " + cyan("main") + " before deleting existing branch");
+  }
+
+  if (commandSucceeds(`git show-ref --verify --quiet refs/heads/${branch}`)) {
+    run(`git branch -D ${branch}`);
+    step("Deleted existing local branch " + cyan(branch));
+  }
+
+  if (commandSucceeds(`git ls-remote --exit-code --heads origin ${branch}`)) {
+    run(`git push origin --delete ${branch}`);
+    step("Deleted existing remote branch " + cyan(branch));
+  }
+}
+
+function commandSucceeds(cmd) {
+  try {
+    execSync(cmd, {
+      stdio: "ignore",
+      cwd: resolve(__dirname, ".."),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function run(cmd) {

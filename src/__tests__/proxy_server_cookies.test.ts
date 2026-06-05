@@ -28,20 +28,25 @@ function findFreePort(): Promise<number> {
 
 /**
  * Starts an upstream HTTP server that replies to every request with the given
- * Set-Cookie header(s) and a non-HTML body (so the proxy takes the
- * pass-through path rather than the HTML-injection path).
+ * Set-Cookie header(s). Defaults to a non-HTML body (so the proxy takes the
+ * pass-through path); pass `contentType: "text/html"` with an HTML `body` to
+ * exercise the HTML-injection path instead.
  */
-function startUpstream(setCookie: string[]): Promise<{
+function startUpstream(
+  setCookie: string[],
+  { contentType = "text/plain", body = "ok" } = {},
+): Promise<{
   origin: string;
   close: () => Promise<void>;
 }> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((_req, res) => {
       res.writeHead(200, {
-        "content-type": "text/plain",
+        "content-type": contentType,
+        "content-length": Buffer.byteLength(body),
         "set-cookie": setCookie,
       });
-      res.end("ok");
+      res.end(body);
     });
     server.once("error", reject);
     server.listen(0, "localhost", () => {
@@ -125,8 +130,11 @@ describe("proxy worker cookie rewriting", () => {
     };
   }
 
-  async function proxyCookies(setCookie: string[]): Promise<string[]> {
-    const upstream = await startUpstream(setCookie);
+  async function proxyCookies(
+    setCookie: string[],
+    upstreamOpts?: { contentType?: string; body?: string },
+  ): Promise<string[]> {
+    const upstream = await startUpstream(setCookie, upstreamOpts);
     cleanup.push(upstream.close);
 
     const port = await findFreePort();
@@ -177,5 +185,23 @@ describe("proxy worker cookie rewriting", () => {
       expect(c).toMatch(/;\s*Partitioned/i);
     }
     expect(cookies[0]).not.toMatch(/SameSite=Strict/i);
+  });
+
+  it("rewrites cookies on the HTML-injection path", async () => {
+    // An extensionless path ("/") with a text/html body takes the injection
+    // branch, which rewrites cookies on a shallow-copied headers object.
+    const [cookie] = await proxyCookies(
+      ["session=abc123; Path=/; HttpOnly; SameSite=Lax"],
+      {
+        contentType: "text/html",
+        body: "<html><head></head><body>hi</body></html>",
+      },
+    );
+
+    expect(cookie).toContain("session=abc123");
+    expect(cookie).toMatch(/;\s*Secure/i);
+    expect(cookie).toMatch(/;\s*SameSite=None/i);
+    expect(cookie).toMatch(/;\s*Partitioned/i);
+    expect(cookie).not.toMatch(/SameSite=Lax/i);
   });
 });

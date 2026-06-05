@@ -317,7 +317,14 @@ function buildTargetURL(clientReq) {
 /* Partitioned/CHIPS isolates the cookie per top-level site.)              */
 /* ----------------------------------------------------------------------- */
 function rewriteCookieForIframe(cookieStr) {
-  const parts = cookieStr.split(";").map((p) => p.trim());
+  if (!cookieStr || typeof cookieStr !== "string") return cookieStr;
+  // filter(Boolean) drops empty segments from leading/trailing/double semicolons
+  // so we never emit a malformed header like "...; ; Secure".
+  const parts = cookieStr
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return cookieStr;
   const nameValue = parts[0];
   // Drop any existing SameSite / Secure / Partitioned attributes so ours win.
   const attrs = parts.slice(1).filter((p) => {

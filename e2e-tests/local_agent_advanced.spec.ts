@@ -1,4 +1,5 @@
 import path from "path";
+import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 /**
@@ -89,6 +90,53 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
 
   // Wait for chat to complete
   await po.chatActions.waitForChatCompletion();
+
+  await po.snapshotMessages();
+});
+
+/**
+ * Test for the MCP tool search experiment: the model discovers an MCP tool with
+ * search_mcp_tools, then calls it from execute_sandbox_script. Sandbox script
+ * execution is on by default; this turns on the experiment flag.
+ */
+testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
+  await po.setUpDyadPro({ localAgent: true });
+  await po.navigation.goToSettingsTab();
+
+  // Configure the test MCP server.
+  await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
+  await po.page
+    .getByRole("textbox", { name: "My MCP Server" })
+    .fill("testing-mcp-server");
+  await po.page.getByRole("textbox", { name: "node" }).fill("node");
+  const testMcpServerPath = path.join(
+    __dirname,
+    "..",
+    "testing",
+    "fake-stdio-mcp-server.mjs",
+  );
+  await po.page
+    .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
+    .fill(testMcpServerPath);
+  await po.page.getByRole("button", { name: "Add Server" }).click();
+  await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
+
+  // Turn on the MCP tool search experiment (Playwright scrolls to the switch).
+  await po.page.getByRole("switch", { name: "Enable MCP tool search" }).click();
+
+  await po.navigation.goToAppsTab();
+  await po.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
+
+  // The model searches for an MCP tool; search_mcp_tools auto-approves.
+  await po.sendPrompt("tc=local-agent/mcp-tool-search", {
+    skipWaitForCompletion: true,
+  });
+  await po.chatActions.waitForChatCompletion();
+
+  // The search card renders with the query the model searched for.
+  await expect(po.page.getByText("MCP Tools").first()).toBeVisible();
+  await expect(po.page.getByText("add numbers").first()).toBeVisible();
 
   await po.snapshotMessages();
 });

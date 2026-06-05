@@ -268,6 +268,7 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
 vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   TOOL_DEFINITIONS: [],
   buildAgentToolSet: vi.fn(() => ({})),
+  shouldIncludeTool: vi.fn(() => false),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),
 }));

@@ -20,11 +20,14 @@ import {
   isSandboxSupportedPlatform,
   runSandboxScript,
 } from "@/ipc/utils/sandbox/runner";
+import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
 import {
   SANDBOX_LLM_OUTPUT_LIMIT_BYTES,
   SANDBOX_READ_FILE_LIMIT_BYTES,
   SANDBOX_UI_OUTPUT_LIMIT_BYTES,
 } from "@/ipc/utils/sandbox/limits";
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("sandbox capabilities", () => {
   let appPath: string;
@@ -385,5 +388,59 @@ describe("sandbox capabilities", () => {
     await expect(
       fs.readFile(result.fullOutputPath!, "utf8"),
     ).resolves.toHaveLength(SANDBOX_UI_OUTPUT_LIMIT_BYTES);
+  });
+
+  it("excludes host capability time from the VM timeout budget", async () => {
+    if (!isSandboxSupportedPlatform()) {
+      return;
+    }
+
+    const hostDelayMs = 150;
+    const result = await executeSandboxScriptInProcess({
+      appPath,
+      script: `
+        async function main() {
+          return await slow_host_call();
+        }
+        main();
+      `,
+      timeoutMs: 100,
+      wallClockTimeoutMs: 1_000,
+      capabilities: {
+        slow_host_call: async () => {
+          await delay(hostDelayMs);
+          return "done";
+        },
+      },
+    });
+
+    expect(result.value).toBe("done");
+    expect(result.executionMs).toBeLessThan(100);
+  });
+
+  it("bounds host execution with a wall-clock timeout", async () => {
+    if (!isSandboxSupportedPlatform()) {
+      return;
+    }
+
+    await expect(
+      executeSandboxScriptInProcess({
+        appPath,
+        script: `
+          async function main() {
+            return await slow_host_call();
+          }
+          main();
+        `,
+        timeoutMs: 1_000,
+        wallClockTimeoutMs: 10,
+        capabilities: {
+          slow_host_call: async () => {
+            await delay(100);
+            return "done";
+          },
+        },
+      }),
+    ).rejects.toThrow("Sandbox host execution timed out after 10ms");
   });
 });

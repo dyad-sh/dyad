@@ -92,4 +92,20 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       sectionLabel: "Advanced",
     });
   });
+
+  it("includes the MCP tool search setting", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.enableMcpToolSearch,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.enableMcpToolSearch,
+      label: "Enable MCP tool search",
+      description:
+        "Let the agent search for MCP tools on demand instead of listing every tool in its context. Requires sandbox script execution",
+      keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
+      sectionId: SECTION_IDS.experiments,
+      sectionLabel: "Experiments",
+    });
+  });
 });

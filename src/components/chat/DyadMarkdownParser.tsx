@@ -29,6 +29,7 @@ import { DyadProblemSummary } from "./DyadProblemSummary";
 import { ipc } from "@/ipc/types";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
+import { DyadMcpToolSearch } from "./DyadMcpToolSearch";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
@@ -643,6 +644,20 @@ function renderCustomTag(
         </DyadCodebaseContext>
       );
 
+    case "dyad-mcp-tool-search":
+      return (
+        <DyadMcpToolSearch
+          node={{
+            properties: {
+              query: attributes.query || "",
+              server: attributes.server || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadMcpToolSearch>
+      );
     case "dyad-mcp-tool-call":
       return (
         <DyadMcpToolCall

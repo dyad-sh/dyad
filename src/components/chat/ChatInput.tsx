@@ -359,13 +359,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   }, [chatId, setMessagesById]);
 
-  // Shared cleanup for exiting queued message editing state
-  const resetEditingState = useCallback(() => {
-    setEditingQueuedMessageId(null);
+  // Shared cleanup run after a submit consumes the composer's contents: clears
+  // the input, any selected/visual-editing components, and the preview overlay.
+  // Attachments are cleared separately because their timing varies by path
+  // (they must be handed to stream/queue first, then cleared).
+  const clearComposerAfterSubmit = useCallback(() => {
     setInputValue("");
-    clearAttachments();
     setSelectedComponents([]);
     setVisualEditingSelectedComponent(null);
+    // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
         { type: "clear-dyad-component-overlays" },
@@ -374,11 +376,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
   }, [
     setInputValue,
-    clearAttachments,
     setSelectedComponents,
     setVisualEditingSelectedComponent,
     previewIframeRef,
   ]);
+
+  // Shared cleanup for exiting queued message editing state
+  const resetEditingState = useCallback(() => {
+    setEditingQueuedMessageId(null);
+    clearComposerAfterSubmit();
+    clearAttachments();
+  }, [setEditingQueuedMessageId, clearComposerAfterSubmit, clearAttachments]);
 
   // Clear editing state if the edited queued message is auto-dequeued
   useEffect(() => {
@@ -528,7 +536,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // If switching to plan mode from another mode in a chat with messages,
     // create a new chat for a clean context.
     if (needsFreshPlanChat && chatMode === "plan" && appId) {
-      setInputValue("");
+      clearComposerAfterSubmit();
       setNeedsFreshPlanChat(false);
 
       const newChatId = await ipc.chat.createChat({
@@ -581,17 +589,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
       if (queued) {
         // Only clear input, attachments, and components on successful queue
-        setInputValue("");
+        clearComposerAfterSubmit();
         clearAttachments();
-        setSelectedComponents([]);
-        setVisualEditingSelectedComponent(null);
-        // Clear overlays in the preview iframe
-        if (previewIframeRef?.contentWindow) {
-          previewIframeRef.contentWindow.postMessage(
-            { type: "clear-dyad-component-overlays" },
-            "*",
-          );
-        }
       }
       // If queue failed, leave input/attachments intact for the user
       return;
@@ -599,16 +598,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // Not streaming - send immediately
     // Clear input and components before sending
-    setInputValue("");
-    setSelectedComponents([]);
-    setVisualEditingSelectedComponent(null);
-    // Clear overlays in the preview iframe
-    if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
-    }
+    clearComposerAfterSubmit();
 
     // Send message with attachments and clear them after sending
     await streamMessage({

@@ -201,6 +201,35 @@ ${typeDefsBlock}
 \`\`\``;
 }
 
+// Search-mode addendum: used when the `enableMcpToolSearch` experiment is on.
+// The per-tool declarations are NOT listed here to keep context lean; the
+// model discovers them via `search_mcp_tools` and then calls the returned
+// host functions from inside the script.
+function buildServerInventory(defs: McpToolDef[]): string {
+  const counts = new Map<string, number>();
+  for (const def of defs) {
+    const name = def.serverName;
+    if (!name) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  if (counts.size === 0) return "";
+  const list = [...counts.entries()]
+    .map(([name, n]) => `${name} (${n} tool${n === 1 ? "" : "s"})`)
+    .join(", ");
+  return `\nConnected MCP servers: ${list}. Search within one with the \`server\` param, or across all by omitting it.`;
+}
+
+function buildMcpSearchAddendum(defs: McpToolDef[]): string {
+  return `
+
+MCP tools can also be invoked from inside the script. To use one:
+1. Call the \`search_mcp_tools\` tool with keywords (optionally a \`server\`) to get the TypeScript declarations of the tools you need.
+2. Call those declared host functions inside this script, exactly as declared.
+${buildServerInventory(defs)}
+- Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
+- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).`;
+}
+
 /**
  * Build the full tool description, appending the MCP host-function
  * declarations and usage notes when any MCP server is enabled. The
@@ -213,10 +242,17 @@ ${typeDefsBlock}
  */
 export async function buildExecuteSandboxScriptDescription(
   precomputedDefs?: McpToolDef[],
+  options?: { useSearch?: boolean },
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
   if (defs.length === 0) {
     return FILES_ONLY_PREAMBLE;
+  }
+  // Search mode (experiment on): point the model at `search_mcp_tools`
+  // instead of inlining every tool's declarations. The full per-tool block is
+  // only embedded when search is off.
+  if (options?.useSearch) {
+    return FILES_ONLY_PREAMBLE + buildMcpSearchAddendum(defs);
   }
   return FILES_ONLY_PREAMBLE + buildMcpAddendum(buildMcpTypeDefsBlock(defs));
 }

@@ -9,8 +9,10 @@ import {
   type SandboxRunResult,
 } from "./execution";
 import {
+  clampSandboxWallClockTimeoutMs,
   clampSandboxTimeoutMs,
   SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES,
+  SANDBOX_WALL_CLOCK_TIMEOUT_MS,
 } from "./limits";
 import {
   deserializeSandboxWorkerError,
@@ -20,6 +22,8 @@ import {
 
 export { isSandboxSupportedPlatform };
 export type { SandboxRunResult };
+
+const WORKER_WALL_CLOCK_TIMEOUT_MARGIN_MS = 5_000;
 
 function isTestRuntime(): boolean {
   return (
@@ -65,21 +69,92 @@ function runSandboxScriptInWorker(params: {
   return new Promise((resolve, reject) => {
     let settled = false;
     const worker = new Worker(workerPath, { workerData: input });
-    const timeout = setTimeout(() => {
+    const wallClockTimeoutMs = clampSandboxWallClockTimeoutMs(undefined);
+    const wallClockTimeout = setTimeout(() => {
       settle(
         () =>
           reject(
             new DyadError(
-              `Sandbox script timed out after ${params.timeoutMs}ms.`,
+              `Sandbox host execution timed out after ${SANDBOX_WALL_CLOCK_TIMEOUT_MS}ms.`,
               DyadErrorKind.External,
             ),
           ),
         true,
       );
-    }, params.timeoutMs);
+    }, wallClockTimeoutMs + WORKER_WALL_CLOCK_TIMEOUT_MARGIN_MS);
+
+    let vmElapsedMs = 0;
+    let vmRunningSince: number | undefined;
+    let vmPauseDepth = 0;
+    let vmTimeout: NodeJS.Timeout | undefined;
+
+    function clearVmTimeout() {
+      if (vmTimeout) {
+        clearTimeout(vmTimeout);
+        vmTimeout = undefined;
+      }
+    }
+
+    function scheduleVmTimeout() {
+      clearVmTimeout();
+      if (vmPauseDepth > 0 || vmRunningSince === undefined) {
+        return;
+      }
+      const remainingMs = params.timeoutMs - vmElapsedMs;
+      if (remainingMs <= 0) {
+        settle(
+          () =>
+            reject(
+              new DyadError(
+                `Sandbox script timed out after ${params.timeoutMs}ms of VM execution.`,
+                DyadErrorKind.External,
+              ),
+            ),
+          true,
+        );
+        return;
+      }
+      vmTimeout = setTimeout(() => {
+        if (vmRunningSince !== undefined) {
+          vmElapsedMs += Date.now() - vmRunningSince;
+          vmRunningSince = Date.now();
+        }
+        scheduleVmTimeout();
+      }, remainingMs);
+    }
+
+    function startVmBudget() {
+      if (vmRunningSince !== undefined) {
+        return;
+      }
+      vmRunningSince = Date.now();
+      scheduleVmTimeout();
+    }
+
+    function pauseVmBudget() {
+      if (vmRunningSince !== undefined) {
+        vmElapsedMs += Date.now() - vmRunningSince;
+        vmRunningSince = undefined;
+      }
+      vmPauseDepth += 1;
+      clearVmTimeout();
+    }
+
+    function resumeVmBudget() {
+      if (vmPauseDepth === 0) {
+        return;
+      }
+      vmPauseDepth -= 1;
+      if (vmPauseDepth > 0 || vmRunningSince !== undefined) {
+        return;
+      }
+      vmRunningSince = Date.now();
+      scheduleVmTimeout();
+    }
 
     function cleanup() {
-      clearTimeout(timeout);
+      clearTimeout(wallClockTimeout);
+      clearVmTimeout();
       worker.removeAllListeners();
     }
 
@@ -97,6 +172,21 @@ function runSandboxScriptInWorker(params: {
 
     worker.on("message", (message: SandboxWorkerMessage) => {
       if (settled) {
+        return;
+      }
+
+      if (message.type === "vmBudgetStart") {
+        startVmBudget();
+        return;
+      }
+
+      if (message.type === "vmBudgetPause") {
+        pauseVmBudget();
+        return;
+      }
+
+      if (message.type === "vmBudgetResume") {
+        resumeVmBudget();
         return;
       }
 

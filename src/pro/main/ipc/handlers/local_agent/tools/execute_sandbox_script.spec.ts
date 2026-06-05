@@ -4,10 +4,12 @@ import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
 import {
+  buildExecuteSandboxScriptDescription,
   executeSandboxScriptTool,
   isSandboxScriptExecutionEnabled,
 } from "./execute_sandbox_script";
 import type { AgentContext } from "./types";
+import type { McpToolDef } from "./mcp_type_defs";
 
 vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
@@ -181,5 +183,37 @@ describe("executeSandboxScriptTool", () => {
       "sandbox.script.completed",
       expect.objectContaining({ executionThread: "worker" }),
     );
+  });
+});
+
+describe("buildExecuteSandboxScriptDescription (search mode)", () => {
+  function def(serverName: string, toolName: string): McpToolDef {
+    return {
+      jsName: `${serverName}__${toolName}`,
+      toolKey: `${serverName}__${toolName}`,
+      serverId: 1,
+      serverName,
+      toolName,
+      inputSchema: { type: "object" } as any,
+    };
+  }
+
+  it("lists connected servers with tool counts instead of inlining signatures", async () => {
+    const desc = await buildExecuteSandboxScriptDescription(
+      [
+        def("Sentry", "get_issue"),
+        def("Sentry", "list_issues"),
+        def("Linear", "create_issue"),
+      ],
+      { useSearch: true },
+    );
+
+    expect(desc).toContain("Connected MCP servers:");
+    expect(desc).toContain("Sentry (2 tools)");
+    expect(desc).toContain("Linear (1 tool)");
+    expect(desc).toContain("search_mcp_tools");
+    // Search mode must NOT inline the per-tool MCP signatures (the whole
+    // point of search is to keep them out of context).
+    expect(desc).not.toContain("Sentry__get_issue");
   });
 });

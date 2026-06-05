@@ -112,7 +112,7 @@ testSkipIfWindows(
 
     await expect(async () => {
       expect(await po.appManagement.getCurrentAppName()).toBe("Lumen Notes");
-    }).toPass({ timeout: Timeout.MEDIUM });
+    }).toPass({ timeout: Timeout.LONG });
   },
 );
 

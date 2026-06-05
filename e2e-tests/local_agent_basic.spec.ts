@@ -138,7 +138,10 @@ testSkipIfWindows(
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Second app runs the blueprint flow; approving it tries to take the same
-    // name, which must now conflict.
+    // name, which must now conflict. Navigate back to the home page first so
+    // the "Import App" button is available (it lives on the new-app screen).
+    await po.navigation.goToAppsTab();
+    await po.page.getByRole("button", { name: "New App" }).click();
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
     await po.appManagement.enableAppBlueprintForCurrentApp();

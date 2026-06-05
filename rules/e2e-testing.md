@@ -138,6 +138,8 @@ If an E2E test times out while setting up `electronApp` after `Debugger listenin
 
 To expose the hidden error, launch the packaged executable with `--inspect-brk=0 --remote-debugging-port=0` and attach a Node inspector client that enables `Debugger.setPauseOnExceptions` before `Runtime.runIfWaitingForDebugger`. Errors like `ENOENT, node_modules/<pkg>/package.json not found in .../app.asar` usually mean `forge.config.ts`'s runtime dependency allowlist is missing a transitive package.
 
+On macOS, do not isolate packaged Electron tests or benchmark launches by overriding `HOME` to a fresh temp directory. The app can start and print main-process logs, but Playwright may never complete `electron.launch`; isolate `--user-data-dir`, `XDG_CONFIG_HOME`, and `GIT_CONFIG_GLOBAL` instead.
+
 ## Native rebuild Python issues during E2E builds
 
 If `npm run build` fails while rebuilding native modules with `ImportError` from Homebrew Python 3.14's `pyexpat` (for example `Symbol not found: _XML_SetAllocTrackerActivationThreshold`), rerun the build with the system Python: `PYTHON=/usr/bin/python3 npm run build`.

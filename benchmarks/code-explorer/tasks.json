@@ -1,0 +1,92 @@
+{
+  "repos": [
+    {
+      "name": "excalidraw",
+      "gitUrl": "https://github.com/excalidraw/excalidraw",
+      "subPath": ".",
+      "tasks": [
+        {
+          "id": "toolbar-flow",
+          "prompt": "Trace where a toolbar action is handled and how it reaches the scene update path. Name the key files and symbols.",
+          "expected": ["toolbar", "scene"]
+        },
+        {
+          "id": "element-selection",
+          "prompt": "Find the implementation flow for selecting an element on the canvas. Name the key files and functions/classes involved.",
+          "expected": ["selection", "element"]
+        },
+        {
+          "id": "export-flow",
+          "prompt": "Trace how exporting a drawing is implemented. Identify the main files and symbols involved.",
+          "expected": ["export"]
+        }
+      ]
+    },
+    {
+      "name": "mattermost",
+      "gitUrl": "https://github.com/mattermost/mattermost",
+      "subPath": "webapp/channels",
+      "tasks": [
+        {
+          "id": "post-send",
+          "prompt": "Trace the flow for sending a post/message from UI action to API call. Name the key files and symbols.",
+          "expected": ["post", "message"]
+        },
+        {
+          "id": "channel-switch",
+          "prompt": "Find how switching channels is implemented in the webapp. Identify the main files and symbols involved.",
+          "expected": ["channel"]
+        },
+        {
+          "id": "thread-view",
+          "prompt": "Trace how opening or rendering a thread view works. Name the key files and symbols.",
+          "expected": ["thread"]
+        }
+      ]
+    },
+    {
+      "name": "calcom",
+      "gitUrl": "https://github.com/calcom/cal.com",
+      "subPath": ".",
+      "tasks": [
+        {
+          "id": "availability",
+          "prompt": "Trace how booking availability is computed and surfaced. Name the key files and symbols.",
+          "expected": ["availability"]
+        },
+        {
+          "id": "event-type",
+          "prompt": "Find the implementation flow for event type configuration. Identify the main files and symbols involved.",
+          "expected": ["event"]
+        },
+        {
+          "id": "booking-create",
+          "prompt": "Trace the flow for creating a booking. Name the key files and symbols.",
+          "expected": ["booking"]
+        }
+      ]
+    },
+    {
+      "name": "supabase",
+      "gitUrl": "https://github.com/supabase/supabase",
+      "subPath": ".",
+      "tasks": [
+        {
+          "id": "project-settings",
+          "prompt": "Trace where project settings are loaded and rendered. Name the key files and symbols.",
+          "expected": ["project", "settings"]
+        },
+        {
+          "id": "auth-ui",
+          "prompt": "Find the implementation flow for authentication UI. Identify the main files and symbols involved.",
+          "expected": ["auth"]
+        },
+        {
+          "id": "database-table",
+          "prompt": "Trace how database table UI data is fetched and rendered. Name the key files and symbols.",
+          "expected": ["database", "table"]
+        }
+      ]
+    }
+  ]
+}

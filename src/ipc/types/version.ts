@@ -45,6 +45,25 @@ export const CheckoutVersionParamsSchema = z.object({
   versionId: z.string(),
 });
 
+export const RestoreToMessageParamsSchema = z.object({
+  appId: z.number(),
+  chatId: z.number(),
+  messageId: z.number(),
+});
+
+export type RestoreToMessageParams = z.infer<
+  typeof RestoreToMessageParamsSchema
+>;
+
+export const RestoreToMessageResponseSchema = z.union([
+  z.object({ newChatId: z.number(), successMessage: z.string() }),
+  z.object({ newChatId: z.number(), warningMessage: z.string() }),
+]);
+
+export type RestoreToMessageResponse = z.infer<
+  typeof RestoreToMessageResponseSchema
+>;
+
 // =============================================================================
 // Version Contracts
 // =============================================================================
@@ -66,6 +85,12 @@ export const versionContracts = {
     channel: "checkout-version",
     input: CheckoutVersionParamsSchema,
     output: z.void(),
+  }),
+
+  restoreToMessageVersion: defineContract({
+    channel: "restore-to-message-version",
+    input: RestoreToMessageParamsSchema,
+    output: RestoreToMessageResponseSchema,
   }),
 
   getCurrentBranch: defineContract({

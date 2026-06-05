@@ -1,5 +1,10 @@
 import { useAtomValue, useSetAtom } from "jotai";
-import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
+import {
+  ipc,
+  type RestoreToMessageResponse,
+  type RevertVersionResponse,
+  type Version,
+} from "@/ipc/types";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -89,6 +94,44 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
+  const restoreToMessageMutation = useMutation<
+    RestoreToMessageResponse,
+    Error,
+    { chatId: number; messageId: number }
+  >({
+    mutationFn: async ({ chatId, messageId }) => {
+      const currentAppId = appId;
+      if (currentAppId === null) {
+        throw new DyadError("App ID is null", DyadErrorKind.External);
+      }
+      return ipc.version.restoreToMessageVersion({
+        appId: currentAppId,
+        chatId,
+        messageId,
+      });
+    },
+    onSuccess: async (result) => {
+      if ("warningMessage" in result) {
+        toast.warning(result.warningMessage);
+      } else {
+        toast.success(result.successMessage);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.branches.current({ appId }),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.problems.byApp({ appId }),
+      });
+      if (settings?.runtimeMode2 === "cloud") {
+        await restartApp();
+      }
+    },
+    meta: { showErrorToast: true },
+  });
+
   return {
     versions: versions || [],
     loading,
@@ -96,5 +139,7 @@ export function useVersions(appId: number | null) {
     refreshVersions,
     revertVersion: revertVersionMutation.mutateAsync,
     isRevertingVersion: revertVersionMutation.isPending,
+    restoreToMessage: restoreToMessageMutation.mutateAsync,
+    isRestoringToMessage: restoreToMessageMutation.isPending,
   };
 }

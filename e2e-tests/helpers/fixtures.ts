@@ -114,12 +114,13 @@ export const test = base.extend<{
     { auto: true },
   ],
   po: [
-    async ({ electronApp, electronConfig }, use) => {
+    async ({ electronApp, electronConfig }, use, testInfo) => {
       const page = await electronApp.firstWindow();
 
       const po = new PageObject(electronApp, page, {
         userDataDir: (electronApp as any).$dyadUserDataDir,
         fakeLlmPort: (electronApp as any).$fakeLlmPort,
+        testInfo,
       });
       if (electronConfig.showPnpmMinimumReleaseAgeWarning) {
         await page.evaluate(async () => {

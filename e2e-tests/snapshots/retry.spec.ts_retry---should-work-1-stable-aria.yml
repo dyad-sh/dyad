@@ -1,0 +1,5 @@
+- paragraph: "[increment]"
+- paragraph: counter=1
+- button "Copy"
+- button "Undo"
+- button "Retry"

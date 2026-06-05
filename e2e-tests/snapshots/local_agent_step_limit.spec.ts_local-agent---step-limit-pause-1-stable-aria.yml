@@ -1,0 +1,223 @@
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
+- paragraph: tc=local-agent/step-limit
+- paragraph: "Step 1: reading file."
+- text: Read package.json
+- paragraph: "Step 2: reading file."
+- text: Read package.json
+- paragraph: "Step 3: reading file."
+- text: Read package.json
+- paragraph: "Step 4: reading file."
+- text: Read package.json
+- paragraph: "Step 5: reading file."
+- text: Read package.json
+- paragraph: "Step 6: reading file."
+- text: Read package.json
+- paragraph: "Step 7: reading file."
+- text: Read package.json
+- paragraph: "Step 8: reading file."
+- text: Read package.json
+- paragraph: "Step 9: reading file."
+- text: Read package.json
+- paragraph: "Step 10: reading file."
+- text: Read package.json
+- paragraph: "Step 11: reading file."
+- text: Read package.json
+- paragraph: "Step 12: reading file."
+- text: Read package.json
+- paragraph: "Step 13: reading file."
+- text: Read package.json
+- paragraph: "Step 14: reading file."
+- text: Read package.json
+- paragraph: "Step 15: reading file."
+- text: Read package.json
+- paragraph: "Step 16: reading file."
+- text: Read package.json
+- paragraph: "Step 17: reading file."
+- text: Read package.json
+- paragraph: "Step 18: reading file."
+- text: Read package.json
+- paragraph: "Step 19: reading file."
+- text: Read package.json
+- paragraph: "Step 20: reading file."
+- text: Read package.json
+- paragraph: "Step 21: reading file."
+- text: Read package.json
+- paragraph: "Step 22: reading file."
+- text: Read package.json
+- paragraph: "Step 23: reading file."
+- text: Read package.json
+- paragraph: "Step 24: reading file."
+- text: Read package.json
+- paragraph: "Step 25: reading file."
+- text: Read package.json
+- paragraph: "Step 26: reading file."
+- text: Read package.json
+- paragraph: "Step 27: reading file."
+- text: Read package.json
+- paragraph: "Step 28: reading file."
+- text: Read package.json
+- paragraph: "Step 29: reading file."
+- text: Read package.json
+- paragraph: "Step 30: reading file."
+- text: Read package.json
+- paragraph: "Step 31: reading file."
+- text: Read package.json
+- paragraph: "Step 32: reading file."
+- text: Read package.json
+- paragraph: "Step 33: reading file."
+- text: Read package.json
+- paragraph: "Step 34: reading file."
+- text: Read package.json
+- paragraph: "Step 35: reading file."
+- text: Read package.json
+- paragraph: "Step 36: reading file."
+- text: Read package.json
+- paragraph: "Step 37: reading file."
+- text: Read package.json
+- paragraph: "Step 38: reading file."
+- text: Read package.json
+- paragraph: "Step 39: reading file."
+- text: Read package.json
+- paragraph: "Step 40: reading file."
+- text: Read package.json
+- paragraph: "Step 41: reading file."
+- text: Read package.json
+- paragraph: "Step 42: reading file."
+- text: Read package.json
+- paragraph: "Step 43: reading file."
+- text: Read package.json
+- paragraph: "Step 44: reading file."
+- text: Read package.json
+- paragraph: "Step 45: reading file."
+- text: Read package.json
+- paragraph: "Step 46: reading file."
+- text: Read package.json
+- paragraph: "Step 47: reading file."
+- text: Read package.json
+- paragraph: "Step 48: reading file."
+- text: Read package.json
+- paragraph: "Step 49: reading file."
+- text: Read package.json
+- paragraph: "Step 50: reading file."
+- text: Read package.json
+- paragraph: "Step 51: reading file."
+- text: Read package.json
+- paragraph: "Step 52: reading file."
+- text: Read package.json
+- paragraph: "Step 53: reading file."
+- text: Read package.json
+- paragraph: "Step 54: reading file."
+- text: Read package.json
+- paragraph: "Step 55: reading file."
+- text: Read package.json
+- paragraph: "Step 56: reading file."
+- text: Read package.json
+- paragraph: "Step 57: reading file."
+- text: Read package.json
+- paragraph: "Step 58: reading file."
+- text: Read package.json
+- paragraph: "Step 59: reading file."
+- text: Read package.json
+- paragraph: "Step 60: reading file."
+- text: Read package.json
+- paragraph: "Step 61: reading file."
+- text: Read package.json
+- paragraph: "Step 62: reading file."
+- text: Read package.json
+- paragraph: "Step 63: reading file."
+- text: Read package.json
+- paragraph: "Step 64: reading file."
+- text: Read package.json
+- paragraph: "Step 65: reading file."
+- text: Read package.json
+- paragraph: "Step 66: reading file."
+- text: Read package.json
+- paragraph: "Step 67: reading file."
+- text: Read package.json
+- paragraph: "Step 68: reading file."
+- text: Read package.json
+- paragraph: "Step 69: reading file."
+- text: Read package.json
+- paragraph: "Step 70: reading file."
+- text: Read package.json
+- paragraph: "Step 71: reading file."
+- text: Read package.json
+- paragraph: "Step 72: reading file."
+- text: Read package.json
+- paragraph: "Step 73: reading file."
+- text: Read package.json
+- paragraph: "Step 74: reading file."
+- text: Read package.json
+- paragraph: "Step 75: reading file."
+- text: Read package.json
+- paragraph: "Step 76: reading file."
+- text: Read package.json
+- paragraph: "Step 77: reading file."
+- text: Read package.json
+- paragraph: "Step 78: reading file."
+- text: Read package.json
+- paragraph: "Step 79: reading file."
+- text: Read package.json
+- paragraph: "Step 80: reading file."
+- text: Read package.json
+- paragraph: "Step 81: reading file."
+- text: Read package.json
+- paragraph: "Step 82: reading file."
+- text: Read package.json
+- paragraph: "Step 83: reading file."
+- text: Read package.json
+- paragraph: "Step 84: reading file."
+- text: Read package.json
+- paragraph: "Step 85: reading file."
+- text: Read package.json
+- paragraph: "Step 86: reading file."
+- text: Read package.json
+- paragraph: "Step 87: reading file."
+- text: Read package.json
+- paragraph: "Step 88: reading file."
+- text: Read package.json
+- paragraph: "Step 89: reading file."
+- text: Read package.json
+- paragraph: "Step 90: reading file."
+- text: Read package.json
+- paragraph: "Step 91: reading file."
+- text: Read package.json
+- paragraph: "Step 92: reading file."
+- text: Read package.json
+- paragraph: "Step 93: reading file."
+- text: Read package.json
+- paragraph: "Step 94: reading file."
+- text: Read package.json
+- paragraph: "Step 95: reading file."
+- text: Read package.json
+- paragraph: "Step 96: reading file."
+- text: Read package.json
+- paragraph: "Step 97: reading file."
+- text: Read package.json
+- paragraph: "Step 98: reading file."
+- text: Read package.json
+- paragraph: "Step 99: reading file."
+- text: Read package.json
+- paragraph: "Step 100: reading file."
+- text: Read package.json
+- text: Paused after 100 tool calls
+- button "Continue"
+- text: Automatically paused after 100 tool calls.
+- button "Copy"
+- button "Copy Request ID"
+- paragraph: Continue
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- button "Copy Request ID"
+- paragraph: tc=local-agent/simple-response
+- paragraph: Hello! I understand your request. This is a simple response from the Basic Agent mode.
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

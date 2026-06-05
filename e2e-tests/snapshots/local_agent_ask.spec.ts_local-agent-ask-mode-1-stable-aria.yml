@@ -1,0 +1,14 @@
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
+- paragraph: tc=local-agent/ask-read-file
+- paragraph: Let me read the file to explain its contents.
+- text: Read src/App.tsx
+- paragraph: This is a simple React component that renders a div with the text 'Minimal imported app'. The component is exported as the default export.
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

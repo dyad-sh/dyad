@@ -1,0 +1,22 @@
+- paragraph: tc=create-multiple-errors
+- paragraph: I will intentionally add multiple errors to test the Fix All Errors button
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add first error"'
+- button "Error First error in Index Copy Fix with AI"
+- 'button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit Summary: intentionally add second error"'
+- button "Error Second error in ErrorComponent Copy Fix with AI"
+- 'button "helper.ts src/utils/helper.ts Edit Summary: intentionally add third error"'
+- button "Error Third error in helper Copy Fix with AI"
+- button "Fix All Errors (3)"
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- paragraph: "Fix all of the following errors:"
+- list:
+  - listitem: First error in Index
+  - listitem: Second error in ErrorComponent
+  - listitem: Third error in helper
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- text: "[[Version 3: files changed]]"
+- button "Undo"
+- button "Retry"

@@ -1,0 +1,8 @@
+- paragraph: tc=write-index
+- paragraph: OK, I'm going to do some writing now...
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: write-description"'
+- paragraph: And it's done!
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Undo"
+- button "Retry"

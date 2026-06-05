@@ -4,7 +4,7 @@
  * to component page objects (e.g., po.chatActions.sendPrompt()).
  */
 
-import { Page, expect } from "@playwright/test";
+import { Page, expect, type TestInfo } from "@playwright/test";
 import { ElectronApplication } from "playwright";
 import fs from "fs";
 
@@ -15,6 +15,7 @@ import {
   normalizeVersionedFiles,
   normalizePath,
   prettifyDump,
+  normalizeMessagesAriaSnapshot,
 } from "../utils";
 
 // Import component page objects
@@ -55,14 +56,20 @@ export class PageObject {
   public appManagement: AppManagement;
   public promptLibrary: PromptLibrary;
   public browserNotifications: BrowserNotifications;
+  private stableSnapshotIndex = 0;
 
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir, fakeLlmPort }: { userDataDir: string; fakeLlmPort: number },
+    {
+      userDataDir,
+      fakeLlmPort,
+      testInfo,
+    }: { userDataDir: string; fakeLlmPort: number; testInfo?: TestInfo },
   ) {
     this.userDataDir = userDataDir;
     this.fakeLlmPort = fakeLlmPort;
+    this.testInfo = testInfo;
 
     // Initialize component page objects
     this.githubConnector = new GitHubConnector(this.page, fakeLlmPort);
@@ -78,6 +85,19 @@ export class PageObject {
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
     this.browserNotifications = new BrowserNotifications(this.page);
+  }
+
+  private testInfo?: TestInfo;
+
+  private nextStableSnapshotName(extension: string) {
+    this.stableSnapshotIndex++;
+    const title = this.testInfo?.title ?? "messages";
+    const normalizedTitle =
+      title
+        .replace(/[^a-zA-Z0-9]/g, "-")
+        .replace(/^-+/, "")
+        .replace(/-+$/, "") || "messages";
+    return `${normalizedTitle}-${this.stableSnapshotIndex}.stable${extension}`;
   }
 
   // ================================
@@ -338,8 +358,9 @@ export class PageObject {
 
   async snapshotMessages({
     replaceDumpPath = false,
+    stable = true,
     timeout,
-  }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
+  }: { replaceDumpPath?: boolean; stable?: boolean; timeout?: number } = {}) {
     // NOTE: once you have called this, you can NOT manipulate the UI anymore or React will break.
     if (replaceDumpPath) {
       await this.page.evaluate(() => {
@@ -362,9 +383,16 @@ export class PageObject {
         );
       });
     }
-    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot({
-      timeout,
-    });
+    const messagesList = this.page.getByTestId("messages-list");
+    if (!stable) {
+      await expect(messagesList).toMatchAriaSnapshot({ timeout });
+      return;
+    }
+
+    const rawSnapshot = await messagesList.ariaSnapshot({ timeout });
+    expect(normalizeMessagesAriaSnapshot(rawSnapshot)).toMatchSnapshot(
+      this.nextStableSnapshotName(".aria.yml"),
+    );
   }
 
   async snapshotServerDump(

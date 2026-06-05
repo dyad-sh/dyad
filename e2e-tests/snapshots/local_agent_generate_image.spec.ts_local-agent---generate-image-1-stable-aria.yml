@@ -1,0 +1,14 @@
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
+- paragraph: tc=local-agent/generate-image
+- paragraph: I'll generate a hero image for your landing page.
+- button "Image Generation A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines View generated image"
+- paragraph: I've generated the hero image and saved it to your project. You can find it in the .dyad/media directory.
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

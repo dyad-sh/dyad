@@ -1,0 +1,15 @@
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
+- paragraph: tc=local-agent/add-dependency
+- paragraph: I'll add a dependency to your project.
+- text: Add Packages Do you want to install these packages? @dyad-sh/supabase-management-js Make sure these packages are what you want.
+- paragraph: Dependency added done.
+- button "Copy"
+- text: "[[Version 3: files changed]]"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

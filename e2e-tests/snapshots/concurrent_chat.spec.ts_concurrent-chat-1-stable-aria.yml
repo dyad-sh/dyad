@@ -1,0 +1,5 @@
+- paragraph: tc=chat2
+- paragraph: chat2
+- button "Copy"
+- button "Undo"
+- button "Retry"

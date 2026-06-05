@@ -1,27 +1,4 @@
-- paragraph: tc=write-index
-- paragraph: OK, I'm going to do some writing now...
-- 'button "Index.tsx src/pages/Index.tsx Edit Summary: write-description"':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
-- paragraph: And it's done!
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- img
-- text: "Version 2: wrote 1 file(s)"
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- region "Notifications (F8)":
+  - list
+- region "Notifications alt+T"
+- text: Testing:write-index!

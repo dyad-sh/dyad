@@ -80,6 +80,7 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
 
     safeSend(ctx.event.sender, "plan:exit", {
       chatId: ctx.chatId,
+      appId: ctx.appId,
     });
 
     return "Plan accepted. Switching to Agent mode to begin implementation. The agreed plan will guide the implementation process.";

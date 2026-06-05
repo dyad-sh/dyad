@@ -19,6 +19,7 @@ export type PlanUpdatePayload = z.infer<typeof PlanUpdateSchema>;
 
 export const PlanExitSchema = z.object({
   chatId: z.number(),
+  appId: z.number(),
 });
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;

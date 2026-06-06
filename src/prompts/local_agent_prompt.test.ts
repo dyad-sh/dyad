@@ -7,6 +7,15 @@ describe("local_agent_prompt", () => {
     expect(prompt).toMatchSnapshot();
   });
 
+  it("agent mode system prompt with code explorer available", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      codeExplorerAvailable: true,
+    });
+    expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain("Use `explore_code` first");
+    expect(prompt).not.toContain("Use `grep` and `code_search`");
+  });
+
   it("agent mode system prompt (vite framework includes Nitro nudge)", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       frameworkType: "vite",

@@ -99,7 +99,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         setGithubNameExists(result.exists);
       } catch (error: unknown) {
         showError(
-          t("home:failedCheckAppName", { error: (error as any).toString() }),
+          t("home:failedCheckAppName", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
         );
       } finally {
         setIsCheckingGithubName(false);
@@ -118,16 +120,14 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       return false;
     }
     setSelectedAppId(result.app.id);
-    await refreshApps();
+    try {
+      await refreshApps();
+    } catch (e) {
+      console.error("Failed to refresh apps", e);
+    }
+    showSuccess(t("home:successfullyImported", { name: result.app.name }));
     if (result.autoUpgradeWarning) {
-      showWarning(
-        t("home:autoUpgradeFailed", {
-          defaultValue:
-            "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
-        }),
-      );
-    } else {
-      showSuccess(t("home:successfullyImported", { name: result.app.name }));
+      showWarning(t("home:autoUpgradeFailed"));
     }
     const chatId = await ipc.chat.createChat(result.app.id);
     selectChat({ chatId, appId: result.app.id });
@@ -160,7 +160,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       }
     } catch (error: unknown) {
       showError(
-        t("home:failedImportRepo", { error: (error as any).toString() }),
+        t("home:failedImportRepo", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setImporting(false);
@@ -185,7 +187,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       }
     } catch (error: unknown) {
       showError(
-        t("home:failedImportRepo", { error: (error as any).toString() }),
+        t("home:failedImportRepo", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setImporting(false);
@@ -206,7 +210,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         setGithubNameExists(result.exists);
       } catch (error: unknown) {
         showError(
-          t("home:failedCheckAppName", { error: (error as any).toString() }),
+          t("home:failedCheckAppName", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
         );
       } finally {
         setIsCheckingGithubName(false);
@@ -229,7 +235,10 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       });
       setNameExists(result.exists);
     } catch (error: unknown) {
-      showError("Failed to check app name: " + (error as any).toString());
+      showError(
+        "Failed to check app name: " +
+          (error instanceof Error ? error.message : String(error)),
+      );
     } finally {
       setIsCheckingName(false);
     }

@@ -273,7 +273,7 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
 
   await po.page.getByRole("button", { name: "Advanced options" }).click();
 
-  const checkbox = po.page.locator("input#optimize-for-dyad-repos");
+  const checkbox = po.page.locator("#optimize-for-dyad-repos");
   await expect(checkbox).toBeVisible();
   await expect(checkbox).toBeChecked();
   await checkbox.focus();

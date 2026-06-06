@@ -148,7 +148,7 @@ describe("proxy worker cookie rewriting", () => {
     return getSetCookie(proxyPort);
   }
 
-  it("forces SameSite=None; Secure; Partitioned on a default Lax cookie", async () => {
+  it("forces SameSite=None; Secure on a default Lax cookie", async () => {
     const [cookie] = await proxyCookies([
       "session=abc123; Path=/; HttpOnly; SameSite=Lax",
     ]);
@@ -157,19 +157,29 @@ describe("proxy worker cookie rewriting", () => {
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toMatch(/;\s*Secure/i);
     expect(cookie).toMatch(/;\s*SameSite=None/i);
-    expect(cookie).toMatch(/;\s*Partitioned/i);
     // The original restrictive SameSite must be gone.
     expect(cookie).not.toMatch(/SameSite=Lax/i);
+    // We intentionally do not partition the cookie.
+    expect(cookie).not.toMatch(/Partitioned/i);
   });
 
-  it("does not duplicate attributes when already None/Secure/Partitioned", async () => {
+  it("does not duplicate attributes when already None/Secure", async () => {
     const [cookie] = await proxyCookies([
-      "tok=v; Path=/; Secure; SameSite=None; Partitioned",
+      "tok=v; Path=/; Secure; SameSite=None",
     ]);
 
     expect((cookie.match(/Secure/gi) ?? []).length).toBe(1);
     expect((cookie.match(/SameSite=None/gi) ?? []).length).toBe(1);
-    expect((cookie.match(/Partitioned/gi) ?? []).length).toBe(1);
+  });
+
+  it("strips an upstream Partitioned attribute", async () => {
+    const [cookie] = await proxyCookies([
+      "tok=v; Path=/; Secure; SameSite=None; Partitioned",
+    ]);
+
+    expect(cookie).toMatch(/;\s*Secure/i);
+    expect(cookie).toMatch(/;\s*SameSite=None/i);
+    expect(cookie).not.toMatch(/Partitioned/i);
   });
 
   it("rewrites every cookie when multiple are set", async () => {
@@ -182,7 +192,7 @@ describe("proxy worker cookie rewriting", () => {
     for (const c of cookies) {
       expect(c).toMatch(/;\s*Secure/i);
       expect(c).toMatch(/;\s*SameSite=None/i);
-      expect(c).toMatch(/;\s*Partitioned/i);
+      expect(c).not.toMatch(/Partitioned/i);
     }
     expect(cookies[0]).not.toMatch(/SameSite=Strict/i);
   });
@@ -201,7 +211,7 @@ describe("proxy worker cookie rewriting", () => {
     expect(cookie).toContain("session=abc123");
     expect(cookie).toMatch(/;\s*Secure/i);
     expect(cookie).toMatch(/;\s*SameSite=None/i);
-    expect(cookie).toMatch(/;\s*Partitioned/i);
+    expect(cookie).not.toMatch(/Partitioned/i);
     expect(cookie).not.toMatch(/SameSite=Lax/i);
   });
 });

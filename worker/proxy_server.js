@@ -312,9 +312,8 @@ function buildTargetURL(clientReq) {
 /* preview.)                                                               */
 /*                                                                         */
 /* Fix: rewrite every forwarded Set-Cookie to                              */
-/* `SameSite=None; Secure; Partitioned` so it's sent inside the iframe.    */
-/* (Secure is required by SameSite=None and honored over localhost;        */
-/* Partitioned/CHIPS isolates the cookie per top-level site.)              */
+/* `SameSite=None; Secure` so it's sent inside the iframe.                 */
+/* (Secure is required by SameSite=None and honored over localhost.)       */
 /* ----------------------------------------------------------------------- */
 function rewriteCookieForIframe(cookieStr) {
   if (!cookieStr || typeof cookieStr !== "string") return cookieStr;
@@ -335,7 +334,7 @@ function rewriteCookieForIframe(cookieStr) {
       lower !== "partitioned"
     );
   });
-  attrs.push("Secure", "SameSite=None", "Partitioned");
+  attrs.push("Secure", "SameSite=None");
   return [nameValue, ...attrs].join("; ");
 }
 

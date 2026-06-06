@@ -84,6 +84,7 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
+import { isCodeExplorerReady } from "../processors/code_explorer";
 import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
@@ -902,9 +903,9 @@ ${componentSnippet}
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
-        const frameworkType = detectFrameworkType(
-          getDyadAppPath(updatedChat.app.path),
-        );
+        const frameworkType = detectFrameworkType(appPath);
+        const codeExplorerAvailable =
+          !!settings.enableCodeExplorer && isCodeExplorerReady(appPath);
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -917,6 +918,7 @@ ${componentSnippet}
           hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
           enableAppBlueprint:
             settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
+          codeExplorerAvailable,
         });
 
         // Add information about mentioned apps for build mode only.
@@ -1311,6 +1313,7 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             readOnly: true,
+            codeExplorerAvailable,
           });
 
           // Return value indicates success/failure for quota tracking.

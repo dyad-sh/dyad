@@ -112,11 +112,11 @@ export const exploreCodeTool: ToolDefinition<
   z.infer<typeof exploreCodeSchema>
 > = {
   name: "explore_code",
-  description: `Explore a configured TypeScript codebase with the TypeScript compiler API.
+  description: `Explore code included in a configured TypeScript project with the TypeScript compiler API.
 
-Use this when you need to understand how a feature, symbol, type, component, service, or flow is implemented across files. It returns relevant symbols and line-numbered source windows grouped by file, often replacing several grep/read_file/list_files calls.
+Use this when you need to understand how a TypeScript, TSX, JavaScript, or JSX feature, symbol, type, component, service, or flow is implemented across files. It returns relevant symbols and line-numbered source windows grouped by file, often replacing several grep/read_file/list_files calls.
 
-Only use this for TypeScript projects. If the project does not have TypeScript installed and configured, use grep/list_files/read_file instead.`,
+Only use this for files included in the app's TypeScript config. JavaScript and JSX require TypeScript config support such as allowJs. If the project does not have TypeScript installed and configured, use grep/list_files/read_file instead.`,
   inputSchema: exploreCodeSchema,
   defaultConsent: "always",
 

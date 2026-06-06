@@ -1,7 +1,7 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "Explore TypeScript code with the compiler-backed code explorer",
+  description: "Explore configured TS/JS code with the compiler-backed code explorer",
   turns: [
     {
       text: "I'll inspect the TypeScript symbols around the app component.",

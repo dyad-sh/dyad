@@ -95,14 +95,23 @@ After every edit, read the file to verify changes applied correctly. If somethin
 
 const APP_BLUEPRINT_WORKFLOW_STEP = `**App Blueprint (new apps only):** If the user is creating a NEW app or project, follow the app blueprint flow described in the \`<app_blueprint>\` section FIRST. Do not proceed to implementation until the app blueprint is approved.`;
 
-function proDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
+function proDevelopmentWorkflowBlock({
+  enableAppBlueprint,
+  codeExplorerAvailable,
+}: {
+  enableAppBlueprint: boolean;
+  codeExplorerAvailable: boolean;
+}): string {
   const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
+  const codeExplorationGuidance = codeExplorerAvailable
+    ? `Use \`explore_code\` first for TypeScript, TSX, JavaScript, or JSX feature, symbol, component, service, or flow exploration when those files are included in the app's TypeScript config; it is designed to replace broad \`grep\`/\`list_files\`/\`read_file\` passes. Use \`grep\`, \`list_files\`, and \`read_file\` afterward only for targeted verification or for files outside the TypeScript config.`
+    : `Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions.`;
   const steps: string[] = [];
   if (enableAppBlueprint) {
     steps.push(APP_BLUEPRINT_WORKFLOW_STEP);
   }
   steps.push(
-    `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`,
+    `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`,
     `**Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
    **Use when:** the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
@@ -301,9 +310,16 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 
 /**
  * System prompt for Local Agent v2 in Pro mode
- * Full access to all tools including code_search, web_search, web_crawl
+ * Full access to Pro tools, including either code_search or explore_code
+ * depending on the current app's code-explorer readiness.
  */
-function buildLocalAgentSystemPrompt(enableAppBlueprint: boolean): string {
+function buildLocalAgentSystemPrompt({
+  enableAppBlueprint,
+  codeExplorerAvailable,
+}: {
+  enableAppBlueprint: boolean;
+  codeExplorerAvailable: boolean;
+}): string {
   return `
 ${ROLE_BLOCK}
 
@@ -317,7 +333,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${proDevelopmentWorkflowBlock(enableAppBlueprint)}
+${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable })}
 [[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
 ${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
@@ -386,9 +402,11 @@ export function constructLocalAgentPrompt(
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
+    codeExplorerAvailable?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
+  const codeExplorerAvailable = !!options?.codeExplorerAvailable;
 
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -397,7 +415,10 @@ export function constructLocalAgentPrompt(
   } else if (options?.basicAgentMode) {
     basePrompt = buildLocalAgentBasicSystemPrompt(enableAppBlueprint);
   } else {
-    basePrompt = buildLocalAgentSystemPrompt(enableAppBlueprint);
+    basePrompt = buildLocalAgentSystemPrompt({
+      enableAppBlueprint,
+      codeExplorerAvailable,
+    });
   }
 
   // The Nitro nudge only applies to Vite apps without Nitro yet. `vite-nitro`

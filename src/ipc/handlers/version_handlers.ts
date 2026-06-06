@@ -832,8 +832,10 @@ export function registerVersionHandlers() {
         }
 
         if (!targetCommitHash) {
+          // No version could be determined, so we don't create a new chat.
+          // Omit `newChatId` so the renderer stays on the current chat instead
+          // of "navigating" to the same one (which would look like a no-op).
           return {
-            newChatId: chatId,
             warningMessage:
               "Could not determine a version to restore to for this message.",
           };
@@ -852,6 +854,11 @@ export function registerVersionHandlers() {
             previousVersionId: targetCommitHash,
           });
 
+        // Carry over the original chat's title (with a suffix) so the forked
+        // chat is identifiable in the sidebar instead of showing up as another
+        // indistinguishable "untitled" entry after one or more restores.
+        const restoredTitle = chat.title ? `${chat.title} (restored)` : null;
+
         // Create the new chat pointing at the target version. We insert directly
         // (instead of using the createChat handler) so `initialCommitHash` is the
         // target version rather than the current (not-yet-reverted) tree.
@@ -859,6 +866,7 @@ export function registerVersionHandlers() {
           .insert(chats)
           .values({
             appId,
+            title: restoredTitle,
             chatMode: chat.chatMode,
             initialCommitHash: targetCommitHash,
           })

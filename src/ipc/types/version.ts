@@ -125,6 +125,9 @@ export type RestoreToMessageParams = z.infer<
 export const RestoreToMessageResponseSchema = z.union([
   z.object({ newChatId: z.number(), successMessage: z.string() }),
   z.object({ newChatId: z.number(), warningMessage: z.string() }),
+  // No version could be determined, so no new chat was created. The renderer
+  // should stay on the current chat (there is no `newChatId` to navigate to).
+  z.object({ warningMessage: z.string() }),
 ]);
 
 export type RestoreToMessageResponse = z.infer<

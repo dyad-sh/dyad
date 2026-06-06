@@ -219,11 +219,16 @@ const ChatMessage = ({
     }
     setShowRestoreConfirm(false);
     try {
-      const { newChatId } = await restoreToMessage({
+      const result = await restoreToMessage({
         chatId: selectedChatId,
         messageId: message.id,
       });
-      selectChat({ chatId: newChatId, appId });
+      // A `newChatId` is only returned when a new chat was actually created. If
+      // no version could be determined, we stay on the current chat (the user
+      // still sees the warning toast).
+      if ("newChatId" in result) {
+        selectChat({ chatId: result.newChatId, appId });
+      }
     } catch (error) {
       showError(error);
     }

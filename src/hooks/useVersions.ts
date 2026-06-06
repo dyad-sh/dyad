@@ -132,6 +132,11 @@ export function useVersions(appId: number | null) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.branches.current({ appId }),
       });
+      // restoreToMessageVersion creates a brand new chat, so refresh the chat
+      // list (like every other chat-creation path) or the sidebar won't show it.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.chats.all,
+      });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.problems.byApp({ appId }),
       });

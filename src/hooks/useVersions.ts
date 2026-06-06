@@ -7,12 +7,21 @@ import {
 } from "@/ipc/types";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useIsMutating,
+} from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
+
+// Shared key so every per-message `useVersions` instance can observe whether
+// *any* restore-to-message is in flight (via `useIsMutating`), not just its own.
+const restoreToMessageMutationKey = ["restoreToMessageVersion"] as const;
 
 export function useVersions(appId: number | null) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -169,6 +178,7 @@ export function useVersions(appId: number | null) {
     Error,
     { chatId: number; messageId: number }
   >({
+    mutationKey: restoreToMessageMutationKey,
     mutationFn: async ({ chatId, messageId }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
@@ -202,6 +212,12 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
+  // True when *any* restore-to-message is pending across all messages. Used to
+  // disable every restore button while one restore is running, since the
+  // per-instance `isPending` above is local to the message that was clicked.
+  const isAnyRestoreToMessagePending =
+    useIsMutating({ mutationKey: restoreToMessageMutationKey }) > 0;
+
   return {
     versions: versions || [],
     loading,
@@ -215,5 +231,6 @@ export function useVersions(appId: number | null) {
     isSettingVersionNote: setVersionNoteMutation.isPending,
     restoreToMessage: restoreToMessageMutation.mutateAsync,
     isRestoringToMessage: restoreToMessageMutation.isPending,
+    isAnyRestoreToMessagePending,
   };
 }

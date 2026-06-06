@@ -314,23 +314,24 @@ async function revertCodebaseToVersion({
         logger.info(
           `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
         );
-        try {
-          // Intentionally do not await this because it's not
-          // critical for the restore operation, it's to clean up branches
-          // so the user doesn't hit the branch limit later.
-          retryOnLocked(
-            () =>
-              neonClient.deleteProjectBranch(
-                app.neonProjectId!,
-                preserveBranchId,
-              ),
-            `Delete preserve branch ${preserveBranchId} for app ${appId}`,
-            { retryBranchWithChildError: true },
-          );
-        } catch (error) {
+        // Intentionally do not await this because it's not
+        // critical for the restore operation, it's to clean up branches
+        // so the user doesn't hit the branch limit later. The error is
+        // handled via `.catch()` rather than a surrounding try/catch
+        // because, without an `await`, a try/catch would not catch the
+        // promise rejection and it would surface as an unhandled rejection.
+        retryOnLocked(
+          () =>
+            neonClient.deleteProjectBranch(
+              app.neonProjectId!,
+              preserveBranchId,
+            ),
+          `Delete preserve branch ${preserveBranchId} for app ${appId}`,
+          { retryBranchWithChildError: true },
+        ).catch((error) => {
           const errorMessage = getNeonErrorMessage(error);
           logger.error("Error in deleteProjectBranch:", errorMessage);
-        }
+        });
       } catch (error) {
         const errorMessage = getNeonErrorMessage(error);
         logger.error("Error in restoreBranchForCheckout:", errorMessage);
@@ -787,6 +788,15 @@ export function registerVersionHandlers() {
         if (!chat) {
           throw new DyadError("Chat not found", DyadErrorKind.NotFound);
         }
+        // Defense in depth: make sure the chat actually belongs to this app so
+        // a mismatched (appId, chatId) from the renderer can't create a chat
+        // under the wrong app or revert to a commit from another app's repo.
+        if (chat.appId !== appId) {
+          throw new DyadError(
+            "Chat does not belong to this app",
+            DyadErrorKind.Validation,
+          );
+        }
 
         const targetIndex = chat.messages.findIndex((m) => m.id === messageId);
         if (targetIndex === -1) {
@@ -829,6 +839,19 @@ export function registerVersionHandlers() {
           };
         }
 
+        // Revert the codebase first. If this throws (e.g. a Git or Neon
+        // error), we bail out before touching the database so we don't leave
+        // an orphaned, partially-created chat behind. A `warningMessage` still
+        // means the codebase was reverted (only a secondary step failed), so
+        // we go on to create the new chat in that case.
+        const { successMessage, warningMessage } =
+          await revertCodebaseToVersion({
+            appId,
+            app,
+            appPath,
+            previousVersionId: targetCommitHash,
+          });
+
         // Create the new chat pointing at the target version. We insert directly
         // (instead of using the createChat handler) so `initialCommitHash` is the
         // target version rather than the current (not-yet-reverted) tree.
@@ -862,14 +885,6 @@ export function registerVersionHandlers() {
             })),
           );
         }
-
-        const { successMessage, warningMessage } =
-          await revertCodebaseToVersion({
-            appId,
-            app,
-            appPath,
-            previousVersionId: targetCommitHash,
-          });
 
         if (warningMessage) {
           return { newChatId: newChat.id, warningMessage };

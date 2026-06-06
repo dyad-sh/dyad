@@ -75,7 +75,7 @@ export async function applyComponentTagger(
     const lines = content.split("\n");
     let lastImportIndex = -1;
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].startsWith("import ")) {
+      if (lines[i].trimStart().startsWith("import ")) {
         lastImportIndex = i;
         break;
       }

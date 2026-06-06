@@ -591,6 +591,24 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     )}
                   </div>
 
+                  <div className="flex items-center space-x-2 py-1">
+                    <Checkbox
+                      id="optimize-for-dyad-repos"
+                      checked={optimizeForDyad}
+                      onCheckedChange={(checked) =>
+                        setOptimizeForDyad(checked === true)
+                      }
+                      disabled={importing}
+                    />
+                    <Label
+                      htmlFor="optimize-for-dyad-repos"
+                      className="text-xs sm:text-sm cursor-pointer"
+                    >
+                      {t("home:autoUpgradeAnnotator")} (
+                      {t("common:recommended")})
+                    </Label>
+                  </div>
+
                   <div className="flex flex-col space-y-2 max-h-64 overflow-y-auto overflow-x-hidden">
                     {!loading && repos.length === 0 && (
                       <p className="text-xs sm:text-sm text-muted-foreground text-center py-4">
@@ -664,23 +682,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                                 disabled={importing}
                               />
                             </div>
-                            <div className="flex items-center space-x-2 pt-2">
-                              <Checkbox
-                                id="optimize-for-dyad-repos"
-                                checked={optimizeForDyad}
-                                onCheckedChange={(checked) =>
-                                  setOptimizeForDyad(checked === true)
-                                }
-                                disabled={importing}
-                              />
-                              <Label
-                                htmlFor="optimize-for-dyad-repos"
-                                className="text-xs sm:text-sm cursor-pointer"
-                              >
-                                {t("home:autoUpgradeAnnotator")} (
-                                {t("common:recommended")})
-                              </Label>
-                            </div>
                             {!commandsValid && (
                               <p className="text-xs sm:text-sm text-red-500">
                                 {t("home:bothCommandsRequired")}
@@ -731,6 +732,23 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 )}
               </div>
 
+              <div className="flex items-center space-x-2 py-1">
+                <Checkbox
+                  id="optimize-for-dyad-url"
+                  checked={optimizeForDyad}
+                  onCheckedChange={(checked) =>
+                    setOptimizeForDyad(checked === true)
+                  }
+                  disabled={importing}
+                />
+                <Label
+                  htmlFor="optimize-for-dyad-url"
+                  className="text-xs sm:text-sm cursor-pointer"
+                >
+                  {t("home:autoUpgradeAnnotator")} ({t("common:recommended")})
+                </Label>
+              </div>
+
               <Accordion>
                 <AccordionItem value="advanced-options">
                   <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
@@ -760,23 +778,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                         className="text-sm"
                         disabled={importing}
                       />
-                    </div>
-                    <div className="flex items-center space-x-2 pt-2">
-                      <Checkbox
-                        id="optimize-for-dyad-url"
-                        checked={optimizeForDyad}
-                        onCheckedChange={(checked) =>
-                          setOptimizeForDyad(checked === true)
-                        }
-                        disabled={importing}
-                      />
-                      <Label
-                        htmlFor="optimize-for-dyad-url"
-                        className="text-xs sm:text-sm cursor-pointer"
-                      >
-                        {t("home:autoUpgradeAnnotator")} (
-                        {t("common:recommended")})
-                      </Label>
                     </div>
                     {!commandsValid && (
                       <p className="text-xs sm:text-sm text-red-500">

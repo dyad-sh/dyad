@@ -190,8 +190,10 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
   await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
   await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
 
-  await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
-  const repoRow = po.page.getByTestId("github-repo-row-testuser-existing-app");
+  await expect(po.page.getByText("testuser/existing-vite-app")).toBeVisible();
+  const repoRow = po.page.getByTestId(
+    "github-repo-row-testuser-existing-vite-app",
+  );
   await expect(repoRow).toBeVisible();
   await repoRow.getByRole("button", { name: "Import" }).click();
 
@@ -201,7 +203,7 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
         try {
           await po.appManagement.showAppList();
           const item = po.appManagement.getAppListItem({
-            appName: "existing-app",
+            appName: "existing-vite-app",
           });
           return await item.isVisible().catch(() => false);
         } catch {
@@ -211,11 +213,11 @@ test("should auto-apply component tagger upgrade on GitHub import", async ({
       { timeout: 60_000 },
     )
     .toBe(true);
-  await po.appManagement.clickAppListItem({ appName: "existing-app" });
+  await po.appManagement.clickAppListItem({ appName: "existing-vite-app" });
 
   await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
     "data-app-name",
-    "existing-app",
+    "existing-vite-app",
   );
   await po.appManagement.getTitleBarAppNameButton().click();
 
@@ -263,8 +265,10 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
   await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
   await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
 
-  await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
-  const repoRow = po.page.getByTestId("github-repo-row-testuser-existing-app");
+  await expect(po.page.getByText("testuser/existing-vite-app")).toBeVisible();
+  const repoRow = po.page.getByTestId(
+    "github-repo-row-testuser-existing-vite-app",
+  );
   await expect(repoRow).toBeVisible();
 
   await po.page.getByRole("button", { name: "Advanced options" }).click();
@@ -284,7 +288,7 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
         try {
           await po.appManagement.showAppList();
           const item = po.appManagement.getAppListItem({
-            appName: "existing-app",
+            appName: "existing-vite-app",
           });
           return await item.isVisible().catch(() => false);
         } catch {
@@ -294,11 +298,11 @@ test("should skip component tagger upgrade when optimize for Dyad is unchecked",
       { timeout: 60_000 },
     )
     .toBe(true);
-  await po.appManagement.clickAppListItem({ appName: "existing-app" });
+  await po.appManagement.clickAppListItem({ appName: "existing-vite-app" });
 
   await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
     "data-app-name",
-    "existing-app",
+    "existing-vite-app",
   );
   await po.appManagement.getTitleBarAppNameButton().click();
 

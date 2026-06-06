@@ -178,6 +178,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setSelectedAppId(result.app.id);
       // Refresh app list so the newly cloned app is visible immediately
       await refreshApps();
+      showSuccess(t("home:successfullyImported", { name: result.app.name }));
       if (result.autoUpgradeWarning) {
         showWarning(
           t("home:autoUpgradeFailed", {
@@ -186,7 +187,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
           }),
         );
       }
-      showSuccess(t("home:successfullyImported", { name: result.app.name }));
       const chatId = await ipc.chat.createChat(result.app.id);
       selectChat({ chatId, appId: result.app.id });
       if (!result.hasAiRules) {

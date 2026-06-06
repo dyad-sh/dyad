@@ -247,6 +247,7 @@ export type {
   BranchResult,
   RevertVersionParams,
   RevertVersionResponse,
+  VersionChangedFile,
 } from "./version";
 
 // Language model types

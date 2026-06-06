@@ -20,6 +20,9 @@ import {
   gitCurrentBranch,
   gitLog,
   isGitStatusClean,
+  getChangedFilesForCommit,
+  getFileAtCommit,
+  getOldFileContent,
 } from "../utils/git_utils";
 
 import {
@@ -37,6 +40,21 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("version_handlers");
+
+// Guard against dumping binary blobs or huge files into the renderer's diff
+// editor. Binary files render as garbage and large files hurt performance.
+const MAX_DIFF_CONTENT_BYTES = 1_000_000; // ~1 MB
+
+function sanitizeDiffContent(content: string): string {
+  // A NUL byte is a strong signal the file is binary.
+  if (/\u0000/.test(content)) {
+    return "<binary file not shown>";
+  }
+  if (Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES) {
+    return "<file too large to display>";
+  }
+  return content;
+}
 
 async function syncCloudSandboxSnapshotBestEffort(appId: number) {
   try {
@@ -161,6 +179,55 @@ export function registerVersionHandlers() {
         DyadErrorKind.External,
       );
     }
+  });
+
+  createTypedHandler(versionContracts.getVersionChanges, async (_, params) => {
+    const { appId, versionId } = params;
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(app.path);
+
+    if (!fs.existsSync(path.join(appPath, ".git"))) {
+      throw new DyadError("Not a git repository", DyadErrorKind.External);
+    }
+
+    const changedFiles = await getChangedFilesForCommit({
+      path: appPath,
+      commitHash: versionId,
+    });
+
+    return Promise.all(
+      changedFiles.map(async (file) => {
+        const newContent =
+          file.type === "deleted"
+            ? ""
+            : ((await getFileAtCommit({
+                path: appPath,
+                filePath: file.path,
+                commitHash: versionId,
+              })) ?? "");
+        const oldContent =
+          file.type === "added"
+            ? ""
+            : ((await getOldFileContent({
+                path: appPath,
+                filePath: file.path,
+                commitHash: versionId,
+              })) ?? "");
+        return {
+          path: file.path,
+          type: file.type,
+          oldContent: sanitizeDiffContent(oldContent),
+          newContent: sanitizeDiffContent(newContent),
+        };
+      }),
+    );
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {

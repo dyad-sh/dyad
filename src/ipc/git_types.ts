@@ -54,6 +54,14 @@ export interface GitFileAtCommitParams extends GitBaseParams {
   filePath: string;
   commitHash: string;
 }
+export type GitChangedFileType = "added" | "modified" | "deleted";
+export interface GitChangedFile {
+  path: string;
+  type: GitChangedFileType;
+}
+export interface GitListChangedFilesParams extends GitBaseParams {
+  commitHash: string;
+}
 export interface GitSetRemoteUrlParams extends GitBaseParams {
   remoteUrl: string;
 }

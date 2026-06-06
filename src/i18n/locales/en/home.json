@@ -226,6 +226,12 @@
     "fileSaved": "File saved",
     "loadingFileContent": "Loading file content...",
     "noContentAvailable": "No content available",
+    "loadingChanges": "Loading changes...",
+    "noChangesInVersion": "No file changes in this version",
+    "selectFileToViewDiff": "Select a file to view changes",
+    "viewingVersionChanges": "Viewing changes in this version",
+    "changedFiles_one": "{{count}} changed file",
+    "changedFiles_other": "{{count}} changed files",
     "sendToChat": "Send to chat",
     "systemMessages": "System Messages",
     "consoleFilters": {

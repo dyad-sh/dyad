@@ -45,6 +45,22 @@ export const CheckoutVersionParamsSchema = z.object({
   versionId: z.string(),
 });
 
+export const VersionChangeTypeSchema = z.enum(["added", "modified", "deleted"]);
+
+export const VersionChangedFileSchema = z.object({
+  path: z.string(),
+  type: VersionChangeTypeSchema,
+  oldContent: z.string(), // "" when added (or old side absent/binary)
+  newContent: z.string(), // "" when deleted (or new side absent/binary)
+});
+
+export type VersionChangedFile = z.infer<typeof VersionChangedFileSchema>;
+
+export const GetVersionChangesParamsSchema = z.object({
+  appId: z.number(),
+  versionId: z.string(),
+});
+
 // =============================================================================
 // Version Contracts
 // =============================================================================
@@ -66,6 +82,12 @@ export const versionContracts = {
     channel: "checkout-version",
     input: CheckoutVersionParamsSchema,
     output: z.void(),
+  }),
+
+  getVersionChanges: defineContract({
+    channel: "get-version-changes",
+    input: GetVersionChangesParamsSchema,
+    output: z.array(VersionChangedFileSchema),
   }),
 
   getCurrentBranch: defineContract({

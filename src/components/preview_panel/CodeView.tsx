@@ -10,7 +10,9 @@ import {
 } from "@/components/ui/tooltip";
 import { useAtomValue } from "jotai";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
+import { VersionDiffView } from "./VersionDiffView";
 
 interface App {
   id?: number;
@@ -26,6 +28,7 @@ export interface CodeViewProps {
 export const CodeView = ({ loading, app }: CodeViewProps) => {
   const { t } = useTranslation("home");
   const selectedFile = useAtomValue(selectedFileAtom);
+  const selectedVersionId = useAtomValue(selectedVersionIdAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -61,6 +64,8 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     );
   }
 
+  const isVersionDiffMode = selectedVersionId != null && app.id != null;
+
   if (app.files && app.files.length > 0) {
     return (
       <div
@@ -83,7 +88,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
             <TooltipContent>{t("preview.refreshFiles")}</TooltipContent>
           </Tooltip>
           <div className="text-sm text-gray-500">
-            {app.files.length} {t("preview.files")}
+            {isVersionDiffMode
+              ? t("preview.viewingVersionChanges")
+              : `${app.files.length} ${t("preview.files")}`}
           </div>
           <div className="flex-1" />
           <Tooltip>
@@ -106,25 +113,29 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         </div>
 
         {/* Content */}
-        <div className="flex flex-1 overflow-hidden">
-          <div className="w-1/3 border-r overflow-hidden flex flex-col min-h-0">
-            <FileTree appId={app.id ?? null} files={app.files} />
+        {isVersionDiffMode ? (
+          <VersionDiffView appId={app.id!} versionId={selectedVersionId} />
+        ) : (
+          <div className="flex flex-1 overflow-hidden">
+            <div className="w-1/3 border-r overflow-hidden flex flex-col min-h-0">
+              <FileTree appId={app.id ?? null} files={app.files} />
+            </div>
+            <div className="w-2/3">
+              {selectedFile ? (
+                <FileEditor
+                  key={`${app.id ?? "unknown"}:${selectedFile.path}`}
+                  appId={app.id ?? null}
+                  filePath={selectedFile.path}
+                  initialLine={selectedFile.line ?? null}
+                />
+              ) : (
+                <div className="text-center py-4 text-gray-500">
+                  {t("preview.selectFileToView")}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="w-2/3">
-            {selectedFile ? (
-              <FileEditor
-                key={`${app.id ?? "unknown"}:${selectedFile.path}`}
-                appId={app.id ?? null}
-                filePath={selectedFile.path}
-                initialLine={selectedFile.line ?? null}
-              />
-            ) : (
-              <div className="text-center py-4 text-gray-500">
-                {t("preview.selectFileToView")}
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     );
   }

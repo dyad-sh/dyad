@@ -110,6 +110,38 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     const match = url.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
     return match ? match[2] : null;
   };
+  const processCloneResult = async (
+    result: Awaited<ReturnType<typeof ipc.github.cloneRepoFromUrl>>,
+  ): Promise<boolean> => {
+    if ("error" in result) {
+      showError(result.error);
+      return false;
+    }
+    setSelectedAppId(result.app.id);
+    await refreshApps();
+    if (result.autoUpgradeWarning) {
+      showWarning(
+        t("home:autoUpgradeFailed", {
+          defaultValue:
+            "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
+        }),
+      );
+    } else {
+      showSuccess(t("home:successfullyImported", { name: result.app.name }));
+    }
+    const chatId = await ipc.chat.createChat(result.app.id);
+    selectChat({ chatId, appId: result.app.id });
+    if (!result.hasAiRules) {
+      streamMessage({
+        prompt: AI_RULES_PROMPT,
+        chatId,
+        appId: result.app.id,
+      });
+    }
+    onClose();
+    return true;
+  };
+
   const handleImportFromUrl = async () => {
     setImporting(true);
     try {
@@ -122,33 +154,10 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         appName,
         optimizeForDyad,
       });
-      if ("error" in result) {
-        showError(result.error);
+      if (!(await processCloneResult(result))) {
         setImporting(false);
         return;
       }
-      setSelectedAppId(result.app.id);
-      // Ensure the app list is refreshed so the imported app appears in the sidebar
-      await refreshApps();
-      showSuccess(t("home:successfullyImported", { name: result.app.name }));
-      if (result.autoUpgradeWarning) {
-        showWarning(
-          t("home:autoUpgradeFailed", {
-            defaultValue:
-              "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
-          }),
-        );
-      }
-      const chatId = await ipc.chat.createChat(result.app.id);
-      selectChat({ chatId, appId: result.app.id });
-      if (!result.hasAiRules) {
-        streamMessage({
-          prompt: AI_RULES_PROMPT,
-          chatId,
-          appId: result.app.id,
-        });
-      }
-      onClose();
     } catch (error: unknown) {
       showError(
         t("home:failedImportRepo", { error: (error as any).toString() }),
@@ -170,33 +179,10 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         appName,
         optimizeForDyad,
       });
-      if ("error" in result) {
-        showError(result.error);
+      if (!(await processCloneResult(result))) {
         setImporting(false);
         return;
       }
-      setSelectedAppId(result.app.id);
-      // Refresh app list so the newly cloned app is visible immediately
-      await refreshApps();
-      showSuccess(t("home:successfullyImported", { name: result.app.name }));
-      if (result.autoUpgradeWarning) {
-        showWarning(
-          t("home:autoUpgradeFailed", {
-            defaultValue:
-              "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
-          }),
-        );
-      }
-      const chatId = await ipc.chat.createChat(result.app.id);
-      selectChat({ chatId, appId: result.app.id });
-      if (!result.hasAiRules) {
-        streamMessage({
-          prompt: AI_RULES_PROMPT,
-          chatId,
-          appId: result.app.id,
-        });
-      }
-      onClose();
     } catch (error: unknown) {
       showError(
         t("home:failedImportRepo", { error: (error as any).toString() }),

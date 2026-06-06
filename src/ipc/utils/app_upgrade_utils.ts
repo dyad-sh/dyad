@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getPackageManagerCommandEnv } from "./socket_firewall";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const logger = log.scope("app_upgrade_utils");
 
@@ -105,7 +105,47 @@ export async function applyComponentTagger(
 
   await fs.promises.writeFile(viteConfigPath, content);
 
-  if (!installDependencies) {
+  if (installDependencies) {
+    try {
+      await simpleSpawn({
+        command:
+          "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger",
+        cwd: appPath,
+        env: getPackageManagerCommandEnv(),
+        successMessage:
+          "component-tagger dependency installed successfully with pnpm",
+        errorPrefix: "Failed to install dependency via pnpm",
+      });
+    } catch (pnpmErr) {
+      logger.info("pnpm install failed, falling back to npm", pnpmErr);
+      try {
+        await simpleSpawn({
+          command:
+            "npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
+          cwd: appPath,
+          env: getPackageManagerCommandEnv(),
+          successMessage:
+            "component-tagger dependency installed successfully with npm",
+          errorPrefix: "Failed to install dependency via npm",
+        });
+      } catch (npmErr) {
+        logger.warn(
+          "Failed to install component tagger with both pnpm and npm. User may need to run install manually.",
+          npmErr,
+        );
+        try {
+          await fs.promises.writeFile(viteConfigPath, originalViteContent);
+        } catch (rollbackErr) {
+          logger.error("Failed to rollback vite config changes", rollbackErr);
+        }
+        throw new DyadError(
+          "Failed to install component tagger dependency",
+          DyadErrorKind.Internal,
+        );
+      }
+    }
+    shouldCommitChanges = true;
+  } else {
     try {
       const packageJson = JSON.parse(
         await fs.promises.readFile(packageJsonPath, "utf-8"),
@@ -139,52 +179,8 @@ export async function applyComponentTagger(
         DyadErrorKind.Internal,
       );
     }
-    shouldCommitChanges = true;
-  }
-
-  if (installDependencies) {
-    const env = getPackageManagerCommandEnv() as Record<string, string>;
-    try {
-      await simpleSpawn({
-        command:
-          "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger",
-        cwd: appPath,
-        env,
-        successMessage:
-          "component-tagger dependency installed successfully with pnpm",
-        errorPrefix: "Failed to install dependency via pnpm",
-      });
-    } catch (pnpmErr) {
-      logger.info("pnpm install failed, falling back to npm", pnpmErr);
-      try {
-        await simpleSpawn({
-          command:
-            "npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
-          cwd: appPath,
-          env,
-          successMessage:
-            "component-tagger dependency installed successfully with npm",
-          errorPrefix: "Failed to install dependency via npm",
-        });
-      } catch (npmErr) {
-        logger.warn(
-          "Failed to install component tagger with both pnpm and npm. User may need to run install manually.",
-          npmErr,
-        );
-        try {
-          await fs.promises.writeFile(viteConfigPath, originalViteContent);
-        } catch (rollbackErr) {
-          logger.error("Failed to rollback vite config changes", rollbackErr);
-        }
-        throw new DyadError(
-          "Failed to install component tagger dependency",
-          DyadErrorKind.Internal,
-        );
-      }
-    }
-    shouldCommitChanges = true;
-  } else {
     logger.info("Skipping dependency install for component tagger");
+    shouldCommitChanges = true;
   }
 
   if (shouldCommitChanges) {

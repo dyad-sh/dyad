@@ -27,6 +27,7 @@ const { values } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     model: { type: "string", default: "auto" },
     timeout: { type: "string", default: "600000" },
+    concurrency: { type: "string", default: "1" },
   },
 });
 
@@ -35,17 +36,25 @@ const selectedRepos = splitList(values.repos);
 const selectedTasks = splitList(values.tasks);
 const repeats = Number(values.repeats ?? 1);
 const timeoutMs = Number(values.timeout ?? 600_000);
+const concurrency = Number(values.concurrency ?? 1);
 const runId = `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 
 if (!Number.isInteger(repeats) || repeats < 1) {
   throw new Error("--repeats must be a positive integer");
+}
+if (!Number.isInteger(concurrency) || concurrency < 1) {
+  throw new Error("--concurrency must be a positive integer");
 }
 
 const matrix = buildMatrix(config, selectedRepos, selectedTasks, repeats);
 
 if (values["dry-run"]) {
   console.log(
-    JSON.stringify({ runId, totalTrials: matrix.length, matrix }, null, 2),
+    JSON.stringify(
+      { runId, totalTrials: matrix.length, concurrency, matrix },
+      null,
+      2,
+    ),
   );
   process.exit(0);
 }
@@ -69,15 +78,36 @@ if (values["fetch-repos"]) {
 const resultsPath = path.join(RESULTS_DIR, runId, "runs.jsonl");
 fs.mkdirSync(path.dirname(resultsPath), { recursive: true });
 
-for (const trial of matrix) {
-  const result = await runTrial(trial);
-  fs.appendFileSync(resultsPath, JSON.stringify(result) + "\n");
-  console.log(
-    `${trial.repo.name}/${trial.task.id}/${trial.arm}/repeat-${trial.repeat}: ${result.status}`,
-  );
-}
+console.log(
+  `Running ${matrix.length} trial(s) with concurrency ${Math.min(concurrency, matrix.length)}`,
+);
+await runTrials(matrix, concurrency, resultsPath);
 
 writeSummary(runId, resultsPath);
+
+async function runTrials(trials, concurrency, resultsPath) {
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, trials.length);
+
+  async function runWorker() {
+    while (true) {
+      const trial = trials[nextIndex++];
+      if (!trial) return;
+
+      const result = await runTrial(trial);
+      fs.appendFileSync(resultsPath, JSON.stringify(result) + "\n");
+      console.log(
+        `${trial.repo.name}/${trial.task.id}/${trial.arm}/repeat-${trial.repeat}: ${result.status}`,
+      );
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: workerCount }, () => {
+      return runWorker();
+    }),
+  );
+}
 
 function buildMatrix(config, repoFilter, taskFilter, repeats) {
   const rows = [];

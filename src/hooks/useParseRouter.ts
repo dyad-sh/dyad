@@ -11,7 +11,7 @@ export interface ParsedRoute {
 
 const ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
 const ASTRO_PAGE_FILE_EXTENSIONS = new Set(["astro", "html", "md", "mdx"]);
-const TANSTACK_ROUTE_FILE_EXTENSIONS = new Set(["js", "jsx", "ts", "tsx"]);
+const TANSTACK_ESCAPED_DOT_SENTINEL = "\0";
 const TANSTACK_ROUTE_FILE_SEGMENTS = new Set([
   "route",
   "lazy",
@@ -259,16 +259,14 @@ export function parseRoutesFromTanStackStartFiles(
     if (!file.startsWith("src/routes/")) continue;
 
     const extension = file.split(".").pop()?.toLowerCase();
-    if (!extension || !TANSTACK_ROUTE_FILE_EXTENSIONS.has(extension)) continue;
+    if (!extension || !ROUTE_FILE_EXTENSIONS.has(extension)) continue;
 
     let routePath = file.slice("src/routes/".length);
     if (
       routePath === "__root.tsx" ||
       routePath === "__root.jsx" ||
       routePath === "__root.ts" ||
-      routePath === "__root.js" ||
-      routePath.toLowerCase() === "routetree.gen.ts" ||
-      routePath.toLowerCase() === "routetree.gen.js"
+      routePath === "__root.js"
     ) {
       continue;
     }
@@ -279,13 +277,20 @@ export function parseRoutesFromTanStackStartFiles(
 
     const routeSegments = routePath.split("/").filter((segment) => segment);
     const rawSegments = routeSegments.flatMap((segment) =>
-      segment.split(".").filter((part) => part),
+      segment
+        .replaceAll("[.]", TANSTACK_ESCAPED_DOT_SENTINEL)
+        .split(".")
+        .filter((part) => part),
     );
     if (rawSegments.some((segment) => segment.startsWith("-"))) continue;
 
     const segments = routeSegments
       .flatMap((segment, index) => {
-        const parts = segment.split(".").filter((part) => part);
+        const parts = segment
+          .replaceAll("[.]", TANSTACK_ESCAPED_DOT_SENTINEL)
+          .split(".")
+          .filter((part) => part)
+          .map((part) => part.replaceAll(TANSTACK_ESCAPED_DOT_SENTINEL, "."));
         if (
           parts[0] === "route" &&
           index === routeSegments.length - 1 &&

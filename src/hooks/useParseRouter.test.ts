@@ -400,6 +400,20 @@ describe("parseRoutesFromTanStackStartFiles", () => {
     );
   });
 
+  it("should preserve escaped dots in TanStack route segments", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/script[.]js.tsx",
+      "src/routes/api[.]v1.tsx",
+      "src/routes/files[.]json.lazy.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/api.v1", "/files.json", "/script.js"].sort(),
+    );
+  });
+
   it("should strip non-nested trailing underscores from route segments", () => {
     const files = [
       "src/routes/__root.tsx",

@@ -150,12 +150,18 @@ export class ChatActions {
 
     await expect(chatInput).toBeVisible();
     await expect(async () => {
-      await chatInput.click();
-      await chatInput.fill(prompt);
+      await chatInput.evaluate((element) => {
+        (element as HTMLElement).focus();
+      });
+      await chatInput.fill(prompt, { timeout: 1_000 });
       const visiblePrompt = prompt.replace(/@app:/g, "@");
-      expect(await chatInput.textContent()).toContain(visiblePrompt);
+      expect(await chatInput.textContent({ timeout: 1_000 })).toContain(
+        visiblePrompt,
+      );
       await this.page.waitForTimeout(100);
-      expect(await chatInput.textContent()).toContain(visiblePrompt);
+      expect(await chatInput.textContent({ timeout: 1_000 })).toContain(
+        visiblePrompt,
+      );
       await expect(sendButton).toBeEnabled({ timeout: 1_000 });
       try {
         await sendButton.click({ timeout: 1_000 });

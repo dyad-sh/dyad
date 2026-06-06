@@ -118,6 +118,116 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
+  "plan mode - accepting a plan starts implementation in the source app when selected app is stale",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await waitForInitialImportedChatCompletion(po);
+
+    const sourceAppName = await po.appManagement.getCurrentAppName();
+    const sourceAppPath = await po.appManagement.getCurrentAppPath();
+    expect(sourceAppName).toBeTruthy();
+
+    await po.chatActions.selectChatMode("plan");
+    await po.sendPrompt("tc=local-agent/accept-plan", {
+      skipWaitForCompletion: true,
+    });
+    await waitForPlanGenerationToFinish(po);
+    await finishPlanPresentation(po);
+
+    const planChatId = Number(new URL(po.page.url()).searchParams.get("id"));
+    expect(planChatId).toBeGreaterThan(0);
+
+    await po.navigation.goToAppsTab();
+    await po.importApp("minimal-with-ai-rules");
+    await expect(async () => {
+      const currentAppName = await po.appManagement.getCurrentAppName();
+      expect(currentAppName).not.toEqual(sourceAppName);
+    }).toPass({ timeout: Timeout.MEDIUM });
+    const otherAppName = await po.appManagement.getCurrentAppName();
+    const otherAppPath = await po.appManagement.getCurrentAppPath();
+    let otherChat: { appId: number } | null = null;
+    await expect(async () => {
+      const otherChatId = Number(new URL(po.page.url()).searchParams.get("id"));
+      expect(otherChatId).toBeGreaterThan(0);
+      expect(otherChatId).not.toEqual(planChatId);
+      otherChat = await po.page.evaluate(async (chatId) => {
+        return (window as any).electron.ipcRenderer.invoke("get-chat", chatId);
+      }, otherChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+    await po.appManagement.clickAppListItem({ appName: sourceAppName! });
+    await po.page.getByRole("link", { name: "Apps" }).hover();
+    await expect(po.page.getByTestId("chat-list-container")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.page.getByTestId(`chat-list-item-${planChatId}`).click();
+    await expect(async () => {
+      const currentChatId = Number(
+        new URL(po.page.url()).searchParams.get("id"),
+      );
+      expect(currentChatId).toEqual(planChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+    const viewPlanButton = po.page
+      .getByRole("button", { name: "View Plan" })
+      .last();
+    await expect(viewPlanButton).toBeVisible({ timeout: Timeout.MEDIUM });
+    await viewPlanButton.click();
+    await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    await po.page.getByTestId("accept-plan-new-chat").click();
+
+    await po.appManagement.clickAppListItem({ appName: otherAppName! });
+    await expect(po.appManagement.getTitleBarAppNameButton()).toHaveAttribute(
+      "data-app-name",
+      otherAppName!,
+      { timeout: Timeout.MEDIUM },
+    );
+
+    let implementationChatId = 0;
+    await expect(async () => {
+      implementationChatId = Number(
+        new URL(po.page.url()).searchParams.get("id"),
+      );
+      expect(implementationChatId).toBeGreaterThan(0);
+      expect(implementationChatId).not.toEqual(planChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    const implementationChat = await po.page.evaluate(async (chatId) => {
+      return (window as any).electron.ipcRenderer.invoke("get-chat", chatId);
+    }, implementationChatId);
+    const sourceChat = await po.page.evaluate(async (chatId) => {
+      return (window as any).electron.ipcRenderer.invoke("get-chat", chatId);
+    }, planChatId);
+
+    expect(implementationChat.appId).toEqual(sourceChat.appId);
+    expect(implementationChat.appId).not.toEqual(otherChat!.appId);
+
+    const sourcePlanDir = path.join(sourceAppPath, ".dyad", "plans");
+    const otherPlanDir = path.join(otherAppPath, ".dyad", "plans");
+    await expect(async () => {
+      const mdFiles = fs
+        .readdirSync(sourcePlanDir)
+        .filter((f) => f.endsWith(".md"));
+      expect(mdFiles.length).toBeGreaterThan(0);
+      const planContent = fs.readFileSync(
+        path.join(sourcePlanDir, mdFiles[0]),
+        "utf-8",
+      );
+      expect(planContent).toContain("Test Plan");
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    const otherPlanFiles = fs.existsSync(otherPlanDir)
+      ? fs.readdirSync(otherPlanDir).filter((f) => f.endsWith(".md"))
+      : [];
+    expect(otherPlanFiles).toHaveLength(0);
+
+    await waitForNoActiveGeneration(po);
+  },
+);
+
+testSkipIfWindows(
   "plan mode - accept plan and continue here",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });

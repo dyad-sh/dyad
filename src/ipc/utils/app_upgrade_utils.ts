@@ -66,7 +66,6 @@ export async function applyComponentTagger(
     "utf-8",
   );
   let content = originalViteContent;
-  let shouldCommitChanges = false;
 
   if (
     !content.includes(
@@ -89,12 +88,34 @@ export async function applyComponentTagger(
     content = lines.join("\n");
   }
 
-  if (content.includes("plugins: [")) {
+  // Search for `defineConfig(` (with opening paren) to match the actual call,
+  // not the `import { defineConfig } from 'vite'` import statement.
+  const defineConfigIdx = content.indexOf("defineConfig(");
+  const searchIndex = defineConfigIdx !== -1 ? defineConfigIdx : 0;
+
+  let match = content.slice(searchIndex).match(/plugins\s*:\s*\[/);
+  let pluginsIdx = -1;
+  let matchStr = "";
+
+  if (match && match.index !== undefined) {
+    pluginsIdx = searchIndex + match.index;
+    matchStr = match[0];
+  } else if (searchIndex > 0) {
+    // Fallback to searching the entire file
+    match = content.match(/plugins\s*:\s*\[/);
+    if (match && match.index !== undefined) {
+      pluginsIdx = match.index;
+      matchStr = match[0];
+    }
+  }
+
+  if (pluginsIdx !== -1) {
     if (!content.includes("dyadComponentTagger()")) {
-      content = content.replace(
-        "plugins: [",
-        "plugins: [dyadComponentTagger(), ",
-      );
+      const bracketIdx = pluginsIdx + matchStr.indexOf("[");
+      content =
+        content.slice(0, bracketIdx) +
+        "[dyadComponentTagger(), " +
+        content.slice(bracketIdx + 1);
     }
   } else {
     throw new DyadError(
@@ -144,7 +165,6 @@ export async function applyComponentTagger(
         );
       }
     }
-    shouldCommitChanges = true;
   } else {
     try {
       const packageJson = JSON.parse(
@@ -175,30 +195,25 @@ export async function applyComponentTagger(
         logger.error("Failed to rollback vite config changes", rollbackErr);
       }
       throw new DyadError(
-        `Failed to update package.json for component tagger: ${(err as any).message}`,
+        `Failed to update package.json for component tagger: ${err instanceof Error ? err.message : String(err)}`,
         DyadErrorKind.Internal,
       );
     }
     logger.info("Skipping dependency install for component tagger");
-    shouldCommitChanges = true;
   }
 
-  if (shouldCommitChanges) {
-    try {
-      logger.info(
-        "Staging and committing vite config and package.json changes",
-      );
-      await gitAddAll({ path: appPath });
-      await gitCommit({
-        path: appPath,
-        message: "[dyad] add Dyad component tagger",
-      });
-      logger.info("Successfully committed component tagger modifications");
-    } catch (err) {
-      logger.warn(
-        `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
-        err,
-      );
-    }
+  try {
+    logger.info("Staging and committing vite config and package.json changes");
+    await gitAddAll({ path: appPath });
+    await gitCommit({
+      path: appPath,
+      message: "[dyad] add Dyad component tagger",
+    });
+    logger.info("Successfully committed component tagger modifications");
+  } catch (err) {
+    logger.warn(
+      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
+      err,
+    );
   }
 }

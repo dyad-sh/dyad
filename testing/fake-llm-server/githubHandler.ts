@@ -53,6 +53,17 @@ const mockRepos = [
     owner: { login: "testuser" },
     default_branch: "main",
   },
+  // A repo that is pre-seeded with real content (Vite app) so it can be
+  // cloned/imported. Kept separate from the empty "create new repo" / sync
+  // push-target repos above, whose first push must be a fresh fast-forward.
+  {
+    id: 4,
+    name: "existing-vite-app",
+    full_name: "testuser/existing-vite-app",
+    private: false,
+    owner: { login: "testuser" },
+    default_branch: "main",
+  },
 ];
 
 const mockBranches = [
@@ -432,20 +443,31 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         const { execSync } = require("child_process");
         execSync(`git init --bare`, { cwd: bareRepoPath });
 
-        const tmpClone = fs.mkdtempSync(
-          path.join(os.tmpdir(), "dyad-git-clone-"),
-        );
-        try {
-          execSync(`git clone "${bareRepoPath}" "${tmpClone}"`, {
-            stdio: "pipe",
-          });
-          fs.writeFileSync(path.join(tmpClone, "README.md"), `# ${repoName}\n`);
-          if (repoName === "existing-app") {
+        // Most repos are created via the "create new repo" + sync flow, so they
+        // must start out empty: the very first push from Dyad is a fresh,
+        // fast-forward "create" of the default branch. Pre-seeding those repos
+        // would make that push diverge (non-fast-forward) and fail.
+        //
+        // Only repos that are meant to already exist on GitHub (e.g. the
+        // "existing-vite-app" fixture used by the import auto-upgrade test) get
+        // seeded with an initial commit so they can be cloned/imported.
+        if (repoName === "existing-vite-app") {
+          const tmpClone = fs.mkdtempSync(
+            path.join(os.tmpdir(), "dyad-git-clone-"),
+          );
+          try {
+            execSync(`git clone "${bareRepoPath}" "${tmpClone}"`, {
+              stdio: "pipe",
+            });
+            fs.writeFileSync(
+              path.join(tmpClone, "README.md"),
+              `# ${repoName}\n`,
+            );
             fs.writeFileSync(
               path.join(tmpClone, "package.json"),
               JSON.stringify(
                 {
-                  name: "existing-app",
+                  name: "existing-vite-app",
                   version: "0.0.1",
                   private: true,
                   devDependencies: {
@@ -469,29 +491,29 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
                 "",
               ].join("\n"),
             );
-          }
-          execSync(`git add -A`, { cwd: tmpClone, stdio: "pipe" });
-          execSync(
-            `git -c user.name=dyad -c user.email=dyad@example.com commit -m "initial commit"`,
-            { cwd: tmpClone, stdio: "pipe" },
-          );
-          execSync(`git push origin HEAD:refs/heads/main`, {
-            cwd: tmpClone,
-            stdio: "pipe",
-          });
-          try {
+            execSync(`git add -A`, { cwd: tmpClone, stdio: "pipe" });
             execSync(
-              `git --git-dir="${bareRepoPath}" symbolic-ref HEAD refs/heads/main`,
-              { stdio: "pipe" },
+              `git -c user.name=dyad -c user.email=dyad@example.com commit -m "initial commit"`,
+              { cwd: tmpClone, stdio: "pipe" },
             );
-          } catch (err) {
-            console.warn(
-              "* Warning: failed to set symbolic-ref HEAD on bare repo",
-              err,
-            );
+            execSync(`git push origin HEAD:refs/heads/main`, {
+              cwd: tmpClone,
+              stdio: "pipe",
+            });
+            try {
+              execSync(
+                `git --git-dir="${bareRepoPath}" symbolic-ref HEAD refs/heads/main`,
+                { stdio: "pipe" },
+              );
+            } catch (err) {
+              console.warn(
+                "* Warning: failed to set symbolic-ref HEAD on bare repo",
+                err,
+              );
+            }
+          } finally {
+            fs.rmSync(tmpClone, { recursive: true, force: true });
           }
-        } finally {
-          fs.rmSync(tmpClone, { recursive: true, force: true });
         }
 
         console.log(

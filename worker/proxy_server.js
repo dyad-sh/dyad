@@ -302,6 +302,52 @@ function buildTargetURL(clientReq) {
 }
 
 /* ----------------------------------------------------------------------- */
+/* Cookie rewriting for the embedded preview iframe                        */
+/*                                                                         */
+/* In a packaged build the Dyad shell loads from file://, a cross-site     */
+/* top-level ancestor to the http://localhost preview. That makes the      */
+/* request's "site for cookies" cross-site, so the browser withholds       */
+/* default Lax/Strict cookies and auth sessions fail to stick. (Dev mode   */
+/* hides this: the shell runs on http://localhost, same-site with the      */
+/* preview.)                                                               */
+/*                                                                         */
+/* Fix: rewrite every forwarded Set-Cookie to                              */
+/* `SameSite=None; Secure` so it's sent inside the iframe.                 */
+/* (Secure is required by SameSite=None and honored over localhost.)       */
+/* ----------------------------------------------------------------------- */
+function rewriteCookieForIframe(cookieStr) {
+  if (!cookieStr || typeof cookieStr !== "string") return cookieStr;
+  // filter(Boolean) drops empty segments from leading/trailing/double semicolons
+  // so we never emit a malformed header like "...; ; Secure".
+  const parts = cookieStr
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return cookieStr;
+  const nameValue = parts[0];
+  // Drop any existing SameSite / Secure / Partitioned attributes so ours win.
+  const attrs = parts.slice(1).filter((p) => {
+    const lower = p.toLowerCase();
+    return (
+      !lower.startsWith("samesite") &&
+      lower !== "secure" &&
+      lower !== "partitioned"
+    );
+  });
+  attrs.push("Secure", "SameSite=None");
+  return [nameValue, ...attrs].join("; ");
+}
+
+/* Rewrites the Set-Cookie header (an array in Node) in place on `headers`. */
+function rewriteSetCookieHeaders(headers) {
+  const sc = headers["set-cookie"];
+  if (!sc) return headers;
+  const list = Array.isArray(sc) ? sc : [sc];
+  headers["set-cookie"] = list.map(rewriteCookieForIframe);
+  return headers;
+}
+
+/* ----------------------------------------------------------------------- */
 /* 1. Plain HTTP request / response                                        */
 /* ----------------------------------------------------------------------- */
 
@@ -374,6 +420,7 @@ const server = http.createServer((clientReq, clientRes) => {
     const inject = wantsInjection && isHtml;
 
     if (!inject) {
+      rewriteSetCookieHeaders(upRes.headers);
       clientRes.writeHead(upRes.statusCode, upRes.headers);
       return void upRes.pipe(clientRes);
     }
@@ -393,6 +440,7 @@ const server = http.createServer((clientReq, clientRes) => {
         delete hdrs["content-encoding"];
         // Also, remove ETag as content has changed
         delete hdrs["etag"];
+        rewriteSetCookieHeaders(hdrs);
 
         clientRes.writeHead(upRes.statusCode, hdrs);
         clientRes.end(patched);

@@ -50,7 +50,10 @@
     "e2e:shard": "playwright test --shard",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "benchmark:code-explorer": "node benchmarks/code-explorer/run.mjs"
+    "benchmark:code-explorer": "node benchmarks/code-explorer/run.mjs",
+    "benchmark:code-explorer:suite": "node benchmarks/code-explorer/suite.mjs",
+    "benchmark:code-explorer:smoke": "node benchmarks/code-explorer/suite.mjs --mode smoke",
+    "benchmark:code-explorer:full": "node benchmarks/code-explorer/suite.mjs --mode full"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.46",

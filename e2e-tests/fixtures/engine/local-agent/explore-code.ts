@@ -16,7 +16,7 @@ export const fixture: LocalAgentFixture = {
       ],
     },
     {
-      text: "The app component is defined in src/App.tsx and rendered from src/main.tsx.",
+      text: "The report shows that src/main.tsx mounts App and src/App.tsx owns the visible page content.",
     },
   ],
 };

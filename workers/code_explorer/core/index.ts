@@ -5,7 +5,7 @@ import { buildIndex } from "./indexer";
 import { searchNodes } from "./search";
 import { expandNodes } from "./expand";
 import { renderResult } from "./render";
-import type { TypeScriptModule } from "./types";
+import type { GraphIndex, TypeScriptModule } from "./types";
 
 export interface ExploreCodeInput {
   appPath: string;
@@ -19,28 +19,53 @@ export function exploreCode(
   ts: TypeScriptModule,
   input: ExploreCodeInput,
 ): CodeExplorerResult {
-  const maxFiles = clamp(input.maxFiles ?? 5, 1, 8);
-  const maxDepth = clamp(input.maxDepth ?? 2, 0, 3);
+  const built = buildCodeExplorerIndex(ts, input);
+  return searchCodeExplorerIndex(built, input);
+}
 
+export interface BuiltCodeExplorerIndex {
+  index: GraphIndex;
+  indexMs: number;
+  tsconfigPaths: string[];
+}
+
+export function buildCodeExplorerIndex(
+  ts: TypeScriptModule,
+  input: Pick<ExploreCodeInput, "appPath" | "tsconfigPath">,
+): BuiltCodeExplorerIndex {
   const indexStart = performance.now();
   const projects = createProjectPrograms(ts, {
     appPath: input.appPath,
     tsconfigPath: input.tsconfigPath,
   });
-  const index = buildIndex(ts, input.appPath, projects);
+  const projectRoot = projects[0]?.projectRoot ?? input.appPath;
+  const index = buildIndex(ts, projectRoot, projects);
   const indexMs = Math.round(performance.now() - indexStart);
+  return {
+    index,
+    indexMs,
+    tsconfigPaths: projects.map((project) => project.tsconfigPath),
+  };
+}
+
+export function searchCodeExplorerIndex(
+  built: BuiltCodeExplorerIndex,
+  input: ExploreCodeInput,
+): CodeExplorerResult {
+  const maxFiles = clamp(input.maxFiles ?? 5, 1, 8);
+  const maxDepth = clamp(input.maxDepth ?? 2, 0, 3);
 
   const searchStart = performance.now();
-  const roots = searchNodes(index, input.query);
-  const selected = expandNodes(index, roots.slice(0, 8), maxDepth);
+  const roots = searchNodes(built.index, input.query);
+  const selected = expandNodes(built.index, roots.slice(0, 8), maxDepth);
   const searchMs = Math.round(performance.now() - searchStart);
 
   return renderResult({
-    index,
+    index: built.index,
     query: input.query,
     selected,
     maxFiles,
-    indexMs,
+    indexMs: built.indexMs,
     searchMs,
   });
 }

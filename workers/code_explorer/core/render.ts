@@ -94,7 +94,11 @@ export function renderResult({
         break;
       }
 
-      cappedWindows.push({ startLine: window.startLine, lines });
+      cappedWindows.push({
+        startLine: window.startLine,
+        endLine: window.startLine + lines.length - 1,
+        lines,
+      });
       fileLineCount += lines.length;
       totalLines += lines.length;
       totalChars += charCount;

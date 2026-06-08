@@ -25,7 +25,7 @@
     {
       "name": "mattermost",
       "gitUrl": "https://github.com/mattermost/mattermost",
-      "subPath": "webapp/channels",
+      "subPath": "webapp",
       "tasks": [
         {
           "id": "post-send",
@@ -47,7 +47,8 @@
     {
       "name": "calcom",
       "gitUrl": "https://github.com/calcom/cal.com",
-      "subPath": ".",
+      "subPath": "apps/web",
+      "importSubPath": ".",
       "tasks": [
         {
           "id": "availability",
@@ -85,6 +86,93 @@
           "id": "database-table",
           "prompt": "Trace how database table UI data is fetched and rendered. Name the key files and symbols.",
           "expected": ["database", "table"]
+        }
+      ]
+    },
+    {
+      "name": "dub",
+      "gitUrl": "https://github.com/dubinc/dub",
+      "subPath": "apps/web",
+      "importSubPath": ".",
+      "installPath": ".",
+      "tasks": [
+        {
+          "id": "link-create",
+          "prompt": "Trace the flow for creating a short link from dashboard UI submission to persistence/API call. Name the key files and symbols.",
+          "expected": ["link", "create"]
+        },
+        {
+          "id": "analytics-chart",
+          "prompt": "Trace how link analytics data is fetched and rendered in the dashboard chart. Name the key files and symbols.",
+          "expected": ["analytics", "chart"]
+        },
+        {
+          "id": "workspace-settings",
+          "prompt": "Find how workspace settings are loaded, edited, and saved. Identify the main files and symbols involved.",
+          "expected": ["workspace", "settings"]
+        },
+        {
+          "id": "invite-member",
+          "prompt": "Trace the flow for inviting a teammate/member to a workspace. Name the key files and symbols.",
+          "expected": ["invite", "member"]
+        }
+      ]
+    },
+    {
+      "name": "twenty",
+      "gitUrl": "https://github.com/twentyhq/twenty",
+      "subPath": "packages/twenty-front",
+      "importSubPath": ".",
+      "installPath": ".",
+      "tasks": [
+        {
+          "id": "record-detail",
+          "prompt": "Trace how a CRM record detail page is loaded and rendered. Name the key files and symbols.",
+          "expected": ["record", "detail"]
+        },
+        {
+          "id": "record-field-edit",
+          "prompt": "Find the implementation flow for editing a field on a CRM record and saving it. Identify the main files and symbols involved.",
+          "expected": ["field", "record"]
+        },
+        {
+          "id": "list-filter-sort",
+          "prompt": "Trace how a list/table view applies filters and sorting. Name the key files and symbols.",
+          "expected": ["filter", "sort"]
+        },
+        {
+          "id": "pipeline-stage-update",
+          "prompt": "Trace how a pipeline/opportunity stage change is handled from UI interaction to data update. Name the key files and symbols.",
+          "expected": ["stage", "pipeline"]
+        }
+      ]
+    },
+    {
+      "name": "midday",
+      "gitUrl": "https://github.com/midday-ai/midday",
+      "subPath": "apps/dashboard",
+      "importSubPath": ".",
+      "installPath": ".",
+      "tasks": [
+        {
+          "id": "invoice-create",
+          "prompt": "Trace the flow for creating an invoice from dashboard UI to persistence/API call. Name the key files and symbols.",
+          "expected": ["invoice", "create"]
+        },
+        {
+          "id": "transactions-table",
+          "prompt": "Find how transactions are fetched, filtered, and rendered in the table UI. Identify the main files and symbols involved.",
+          "expected": ["transaction", "table"]
+        },
+        {
+          "id": "customer-detail",
+          "prompt": "Trace how customer details are loaded and rendered. Name the key files and symbols.",
+          "expected": ["customer"]
+        },
+        {
+          "id": "report-metrics",
+          "prompt": "Trace how dashboard/report metrics are fetched and displayed. Name the key files and symbols.",
+          "expected": ["report", "metrics"]
         }
       ]
     }

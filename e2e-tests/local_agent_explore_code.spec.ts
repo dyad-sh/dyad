@@ -26,8 +26,11 @@ testSkipIfWindows("local-agent - explore_code experiment", async ({ po }) => {
   const card = po.page.getByTestId("dyad-explore-code");
   await expect(card).toBeVisible({ timeout: Timeout.LONG });
   await card.click();
+  await expect(card).toContainText("explore_code report");
   await expect(card).toContainText("src/App.tsx");
-  await expect(card).toContainText(/\d+ const App =/);
+  await expect(card).toContainText("src/main.tsx");
+  await expect(card).toContainText("Findings");
+  await expect(card).toContainText("Compiler signal: strong");
 
   await po.snapshotMessages();
 });

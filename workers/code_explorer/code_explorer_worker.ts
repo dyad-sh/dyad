@@ -1,10 +1,15 @@
 import { parentPort } from "node:worker_threads";
+import * as fs from "node:fs";
 
 import type {
   CodeExplorerWorkerInput,
   CodeExplorerWorkerOutput,
 } from "../../shared/code_explorer_types";
-import { exploreCode } from "./core";
+import {
+  buildCodeExplorerIndex,
+  searchCodeExplorerIndex,
+  type BuiltCodeExplorerIndex,
+} from "./core";
 
 function loadLocalTypeScript(appPath: string): typeof import("typescript") {
   try {
@@ -17,12 +22,28 @@ function loadLocalTypeScript(appPath: string): typeof import("typescript") {
   }
 }
 
+interface CachedTypeScript {
+  appPath: string;
+  ts: typeof import("typescript");
+}
+
+interface CachedIndex {
+  key: string;
+  built: BuiltCodeExplorerIndex;
+  watchedPaths: string[];
+  newestMtimeMs: number;
+}
+
+let cachedTypeScript: CachedTypeScript | undefined;
+const indexCache = new Map<string, CachedIndex>();
+
 async function processCodeExplorer(
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerWorkerOutput> {
   try {
-    const ts = loadLocalTypeScript(input.appPath);
-    const result = exploreCode(ts, input);
+    const ts = loadCachedTypeScript(input.appPath);
+    const built = getCachedIndex(ts, input);
+    const result = searchCodeExplorerIndex(built, input);
     return {
       success: true,
       data: result,
@@ -33,6 +54,56 @@ async function processCodeExplorer(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function loadCachedTypeScript(appPath: string): typeof import("typescript") {
+  if (cachedTypeScript?.appPath === appPath) {
+    return cachedTypeScript.ts;
+  }
+  const ts = loadLocalTypeScript(appPath);
+  cachedTypeScript = { appPath, ts };
+  indexCache.clear();
+  return ts;
+}
+
+function getCachedIndex(
+  ts: typeof import("typescript"),
+  input: CodeExplorerWorkerInput,
+): BuiltCodeExplorerIndex {
+  const key = `${input.appPath}\0${input.tsconfigPath ?? ""}`;
+  const cached = indexCache.get(key);
+  if (cached && isCacheFresh(cached)) {
+    return cached.built;
+  }
+
+  const built = buildCodeExplorerIndex(ts, input);
+  const watchedPaths = [
+    ...built.tsconfigPaths,
+    ...built.index.rootFileNames,
+  ].filter(Boolean);
+  indexCache.set(key, {
+    key,
+    built,
+    watchedPaths,
+    newestMtimeMs: newestMtimeMs(watchedPaths),
+  });
+  return built;
+}
+
+function isCacheFresh(cached: CachedIndex): boolean {
+  return newestMtimeMs(cached.watchedPaths) <= cached.newestMtimeMs;
+}
+
+function newestMtimeMs(paths: string[]): number {
+  let newest = 0;
+  for (const filePath of paths) {
+    try {
+      newest = Math.max(newest, fs.statSync(filePath).mtimeMs);
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  }
+  return newest;
 }
 
 parentPort?.on("message", async (input: CodeExplorerWorkerInput) => {

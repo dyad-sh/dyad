@@ -74,6 +74,429 @@ describe("exploreCode", () => {
       ),
     ).toBe(true);
   });
+
+  it("discovers a workspace app tsconfig when the repo root has none", () => {
+    const appPath = createTempProject({
+      "apps/web/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "apps/web/src/dashboard.ts": [
+        "export function loadDashboardMetrics() {",
+        "  return ['revenue', 'customers'];",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath,
+      query: "dashboard metrics",
+      maxFiles: 2,
+      maxDepth: 1,
+    });
+
+    expect(result.files.map((file) => file.path)).toContain(
+      "apps/web/src/dashboard.ts",
+    );
+  });
+
+  it("keeps paths relative to a nested git checkout app root", () => {
+    const outerRepo = createTempProject({
+      "package.json": JSON.stringify({ name: "outer-workspace" }, null, 2),
+      "benchmarks/code-explorer/repos/calcom/package.json": JSON.stringify(
+        { name: "calcom" },
+        null,
+        2,
+      ),
+      "benchmarks/code-explorer/repos/calcom/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["apps/web/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "benchmarks/code-explorer/repos/calcom/apps/web/src/booking.ts": [
+        "export function createBookingFromCheckout() {",
+        "  return 'booking';",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    const appPath = path.join(
+      outerRepo,
+      "benchmarks",
+      "code-explorer",
+      "repos",
+      "calcom",
+    );
+    fs.mkdirSync(path.join(outerRepo, ".git"));
+    fs.mkdirSync(path.join(appPath, ".git"));
+
+    const result = exploreCode(ts, {
+      appPath,
+      query: "creating booking checkout",
+      maxFiles: 2,
+      maxDepth: 1,
+    });
+
+    expect(result.files.map((file) => file.path)).toContain(
+      "apps/web/src/booking.ts",
+    );
+    expect(result.files.map((file) => file.path)).not.toContain(
+      "benchmarks/code-explorer/repos/calcom/apps/web/src/booking.ts",
+    );
+  });
+
+  it("stems mutation query terms when ranking symbol matches", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+            jsx: "react-jsx",
+          },
+          include: ["src/**/*"],
+        },
+        null,
+        2,
+      ),
+      "src/components/booking/BookingActionsDropdown.tsx": [
+        "export interface BookingActionsDropdownProps {",
+        "  bookingId: string;",
+        "}",
+        "",
+        "export function BookingActionsDropdown() {",
+        "  return null;",
+        "}",
+        "",
+      ].join("\n"),
+      "src/server/bookings/createBooking.ts": [
+        "export interface CreateBookingInput {",
+        "  attendeeEmail: string;",
+        "}",
+        "",
+        "export function createBooking(input: CreateBookingInput) {",
+        "  return { id: 'booking-id', attendeeEmail: input.attendeeEmail };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath,
+      query: "creating booking flow",
+      maxFiles: 1,
+      maxDepth: 1,
+    });
+
+    expect(result.files.map((file) => file.path)).toEqual([
+      "src/server/bookings/createBooking.ts",
+    ]);
+  });
+
+  it("prefers implementation files over test support packages unless tests are requested", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["packages/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "packages/testing/src/lib/bookingScenario/bookingScenario.ts": [
+        "export function createBookingScenarioForTests() {",
+        "  return { bookingId: 'test-booking' };",
+        "}",
+        "",
+      ].join("\n"),
+      "packages/features/bookings/lib/createBooking.ts": [
+        "export function createBookingForEventType() {",
+        "  return { bookingId: 'real-booking' };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath,
+      query: "creating booking implementation flow",
+      maxFiles: 1,
+      maxDepth: 1,
+    });
+
+    expect(result.files.map((file) => file.path)).toEqual([
+      "packages/features/bookings/lib/createBooking.ts",
+    ]);
+
+    const testResult = exploreCode(ts, {
+      appPath,
+      query: "creating booking test scenario",
+      maxFiles: 1,
+      maxDepth: 1,
+    });
+
+    expect(testResult.files.map((file) => file.path)).toEqual([
+      "packages/testing/src/lib/bookingScenario/bookingScenario.ts",
+    ]);
+  });
+
+  it("prefers domain mutation implementations over off-domain create handlers and test helpers", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+            jsx: "react-jsx",
+          },
+          include: [
+            "apps/**/*.ts",
+            "apps/**/*.tsx",
+            "packages/**/*.ts",
+            "packages/**/*.tsx",
+          ],
+        },
+        null,
+        2,
+      ),
+      "apps/web/modules/bookings/lib/bookingSheetKeyboardHandler.test.ts": [
+        "export function createMockKeyboardEvent() {",
+        "  return new KeyboardEvent('keydown');",
+        "}",
+        "",
+        "export function createBookingSheetKeydownHandler() {",
+        "  return null;",
+        "}",
+        "",
+      ].join("\n"),
+      "apps/web/app/api/auth/signup/handlers/calcomSignupHandler.ts": [
+        "export async function createCustomer() {",
+        "  return { stripeCustomerId: 'customer' };",
+        "}",
+        "",
+        "export async function signupHandler() {",
+        "  return createCustomer();",
+        "}",
+        "",
+      ].join("\n"),
+      "apps/web/modules/bookings/hooks/useBookings.ts": [
+        "import { useHandleBookEvent } from '@calcom/atoms/hooks/bookings/useHandleBookEvent';",
+        "",
+        "export function useBookings() {",
+        "  return { handleBookEvent: useHandleBookEvent() };",
+        "}",
+        "",
+      ].join("\n"),
+      "apps/web/modules/bookings/components/BookingListContainer.tsx": [
+        "export interface BookingListContainerProps {",
+        "  bookingId: string;",
+        "}",
+        "",
+        "export function BookingListContainer() {",
+        "  return null;",
+        "}",
+        "",
+      ].join("\n"),
+      "packages/platform/atoms/hooks/bookings/useHandleBookEvent.ts": [
+        "export function useHandleBookEvent() {",
+        "  return function handleBookEvent() {",
+        "    return fetch('/api/book/event', { method: 'POST' });",
+        "  };",
+        "}",
+        "",
+      ].join("\n"),
+      "packages/features/bookings/lib/service/RegularBookingService.ts": [
+        "export class RegularBookingService {",
+        "  async createBooking() {",
+        "    return { id: 'booking-id' };",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath,
+      query:
+        "booking create hook api handler service form handle submit mutation",
+      maxFiles: 3,
+      maxDepth: 1,
+    });
+
+    const paths = result.files.map((file) => file.path);
+    expect(paths).toContain(
+      "packages/platform/atoms/hooks/bookings/useHandleBookEvent.ts",
+    );
+    expect(paths).toContain(
+      "packages/features/bookings/lib/service/RegularBookingService.ts",
+    );
+    expect(paths).not.toContain(
+      "apps/web/app/api/auth/signup/handlers/calcomSignupHandler.ts",
+    );
+    expect(paths).not.toContain(
+      "apps/web/modules/bookings/lib/bookingSheetKeyboardHandler.test.ts",
+    );
+    expect(paths).not.toContain(
+      "apps/web/modules/bookings/components/BookingListContainer.tsx",
+    );
+  });
+
+  it("prefers product app tsconfigs over docs tsconfigs in monorepo roots", () => {
+    const appPath = createTempProject({
+      "apps/docs/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "apps/docs/src/docs.ts": [
+        "export function renderDocsHome() {",
+        "  return 'docs';",
+        "}",
+        "",
+      ].join("\n"),
+      "apps/web/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "apps/web/src/booking.ts": [
+        "export function createBookingFromWeb() {",
+        "  return 'booking';",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath,
+      query: "booking create web",
+      maxFiles: 2,
+      maxDepth: 1,
+    });
+
+    expect(result.files.map((file) => file.path)).toContain(
+      "apps/web/src/booking.ts",
+    );
+    expect(result.files.map((file) => file.path)).not.toContain(
+      "apps/docs/src/docs.ts",
+    );
+  });
+
+  it("allows TypeScript project references inside a parent monorepo package", () => {
+    const projectRoot = createTempProject({
+      "webapp/package.json": JSON.stringify({ private: true }, null, 2),
+      "webapp/channels/package.json": JSON.stringify(
+        { name: "channels" },
+        null,
+        2,
+      ),
+      "webapp/channels/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            composite: true,
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+          references: [{ path: "../platform/client" }],
+        },
+        null,
+        2,
+      ),
+      "webapp/channels/src/send_post.ts": [
+        "import { sendPostToServer } from '../../platform/client/src/client';",
+        "",
+        "export function sendPostFromChannel(message: string) {",
+        "  return sendPostToServer(message);",
+        "}",
+        "",
+      ].join("\n"),
+      "webapp/platform/client/package.json": JSON.stringify(
+        { name: "platform-client" },
+        null,
+        2,
+      ),
+      "webapp/platform/client/tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            composite: true,
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "webapp/platform/client/src/client.ts": [
+        "export function sendPostToServer(message: string) {",
+        "  return { id: 'post-id', message };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath: path.join(projectRoot, "webapp", "channels"),
+      query: "send post server client",
+      maxFiles: 4,
+      maxDepth: 2,
+    });
+
+    expect(result.files.map((file) => file.path)).toContain(
+      "channels/src/send_post.ts",
+    );
+    expect(result.files.map((file) => file.path)).toContain(
+      "platform/client/src/client.ts",
+    );
+  });
 });
 
 function createTempProject(files: Record<string, string>): string {

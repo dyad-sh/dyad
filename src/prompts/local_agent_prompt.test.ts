@@ -13,6 +13,7 @@ describe("local_agent_prompt", () => {
     });
     expect(prompt).toMatchSnapshot();
     expect(prompt).toContain("Use `explore_code` first");
+    expect(prompt).toContain("`path:start-end`");
     expect(prompt).not.toContain("Use `grep` and `code_search`");
   });
 

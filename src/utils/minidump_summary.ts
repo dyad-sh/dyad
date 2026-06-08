@@ -74,7 +74,7 @@ const CRASHPAD_MODULE_LIST_RVA_OFF = 48; // rva field of module_list (@44 + 4)
 const CRASHPAD_ADDRESS_MASK_OFF = 56;
 const CRASHPAD_INFO_MIN_SIZE_FOR_MASK = 64; // through the end of address_mask
 
-// Crashpad stores the POSIX signal number in ExceptionCode on Linux/macOS.
+// On Linux, Crashpad stores the POSIX signal number in ExceptionCode.
 const SIGNAL_NAMES: Record<number, string> = {
   4: "SIGILL",
   5: "SIGTRAP",
@@ -83,6 +83,23 @@ const SIGNAL_NAMES: Record<number, string> = {
   8: "SIGFPE",
   11: "SIGSEGV",
   15: "SIGTERM",
+};
+
+// On macOS, ExceptionCode is the Mach exception type, not a signal.
+const MACH_EXCEPTION_NAMES: Record<number, string> = {
+  1: "EXC_BAD_ACCESS",
+  2: "EXC_BAD_INSTRUCTION",
+  3: "EXC_ARITHMETIC",
+  4: "EXC_EMULATION",
+  5: "EXC_SOFTWARE",
+  6: "EXC_BREAKPOINT",
+  7: "EXC_SYSCALL",
+  8: "EXC_MACH_SYSCALL",
+  9: "EXC_RPC_ALERT",
+  10: "EXC_CRASH",
+  11: "EXC_RESOURCE",
+  12: "EXC_GUARD",
+  13: "EXC_CORPSE_NOTIFY",
 };
 
 // Windows uses NTSTATUS exception codes; degrades to the raw code when unmatched.
@@ -192,7 +209,9 @@ export function parseMinidumpBuffer(
     const crashReason =
       platform === "win32"
         ? NTSTATUS_NAMES[exceptionCode >>> 0]
-        : SIGNAL_NAMES[exceptionCode];
+        : platform === "darwin"
+          ? MACH_EXCEPTION_NAMES[exceptionCode]
+          : SIGNAL_NAMES[exceptionCode];
 
     // The faulting CODE location is the instruction pointer from the crashing
     // thread's CPU context — not ExceptionAddress, which on a null-deref/abort

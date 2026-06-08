@@ -182,6 +182,20 @@ describe("parseMinidumpBuffer", () => {
     );
   });
 
+  it("decodes a macOS Mach exception code (not a POSIX signal)", () => {
+    // On macOS, ExceptionCode is a Mach exception type: 1 is EXC_BAD_ACCESS,
+    // not signal 1 (SIGHUP).
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 1,
+      ip: 0x10010n,
+      ipOffset: 264,
+    });
+    expect(parseMinidumpBuffer(dump, "darwin", "arm64")!.crashReason).toBe(
+      "EXC_BAD_ACCESS",
+    );
+  });
+
   it("decodes a Windows NTSTATUS code", () => {
     const dump = buildMinidump({
       modules: [{ base: 0x400000n, size: 0x1000, name: "C:\\app\\app.exe" }],

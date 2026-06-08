@@ -127,7 +127,10 @@ function processNativeCrashDumps(): void {
   try {
     fs.mkdirSync(retainDir, { recursive: true });
   } catch (error) {
+    // Without the retain dir, moving a dump would fail and drop it. Leave the
+    // dumps in place and try again on the next launch.
     logger.warn("Could not create crash reports directory:", error);
+    return;
   }
 
   for (const file of listDumpFilesRecursive(crashDumpsDir)) {

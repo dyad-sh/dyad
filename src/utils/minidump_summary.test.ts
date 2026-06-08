@@ -24,6 +24,7 @@ function buildMinidump(opts: {
   ip: bigint;
   ipOffset: number; // where the IP sits in the CPU context: 248 (x64) / 264 (arm64)
   ptype?: string;
+  addressMask?: bigint; // Crashpad address_mask, written into the CrashpadInfo stream
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -118,10 +119,15 @@ function buildMinidump(opts: {
     dv.setUint32(cpModListRva + 12, moduleInfoRva, true);
     cursor = cpModListRva + 16;
 
-    // CrashpadInfo: module_list RVA @ +48.
+    // CrashpadInfo: module_list RVA @ +48, optional address_mask u64 @ +56.
     crashpadInfoRva = cursor;
     dv.setUint32(crashpadInfoRva + 48, cpModListRva, true);
-    cursor = crashpadInfoRva + 52;
+    if (opts.addressMask !== undefined) {
+      dv.setBigUint64(crashpadInfoRva + 56, opts.addressMask, true);
+      cursor = crashpadInfoRva + 64;
+    } else {
+      cursor = crashpadInfoRva + 52;
+    }
   }
 
   // --- Header (signature @0, stream count @8, directory RVA @12) ---
@@ -140,7 +146,7 @@ function buildMinidump(opts: {
   dv.setUint32(52, exceptionRva, true);
   if (opts.ptype !== undefined) {
     dv.setUint32(56, 0x43500001, true);
-    dv.setUint32(60, 52, true);
+    dv.setUint32(60, opts.addressMask !== undefined ? 64 : 52, true);
     dv.setUint32(64, crashpadInfoRva, true);
   }
 
@@ -194,6 +200,22 @@ describe("parseMinidumpBuffer", () => {
       exceptionCode: 11,
       ip: 0x10800n,
       ipOffset: 264,
+    });
+    const s = parseMinidumpBuffer(dump, "darwin", "arm64");
+    expect(s!.faultingModule).toBe("libc.so.6");
+    expect(s!.faultingOffset).toBe("0x800");
+  });
+
+  it("strips arm64 pointer-tag bits using the Crashpad address_mask", () => {
+    // IP carries a high tag byte (0xab...); without masking it falls outside the
+    // module. The address_mask clears the tag so it resolves to base + 0x800.
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0xab00000000010800n,
+      ipOffset: 264,
+      ptype: "browser",
+      addressMask: 0x000000ffffffffffn,
     });
     const s = parseMinidumpBuffer(dump, "darwin", "arm64");
     expect(s!.faultingModule).toBe("libc.so.6");

@@ -120,12 +120,10 @@ function processNativeCrashDumps(): void {
   nativeCrashDumpsProcessed = true;
 
   const crashDumpsDir = app.getPath("crashDumps");
-  // Where we keep dumps we've already reported, for later examination. Kept
-  // outside crashDumpsDir so it stays separate from Crashpad's own dump dirs.
-  const retainDir = path.join(
-    path.dirname(crashDumpsDir),
-    "dyad-crash-reports",
-  );
+  // Where we keep dumps we've already reported, for later examination. Under
+  // userData (not inside crashDumpsDir) so it stays separate from Crashpad's
+  // own dump dirs and isn't picked up by the scan above.
+  const retainDir = path.join(app.getPath("userData"), "dyad-crash-reports");
   try {
     fs.mkdirSync(retainDir, { recursive: true });
   } catch (error) {

@@ -40,6 +40,7 @@ const HEADER_SIZE = 32;
 // LOCATION_DESCRIPTOR { u32 dataSize @4, u32 rva @8 }. 12 bytes total.
 const DIR_ENTRY_SIZE = 12;
 const DIR_ENTRY_TYPE_OFF = 0;
+const DIR_ENTRY_SIZE_OFF = 4;
 const DIR_ENTRY_RVA_OFF = 8;
 
 // MINIDUMP_EXCEPTION_STREAM, from the stream's start:
@@ -65,6 +66,13 @@ const MODULE_RECORD_SIZE = 108;
 const MODULE_BASE_OFF = 0;
 const MODULE_SIZE_OFF = 8;
 const MODULE_NAME_RVA_OFF = 20;
+
+// MinidumpCrashpadInfo: u32 version @0 | UUID report_id (16) @4 | UUID client_id
+// (16) @20 | LOCATION_DESCRIPTOR simple_annotations (8) @36 | LOCATION_DESCRIPTOR
+// module_list (8) @44 | u32 reserved @52 | u64 address_mask @56.
+const CRASHPAD_MODULE_LIST_RVA_OFF = 48; // rva field of module_list (@44 + 4)
+const CRASHPAD_ADDRESS_MASK_OFF = 56;
+const CRASHPAD_INFO_MIN_SIZE_FOR_MASK = 64; // through the end of address_mask
 
 // Crashpad stores the POSIX signal number in ExceptionCode on Linux/macOS.
 const SIGNAL_NAMES: Record<number, string> = {
@@ -161,14 +169,19 @@ export function parseMinidumpBuffer(
     let moduleListRva = 0;
     let exceptionRva = 0;
     let crashpadInfoRva = 0;
+    let crashpadInfoSize = 0;
     for (let i = 0; i < numStreams; i++) {
       const entry = dirRva + i * DIR_ENTRY_SIZE;
       if (entry + DIR_ENTRY_SIZE > buf.length) break;
       const type = view.getUint32(entry + DIR_ENTRY_TYPE_OFF, true);
+      const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
       const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
       if (type === STREAM_MODULE_LIST) moduleListRva = rva;
       else if (type === STREAM_EXCEPTION) exceptionRva = rva;
-      else if (type === STREAM_CRASHPAD_INFO) crashpadInfoRva = rva;
+      else if (type === STREAM_CRASHPAD_INFO) {
+        crashpadInfoRva = rva;
+        crashpadInfoSize = size;
+      }
     }
 
     if (exceptionRva === 0 || exceptionRva + EXC_CONTEXT_RVA_OFF > buf.length) {
@@ -198,6 +211,19 @@ export function parseMinidumpBuffer(
       if (contextRva + ipOffset + 8 <= buf.length) {
         instructionPointer = view.getBigUint64(contextRva + ipOffset, true);
       }
+    }
+
+    // On arm64 (Apple Silicon) the saved pointer can carry pointer-auth / top-byte
+    // tag bits. Crashpad records an address_mask to strip them; apply it before
+    // module lookup so the address falls inside its module's range.
+    if (instructionPointer !== 0n && crashpadInfoRva) {
+      const mask = readAddressMask(
+        view,
+        buf,
+        crashpadInfoRva,
+        crashpadInfoSize,
+      );
+      if (mask !== 0n) instructionPointer &= mask;
     }
 
     let faultingModule: string | undefined;
@@ -245,8 +271,13 @@ function parsePtype(
   infoRva: number,
 ): string | undefined {
   try {
-    if (infoRva + 52 > buf.length) return undefined;
-    const modListRva = view.getUint32(infoRva + 48, true);
+    if (infoRva + CRASHPAD_MODULE_LIST_RVA_OFF + 4 > buf.length) {
+      return undefined;
+    }
+    const modListRva = view.getUint32(
+      infoRva + CRASHPAD_MODULE_LIST_RVA_OFF,
+      true,
+    );
     if (modListRva === 0 || modListRva + 4 > buf.length) return undefined;
     const moduleCount = view.getUint32(modListRva, true);
     for (let i = 0; i < moduleCount; i++) {
@@ -271,6 +302,24 @@ function parsePtype(
     // best effort — ptype is optional context
   }
   return undefined;
+}
+
+// Read the address_mask from the MinidumpCrashpadInfo stream, used to strip
+// pointer-tag bits from addresses (arm64). Returns 0n when absent — older dumps
+// don't have the field, so only read it when the stream is long enough.
+function readAddressMask(
+  view: DataView,
+  buf: Buffer,
+  infoRva: number,
+  infoSize: number,
+): bigint {
+  if (
+    infoSize < CRASHPAD_INFO_MIN_SIZE_FOR_MASK ||
+    infoRva + CRASHPAD_ADDRESS_MASK_OFF + 8 > buf.length
+  ) {
+    return 0n;
+  }
+  return view.getBigUint64(infoRva + CRASHPAD_ADDRESS_MASK_OFF, true);
 }
 
 // A u32 byte-length followed by UTF-8 bytes (MinidumpUTF8String / ByteArray).

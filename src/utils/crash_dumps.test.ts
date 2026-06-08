@@ -75,6 +75,14 @@ describe("crash_dumps", () => {
     expect(fs.existsSync(dest.replace(/\.dmp$/, ".meta"))).toBe(true);
   });
 
+  it("deletes the source when the move fails, so it isn't reprocessed", () => {
+    const src = makeDump("a1b2c3d4.dmp", 1);
+    // Destination parent does not exist → rename fails. The source must still be
+    // removed so the next launch doesn't read it again.
+    moveDump(src, path.join(dir, "no-such-dir", "x.dmp"));
+    expect(fs.existsSync(src)).toBe(false);
+  });
+
   it("prunes to the N most-recent dumps", () => {
     makeDump("old1.dmp", 50);
     makeDump("old2.dmp", 40);

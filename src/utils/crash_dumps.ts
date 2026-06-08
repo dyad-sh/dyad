@@ -9,10 +9,10 @@ export function listDumpFiles(dir: string): string[] {
   } catch {
     return [];
   }
-  return entries
+  const dumps = entries
     .filter((f) => f.endsWith(".dmp"))
-    .map((f) => path.join(dir, f))
-    .sort((a, b) => mtimeMs(b) - mtimeMs(a));
+    .map((f) => path.join(dir, f));
+  return sortNewestFirst(dumps);
 }
 
 // Absolute paths of every .dmp anywhere under a directory tree, newest first.
@@ -35,7 +35,7 @@ export function listDumpFilesRecursive(dir: string): string[] {
     }
   };
   walk(dir);
-  return found.sort((a, b) => mtimeMs(b) - mtimeMs(a));
+  return sortNewestFirst(found);
 }
 
 // Delete a dump and its Crashpad metadata sidecar (best effort).
@@ -57,6 +57,15 @@ export function pruneDumps(dir: string, max: number): void {
   }
 }
 
+// Sort paths newest-first, reading each file's mtime once (not inside the
+// comparator, which would re-stat on every comparison).
+function sortNewestFirst(paths: string[]): string[] {
+  return paths
+    .map((p) => ({ p, mtime: mtimeMs(p) }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((x) => x.p);
+}
+
 function mtimeMs(p: string): number {
   try {
     return fs.statSync(p).mtimeMs;
@@ -73,10 +82,21 @@ function unlinkQuiet(p: string): void {
   }
 }
 
+// Move a file, best effort. Falls back to copy+delete across devices (EXDEV).
+// If the move can't complete, delete the source so it isn't read again on the
+// next launch.
 function renameQuiet(src: string, dest: string): void {
   try {
     fs.renameSync(src, dest);
-  } catch {
-    // Best effort — sidecar may not exist, or the source is already gone.
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EXDEV") {
+      try {
+        fs.copyFileSync(src, dest);
+      } catch {
+        // fall through to deleting the source
+      }
+    }
   }
+  unlinkQuiet(src);
 }

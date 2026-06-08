@@ -14,17 +14,7 @@ import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
-import { useAppVersion } from "@/hooks/useAppVersion";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useTheme } from "@/contexts/ThemeContext";
-import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
 import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
@@ -46,10 +36,6 @@ import {
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
-
-// Track whether we've already checked release notes this session (module-scoped
-// so it persists across component unmount/remount cycles).
-let hasCheckedReleaseNotes = false;
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -75,10 +61,6 @@ export default function HomePage() {
   const [performanceData, setPerformanceData] = useState<any>(undefined);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
-  const appVersion = useAppVersion();
-  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
-  const [releaseUrl, setReleaseUrl] = useState("");
-  const { theme } = useTheme();
   const queryClient = useQueryClient();
 
   // Listen for force-close events
@@ -89,47 +71,6 @@ export default function HomePage() {
     });
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    const updateLastVersionLaunched = async () => {
-      if (
-        hasCheckedReleaseNotes ||
-        !appVersion ||
-        !settings ||
-        settings.lastShownReleaseNotesVersion === appVersion
-      ) {
-        return;
-      }
-      hasCheckedReleaseNotes = true;
-
-      const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
-      await updateSettings({
-        lastShownReleaseNotesVersion: appVersion,
-      });
-      // It feels spammy to show release notes if it's
-      // the users very first time.
-      if (!shouldShowReleaseNotes) {
-        return;
-      }
-
-      try {
-        const result = await ipc.system.doesReleaseNoteExist({
-          version: appVersion,
-        });
-
-        if (result.exists && result.url) {
-          setReleaseUrl(result.url + "?hideHeader=true&theme=" + theme);
-          setReleaseNotesOpen(true);
-        }
-      } catch (err) {
-        console.warn(
-          "Unable to check if release note exists for: " + appVersion,
-          err,
-        );
-      }
-    };
-    updateLastVersionLaunched();
-  }, [appVersion, settings, updateSettings, theme]);
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
@@ -367,41 +308,6 @@ export default function HomePage() {
           <ProBanner />
         </div>
         <PrivacyBanner />
-
-        {/* Release Notes Dialog */}
-        <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
-          <DialogContent className="max-w-4xl bg-(--docs-bg) pr-0 pt-4 pl-4 gap-1">
-            <DialogHeader>
-              <DialogTitle>
-                {t("whatsNew", { version: appVersion })}
-              </DialogTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
-                onClick={() =>
-                  window.open(
-                    releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
-                    "_blank",
-                  )
-                }
-              >
-                <ExternalLink className="w-4 h-4" />
-              </Button>
-            </DialogHeader>
-            <div className="overflow-auto h-[70vh] flex flex-col ">
-              {releaseUrl && (
-                <div className="flex-1">
-                  <iframe
-                    src={releaseUrl}
-                    className="w-full h-full border-0 rounded-lg"
-                    title={t("releaseNotesTitle", { version: appVersion })}
-                  />
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
       <FeaturedAppShowcase />
     </div>

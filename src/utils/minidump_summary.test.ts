@@ -208,14 +208,15 @@ describe("parseMinidumpBuffer", () => {
 
   it("strips arm64 pointer-tag bits using the Crashpad address_mask", () => {
     // IP carries a high tag byte (0xab...); without masking it falls outside the
-    // module. The address_mask clears the tag so it resolves to base + 0x800.
+    // module. address_mask marks the tag bits — clearing them (pointer & ~mask)
+    // recovers base + 0x800.
     const dump = buildMinidump({
       modules: oneModule,
       exceptionCode: 11,
       ip: 0xab00000000010800n,
       ipOffset: 264,
       ptype: "browser",
-      addressMask: 0x000000ffffffffffn,
+      addressMask: 0xff00000000000000n,
     });
     const s = parseMinidumpBuffer(dump, "darwin", "arm64");
     expect(s!.faultingModule).toBe("libc.so.6");

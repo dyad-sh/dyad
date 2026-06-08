@@ -213,9 +213,9 @@ export function parseMinidumpBuffer(
       }
     }
 
-    // On arm64 (Apple Silicon) the saved pointer can carry pointer-auth / top-byte
-    // tag bits. Crashpad records an address_mask to strip them; apply it before
-    // module lookup so the address falls inside its module's range.
+    // On arm64 the saved pointer can carry pointer-auth / top-byte tag bits.
+    // Crashpad records an address_mask to recover the real address before module
+    // lookup.
     if (instructionPointer !== 0n && crashpadInfoRva) {
       const mask = readAddressMask(
         view,
@@ -223,7 +223,7 @@ export function parseMinidumpBuffer(
         crashpadInfoRva,
         crashpadInfoSize,
       );
-      if (mask !== 0n) instructionPointer &= mask;
+      instructionPointer = applyAddressMask(instructionPointer, mask);
     }
 
     let faultingModule: string | undefined;
@@ -320,6 +320,15 @@ function readAddressMask(
     return 0n;
   }
   return view.getBigUint64(infoRva + CRASHPAD_ADDRESS_MASK_OFF, true);
+}
+
+// Recover a real address from a tagged arm64 pointer using Crashpad's mask. Per
+// Crashpad: clear the masked (tag) bits, or set them when bit 55 is set (the
+// pointer is in high memory). A 0 mask means no tagging — return as-is.
+function applyAddressMask(pointer: bigint, mask: bigint): bigint {
+  if (mask === 0n) return pointer;
+  const HIGH_MEMORY_BIT = 1n << 55n;
+  return (pointer & HIGH_MEMORY_BIT) !== 0n ? pointer | mask : pointer & ~mask;
 }
 
 // A u32 byte-length followed by UTF-8 bytes (MinidumpUTF8String / ByteArray).

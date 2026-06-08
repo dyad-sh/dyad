@@ -14,6 +14,7 @@ export interface CodeExplorerSymbolResult {
 
 export interface CodeExplorerSourceWindow {
   startLine: number;
+  endLine: number;
   lines: string[];
 }
 

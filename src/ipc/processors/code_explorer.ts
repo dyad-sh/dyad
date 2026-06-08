@@ -12,16 +12,167 @@ import log from "electron-log";
 
 const logger = log.scope("code-explorer");
 const DEFAULT_CONFIGS = ["tsconfig.app.json", "tsconfig.json"];
+const WORKSPACE_CONFIG_DIRS = ["apps", "packages"];
+const WORKSPACE_CONFIG_NAMES = ["tsconfig.app.json", "tsconfig.json"];
+const MAX_WORKSPACE_CONFIGS_TO_CHECK = 40;
+const WORKER_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+interface WorkerSession {
+  worker: Worker;
+  queue: Promise<unknown>;
+  idleTimer: NodeJS.Timeout | undefined;
+}
+
+const workerSessions = new Map<string, WorkerSession>();
+
+export interface CodeExplorerAvailability {
+  ready: boolean;
+  reason: string | null;
+  tsconfigPath: string | null;
+}
 
 export function isCodeExplorerReady(appPath: string): boolean {
+  return getCodeExplorerAvailability(appPath).ready;
+}
+
+export function getCodeExplorerAvailability(
+  appPath: string,
+): CodeExplorerAvailability {
   try {
     require.resolve("typescript", { paths: [appPath] });
-    return DEFAULT_CONFIGS.some((config) =>
-      fs.existsSync(path.join(appPath, config)),
-    );
   } catch {
-    return false;
+    return {
+      ready: false,
+      reason: "typescript_not_installed",
+      tsconfigPath: null,
+    };
   }
+
+  const tsconfigPath = discoverTsconfigPath(appPath);
+  if (!tsconfigPath) {
+    return {
+      ready: false,
+      reason: "tsconfig_not_found",
+      tsconfigPath: null,
+    };
+  }
+
+  return {
+    ready: true,
+    reason: null,
+    tsconfigPath,
+  };
+}
+
+export function formatCodeExplorerDisabledReason(
+  availability: CodeExplorerAvailability,
+): string {
+  if (availability.ready) {
+    return "available";
+  }
+  if (availability.reason === "typescript_not_installed") {
+    return "TypeScript is not installed in the app";
+  }
+  if (availability.reason === "tsconfig_not_found") {
+    return "No tsconfig.app.json or tsconfig.json was found in the app or nearby workspace package roots";
+  }
+  return availability.reason ?? "Code explorer is unavailable";
+}
+
+function discoverTsconfigPath(appPath: string): string | null {
+  for (const config of DEFAULT_CONFIGS) {
+    if (fs.existsSync(path.join(appPath, config))) {
+      return config;
+    }
+  }
+
+  for (const candidate of discoverWorkspaceTsconfigs(appPath)) {
+    return candidate;
+  }
+
+  return null;
+}
+
+function discoverWorkspaceTsconfigs(appPath: string): string[] {
+  const candidates: string[] = [];
+  for (const dirName of WORKSPACE_CONFIG_DIRS) {
+    const dir = path.join(appPath, dirName);
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+
+    const children = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => entry.name)
+      .sort();
+
+    for (const child of sortWorkspaceConfigChildren(children)) {
+      for (const configName of WORKSPACE_CONFIG_NAMES) {
+        const relativePath = path.join(dirName, child, configName);
+        if (fs.existsSync(path.join(appPath, relativePath))) {
+          candidates.push(relativePath);
+          if (candidates.length >= MAX_WORKSPACE_CONFIGS_TO_CHECK) {
+            return candidates;
+          }
+        }
+      }
+    }
+  }
+
+  for (const child of discoverPackageLikeChildren(appPath)) {
+    for (const configName of WORKSPACE_CONFIG_NAMES) {
+      const relativePath = path.join(child, configName);
+      if (fs.existsSync(path.join(appPath, relativePath))) {
+        candidates.push(relativePath);
+        if (candidates.length >= MAX_WORKSPACE_CONFIGS_TO_CHECK) {
+          return candidates;
+        }
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function discoverPackageLikeChildren(appPath: string): string[] {
+  if (!fs.existsSync(appPath) || !fs.statSync(appPath).isDirectory()) {
+    return [];
+  }
+
+  return sortWorkspaceConfigChildren(
+    fs
+      .readdirSync(appPath, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .filter((entry) => entry.name !== "node_modules")
+      .filter((entry) =>
+        fs.existsSync(path.join(appPath, entry.name, "package.json")),
+      )
+      .map((entry) => entry.name),
+  );
+}
+
+function sortWorkspaceConfigChildren(children: string[]): string[] {
+  return [...children].sort((left, right) => {
+    const scoreDelta =
+      workspaceConfigChildScore(left) - workspaceConfigChildScore(right);
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+    return left.localeCompare(right);
+  });
+}
+
+function workspaceConfigChildScore(child: string): number {
+  const normalized = child.toLowerCase();
+  let score = 0;
+  if (/\b(web|dashboard|frontend|front|client|app)\b/.test(normalized)) {
+    score -= 10;
+  }
+  if (
+    /\b(docs?|examples?|storybook|playground|e2e|tests?)\b/.test(normalized)
+  ) {
+    score += 20;
+  }
+  return score;
 }
 
 export function toCodeExplorerError(error: unknown): Error {
@@ -44,7 +195,8 @@ export function toCodeExplorerError(error: unknown): Error {
 
   if (
     message.startsWith("Invalid tsconfig_path") ||
-    message.includes("escapes app")
+    message.includes("escapes app") ||
+    message.includes("escapes project root")
   ) {
     return new DyadError(message, DyadErrorKind.Validation);
   }
@@ -55,18 +207,57 @@ export function toCodeExplorerError(error: unknown): Error {
 export async function runCodeExplorer(
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerResult> {
+  const key = workerSessionKey(input);
+  const session = getWorkerSession(key);
+  clearIdleTimer(session);
+
+  const run = session.queue
+    .catch(() => undefined)
+    .then(() => runCodeExplorerOnWorker(session.worker, input));
+  session.queue = run.finally(() => {
+    scheduleWorkerSessionCleanup(key, session);
+  });
+  return run;
+}
+
+function workerSessionKey(input: CodeExplorerWorkerInput): string {
+  return `${path.resolve(input.appPath)}\0${input.tsconfigPath ?? ""}`;
+}
+
+function getWorkerSession(key: string): WorkerSession {
+  const existing = workerSessions.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const workerPath = path.join(__dirname, "code_explorer_worker.js");
+  const worker = new Worker(workerPath);
+  const session: WorkerSession = {
+    worker,
+    queue: Promise.resolve(),
+    idleTimer: undefined,
+  };
+  worker.on("error", (error) => {
+    logger.error(`Code explorer worker error: ${error.message}`);
+    workerSessions.delete(key);
+  });
+  worker.on("exit", (code) => {
+    if (code !== 0) {
+      logger.warn(`Code explorer worker exited with code ${code}`);
+    }
+    workerSessions.delete(key);
+  });
+  workerSessions.set(key, session);
+  return session;
+}
+
+function runCodeExplorerOnWorker(
+  worker: Worker,
+  input: CodeExplorerWorkerInput,
+): Promise<CodeExplorerResult> {
   return new Promise((resolve, reject) => {
-    const workerPath = path.join(__dirname, "code_explorer_worker.js");
-    const worker = new Worker(workerPath);
-    let settled = false;
-
-    const finish = () => {
-      settled = true;
-      void worker.terminate();
-    };
-
-    worker.on("message", (output: CodeExplorerWorkerOutput) => {
-      finish();
+    const onMessage = (output: CodeExplorerWorkerOutput) => {
+      cleanup();
       if (output.success) {
         resolve(output.data);
       } else {
@@ -75,21 +266,47 @@ export async function runCodeExplorer(
         );
         reject(toCodeExplorerError(new Error(output.error)));
       }
-    });
-
-    worker.on("error", (error) => {
-      finish();
+    };
+    const onError = (error: Error) => {
+      cleanup();
       reject(toCodeExplorerError(error));
-    });
-
-    worker.on("exit", (code) => {
-      if (!settled && code !== 0) {
+    };
+    const onExit = (code: number) => {
+      cleanup();
+      if (code !== 0) {
         reject(
           toCodeExplorerError(new Error(`Worker exited with code ${code}`)),
         );
+      } else {
+        reject(toCodeExplorerError(new Error("Worker exited before replying")));
       }
-    });
+    };
+    const cleanup = () => {
+      worker.off("message", onMessage);
+      worker.off("error", onError);
+      worker.off("exit", onExit);
+    };
 
+    worker.once("message", onMessage);
+    worker.once("error", onError);
+    worker.once("exit", onExit);
     worker.postMessage(input);
   });
+}
+
+function clearIdleTimer(session: WorkerSession): void {
+  if (!session.idleTimer) return;
+  clearTimeout(session.idleTimer);
+  session.idleTimer = undefined;
+}
+
+function scheduleWorkerSessionCleanup(
+  key: string,
+  session: WorkerSession,
+): void {
+  clearIdleTimer(session);
+  session.idleTimer = setTimeout(() => {
+    workerSessions.delete(key);
+    void session.worker.terminate();
+  }, WORKER_IDLE_TIMEOUT_MS);
 }

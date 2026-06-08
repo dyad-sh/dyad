@@ -1048,6 +1048,7 @@ export async function handleLocalAgentStream(
             onStepFinish: async (step) => {
               recordCodeExplorerBenchmarkEvent({
                 type: "stream_step_finish",
+                phase: "main",
                 chatId: req.chatId,
                 appId: chat.app.id,
                 toolCallCount: step.toolCalls.length,
@@ -1105,6 +1106,7 @@ export async function handleLocalAgentStream(
               const cachedInputTokens = response.usage?.cachedInputTokens;
               recordCodeExplorerBenchmarkEvent({
                 type: "stream_finish",
+                phase: "main",
                 chatId: req.chatId,
                 appId: chat.app.id,
                 usage: response.usage,

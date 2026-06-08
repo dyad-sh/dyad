@@ -155,14 +155,14 @@
       },
       {
         "name": "grep",
-        "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
+        "description": "Search for a regex pattern or exact literal text in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use literal=true for exact symbols/snippets with punctuation, e.g. createBooking({, import strings, route paths, or JSX tags\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "query": {
               "type": "string",
-              "description": "The regex pattern to search for"
+              "description": "The regex pattern to search for, or the exact text when literal is true"
             },
             "app_name": {
               "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
@@ -182,6 +182,10 @@
             },
             "case_sensitive": {
               "description": "Whether the search should be case sensitive (default: false)",
+              "type": "boolean"
+            },
+            "literal": {
+              "description": "Search query as exact text instead of a regex. Use this for symbols or snippets containing punctuation such as createBooking({, route paths, JSX tags, or import strings.",
               "type": "boolean"
             },
             "limit": {

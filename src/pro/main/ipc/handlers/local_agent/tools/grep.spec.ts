@@ -69,6 +69,13 @@ export function greet(name: string) {
     );
 
     await fs.promises.writeFile(
+      path.join(testDir, "booking.ts"),
+      `export function createBooking(input: { id: string }) {
+  return createBooking({ id: input.id });
+}`,
+    );
+
+    await fs.promises.writeFile(
       path.join(testDir, "readme.md"),
       `# Hello Project
 This is a hello world example.
@@ -147,6 +154,14 @@ function deepHello() {
       expect(() => schema.parse({ query: "test", limit: 1 })).not.toThrow();
       expect(() => schema.parse({ query: "test", limit: 250 })).not.toThrow();
     });
+
+    it("validates literal mode", () => {
+      const schema = grepTool.inputSchema;
+
+      expect(() =>
+        schema.parse({ query: "createBooking({", literal: true }),
+      ).not.toThrow();
+    });
   });
 
   describe("execute - basic search", () => {
@@ -165,6 +180,19 @@ function deepHello() {
       // Should contain file:line: format
       expect(result).toMatch(/test1\.ts:\d+:/);
       expect(result).toMatch(/test2\.ts:\d+:/);
+    });
+
+    it("searches exact text with punctuation in literal mode", async () => {
+      const result = await grepTool.execute(
+        { query: "createBooking({", literal: true },
+        mockContext,
+      );
+
+      expect(result).toContain("booking.ts:2:");
+      expect(result).toContain("createBooking({ id: input.id })");
+      expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
+        expect.stringContaining('literal="true"'),
+      );
     });
 
     it("returns no matches found when nothing matches", async () => {
@@ -376,6 +404,30 @@ function deepHello() {
       expect(result).toContain("hello");
       expect(result).toContain("goodbye");
     });
+
+    it("returns a diagnostic for invalid regex patterns", async () => {
+      const result = await grepTool.execute(
+        { query: "hello|function{" },
+        mockContext,
+      );
+
+      expect(result).toContain("Invalid regex pattern: hello|function{");
+      expect(result).toContain("Use a simpler escaped regex");
+      expect(result).toContain("retry with literal=true");
+      expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
+        expect.stringContaining('error="invalid_regex"'),
+      );
+    });
+
+    it("does not treat regex punctuation as syntax in literal mode", async () => {
+      const result = await grepTool.execute(
+        { query: "createBooking({", literal: true },
+        mockContext,
+      );
+
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("booking.ts");
+    });
   });
 
   describe("execute - result limiting", () => {
@@ -562,6 +614,14 @@ function deepHello() {
       );
       expect(result).toContain('case-sensitive="true"');
     });
+
+    it("includes literal in attributes when true", () => {
+      const result = grepTool.buildXml?.(
+        { query: "createBooking({", literal: true },
+        false,
+      );
+      expect(result).toContain('literal="true"');
+    });
   });
 
   describe("getConsentPreview", () => {
@@ -584,6 +644,14 @@ function deepHello() {
         include_ignored: true,
       });
       expect(preview).toBe('Search for "hello" including ignored files');
+    });
+
+    it("includes literal mode in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "createBooking({",
+        literal: true,
+      });
+      expect(preview).toBe('Search for "createBooking({" as literal text');
     });
 
     it("includes app_name in preview", () => {

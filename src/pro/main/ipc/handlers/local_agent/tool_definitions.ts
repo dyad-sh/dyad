@@ -31,7 +31,10 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
-import { exploreCodeTool } from "./tools/explore_code";
+import {
+  exploreCodeTool,
+  getExploreCodeAvailability,
+} from "./tools/explore_code";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -55,7 +58,10 @@ import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
-import { recordCodeExplorerBenchmarkEvent } from "./benchmark_recorder";
+import {
+  recordCodeExplorerBenchmarkEvent,
+  summarizeBenchmarkValue,
+} from "./benchmark_recorder";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -455,8 +461,24 @@ export function shouldIncludeTool(
   if (options.readOnly && tool.modifiesState) {
     return false;
   }
-  if (tool.isEnabled && !tool.isEnabled(ctx)) {
-    return false;
+  if (tool.isEnabled) {
+    const enabled = tool.isEnabled(ctx);
+    if (tool.name === "explore_code") {
+      const availability = getExploreCodeAvailability(ctx);
+      recordCodeExplorerBenchmarkEvent({
+        type: "tool_availability",
+        phase: "main",
+        chatId: ctx.chatId,
+        appId: ctx.appId,
+        toolName: tool.name,
+        enabled,
+        reason: availability.reason,
+        tsconfigPath: availability.tsconfigPath,
+      });
+    }
+    if (!enabled) {
+      return false;
+    }
   }
   return true;
 }
@@ -535,27 +557,33 @@ export function buildAgentToolSet(
 
           recordCodeExplorerBenchmarkEvent({
             type: "tool_call_start",
+            phase: "main",
             chatId: ctx.chatId,
             appId: ctx.appId,
             toolName: tool.name,
+            argsPreview: summarizeBenchmarkValue(processedArgs),
           });
           const startedAt = Date.now();
           const result = await tool.execute(processedArgs, ctx);
           recordCodeExplorerBenchmarkEvent({
             type: "tool_call_end",
+            phase: "main",
             chatId: ctx.chatId,
             appId: ctx.appId,
             toolName: tool.name,
             elapsedMs: Date.now() - startedAt,
+            resultPreview: summarizeBenchmarkValue(result),
           });
 
           return convertToolResultForAiSdk(result);
         } catch (error) {
           recordCodeExplorerBenchmarkEvent({
             type: "tool_call_error",
+            phase: "main",
             chatId: ctx.chatId,
             appId: ctx.appId,
             toolName: tool.name,
+            argsPreview: summarizeBenchmarkValue(args),
             error: getToolErrorSummary(error),
           });
           const errorMessage = getToolErrorSummary(error);

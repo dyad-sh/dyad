@@ -1,6 +1,6 @@
 - paragraph: tc=local-agent/explore-code
 - paragraph: I'll inspect the TypeScript symbols around the app component.
-- 'button /CODE "App component render flow" \(1 file, 2 symbols\) \d+[hmsp]+ index, \d+[hmsp]+ search markdown Copy ## Code exploration: App component render flow Found 2 symbols across 1 files\. Indexed 2 files in \d+[hmsp]+; searched in \d+[hmsp]+\. #### src\/App\.tsx - App \(variable:1\) ```ts 1 const App = \(\) => <div>Minimal imported app<\/div>; 2 3 export default App; 4 ```/ [expanded]':
+- button [expanded]:
   - img
   - text: ""
   - img
@@ -8,8 +8,8 @@
   - button "Copy":
     - img
     - text: ""
-  - code: "/## Code exploration: App component render flow Found 2 symbols across 1 files\\. Indexed 2 files in \\d+[hmsp]+; searched in \\d+[hmsp]+\\. #### src\\/App\\.tsx - App \\(variable:1\\) ```ts 1 const App = \\(\\) => <div>Minimal imported app<\\/div>; 2 3 export default App; 4 ```/"
-- paragraph: The app component is defined in src/App.tsx and rendered from src/main.tsx.
+  - code: "/## explore_code report Query: \"App component render flow\" Task class: component-flow Confidence: high Compiler signal: strong Structured summary: ```json \\{ \"confidence\": \"high\", \"taskClass\": \"component-flow\", \"compilerSignal\": \"strong\", \"primaryFiles\": \\[ \\{ \"path\": \"src\\/App\\.tsx\", \"range\": \"1-\\d+\", \"symbols\": \\[ \"App\" \\], \"purpose\": \"defines the visible page content\" \\}, \\{ \"path\": \"src\\/main\\.tsx\", \"range\": \"1-\\d+\", \"symbols\": \\[ \"root\\.render\" \\], \"purpose\": \"mounts App into the DOM\" \\} \\], \"secondaryFiles\": \\[\\], \"editTarget\": null, \"coverage\": \\{ \"observed\": \\[ \"component\\/UI handler\" \\], \"missing\": \\[\\] \\}, \"recommendedPrimaryAction\": \\{ \"action\": \"answer_from_report\", \"reason\": \"The report has enough high-confidence findings for an answer-only investigation\\.\" \\} \\} ``` Findings: 1\\. src\\/App\\.tsx:1-\\d+ - App Fact: defines the App component and root render content\\. Evidence: App is the exported root component\\. 2\\. src\\/main\\.tsx:1-\\d+ - root\\.render Fact: mounts the App component into the DOM\\. Evidence: main\\.tsx imports App and renders it\\. Flow: main\\.tsx mounts App, and App owns the visible page content\\. Edit target: none - this is an answer-only render-flow question\\. Recommended primary action: answer_from_report: The report has enough high-confidence findings for an answer-only investigation\\. Skip \\/ unknown: No unrelated files were needed\\./"
+- paragraph: The report shows that src/main.tsx mounts App and src/App.tsx owns the visible page content.
 - button "Copy":
   - img
 - img

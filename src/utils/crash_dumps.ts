@@ -82,20 +82,18 @@ function unlinkQuiet(p: string): void {
   }
 }
 
-// Move a file, best effort. Falls back to copy+delete across devices (EXDEV).
-// If the move can't complete, delete the source so it isn't read again on the
-// next launch.
+// Move a file, best effort. If the rename fails (cross-device, a locked file,
+// etc.), preserve the file by copying it first when possible, then remove the
+// source so it isn't read again on the next launch.
 function renameQuiet(src: string, dest: string): void {
   try {
     fs.renameSync(src, dest);
     return;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EXDEV") {
-      try {
-        fs.copyFileSync(src, dest);
-      } catch {
-        // fall through to deleting the source
-      }
+  } catch {
+    try {
+      fs.copyFileSync(src, dest);
+    } catch {
+      // source may be unreadable; still remove it below to avoid reprocessing
     }
   }
   unlinkQuiet(src);

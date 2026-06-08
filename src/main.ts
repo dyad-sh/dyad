@@ -145,6 +145,10 @@ function processNativeCrashDumps(): void {
       );
       if (summary.ptype === "browser" && !pendingNativeBrowserCrash) {
         pendingNativeBrowserCrash = summary;
+        // A browser-process dump is direct evidence of a main-process crash, so
+        // report it even if the crash sentinel wasn't written (e.g. a crash
+        // during early startup).
+        pendingCrashDetected = true;
       }
     }
     // Retain (timestamp-named) so it can be examined/exported and isn't

@@ -22,6 +22,7 @@ import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useIsMac } from "@/hooks/useChatModeToggle";
+import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
@@ -139,6 +140,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               expand
               duration={settings?.isTestMode ? 500 : undefined}
             />
+            <ReleaseNotesDialog />
           </SidebarProvider>
         </DeepLinkProvider>
       </ThemeProvider>

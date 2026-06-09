@@ -263,6 +263,7 @@ export const queryKeys = {
     all: ["vercel"] as const,
     deployments: ({ appId }: { appId: number }) =>
       ["vercel", "deployments", appId] as const,
+    projects: ["vercel", "projects"] as const,
     syncPreview: ({ appId }: { appId: number | null }) =>
       ["vercel", "syncPreview", appId] as const,
   },
@@ -322,6 +323,8 @@ export const queryKeys = {
   github: {
     all: ["github"] as const,
     repos: ["github", "repos"] as const,
+    branches: ({ repoFullName }: { repoFullName: string }) =>
+      ["github", "branches", repoFullName] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -1,13 +1,27 @@
 import { useAtomValue, useSetAtom } from "jotai";
-import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
+import {
+  ipc,
+  type RestoreToMessageResponse,
+  type RevertVersionResponse,
+  type Version,
+} from "@/ipc/types";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useIsMutating,
+} from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
+
+// Shared key so every per-message `useVersions` instance can observe whether
+// *any* restore-to-message is in flight (via `useIsMutating`), not just its own.
+const restoreToMessageMutationKey = ["restoreToMessageVersion"] as const;
 
 export function useVersions(appId: number | null) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -89,6 +103,56 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
+  const restoreToMessageMutation = useMutation<
+    RestoreToMessageResponse,
+    Error,
+    { chatId: number; messageId: number }
+  >({
+    mutationKey: restoreToMessageMutationKey,
+    mutationFn: async ({ chatId, messageId }) => {
+      const currentAppId = appId;
+      if (currentAppId === null) {
+        throw new DyadError("App ID is null", DyadErrorKind.External);
+      }
+      return ipc.version.restoreToMessageVersion({
+        appId: currentAppId,
+        chatId,
+        messageId,
+      });
+    },
+    onSuccess: async (result) => {
+      if ("warningMessage" in result) {
+        toast.warning(result.warningMessage);
+      } else {
+        toast.success(result.successMessage);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.branches.current({ appId }),
+      });
+      // restoreToMessageVersion creates a brand new chat, so refresh the chat
+      // list (like every other chat-creation path) or the sidebar won't show it.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.chats.all,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.problems.byApp({ appId }),
+      });
+      if (settings?.runtimeMode2 === "cloud") {
+        await restartApp();
+      }
+    },
+    meta: { showErrorToast: true },
+  });
+
+  // True when *any* restore-to-message is pending across all messages. Used to
+  // disable every restore button while one restore is running, since the
+  // per-instance `isPending` above is local to the message that was clicked.
+  const isAnyRestoreToMessagePending =
+    useIsMutating({ mutationKey: restoreToMessageMutationKey }) > 0;
+
   return {
     versions: versions || [],
     loading,
@@ -96,5 +160,8 @@ export function useVersions(appId: number | null) {
     refreshVersions,
     revertVersion: revertVersionMutation.mutateAsync,
     isRevertingVersion: revertVersionMutation.isPending,
+    restoreToMessage: restoreToMessageMutation.mutateAsync,
+    isRestoringToMessage: restoreToMessageMutation.isPending,
+    isAnyRestoreToMessagePending,
   };
 }

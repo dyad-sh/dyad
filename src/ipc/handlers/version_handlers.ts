@@ -1,5 +1,5 @@
 import { db } from "../../db";
-import { apps, messages, versions } from "../../db/schema";
+import { apps, chats, messages, versions } from "../../db/schema";
 import { desc, eq, and, gt, gte } from "drizzle-orm";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
@@ -77,6 +77,170 @@ async function restoreBranchForPreview({
     logger.error("Error in restoreBranchForPreview:", errorMessage);
     throw new Error(errorMessage);
   }
+}
+
+/**
+ * Reverts the app's codebase (and Neon DB / Supabase functions / cloud sandbox)
+ * to the given version. This does NOT modify any chat messages and does NOT take
+ * the per-app lock — callers are responsible for holding `withLock(appId)`.
+ */
+async function revertCodebaseToVersion({
+  appId,
+  app,
+  appPath,
+  previousVersionId,
+}: {
+  appId: number;
+  app: typeof apps.$inferSelect;
+  appPath: string;
+  previousVersionId: string;
+}): Promise<{ successMessage: string; warningMessage: string }> {
+  let successMessage = "Restored version";
+  let warningMessage = "";
+
+  // Get the current commit hash before reverting
+  const currentCommitHash = await getCurrentCommitHash({
+    path: appPath,
+    ref: "main",
+  });
+
+  await gitCheckout({
+    path: appPath,
+    ref: "main",
+  });
+
+  if (app.neonProjectId && app.neonDevelopmentBranchId) {
+    // We are going to add a new commit on top, so let's store
+    // the current timestamp at the current version.
+    await storeDbTimestampAtCurrentVersion({
+      appId,
+    });
+  }
+
+  await gitStageToRevert({
+    path: appPath,
+    targetOid: previousVersionId,
+  });
+  const isClean = await isGitStatusClean({ path: appPath });
+  if (!isClean) {
+    await gitCommit({
+      path: appPath,
+      message: `Reverted all changes back to version ${previousVersionId}`,
+    });
+  }
+
+  if (app.neonProjectId && app.neonDevelopmentBranchId) {
+    const version = await db.query.versions.findFirst({
+      where: and(
+        eq(versions.appId, appId),
+        eq(versions.commitHash, previousVersionId),
+      ),
+    });
+    if (version && version.neonDbTimestamp) {
+      try {
+        const preserveBranchName = `preserve_${currentCommitHash}-${Date.now()}`;
+        const neonClient = await getNeonClient();
+        const response = await retryOnLocked(
+          () =>
+            neonClient.restoreProjectBranch(
+              app.neonProjectId!,
+              app.neonDevelopmentBranchId!,
+              {
+                source_branch_id: app.neonDevelopmentBranchId!,
+                source_timestamp: version.neonDbTimestamp!,
+                preserve_under_name: preserveBranchName,
+              },
+            ),
+          `Restore development branch ${app.neonDevelopmentBranchId} for app ${appId}`,
+        );
+        // Update all versions which have a newer DB timestamp than the version we're restoring to
+        // and remove their DB timestamp.
+        await db
+          .update(versions)
+          .set({ neonDbTimestamp: null })
+          .where(
+            and(
+              eq(versions.appId, appId),
+              gt(versions.neonDbTimestamp, version.neonDbTimestamp),
+            ),
+          );
+
+        const preserveBranchId = response.data.branch.parent_id;
+        if (!preserveBranchId) {
+          throw new DyadError(
+            "Preserve branch ID not found",
+            DyadErrorKind.NotFound,
+          );
+        }
+        logger.info(
+          `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
+        );
+        // Intentionally do not await this because it's not
+        // critical for the restore operation, it's to clean up branches
+        // so the user doesn't hit the branch limit later. The error is
+        // handled via `.catch()` rather than a surrounding try/catch
+        // because, without an `await`, a try/catch would not catch the
+        // promise rejection and it would surface as an unhandled rejection.
+        retryOnLocked(
+          () =>
+            neonClient.deleteProjectBranch(
+              app.neonProjectId!,
+              preserveBranchId,
+            ),
+          `Delete preserve branch ${preserveBranchId} for app ${appId}`,
+          { retryBranchWithChildError: true },
+        ).catch((error) => {
+          const errorMessage = getNeonErrorMessage(error);
+          logger.error("Error in deleteProjectBranch:", errorMessage);
+        });
+      } catch (error) {
+        const errorMessage = getNeonErrorMessage(error);
+        logger.error("Error in restoreBranchForCheckout:", errorMessage);
+        warningMessage = `Could not restore database because of error: ${errorMessage}`;
+        // Do not throw, so we can finish switching the postgres branch
+        // It might throw because they picked a timestamp that's too old.
+      }
+      successMessage = "Successfully restored to version (including database)";
+    }
+    await switchPostgresToDevelopmentBranch({
+      neonProjectId: app.neonProjectId,
+      neonDevelopmentBranchId: app.neonDevelopmentBranchId,
+      appPath: app.path,
+    });
+  }
+  // Re-deploy all Supabase edge functions after reverting
+  if (app.supabaseProjectId) {
+    try {
+      logger.info(
+        `Re-deploying all Supabase edge functions for app ${appId} after revert`,
+      );
+      const settings = readSettings();
+      const deployErrors = await deployAllSupabaseFunctions({
+        appPath,
+        supabaseProjectId: app.supabaseProjectId,
+        supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+        skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+      });
+
+      if (deployErrors.length > 0) {
+        warningMessage += `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
+        logger.warn(warningMessage);
+        // Note: We don't fail the revert operation if function deployment fails
+        // The code has been successfully reverted, but functions may be out of sync
+      } else {
+        logger.info(
+          `Successfully re-deployed all Supabase edge functions for app ${appId}`,
+        );
+      }
+    } catch (error) {
+      warningMessage += `Error re-deploying Supabase edge functions after revert: ${error}`;
+      logger.warn(warningMessage);
+      // Continue with the revert operation even if function deployment fails
+    }
+  }
+  await syncCloudSandboxSnapshotBestEffort(appId);
+
+  return { successMessage, warningMessage };
 }
 
 export function registerVersionHandlers() {
@@ -166,8 +330,6 @@ export function registerVersionHandlers() {
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
     const { appId, previousVersionId, currentChatMessageId } = params;
     return withLock(appId, async () => {
-      let successMessage = "Restored version";
-      let warningMessage = "";
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -177,36 +339,13 @@ export function registerVersionHandlers() {
       }
 
       const appPath = getDyadAppPath(app.path);
-      // Get the current commit hash before reverting
-      const currentCommitHash = await getCurrentCommitHash({
-        path: appPath,
-        ref: "main",
-      });
 
-      await gitCheckout({
-        path: appPath,
-        ref: "main",
+      const { successMessage, warningMessage } = await revertCodebaseToVersion({
+        appId,
+        app,
+        appPath,
+        previousVersionId,
       });
-
-      if (app.neonProjectId && app.neonDevelopmentBranchId) {
-        // We are going to add a new commit on top, so let's store
-        // the current timestamp at the current version.
-        await storeDbTimestampAtCurrentVersion({
-          appId,
-        });
-      }
-
-      await gitStageToRevert({
-        path: appPath,
-        targetOid: previousVersionId,
-      });
-      const isClean = await isGitStatusClean({ path: appPath });
-      if (!isClean) {
-        await gitCommit({
-          path: appPath,
-          message: `Reverted all changes back to version ${previousVersionId}`,
-        });
-      }
 
       // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
       if (currentChatMessageId) {
@@ -269,122 +408,153 @@ export function registerVersionHandlers() {
         }
       }
 
-      if (app.neonProjectId && app.neonDevelopmentBranchId) {
-        const version = await db.query.versions.findFirst({
-          where: and(
-            eq(versions.appId, appId),
-            eq(versions.commitHash, previousVersionId),
-          ),
-        });
-        if (version && version.neonDbTimestamp) {
-          try {
-            const preserveBranchName = `preserve_${currentCommitHash}-${Date.now()}`;
-            const neonClient = await getNeonClient();
-            const response = await retryOnLocked(
-              () =>
-                neonClient.restoreProjectBranch(
-                  app.neonProjectId!,
-                  app.neonDevelopmentBranchId!,
-                  {
-                    source_branch_id: app.neonDevelopmentBranchId!,
-                    source_timestamp: version.neonDbTimestamp!,
-                    preserve_under_name: preserveBranchName,
-                  },
-                ),
-              `Restore development branch ${app.neonDevelopmentBranchId} for app ${appId}`,
-            );
-            // Update all versions which have a newer DB timestamp than the version we're restoring to
-            // and remove their DB timestamp.
-            await db
-              .update(versions)
-              .set({ neonDbTimestamp: null })
-              .where(
-                and(
-                  eq(versions.appId, appId),
-                  gt(versions.neonDbTimestamp, version.neonDbTimestamp),
-                ),
-              );
-
-            const preserveBranchId = response.data.branch.parent_id;
-            if (!preserveBranchId) {
-              throw new DyadError(
-                "Preserve branch ID not found",
-                DyadErrorKind.NotFound,
-              );
-            }
-            logger.info(
-              `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
-            );
-            try {
-              // Intentionally do not await this because it's not
-              // critical for the restore operation, it's to clean up branches
-              // so the user doesn't hit the branch limit later.
-              retryOnLocked(
-                () =>
-                  neonClient.deleteProjectBranch(
-                    app.neonProjectId!,
-                    preserveBranchId,
-                  ),
-                `Delete preserve branch ${preserveBranchId} for app ${appId}`,
-                { retryBranchWithChildError: true },
-              );
-            } catch (error) {
-              const errorMessage = getNeonErrorMessage(error);
-              logger.error("Error in deleteProjectBranch:", errorMessage);
-            }
-          } catch (error) {
-            const errorMessage = getNeonErrorMessage(error);
-            logger.error("Error in restoreBranchForCheckout:", errorMessage);
-            warningMessage = `Could not restore database because of error: ${errorMessage}`;
-            // Do not throw, so we can finish switching the postgres branch
-            // It might throw because they picked a timestamp that's too old.
-          }
-          successMessage =
-            "Successfully restored to version (including database)";
-        }
-        await switchPostgresToDevelopmentBranch({
-          neonProjectId: app.neonProjectId,
-          neonDevelopmentBranchId: app.neonDevelopmentBranchId,
-          appPath: app.path,
-        });
-      }
-      // Re-deploy all Supabase edge functions after reverting
-      if (app.supabaseProjectId) {
-        try {
-          logger.info(
-            `Re-deploying all Supabase edge functions for app ${appId} after revert`,
-          );
-          const settings = readSettings();
-          const deployErrors = await deployAllSupabaseFunctions({
-            appPath,
-            supabaseProjectId: app.supabaseProjectId,
-            supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
-            skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-          });
-
-          if (deployErrors.length > 0) {
-            warningMessage += `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
-            logger.warn(warningMessage);
-            // Note: We don't fail the revert operation if function deployment fails
-            // The code has been successfully reverted, but functions may be out of sync
-          } else {
-            logger.info(
-              `Successfully re-deployed all Supabase edge functions for app ${appId}`,
-            );
-          }
-        } catch (error) {
-          warningMessage += `Error re-deploying Supabase edge functions after revert: ${error}`;
-          logger.warn(warningMessage);
-          // Continue with the revert operation even if function deployment fails
-        }
-      }
-      await syncCloudSandboxSnapshotBestEffort(appId);
       if (warningMessage) {
         return { warningMessage };
       }
       return { successMessage };
     });
   });
+
+  createTypedHandler(
+    versionContracts.restoreToMessageVersion,
+    async (_, params) => {
+      const { appId, chatId, messageId } = params;
+      return withLock(appId, async () => {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+        if (!app) {
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+        const appPath = getDyadAppPath(app.path);
+
+        const chat = await db.query.chats.findFirst({
+          where: eq(chats.id, chatId),
+          with: {
+            messages: {
+              orderBy: (messages, { asc }) => [
+                asc(messages.createdAt),
+                asc(messages.id),
+              ],
+            },
+          },
+        });
+        if (!chat) {
+          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+        }
+        // Defense in depth: make sure the chat actually belongs to this app so
+        // a mismatched (appId, chatId) from the renderer can't create a chat
+        // under the wrong app or revert to a commit from another app's repo.
+        if (chat.appId !== appId) {
+          throw new DyadError(
+            "Chat does not belong to this app",
+            DyadErrorKind.Validation,
+          );
+        }
+
+        const targetIndex = chat.messages.findIndex((m) => m.id === messageId);
+        if (targetIndex === -1) {
+          throw new DyadError("Message not found", DyadErrorKind.NotFound);
+        }
+
+        const messagesBefore = chat.messages.slice(0, targetIndex);
+
+        // Determine the version that existed right before the target message.
+        // Primary signal: the assistant message that responded to the target
+        // user message stores `sourceCommitHash` = the commit current when that
+        // turn started (i.e. before its code changes).
+        const followingMessage = chat.messages[targetIndex + 1];
+        let targetCommitHash: string | null =
+          followingMessage?.role === "assistant"
+            ? (followingMessage.sourceCommitHash ?? null)
+            : null;
+        // Fallback: the assistant message preceding the target user message
+        // stores `commitHash` = the version that existed when it finished, which
+        // is the state right before the target message was sent.
+        if (!targetCommitHash) {
+          for (let i = targetIndex - 1; i >= 0; i--) {
+            const m = chat.messages[i];
+            if (m.role === "assistant" && m.commitHash) {
+              targetCommitHash = m.commitHash;
+              break;
+            }
+          }
+        }
+        // Final fallback: the commit the chat started from.
+        if (!targetCommitHash) {
+          targetCommitHash = chat.initialCommitHash ?? null;
+        }
+
+        if (!targetCommitHash) {
+          // No version could be determined, so we don't create a new chat.
+          // Omit `newChatId` so the renderer stays on the current chat instead
+          // of "navigating" to the same one (which would look like a no-op).
+          return {
+            warningMessage:
+              "Could not determine a version to restore to for this message.",
+          };
+        }
+
+        // Revert the codebase first. If this throws (e.g. a Git or Neon
+        // error), we bail out before touching the database so we don't leave
+        // an orphaned, partially-created chat behind. A `warningMessage` still
+        // means the codebase was reverted (only a secondary step failed), so
+        // we go on to create the new chat in that case.
+        const { successMessage, warningMessage } =
+          await revertCodebaseToVersion({
+            appId,
+            app,
+            appPath,
+            previousVersionId: targetCommitHash,
+          });
+
+        // Carry over the original chat's title (with a suffix) so the forked
+        // chat is identifiable in the sidebar instead of showing up as another
+        // indistinguishable "untitled" entry after one or more restores.
+        const restoredTitle = chat.title ? `${chat.title} (restored)` : null;
+
+        // Create the new chat pointing at the target version. We insert directly
+        // (instead of using the createChat handler) so `initialCommitHash` is the
+        // target version rather than the current (not-yet-reverted) tree.
+        const [newChat] = await db
+          .insert(chats)
+          .values({
+            appId,
+            title: restoredTitle,
+            chatMode: chat.chatMode,
+            initialCommitHash: targetCommitHash,
+          })
+          .returning();
+
+        // Copy all messages that came before the target message into the new
+        // chat, preserving their fields and ordering.
+        if (messagesBefore.length > 0) {
+          await db.insert(messages).values(
+            messagesBefore.map((m) => ({
+              chatId: newChat.id,
+              role: m.role,
+              content: m.content,
+              approvalState: m.approvalState,
+              sourceCommitHash: m.sourceCommitHash,
+              commitHash: m.commitHash,
+              requestId: m.requestId,
+              maxTokensUsed: m.maxTokensUsed,
+              model: m.model,
+              aiMessagesJson: m.aiMessagesJson,
+              usingFreeAgentModeQuota: m.usingFreeAgentModeQuota,
+              isCompactionSummary: m.isCompactionSummary,
+              createdAt: m.createdAt,
+            })),
+          );
+        }
+
+        if (warningMessage) {
+          return { newChatId: newChat.id, warningMessage };
+        }
+        return { newChatId: newChat.id, successMessage };
+      });
+    },
+  );
 
   createTypedHandler(versionContracts.checkoutVersion, async (_, params) => {
     const { appId, versionId: gitRef } = params;

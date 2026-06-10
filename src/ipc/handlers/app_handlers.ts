@@ -1279,6 +1279,7 @@ export function registerAppHandlers() {
           if (isDyadError(error)) {
             throw error;
           }
+
           // Attempt cleanup if destination exists (partial copy may have occurred)
           if (fs.existsSync(newAppPath)) {
             try {

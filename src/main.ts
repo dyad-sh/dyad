@@ -478,6 +478,7 @@ const createWindow = () => {
       });
 
       pendingForceCloseData = null;
+      pendingActiveChatId = null;
       pendingCrashDetected = false;
     }
 

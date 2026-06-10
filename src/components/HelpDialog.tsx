@@ -317,9 +317,7 @@ export function HelpDialog() {
       .catch((error) => {
         if (!active) return;
         console.error("Failed to load chat session:", error);
-        showError(
-          "Failed to load chat session. Please try again or report manually.",
-        );
+        showError(t("home:help.failedToLoadChatSession"));
         onClose();
       })
       .finally(() => {

@@ -33,6 +33,7 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import { useTranslation } from "react-i18next";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
@@ -242,6 +243,7 @@ function CopyButton({ text }: { text: string }) {
 // =============================================================================
 
 export function HelpDialog() {
+  const { t } = useTranslation(["home"]);
   const [helpDialog, setHelpDialog] = useAtom(helpDialogAtom);
   const isOpen = helpDialog.open;
   const onClose = () => setHelpDialog({ open: false });
@@ -307,12 +309,15 @@ export function HelpDialog() {
       .then((bundle) => {
         if (!active) return;
         setDebugBundle(bundle);
+        // Clear uploadChatId once loaded so canceling from review back to the
+        // main screen doesn't keep rendering the preload spinner.
+        setHelpDialog({ open: true });
         navigateTo("review");
       })
       .catch((error) => {
         if (!active) return;
         console.error("Failed to load chat session:", error);
-        alert(
+        showError(
           "Failed to load chat session. Please try again or report manually.",
         );
         onClose();
@@ -716,7 +721,7 @@ ${formatLogsSection(debugInfo)}
     >
       <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
         <Loader2Icon className="h-6 w-6 animate-spin" />
-        <span>Preparing upload...</span>
+        <span>{t("home:help.preparingUpload")}</span>
       </div>
     </AnimatedScreen>
   );

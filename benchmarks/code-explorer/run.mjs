@@ -36,6 +36,11 @@ const { values } = parseArgs({
     "codex-auth-path": { type: "string" },
     "codex-model": { type: "string", default: "gpt-5.5" },
     "retry-from": { type: "string" },
+    "resume-from": { type: "string" },
+    arms: { type: "string", default: "baseline,explore-v2" },
+    "compare-arm": { type: "string" },
+    "explore-v1-run": { type: "string" },
+    "explore-v1-source-arm": { type: "string" },
   },
 });
 
@@ -46,6 +51,7 @@ const repeats = Number(values.repeats ?? 1);
 const timeoutMs = Number(values.timeout ?? 600_000);
 const concurrency = Number(values.concurrency ?? 1);
 const authMode = values.auth;
+const selectedArms = normalizeSelectedArms(splitList(values.arms));
 const runId = `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 
 if (!Number.isInteger(repeats) || repeats < 1) {
@@ -57,18 +63,62 @@ if (!Number.isInteger(concurrency) || concurrency < 1) {
 if (!["dyad-pro", "codex"].includes(authMode)) {
   throw new Error("--auth must be one of: dyad-pro, codex");
 }
+validateArms(selectedArms);
+const primaryCompareArm = resolvePrimaryCompareArm(
+  selectedArms,
+  values["compare-arm"],
+);
+const importedArmRows = loadImportedArmRows(config, selectedArms);
+const executableArms = new Set(
+  [...selectedArms].filter((arm) => !isImportedArm(arm)),
+);
 
+if (values["retry-from"] && values["resume-from"]) {
+  throw new Error("Use only one of --retry-from or --resume-from");
+}
+
+const fullMatrix = buildMatrix(
+  config,
+  selectedRepos,
+  selectedTasks,
+  repeats,
+  executableArms,
+);
+const resumedRows = values["resume-from"]
+  ? loadResumedRows(fullMatrix, values["resume-from"])
+  : [];
 const matrix = values["retry-from"]
   ? buildRetryMatrix(config, values["retry-from"])
-  : buildMatrix(config, selectedRepos, selectedTasks, repeats);
+  : values["resume-from"]
+    ? buildResumeMatrix(fullMatrix, values["resume-from"])
+    : fullMatrix;
 
 if (values["dry-run"]) {
   console.log(
     JSON.stringify(
       {
         runId,
-        totalTrials: matrix.length,
+        totalTrials:
+          matrix.length + importedArmRows.length + resumedRows.length,
+        liveTrials: matrix.length,
+        importedTrials: importedArmRows.length,
+        resumedTrials: resumedRows.length,
         concurrency,
+        imported: importedArmRows.map((row) => ({
+          repo: row.repo,
+          task: row.task,
+          arm: row.arm,
+          repeat: row.repeat,
+          sourceRunId: row.importedFromRunId,
+          sourceArm: row.importedFromArm,
+        })),
+        resumed: resumedRows.map((row) => ({
+          repo: row.repo,
+          task: row.task,
+          arm: row.arm,
+          repeat: row.repeat,
+          sourceRunId: row.resumedFromRunId,
+        })),
         matrix: matrix.map(enrichTrialForDryRun),
       },
       null,
@@ -78,14 +128,14 @@ if (values["dry-run"]) {
   process.exit(0);
 }
 
-if (authMode === "dyad-pro" && !process.env.DYAD_PRO_KEY) {
+if (matrix.length > 0 && authMode === "dyad-pro" && !process.env.DYAD_PRO_KEY) {
   throw new Error(
     "DYAD_PRO_KEY must be set in .env for Dyad Engine benchmark runs",
   );
 }
 
-const packageInfo = getPackageInfo();
-if (!values["allow-stale-package"]) {
+const packageInfo = matrix.length > 0 ? getPackageInfo() : null;
+if (packageInfo && !values["allow-stale-package"]) {
   assertPackageFresh(packageInfo);
 }
 
@@ -102,12 +152,17 @@ if (values["fetch-repos"]) {
 const resultsPath = path.join(RESULTS_DIR, runId, "runs.jsonl");
 fs.mkdirSync(path.dirname(resultsPath), { recursive: true });
 
-const benchmarkAuth = await setupBenchmarkAuth();
+const benchmarkAuth =
+  matrix.length > 0
+    ? await setupBenchmarkAuth()
+    : { mode: authMode, model: values.model };
 
 console.log(
-  `Running ${matrix.length} trial(s) with concurrency ${Math.min(concurrency, matrix.length)}`,
+  `Running ${matrix.length} live trial(s), importing ${importedArmRows.length} trial(s), resuming ${resumedRows.length} trial(s), with concurrency ${Math.min(concurrency, Math.max(matrix.length, 1))}`,
 );
 try {
+  writeResumedRows(resultsPath, resumedRows);
+  writeImportedRows(resultsPath, importedArmRows);
   await runTrials(matrix, concurrency, resultsPath, benchmarkAuth);
 } finally {
   await benchmarkAuth.close?.();
@@ -139,15 +194,16 @@ async function runTrials(trials, concurrency, resultsPath, benchmarkAuth) {
   );
 }
 
-function buildMatrix(config, repoFilter, taskFilter, repeats) {
+function buildMatrix(config, repoFilter, taskFilter, repeats, arms) {
   const rows = [];
   for (const repo of config.repos) {
     if (repoFilter && !repoFilter.has(repo.name)) continue;
     for (const task of repo.tasks) {
       if (taskFilter && !taskFilter.has(task.id)) continue;
       for (let repeat = 1; repeat <= repeats; repeat++) {
-        rows.push({ repo, task, arm: "baseline", repeat });
-        rows.push({ repo, task, arm: "explore", repeat });
+        for (const arm of arms) {
+          rows.push({ repo, task, arm, repeat });
+        }
       }
     }
   }
@@ -170,12 +226,7 @@ function buildRetryMatrix(config, retryRunId) {
   if (!fs.existsSync(runsPath)) {
     throw new Error(`Cannot retry missing benchmark run: ${retryRunId}`);
   }
-  const rows = fs
-    .readFileSync(runsPath, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  const rows = readRunRows(runsPath);
   const failedPairs = new Set(
     rows
       .filter((row) => row.status !== "ok")
@@ -192,10 +243,63 @@ function buildRetryMatrix(config, retryRunId) {
       );
     }
     const repeat = Number(repeatText);
-    retryRows.push({ repo, task, arm: "baseline", repeat });
-    retryRows.push({ repo, task, arm: "explore", repeat });
+    for (const arm of selectedArms) {
+      retryRows.push({ repo, task, arm, repeat });
+    }
   }
   return retryRows;
+}
+
+function buildResumeMatrix(expectedRows, resumeRunId) {
+  const runsPath = path.join(RESULTS_DIR, resumeRunId, "runs.jsonl");
+  if (!fs.existsSync(runsPath)) {
+    throw new Error(`Cannot resume missing benchmark run: ${resumeRunId}`);
+  }
+
+  const completedRows = new Set();
+  const sourceRows = readRunRows(runsPath);
+  for (const row of sourceRows) {
+    if (row.status === "ok") {
+      completedRows.add(runRowKey(row));
+    }
+  }
+
+  return expectedRows.filter((row) => !completedRows.has(trialKey(row)));
+}
+
+function loadResumedRows(expectedRows, resumeRunId) {
+  const runsPath = path.join(RESULTS_DIR, resumeRunId, "runs.jsonl");
+  if (!fs.existsSync(runsPath)) {
+    throw new Error(`Cannot resume missing benchmark run: ${resumeRunId}`);
+  }
+
+  const expectedKeys = new Set(expectedRows.map(trialKey));
+  return readRunRows(runsPath)
+    .filter((row) => row.status === "ok" && expectedKeys.has(runRowKey(row)))
+    .map((row) => ({
+      ...row,
+      resumedFromRunId: resumeRunId,
+      resumedFromTrialRunId: row.runId,
+    }));
+}
+
+function readRunRows(runsPath) {
+  const text = fs.readFileSync(runsPath, "utf8").trim();
+  if (!text) {
+    return [];
+  }
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+function runRowKey(row) {
+  return `${row.repo}\0${row.task}\0${row.repeat}\0${row.arm}`;
+}
+
+function trialKey(row) {
+  return `${row.repo.name}\0${row.task.id}\0${row.repeat}\0${row.arm}`;
 }
 
 function splitList(value) {
@@ -206,6 +310,204 @@ function splitList(value) {
       .map((entry) => entry.trim())
       .filter(Boolean),
   );
+}
+
+function normalizeSelectedArms(arms) {
+  if (!arms) return arms;
+  return new Set(
+    [...arms].map((arm) => {
+      if (arm === "explore") return "explore-v2";
+      return arm;
+    }),
+  );
+}
+
+function validateArms(arms) {
+  const allowed = new Set(["baseline", "explore-v1", "explore-v2"]);
+  if (!arms || arms.size === 0) {
+    throw new Error("--arms must include at least one arm");
+  }
+  for (const arm of arms) {
+    if (!allowed.has(arm)) {
+      throw new Error(
+        `Unknown benchmark arm: ${arm}. Allowed arms: ${[...allowed].join(", ")}`,
+      );
+    }
+  }
+}
+
+function isImportedArm(arm) {
+  return arm === "explore-v1";
+}
+
+function loadImportedArmRows(config, arms) {
+  if (!arms.has("explore-v1")) {
+    return [];
+  }
+  if (!values["explore-v1-run"]) {
+    throw new Error(
+      "--arms including explore-v1 requires --explore-v1-run <run-id>. V1 is imported from a prior benchmark run so production code can remain V2-only.",
+    );
+  }
+
+  const sourceRunIds = splitList(values["explore-v1-run"]);
+  const sourceRows = readImportedSourceRows(sourceRunIds);
+  const sourceArmPriority = values["explore-v1-source-arm"]
+    ? [values["explore-v1-source-arm"]]
+    : [
+        "explore-v1",
+        "explore-candidate-followup",
+        "explore-candidate",
+        "explore",
+      ];
+  const wantedRows = buildMatrix(
+    config,
+    selectedRepos,
+    selectedTasks,
+    repeats,
+    new Set(["explore-v1"]),
+  );
+  const usedSourceRows = new Set();
+  return wantedRows.map((trial) => {
+    const source = findImportedSourceRow({
+      sourceRows,
+      sourceArmPriority,
+      trial,
+      usedSourceRows,
+    });
+    if (!source) {
+      throw new Error(
+        `Explore V1 source runs ${[...sourceRunIds].join(", ")} have no matching row for ${trial.repo.name}/${trial.task.id}/repeat-${trial.repeat}. Tried arms: ${sourceArmPriority.join(", ")}`,
+      );
+    }
+    usedSourceRows.add(source.importSourceKey);
+    return normalizeImportedExploreV1Row(source, trial.repeat);
+  });
+}
+
+function readImportedSourceRows(sourceRunIds) {
+  const rows = [];
+  for (const sourceRunId of sourceRunIds) {
+    const sourceRowsPath = path.join(RESULTS_DIR, sourceRunId, "runs.jsonl");
+    if (!fs.existsSync(sourceRowsPath)) {
+      throw new Error(`Cannot import missing explore-v1 run: ${sourceRunId}`);
+    }
+    const sourceRows = readRunRows(sourceRowsPath);
+    for (const [index, row] of sourceRows.entries()) {
+      rows.push({
+        ...row,
+        importSourceRunId: sourceRunId,
+        importSourceIndex: index,
+        importSourceKey: `${sourceRunId}\0${index}`,
+      });
+    }
+  }
+  return rows;
+}
+
+function findImportedSourceRow({
+  sourceRows,
+  sourceArmPriority,
+  trial,
+  usedSourceRows,
+}) {
+  for (const arm of sourceArmPriority) {
+    const candidates = sourceRows
+      .filter(
+        (row) =>
+          !usedSourceRows.has(row.importSourceKey) &&
+          row.status === "ok" &&
+          row.repo === trial.repo.name &&
+          row.task === trial.task.id &&
+          row.arm === arm,
+      )
+      .sort(compareImportedSourceRows);
+    const exactRepeat = candidates.find((row) => row.repeat === trial.repeat);
+    if (exactRepeat) {
+      return exactRepeat;
+    }
+    const byPosition = candidates[0];
+    if (byPosition) {
+      return byPosition;
+    }
+  }
+  return null;
+}
+
+function compareImportedSourceRows(a, b) {
+  return (
+    String(a.importSourceRunId).localeCompare(String(b.importSourceRunId)) ||
+    (Number(a.repeat) || 0) - (Number(b.repeat) || 0) ||
+    (Number(a.importSourceIndex) || 0) - (Number(b.importSourceIndex) || 0)
+  );
+}
+
+function normalizeImportedExploreV1Row(row, repeat) {
+  const sourceMetrics = fs.existsSync(
+    path.join(RESULTS_DIR, row.runId, "events.jsonl"),
+  )
+    ? readBenchmarkMetrics(row.runId)
+    : {};
+  return {
+    ...row,
+    ...sourceMetrics,
+    runId: `${runId}-${row.repo}-${row.task}-explore-v1-${repeat}-imported`,
+    arm: "explore-v1",
+    reportMode: "explore-v1",
+    repeat,
+    importedFromRunId: row.importSourceRunId,
+    importedFromArm: row.importedFromArm ?? row.arm,
+    importedFromRepeat: row.importedFromRepeat ?? row.repeat,
+    importedFromTrialRunId: row.importedFromTrialRunId ?? row.runId,
+  };
+}
+
+function writeImportedRows(resultsPath, rows) {
+  for (const row of rows) {
+    fs.appendFileSync(resultsPath, JSON.stringify(row) + "\n");
+    console.log(
+      `${row.repo}/${row.task}/${row.arm}/repeat-${row.repeat}: imported from ${row.importedFromRunId}/${row.importedFromArm}`,
+    );
+  }
+}
+
+function writeResumedRows(resultsPath, rows) {
+  for (const row of rows) {
+    fs.appendFileSync(resultsPath, JSON.stringify(row) + "\n");
+    console.log(
+      `${row.repo}/${row.task}/${row.arm}/repeat-${row.repeat}: resumed from ${row.resumedFromRunId}`,
+    );
+  }
+}
+
+function resolvePrimaryCompareArm(arms, explicitArm) {
+  if (explicitArm) {
+    validateArms(new Set([explicitArm]));
+    if (!arms.has(explicitArm)) {
+      throw new Error(
+        `--compare-arm must be included in --arms: ${explicitArm}`,
+      );
+    }
+    if (explicitArm === "baseline") {
+      throw new Error("--compare-arm must be an explore arm");
+    }
+    return explicitArm;
+  }
+  if (arms.has("explore-v2")) {
+    return "explore-v2";
+  }
+  if (arms.has("explore")) {
+    return "explore";
+  }
+  return [...arms].find((arm) => isExploreArm(arm)) ?? "explore";
+}
+
+function isExploreArm(arm) {
+  return arm !== "baseline";
+}
+
+function reportModeForArm(arm) {
+  return arm === "baseline" ? "baseline" : "explore-v2";
 }
 
 async function setupBenchmarkAuth() {
@@ -886,12 +1188,18 @@ async function runTrial(trial, benchmarkAuth) {
     contextPaths = selectedContextPaths(trial, repoPath);
     const importResult = await withTimeout(
       page.evaluate(
-        async ({ repoPath, repoName, apiKey, model, enableCodeExplorer }) => {
+        async ({
+          repoPath,
+          repoName,
+          apiKey,
+          selectedModel,
+          enableCodeExplorer,
+        }) => {
           await window.electron.ipcRenderer.invoke("set-user-settings", {
             enableDyadPro: true,
             enableCodeExplorer,
             selectedChatMode: "local-agent",
-            selectedModel: { provider: "auto", name: model },
+            selectedModel,
             providerSettings: {
               auto: {
                 apiKey: { value: apiKey },
@@ -908,8 +1216,8 @@ async function runTrial(trial, benchmarkAuth) {
           repoPath,
           repoName: `${trial.repo.name}-${trial.arm}-${trial.repeat}`,
           apiKey: benchmarkAuth.apiKey,
-          model: values.model,
-          enableCodeExplorer: trial.arm === "explore",
+          selectedModel: selectedBenchmarkModel(benchmarkAuth),
+          enableCodeExplorer: isExploreArm(trial.arm),
         },
       ),
       120_000,
@@ -1014,6 +1322,7 @@ async function runTrial(trial, benchmarkAuth) {
       contextPaths,
       task: trial.task.id,
       arm: trial.arm,
+      reportMode: reportModeForArm(trial.arm),
       repeat: trial.repeat,
       elapsedMs: Date.now() - startedAt,
       passedRubric,
@@ -1033,6 +1342,7 @@ async function runTrial(trial, benchmarkAuth) {
       contextPaths,
       task: trial.task.id,
       arm: trial.arm,
+      reportMode: reportModeForArm(trial.arm),
       repeat: trial.repeat,
       elapsedMs: Date.now() - startedAt,
       authMode: benchmarkAuth.mode,
@@ -1049,6 +1359,13 @@ async function runTrial(trial, benchmarkAuth) {
     });
     killProcessesForUserDataDir(userDataDir);
   }
+}
+
+function selectedBenchmarkModel(benchmarkAuth) {
+  if (benchmarkAuth.mode === "codex") {
+    return { provider: "openai", name: benchmarkAuth.model };
+  }
+  return { provider: "auto", name: values.model };
 }
 
 function selectedAppSubPath(trial) {
@@ -1431,11 +1748,16 @@ function writeSummary(runId, resultsPath) {
     trials: rows.length,
     ok: rows.filter((row) => row.status === "ok").length,
     errors: rows.filter((row) => row.status !== "ok").length,
+    primaryCompareArm,
     byArm: summarizeBy(rows, "arm"),
-    repoDeltas: summarizeRepoDeltas(rows),
-    exploreTaskCohorts: summarizeExploreTaskCohorts(rows),
-    taskDeltas: summarizeTaskDeltas(rows),
-    answerComparisons: summarizeAnswerComparisons(rows),
+    armDeltas: summarizeArmDeltas(rows),
+    taskArmDeltas: summarizeTaskArmDeltas(rows),
+    exploreV2VsV1: summarizeArmPairDelta(rows, "explore-v1", "explore-v2"),
+    exploreV2Acceptance: evaluateExploreV2Acceptance(rows),
+    repoDeltas: summarizeRepoDeltas(rows, primaryCompareArm),
+    exploreTaskCohorts: summarizeExploreTaskCohorts(rows, primaryCompareArm),
+    taskDeltas: summarizeTaskDeltas(rows, primaryCompareArm),
+    answerComparisons: summarizeAnswerComparisons(rows, primaryCompareArm),
   };
   const outDir = path.dirname(resultsPath);
   fs.writeFileSync(
@@ -1463,17 +1785,68 @@ function writeSummary(runId, resultsPath) {
       `Trials: ${summary.trials}`,
       `OK: ${summary.ok}`,
       `Errors: ${summary.errors}`,
+      `Primary compare arm: ${summary.primaryCompareArm}`,
       "",
       "## By Arm",
       "",
       `Pricing: primary \`${MODEL_PRICING.primary.model}\` input/cached/output = $${MODEL_PRICING.primary.inputPerMillion}/$${MODEL_PRICING.primary.cachedInputPerMillion}/$${MODEL_PRICING.primary.outputPerMillion} per 1M; value \`${MODEL_PRICING.value.model}\` input/cached/output = $${MODEL_PRICING.value.inputPerMillion}/$${MODEL_PRICING.value.cachedInputPerMillion}/$${MODEL_PRICING.value.outputPerMillion} per 1M.`,
       "",
-      "| Arm | OK | Avg elapsed ms | Explore available | Explore used | Primary uncached input | Primary cached input | Primary output | Primary total | Primary cost | Value uncached input | Value cached input | Value output | Value total | Value cost | Combined total | Combined cost | Primary tool calls | Value tool calls | Total tool calls |",
-      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+      "| Arm | OK | Avg elapsed ms | Explore available | Explore used | Usable explore reports | Post-report broad searches | Post-report reads | Off-target post-report reads | Fact unverified | Continuations | Primary uncached input | Primary cached input | Primary output | Primary total | Primary cost | Value uncached input | Value cached input | Value output | Value total | Value cost | Subagent report chars | Raw observation chars | Report/raw ratio | Combined total | Combined cost | Primary tool calls | Value tool calls | Total tool calls |",
+      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
       ...Object.entries(summary.byArm).map(
         ([arm, item]) =>
-          `| ${arm} | ${item.ok}/${item.count} | ${Math.round(item.elapsedMs / Math.max(item.count, 1))} | ${item.exploreCodeAvailable}/${item.count} | ${item.exploreCodeUsed}/${item.count} | ${item.mainUncachedInputTokens} | ${item.mainCachedInputTokens} | ${item.mainOutputTokens} | ${item.mainTotalTokens} | ${formatDollars(item.mainCostUsd)} | ${item.subagentUncachedInputTokens} | ${item.subagentCachedInputTokens} | ${item.subagentOutputTokens} | ${item.subagentTotalTokens} | ${formatDollars(item.subagentCostUsd)} | ${item.totalTokens} | ${formatDollars(item.costUsd)} | ${item.mainToolCalls} | ${item.subagentToolCalls} | ${item.toolCalls} |`,
+          `| ${arm} | ${item.ok}/${item.count} | ${Math.round(item.elapsedMs / Math.max(item.count, 1))} | ${item.exploreCodeAvailable}/${item.count} | ${item.exploreCodeUsed}/${item.count} | ${item.usableExploreReports} | ${item.postReportMainBroadSearchCalls} | ${item.postReportMainReadFileCalls} | ${item.postReportMainReadFileOutsideTargets} | ${item.factUnverifiedCount} | ${item.validationContinuationCount} | ${item.mainUncachedInputTokens} | ${item.mainCachedInputTokens} | ${item.mainOutputTokens} | ${item.mainTotalTokens} | ${formatDollars(item.mainCostUsd)} | ${item.subagentUncachedInputTokens} | ${item.subagentCachedInputTokens} | ${item.subagentOutputTokens} | ${item.subagentTotalTokens} | ${formatDollars(item.subagentCostUsd)} | ${item.subagentReportChars} | ${item.subagentRawObservationChars} | ${formatRatio(item.subagentReportChars, item.subagentRawObservationChars)} | ${item.totalTokens} | ${formatDollars(item.costUsd)} | ${item.mainToolCalls} | ${item.subagentToolCalls} | ${item.toolCalls} |`,
       ),
+      "",
+      "## Arm Deltas Vs Baseline",
+      "",
+      "| Arm | Completed pairs | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Post-report broad-search delta | Off-target read delta | Provider-step delta | Elapsed delta ms |",
+      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+      ...summary.armDeltas.map(
+        (item) =>
+          `| ${item.arm} | ${item.pairs} | ${item.primaryTokenDelta} | ${item.valueTokenDelta} | ${item.tokenDelta} | ${formatDollars(item.costDeltaUsd)} | ${item.primaryToolCallDelta} | ${item.valueToolCallDelta} | ${item.toolCallDelta} | ${item.postReportBroadSearchDelta} | ${item.postReportOffTargetReadDelta} | ${item.providerStepDelta} | ${item.elapsedDeltaMs} |`,
+      ),
+      "",
+      "## Task Arm Deltas Vs Baseline",
+      "",
+      "| Repo | Task | Arm | Completed pairs | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Quality delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Post-report broad-search delta | Off-target read delta | Provider-step delta | Elapsed delta ms |",
+      "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+      ...summary.taskArmDeltas.map(
+        (item) =>
+          `| ${item.repo} | ${item.task} | ${item.arm} | ${item.pairs} | ${item.primaryTokenDelta} | ${item.valueTokenDelta} | ${item.tokenDelta} | ${formatDollars(item.costDeltaUsd)} | ${formatSigned(item.qualityScoreDelta)} | ${item.primaryToolCallDelta} | ${item.valueToolCallDelta} | ${item.toolCallDelta} | ${item.postReportBroadSearchDelta} | ${item.postReportOffTargetReadDelta} | ${item.providerStepDelta} | ${item.elapsedDeltaMs} |`,
+      ),
+      "",
+      "## Explore V2 Vs V1",
+      "",
+      "Positive deltas mean V2 used less than imported V1 for that metric, except quality where positive means V2 scored higher.",
+      "",
+      "| Completed pairs | Main uncached input delta | Post-report broad-search delta | Off-target read delta | Post-report broad exploration delta | Quality delta | Total token delta | Spend delta | Total tool-call delta |",
+      "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+      `| ${summary.exploreV2VsV1.pairs} | ${summary.exploreV2VsV1.primaryTokenDelta} | ${summary.exploreV2VsV1.postReportBroadSearchDelta} | ${summary.exploreV2VsV1.postReportOffTargetReadDelta} | ${summary.exploreV2VsV1.postReportBroadExplorationDelta} | ${formatSigned(summary.exploreV2VsV1.qualityScoreDelta)} | ${summary.exploreV2VsV1.tokenDelta} | ${formatDollars(summary.exploreV2VsV1.costDeltaUsd)} | ${summary.exploreV2VsV1.toolCallDelta} |`,
+      "",
+      "## Explore V2 Acceptance",
+      "",
+      `Status: ${summary.exploreV2Acceptance.passed ? "passed" : "not passed"}`,
+      "",
+      "| Check | Value | Required |",
+      "| --- | ---: | ---: |",
+      `| paired held-out tasks | ${summary.exploreV2Acceptance.pairedTaskCount} | >=8 |`,
+      `| minimum paired repeats per task | ${summary.exploreV2Acceptance.minPairedRepeatsPerTask} | >=3 |`,
+      `| V1 source arms | ${formatList(summary.exploreV2Acceptance.v1SourceArms)} | explore-candidate-followup |`,
+      `| quality delta | ${formatSigned(summary.exploreV2Acceptance.qualityScoreDelta)} | >=0 |`,
+      `| main uncached input delta | ${summary.exploreV2Acceptance.primaryTokenDelta} | >0 |`,
+      `| post-report broad exploration delta | ${summary.exploreV2Acceptance.postReportBroadExplorationDelta} | >0 |`,
+      "",
+      ...(summary.exploreV2Acceptance.reasons.length > 0
+        ? [
+            "Reasons:",
+            "",
+            ...summary.exploreV2Acceptance.reasons.map(
+              (reason) => `- ${reason}`,
+            ),
+            "",
+          ]
+        : []),
       "",
       "## Quality Metrics",
       "",
@@ -1493,7 +1866,7 @@ function writeSummary(runId, resultsPath) {
           `| ${arm} | ${formatReasons(item.exploreCodeDisabledReasons)} |`,
       ),
       "",
-      "## Explore Task Cohorts",
+      `## Explore Task Cohorts (${summary.primaryCompareArm} vs baseline)`,
       "",
       "| Cohort | Tasks | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Elapsed delta ms |",
       "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -1502,7 +1875,7 @@ function writeSummary(runId, resultsPath) {
           `| ${item.status} | ${item.tasks} | ${item.primaryTokenDelta} | ${item.valueTokenDelta} | ${item.tokenDelta} | ${formatDollars(item.costDeltaUsd)} | ${item.primaryToolCallDelta} | ${item.valueToolCallDelta} | ${item.toolCallDelta} | ${item.elapsedDeltaMs} |`,
       ),
       "",
-      "## Repo Deltas",
+      `## Repo Deltas (${summary.primaryCompareArm} vs baseline)`,
       "",
       "| Repo | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Elapsed delta ms |",
       "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -1511,7 +1884,7 @@ function writeSummary(runId, resultsPath) {
           `| ${item.repo} | ${item.primaryTokenDelta} | ${item.valueTokenDelta} | ${item.tokenDelta} | ${formatDollars(item.costDeltaUsd)} | ${item.primaryToolCallDelta} | ${item.valueToolCallDelta} | ${item.toolCallDelta} | ${item.elapsedDeltaMs} |`,
       ),
       "",
-      "## Task Deltas",
+      `## Task Deltas (${summary.primaryCompareArm} vs baseline)`,
       "",
       "| Repo | Task | App subpath | Import subpath | Context paths | Explore status | Explore available | Explore used | Disabled reasons | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Quality delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Provider-step delta | Elapsed delta ms | Arm winner |",
       "| --- | --- | --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
@@ -1520,7 +1893,7 @@ function writeSummary(runId, resultsPath) {
           `| ${item.repo} | ${item.task} | ${item.appSubPath} | ${item.appImportSubPath} | ${formatList(item.contextPaths)} | ${item.exploreStatus} | ${item.exploreCodeAvailable}/${item.exploreCount} | ${item.exploreCodeUsed}/${item.exploreCount} | ${formatReasons(item.exploreCodeDisabledReasons)} | ${item.primaryTokenDelta} | ${item.valueTokenDelta} | ${item.tokenDelta} | ${formatDollars(item.costDeltaUsd)} | ${formatSigned(item.qualityScoreDelta)} | ${item.primaryToolCallDelta} | ${item.valueToolCallDelta} | ${item.toolCallDelta} | ${item.providerStepDelta} | ${item.elapsedDeltaMs} | ${item.winner} |`,
       ),
       "",
-      "## Final Answer Comparison",
+      `## Final Answer Comparison (${summary.primaryCompareArm} vs baseline)`,
       "",
       "| Repo | Task | Verdict | Expected-term coverage delta | Quality delta | File refs delta | Line-range refs delta | Final chars delta | Notes |",
       "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
@@ -1566,8 +1939,10 @@ function buildRunMetadata(packageInfo) {
   return {
     gitSha: gitOutput(["rev-parse", "HEAD"]) ?? "unknown",
     gitDirty: (gitOutput(["status", "--porcelain"]) ?? "").trim().length > 0,
-    packagePath: path.relative(ROOT, packageInfo.path),
-    packageNewestMtime: new Date(packageInfo.newestMtimeMs).toISOString(),
+    packagePath: packageInfo ? path.relative(ROOT, packageInfo.path) : null,
+    packageNewestMtime: packageInfo
+      ? new Date(packageInfo.newestMtimeMs).toISOString()
+      : null,
     sourceNewestMtime: new Date(source.newestMtimeMs).toISOString(),
     sourceNewestPath: source.path,
     command: [
@@ -1585,6 +1960,9 @@ function buildRunMetadata(packageInfo) {
     repos: selectedRepos ? [...selectedRepos].sort() : "all",
     tasks: selectedTasks ? [...selectedTasks].sort() : "all",
     repeats,
+    resumedFromRun: values["resume-from"],
+    importedExploreV1Run: values["explore-v1-run"],
+    importedExploreV1SourceArm: values["explore-v1-source-arm"],
   };
 }
 
@@ -1710,6 +2088,11 @@ function summarizeBy(rows, key) {
       (row.subagentOutputTokens ?? 0);
     result[group].subagentTotalTokens =
       (result[group].subagentTotalTokens ?? 0) + (row.subagentTotalTokens ?? 0);
+    result[group].subagentReportChars =
+      (result[group].subagentReportChars ?? 0) + (row.subagentReportChars ?? 0);
+    result[group].subagentRawObservationChars =
+      (result[group].subagentRawObservationChars ?? 0) +
+      (row.subagentRawObservationChars ?? 0);
     result[group].mainCostUsd =
       (result[group].mainCostUsd ?? 0) + (row.mainCostUsd ?? 0);
     result[group].subagentCostUsd =
@@ -1730,6 +2113,23 @@ function summarizeBy(rows, key) {
       (result[group].mainToolCalls ?? 0) + (row.mainToolCallCount ?? 0);
     result[group].subagentToolCalls =
       (result[group].subagentToolCalls ?? 0) + (row.subagentToolCallCount ?? 0);
+    result[group].postReportMainBroadSearchCalls =
+      (result[group].postReportMainBroadSearchCalls ?? 0) +
+      (row.postReportMainBroadSearchCalls ?? 0);
+    result[group].postReportMainReadFileCalls =
+      (result[group].postReportMainReadFileCalls ?? 0) +
+      (row.postReportMainReadFileCalls ?? 0);
+    result[group].postReportMainReadFileOutsideTargets =
+      (result[group].postReportMainReadFileOutsideTargets ?? 0) +
+      (row.postReportMainReadFileOutsideTargets ?? 0);
+    result[group].usableExploreReports =
+      (result[group].usableExploreReports ?? 0) +
+      (row.usableExploreReports ?? 0);
+    result[group].factUnverifiedCount =
+      (result[group].factUnverifiedCount ?? 0) + (row.factUnverifiedCount ?? 0);
+    result[group].validationContinuationCount =
+      (result[group].validationContinuationCount ?? 0) +
+      (row.validationContinuationCount ?? 0);
   }
   return result;
 }
@@ -1768,6 +2168,15 @@ function readBenchmarkMetrics(trialRunId) {
       exploreCodeAvailable: false,
       exploreCodeUsed: false,
       exploreCodeDisabledReasons: {},
+      subagentReportChars: 0,
+      subagentRawObservationChars: 0,
+      subagentCompressionRatio: 0,
+      postReportMainBroadSearchCalls: 0,
+      postReportMainReadFileCalls: 0,
+      postReportMainReadFileOutsideTargets: 0,
+      usableExploreReports: 0,
+      factUnverifiedCount: 0,
+      validationContinuationCount: 0,
     };
   }
 
@@ -1832,6 +2241,73 @@ function readBenchmarkMetrics(trialRunId) {
   const subagentToolEvents = toolEvents.filter(
     (event) => getEventPhase(event) === "explore_code_subagent",
   );
+  const subagentFinishEvents = events.filter(
+    (event) =>
+      event.type === "subagent_finish" &&
+      getEventPhase(event) === "explore_code_subagent",
+  );
+  const subagentReportChars = sumEventField(
+    subagentFinishEvents,
+    "reportChars",
+  );
+  const subagentRawObservationChars = sumEventField(
+    subagentFinishEvents,
+    "rawObservationChars",
+  );
+  const usableExploreReports = subagentFinishEvents.filter((event) =>
+    isUsableExploreReport(event),
+  ).length;
+  const firstUsableExploreMainEndIndex = events.findIndex(
+    (event) =>
+      event.type === "tool_call_end" &&
+      getEventPhase(event) === "main" &&
+      event.toolName === "explore_code" &&
+      hasUsableExploreReport(event.resultPreview),
+  );
+  const reportedReadTargets =
+    firstUsableExploreMainEndIndex >= 0
+      ? extractExploreReportReadTargets(
+          events[firstUsableExploreMainEndIndex].resultPreview,
+        )
+      : new Set();
+  const reportedSearchTargets =
+    firstUsableExploreMainEndIndex >= 0
+      ? extractExploreReportSearchTargets(
+          events[firstUsableExploreMainEndIndex].resultPreview,
+        )
+      : [];
+  const postReportMainToolEvents =
+    firstUsableExploreMainEndIndex >= 0
+      ? events
+          .slice(firstUsableExploreMainEndIndex + 1)
+          .filter(
+            (event) =>
+              event.type === "tool_call_start" &&
+              getEventPhase(event) === "main",
+          )
+      : [];
+  const postReportMainBroadSearchCalls = postReportMainToolEvents.filter(
+    (event) =>
+      (event.toolName === "grep" || event.toolName === "list_files") &&
+      !isSearchEventWithinTargets(event, reportedSearchTargets),
+  ).length;
+  const postReportReadFileEvents = postReportMainToolEvents.filter(
+    (event) => event.toolName === "read_file",
+  );
+  const postReportMainReadFileOutsideTargets = postReportReadFileEvents.filter(
+    (event) => !isReadFileEventWithinTargets(event, reportedReadTargets),
+  ).length;
+  const factUnverifiedCount = sumEventField(
+    subagentFinishEvents,
+    "factUnverifiedCount",
+  );
+  const validationContinuationCount = events.filter(
+    (event) =>
+      getEventPhase(event) === "explore_code_subagent" &&
+      (event.type === "validation_continuation_finish" ||
+        (event.type === "submit_report_result" &&
+          event.continuationRequested === true)),
+  ).length;
   return {
     totalTokens: allUsage.totalTokens,
     inputTokens: allUsage.inputTokens,
@@ -1863,7 +2339,269 @@ function readBenchmarkMetrics(trialRunId) {
     exploreCodeAvailable: availabilityEvents.some((event) => event.enabled),
     exploreCodeUsed: (mainToolCallsByName.explore_code ?? 0) > 0,
     exploreCodeDisabledReasons: countAvailabilityReasons(availabilityEvents),
+    subagentReportChars,
+    subagentRawObservationChars,
+    subagentCompressionRatio:
+      subagentRawObservationChars > 0
+        ? subagentReportChars / subagentRawObservationChars
+        : 0,
+    postReportMainBroadSearchCalls,
+    postReportMainReadFileCalls: postReportReadFileEvents.length,
+    postReportMainReadFileOutsideTargets,
+    usableExploreReports,
+    factUnverifiedCount,
+    validationContinuationCount,
   };
+}
+
+function isUsableExploreReport(event) {
+  const confidence = String(event.renderedConfidence ?? "").toLowerCase();
+  return confidence === "high" || confidence === "medium";
+}
+
+function hasUsableExploreReport(report) {
+  const metadata = extractExploreReportMetadata(report);
+  return metadata.confidence === "high" || metadata.confidence === "medium";
+}
+
+function extractExploreReportReadTargets(report) {
+  const metadata = extractExploreReportMetadata(report);
+  const targets = [];
+  for (const target of metadata.readTargets) {
+    if (!target.path) continue;
+    targets.push({
+      path: target.path,
+      range: parseLineRange(target.range),
+    });
+  }
+  for (const target of extractRenderedExploreReportReadTargets(report)) {
+    if (!target.path) continue;
+    targets.push(target);
+  }
+  return targets;
+}
+
+function extractRenderedExploreReportReadTargets(report) {
+  if (typeof report !== "string") {
+    return [];
+  }
+  const flowTargets = extractRenderedExploreReportFlowTargets(report);
+  const targets = [];
+  const lines = report.split(/\r?\n/);
+  const readTargetsIndex = lines.findIndex(
+    (line) => line.trim() === "Read targets:",
+  );
+  if (readTargetsIndex === -1) {
+    return targets;
+  }
+  for (let index = readTargetsIndex + 1; index < lines.length; index++) {
+    const line = lines[index].trim();
+    if (!line || line === "```json" || /^[A-Z][A-Za-z ]+:/.test(line)) {
+      break;
+    }
+    const flowMatch = /^flow\s+(\d+)\s+-\s+/.exec(line);
+    if (flowMatch) {
+      const flowTarget = flowTargets.get(Number(flowMatch[1]));
+      if (flowTarget) {
+        targets.push(flowTarget);
+      }
+      continue;
+    }
+    const refMatch = /^(.+?):(\d+-\d+)\s+-\s+/.exec(line);
+    if (refMatch) {
+      targets.push({
+        path: refMatch[1],
+        range: parseLineRange(refMatch[2]),
+      });
+    }
+  }
+  return targets;
+}
+
+function extractRenderedExploreReportFlowTargets(report) {
+  const targets = new Map();
+  const lines = report.split(/\r?\n/);
+  for (const line of lines) {
+    const match = /^(\d+)\.\s+(.+?):(\d+-\d+)\s+\(/.exec(line.trim());
+    if (!match) {
+      continue;
+    }
+    targets.set(Number(match[1]), {
+      path: match[2],
+      range: parseLineRange(match[3]),
+    });
+  }
+  return targets;
+}
+
+function extractExploreReportSearchTargets(report) {
+  if (typeof report !== "string") {
+    return [];
+  }
+  const targets = [];
+  const lines = report.split(/\r?\n/);
+  const searchTargetsIndex = lines.findIndex(
+    (line) => line.trim() === "Search targets:",
+  );
+  if (searchTargetsIndex === -1) {
+    return targets;
+  }
+  for (let index = searchTargetsIndex + 1; index < lines.length; index++) {
+    const line = lines[index].trim();
+    if (!line || line === "```json" || /^[A-Z][A-Za-z ]+:/.test(line)) {
+      break;
+    }
+    const query = parseQuotedField(line, "query");
+    const include = parseQuotedField(line, "include");
+    const literalMatch = /\bliteral=(true|false)\b/.exec(line);
+    if (query && include) {
+      targets.push({
+        query,
+        include,
+        literal:
+          literalMatch?.[1] === "true"
+            ? true
+            : literalMatch?.[1] === "false"
+              ? false
+              : null,
+      });
+    }
+  }
+  return targets;
+}
+
+function extractExploreReportMetadata(report) {
+  if (typeof report !== "string") {
+    return {
+      confidence: null,
+      readTargets: [],
+    };
+  }
+  const jsonText = /```json\s*([\s\S]*?)\s*```/.exec(report)?.[1];
+  if (!jsonText) {
+    return {
+      confidence: parseReportHeaderValue(report, "Confidence"),
+      readTargets: [],
+    };
+  }
+  try {
+    const parsed = JSON.parse(jsonText);
+    return {
+      confidence:
+        typeof parsed.confidence === "string"
+          ? parsed.confidence.toLowerCase()
+          : parseReportHeaderValue(report, "Confidence"),
+      readTargets: Array.isArray(parsed.readTargets)
+        ? parsed.readTargets.filter(
+            (target) => target && typeof target === "object",
+          )
+        : [],
+    };
+  } catch {
+    return {
+      confidence: parseReportHeaderValue(report, "Confidence"),
+      readTargets: [],
+    };
+  }
+}
+
+function parseReportHeaderValue(report, key) {
+  const match = new RegExp(`${key}:\\s*([^|\\n]+)`).exec(report);
+  return match?.[1]?.trim().toLowerCase() ?? null;
+}
+
+function isReadFileEventWithinTargets(event, targets) {
+  if (targets.length === 0) {
+    return false;
+  }
+  const args = parsePreviewJson(event.argsPreview);
+  const filePath = typeof args?.path === "string" ? args.path : null;
+  if (!filePath) {
+    return false;
+  }
+  const start =
+    typeof args.start_line_one_indexed === "number"
+      ? args.start_line_one_indexed
+      : null;
+  const end =
+    typeof args.end_line_one_indexed_inclusive === "number"
+      ? args.end_line_one_indexed_inclusive
+      : null;
+  if (start === null && end === null) {
+    return targets.some((target) => target.path === filePath);
+  }
+  const readRange = {
+    start: start ?? 1,
+    end: end ?? start ?? 1,
+  };
+  return targets.some((target) => {
+    if (target.path !== filePath) {
+      return false;
+    }
+    if (!target.range) {
+      return true;
+    }
+    return (
+      readRange.start >= target.range.start && readRange.end <= target.range.end
+    );
+  });
+}
+
+function isSearchEventWithinTargets(event, targets) {
+  if (event.toolName !== "grep" || targets.length === 0) {
+    return false;
+  }
+  const args = parsePreviewJson(event.argsPreview);
+  const query = typeof args?.query === "string" ? args.query : null;
+  const include =
+    typeof args?.include_pattern === "string" ? args.include_pattern : null;
+  const literal = typeof args?.literal === "boolean" ? args.literal : null;
+  if (!query || !include) {
+    return false;
+  }
+  return targets.some(
+    (target) =>
+      target.query === query &&
+      target.include === include &&
+      (target.literal === null || target.literal === literal),
+  );
+}
+
+function parseQuotedField(line, field) {
+  const match = new RegExp(`${field}="([^"]*)"`).exec(line);
+  return match?.[1] ?? null;
+}
+
+function parseLineRange(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = /^(\d+)-(\d+)$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  return {
+    start: Number(match[1]),
+    end: Number(match[2]),
+  };
+}
+
+function parsePreviewJson(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function sumEventField(events, field) {
+  return events.reduce(
+    (total, event) => total + (Number(event[field]) || 0),
+    0,
+  );
 }
 
 function countAvailabilityReasons(events) {
@@ -1947,7 +2685,259 @@ function cachedInputTokenCount(usage) {
   );
 }
 
-function summarizeRepoDeltas(rows) {
+function summarizeArmDeltas(rows) {
+  const arms = [...new Set(rows.map((row) => row.arm))]
+    .filter((arm) => arm !== "baseline")
+    .sort();
+  return arms.map((arm) => {
+    const pairs = [];
+    for (const row of rows) {
+      if (row.arm !== arm || row.status !== "ok") {
+        continue;
+      }
+      const baseline = rows.find(
+        (candidate) =>
+          candidate.arm === "baseline" &&
+          candidate.status === "ok" &&
+          candidate.repo === row.repo &&
+          candidate.task === row.task &&
+          candidate.repeat === row.repeat,
+      );
+      if (baseline) {
+        pairs.push({ baseline, compare: row });
+      }
+    }
+    return {
+      arm,
+      pairs: pairs.length,
+      primaryTokenDelta: sumPairs(pairs, "mainUncachedInputTokens"),
+      valueTokenDelta: sumPairs(pairs, "subagentTotalTokens"),
+      tokenDelta: sumPairs(pairs, "totalTokens"),
+      costDeltaUsd: sumPairs(pairs, "costUsd"),
+      primaryToolCallDelta: sumPairs(pairs, "mainToolCallCount"),
+      valueToolCallDelta: sumPairs(pairs, "subagentToolCallCount"),
+      toolCallDelta: sumPairs(pairs, "toolCallCount"),
+      postReportBroadSearchDelta: sumPairs(
+        pairs,
+        "postReportMainBroadSearchCalls",
+      ),
+      postReportOffTargetReadDelta: sumPairs(
+        pairs,
+        "postReportMainReadFileOutsideTargets",
+      ),
+      providerStepDelta: sumPairs(pairs, "providerStepCount"),
+      elapsedDeltaMs: sumPairs(pairs, "elapsedMs"),
+    };
+  });
+}
+
+function summarizeTaskArmDeltas(rows) {
+  const keys = [
+    ...new Set(
+      rows
+        .filter((row) => row.arm !== "baseline")
+        .map((row) => `${row.repo}\0${row.task}\0${row.arm}`),
+    ),
+  ].sort();
+  return keys.map((key) => {
+    const [repo, task, arm] = key.split("\0");
+    const pairs = [];
+    for (const row of rows) {
+      if (
+        row.repo !== repo ||
+        row.task !== task ||
+        row.arm !== arm ||
+        row.status !== "ok"
+      ) {
+        continue;
+      }
+      const baseline = rows.find(
+        (candidate) =>
+          candidate.arm === "baseline" &&
+          candidate.status === "ok" &&
+          candidate.repo === row.repo &&
+          candidate.task === row.task &&
+          candidate.repeat === row.repeat,
+      );
+      if (baseline) {
+        pairs.push({ baseline, compare: row });
+      }
+    }
+    return {
+      repo,
+      task,
+      arm,
+      pairs: pairs.length,
+      primaryTokenDelta: sumPairs(pairs, "mainUncachedInputTokens"),
+      valueTokenDelta: sumPairs(pairs, "subagentTotalTokens"),
+      tokenDelta: sumPairs(pairs, "totalTokens"),
+      costDeltaUsd: sumPairs(pairs, "costUsd"),
+      qualityScoreDelta: averagePairDelta(pairs, "qualityScore"),
+      primaryToolCallDelta: sumPairs(pairs, "mainToolCallCount"),
+      valueToolCallDelta: sumPairs(pairs, "subagentToolCallCount"),
+      toolCallDelta: sumPairs(pairs, "toolCallCount"),
+      postReportBroadSearchDelta: sumPairs(
+        pairs,
+        "postReportMainBroadSearchCalls",
+      ),
+      postReportOffTargetReadDelta: sumPairs(
+        pairs,
+        "postReportMainReadFileOutsideTargets",
+      ),
+      providerStepDelta: sumPairs(pairs, "providerStepCount"),
+      elapsedDeltaMs: sumPairs(pairs, "elapsedMs"),
+    };
+  });
+}
+
+function summarizeArmPairDelta(rows, baselineArm, compareArm) {
+  const pairs = [];
+  for (const row of rows) {
+    if (row.arm !== compareArm || row.status !== "ok") {
+      continue;
+    }
+    const baseline = rows.find(
+      (candidate) =>
+        candidate.arm === baselineArm &&
+        candidate.status === "ok" &&
+        candidate.repo === row.repo &&
+        candidate.task === row.task &&
+        candidate.repeat === row.repeat,
+    );
+    if (baseline) {
+      pairs.push({ baseline, compare: row });
+    }
+  }
+  return {
+    baselineArm,
+    compareArm,
+    pairs: pairs.length,
+    primaryTokenDelta: sumPairs(pairs, "mainUncachedInputTokens"),
+    valueTokenDelta: sumPairs(pairs, "subagentTotalTokens"),
+    tokenDelta: sumPairs(pairs, "totalTokens"),
+    costDeltaUsd: sumPairs(pairs, "costUsd"),
+    primaryToolCallDelta: sumPairs(pairs, "mainToolCallCount"),
+    valueToolCallDelta: sumPairs(pairs, "subagentToolCallCount"),
+    toolCallDelta: sumPairs(pairs, "toolCallCount"),
+    postReportBroadSearchDelta: sumPairs(
+      pairs,
+      "postReportMainBroadSearchCalls",
+    ),
+    postReportOffTargetReadDelta: sumPairs(
+      pairs,
+      "postReportMainReadFileOutsideTargets",
+    ),
+    postReportBroadExplorationDelta:
+      sumPairs(pairs, "postReportMainBroadSearchCalls") +
+      sumPairs(pairs, "postReportMainReadFileOutsideTargets"),
+    qualityScoreDelta: averagePairDelta(pairs, "qualityScore"),
+    providerStepDelta: sumPairs(pairs, "providerStepCount"),
+    elapsedDeltaMs: sumPairs(pairs, "elapsedMs"),
+  };
+}
+
+function evaluateExploreV2Acceptance(rows) {
+  const delta = summarizeArmPairDelta(rows, "explore-v1", "explore-v2");
+  const pairedRepeatsByTask = new Map();
+  const v1SourceArms = new Set();
+  for (const row of rows) {
+    if (row.arm !== "explore-v2" || row.status !== "ok") {
+      continue;
+    }
+    const v1 = rows.find(
+      (candidate) =>
+        candidate.arm === "explore-v1" &&
+        candidate.status === "ok" &&
+        candidate.repo === row.repo &&
+        candidate.task === row.task &&
+        candidate.repeat === row.repeat,
+    );
+    if (!v1) {
+      continue;
+    }
+    v1SourceArms.add(v1.importedFromArm ?? v1.reportMode ?? "unknown");
+    const key = `${row.repo}/${row.task}`;
+    const repeats = pairedRepeatsByTask.get(key) ?? new Set();
+    repeats.add(row.repeat);
+    pairedRepeatsByTask.set(key, repeats);
+  }
+
+  const pairedTaskCount = pairedRepeatsByTask.size;
+  const minPairedRepeatsPerTask =
+    pairedTaskCount === 0
+      ? 0
+      : Math.min(
+          ...[...pairedRepeatsByTask.values()].map((repeats) => repeats.size),
+        );
+  const reasons = [];
+  if (pairedTaskCount < 8) {
+    reasons.push(`only ${pairedTaskCount} paired tasks; need at least 8`);
+  }
+  if (minPairedRepeatsPerTask < 3) {
+    reasons.push(
+      `minimum paired repeats per task is ${minPairedRepeatsPerTask}; need at least 3`,
+    );
+  }
+  const invalidV1SourceArms = [...v1SourceArms]
+    .filter(
+      (arm) => arm !== "explore-candidate-followup" && arm !== "explore-v1",
+    )
+    .sort();
+  if (invalidV1SourceArms.length > 0) {
+    reasons.push(
+      `explore-v1 imports used non-candidate-followup source arms: ${invalidV1SourceArms.join(", ")}`,
+    );
+  }
+  if (delta.qualityScoreDelta < 0) {
+    reasons.push(
+      `quality delta is ${formatSigned(delta.qualityScoreDelta)}; V2 must be >= V1`,
+    );
+  }
+  if (delta.primaryTokenDelta <= 0) {
+    reasons.push(
+      `main uncached input delta is ${delta.primaryTokenDelta}; V2 must decrease it versus V1`,
+    );
+  }
+  if (delta.postReportBroadExplorationDelta <= 0) {
+    reasons.push(
+      `post-report broad exploration delta is ${delta.postReportBroadExplorationDelta}; V2 must decrease broad grep/list_files or off-target read_file calls versus V1`,
+    );
+  }
+
+  return {
+    passed: reasons.length === 0,
+    reasons,
+    pairedTaskCount,
+    minPairedRepeatsPerTask,
+    v1SourceArms: [...v1SourceArms].sort(),
+    qualityScoreDelta: delta.qualityScoreDelta,
+    primaryTokenDelta: delta.primaryTokenDelta,
+    postReportBroadSearchDelta: delta.postReportBroadSearchDelta,
+    postReportOffTargetReadDelta: delta.postReportOffTargetReadDelta,
+    postReportBroadExplorationDelta: delta.postReportBroadExplorationDelta,
+  };
+}
+
+function sumPairs(pairs, field) {
+  return pairs.reduce(
+    (total, pair) =>
+      total + ((pair.baseline[field] ?? 0) - (pair.compare[field] ?? 0)),
+    0,
+  );
+}
+
+function averagePairDelta(pairs, field) {
+  if (pairs.length === 0) return 0;
+  return (
+    pairs.reduce(
+      (total, pair) =>
+        total + ((pair.compare[field] ?? 0) - (pair.baseline[field] ?? 0)),
+      0,
+    ) / pairs.length
+  );
+}
+
+function summarizeRepoDeltas(rows, compareArm) {
   const repos = [...new Set(rows.map((row) => row.repo))].sort();
   return repos.map((repo) => {
     const baseline = rows.filter(
@@ -1956,7 +2946,7 @@ function summarizeRepoDeltas(rows) {
     );
     const explore = rows.filter(
       (row) =>
-        row.repo === repo && row.arm === "explore" && row.status === "ok",
+        row.repo === repo && row.arm === compareArm && row.status === "ok",
     );
     return {
       repo,
@@ -1980,8 +2970,8 @@ function summarizeRepoDeltas(rows) {
   });
 }
 
-function summarizeExploreTaskCohorts(rows) {
-  const taskDeltas = summarizeTaskDeltas(rows);
+function summarizeExploreTaskCohorts(rows, compareArm) {
+  const taskDeltas = summarizeTaskDeltas(rows, compareArm);
   const statuses = [
     "available-used",
     "partially-used",
@@ -2005,7 +2995,7 @@ function summarizeExploreTaskCohorts(rows) {
   });
 }
 
-function summarizeTaskDeltas(rows) {
+function summarizeTaskDeltas(rows, compareArm) {
   const keys = [
     ...new Set(rows.map((row) => `${row.repo}\0${row.task}`)),
   ].sort();
@@ -2022,7 +3012,7 @@ function summarizeTaskDeltas(rows) {
       (row) =>
         row.repo === repo &&
         row.task === task &&
-        row.arm === "explore" &&
+        row.arm === compareArm &&
         row.status === "ok",
     );
     const exploreCodeDisabledReasons = explore.reduce(
@@ -2093,7 +3083,7 @@ function summarizeTaskDeltas(rows) {
   });
 }
 
-function summarizeAnswerComparisons(rows) {
+function summarizeAnswerComparisons(rows, compareArm) {
   const keys = [
     ...new Set(rows.map((row) => `${row.repo}\0${row.task}`)),
   ].sort();
@@ -2110,7 +3100,7 @@ function summarizeAnswerComparisons(rows) {
       (row) =>
         row.repo === repo &&
         row.task === task &&
-        row.arm === "explore" &&
+        row.arm === compareArm &&
         row.status === "ok",
     );
     const expectedTermCoverageDelta =
@@ -2144,6 +3134,7 @@ function summarizeAnswerComparisons(rows) {
       notes: answerComparisonNotes({
         baselineCount: baseline.length,
         exploreCount: explore.length,
+        compareArm,
         expectedTermCoverageDelta,
         qualityScoreDelta,
         fileReferenceDelta,
@@ -2181,6 +3172,7 @@ function chooseAnswerVerdict({
 function answerComparisonNotes({
   baselineCount,
   exploreCount,
+  compareArm,
   expectedTermCoverageDelta,
   qualityScoreDelta,
   fileReferenceDelta,
@@ -2188,7 +3180,7 @@ function answerComparisonNotes({
   finalTextCharsDelta,
 }) {
   if (baselineCount === 0 || exploreCount === 0) {
-    return `only ${baselineCount} baseline / ${exploreCount} explore completed`;
+    return `only ${baselineCount} baseline / ${exploreCount} ${compareArm} completed`;
   }
   const notes = [];
   if (expectedTermCoverageDelta !== 0) {

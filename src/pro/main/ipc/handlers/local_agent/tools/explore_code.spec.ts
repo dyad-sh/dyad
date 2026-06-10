@@ -55,9 +55,12 @@ describe("exploreCodeTool", () => {
     const ctx = createMockContext(appPath);
 
     try {
-      const first = await exploreCodeTool.execute({ query: "App flow" }, ctx);
+      const first = await exploreCodeTool.execute(
+        { query: "App flow", intent: "locate" },
+        ctx,
+      );
       const second = await exploreCodeTool.execute(
-        { query: " App   flow " },
+        { query: " App   flow ", intent: "locate" },
         ctx,
       );
 
@@ -65,6 +68,9 @@ describe("exploreCodeTool", () => {
       expect(mocks.runExploreCodeSubagent).toHaveBeenCalledTimes(1);
       expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
         expect.stringContaining('cached="true"'),
+      );
+      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
+        expect.stringContaining('intent="locate"'),
       );
       expect(mocks.recordCodeExplorerBenchmarkEvent).toHaveBeenCalledWith(
         expect.objectContaining({ type: "explore_code_cache_hit" }),
@@ -82,14 +88,86 @@ describe("exploreCodeTool", () => {
     const ctx = createMockContext(appPath);
 
     try {
-      await exploreCodeTool.execute({ query: "App flow" }, ctx);
+      await exploreCodeTool.execute(
+        { query: "App flow", intent: "locate" },
+        ctx,
+      );
       await new Promise((resolve) => setTimeout(resolve, 5));
       await fs.writeFile(appFilePath, "export const App = 2;\n");
-      await exploreCodeTool.execute({ query: "App flow" }, ctx);
+      await exploreCodeTool.execute(
+        { query: "App flow", intent: "locate" },
+        ctx,
+      );
 
       expect(mocks.runExploreCodeSubagent).toHaveBeenCalledTimes(2);
       expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
         expect.not.stringContaining('cached="true"'),
+      );
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves the caller-supplied intent without query-based promotion", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-cache-"));
+    await fs.mkdir(path.join(appPath, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(appPath, "src/App.tsx"),
+      "export const App = 1;\n",
+    );
+    const ctx = createMockContext(appPath);
+
+    try {
+      await exploreCodeTool.execute(
+        {
+          query:
+            "Trace how booking availability is computed and surfaced to the page",
+          intent: "locate",
+        },
+        ctx,
+      );
+
+      expect(mocks.runExploreCodeSubagent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: expect.objectContaining({ intent: "locate" }),
+        }),
+      );
+      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
+        expect.stringContaining('intent="locate"'),
+      );
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the detected tsconfig when the supplied path is stale", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-cache-"));
+    await fs.writeFile(
+      path.join(appPath, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: {} }),
+    );
+    const ctx = createMockContext(appPath);
+
+    try {
+      await exploreCodeTool.execute(
+        {
+          query: "App flow with stale tsconfig",
+          intent: "locate",
+          tsconfig_path: "webapp/tsconfig.json",
+        },
+        ctx,
+      );
+
+      expect(mocks.runExploreCodeSubagent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: expect.objectContaining({ tsconfig_path: "tsconfig.json" }),
+        }),
+      );
+      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
+        expect.stringContaining('tsconfig_path="tsconfig.json"'),
+      );
+      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
+        expect.not.stringContaining("webapp/tsconfig.json"),
       );
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });
@@ -100,32 +178,22 @@ describe("exploreCodeTool", () => {
 function buildReport(filePath: string, range: string): string {
   return [
     "## explore_code report",
-    "",
-    "Structured summary:",
+    `Query: "App flow" | Intent: locate | Confidence: high | Action: read_targets`,
+    "Flow:",
+    `1. ${filePath}:${range} (entry) - App is rendered.`,
+    "> export const App = 1;",
     "```json",
     JSON.stringify({
+      action: "read_targets",
       confidence: "high",
-      taskClass: "component-flow",
-      compilerSignal: "strong",
-      primaryFiles: [
+      paths: [
         {
           path: filePath,
           range,
-          symbols: ["App"],
-          purpose: "entry point",
         },
       ],
-      secondaryFiles: [],
-      editTarget: {
-        path: filePath,
-        range,
-        purpose: "entry point",
-      },
     }),
     "```",
-    "",
-    "Findings:",
-    `1. ${filePath}:${range} - App`,
   ].join("\n");
 }
 

@@ -27,6 +27,14 @@ const { values } = parseArgs({
     "codex-auth-path": { type: "string" },
     "codex-model": { type: "string", default: "gpt-5.5" },
     "retry-from": { type: "string" },
+    "resume-from": { type: "string" },
+    arms: {
+      type: "string",
+      default: "baseline,explore-v2",
+    },
+    "compare-arm": { type: "string" },
+    "explore-v1-run": { type: "string" },
+    "explore-v1-source-arm": { type: "string" },
     "skip-build": { type: "boolean", default: false },
     "skip-fetch": { type: "boolean", default: false },
     install: { type: "boolean", default: false },
@@ -103,6 +111,16 @@ function buildBenchmarkArgs() {
   args.push("--timeout", values.timeout);
   args.push("--model", values.model);
   args.push("--auth", values.auth);
+  args.push("--arms", values.arms);
+  if (values["compare-arm"]) {
+    args.push("--compare-arm", values["compare-arm"]);
+  }
+  if (values["explore-v1-run"]) {
+    args.push("--explore-v1-run", values["explore-v1-run"]);
+  }
+  if (values["explore-v1-source-arm"]) {
+    args.push("--explore-v1-source-arm", values["explore-v1-source-arm"]);
+  }
   if (values["codex-auth-path"]) {
     args.push("--codex-auth-path", values["codex-auth-path"]);
   }
@@ -111,6 +129,9 @@ function buildBenchmarkArgs() {
   }
   if (values["retry-from"]) {
     args.push("--retry-from", values["retry-from"]);
+  }
+  if (values["resume-from"]) {
+    args.push("--resume-from", values["resume-from"]);
   }
   args.push("--concurrency", concurrency);
   if (shouldFetch) args.push("--fetch-repos");
@@ -194,18 +215,24 @@ function writePreviousComparison(runId, previousRunId) {
     "",
     `Current: \`${runId}\``,
     `Previous: \`${previousRunId}\``,
+    current.primaryCompareArm
+      ? `Current primary compare arm: ${current.primaryCompareArm}`
+      : "",
+    previous.primaryCompareArm
+      ? `Previous primary compare arm: ${previous.primaryCompareArm}`
+      : "",
     "",
     "## By Arm",
     "",
     "| Arm | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Elapsed delta ms |",
     "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ...["baseline", "explore"].map((arm) => {
+    ...allArms(current, previous).map((arm) => {
       const now = current.byArm?.[arm] ?? {};
       const before = previous.byArm?.[arm] ?? {};
       return `| ${arm} | ${(now.mainTotalTokens ?? 0) - (before.mainTotalTokens ?? 0)} | ${(now.subagentTotalTokens ?? 0) - (before.subagentTotalTokens ?? 0)} | ${(now.totalTokens ?? 0) - (before.totalTokens ?? 0)} | ${formatDollars((now.costUsd ?? 0) - (before.costUsd ?? 0))} | ${(now.mainToolCalls ?? 0) - (before.mainToolCalls ?? 0)} | ${(now.subagentToolCalls ?? 0) - (before.subagentToolCalls ?? 0)} | ${(now.toolCalls ?? 0) - (before.toolCalls ?? 0)} | ${(now.elapsedMs ?? 0) - (before.elapsedMs ?? 0)} |`;
     }),
     "",
-    "## Current Task Deltas",
+    `## Current Task Deltas${compareLabel(current)}`,
     "",
     taskDeltasTable(current),
     "",
@@ -228,6 +255,9 @@ function updateBenchmarkMarkdown(runId, previousRunId) {
     `Trials: ${summary.trials}`,
     `OK: ${summary.ok}`,
     `Errors: ${summary.errors}`,
+    summary.primaryCompareArm
+      ? `Primary compare arm: ${summary.primaryCompareArm}`
+      : "",
     "",
     "### By Arm",
     "",
@@ -255,11 +285,19 @@ function updateBenchmarkMarkdown(runId, previousRunId) {
       return `| ${arm} | ${formatReasons(item.exploreCodeDisabledReasons)} |`;
     }),
     "",
-    "### Explore Task Cohorts",
+    "### Arm Deltas Vs Baseline",
+    "",
+    armDeltasTable(summary),
+    "",
+    "### Task Arm Deltas Vs Baseline",
+    "",
+    taskArmDeltasTable(summary),
+    "",
+    `### Explore Task Cohorts${compareLabel(summary)}`,
     "",
     exploreTaskCohortsTable(summary),
     "",
-    "### Task Deltas",
+    `### Task Deltas${compareLabel(summary)}`,
     "",
     taskDeltasTable(summary),
     GENERATED_END,
@@ -280,6 +318,38 @@ function updateBenchmarkMarkdown(runId, previousRunId) {
   fs.writeFileSync(BENCHMARK_MD, next.endsWith("\n") ? next : `${next}\n`);
 }
 
+function allArms(...summaries) {
+  return [
+    ...new Set(
+      summaries.flatMap((summary) => Object.keys(summary.byArm ?? {})),
+    ),
+  ].sort();
+}
+
+function armDeltasTable(summary) {
+  const rows = summary.armDeltas ?? [];
+  if (rows.length === 0) return "_No arm deltas available._";
+  return [
+    "| Arm | Completed pairs | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Provider-step delta | Elapsed delta ms |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...rows.map((item) => {
+      return `| ${item.arm} | ${item.pairs ?? 0} | ${item.primaryTokenDelta ?? 0} | ${item.valueTokenDelta ?? 0} | ${item.tokenDelta ?? 0} | ${formatDollars(item.costDeltaUsd ?? 0)} | ${item.primaryToolCallDelta ?? 0} | ${item.valueToolCallDelta ?? 0} | ${item.toolCallDelta ?? 0} | ${item.providerStepDelta ?? 0} | ${item.elapsedDeltaMs ?? 0} |`;
+    }),
+  ].join("\n");
+}
+
+function taskArmDeltasTable(summary) {
+  const rows = summary.taskArmDeltas ?? [];
+  if (rows.length === 0) return "_No task arm deltas available._";
+  return [
+    "| Repo | Task | Arm | Completed pairs | Primary uncached input delta | Value token delta | Combined token delta | Spend delta | Quality delta | Primary tool-call delta | Value tool-call delta | Total tool-call delta | Provider-step delta | Elapsed delta ms |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...rows.map((item) => {
+      return `| ${item.repo} | ${item.task} | ${item.arm} | ${item.pairs ?? 0} | ${item.primaryTokenDelta ?? 0} | ${item.valueTokenDelta ?? 0} | ${item.tokenDelta ?? 0} | ${formatDollars(item.costDeltaUsd ?? 0)} | ${formatSigned(item.qualityScoreDelta ?? 0)} | ${item.primaryToolCallDelta ?? 0} | ${item.valueToolCallDelta ?? 0} | ${item.toolCallDelta ?? 0} | ${item.providerStepDelta ?? 0} | ${item.elapsedDeltaMs ?? 0} |`;
+    }),
+  ].join("\n");
+}
+
 function taskDeltasTable(summary) {
   const rows = summary.taskDeltas ?? [];
   if (rows.length === 0) return "_No task deltas available._";
@@ -290,6 +360,12 @@ function taskDeltasTable(summary) {
       return `| ${item.repo} | ${item.task} | ${item.appSubPath ?? "unknown"} | ${item.exploreStatus ?? exploreTaskStatus(item)} | ${item.exploreCodeAvailable ?? 0}/${item.exploreCount ?? 0} | ${item.exploreCodeUsed ?? 0}/${item.exploreCount ?? 0} | ${formatReasons(item.exploreCodeDisabledReasons)} | ${item.primaryTokenDelta ?? 0} | ${item.valueTokenDelta ?? 0} | ${item.tokenDelta} | ${formatDollars(item.costDeltaUsd)} | ${formatSigned(item.qualityScoreDelta)} | ${item.primaryToolCallDelta ?? 0} | ${item.valueToolCallDelta ?? 0} | ${item.toolCallDelta} | ${item.providerStepDelta} | ${item.elapsedDeltaMs} | ${item.winner} |`;
     }),
   ].join("\n");
+}
+
+function compareLabel(summary) {
+  return summary.primaryCompareArm
+    ? ` (${summary.primaryCompareArm} vs baseline)`
+    : "";
 }
 
 function exploreTaskCohortsTable(summary) {

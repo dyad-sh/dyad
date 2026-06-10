@@ -10,10 +10,7 @@ import type { AgentContext } from "./types";
 vi.mock("electron-log", () => ({
   default: {
     scope: () => ({
-      log: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
     }),
   },
 }));
@@ -26,7 +23,7 @@ vi.mock("electron", () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  generateText: vi.fn(),
+  streamText: vi.fn(),
   readSettings: vi.fn(),
   getModelClient: vi.fn(),
   getMaxTokens: vi.fn(),
@@ -42,7 +39,7 @@ vi.mock("ai", async () => {
   const actual = await vi.importActual<typeof import("ai")>("ai");
   return {
     ...actual,
-    streamText: mocks.generateText,
+    streamText: mocks.streamText,
   };
 });
 
@@ -85,7 +82,7 @@ vi.mock("./explore_code_raw", async () => {
   };
 });
 
-describe("runExploreCodeSubagent", () => {
+describe("runExploreCodeSubagent V2", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.readSettings.mockReturnValue({
@@ -106,208 +103,1724 @@ describe("runExploreCodeSubagent", () => {
     mocks.getTemperature.mockResolvedValue(0);
     mocks.getAiHeaders.mockReturnValue({ "x-test": "header" });
     mocks.getProviderOptions.mockReturnValue({ dyad: "options" });
-    mocks.runRawExploreCode.mockResolvedValue({
-      query: "ActionManager executeAction toolbar action scene update",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "src/actions/manager.tsx",
-          symbols: [
-            {
-              name: "ActionManager",
-              kind: "class",
-              line: 1,
-              score: 1,
-            },
-            {
-              name: "executeAction",
-              kind: "method",
-              line: 2,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 5,
-              lines: [
-                "export class ActionManager {",
-                "  executeAction(action: { perform: () => void }) {",
-                "    action.perform();",
-                "  }",
-                "}",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockReturnValue({
-      fullStream: createFullStream([
-        "## explore_code report\n\n",
-        "Task class: component-flow\n",
-        "Structured summary:\n```json\n",
-        '{"confidence":"high","taskClass":"component-flow","compilerSignal":"strong","primaryFiles":[{"path":"src/App.tsx","range":"1-10","symbols":["App"],"purpose":"entry"}],"secondaryFiles":[],"editTarget":null}',
-        "\n```\n",
-        "Findings:\n1. src/App.tsx:1-10 - App\n   Fact: App entry.",
-      ]),
-      textStream: createFullStream([]),
-    });
+    mocks.runRawExploreCode.mockResolvedValue(buildRawExploreResult());
+    mocks.streamText.mockImplementation(() => ({
+      fullStream: createTextStream([]),
+      textStream: createTextStream([]),
+    }));
   });
 
-  it("uses dyad/value with only read-only reconnaissance tools", async () => {
+  it("exposes one reconnaissance conversation with submit_report and inline candidate IDs", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        expect(options.prepareStep()).toEqual({
+          activeTools: ["explore_code"],
+          toolChoice: { type: "tool", toolName: "explore_code" },
+        });
+        const result = await options.tools.explore_code.execute({
+          query: "widget save flow",
+        });
+        expect(result).toContain("Observed candidate IDs:");
+        expect(result).toContain("[c1 ");
+        expect(result).toContain(
+          'exact quote options to copy: "export async function saveWidget(input: WidgetInput) {"',
+        );
+        expect(result).toContain('"return api.widgets.save(input);"');
+        expect(options.prepareStep()).toBeUndefined();
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "inspect save handler before editing",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "high",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
     const report = await runExploreCodeSubagent({
-      args: { query: "App render flow" },
+      args: { query: "widget save flow", intent: "edit" },
       ctx: createMockContext(),
     });
 
-    expect(report).toContain("src/App.tsx");
-    expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "auto", name: "value" },
-      expect.any(Object),
-    );
-
     const options = vi.mocked(streamText).mock.calls[0][0] as any;
-    expect(options.model).toBe("model-client");
-    expect(options.maxOutputTokens).toBe(4_000);
     expect(Object.keys(options.tools).sort()).toEqual([
       "explore_code",
       "grep",
       "list_files",
       "read_file",
+      "submit_report",
     ]);
-    expect(options.prompt).toContain("Return exactly this shape:");
-    expect(options.prompt).toContain("Structured summary:");
-    expect(options.prompt).toContain("Task class:");
-    expect(options.prompt).toContain(
-      "Target app: current app. Omit app_name in tool calls.",
+    expect(options.system).toContain("prefer the execution path");
+    expect(options.system).toContain("request or transport boundary");
+    expect(options.system).toContain("displayed/returned result");
+    expect(options.system).toContain(
+      "management, listing, or settings surfaces",
     );
     expect(options.system).toContain(
-      "Omit app_name when inspecting the current app.",
+      "do not defer already-found exact symbols as searchTargets without observing their source",
     );
-    expect(options.system).toContain(
-      "include explore_code in the first tool batch",
+    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain(
+      "src/widget/saveWidget.ts:1-4 (handler) - saveWidget handles the submitted value.",
+    );
+    expect(report).toContain(
+      "> export async function saveWidget(input: WidgetInput) {",
+    );
+    expect(report).toContain('"path":"src/widget/saveWidget.ts"');
+  });
+
+  it("drops unknown candidate IDs and falls back instead of rendering fabricated paths", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c999"],
+          readTargets: [
+            {
+              candidateId: "c999",
+              purpose: "fabricated target",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c999",
+              role: "handler",
+              fact: "made up",
+              quote: "made up",
+            },
+          ],
+          missingCoverage: ["no valid observed candidate"],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "high",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("## explore_code report");
+    expect(report).not.toContain("c999");
+    expect(report).not.toContain("fabricated target");
+  });
+
+  it("does not upgrade complete locate reports that ask for target reads", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "inspect save handler before answering",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("Read targets:");
+    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
+    expect(JSON.parse(jsonText!)).toMatchObject({
+      action: "read_targets",
+    });
+    expect(JSON.parse(jsonText!)).not.toHaveProperty("readTargets");
+  });
+
+  it("keeps the last validated report when the stream fails after submit_report", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: (async function* () {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "inspect save handler before editing",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+        throw new Error("provider tool-call protocol error");
+        yield { type: "text-delta", text: "unreachable" };
+      })(),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "edit" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: medium");
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("saveWidget handles the submitted value.");
+    expect(report).toContain(
+      "> export async function saveWidget(input: WidgetInput) {",
     );
   });
 
-  it("normalizes verbose mutation prompts before compiler-backed exploration", async () => {
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for creating a booking starting in apps/web and include related workspace packages that participate in booking creation.",
+  it("rejects unverified quotes and downgrades confidence without rewriting facts", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "unverified fact must not render",
+              quote: "not present in any observed tool result",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
         });
       }),
-      textStream: createFullStream([]),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("Flow:\nnone");
+    expect(report).not.toContain("unverified fact must not render");
+  });
+
+  it("downgrades answer_from_report when no verified flow survives", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify the handler directly",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "unverified fact must not render",
+              quote: "not present in any observed tool result",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("Flow:\nnone");
+    expect(report).toContain(
+      "src/widget/saveWidget.ts:1-4 - verify the handler directly",
+    );
+  });
+
+  it("keeps answer_from_report for locate intent when unresolved coverage remains", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "inspect exact save action before answering",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Exact save action name was not confirmed."],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: medium");
+    expect(report).toContain("Action: answer_from_report");
+    expect(report).not.toContain(
+      "Missing: Exact save action name was not confirmed.",
+    );
+    expect(report).toContain("Missing: none");
+    expect(report).toContain(
+      "src/widget/saveWidget.ts:1-4 (handler) - saveWidget handles the submitted value.",
+    );
+  });
+
+  it("downgrades low-confidence answer_from_report to bounded follow-up", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify low-confidence handler finding",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Caller was not confirmed."],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "low",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("Missing: Caller was not confirmed.");
+    expect(report).toContain("flow 1 - verify low-confidence handler finding");
+  });
+
+  it("preserves sparse explain reports instead of judging coverage", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify sparse trace before answering",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: {
+        query: "Trace how widget save flow is computed and surfaced",
+        intent: "explain",
+      },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: medium");
+    expect(report).toContain("Action: answer_from_report");
+    expect(report).not.toContain("Read targets:");
+    expect(report).not.toContain("flow 1 - verify sparse trace before answering");
+  });
+
+  it("keeps answer_from_report when selected evidence covers the query", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "jump to the verified save flow",
+              required: false,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates before saving.",
+              quote: "  validateWidget(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: {
+        query: "Trace widget save validation flow",
+        intent: "explain",
+      },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: answer_from_report");
+    expect(report).toContain("Missing: none");
+    expect(report).toContain("saveWidget validates before saving.");
+  });
+
+  it("does not force continuation for locate reports with verified flow and residual missing coverage", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) =>
+      createStreamResult(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        const firstResult = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify observed handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Need exact caller of saveWidget."],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+        expect(firstResult).toContain("Report accepted");
+        expect(options.prepareStep()).toBeUndefined();
+      }),
+    );
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Missing: Need exact caller of saveWidget.");
+    expect(report).toContain("saveWidget handles the submitted value.");
+  });
+
+  it("continues explain reports when selected flow still names missing coverage", async () => {
+    mocks.runRawExploreCode
+      .mockResolvedValueOnce(buildRawExploreResult())
+      .mockResolvedValueOnce(buildLateRelevantRawExploreResult());
+    mocks.streamText.mockImplementationOnce((options: any) =>
+      createStreamResult(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        const firstResult = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify observed handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Need exact caller of saveWidget."],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+        expect(firstResult).toContain("needs revision");
+        expect(firstResult).toContain("Need exact caller of saveWidget.");
+        expect(options.prepareStep()).toBeUndefined();
+
+        await options.tools.explore_code.execute({
+          query: "exact caller of saveWidget",
+        });
+        expect(options.prepareStep()).toEqual({
+          activeTools: ["submit_report"],
+          toolChoice: { type: "tool", toolName: "submit_report" },
+        });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1", "c2"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+            {
+              candidateId: "c2",
+              role: "caller",
+              fact: "callerWidget invokes saveWidget directly.",
+              quote: "return saveWidget(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+    );
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: answer_from_report");
+    expect(report).toContain("Missing: none");
+    expect(report).toContain("callerWidget invokes saveWidget directly.");
+    expect(report).not.toContain("Need exact caller of saveWidget.");
+  });
+
+  it("requires flow quotes to belong to the selected candidate", async () => {
+    mocks.runRawExploreCode.mockResolvedValueOnce(
+      buildTwoFileRawExploreResult(),
+    );
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget calls the audit logger.",
+              quote: "auditWidgetSave(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("Flow:\nnone");
+    expect(report).not.toContain("saveWidget calls the audit logger");
+    expect(report).not.toContain("auditWidgetSave(input);");
+  });
+
+  it("continues after a validation gap and uses the revised submitted report", async () => {
+    mocks.cancelOrphanedBaseStream.mockImplementationOnce(
+      (streamResult: any) => {
+        expect(streamResult.fullStreamAccessed).toBe(true);
+      },
+    );
+    mocks.streamText.mockImplementationOnce((options: any) =>
+      createStreamResult(async () => {
+        await options.tools.explore_code.execute({
+          query: "widget save flow",
+        });
+        const firstResult = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "first report is not grounded.",
+              quote: "not present in observed evidence",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+        expect(firstResult).toContain("needs revision");
+        expect(firstResult).toContain("exact quote options");
+        expect(firstResult).toContain(
+          "export async function saveWidget(input: WidgetInput) {",
+        );
+        expect(options.prepareStep()).toEqual({
+          activeTools: ["submit_report"],
+          toolChoice: { type: "tool", toolName: "submit_report" },
+        });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates input.",
+              quote: "validateWidget(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+    );
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
+    expect(report).toContain("saveWidget validates input");
+    expect(report).not.toContain("first report is not grounded");
+  });
+
+  it("does not start a second revision stream when the stream stops after a revision request", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) =>
+      createStreamResult(async () => {
+        await options.tools.explore_code.execute({
+          query: "widget save flow",
+        });
+        const result = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "inspect save handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget calls the audit logger.",
+              quote: "auditWidgetSave(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+        expect(result).toContain("needs revision");
+      }),
+    );
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("Flow:\nnone");
+  });
+
+  it("prioritizes recent observed candidates in submit_report nudge prompts", async () => {
+    mocks.runRawExploreCode
+      .mockResolvedValueOnce(buildManyFileRawExploreResult())
+      .mockResolvedValueOnce(buildLateRelevantRawExploreResult());
+    mocks.streamText
+      .mockImplementationOnce((options: any) =>
+        createStreamResult(async () => {
+          await options.tools.explore_code.execute({
+            query: "widget save flow",
+          });
+          await options.tools.explore_code.execute({
+            query: "exact caller of saveWidget",
+          });
+        }),
+      )
+      .mockImplementationOnce((options: any) => {
+        const lateIndex = options.prompt.indexOf("src/widget/callerWidget.ts");
+        const earlyIndex = options.prompt.indexOf("src/widget/flowStep1.ts");
+        expect(lateIndex).toBeGreaterThanOrEqual(0);
+        expect(earlyIndex).toBeGreaterThanOrEqual(0);
+        expect(lateIndex).toBeLessThan(earlyIndex);
+        return createStreamResult(async () => {
+          await options.tools.read_file.execute({
+            path: "src/widget/callerWidget.ts",
+            start_line_one_indexed: 1,
+            end_line_one_indexed_inclusive: 4,
+          });
+          await options.tools.submit_report.execute({
+            primaryCandidateIds: ["c6"],
+            readTargets: [],
+            flow: [
+              {
+                candidateId: "c6",
+                role: "caller",
+                fact: "callerWidget invokes saveWidget directly.",
+                quote: "return saveWidget(input);",
+              },
+            ],
+            missingCoverage: [],
+            recommendedPrimaryAction: "answer_from_report",
+            confidence: "medium",
+          });
+        });
+      });
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("callerWidget invokes saveWidget directly.");
+  });
+
+  it("forces a corrected submit_report when continuation rounds are exhausted", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) =>
+      createStreamResult(async () => {
+        await options.tools.explore_code.execute({
+          query: "widget save flow",
+        });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Need exact caller of saveWidget."],
+          recommendedPrimaryAction: "targeted_gap_search",
+          searchTargets: [
+            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
+          ],
+          confidence: "medium",
+        });
+        expect(options.prepareStep()).toBeUndefined();
+        await options.tools.read_file.execute({
+          path: "src/widget/saveWidget.ts",
+          start_line_one_indexed: 1,
+          end_line_one_indexed_inclusive: 4,
+        });
+        const secondResult = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Still need exact caller of saveWidget."],
+          recommendedPrimaryAction: "targeted_gap_search",
+          searchTargets: [
+            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
+          ],
+          confidence: "medium",
+        });
+        expect(secondResult).toContain("0 continuation round(s) remaining");
+        expect(secondResult).toContain("Call submit_report again now");
+        expect(secondResult).toContain("targeted_gap_search");
+        expect(options.prepareStep()).toEqual({
+          activeTools: ["submit_report"],
+          toolChoice: { type: "tool", toolName: "submit_report" },
+        });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "targeted_gap_search",
+          searchTargets: [
+            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
+          ],
+          confidence: "medium",
+        });
+      }),
+    );
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("saveWidget handles the submitted value");
+    expect(report).not.toContain("Still need exact caller");
+  });
+
+  it("prioritizes quote corrections over residual missing coverage when verified flow survived", async () => {
+    mocks.runRawExploreCode.mockResolvedValueOnce(
+      buildTwoFileRawExploreResult(),
+    );
+    mocks.streamText.mockImplementationOnce((options: any) =>
+      createStreamResult(async () => {
+        await options.tools.explore_code.execute({
+          query: "widget save flow",
+        });
+        const result = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1", "c2"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+            {
+              candidateId: "c2",
+              role: "audit",
+              fact: "audit evidence uses the wrong quote.",
+              quote: "not present in observed evidence",
+            },
+          ],
+          missingCoverage: ["Need exact caller of saveWidget."],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+
+        expect(result).toContain("Quote was not found");
+      }),
+    );
+
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+  });
+
+  it("rejects quotes longer than two lines", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates and saves.",
+              quote: [
+                "export async function saveWidget(input: WidgetInput) {",
+                "  validateWidget(input);",
+                "  return api.widgets.save(input);",
+              ].join("\n"),
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Flow:\nnone");
+    expect(report).not.toContain("saveWidget validates and saves.");
+    expect(report).not.toContain("return api.widgets.save(input);");
+  });
+
+  it("omits stale tsconfig paths from nested compiler exploration", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({
+          query: "widget save flow",
+          tsconfig_path: "webapp/tsconfig.json",
+        });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates input.",
+              quote: "validateWidget(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
     }));
 
     await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for creating a booking starting in apps/web and include related workspace packages that participate in booking creation.",
-      },
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(mocks.runRawExploreCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.not.objectContaining({
+          tsconfig_path: "webapp/tsconfig.json",
+        }),
+      }),
+    );
+  });
+
+  it("locks nested compiler exploration to the parent tsconfig", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "explore-subagent-tsconfig-"),
+    );
+    await fs.mkdir(path.join(appPath, "primary"), { recursive: true });
+    await fs.mkdir(path.join(appPath, "nested"), { recursive: true });
+    await fs.writeFile(path.join(appPath, "primary/tsconfig.json"), "{}");
+    await fs.writeFile(path.join(appPath, "nested/tsconfig.json"), "{}");
+
+    try {
+      mocks.streamText.mockImplementationOnce((options: any) => ({
+        fullStream: createToolStream(async () => {
+          await options.tools.explore_code.execute({
+            query: "widget save flow",
+            tsconfig_path: "nested/tsconfig.json",
+          });
+          await options.tools.submit_report.execute({
+            primaryCandidateIds: ["c1"],
+            readTargets: [],
+            flow: [
+              {
+                candidateId: "c1",
+                role: "handler",
+                fact: "saveWidget validates input.",
+                quote: "validateWidget(input);",
+              },
+            ],
+            missingCoverage: [],
+            recommendedPrimaryAction: "answer_from_report",
+            confidence: "medium",
+          });
+        }),
+        textStream: createTextStream([]),
+      }));
+
+      await runExploreCodeSubagent({
+        args: {
+          query: "widget save flow",
+          intent: "explain",
+          tsconfig_path: "primary/tsconfig.json",
+        },
+        ctx: createMockContext(appPath),
+      });
+
+      expect(mocks.runRawExploreCode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: expect.objectContaining({
+            tsconfig_path: "primary/tsconfig.json",
+          }),
+        }),
+      );
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("widens nested compiler exploration defaults for explain traces", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates input.",
+              quote: "validateWidget(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
       ctx: createMockContext(),
     });
 
     expect(mocks.runRawExploreCode).toHaveBeenCalledWith(
       expect.objectContaining({
         args: expect.objectContaining({
-          query:
-            "create booking api form handle handler hook service submit mutation",
+          max_files: 8,
+          max_depth: 3,
         }),
       }),
     );
   });
 
-  it("drops navigation and display filler from value-model mutation compiler queries", async () => {
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
+  it("preserves explicit nested compiler exploration limits", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
         await options.tools.explore_code.execute({
-          query:
-            "booking create route page component starts submit handler action sends request service",
+          query: "widget save flow",
+          max_files: 2,
+          max_depth: 1,
+        });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates input.",
+              quote: "validateWidget(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
         });
       }),
-      textStream: createFullStream([]),
+      textStream: createTextStream([]),
     }));
 
     await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for creating a booking starting in apps/web. Name key files and symbols.",
-      },
+      args: { query: "widget save flow", intent: "explain" },
       ctx: createMockContext(),
     });
 
     expect(mocks.runRawExploreCode).toHaveBeenCalledWith(
       expect.objectContaining({
         args: expect.objectContaining({
-          query:
-            "booking create submit handler request service api form handle hook mutation",
+          max_files: 2,
+          max_depth: 1,
         }),
       }),
     );
   });
 
-  it("drops broad role filler from mutation compiler queries", async () => {
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace booking creation UI hooks actions API clients routes server handlers package services types",
+  it("renders each flow path at most once outside the JSON block", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget validates input.",
+              quote: "validateWidget(input);",
+            },
+            {
+              candidateId: "c1",
+              role: "persistence",
+              fact: "saveWidget persists input.",
+              quote: "return api.widgets.save(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "high",
         });
       }),
-      textStream: createFullStream([]),
+      textStream: createTextStream([]),
     }));
 
-    await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the implementation flow for creating a booking starting in apps/web.",
-      },
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+    const beforeJson = report.split("```json")[0];
+
+    expect(beforeJson.match(/src\/widget\/saveWidget\.ts/g) ?? []).toHaveLength(
+      1,
+    );
+    expect(report).toContain("saveWidget validates input");
+    expect(report).not.toContain("saveWidget persists input");
+  });
+
+  it("downgrades answer_from_report for edit/debug intent instead of upgrading actions", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "edit the handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "return api.widgets.save(input);",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "high",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "fix widget save flow", intent: "edit" },
       ctx: createMockContext(),
     });
 
-    expect(mocks.runRawExploreCode).toHaveBeenCalledWith(
-      expect.objectContaining({
-        args: expect.objectContaining({
-          query:
-            "booking create hook api handler service form handle submit mutation",
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("Read targets:");
+  });
+
+  it("falls back to deterministic observed evidence when the model never calls submit_report", async () => {
+    mocks.streamText
+      .mockImplementationOnce((options: any) => ({
+        fullStream: createToolStream(async () => {
+          const result = await options.tools.explore_code.execute({
+            query: "widget save flow",
+          });
+          expect(result).toContain("Observed candidate IDs:");
         }),
+        textStream: createTextStream([]),
+      }))
+      .mockImplementationOnce((options: any) => {
+        expect(options.activeTools).toEqual(["submit_report"]);
+        expect(options.toolChoice).toEqual({
+          type: "tool",
+          toolName: "submit_report",
+        });
+        expect(options.prompt).toContain(
+          "Observed candidate IDs from prior tool results:",
+        );
+        expect(options.prompt).toContain(
+          "export async function saveWidget(input: WidgetInput) {",
+        );
+        expect(options.prompt).toContain(
+          'exact quote options to copy: "export async function saveWidget(input: WidgetInput) {"',
+        );
+        return {
+          fullStream: createTextStream(["still no tool call"]),
+          textStream: createTextStream([]),
+        };
+      });
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(2);
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("src/widget/saveWidget.ts");
+    expect(report).toContain('"paths":[{"path":"src/widget/saveWidget.ts"');
+  });
+
+  it("uses observed evidence when the submit_report nudge succeeds", async () => {
+    mocks.streamText
+      .mockImplementationOnce((options: any) => ({
+        fullStream: createToolStream(async () => {
+          const result = await options.tools.explore_code.execute({
+            query: "widget save flow",
+          });
+          expect(result).toContain("Observed candidate IDs:");
+        }),
+        textStream: createTextStream([]),
+      }))
+      .mockImplementationOnce((options: any) => {
+        expect(options.prompt).toContain(
+          "Observed candidate IDs from prior tool results:",
+        );
+        expect(options.prompt).toContain(
+          'exact quote options to copy: "export async function saveWidget(input: WidgetInput) {"',
+        );
+        return {
+          fullStream: createToolStream(async () => {
+            await options.tools.submit_report.execute({
+              primaryCandidateIds: ["c1"],
+              readTargets: [],
+              flow: [
+                {
+                  candidateId: "c1",
+                  role: "handler",
+                  fact: "saveWidget validates input.",
+                  quote: "validateWidget(input);",
+                },
+              ],
+              missingCoverage: [],
+              recommendedPrimaryAction: "answer_from_report",
+              confidence: "medium",
+            });
+          }),
+          textStream: createTextStream([]),
+        };
+      });
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(2);
+    expect(report).toContain("Action: answer_from_report");
+    expect(report).toContain("saveWidget validates input.");
+  });
+
+  it("renders skip_explore_result as a real empty outcome", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: [],
+          readTargets: [],
+          flow: [],
+          missingCoverage: ["no matching implementation evidence"],
+          recommendedPrimaryAction: "skip_explore_result",
+          confidence: "low",
+        });
       }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "unrelated dependency question", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: skip_explore_result");
+    expect(report).toContain(
+      "Missing: explorer found nothing relevant; proceed without it",
+    );
+    expect(report).toContain('"paths":[]');
+  });
+
+  it("requests revision when skip_explore_result includes observed evidence", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        const result = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify observed handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["no other entry point confirmed"],
+          recommendedPrimaryAction: "skip_explore_result",
+          confidence: "medium",
+        });
+        expect(result).toContain("needs revision");
+        expect(result).toContain("skip_explore_result is only valid");
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("Action: skip_explore_result");
+    expect(report).toContain("saveWidget handles the submitted value.");
+    expect(report).not.toContain("Read targets:");
+  });
+
+  it("validates candidate IDs that were observed before ranking overlap dedupe", async () => {
+    mocks.runRawExploreCode
+      .mockResolvedValueOnce(buildRawExploreResult())
+      .mockResolvedValueOnce(buildOverlappingRawExploreResult());
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify the original observed handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: medium");
+    expect(report).toContain("Action: read_targets");
+    expect(report).toContain("saveWidget handles the submitted value.");
+    expect(report).toContain(
+      "src/widget/saveWidget.ts:1-4 (handler) - saveWidget handles the submitted value.",
     );
   });
 
-  it("does not expand toolbar scene update queries with mutation filler", async () => {
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
+  it("keeps separate flow links from different ranges in the same file", async () => {
+    mocks.runRawExploreCode.mockResolvedValueOnce(
+      buildSameFileMultiRangeRawExploreResult(),
+    );
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1", "c2"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "entry",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+            {
+              candidateId: "c2",
+              role: "validation",
+              fact: "saveWidgetValidation validates input before save.",
+              quote:
+                "export function saveWidgetValidation(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
         });
       }),
-      textStream: createFullStream([]),
+      textStream: createTextStream([]),
     }));
 
-    await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace where a toolbar action is handled and how it reaches the scene update path.",
-      },
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
       ctx: createMockContext(),
     });
 
-    expect(mocks.runRawExploreCode).toHaveBeenCalledWith(
-      expect.objectContaining({
-        args: expect.objectContaining({
-          query: "toolbar action scene",
-        }),
-      }),
+    expect(report).toContain("saveWidget handles the submitted value.");
+    expect(report).toContain(
+      "saveWidgetValidation validates input before save.",
     );
+  });
+
+  it("renders targeted gap search targets outside the JSON machine block", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Need exact caller of saveWidget."],
+          recommendedPrimaryAction: "targeted_gap_search",
+          searchTargets: [
+            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
+          ],
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: targeted_gap_search");
+    expect(report).toContain(
+      'Search targets:\nquery="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
+    );
+    expect(
+      report.split("```json")[0].match(/src\/widget\/saveWidget\.ts/g),
+    ).toHaveLength(1);
+    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
+    expect(JSON.parse(jsonText!)).toMatchObject({
+      action: "targeted_gap_search",
+      confidence: "medium",
+    });
+    expect(JSON.parse(jsonText!)).not.toHaveProperty("searchTargets");
+  });
+
+  it("drops non-executable search target scopes and downgrades to a usable action", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "verify observed save handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: ["Need exact caller of saveWidget."],
+          recommendedPrimaryAction: "targeted_gap_search",
+          searchTargets: [
+            'query="saveWidget" include="flow 1" literal=true',
+            'query="saveWidget" include="nearby file" literal=true',
+          ],
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: read_targets");
+    expect(report).not.toContain("Search targets:");
+    expect(report).toContain("Read targets:");
+    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
+    expect(JSON.parse(jsonText!)).toMatchObject({
+      action: "read_targets",
+      confidence: "medium",
+      paths: [{ path: "src/widget/saveWidget.ts", range: "1-4" }],
+    });
+  });
+
+  it("renders compacted machine paths once outside the JSON block", async () => {
+    mocks.runRawExploreCode.mockResolvedValueOnce(
+      buildSixFileRawExploreResult(),
+    );
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1", "c2", "c3", "c4", "c5"],
+          readTargets: [],
+          flow: ["c1", "c2", "c3", "c4", "c5", "c6"].map(
+            (candidateId, index) => ({
+              candidateId,
+              role: "flow",
+              fact: `Candidate ${index + 1} participates in the widget save flow.`,
+              quote: `export const widgetFlowStep${index + 1} = true;`,
+            }),
+          ),
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+    const beforeJson = report.split("```json")[0];
+
+    for (let index = 1; index <= 6; index++) {
+      expect(
+        beforeJson.match(new RegExp(`src/widget/flowStep${index}\\.ts`, "g")) ??
+          [],
+      ).toHaveLength(1);
+    }
+    expect(
+      JSON.parse(/```json\n([\s\S]+?)\n```/.exec(report)![1]).paths,
+    ).toHaveLength(6);
+  });
+
+  it("caps accumulated raw observations across tool calls", async () => {
+    mocks.runRawExploreCode.mockResolvedValue(buildLargeRawExploreResult());
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.explore_code.execute({ query: "large evidence" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [],
+          flow: [],
+          missingCoverage: [],
+          recommendedPrimaryAction: "answer_from_report",
+          confidence: "low",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    await runExploreCodeSubagent({
+      args: { query: "large evidence", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    const finishEvent = mocks.recordCodeExplorerBenchmarkEvent.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === "subagent_finish");
+    expect(finishEvent.rawObservationChars).toBeLessThanOrEqual(60_000);
+  });
+
+  it("caps sub-agent read-only tool calls at the shared step budget", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        let finalToolResult = "";
+        for (let index = 0; index < 13; index++) {
+          finalToolResult = await options.tools.explore_code.execute({
+            query: `widget save flow ${index}`,
+          });
+        }
+        expect(finalToolResult).toContain("tool budget exhausted");
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          readTargets: [
+            {
+              candidateId: "c1",
+              purpose: "inspect first observed handler",
+              required: true,
+            },
+          ],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+              quote: "export async function saveWidget(input: WidgetInput) {",
+            },
+          ],
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "edit" },
+      ctx: createMockContext(),
+    });
+
+    expect(mocks.runRawExploreCode).toHaveBeenCalledTimes(12);
+    expect(report).toContain("Action: read_targets");
+  });
+
+  it("keeps rendered reports within the V2 character budget", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: [],
+          readTargets: [],
+          flow: [],
+          missingCoverage: ["no matching implementation evidence"],
+          recommendedPrimaryAction: "skip_explore_result",
+          confidence: "low",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "long query ".repeat(400), intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report.length).toBeLessThanOrEqual(2_500);
+    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
+    expect(jsonText).toBeTruthy();
+    expect(JSON.parse(jsonText!)).toMatchObject({
+      action: "skip_explore_result",
+      confidence: "low",
+      paths: [],
+    });
+  });
+
+  it("compacts verbose accepted reports without truncation markers", async () => {
+    mocks.runRawExploreCode.mockResolvedValueOnce(
+      buildManyFileRawExploreResult(),
+    );
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1", "c2", "c3", "c4", "c5"],
+          readTargets: ["c1", "c2", "c3", "c4", "c5"].map((candidateId) => ({
+            candidateId,
+            purpose:
+              "inspect this deliberately wordy target purpose before relying on the reported implementation details",
+            required: true,
+          })),
+          flow: ["c1", "c2", "c3", "c4", "c5"].map((candidateId, index) => ({
+            candidateId,
+            role: "deliberately verbose implementation role label",
+            fact: `Candidate ${index + 1} has a deliberately verbose fact explaining how this part participates in the overall widget save flow and why the caller should trust it.`,
+            quote: `export const widgetFlowStep${index + 1} = true;`,
+          })),
+          missingCoverage: [],
+          recommendedPrimaryAction: "read_targets",
+          confidence: "medium",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "long query ".repeat(80), intent: "edit" },
+      ctx: createMockContext(),
+    });
+
+    expect(report.length).toBeLessThanOrEqual(2_500);
+    expect(report).not.toContain("[TRUNCATED");
+    expect(report).toContain("Missing: none");
+    expect(report).toContain("Read targets:");
+    expect(report).toContain("```json");
+    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
+    expect(JSON.parse(jsonText!)).not.toHaveProperty("readTargets");
   });
 
   it("fails clearly when Dyad Pro is unavailable", async () => {
@@ -318,3386 +1831,323 @@ describe("runExploreCodeSubagent", () => {
 
     await expect(
       runExploreCodeSubagent({
-        args: { query: "App render flow" },
+        args: { query: "widget save flow", intent: "locate" },
         ctx: createMockContext(),
       }),
     ).rejects.toThrow(/requires Dyad Pro/);
-    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.streamText).not.toHaveBeenCalled();
   });
 
-  it("synthesizes a report when the tool pass returns observations but no text", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.writeFile(path.join(appPath, "src.ts"), "export const App = 1;\n");
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.list_files.execute({ recursive: false });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
+  it("keeps benchmark-derived domain literals out of production explorer code", async () => {
+    const productionFiles = [
+      "src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent.ts",
+      "src/pro/main/ipc/handlers/local_agent/tools/explore_code.ts",
+    ];
+    const forbidden = [
+      "scene",
+      "channel",
+      "invoice",
+      "excalidraw",
+      "mattermost",
+      "onboarding",
+      "tours",
+    ];
 
-    try {
-      const report = await runExploreCodeSubagent({
-        args: { query: "App render flow" },
-        ctx,
-      });
-
-      expect(report).toContain("src.ts");
-      expect(report).toContain("Compiler signal: not used");
-      expect(mocks.generateText).toHaveBeenCalledTimes(1);
-      expect(mocks.recordCodeExplorerBenchmarkEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "subagent_deterministic_report" }),
+    for (const filePath of productionFiles) {
+      const source = await fs.readFile(
+        path.join(process.cwd(), filePath),
+        "utf8",
       );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("returns tool failures as observations so provider tool-call history remains valid", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.writeFile(
-      path.join(appPath, "availability.ts"),
-      "export const availabilityRoute = true;\n",
-    );
-    mocks.runRawExploreCode.mockRejectedValueOnce(
-      new Error("tsconfig project reference escaped the app"),
-    );
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        const result = await options.tools.explore_code.execute({
-          query: "calendar availability route",
-        });
-        expect(result).toContain("Tool explore_code failed:");
-        await options.tools.list_files.execute({ recursive: false });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: { query: "calendar availability route" },
-        ctx,
-      });
-
-      expect(report).toContain("availability.ts");
-      expect(mocks.recordCodeExplorerBenchmarkEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "tool_call_error",
-          toolName: "explore_code",
-        }),
-      );
-      expect(mocks.generateText).toHaveBeenCalledTimes(1);
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("prioritizes directly read evidence in deterministic reports", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.mkdir(path.join(appPath, "src/actions"), { recursive: true });
-    await fs.writeFile(
-      path.join(appPath, "src/App.tsx"),
-      "export const App = 1;\n",
-    );
-    await fs.writeFile(
-      path.join(appPath, "src/actions/toolbar.ts"),
-      [
-        "const unrelated = true;",
-        "export function updateToolbarScene() {",
-        "  return true;",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.list_files.execute({ recursive: true });
-        await options.tools.read_file.execute({
-          path: "src/actions/toolbar.ts",
-          start_line_one_indexed: 1,
-          end_line_one_indexed_inclusive: 4,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "toolbar action scene update path including workspace packages",
-        },
-        ctx,
-      });
-
-      expect(report).toContain("Edit target:\nnone");
-      expect(report).toContain("Recommended primary action:");
-      expect(report).toContain("targeted_gap_search:");
-      expect(report).toContain('"path": "src/actions/toolbar.ts"');
-      expect(report).toContain('"recommendedPrimaryAction"');
-      expect(report).toContain('"action": "targeted_gap_search"');
-      expect(report).toContain('"state/store update"');
-      expect(report).toContain("search only toolbar, action");
-      expect(report).toContain("scoped to src/actions");
-      expect(report).toContain("packages");
-      expect(report).toContain("literal=true");
-      expect(report).toContain("line 2: export function updateToolbarScene()");
-      expect(report).not.toContain('"source"');
-      expect(mocks.generateText).toHaveBeenCalledTimes(1);
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("collapses overlapping same-file observations in deterministic reports", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.mkdir(path.join(appPath, "src/actions"), { recursive: true });
-    await fs.writeFile(
-      path.join(appPath, "src/actions/toolbar.ts"),
-      [
-        "export function updateToolbarScene() {",
-        "  dispatchToolbarAction();",
-        "}",
-        "export function dispatchToolbarAction() {",
-        "  return true;",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.read_file.execute({
-          path: "src/actions/toolbar.ts",
-          start_line_one_indexed: 1,
-          end_line_one_indexed_inclusive: 3,
-        });
-        await options.tools.read_file.execute({
-          path: "src/actions/toolbar.ts",
-          start_line_one_indexed: 2,
-          end_line_one_indexed_inclusive: 6,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: { query: "toolbar action dispatch update" },
-        ctx,
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(
-        structuredSummary.primaryFiles.filter(
-          (fileRef: { path: string }) =>
-            fileRef.path === "src/actions/toolbar.ts",
-        ),
-      ).toHaveLength(1);
-      expect(structuredSummary.primaryFiles[0].range).toBe("1-6");
-      expect(report).toContain("Observed coverage:");
-      expect(report).toContain("line 1: export function updateToolbarScene()");
-      expect(report).not.toContain('"source"');
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("prefers precise compiler-backed refs over broad grep-only ranges", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.mkdir(path.join(appPath, "src/actions"), { recursive: true });
-    await fs.mkdir(path.join(appPath, "examples"), { recursive: true });
-    await fs.writeFile(
-      path.join(appPath, "tsconfig.json"),
-      JSON.stringify({
-        compilerOptions: {
-          jsx: "react-jsx",
-          target: "ES2022",
-          module: "ESNext",
-          moduleResolution: "Bundler",
-          strict: true,
-        },
-        include: ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.tsx"],
-      }),
-    );
-    await fs.writeFile(
-      path.join(appPath, "src/actions/manager.tsx"),
-      [
-        "export class ActionManager {",
-        "  executeAction(action: { perform: () => void }) {",
-        "    action.perform();",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "examples/ExampleApp.tsx"),
-      Array.from(
-        { length: 360 },
-        (_, index) => `export const updateScene${index} = "toolbar update";`,
-      ).join("\n"),
-    );
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query: "ActionManager executeAction toolbar action scene update",
-        });
-        await options.tools.grep.execute({
-          query: "toolbar|updateScene",
-          include: "*.tsx",
-          count: 400,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query: "ActionManager executeAction toolbar action scene update",
-        },
-        ctx,
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.compilerSignal).toBe("strong");
-      expect(structuredSummary.primaryFiles[0].path).toBe(
-        "src/actions/manager.tsx",
-      );
-      expect(structuredSummary.primaryFiles[0].range).not.toBe("unknown");
-      expect(structuredSummary.primaryFiles[0].path).not.toBe(
-        "examples/ExampleApp.tsx",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("demotes test files below implementation files when the query is not about tests", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "Trace the flow for creating a booking",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/playwright/booking-limits.e2e.ts",
-          symbols: [
-            {
-              name: "createBookingLimitScenario",
-              kind: "function",
-              line: 357,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 357,
-              endLine: 434,
-              lines: ["await bookScenario();"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/components/booking/actions/bookingActions.test.ts",
-          symbols: [
-            {
-              name: "createMockContext",
-              kind: "function",
-              line: 15,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 15,
-              endLine: 134,
-              lines: ["const context = createMockContext();"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/components/booking/actions/bookingActions.ts",
-          symbols: [
-            {
-              name: "createBooking",
-              kind: "function",
-              line: 20,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 20,
-              endLine: 80,
-              lines: ["export async function createBooking() {}"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query: "Trace the flow for creating a booking",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "Trace the flow for creating a booking" },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "apps/web/components/booking/actions/bookingActions.ts",
-    );
-    const primaryPaths = structuredSummary.primaryFiles.map(
-      (file: { path: string }) => file.path,
-    );
-    expect(primaryPaths).not.toContain(
-      "apps/web/components/booking/actions/bookingActions.test.ts",
-    );
-    expect(primaryPaths).not.toContain(
-      "apps/web/playwright/booking-limits.e2e.ts",
-    );
-  });
-
-  it("prefers exact create-action implementation symbols over generic action UI files", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "Trace the flow for creating a booking starting in apps/web",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/components/booking/actions/bookingActions.ts",
-          symbols: [
-            {
-              name: "BookingActionContext",
-              kind: "interface",
-              line: 3,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 3,
-              endLine: 122,
-              lines: ["export interface BookingActionContext {}"],
-            },
-          ],
-        },
-        {
-          path: "packages/features/bookings/lib/handleNewBooking/createBooking.ts",
-          symbols: [
-            {
-              name: "saveBooking",
-              kind: "function",
-              line: 10,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 10,
-              endLine: 60,
-              lines: ["export async function saveBooking() {}"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query: "Trace the flow for creating a booking starting in apps/web",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query: "Trace the flow for creating a booking starting in apps/web",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "packages/features/bookings/lib/handleNewBooking/createBooking.ts",
-    );
-  });
-
-  it("prefers mutation submission paths over list and success display paths", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "create booking handle handler submit action mutation",
-      totalSymbols: 8,
-      totalFiles: 8,
-      indexedFileCount: 8,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/api-keys/components/ApiKeyDialogForm.tsx",
-          symbols: [
-            {
-              name: "ApiKeyDialogForm",
-              kind: "function",
-              line: 17,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 17,
-              endLine: 136,
-              lines: ["export function ApiKeyDialogForm() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/app/api/auth/signup/handlers/signupHandler.ts",
-          symbols: [
-            {
-              name: "createCustomer",
-              kind: "function",
-              line: 38,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 38,
-              endLine: 157,
-              lines: ["await billingService.createCustomer();"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/components/booking/BookingListItem.tsx",
-          symbols: [
-            {
-              name: "ParsedBooking",
-              kind: "type",
-              line: 60,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 60,
-              endLine: 179,
-              lines: ["export function BookingListItem() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/components/booking/actions/BookingActionsDropdown.tsx",
-          symbols: [
-            {
-              name: "BookingActionsDropdownProps",
-              kind: "interface",
-              line: 41,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 41,
-              endLine: 160,
-              lines: ["export function BookingActionsDropdown() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/app/booking-successful/[uid]/page.tsx",
-          symbols: [],
-          windows: [
-            {
-              startLine: 6,
-              endLine: 47,
-              lines: ["export default function BookingSuccessfulPage() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/modules/bookings/lib/bookingSheetKeyboardHandler.test.ts",
-          symbols: [
-            {
-              name: "createMockKeyboardEvent",
-              kind: "function",
-              line: 6,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 6,
-              endLine: 107,
-              lines: ["function createMockKeyboardEvent() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/modules/bookings/components/BookEventForm/BookEventForm.tsx",
-          symbols: [
-            {
-              name: "BookEventForm",
-              kind: "function",
-              line: 20,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 20,
-              endLine: 120,
-              lines: ["export function BookEventForm() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 130,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 130,
-              endLine: 291,
-              lines: ["const createBookingMutation = useMutation();"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query: "Trace the flow for creating a booking starting in apps/web",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query: "Trace the flow for creating a booking starting in apps/web",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "apps/web/modules/bookings/hooks/useBookings.ts",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toBe(
-      "apps/web/components/booking/BookingListItem.tsx",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain(
-      "booking-successful",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain(
-      "ApiKeyDialogForm",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain(
-      "signup/handlers",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain(".test.");
-    expect(structuredSummary.primaryFiles[0].path).not.toContain("Dropdown");
-  });
-
-  it("answers from high-confidence reports for answer-only investigations", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "create booking api form handle handler hook service submit action mutation",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 136,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 136,
-              endLine: 286,
-              lines: [
-                "const createBookingMutation = useMutation({ mutationFn: createBooking });",
-              ],
-            },
-          ],
-        },
-        {
-          path: "packages/features/bookings/lib/create-booking.ts",
-          symbols: [
-            {
-              name: "createBooking",
-              kind: "function",
-              line: 5,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 5,
-              endLine: 15,
-              lines: [
-                "export const createBooking = () => fetch('/api/book/event');",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for creating a booking. Name the key files and symbols.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for creating a booking. Name the key files and symbols.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-      "answer_from_report",
-    );
-  });
-
-  it("keeps strong compiler-backed mutation files above broad route grep hits", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.mkdir(
-      path.join(appPath, "apps/web/app/(booking-page-wrapper)/[user]/[type]"),
-      { recursive: true },
-    );
-    await fs.mkdir(path.join(appPath, "apps/web/modules/bookings/hooks"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/features/bookings/lib"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "apps/web/app/(booking-page-wrapper)/[user]/[type]/page.tsx",
-      ),
-      [
-        "export default function BookingPage() {",
-        '  return <Booker booking="booking" />;',
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "apps/web/modules/bookings/hooks/useBookings.ts"),
-      "export const createBookingMutation = useMutation(createBooking);\n",
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/features/bookings/lib/create-booking.ts"),
-      "export const createBooking = () => fetch('/api/book/event');\n",
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "booking create submit handler action request service api form handle hook mutation",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 1,
-              lines: [
-                "export const createBookingMutation = useMutation(createBooking);",
-              ],
-            },
-          ],
-        },
-        {
-          path: "packages/features/bookings/lib/create-booking.ts",
-          symbols: [
-            {
-              name: "createBooking",
-              kind: "function",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 1,
-              lines: [
-                "export const createBooking = () => fetch('/api/book/event');",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the booking creation flow starting in apps/web: booking creation UI, hooks/actions, API routes, services, mutations, schemas, and persistence. Identify related workspace packages.",
-        });
-        await options.tools.grep.execute({
-          query: "booking",
-          include: "apps/web/**/*.tsx",
-          count: 20,
-        });
-        await options.tools.list_files.execute({ recursive: true });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace the booking creation flow starting in apps/web: booking creation UI, hooks/actions, API routes, services, mutations, schemas, and persistence. Identify related workspace packages.",
-        },
-        ctx,
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.primaryFiles[0].path).toBe(
-        "packages/features/bookings/lib/create-booking.ts",
-      );
-      expect(
-        structuredSummary.primaryFiles
-          .slice(0, 2)
-          .map((file: { path: string }) => file.path),
-      ).toContain("apps/web/modules/bookings/hooks/useBookings.ts");
-      expect(
-        structuredSummary.primaryFiles.map((file: { path: string }) =>
-          file.path.includes("(booking-page-wrapper)"),
-        ),
-      ).not.toContain(true);
-      expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-        "targeted_gap_search",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not fill mutation primary files with route grep hits when package coverage is missing", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-app-"));
-    await fs.mkdir(
-      path.join(appPath, "apps/web/app/(booking-page-wrapper)/[user]/[type]"),
-      { recursive: true },
-    );
-    await fs.mkdir(
-      path.join(appPath, "apps/web/app/(booking-page-wrapper)/booking/[uid]"),
-      { recursive: true },
-    );
-    await fs.mkdir(path.join(appPath, "apps/web/modules/bookings/hooks"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "apps/web/app/(booking-page-wrapper)/[user]/[type]/page.tsx",
-      ),
-      [
-        "export default function BookingPage(props: { booking?: { uid: string } }) {",
-        "  const rescheduleUid = props.booking?.uid;",
-        "  return null;",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "apps/web/app/(booking-page-wrapper)/booking/[uid]/page.tsx",
-      ),
-      [
-        "export default function ExistingBookingPage() {",
-        '  return <OldPage route="booking" />;',
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "apps/web/modules/bookings/hooks/useBookings.ts"),
-      "export const createBookingMutation = useMutation(createBooking);\n",
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "create booking mutation handler submit main line numbers api form handle hook",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 1,
-              lines: [
-                "export const createBookingMutation = useMutation(createBooking);",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for creating a booking starting in apps/web. Identify key files and symbols, including related workspace packages that participate in the implementation flow.",
-        });
-        await options.tools.grep.execute({
-          query: "booking",
-          include: "apps/web/**/*.tsx",
-          count: 20,
-        });
-        await options.tools.list_files.execute({ recursive: true });
-      }),
-      textStream: createFullStream([]),
-    }));
-    const ctx = createMockContext();
-    ctx.appPath = appPath;
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace the flow for creating a booking starting in apps/web. Identify key files and symbols, including related workspace packages that participate in the implementation flow.",
-        },
-        ctx,
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.primaryFiles).toEqual([
-        expect.objectContaining({
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          range: "1-1",
-        }),
-      ]);
-      expect(structuredSummary.coverage.missing).toContain(
-        "workspace/package implementation",
-      );
-      expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-        "targeted_gap_search",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not let sibling app grep hits steer package gap-search scopes", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "create booking api form handle handler hook service submit action mutation",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 1,
-              lines: [
-                "export const createBookingMutation = useMutation(createBooking);",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for creating a booking, starting in apps/web and including related workspace packages when they participate.",
-        });
-        await options.tools.grep.execute({
-          query: "booking",
-          include: "apps/api/v2/**/*.ts",
-          count: 20,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for creating a booking, starting in apps/web and including related workspace packages when they participate.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    const searchTargets =
-      structuredSummary.recommendedPrimaryAction.searchTargets ?? [];
-    expect(searchTargets.join("\n")).toContain("scoped to packages");
-    expect(searchTargets.join("\n")).toContain("apps/web/modules");
-    expect(searchTargets.join("\n")).not.toContain("apps/api/v2");
-    expect(searchTargets.join("\n")).not.toMatch(/\bwhen\b/);
-  });
-
-  it("augments workspace package queries with package implementation grep before reporting", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-package-augment-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/features/bookings/lib"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/features/bookings/lib/create-booking.ts"),
-      [
-        "export async function createBooking(input: { eventTypeId: number }) {",
-        "  return persistBooking(input);",
-        "}",
-        "",
-        "async function persistBooking(input: { eventTypeId: number }) {",
-        "  return input.eventTypeId;",
-        "}",
-      ].join("\n"),
-    );
-    await fs.mkdir(
-      path.join(appPath, "packages/features/bookings/lib/interfaces"),
-      {
-        recursive: true,
-      },
-    );
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "packages/features/bookings/lib/interfaces/IBookingCreateService.ts",
-      ),
-      "export interface IBookingCreateService { createBooking: (...args: any[]) => Promise<any>; }\n",
-    );
-    await fs.mkdir(
-      path.join(appPath, "packages/features/booking-audit/lib/service"),
-      {
-        recursive: true,
-      },
-    );
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "packages/features/booking-audit/lib/service/BookingAuditTaskConsumer.ts",
-      ),
-      "export class BookingAuditTaskConsumer { private createBookingAuditRecord() {} }\n",
-    );
-
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "create booking api form handle handler hook service submit action mutation",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 1,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 136,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 120,
-              endLine: 160,
-              lines: ["const createBookingMutation = useMutation();"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace creating a booking from apps/web including related workspace packages.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace creating a booking from apps/web including related workspace packages.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      const primaryPaths = structuredSummary.primaryFiles.map(
-        (file: { path: string }) => file.path,
-      );
-      expect(primaryPaths).toContain(
-        "packages/features/bookings/lib/create-booking.ts",
-      );
-      const wrapperRef = structuredSummary.primaryFiles.find(
-        (file: { path: string }) =>
-          file.path === "packages/features/bookings/lib/create-booking.ts",
-      );
-      expect(wrapperRef).toMatchObject({
-        range: "1-81",
-        purpose: "source range read directly by the sub-agent",
-      });
-      expect(report).toContain(
-        "line 1: export async function createBooking(input: { eventTypeId: number })",
-      );
-      const primaryRank = (filePath: string) => {
-        const index = primaryPaths.indexOf(filePath);
-        return index === -1 ? Number.POSITIVE_INFINITY : index;
-      };
-      expect(
-        primaryRank("packages/features/bookings/lib/create-booking.ts"),
-      ).toBeLessThan(
-        primaryRank(
-          "packages/features/bookings/lib/interfaces/IBookingCreateService.ts",
-        ),
-      );
-      expect(
-        primaryRank("packages/features/bookings/lib/create-booking.ts"),
-      ).toBeLessThan(
-        primaryRank(
-          "packages/features/booking-audit/lib/service/BookingAuditTaskConsumer.ts",
-        ),
-      );
-      expect(primaryPaths).not.toHaveLength(0);
-      expect(primaryPaths[0]).not.toBe(
-        "packages/features/bookings/lib/interfaces/IBookingCreateService.ts",
-      );
-      expect(primaryPaths[0]).not.toBe(
-        "packages/features/booking-audit/lib/service/BookingAuditTaskConsumer.ts",
-      );
-      expect(structuredSummary.coverage.observed).toContain(
-        "workspace/package implementation",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("keeps read targets for edit or verification prompts", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "create booking api form handle handler hook service submit action mutation",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 1,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "createBookingMutation",
-              kind: "variable",
-              line: 136,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 136,
-              endLine: 286,
-              lines: [
-                "const createBookingMutation = useMutation({ mutationFn: createBooking });",
-              ],
-            },
-          ],
-        },
-        {
-          path: "packages/features/bookings/lib/create-booking.ts",
-          symbols: [
-            {
-              name: "createBooking",
-              kind: "function",
-              line: 5,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 5,
-              endLine: 15,
-              lines: [
-                "export const createBooking = () => fetch('/api/book/event');",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query: "Verify createBookingMutation before changing code.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query: "Verify createBookingMutation before changing code.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-      "read_edit_target",
-    );
-    expect(structuredSummary.recommendedPrimaryAction.readTarget.path).toBe(
-      "apps/web/modules/bookings/hooks/useBookings.ts",
-    );
-  });
-
-  it("requires package implementation evidence when the query asks for workspace packages", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "create booking handle handler submit action mutation",
-      totalSymbols: 4,
-      totalFiles: 4,
-      indexedFileCount: 4,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/web/playwright/booking-limits.e2e.ts",
-          symbols: [
-            {
-              name: "createBookingLimitScenario",
-              kind: "function",
-              line: 357,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 357,
-              endLine: 434,
-              lines: ["await bookScenario();"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/components/booking/actions/bookingActions.ts",
-          symbols: [
-            {
-              name: "BookingActionContext",
-              kind: "interface",
-              line: 3,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 3,
-              endLine: 122,
-              lines: ["export interface BookingActionContext {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/modules/bookings/hooks/useBookings.ts",
-          symbols: [
-            {
-              name: "useBookings",
-              kind: "function",
-              line: 21,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 21,
-              endLine: 140,
-              lines: ["export function useBookings() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/web/app/_trpc/query-client.ts",
-          symbols: [
-            {
-              name: "queryClient",
-              kind: "variable",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 20,
-              lines: ["export const queryClient = {};"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for creating a booking in apps/web, including related workspace packages.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for creating a booking in apps/web, including related workspace packages.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.coverage.missing).toContain(
-      "workspace/package implementation",
-    );
-    expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-      "targeted_gap_search",
-    );
-    expect(
-      structuredSummary.recommendedPrimaryAction.searchTargets.join("\n"),
-    ).toContain("packages");
-  });
-
-  it("prefers export-specific source over generic context and type compiler refs", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "export drawing canvas image download share",
-      totalSymbols: 3,
-      totalFiles: 3,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/components/App.tsx",
-          symbols: [
-            {
-              name: "ExcalidrawAppStateContext",
-              kind: "variable",
-              line: 537,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 528,
-              endLine: 574,
-              lines: [
-                "const ExcalidrawAppStateContext = React.createContext();",
-              ],
-            },
-          ],
-        },
-        {
-          path: "packages/excalidraw/types.ts",
-          symbols: [
-            {
-              name: "BinaryFileData",
-              kind: "type",
-              line: 113,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 109,
-              endLine: 145,
-              lines: ["export type BinaryFileData = {};"],
-            },
-          ],
-        },
-        {
-          path: "packages/excalidraw/scene/export.ts",
-          symbols: [
-            {
-              name: "exportToCanvas",
-              kind: "function",
-              line: 78,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 70,
-              endLine: 150,
-              lines: ["export async function exportToCanvas() {}"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how exporting a drawing is implemented, including canvas image download/share behavior.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace how exporting a drawing is implemented, including canvas image download/share behavior.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "packages/excalidraw/scene/export.ts",
-    );
-    expect(structuredSummary.confidence).toBe("high");
-  });
-
-  it("prefers route page entries over nested record-detail subcomponents", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "crm record detail route page",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/twenty-front/src/modules/object-record/record-field-list/record-detail-section/relation/components/RecordDetailRelationRecordsListItem.tsx",
-          symbols: [
-            {
-              name: "RecordDetailRelationRecordsListItem",
-              kind: "function",
-              line: 73,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 47,
-              endLine: 166,
-              lines: [
-                "export const RecordDetailRelationRecordsListItem = () => null;",
-              ],
-            },
-          ],
-        },
-        {
-          path: "packages/twenty-front/src/pages/object-record/RecordShowPage.tsx",
-          symbols: [
-            {
-              name: "RecordShowPage",
-              kind: "function",
-              line: 12,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 80,
-              lines: ["export const RecordShowPage = () => null;"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how a CRM record detail page is loaded and rendered, including route/page entry.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace how a CRM record detail page is loaded and rendered, including route/page entry.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "packages/twenty-front/src/pages/object-record/RecordShowPage.tsx",
-    );
-  });
-
-  it("does not recommend a misleading edit target when route coverage is missing", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "crm record detail route page",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 1,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/twenty-front/src/modules/object-record/record-field-list/record-detail-section/relation/components/RecordDetailRelationRecordsListItem.tsx",
-          symbols: [
-            {
-              name: "RecordDetailRelationRecordsListItem",
-              kind: "function",
-              line: 73,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 47,
-              endLine: 166,
-              lines: [
-                "export const RecordDetailRelationRecordsListItem = () => null;",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how a CRM record detail page is loaded and rendered, including route/page entry.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace how a CRM record detail page is loaded and rendered, including route/page entry.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.coverage.missing).toContain("route/page entry");
-    expect(structuredSummary.editTarget).toBeNull();
-    expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-      "targeted_gap_search",
-    );
-  });
-
-  it("does not count side-panel pages with record-page imports as record detail route coverage", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-sidepanel-route-gap-"),
-    );
-    await fs.mkdir(
-      path.join(
-        appPath,
-        "packages/twenty-front/src/modules/side-panel/pages/calendar-event/components",
-      ),
-      { recursive: true },
-    );
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "packages/twenty-front/src/modules/side-panel/pages/calendar-event/components/SidePanelCalendarEventPage.tsx",
-      ),
-      [
-        "import { viewableRecordIdComponentState } from '@/side-panel/pages/record-page/states/viewableRecordIdComponentState';",
-        "export const SidePanelCalendarEventPage = () => null;",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "crm record detail page route loading",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 1,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/twenty-front/src/modules/object-record/record-picker/hooks/useRecordPicker.ts",
-          symbols: [
-            {
-              name: "useRecordPicker",
-              kind: "function",
-              line: 24,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 20,
-              endLine: 80,
-              lines: ["export const useRecordPicker = () => null;"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how a CRM record detail page is loaded and rendered starting in packages/twenty-front.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace how a CRM record detail page is loaded and rendered starting in packages/twenty-front.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.coverage.missing).toContain("route/page entry");
-      expect(structuredSummary.editTarget).toBeNull();
-      expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-        "targeted_gap_search",
-      );
-      expect(
-        structuredSummary.primaryFiles.map(
-          (file: { path: string }) => file.path,
-        ),
-      ).toContain(
-        "packages/twenty-front/src/modules/side-panel/pages/calendar-event/components/SidePanelCalendarEventPage.tsx",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not let support scripts steer record detail route gap reports", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "crm record detail page route loading",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/twenty-front/scripts/mock-data/generate-record-data.ts",
-          symbols: [
-            {
-              name: "generateRecordData",
-              kind: "function",
-              line: 5,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 104,
-              lines: ["export async function generateRecordData() {}"],
-            },
-          ],
-        },
-        {
-          path: "packages/twenty-front/src/modules/navigation/states/lastVisitedViewPerObjectMetadataItemState.ts",
-          symbols: [
-            {
-              name: "lastVisitedViewPerObjectMetadataItemState",
-              kind: "variable",
-              line: 3,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 12,
-              lines: [
-                "export const lastVisitedViewPerObjectMetadataItemState = {};",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how a CRM record detail page is loaded and rendered in packages/twenty-front.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace how a CRM record detail page is loaded and rendered in packages/twenty-front.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    const primaryPaths = structuredSummary.primaryFiles.map(
-      (file: { path: string }) => file.path,
-    );
-    expect(primaryPaths).not.toContain(
-      "packages/twenty-front/scripts/mock-data/generate-record-data.ts",
-    );
-    expect(structuredSummary.coverage.missing).toContain("route/page entry");
-    expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-      "targeted_gap_search",
-    );
-    const searchTargets =
-      structuredSummary.recommendedPrimaryAction.searchTargets.join("\n");
-    expect(searchTargets).toContain("packages/twenty-front");
-    expect(searchTargets).not.toContain("scripts/mock-data");
-    expect(searchTargets).not.toMatch(/\bloaded\b/);
-    expect(searchTargets).not.toMatch(/\brendered\b/);
-  });
-
-  it("prefers login and signup UI over auth hook customization screens", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "auth login signup ui routes components hooks services",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "apps/studio/components/interfaces/Auth/Hooks/CreateHookSheet.tsx",
-          symbols: [
-            {
-              name: "CreateHookSheet",
-              kind: "function",
-              line: 45,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 45,
-              endLine: 68,
-              lines: ["export const CreateHookSheet = () => null;"],
-            },
-          ],
-        },
-        {
-          path: "apps/studio/pages/sign-in.tsx",
-          symbols: [
-            {
-              name: "SignInPage",
-              kind: "function",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 80,
-              lines: ["export const SignInPage = () => <LoginForm />;"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Find the implementation flow for authentication UI login/signup/auth UI.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Find the implementation flow for authentication UI. Identify login/signup/auth UI files.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "apps/studio/pages/sign-in.tsx",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain(
-      "/Auth/Hooks/",
-    );
-  });
-
-  it("prefers post send handlers over post reaction components", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "send post message action api call channels react component",
-      totalSymbols: 3,
-      totalFiles: 3,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "channels/src/components/post_view/post_reaction/post_reaction.tsx",
-          symbols: [
-            {
-              name: "PostReaction",
-              kind: "function",
-              line: 16,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 16,
-              endLine: 89,
-              lines: ["export const PostReaction = () => null;"],
-            },
-          ],
-        },
-        {
-          path: "channels/src/components/advanced_text_editor/use_submit.tsx",
-          symbols: [
-            {
-              name: "useSubmit",
-              kind: "function",
-              line: 151,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 151,
-              endLine: 240,
-              lines: ["export function useSubmit() { return createPost(); }"],
-            },
-          ],
-        },
-        {
-          path: "channels/src/actions/post_actions.ts",
-          symbols: [
-            {
-              name: "createPost",
-              kind: "function",
-              line: 140,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 140,
-              endLine: 190,
-              lines: ["export function createPost() {}"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for sending a post/message from UI action to API call in channels.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for sending a post/message from UI action to API call.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.taskClass).toBe("mutation-action");
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "channels/src/components/advanced_text_editor/use_submit.tsx",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain("reaction");
-  });
-
-  it("prioritizes requested app UI files over CLI files for UI-to-API tasks", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "create invoice dashboard persistence api submit handler trpc",
-      totalSymbols: 3,
-      totalFiles: 3,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/cli/src/commands/invoices/index.ts",
-          symbols: [
-            {
-              name: "createInvoicesCommand",
-              kind: "function",
-              line: 31,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 11,
-              endLine: 111,
-              lines: ["export function createInvoicesCommand() {}"],
-            },
-          ],
-        },
-        {
-          path: "apps/dashboard/src/components/notification-center/notification-item.tsx",
-          symbols: [
-            {
-              name: "NotificationItem",
-              kind: "function",
-              line: 33,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 33,
-              endLine: 46,
-              lines: ["export const NotificationItem = () => null;"],
-            },
-          ],
-        },
-        {
-          path: "apps/dashboard/src/components/invoice/form.tsx",
-          symbols: [
-            {
-              name: "InvoiceForm",
-              kind: "function",
-              line: 1,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 120,
-              lines: [
-                "export function InvoiceForm() { return createInvoice(); }",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace the flow for creating an invoice from dashboard UI to persistence/API call. Start in apps/dashboard.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace the flow for creating an invoice from dashboard UI to persistence/API call. Start in apps/dashboard.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "apps/dashboard/src/components/invoice/form.tsx",
-    );
-    expect(structuredSummary.primaryFiles[0].path).not.toContain(
-      "packages/cli",
-    );
-  });
-
-  it("prefers toolbar action registry files over generic App and type refs", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene update handler state render",
-      totalSymbols: 3,
-      totalFiles: 3,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/components/App.tsx",
-          symbols: [
-            {
-              name: "AppContext",
-              kind: "variable",
-              line: 498,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 498,
-              endLine: 617,
-              lines: ["export const AppContext = createContext(null);"],
-            },
-          ],
-        },
-        {
-          path: "packages/excalidraw/types.ts",
-          symbols: [
-            {
-              name: "AppState",
-              kind: "type",
-              line: 64,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 64,
-              endLine: 183,
-              lines: ["export type AppState = {};"],
-            },
-          ],
-        },
-        {
-          path: "packages/excalidraw/actions/actionCanvas.tsx",
-          symbols: [
-            {
-              name: "actionToggleEraserTool",
-              kind: "variable",
-              line: 498,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 498,
-              endLine: 570,
-              lines: [
-                "export const actionToggleEraserTool = register({ label: 'toolBar.eraser', perform() {} });",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace where a toolbar action is handled and how it reaches the scene update path.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.primaryFiles[0].path).toBe(
-      "packages/excalidraw/actions/actionCanvas.tsx",
-    );
-    expect(structuredSummary.taskClass).toBe("component-flow");
-    expect(structuredSummary.primaryFiles[0].path).not.toBe(
-      "packages/excalidraw/components/App.tsx",
-    );
-  });
-
-  it("augments toolbar reports with production action refs instead of examples", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-gap-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/scene"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "examples/demo"), { recursive: true });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionCanvas.tsx"),
-      [
-        "import { register } from './register';",
-        "export const actionToggleEraserTool = register({",
-        "  name: 'toggleEraserTool',",
-        "  perform(elements, appState) {",
-        "    return { appState: { ...appState, activeTool: { type: 'eraser' } } };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/scene/Scene.ts"),
-      [
-        "export class Scene {",
-        "  replaceAllElements() {",
-        "    this.triggerUpdate();",
-        "  }",
-        "  triggerUpdate() {",
-        "    return true;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "examples/demo/ExampleApp.tsx"),
-      [
-        "export const updateScene = () => null;",
-        "export const canvasActions = {};",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/components/App.tsx",
-          symbols: [
-            {
-              name: "AppContext",
-              kind: "variable",
-              line: 502,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 498,
-              endLine: 617,
-              lines: ["export const AppContext = createContext(null);"],
-            },
-          ],
-        },
-        {
-          path: "packages/excalidraw/types.ts",
-          symbols: [
-            {
-              name: "AppState",
-              kind: "type",
-              line: 64,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 64,
-              endLine: 183,
-              lines: ["export type AppState = {};"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-        await options.tools.grep.execute({
-          query: "toolbar|action|updateScene",
-          include_pattern: "**/*.{ts,tsx}",
-          limit: 40,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-      const primaryPaths = structuredSummary.primaryFiles.map(
-        (file: { path: string }) => file.path,
-      );
-
-      expect(primaryPaths[0]).toBe(
-        "packages/excalidraw/actions/actionCanvas.tsx",
-      );
-      expect(primaryPaths).not.toContain("examples/demo/ExampleApp.tsx");
-      expect(structuredSummary.coverage.observed).toContain("action/dispatch");
-      expect(structuredSummary.coverage.missing).not.toContain(
-        "action/dispatch",
-      );
-      expect(structuredSummary.coverage.observed).toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.coverage.missing).not.toContain(
-        "render/output sink",
-      );
-      expect(primaryPaths).toContain("packages/excalidraw/scene/Scene.ts");
-      expect(report).toContain("line 2: export const actionToggleEraserTool");
-      expect(report).toContain("line 2: replaceAllElements()");
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("uses post-stream gap augmentation when the model returns a stale toolbar report", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-stale-report-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/scene"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionCanvas.tsx"),
-      [
-        "import { register } from './register';",
-        "export const actionToggleLaserTool = register({",
-        "  name: 'toggleLaserTool',",
-        "  perform(elements, appState) {",
-        "    return { appState: { ...appState, activeTool: { type: 'laser' } } };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/scene/Scene.ts"),
-      [
-        "export class Scene {",
-        "  replaceAllElements() {",
-        "    this.triggerUpdate();",
-        "  }",
-        "  triggerUpdate() {",
-        "    return true;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/components/App.tsx",
-          symbols: [
-            {
-              name: "AppContext",
-              kind: "variable",
-              line: 502,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 498,
-              endLine: 617,
-              lines: ["export const AppContext = createContext(null);"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: (async function* () {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-        yield {
-          type: "text-delta",
-          text: [
-            "## explore_code report",
-            "",
-            "Task class: component-flow",
-            "Structured summary:",
-            "```json",
-            JSON.stringify({
-              confidence: "low",
-              taskClass: "component-flow",
-              compilerSignal: "strong",
-              primaryFiles: [
-                {
-                  path: "packages/excalidraw/components/App.tsx",
-                  range: "498-617",
-                  purpose: "stale model report",
-                },
-              ],
-              secondaryFiles: [],
-              editTarget: null,
-              coverage: {
-                observed: ["component/UI handler"],
-                missing: ["action/dispatch", "render/output sink"],
-              },
-              recommendedPrimaryAction: {
-                action: "targeted_gap_search",
-                reason: "stale",
-                searchTargets: ["render/output sink"],
-              },
-            }),
-            "```",
-          ].join("\n"),
-        };
-      })(),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-      const primaryPaths = structuredSummary.primaryFiles.map(
-        (file: { path: string }) => file.path,
-      );
-
-      expect(primaryPaths).toContain(
-        "packages/excalidraw/actions/actionCanvas.tsx",
-      );
-      expect(primaryPaths).toContain("packages/excalidraw/scene/Scene.ts");
-      expect(structuredSummary.coverage.observed).toContain("action/dispatch");
-      expect(structuredSummary.coverage.observed).toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.coverage.missing).not.toContain(
-        "render/output sink",
-      );
-      expect(report).toContain("line 2: replaceAllElements()");
-      expect(mocks.recordCodeExplorerBenchmarkEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "subagent_deterministic_report" }),
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not treat scene/update comments as render sink implementation coverage", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-comment-sink-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/element/src"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionCanvas.tsx"),
-      [
-        "import { register } from './register';",
-        "export const actionTogglePointerTool = register({",
-        "  name: 'togglePointerTool',",
-        "  perform(elements, appState) {",
-        "    return { appState: { ...appState, activeTool: { type: 'selection' } } };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/element/src/Scene.ts"),
-      [
-        "export class Scene {",
-        "  /** Random integer regenerated each scene update. */",
-        "  versionNonce = 1;",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/element/src/zindex.ts"),
-      [
-        "export function moveElementsToFront(scene: { replaceAllElements: (elements: unknown[]) => void }, updatedElements: unknown[]) {",
-        "  scene.replaceAllElements(updatedElements);",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene update",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/actions/actionCanvas.tsx",
-          symbols: [
-            {
-              name: "actionTogglePointerTool",
-              kind: "variable",
-              line: 2,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 8,
-              lines: ["export const actionTogglePointerTool = register({"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-        await options.tools.grep.execute({
-          query: "toolbar|scene update",
-          include_pattern: "**/*.{ts,tsx}",
-          limit: 40,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.coverage.observed).toContain("action/dispatch");
-      expect(structuredSummary.coverage.observed).not.toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.coverage.missing).toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-        "targeted_gap_search",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not treat app-shell updateScene callers as package render sink coverage", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-app-shell-sink-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "excalidraw-app/collab"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionCanvas.tsx"),
-      [
-        "import { register } from './register';",
-        "export const actionToggleHandTool = register({",
-        "  name: 'toggleHandTool',",
-        "  perform(elements, appState) {",
-        "    return { appState: { ...appState, activeTool: { type: 'hand' } } };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "excalidraw-app/collab/Portal.tsx"),
-      [
-        "export class Portal {",
-        "  applyRemoteScene(api: { updateScene: (scene: unknown) => void }) {",
-        "    api.updateScene({ elements: [] });",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene update",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/actions/actionCanvas.tsx",
-          symbols: [
-            {
-              name: "actionToggleHandTool",
-              kind: "variable",
-              line: 2,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 8,
-              lines: ["export const actionToggleHandTool = register({"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-        await options.tools.grep.execute({
-          query: "toolbar|updateScene",
-          include_pattern: "**/*.{ts,tsx}",
-          limit: 40,
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.coverage.observed).not.toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.coverage.missing).toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-        "targeted_gap_search",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not treat action replacement helpers as render sink ownership", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-action-sink-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/element/src"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionGroup.tsx"),
-      [
-        "import { register } from './register';",
-        "import { replaceAllElementsInFrame } from '@excalidraw/element';",
-        "export const actionGroup = register({",
-        "  name: 'group',",
-        "  perform(elements, appState) {",
-        "    return { elements: replaceAllElementsInFrame(elements) };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/element/src/Scene.ts"),
-      [
-        "export class Scene {",
-        "  replaceAllElements(elements: unknown[]) {",
-        "    this.triggerUpdate();",
-        "  }",
-        "  triggerUpdate() {",
-        "    return true;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene update",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/actions/actionGroup.tsx",
-          symbols: [
-            {
-              name: "actionGroup",
-              kind: "variable",
-              line: 3,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 9,
-              lines: [
-                "import { replaceAllElementsInFrame } from '@excalidraw/element';",
-                "export const actionGroup = register({",
-                "  perform(elements, appState) {",
-                "    return { elements: replaceAllElementsInFrame(elements) };",
-                "  },",
-                "});",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-      const primaryPaths = structuredSummary.primaryFiles.map(
-        (file: { path: string }) => file.path,
-      );
-
-      expect(primaryPaths).toContain(
-        "packages/excalidraw/actions/actionGroup.tsx",
-      );
-      expect(primaryPaths).toContain("packages/element/src/Scene.ts");
-      expect(primaryPaths).not.toContain("packages/element/src/zindex.ts");
-      expect(structuredSummary.coverage.observed).toContain("action/dispatch");
-      expect(structuredSummary.coverage.observed).toContain(
-        "render/output sink",
-      );
-      expect(structuredSummary.coverage.missing).not.toContain(
-        "render/output sink",
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not treat updateScene API callers as render sink ownership", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-api-caller-sink-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/data"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/excalidraw"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/element/src"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionCanvas.tsx"),
-      [
-        "import { register } from './register';",
-        "export const actionToggleLaserTool = register({",
-        "  name: 'toggleLaserTool',",
-        "  perform(elements, appState) {",
-        "    return { appState: { ...appState, activeTool: { type: 'laser' } } };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/data/library.ts"),
-      [
-        "export function restoreLibrary(optsRef: { current: { excalidrawAPI: { updateScene: (scene: unknown) => void } } }) {",
-        "  optsRef.current.excalidrawAPI.updateScene({ elements: [] });",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/types.ts"),
-      [
-        "export type ExcalidrawAPI = {",
-        "  updateScene: (scene: unknown) => void;",
-        "};",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/element/src/Scene.ts"),
-      [
-        "export class Scene {",
-        "  replaceAllElements(elements: unknown[]) {",
-        "    this.triggerUpdate();",
-        "  }",
-        "  triggerUpdate() {",
-        "    return true;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene update",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/actions/actionCanvas.tsx",
-          symbols: [
-            {
-              name: "actionToggleLaserTool",
-              kind: "variable",
-              line: 2,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 8,
-              lines: ["export const actionToggleLaserTool = register({"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-      const primaryPaths = structuredSummary.primaryFiles.map(
-        (file: { path: string }) => file.path,
-      );
-
-      expect(primaryPaths).toContain(
-        "packages/excalidraw/actions/actionCanvas.tsx",
-      );
-      expect(primaryPaths).toContain("packages/element/src/Scene.ts");
-      expect(structuredSummary.coverage.observed).toContain(
-        "render/output sink",
-      );
-      expect(report).toContain("line 2: replaceAllElements");
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("augments toolbar reports with action dispatch bridge refs", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-toolbar-bridge-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/actions"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/components"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "packages/element/src"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/actionCanvas.tsx"),
-      [
-        "import { register } from './register';",
-        "export const actionEraser = register({",
-        "  name: 'eraser',",
-        "  label: 'toolBar.eraser',",
-        "  perform(elements, appState) {",
-        "    return { appState: { ...appState, activeTool: { type: 'eraser' } } };",
-        "  },",
-        "});",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/actions/manager.tsx"),
-      [
-        "export class ActionManager {",
-        "  renderAction(name: string) {",
-        "    return this.executeAction(name);",
-        "  }",
-        "  executeAction(name: string) {",
-        "    return name;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/components/App.tsx"),
-      [
-        "import { ActionManager } from '../actions/manager';",
-        "export class App {",
-        "  actionManager = new ActionManager();",
-        "  syncActionResult(actionResult: { elements?: unknown[] }) {",
-        "    if (actionResult.elements) {",
-        "      this.scene.replaceAllElements(actionResult.elements);",
-        "    }",
-        "  }",
-        "  scene = { replaceAllElements: (_elements: unknown[]) => null };",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    await fs.writeFile(
-      path.join(appPath, "packages/element/src/Scene.ts"),
-      [
-        "export class Scene {",
-        "  replaceAllElements(elements: unknown[]) {",
-        "    this.triggerUpdate();",
-        "  }",
-        "  triggerUpdate() {",
-        "    return true;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "toolbar action scene dispatch",
-      totalSymbols: 1,
-      totalFiles: 1,
-      indexedFileCount: 4,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/actions/actionCanvas.tsx",
-          symbols: [
-            {
-              name: "actionEraser",
-              kind: "variable",
-              line: 2,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 1,
-              endLine: 9,
-              lines: [
-                "export const actionEraser = register({",
-                "  label: 'toolBar.eraser',",
-                "  perform(elements, appState) {",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace where a toolbar action is handled and how it reaches the scene update path.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-      const primaryPaths = structuredSummary.primaryFiles.map(
-        (file: { path: string }) => file.path,
-      );
-
-      expect(primaryPaths).toContain("packages/excalidraw/actions/manager.tsx");
-      expect(primaryPaths).toContain("packages/excalidraw/components/App.tsx");
-      expect(primaryPaths).toContain("packages/element/src/Scene.ts");
-      expect(report).toContain("syncActionResult");
-      expect(report).toContain("renderAction");
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("does not count generated or story files as route-flow coverage", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "crm record detail page route loading state",
-      totalSymbols: 3,
-      totalFiles: 3,
-      indexedFileCount: 3,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/twenty-front/src/generated-metadata/graphql.ts",
-          symbols: [
-            {
-              name: "ApplicationTokenPair",
-              kind: "type",
-              line: 392,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 388,
-              endLine: 400,
-              lines: ["export type ApplicationTokenPair = {};"],
-            },
-          ],
-        },
-        {
-          path: "packages/twenty-front/src/modules/page-layout/widgets/components/__stories__/WidgetRenderer.stories.tsx",
-          symbols: [
-            {
-              name: "createPageLayoutWithWidget",
-              kind: "function",
-              line: 130,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 130,
-              endLine: 165,
-              lines: ["export const createPageLayoutWithWidget = () => null;"],
-            },
-          ],
-        },
-        {
-          path: "packages/twenty-front/src/modules/object-record/record-picker/multiple-record-picker/hooks/useMultipleRecordPickerPerformSearch.ts",
-          symbols: [
-            {
-              name: "useMultipleRecordPickerPerformSearch",
-              kind: "variable",
-              line: 24,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 20,
-              endLine: 139,
-              lines: [
-                "export const useMultipleRecordPickerPerformSearch = () => null;",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how a CRM record detail page is loaded and rendered starting in packages/twenty-front.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query:
-          "Trace how a CRM record detail page is loaded and rendered starting in packages/twenty-front.",
-      },
-      ctx: createMockContext(),
-    });
-    const structuredSummary = JSON.parse(
-      /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-    );
-
-    expect(structuredSummary.taskClass).toBe("route-flow");
-    expect(structuredSummary.confidence).not.toBe("high");
-    expect(structuredSummary.coverage.missing).toContain("route/page entry");
-    expect(structuredSummary.editTarget).toBeNull();
-    expect(structuredSummary.recommendedPrimaryAction.action).toBe(
-      "targeted_gap_search",
-    );
-  });
-
-  it("augments low-confidence export reports with scoped export implementation grep", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-export-gap-"),
-    );
-    await fs.mkdir(path.join(appPath, "packages/excalidraw/scene"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "packages/excalidraw/scene/export.ts"),
-      [
-        "export const exportToCanvas = async () => {",
-        "  return document.createElement('canvas');",
-        "};",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query:
-        "export implemented buttons commands service hook data trigger logic",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/excalidraw/components/App.tsx",
-          symbols: [
-            {
-              name: "ExcalidrawAppStateContext",
-              kind: "variable",
-              line: 537,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 528,
-              endLine: 574,
-              lines: [
-                "const ExcalidrawAppStateContext = React.createContext();",
-              ],
-            },
-          ],
-        },
-        {
-          path: "packages/excalidraw/types.ts",
-          symbols: [
-            {
-              name: "BinaryFileData",
-              kind: "type",
-              line: 113,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 109,
-              endLine: 145,
-              lines: ["export type BinaryFileData = {};"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how exporting a drawing is implemented. Identify main files and symbols.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace how exporting a drawing is implemented. Identify main files and symbols.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.primaryFiles[0].path).toBe(
-        "packages/excalidraw/scene/export.ts",
-      );
-      expect(report).toContain("line 1: export const exportToCanvas");
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("augments route-flow reports with scoped page and route entry grep", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "explore-code-route-gap-"),
-    );
-    await fs.mkdir(
-      path.join(appPath, "packages/twenty-front/src/pages/object-record"),
-      { recursive: true },
-    );
-    await fs.writeFile(
-      path.join(
-        appPath,
-        "packages/twenty-front/src/pages/object-record/RecordShowPage.tsx",
-      ),
-      [
-        "export const RecordShowPage = () => {",
-        "  return <RecordDetailContainer />;",
-        "};",
-        "",
-      ].join("\n"),
-    );
-    mocks.runRawExploreCode.mockResolvedValueOnce({
-      query: "crm record detail page twenty route entry hook query loading",
-      totalSymbols: 2,
-      totalFiles: 2,
-      indexedFileCount: 2,
-      indexMs: 1,
-      searchMs: 1,
-      notes: [],
-      files: [
-        {
-          path: "packages/twenty-front/src/generated-metadata/graphql.ts",
-          symbols: [
-            {
-              name: "Scalars",
-              kind: "type",
-              line: 8,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 4,
-              endLine: 123,
-              lines: ["export type Scalars = { ID: string };"],
-            },
-          ],
-        },
-        {
-          path: "packages/twenty-front/src/modules/object-record/hooks/useUpdateManyRecords.ts",
-          symbols: [
-            {
-              name: "UseUpdateManyRecordsProps",
-              kind: "type",
-              line: 27,
-              score: 1,
-            },
-          ],
-          windows: [
-            {
-              startLine: 23,
-              endLine: 142,
-              lines: ["export const useUpdateManyRecords = () => null;"],
-            },
-          ],
-        },
-      ],
-    });
-    mocks.generateText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolOnlyStream(async () => {
-        await options.tools.explore_code.execute({
-          query:
-            "Trace how a CRM record detail page is loaded and rendered starting in packages/twenty-front.",
-        });
-      }),
-      textStream: createFullStream([]),
-    }));
-
-    try {
-      const report = await runExploreCodeSubagent({
-        args: {
-          query:
-            "Trace how a CRM record detail page is loaded and rendered starting in packages/twenty-front.",
-        },
-        ctx: { ...createMockContext(), appPath },
-      });
-      const structuredSummary = JSON.parse(
-        /```json\n([\s\S]+?)\n```/.exec(report)?.[1] ?? "{}",
-      );
-
-      expect(structuredSummary.primaryFiles[0].path).toBe(
-        "packages/twenty-front/src/pages/object-record/RecordShowPage.tsx",
-      );
-      expect(report).toContain("line 1: export const RecordShowPage");
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
+      for (const literal of forbidden) {
+        expect(
+          source.toLowerCase(),
+          `${filePath} contains ${literal}`,
+        ).not.toContain(literal);
+      }
     }
   });
 });
 
-function createFullStream(chunks: string[]): AsyncIterable<any> {
+function createMockContext(appPath = "/tmp/app"): AgentContext {
+  return {
+    appId: 1,
+    chatId: 2,
+    appPath,
+    readOnly: true,
+    planModeOnly: false,
+    selectedComponent: null,
+    dyadRequestId: "request-1",
+    abortSignal: undefined,
+    accumulatedAiMessages: [],
+    onXmlStream: vi.fn(),
+    onXmlComplete: vi.fn(),
+    requireConsent: vi.fn(async () => true),
+    appendUserMessage: vi.fn(),
+    onUpdateTodos: vi.fn(),
+    onWarningMessage: vi.fn(),
+    localAgentSettings: {
+      selectedModel: { provider: "auto", name: "value" },
+    },
+    mcpToolConsent: new Map(),
+    availableMcpTools: [],
+    nitroEnabled: false,
+  } as unknown as AgentContext;
+}
+
+function buildRawExploreResult() {
+  return {
+    query: "widget save flow",
+    totalSymbols: 1,
+    totalFiles: 1,
+    indexedFileCount: 1,
+    indexMs: 1,
+    searchMs: 1,
+    truncated: false,
+    notes: [],
+    files: [
+      {
+        path: "src/widget/saveWidget.ts",
+        symbols: [{ name: "saveWidget", kind: "function", line: 1 }],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 4,
+            lines: [
+              "export async function saveWidget(input: WidgetInput) {",
+              "  validateWidget(input);",
+              "  return api.widgets.save(input);",
+              "}",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildTwoFileRawExploreResult() {
+  return {
+    ...buildRawExploreResult(),
+    totalSymbols: 2,
+    totalFiles: 2,
+    files: [
+      ...buildRawExploreResult().files,
+      {
+        path: "src/widget/auditWidget.ts",
+        symbols: [{ name: "auditWidgetSave", kind: "function", line: 1 }],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 3,
+            lines: [
+              "export function auditWidgetSave(input: WidgetInput) {",
+              "  auditWidgetSave(input);",
+              "}",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildOverlappingRawExploreResult() {
+  return {
+    ...buildRawExploreResult(),
+    files: [
+      {
+        path: "src/widget/saveWidget.ts",
+        symbols: [{ name: "widgetSaveFlow", kind: "function", line: 1 }],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 6,
+            lines: [
+              "export async function widgetSaveFlow(input: WidgetInput) {",
+              "  const widgetSaveFlowMarker = true;",
+              "  validateWidget(input);",
+              "  return api.widgets.save(input);",
+              "}",
+              "export const widgetSaveFlowComplete = true;",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildSameFileMultiRangeRawExploreResult() {
+  return {
+    ...buildRawExploreResult(),
+    totalSymbols: 2,
+    files: [
+      {
+        path: "src/widget/saveWidget.ts",
+        symbols: [
+          { name: "saveWidget", kind: "function", line: 1 },
+          { name: "saveWidgetValidation", kind: "function", line: 20 },
+        ],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 4,
+            lines: [
+              "export async function saveWidget(input: WidgetInput) {",
+              "  validateWidget(input);",
+              "  return api.widgets.save(input);",
+              "}",
+            ],
+          },
+          {
+            startLine: 20,
+            endLine: 23,
+            lines: [
+              "export function saveWidgetValidation(input: WidgetInput) {",
+              "  validateWidget(input);",
+              "  return input;",
+              "}",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildLargeRawExploreResult() {
+  return {
+    ...buildRawExploreResult(),
+    files: [
+      {
+        path: "src/widget/largeWidget.ts",
+        symbols: [{ name: "largeWidget", kind: "function", line: 1 }],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 2000,
+            lines: Array.from(
+              { length: 2000 },
+              (_value, index) =>
+                `export const largeWidgetLine${index} = "${"x".repeat(80)}";`,
+            ),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildManyFileRawExploreResult() {
+  return {
+    ...buildRawExploreResult(),
+    totalSymbols: 5,
+    totalFiles: 5,
+    files: Array.from({ length: 5 }, (_value, index) => ({
+      path: `src/widget/flowStep${index + 1}.ts`,
+      symbols: [
+        {
+          name: `widgetFlowStep${index + 1}`,
+          kind: "const",
+          line: 1,
+        },
+      ],
+      windows: [
+        {
+          startLine: 1,
+          endLine: 3,
+          lines: [
+            `export const widgetFlowStep${index + 1} = true;`,
+            `export function runWidgetFlowStep${index + 1}() {`,
+            "  return true;",
+          ],
+        },
+      ],
+    })),
+  };
+}
+
+function buildSixFileRawExploreResult() {
+  const result = buildManyFileRawExploreResult();
+  return {
+    ...result,
+    totalSymbols: 6,
+    totalFiles: 6,
+    files: [
+      ...result.files,
+      {
+        path: "src/widget/flowStep6.ts",
+        symbols: [
+          {
+            name: "widgetFlowStep6",
+            kind: "const",
+            line: 1,
+          },
+        ],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 3,
+            lines: [
+              "export const widgetFlowStep6 = true;",
+              "export function runWidgetFlowStep6() {",
+              "  return true;",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildLateRelevantRawExploreResult() {
+  return {
+    ...buildRawExploreResult(),
+    query: "exact caller of saveWidget",
+    totalSymbols: 1,
+    totalFiles: 1,
+    files: [
+      {
+        path: "src/widget/callerWidget.ts",
+        symbols: [{ name: "callerWidget", kind: "function", line: 1 }],
+        windows: [
+          {
+            startLine: 1,
+            endLine: 4,
+            lines: [
+              "export function callerWidget(input: WidgetInput) {",
+              "  return saveWidget(input);",
+              "}",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function createToolStream(runTools: () => Promise<void>) {
   return (async function* () {
-    for (const chunk of chunks) {
-      yield { type: "text-delta", text: chunk };
-    }
+    await runTools();
+    yield { type: "text-delta", text: "done" };
   })();
 }
 
-function createToolOnlyStream(
-  runTool: () => Promise<void>,
-): AsyncIterable<any> {
-  let done = false;
-  const iterator: AsyncIterable<any> & AsyncIterator<any> = {
-    [Symbol.asyncIterator]() {
-      return this;
+function createStreamResult(runTools: () => Promise<void>) {
+  return {
+    fullStreamAccessed: false,
+    get fullStream() {
+      this.fullStreamAccessed = true;
+      return createToolStream(runTools);
     },
-    async next() {
-      if (!done) {
-        done = true;
-        await runTool();
-      }
-      return { done: true, value: undefined };
-    },
+    textStream: createTextStream([]),
   };
-  return iterator;
 }
 
-function createMockContext(): AgentContext {
-  return {
-    event: {} as any,
-    appId: 1,
-    appPath: "/tmp/app",
-    referencedApps: new Map(),
-    chatId: 2,
-    supabaseProjectId: null,
-    supabaseOrganizationSlug: null,
-    neonProjectId: null,
-    neonActiveBranchId: null,
-    frameworkType: null,
-    messageId: 3,
-    isSharedModulesChanged: false,
-    chatSummary: undefined,
-    todos: [],
-    dyadRequestId: "request-id",
-    fileEditTracker: {},
-    isDyadPro: true,
-    onXmlStream: vi.fn(),
-    onXmlComplete: vi.fn(),
-    requireConsent: vi.fn().mockResolvedValue(true),
-    appendUserMessage: vi.fn(),
-    onUpdateTodos: vi.fn(),
-  };
+function createTextStream(chunks: string[]) {
+  return (async function* () {
+    for (const text of chunks) {
+      yield { type: "text-delta", text };
+    }
+  })();
 }

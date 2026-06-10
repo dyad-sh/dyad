@@ -14,7 +14,10 @@ import {
   escapeXmlContent,
 } from "./types";
 import type { CodeExplorerResult } from "../../../../../../../shared/code_explorer_types";
-import { exploreCodeSchema } from "./explore_code_raw";
+import {
+  exploreCodeSchema,
+  normalizeExploreCodeArgsForApp,
+} from "./explore_code_raw";
 import { runExploreCodeSubagent } from "./explore_code_subagent";
 import { resolveTargetAppPath } from "./resolve_app_context";
 import { recordCodeExplorerBenchmarkEvent } from "../benchmark_recorder";
@@ -63,6 +66,7 @@ function buildExploreCodeAttributes(
 ): string {
   const attrs: string[] = [];
   if (args.query) attrs.push(`query="${escapeXmlAttr(args.query)}"`);
+  if (args.intent) attrs.push(`intent="${escapeXmlAttr(args.intent)}"`);
   if (args.app_name) attrs.push(`app_name="${escapeXmlAttr(args.app_name)}"`);
   if (args.tsconfig_path) {
     attrs.push(`tsconfig_path="${escapeXmlAttr(args.tsconfig_path)}"`);
@@ -83,9 +87,10 @@ export const exploreCodeTool: ToolDefinition<
   name: "explore_code",
   description: `Ask a code reconnaissance sub-agent to explore code included in a configured TypeScript project.
 
-Use this when you need to understand how a TypeScript, TSX, JavaScript, or JSX feature, symbol, type, component, service, or flow is implemented across files. It returns a structured JSON summary plus distilled findings, relevant file/line ranges, the likely flow, compiler-signal strength, and recommendedPrimaryAction. Treat a high- or medium-confidence report as the codebase map; follow recommendedPrimaryAction instead of rediscovering the code. If it says answer_from_report, answer or plan from the report. If it says read_edit_target, read only that target before changing code. If it says targeted_gap_search, follow the listed searchTargets exactly with only those terms and scopes.
+Use this when you need to understand how a TypeScript, TSX, JavaScript, or JSX feature, symbol, type, component, service, or flow is implemented across files. It returns a compact flow with quoted evidence, relevant file/line ranges, read targets, confidence, and recommendedPrimaryAction. Treat a high- or medium-confidence report as the codebase map; follow recommendedPrimaryAction instead of rediscovering the code. If a high- or medium-confidence report says answer_from_report, answer or plan from the report. If it says read_targets, explain/locate requests should answer from the report and cite the listed targets as jump points without reading them, unless the report is low confidence or the user explicitly asks for edits, debugging, or exact source verification; edit/debug requests may read only the listed tight ranges before changing code or verifying exact source. If it says targeted_gap_search, run only the rendered Search targets with their exact terms/scopes, then answer from the report plus those search results and name any remaining gap; do not invent broader searches, open arbitrary hits, or call explore_code again. If no executable Search targets are rendered, answer from the observed flow while naming the remaining gap. If confidence is low, inspect the listed read targets or search targets before relying on the report.
+Use the intent argument to describe what you will do with the result: use explain for "trace how", data-flow, request-flow, or "how is this computed/surfaced" questions; use locate for finding the best files/symbols; use edit/debug when exact ranges will be read before changing code or verifying behavior.
 
-Do not call this repeatedly for the same investigation after a high- or medium-confidence report. Use targeted grep/read_file on the reported files instead.
+Do not call this repeatedly for the same investigation after a high- or medium-confidence report. Use the report, or at most the exact rendered Search targets or tight edit/debug read targets.
 
 Only use this for files included in the app's TypeScript config. JavaScript and JSX require TypeScript config support such as allowJs. If the project does not have TypeScript installed and configured, use grep/list_files/read_file instead.`,
   inputSchema: exploreCodeSchema,
@@ -107,11 +112,11 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
   execute: async (args, ctx: AgentContext) => {
     const availability = getExploreCodeAvailability(ctx);
     const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
-    const effectiveArgs = {
-      ...args,
-      tsconfig_path:
-        args.tsconfig_path ?? availability.tsconfigPath ?? undefined,
-    };
+    const effectiveArgs = normalizeExploreCodeArgsForApp({
+      appPath: targetAppPath,
+      args,
+      fallbackTsconfigPath: availability.tsconfigPath,
+    });
     const cacheKey = getExploreCodeCacheKey({
       chatId: ctx.chatId,
       appPath: targetAppPath,
@@ -152,7 +157,7 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
       report: resultText,
     });
     ctx.onXmlComplete(
-      `<dyad-explore-code ${buildExploreCodeAttributes(args)}>\n${escapeXmlContent(resultText)}\n</dyad-explore-code>`,
+      `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)}>\n${escapeXmlContent(resultText)}\n</dyad-explore-code>`,
     );
     return resultText;
   },
@@ -172,6 +177,7 @@ function getExploreCodeCacheKey({
     path.resolve(appPath),
     normalizeCacheText(args.app_name ?? ""),
     normalizeCacheText(args.tsconfig_path ?? ""),
+    normalizeCacheText(args.intent ?? "locate"),
     normalizeCacheText(args.query),
   ].join("\0");
 }
@@ -245,16 +251,8 @@ function collectReportFileStats({
 function extractReportFilePaths(report: string): string[] {
   const summary = extractStructuredSummary(report);
   const paths = new Set<string>();
-  const fileGroups = [
-    summary?.primaryFiles,
-    summary?.secondaryFiles,
-    summary?.editTarget ? [summary.editTarget] : undefined,
-  ];
-  for (const group of fileGroups) {
-    if (!Array.isArray(group)) {
-      continue;
-    }
-    for (const item of group) {
+  if (Array.isArray(summary?.paths)) {
+    for (const item of summary.paths) {
       if (item && typeof item === "object") {
         const filePath = (item as { path?: unknown }).path;
         if (typeof filePath === "string" && filePath.trim()) {
@@ -269,9 +267,7 @@ function extractReportFilePaths(report: string): string[] {
 function extractStructuredSummary(
   report: string,
 ): Record<string, unknown> | null {
-  const match = /Structured summary:\s*```json\s*([\s\S]*?)\s*```/m.exec(
-    report,
-  );
+  const match = /```json\s*([\s\S]*?)\s*```/m.exec(report);
   if (!match) {
     return null;
   }

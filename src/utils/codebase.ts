@@ -29,6 +29,14 @@ const ALLOWED_EXTENSIONS = [
   ".scss",
   ".sass",
   ".less",
+  // Shader source files for WebGL/WebGPU/Three.js projects
+  ".glsl",
+  ".wgsl",
+  ".vert",
+  ".frag",
+  ".vs",
+  ".fs",
+  ".comp",
   // Oftentimes used as config (e.g. package.json, vercel.json) or data files (e.g. translations)
   ".json",
   // GitHub Actions

@@ -762,10 +762,10 @@ async function handleCreateRepo(
     throw new Error(errorMessage);
   }
 
-  // Set up remote URL before preparing branch
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${normalizedRepo}.git`;
+  // Set up remote URL before preparing branch.
+  // The URL is stored without credentials; auth is injected per-invocation
+  // via environment variables in git_utils.
+  const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`;
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
@@ -820,10 +820,9 @@ async function handleConnectToExistingRepo(
       );
     }
 
-    // Set up remote URL before preparing branch
-    const remoteUrl = IS_TEST_BUILD
-      ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
-      : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+    // Set up remote URL before preparing branch (credentials are never
+    // stored in the URL; auth is injected per-invocation in git_utils)
+    const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${repo}.git`;
 
     // Prepare local branch with remote URL set up
     await prepareLocalBranch({
@@ -873,10 +872,10 @@ async function handlePushToGithub(
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch || "main";
 
-  // Set up remote URL with token
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set up remote URL (credentials are never stored in the URL; auth is
+  // injected per-invocation in git_utils). Re-setting it on every push also
+  // scrubs tokens that older versions embedded in .git/config.
+  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -986,10 +985,9 @@ async function handleRebaseFromGithub(
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch || "main";
 
-  // Set up remote URL with token
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set up remote URL (credentials are never stored in the URL; auth is
+  // injected per-invocation in git_utils)
+  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -1304,12 +1302,9 @@ async function handleCloneRepoFromUrl(
         fs.mkdirSync(appPath, { recursive: true });
       }
     }
-    // Use authenticated URL if token exists, otherwise use public HTTPS URL
-    const cloneUrl = accessToken
-      ? IS_TEST_BUILD
-        ? `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`
-        : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repoName}.git`
-      : `https://github.com/${owner}/${repoName}.git`; // Changed: use public HTTPS URL instead of original url
+    // Always clone with a credential-free URL; if a token exists it is
+    // injected per-invocation in git_utils.
+    const cloneUrl = `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`;
     try {
       await gitClone({
         path: appPath,

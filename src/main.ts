@@ -66,6 +66,7 @@ import {
 } from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
+import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
@@ -306,6 +307,9 @@ export async function onReady() {
 
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
+
+  // Remove GitHub tokens that older versions embedded in git remote URLs
+  scrubGithubTokenFromRemotes();
 
   const settings = await readEffectiveSettings();
 

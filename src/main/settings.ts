@@ -154,7 +154,12 @@ export function readCrashSentinel(): CrashSentinelData | null {
     if (typeof parsed !== "object" || parsed === null) {
       return null;
     }
-    return { ts: parsed.ts, activeChatId: parsed.activeChatId };
+    if (typeof parsed.ts !== "number") {
+      return null;
+    }
+    const activeChatId =
+      typeof parsed.activeChatId === "number" ? parsed.activeChatId : undefined;
+    return { ts: parsed.ts, activeChatId };
   } catch {
     return null;
   }

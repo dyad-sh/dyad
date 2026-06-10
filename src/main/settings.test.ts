@@ -960,4 +960,14 @@ describe("crash sentinel", () => {
   it("readCrashSentinel returns null when the sentinel is missing", () => {
     expect(readCrashSentinel()).toBeNull();
   });
+
+  it("readCrashSentinel returns null when ts is not a number", () => {
+    store[sentinelPath] = JSON.stringify({ ts: "nope", activeChatId: 1 });
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel ignores a non-numeric activeChatId", () => {
+    store[sentinelPath] = JSON.stringify({ ts: 123, activeChatId: "nope" });
+    expect(readCrashSentinel()).toEqual({ ts: 123, activeChatId: undefined });
+  });
 });

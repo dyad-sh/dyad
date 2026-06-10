@@ -262,11 +262,6 @@ export function registerChatStreamHandlers() {
       // Notify renderer that stream is starting
       safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
-      // Record the streaming chat in the crash sentinel so that if this session
-      // crashes, the force-close dialog can offer to upload this chat. Cleared
-      // automatically on clean exit.
-      setSentinelActiveChat(req.chatId);
-
       // Get the chat to check for existing messages
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, req.chatId),
@@ -284,6 +279,11 @@ export function registerChatStreamHandlers() {
           DyadErrorKind.NotFound,
         );
       }
+
+      // Record the streaming chat in the crash sentinel so that if this session
+      // crashes, the force-close dialog can offer to upload this chat. Cleared
+      // automatically on clean exit.
+      setSentinelActiveChat(req.chatId);
 
       // Handle redo option: remove the most recent messages if needed
       if (req.redo) {

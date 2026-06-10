@@ -18,6 +18,7 @@ import {
   AlertCircleIcon,
   MessageSquareIcon,
   CopyIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { ipc } from "@/ipc/types";
 import {
@@ -298,20 +299,30 @@ export function HelpDialog() {
     if (chatId == null || preloadedChatId.current === chatId) return;
     preloadedChatId.current = chatId;
     setIsUploading(true);
+    // Guard against the dialog closing before the bundle resolves, which would
+    // otherwise leave it on the review screen with a stale bundle.
+    let active = true;
     ipc.misc
       .getSessionDebugBundle(chatId)
       .then((bundle) => {
+        if (!active) return;
         setDebugBundle(bundle);
         navigateTo("review");
       })
       .catch((error) => {
+        if (!active) return;
         console.error("Failed to load chat session:", error);
         alert(
           "Failed to load chat session. Please try again or report manually.",
         );
         onClose();
       })
-      .finally(() => setIsUploading(false));
+      .finally(() => {
+        if (active) setIsUploading(false);
+      });
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, helpDialog.uploadChatId]);
 
@@ -694,9 +705,27 @@ ${formatLogsSection(debugInfo)}
     </AnimatedScreen>
   );
 
+  // Shown while a crash-triggered upload preloads its bundle, so the user who
+  // clicked "Upload Chat Session" sees a spinner instead of the main help menu
+  // before the review screen appears.
+  const renderPreloadingScreen = () => (
+    <AnimatedScreen
+      screenKey="main"
+      direction={direction}
+      skipInitial={!hasNavigated.current}
+    >
+      <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
+        <Loader2Icon className="h-6 w-6 animate-spin" />
+        <span>Preparing upload...</span>
+      </div>
+    </AnimatedScreen>
+  );
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  const isCrashPreloading = helpDialog.uploadChatId != null;
 
   return (
     <>
@@ -709,7 +738,10 @@ ${formatLogsSection(debugInfo)}
           }
         >
           <AnimatePresence mode="wait" custom={direction}>
-            {screen === "main" && renderMainScreen()}
+            {screen === "main" &&
+              (isCrashPreloading
+                ? renderPreloadingScreen()
+                : renderMainScreen())}
             {screen === "review" && renderReviewScreen()}
             {screen === "upload-complete" && renderUploadCompleteScreen()}
           </AnimatePresence>

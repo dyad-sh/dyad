@@ -23,6 +23,7 @@ import { LanguageSchema } from "@/lib/schemas";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
+import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
@@ -141,6 +142,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               duration={settings?.isTestMode ? 500 : undefined}
             />
             <ReleaseNotesDialog />
+            <ForceCloseDialog />
           </SidebarProvider>
         </DeepLinkProvider>
       </ThemeProvider>

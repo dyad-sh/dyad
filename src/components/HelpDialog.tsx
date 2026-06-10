@@ -27,8 +27,9 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { HelpBotDialog } from "./HelpBotDialog";
@@ -239,12 +240,10 @@ function CopyButton({ text }: { text: string }) {
 // Main component
 // =============================================================================
 
-interface HelpDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
+export function HelpDialog() {
+  const [helpDialog, setHelpDialog] = useAtom(helpDialogAtom);
+  const isOpen = helpDialog.open;
+  const onClose = () => setHelpDialog({ open: false });
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [screen, setScreen] = useState<DialogScreen>("main");
@@ -256,6 +255,9 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
   const [isBugScreenshotOpen, setIsBugScreenshotOpen] = useState(false);
   const hasNavigated = useRef(false);
+  // Tracks which chat (if any) we've already preloaded for the crash-triggered
+  // upload flow, so the preload effect fires once per open.
+  const preloadedChatId = useRef<number | null>(null);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
@@ -281,11 +283,37 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
     setDebugBundle(null);
     setSessionId("");
     hasNavigated.current = false;
+    preloadedChatId.current = null;
   };
 
   useEffect(() => {
     if (!isOpen) resetDialogState();
   }, [isOpen]);
+
+  // Crash-triggered upload: when opened with a uploadChatId, skip the main
+  // screen, preload that chat's debug bundle, and jump straight to review.
+  useEffect(() => {
+    if (!isOpen) return;
+    const chatId = helpDialog.uploadChatId;
+    if (chatId == null || preloadedChatId.current === chatId) return;
+    preloadedChatId.current = chatId;
+    setIsUploading(true);
+    ipc.misc
+      .getSessionDebugBundle(chatId)
+      .then((bundle) => {
+        setDebugBundle(bundle);
+        navigateTo("review");
+      })
+      .catch((error) => {
+        console.error("Failed to load chat session:", error);
+        alert(
+          "Failed to load chat session. Please try again or report manually.",
+        );
+        onClose();
+      })
+      .finally(() => setIsUploading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, helpDialog.uploadChatId]);
 
   const handleClose = () => onClose();
 

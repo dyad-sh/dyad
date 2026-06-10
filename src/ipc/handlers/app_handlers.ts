@@ -1276,6 +1276,9 @@ export function registerAppHandlers() {
             `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
             error,
           );
+          if (isDyadError(error)) {
+            throw error;
+          }
           // Attempt cleanup if destination exists (partial copy may have occurred)
           if (fs.existsSync(newAppPath)) {
             try {
@@ -1290,10 +1293,6 @@ export function registerAppHandlers() {
               );
             }
           }
-          if (isDyadError(error)) {
-            throw error;
-          }
-
           throw new DyadError(
             `Failed to move app files: ${error.message}`,
             DyadErrorKind.External,

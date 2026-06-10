@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   removeUnusedAppPackageFiles,
   removeUnusedCopiedResources,
@@ -203,6 +203,32 @@ describe("removeUnusedCopiedResources", () => {
     for (const file of keptFiles) {
       await expect(fs.readFile(file, "utf8")).resolves.toBe("fixture");
     }
+  });
+
+  it("surfaces unexpected errors when removing empty Unix GCM locale directories", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-cleanup-gcm-rmdir-"),
+    );
+    tempDirectories.push(buildPath);
+
+    const gitCorePath = path.join(
+      buildPath,
+      "dyad.app/Contents/Resources/git/libexec/git-core",
+    );
+    await writeFixtureFile(
+      path.join(gitCorePath, "ja/System.CommandLine.resources.dll"),
+    );
+
+    const error = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
+    const rmdirSpy = vi.spyOn(fs, "rmdir").mockRejectedValueOnce(error);
+
+    await expect(removeUnusedCopiedResources(buildPath, "darwin")).rejects.toBe(
+      error,
+    );
+
+    rmdirSpy.mockRestore();
   });
 
   it("removes Git Credential Manager and git-lfs from the Windows git distribution but keeps git's DLLs", async () => {

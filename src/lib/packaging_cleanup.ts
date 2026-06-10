@@ -251,6 +251,9 @@ const UNIX_GCM_NATIVE_LIB_PREFIXES = [
 ] as const;
 
 function isUnixGcmFile(name: string): boolean {
+  // This predicate is applied recursively under git/libexec/git-core. Dugite's
+  // current Unix git subdirectories only contain scripts or GCM satellite
+  // assemblies; audit this sweep when upgrading dugite's bundled git layout.
   return (
     name.endsWith(".dll") ||
     name.endsWith(".deps.json") ||
@@ -310,8 +313,12 @@ async function removeEmptyDirectories(basePath: string): Promise<void> {
   for (const directory of directories) {
     try {
       await fs.rmdir(directory);
-    } catch {
-      // Not empty (or already gone) — leave it
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOTEMPTY" || code === "ENOENT") {
+        continue;
+      }
+      throw error;
     }
   }
 }

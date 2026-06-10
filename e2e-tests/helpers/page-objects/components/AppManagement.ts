@@ -26,6 +26,18 @@ export class AppManagement {
   }
 
   async showAppList() {
+    const appListContainer = this.page.getByTestId("app-list-container");
+    if (await appListContainer.isVisible().catch(() => false)) {
+      return;
+    }
+
+    const telemetryLaterButton = this.page.getByTestId(
+      "telemetry-later-button",
+    );
+    if (await telemetryLaterButton.isVisible().catch(() => false)) {
+      await telemetryLaterButton.click({ timeout: Timeout.MEDIUM });
+    }
+
     await this.page.getByRole("link", { name: "Apps" }).hover();
     const viewAllAppsButton = this.page.getByTestId("view-all-apps-button");
     if (
@@ -33,7 +45,7 @@ export class AppManagement {
     ) {
       await viewAllAppsButton.click();
     }
-    await expect(this.page.getByTestId("app-list-container")).toBeVisible({
+    await expect(appListContainer).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
   }

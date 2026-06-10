@@ -26,6 +26,8 @@ const mockUser = {
   email: "testuser@example.com",
 };
 
+const mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
+
 const mockRepos = [
   {
     id: 1,
@@ -47,6 +49,17 @@ const mockRepos = [
     id: 3,
     name: "existing-app",
     full_name: "testuser/existing-app",
+    private: false,
+    owner: { login: "testuser" },
+    default_branch: "main",
+  },
+  // A repo that is pre-seeded with real content (Vite app) so it can be
+  // cloned/imported. Kept separate from the empty "create new repo" / sync
+  // push-target repos above, whose first push must be a fresh fast-forward.
+  {
+    id: 4,
+    name: "existing-vite-app",
+    full_name: "testuser/existing-vite-app",
     private: false,
     owner: { login: "testuser" },
     default_branch: "main",
@@ -353,7 +366,6 @@ export function handleClearPushEvents(req: Request, res: Response) {
 // Handle Git operations (push, pull, clone, etc.) using git-http-mock-server
 export function handleGitPush(req: Request, res: Response, next?: Function) {
   console.log("* GitHub Git operation requested:", req.method, req.url);
-
   // Log request headers to see git operation details
   console.log("* Git Headers:", {
     "git-protocol": req.headers["git-protocol"],
@@ -361,22 +373,13 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     "user-agent": req.headers["user-agent"],
   });
 
-  // Create a unique temporary directory for this request
-  const mockReposRoot = fs.mkdtempSync(
-    path.join(
-      os.tmpdir(),
-      "dyad-git-mock-" + Math.random().toString(36).substring(2, 15),
-    ),
-  );
-  console.error(`* Created temporary git repos directory: ${mockReposRoot}`);
-
+  console.error(`* Using git repos directory: ${mockReposRoot}`);
   // Create git middleware instance for this request
   const gitHttpMiddleware = gitHttpMiddlewareFactory({
     root: mockReposRoot,
     route: "/github/git",
     glob: "*.git",
   });
-
   // Extract repo name from URL path like /github/git/testuser/test-repo.git
   // The middleware expects the repo name as the basename after the route
   const urlPath = req.url;
@@ -385,11 +388,9 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
 
   if (repoName) {
     console.log(`* Git operation for repo: ${repoName}`);
-
     // Track push events if this is a git-receive-pack (push) operation
     if (req.url.includes("/git-receive-pack") && req.method === "POST") {
       console.log("* Git PUSH operation detected for repo:", repoName);
-
       // Collect request body to parse git protocol
       let body = "";
       req.on("data", (chunk) => {
@@ -433,26 +434,99 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         }
       });
     }
-
     // Ensure the bare git repository exists for this repo
     const bareRepoPath = path.join(mockReposRoot, `${repoName}.git`);
-    console.log(`* Creating bare git repository at: ${bareRepoPath}`);
-    try {
-      fs.mkdirSync(bareRepoPath, { recursive: true });
-      // Initialize as bare repository
-      const { execSync } = require("child_process");
-      execSync(`git init --bare`, { cwd: bareRepoPath });
-      console.log(
-        `* Successfully created bare git repository: ${repoName}.git`,
-      );
-    } catch (error) {
-      console.error(`* Failed to create bare git repository:`, error);
-      return res.status(500).json({
-        message: "Failed to initialize git repository",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    if (!fs.existsSync(bareRepoPath)) {
+      console.log(`* Creating bare git repository at: ${bareRepoPath}`);
+      try {
+        fs.mkdirSync(bareRepoPath, { recursive: true });
+        const { execSync } = require("child_process");
+        execSync(`git init --bare`, { cwd: bareRepoPath });
 
+        // Most repos are created via the "create new repo" + sync flow, so they
+        // must start out empty: the very first push from Dyad is a fresh,
+        // fast-forward "create" of the default branch. Pre-seeding those repos
+        // would make that push diverge (non-fast-forward) and fail.
+        //
+        // Only repos that are meant to already exist on GitHub (e.g. the
+        // "existing-vite-app" fixture used by the import auto-upgrade test) get
+        // seeded with an initial commit so they can be cloned/imported.
+        if (repoName === "existing-vite-app") {
+          const tmpClone = fs.mkdtempSync(
+            path.join(os.tmpdir(), "dyad-git-clone-"),
+          );
+          try {
+            execSync(`git clone "${bareRepoPath}" "${tmpClone}"`, {
+              stdio: "pipe",
+            });
+            fs.writeFileSync(
+              path.join(tmpClone, "README.md"),
+              `# ${repoName}\n`,
+            );
+            fs.writeFileSync(
+              path.join(tmpClone, "package.json"),
+              JSON.stringify(
+                {
+                  name: "existing-vite-app",
+                  version: "0.0.1",
+                  private: true,
+                  devDependencies: {
+                    vite: "^5.0.0",
+                    "@vitejs/plugin-react-swc": "^3.9.0",
+                  },
+                },
+                null,
+                2,
+              ) + "\n",
+            );
+            fs.writeFileSync(
+              path.join(tmpClone, "vite.config.ts"),
+              [
+                'import { defineConfig } from "vite";',
+                'import react from "@vitejs/plugin-react-swc";',
+                "",
+                "export default defineConfig(() => ({",
+                "  plugins: [react()],",
+                "}));",
+                "",
+              ].join("\n"),
+            );
+            execSync(`git add -A`, { cwd: tmpClone, stdio: "pipe" });
+            execSync(
+              `git -c user.name=dyad -c user.email=dyad@example.com commit -m "initial commit"`,
+              { cwd: tmpClone, stdio: "pipe" },
+            );
+            execSync(`git push origin HEAD:refs/heads/main`, {
+              cwd: tmpClone,
+              stdio: "pipe",
+            });
+            try {
+              execSync(
+                `git --git-dir="${bareRepoPath}" symbolic-ref HEAD refs/heads/main`,
+                { stdio: "pipe" },
+              );
+            } catch (err) {
+              console.warn(
+                "* Warning: failed to set symbolic-ref HEAD on bare repo",
+                err,
+              );
+            }
+          } finally {
+            fs.rmSync(tmpClone, { recursive: true, force: true });
+          }
+        }
+
+        console.log(
+          `* Successfully created bare git repository: ${repoName}.git`,
+        );
+      } catch (error) {
+        console.error(`* Failed to create bare git repository:`, error);
+        return res.status(500).json({
+          message: "Failed to initialize git repository",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     // Rewrite the URL to match what the middleware expects
     // Change /github/git/testuser/test-repo.git/... to /github/git/test-repo.git/...
     const rewrittenUrl = req.url.replace(
@@ -462,7 +536,6 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     req.url = rewrittenUrl;
     console.log(`* Rewritten URL from ${urlPath} to ${rewrittenUrl}`);
   }
-
   // Use git-http-mock-server middleware to handle the actual git operations
   gitHttpMiddleware(
     req,

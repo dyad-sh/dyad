@@ -14,7 +14,7 @@ export async function simpleSpawn({
   cwd: string;
   successMessage: string;
   errorPrefix: string;
-  env?: Record<string, string>;
+  env?: NodeJS.ProcessEnv;
 }): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     logger.info(`Running: ${command}`);

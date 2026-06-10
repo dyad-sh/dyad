@@ -29,6 +29,8 @@
   "installCommand": "Comando de instalação",
   "startCommand": "Comando de inicialização",
   "bothCommandsRequired": "Ambos os comandos são obrigatórios ao personalizar.",
+  "autoUpgradeAnnotator": "Atualizar automaticamente o app para ativar recursos de anotador do Dyad",
+  "autoUpgradeFailed": "O aplicativo foi importado com sucesso, mas a atualização automática do etiquetador de componentes falhou. Você pode atualizá-lo manualmente nas configurações do aplicativo, se necessário.",
   "noAiRulesFound": "Nenhum AI_RULES.md encontrado. O Dyad gerará um automaticamente após a importação.",
   "importingApp": "Importando app...",
   "import": "Importar",

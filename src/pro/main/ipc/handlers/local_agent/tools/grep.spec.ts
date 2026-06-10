@@ -72,6 +72,13 @@ export function greet(name: string) {
       path.join(testDir, "booking.ts"),
       `export function createBooking(input: { id: string }) {
   return createBooking({ id: input.id });
+}
+
+function update() {
+  const items = ["first"];
+  const selected = items[idx];
+  setState();
+  return onClick={() => createBooking({ id: "next" })};
 }`,
     );
 
@@ -405,16 +412,64 @@ function deepHello() {
       expect(result).toContain("goodbye");
     });
 
-    it("returns a diagnostic for invalid regex patterns", async () => {
+    it("falls back to fixed-text alternatives for invalid regex patterns", async () => {
       const result = await grepTool.execute(
         { query: "hello|function{" },
         mockContext,
       );
 
-      expect(result).toContain("Invalid regex pattern: hello|function{");
-      expect(result).toContain("Use a simpler escaped regex");
-      expect(result).toContain("retry with literal=true");
-      expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("hello");
+      expect(result).toContain("looked like a code literal");
+      expect(mockContext.onXmlComplete).not.toHaveBeenCalledWith(
+        expect.stringContaining('error="invalid_regex"'),
+      );
+    });
+
+    it("searches code-shaped queries as literals before regex parsing", async () => {
+      const result = await grepTool.execute(
+        { query: "setState()" },
+        mockContext,
+      );
+
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("booking.ts");
+      expect(result).toContain("setState()");
+      expect(result).toContain("looked like a code literal");
+    });
+
+    it("searches code-shaped alternatives as literals", async () => {
+      const result = await grepTool.execute(
+        { query: "missingThing()|onClick={() =>" },
+        mockContext,
+      );
+
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("booking.ts");
+      expect(result).toContain("onClick={() =>");
+      expect(result).toContain("looked like a code literal");
+    });
+
+    it("searches bracketed indexing as a literal, not a character-class regex", async () => {
+      const result = await grepTool.execute(
+        { query: "items[idx]" },
+        mockContext,
+      );
+
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("booking.ts");
+      expect(result).toContain("items[idx]");
+      expect(result).toContain("looked like a code literal");
+    });
+
+    it("returns no matches when inferred literal search has no matches", async () => {
+      const result = await grepTool.execute(
+        { query: "definitely_missing{" },
+        mockContext,
+      );
+
+      expect(result).toBe("No matches found.");
+      expect(mockContext.onXmlComplete).not.toHaveBeenCalledWith(
         expect.stringContaining('error="invalid_regex"'),
       );
     });

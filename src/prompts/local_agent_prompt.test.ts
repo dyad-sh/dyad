@@ -13,7 +13,23 @@ describe("local_agent_prompt", () => {
     });
     expect(prompt).toMatchSnapshot();
     expect(prompt).toContain("Use `explore_code` first");
-    expect(prompt).toContain("`path:start-end`");
+    expect(prompt).toContain(
+      "Do not warm up with `list_files`, `grep`, or `read_file` before `explore_code`",
+    );
+    expect(prompt).toContain(
+      "include a compact code map that preserves every useful `path:start-end` reference",
+    );
+    expect(prompt).toContain("targeted_gap_search is a terminal bounded pass");
+    expect(prompt).toContain("run only the rendered Search targets");
+    expect(prompt).toContain(
+      "answer next from the report without `read_file`, `grep`, `list_files`, or another `explore_code` call",
+    );
+    expect(prompt).toContain(
+      "read_targets means explain/locate requests should answer next from the report and cite the listed targets as jump points without `read_file`",
+    );
+    expect(prompt).toContain(
+      "When no authoritative explore_code report is available",
+    );
     expect(prompt).not.toContain("Use `grep` and `code_search`");
   });
 

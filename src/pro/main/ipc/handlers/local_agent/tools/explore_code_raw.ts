@@ -1,4 +1,6 @@
 import { z } from "zod";
+import fs from "node:fs";
+import path from "node:path";
 
 import { runCodeExplorer } from "@/ipc/processors/code_explorer";
 import type { CodeExplorerResult } from "../../../../../../../shared/code_explorer_types";
@@ -8,7 +10,7 @@ export const MAX_FILES = 8;
 export const DEFAULT_MAX_DEPTH = 2;
 export const MAX_DEPTH = 3;
 
-export const exploreCodeSchema = z.object({
+const exploreCodeBaseSchema = z.object({
   query: z.string().min(1).describe("Natural-language code exploration query"),
   app_name: z
     .string()
@@ -42,21 +44,77 @@ export const exploreCodeSchema = z.object({
     ),
 });
 
+export const rawExploreCodeSchema = exploreCodeBaseSchema;
+
+export const exploreCodeSchema = exploreCodeBaseSchema.extend({
+  intent: z
+    .enum(["explain", "locate", "edit", "debug"])
+    .describe(
+      "Required. What the result will be used for. Use explain/locate when you will answer or point at code from the map. Use edit/debug when exact ranges will be read before changing code or verifying behavior.",
+    ),
+});
+
 export type ExploreCodeArgs = z.infer<typeof exploreCodeSchema>;
+export type RawExploreCodeArgs = z.infer<typeof rawExploreCodeSchema> & {
+  intent?: ExploreCodeArgs["intent"];
+};
+
+export function normalizeExploreCodeArgsForApp<
+  TArgs extends RawExploreCodeArgs,
+>({
+  appPath,
+  args,
+  fallbackTsconfigPath,
+}: {
+  appPath: string;
+  args: TArgs;
+  fallbackTsconfigPath?: string | null;
+}): TArgs {
+  return {
+    ...args,
+    tsconfig_path:
+      validAppRelativeTsconfigPath(appPath, args.tsconfig_path) ??
+      validAppRelativeTsconfigPath(appPath, fallbackTsconfigPath) ??
+      undefined,
+  } as TArgs;
+}
+
+function validAppRelativeTsconfigPath(
+  appPath: string,
+  tsconfigPath?: string | null,
+): string | undefined {
+  if (!tsconfigPath || path.isAbsolute(tsconfigPath)) {
+    return undefined;
+  }
+  const resolvedPath = path.resolve(appPath, tsconfigPath);
+  const appRoot = path.resolve(appPath);
+  if (
+    resolvedPath !== appRoot &&
+    !resolvedPath.startsWith(`${appRoot}${path.sep}`)
+  ) {
+    return undefined;
+  }
+  try {
+    return fs.statSync(resolvedPath).isFile() ? tsconfigPath : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function runRawExploreCode({
   appPath,
   args,
 }: {
   appPath: string;
-  args: ExploreCodeArgs;
+  args: RawExploreCodeArgs;
 }): Promise<CodeExplorerResult> {
+  const effectiveArgs = normalizeExploreCodeArgsForApp({ appPath, args });
   return runCodeExplorer({
     appPath,
-    query: args.query,
-    tsconfigPath: args.tsconfig_path,
-    maxFiles: args.max_files ?? DEFAULT_MAX_FILES,
-    maxDepth: args.max_depth ?? DEFAULT_MAX_DEPTH,
+    query: effectiveArgs.query,
+    tsconfigPath: effectiveArgs.tsconfig_path,
+    maxFiles: effectiveArgs.max_files ?? DEFAULT_MAX_FILES,
+    maxDepth: effectiveArgs.max_depth ?? DEFAULT_MAX_DEPTH,
   });
 }
 

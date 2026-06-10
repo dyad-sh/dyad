@@ -111,6 +111,7 @@ const ignore = (file: string) => {
 
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
+const shouldSkipNativeRebuild = process.env.DYAD_SKIP_NATIVE_REBUILD === "true";
 
 if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
   throw new Error(
@@ -173,10 +174,12 @@ const config: ForgeConfig = {
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
-  rebuildConfig: {
-    extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
-    force: true,
-  },
+  rebuildConfig: shouldSkipNativeRebuild
+    ? { onlyModules: [] }
+    : {
+        extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
+        force: true,
+      },
   makers: [
     new MakerSquirrel(
       // @ts-expect-error - incorrect types exported by MakerSquirrel

@@ -284,6 +284,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const currentAddressPath = formatPreviewAddressPath(currentHistoryUrl);
   const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
   const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
+  const isEditingAddressBarRef = useRef(false);
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
@@ -319,10 +320,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   }, [selectedAppId]);
 
   useEffect(() => {
-    if (!isEditingAddressBar) {
+    isEditingAddressBarRef.current = isEditingAddressBar;
+  }, [isEditingAddressBar]);
+
+  useEffect(() => {
+    if (!isEditingAddressBarRef.current) {
       setAddressBarValue(currentAddressPath);
     }
-  }, [currentAddressPath, isEditingAddressBar]);
+  }, [currentAddressPath]);
 
   // Drop any in-flight request state when the user switches apps so a stale
   // guard from a replaced iframe doesn't block future captures.
@@ -1411,62 +1416,66 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Function to navigate to a specific route
   const navigateToRoute = (path: string) => {
-    if (iframeRef.current?.contentWindow && appUrl) {
-      const normalized = normalizePreviewAddressPath(path);
-      if (normalized.type === "empty") {
-        return;
-      }
-      if (normalized.type === "invalid") {
-        showError(normalized.message);
-        return;
-      }
+    if (!iframeRef.current?.contentWindow || !appUrl) {
+      return false;
+    }
 
-      // Create the full URL by combining the base URL with the path
-      const baseUrl = new URL(appUrl).origin;
-      const newUrl = new URL(normalized.path, baseUrl).href;
+    const normalized = normalizePreviewAddressPath(path);
+    if (normalized.type === "empty") {
+      return false;
+    }
+    if (normalized.type === "invalid") {
+      showError(normalized.message);
+      return false;
+    }
 
-      // Use postMessage to navigate (same as back/forward) - this uses location.replace()
-      // which provides smooth navigation without the black screen flicker that location.href causes
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "navigate",
-          payload: { url: newUrl },
-        },
-        "*",
-      );
+    // Create the full URL by combining the base URL with the path
+    const baseUrl = new URL(appUrl).origin;
+    const newUrl = new URL(normalized.path, baseUrl).href;
 
-      // Update navigation history
-      const newHistory = [
-        ...navigationHistory.slice(0, currentHistoryPosition + 1),
-        newUrl,
-      ];
-      setNavigationHistory(newHistory);
-      setCurrentHistoryPosition(newHistory.length - 1);
-      setCanGoBack(true);
-      setCanGoForward(false);
+    // Use postMessage to navigate (same as back/forward) - this uses location.replace()
+    // which provides smooth navigation without the black screen flicker that location.href causes
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "navigate",
+        payload: { url: newUrl },
+      },
+      "*",
+    );
 
-      // Update iframe URL ref to match
-      currentIframeUrlRef.current = newUrl;
+    // Update navigation history
+    const newHistory = [
+      ...navigationHistory.slice(0, currentHistoryPosition + 1),
+      newUrl,
+    ];
+    setNavigationHistory(newHistory);
+    setCurrentHistoryPosition(newHistory.length - 1);
+    setCanGoBack(true);
+    setCanGoForward(false);
 
-      // Update preservedUrls to match navigation (for HMR remounts)
-      if (selectedAppId) {
-        // Clear preserved URL if navigating to root, otherwise update it
-        const navigatedPath = formatPreviewAddressPath(newUrl);
-        if (navigatedPath === "/") {
-          setPreservedUrls((prev) => {
-            const next = new Map(prev);
-            next.delete(selectedAppId);
-            return next;
-          });
-        } else {
-          setPreservedUrls((prev) => {
-            const next = new Map(prev);
-            next.set(selectedAppId, newUrl);
-            return next;
-          });
-        }
+    // Update iframe URL ref to match
+    currentIframeUrlRef.current = newUrl;
+
+    // Update preservedUrls to match navigation (for HMR remounts)
+    if (selectedAppId) {
+      // Clear preserved URL if navigating to root, otherwise update it
+      const navigatedPath = formatPreviewAddressPath(newUrl);
+      if (navigatedPath === "/") {
+        setPreservedUrls((prev) => {
+          const next = new Map(prev);
+          next.delete(selectedAppId);
+          return next;
+        });
+      } else {
+        setPreservedUrls((prev) => {
+          const next = new Map(prev);
+          next.set(selectedAppId, newUrl);
+          return next;
+        });
       }
     }
+
+    return true;
   };
 
   const submitAddressBarValue = () => {
@@ -1484,9 +1493,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       return;
     }
 
-    skipNextAddressBarBlurRef.current = true;
-    navigateToRoute(result.path);
-    setAddressBarValue(result.path);
+    const didNavigate = navigateToRoute(result.path);
+    if (didNavigate) {
+      skipNextAddressBarBlurRef.current = true;
+      setAddressBarValue(result.path);
+    } else {
+      setAddressBarValue(currentAddressPath);
+    }
     setIsEditingAddressBar(false);
   };
 

@@ -9,7 +9,10 @@ const logger = log.scope("git_remote_token_scrub");
 
 // Matches credentials embedded in GitHub remote URLs, e.g.
 // https://<token>:x-oauth-basic@github.com/owner/repo.git
-const EMBEDDED_GITHUB_CREDENTIALS_REGEX = /(https?:\/\/)[^@/\s]+@github\.com/g;
+// The lookahead ensures the host is exactly github.com, not a
+// prefixed host like github.company.com.
+const EMBEDDED_GITHUB_CREDENTIALS_REGEX =
+  /(https?:\/\/)[^@/\s]+@github\.com(?=[/:\s]|$)/g;
 
 /**
  * Removes GitHub access tokens that older Dyad versions embedded in remote

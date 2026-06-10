@@ -107,6 +107,20 @@ describe("scrubGithubTokenFromRemotes", () => {
     expect(await fs.readFile(configPath, "utf8")).toBe(original);
   });
 
+  it("does not touch credentials for hosts that merely start with github.com", async () => {
+    const original = [
+      '[remote "origin"]',
+      "\turl = https://user:pass@github.company.com/owner/repo.git",
+      "",
+    ].join("\n");
+    const configPath = await createAppWithGitConfig("enterprise-app", original);
+    appRows = [{ path: "enterprise-app" }];
+
+    await scrubGithubTokenFromRemotes();
+
+    expect(await fs.readFile(configPath, "utf8")).toBe(original);
+  });
+
   it("ignores apps without a .git/config", async () => {
     appRows = [{ path: "no-git-app" }];
 

@@ -122,7 +122,7 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { detectFrameworkType } from "../utils/framework_utils";
 
 const logger = log.scope("app_handlers");
@@ -1276,6 +1276,9 @@ export function registerAppHandlers() {
             `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
             error,
           );
+          if (isDyadError(error)) {
+            throw error;
+          }
           // Attempt cleanup if destination exists (partial copy may have occurred)
           if (fs.existsSync(newAppPath)) {
             try {

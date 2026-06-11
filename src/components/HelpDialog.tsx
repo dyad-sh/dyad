@@ -243,7 +243,7 @@ function CopyButton({ text }: { text: string }) {
 // =============================================================================
 
 export function HelpDialog() {
-  const { t } = useTranslation(["home"]);
+  const { t } = useTranslation(["home", "common"]);
   const [helpDialog, setHelpDialog] = useAtom(helpDialogAtom);
   const isOpen = helpDialog.open;
   const onClose = () => setHelpDialog({ open: false });
@@ -312,7 +312,12 @@ export function HelpDialog() {
         // Clear uploadChatId once loaded so canceling from review back to the
         // main screen doesn't keep rendering the preload spinner.
         setHelpDialog({ open: true });
-        navigateTo("review");
+        // Move to review with an explicit forward direction. The preload only
+        // runs from the main screen, so we set the transition directly rather
+        // than reading the screen value asynchronously via navigateTo.
+        setDirection(1);
+        setScreen("review");
+        hasNavigated.current = true;
       })
       .catch((error) => {
         if (!active) return;
@@ -720,6 +725,9 @@ ${formatLogsSection(debugInfo)}
       <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
         <Loader2Icon className="h-6 w-6 animate-spin" />
         <span>{t("home:help.preparingUpload")}</span>
+        <Button variant="outline" size="sm" onClick={handleClose}>
+          {t("common:cancel")}
+        </Button>
       </div>
     </AnimatedScreen>
   );

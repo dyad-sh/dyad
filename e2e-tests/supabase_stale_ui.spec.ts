@@ -1,4 +1,5 @@
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 // https://github.com/dyad-sh/dyad/issues/269
 testSkipIfWindows("supabase - stale ui", async ({ po }) => {
@@ -9,6 +10,9 @@ testSkipIfWindows("supabase - stale ui", async ({ po }) => {
   await po.appManagement.startDatabaseIntegrationSetup("supabase");
   // On app details page:
   await po.appManagement.clickConnectSupabaseButton();
+  await expect(po.page.getByText("Fake Supabase Project")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
   // TODO: for some reason on Windows this navigates to the main (apps) page,
   // rather than the original chat page, so this test is skipped on Windows.
   // However, the underlying issue is platform-agnostic, so it seems OK to test

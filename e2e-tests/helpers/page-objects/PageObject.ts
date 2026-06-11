@@ -411,28 +411,6 @@ export class PageObject {
     stable?: boolean;
     timeout?: number;
   } = {}) {
-    // NOTE: once you have called this, you can NOT manipulate the UI anymore or React will break.
-    if (replaceDumpPath) {
-      await this.page.evaluate(() => {
-        const messagesList = document.querySelector(
-          "[data-testid=messages-list]",
-        );
-        if (!messagesList) {
-          throw new Error("Messages list not found");
-        }
-        // Scrub compaction backup paths embedded in message text
-        // e.g. .dyad/chats/1/compaction-2026-02-05T21-25-24-285Z.md
-        messagesList.innerHTML = messagesList.innerHTML.replace(
-          /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
-          "[[compaction-backup-path]]",
-        );
-
-        messagesList.innerHTML = messagesList.innerHTML.replace(
-          /\[\[dyad-dump-path=([^\]]+)\]\]/g,
-          "[[dyad-dump-path=*]]",
-        );
-      });
-    }
     const messagesList = this.page.getByTestId("messages-list");
     if (!stable) {
       await expect(messagesList).toMatchAriaSnapshot({ timeout });
@@ -440,7 +418,17 @@ export class PageObject {
     }
 
     const rawSnapshot = await messagesList.ariaSnapshot({ timeout });
-    const normalizedSnapshot = `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
+    let normalizedSnapshot = normalizeMessagesAriaSnapshot(rawSnapshot);
+    if (replaceDumpPath) {
+      // Scrub machine-specific paths after snapshotting so React-owned DOM is not mutated.
+      normalizedSnapshot = normalizedSnapshot
+        .replace(
+          /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
+          "[[compaction-backup-path]]",
+        )
+        .replace(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
+    }
+    normalizedSnapshot = `${normalizedSnapshot.trimEnd()}\n`;
     this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
   }
 

@@ -1,15 +1,7 @@
 - paragraph: tc=add-supabase
 - paragraph: Adding supabase...
-- text: Integration Choose a database provider
-- radiogroup "Choose a database provider":
-  - 'radio "Supabase Visit Supabase website Complete backend as a service: Postgres database, storage and edge functions." [checked] [disabled]':
-    - text: Supabase
-    - link "Visit Supabase website" [disabled]:
-    - paragraph: "Complete backend as a service: Postgres database, storage and edge functions."
-  - radio "Neon Experimental Visit Neon website Serverless Postgres database with time-travel and generous free project limits." [disabled]:
-    - text: Neon Experimental
-    - link "Visit Neon website" [disabled]:
-    - paragraph: Serverless Postgres database with time-travel and generous free project limits.
+- text: Integration Complete Supabase integration complete
+- paragraph: "This app is connected to the Supabase project: Fake Supabase Project"
 - button "Copy"
 - button "Undo"
 - button "Retry"

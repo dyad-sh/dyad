@@ -43,7 +43,9 @@ function parseButtonLine(
   if (quotedMatch) {
     return {
       indent: quotedMatch[1],
-      name: quotedMatch[2],
+      // The line is a YAML single-quoted scalar, so literal single quotes
+      // arrive doubled ('') and must be unescaped before re-formatting.
+      name: quotedMatch[2].replace(/''/g, "'"),
       quoteKey: true,
       state: quotedMatch[3] ?? "",
     };
@@ -74,7 +76,7 @@ function formatButtonLine({
   name = name.replace(/\b\d+ms\b/g, "[[duration]]");
   name = name.replace(/\s+log Copy .+$/g, "");
 
-  if (name.includes(":")) {
+  if (name.includes(":") || name.includes("'")) {
     return `${indent}- 'button "${name.replace(/'/g, "''")}"${state}'`;
   }
   return `${indent}- button "${name}"${state}`;

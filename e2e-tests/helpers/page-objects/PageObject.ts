@@ -7,6 +7,7 @@
 import { Page, expect, type Locator, type TestInfo } from "@playwright/test";
 import { ElectronApplication } from "playwright";
 import fs from "fs";
+import path from "path";
 
 import { generateAppFilesSnapshotData } from "../generateAppFilesSnapshotData";
 import {
@@ -104,6 +105,9 @@ export class PageObject {
       return undefined;
     }
     const title = this.testInfo?.title ?? "messages";
+    // Mirrors Playwright's snapshot-name sanitization: everything except
+    // letters, digits, and "-" becomes a "-" so auto-derived names line up
+    // with the files toMatchAriaSnapshot() would generate.
     const normalizedTitle =
       title
         .replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, "-")
@@ -115,7 +119,7 @@ export class PageObject {
     );
   }
 
-  private expectStableMessageAriaSnapshot(
+  private async expectStableMessageAriaSnapshot(
     actualSnapshot: string,
     name?: string,
   ) {
@@ -134,6 +138,14 @@ export class PageObject {
 
     if (shouldUpdate) {
       fs.writeFileSync(snapshotPath, actualSnapshot);
+      if (updateSnapshots === "missing") {
+        // Match Playwright's snapshot semantics: a missing baseline is
+        // written but still fails the test, so a renamed/typo'd snapshot
+        // name cannot silently pass on CI.
+        throw new Error(
+          `ARIA snapshot is missing at ${snapshotPath}, writing actual. Re-run the test to use the new baseline.`,
+        );
+      }
       return;
     }
 
@@ -141,7 +153,23 @@ export class PageObject {
       throw new Error(`ARIA snapshot does not exist: ${snapshotPath}`);
     }
 
-    expect(actualSnapshot).toBe(fs.readFileSync(snapshotPath, "utf8"));
+    const expectedSnapshot = fs.readFileSync(snapshotPath, "utf8");
+    if (actualSnapshot !== expectedSnapshot && this.testInfo) {
+      const baseName = path.basename(snapshotPath, ".aria.yml");
+      const actualPath = this.testInfo.outputPath(
+        `${baseName}-actual.aria.yml`,
+      );
+      fs.writeFileSync(actualPath, actualSnapshot);
+      await this.testInfo.attach(`${baseName}-expected`, {
+        path: snapshotPath,
+        contentType: "text/plain",
+      });
+      await this.testInfo.attach(`${baseName}-actual`, {
+        path: actualPath,
+        contentType: "text/plain",
+      });
+    }
+    expect(actualSnapshot).toBe(expectedSnapshot);
   }
 
   // ================================
@@ -429,7 +457,7 @@ export class PageObject {
         .replace(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
     }
     normalizedSnapshot = `${normalizedSnapshot.trimEnd()}\n`;
-    this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
+    await this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
   }
 
   async snapshotStableAria(
@@ -439,7 +467,7 @@ export class PageObject {
   ) {
     const rawSnapshot = await locator.ariaSnapshot({ timeout });
     const normalizedSnapshot = `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
-    this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
+    await this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
   }
 
   async snapshotServerDump(

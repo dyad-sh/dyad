@@ -104,4 +104,32 @@ describe("normalizeMessagesAriaSnapshot", () => {
       "- paragraph: Done\n",
     );
   });
+
+  it("preserves YAML single-quote escaping in button names without doubling it", () => {
+    const input = `- 'button "Error Tool ''add_dependency'' failed: User denied permission Copy Fix with AI"':
+  - img
+  - text: stuff
+`;
+    const expected = `- 'button "Error Tool ''add_dependency'' failed: User denied permission Copy Fix with AI"'\n`;
+    expect(normalizeMessagesAriaSnapshot(input)).toBe(expected);
+  });
+
+  it("quotes button lines whose names contain single quotes but no colon", () => {
+    expect(
+      normalizeMessagesAriaSnapshot(`- 'button "Don''t stop"':
+  - img
+`),
+    ).toBe(`- 'button "Don''t stop"'\n`);
+  });
+
+  it("is idempotent over its own output", () => {
+    const input = `- 'button "Error Tool ''add_dependency'' failed: oops" [expanded]':
+  - img
+- button "Script Call calculator_add through MCP 12ms"
+- text: Approved
+- paragraph: Done
+`;
+    const once = normalizeMessagesAriaSnapshot(input);
+    expect(normalizeMessagesAriaSnapshot(once)).toBe(once);
+  });
 });

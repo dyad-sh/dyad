@@ -1,4 +1,5 @@
 - paragraph: tc=chat2
 - paragraph: chat2
-- button "Retry":
-  - img
+- button "Copy"
+- button "Undo"
+- button "Retry"

@@ -89,6 +89,16 @@ If the output under test contains non-deterministic or platform-specific content
 
 When regenerating one failing snapshot by running an entire spec file, review `git diff` before committing. Neighboring request-dump snapshots in the same file can be rewritten too; keep only the updates needed for the failing assertion unless the broader fixture output intentionally changed.
 
+If a helper moves from Playwright's `toMatchAriaSnapshot()` to a custom `toMatchSnapshot()` filename, rerun affected specs with `--update-snapshots` and review later raw `.aria.yml` snapshots in the same test. The helper no longer consumes Playwright's ARIA snapshot counter, so subsequent raw ARIA baselines can shift even when the UI did not change.
+
+When a test uses both raw Playwright `toMatchAriaSnapshot()` and `po.snapshotMessages()` with the same test title, give `snapshotMessages` an explicit `name`. Otherwise the custom message snapshot can collide with Playwright's numbered component snapshot files and overwrite unrelated baselines.
+
+Snapshot sanitizers should normalize the captured snapshot text, not mutate React-owned DOM with `innerHTML` before snapshotting. DOM mutation during E2E can trigger React `NotFoundError: Failed to execute 'removeChild' on 'Node'` on the next render.
+
+Custom snapshot helpers that read/write baseline files directly must fail the test after writing a missing baseline (Playwright's default `updateSnapshots: "missing"` writes the file AND fails). Returning silently after the write lets a renamed or typo'd snapshot name pass green on CI without ever comparing.
+
+Snapshot normalizers must be idempotent — `normalize(normalize(x)) === normalize(x)` — and should have a unit test asserting it. In particular, when re-formatting YAML single-quoted lines from `ariaSnapshot()`, unescape doubled `''` to `'` before re-escaping, or quotes double on every pass (`''` → `''''`). To find baselines affected by a normalizer change, run the normalizer over all committed `.aria.yml` files and diff: normalizer-produced baselines should be fixed points (raw `toMatchAriaSnapshot` baselines will differ and can be ignored).
+
 If app-file snapshots unexpectedly include `dist/` assets after running `pnpm --dir scaffold build`, delete `scaffold/dist` and rerun `npm run build` before regenerating E2E baselines. The packaged Electron app snapshots the scaffold contents from the last package build, so a stale packaged `scaffold/dist` can keep contaminating snapshots even after the source directory is cleaned.
 When changing provider request model IDs, search all request-dump snapshots for the old model value. Local-agent snapshots can include the same engine model payloads as `engine.spec.ts`, so updating only the obvious engine snapshot may leave stale expected dumps.
 
@@ -161,6 +171,7 @@ If `npm run build` / Electron Forge packaging fails with `Failed to locate modul
 - **Monaco race repros**: If a file-editor bug only appears during quick tab/file changes, alternate between the affected files several times in one test before declaring it non-reproducible. A single switch often misses save-vs-switch timing bugs that show up immediately under `--repeat-each`.
 - **GitHub sync success assertions**: Scope "Successfully pushed to GitHub!" assertions to `getByTestId("github-connected-repo")`; the same text can also appear in a toast, causing Playwright strict-mode failures.
 - **GitHub fake device flow**: After clicking "Connect to GitHub", setup-repo UI assertions can race the fake auth polling loop. The setup section may render just after a 5s default assertion timeout, so use a medium timeout for "Set up your GitHub repo" / "Create new repo" assertions that depend on connection success.
+- **Supabase connection flows**: After clicking the Supabase connect button in E2E, wait for the connected project UI (for example the fake project name) before navigating away or snapshotting. The connect helper can return before renderer state reflects the new integration.
 - **Uncommitted-files banner after manual commit**: Commit-triggered app screenshots write under `.dyad/screenshot`. If native-git banner tests still show one uncommitted change after a successful commit, inspect whether Dyad-managed `.dyad/` files are being excluded from Git status before blaming query invalidation.
 - **Manual git commits inside app repos**: If an E2E helper runs `git commit` directly, configure `user.email`, `user.name`, and `commit.gpgsign=false` in that app repo first. Windows CI runners may not have a git identity, causing `Author identity unknown` before UI assertions run.
 - **Toast-obscured clicks**: Sonner toasts can intercept clicks after settings saves. Prefer waiting for the expected toast/state transition and clicking a scoped stable target; avoid relying on forced DOM removal when app state may re-render immediately afterward.

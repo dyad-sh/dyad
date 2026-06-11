@@ -1,46 +1,15 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit":
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- img
-- text: "/Version 2: \\(\\d+ files changed\\)/"
-- button "Copy Request ID":
-  - img
-  - text: ""
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
 - paragraph: tc=local-agent/web-fetch
 - paragraph: I'll fetch the content of that page for you.
-- img
 - text: Web Fetch
-- img
 - text: Done https://example.com/docs/getting-started
 - paragraph: Here's a summary of the page content. The getting started guide covers three main items. Let me know if you need more details!
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

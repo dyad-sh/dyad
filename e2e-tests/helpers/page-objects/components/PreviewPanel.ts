@@ -269,8 +269,9 @@ export class PreviewPanel {
     await this.page.getByRole("button", { name: /Fix All Errors/ }).click();
   }
 
-  async snapshotPreviewErrorBanner() {
+  async snapshotPreviewErrorBanner({ name }: { name?: string } = {}) {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
+      name,
       timeout: Timeout.LONG,
     });
   }

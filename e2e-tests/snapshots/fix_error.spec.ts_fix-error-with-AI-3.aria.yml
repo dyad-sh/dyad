@@ -1,52 +1,17 @@
 - paragraph: tc=create-error
 - paragraph: I will intentionally add an error
-- 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"':
-  - img
-  - text: Index.tsx src/pages/Index.tsx
-  - button "Edit":
-    - img
-    - text: Edit
-  - img
-  - text: "Summary: intentionally add an error"
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- img
-- text: "Version 2: wrote 1 file(s)"
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"'
+- button "Copy"
+- text: "[[Version 2: files changed]]"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
-  - link /http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6/:
-    - /url: /http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6/
+  - link "http://localhost:42101/src/pages/Index.tsx:6:6":
+    - /url: http://localhost:42101/src/pages/Index.tsx:6:6
   - text: )
-- button "Copy":
-  - img
-  - text: Copy
+- button "Copy"
 - code: Fixing the error...
-- button "Index.tsx src/pages/Index.tsx Edit":
-  - img
-  - text: Index.tsx src/pages/Index.tsx
-  - button "Edit":
-    - img
-    - text: Edit
-  - img
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- img
-- text: "Version 3: wrote 1 file(s)"
-- button "Undo":
-  - img
-  - text: Undo
-- button "Retry":
-  - img
-  - text: Retry
+- button "Index.tsx src/pages/Index.tsx Edit"
+- button "Copy"
+- text: "[[Version 3: files changed]]"
+- button "Undo"
+- button "Retry"

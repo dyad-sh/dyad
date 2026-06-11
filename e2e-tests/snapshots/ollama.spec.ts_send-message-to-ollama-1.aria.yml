@@ -1,21 +1,7 @@
 - paragraph: hi
-- button "file1.txt file1.txt Edit":
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
+- button "Copy"
 - text: testollama
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Undo"
+- button "Retry"

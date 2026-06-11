@@ -1,6 +1,5 @@
 - paragraph: tc=basic
 - paragraph: This is a simple basic response
-- img
-- text: less than a minute ago
-- button "Retry":
-  - img
+- button "Copy"
+- button "Undo"
+- button "Retry"

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +34,10 @@ import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 import { showSuccess, showError } from "@/lib/toast";
 import { useGithubSyncState } from "@/atoms/githubSyncAtoms";
-import { slugifyAppPath } from "@/shared/slugify";
+import {
+  useGitHubDeviceFlow,
+  useGitHubRepoSetup,
+} from "./GitHubConnector.hooks";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -45,21 +49,15 @@ interface GitHubConnectorProps {
   expanded?: boolean;
 }
 
-interface GitHubRepo {
-  name: string;
-  full_name: string;
-  private: boolean;
-}
-
-interface GitHubBranch {
-  name: string;
-  commit: { sha: string };
-}
-
 interface LinkedGitHubRepo {
   org: string;
   repo: string;
 }
+
+type GitHubRepoSetupViewState = ReturnType<typeof useGitHubRepoSetup>["state"];
+type GitHubRepoSetupViewActions = ReturnType<
+  typeof useGitHubRepoSetup
+>["actions"];
 
 interface ConnectedGitHubConnectorProps {
   appId: number;
@@ -77,6 +75,48 @@ export interface UnconnectedGitHubConnectorProps {
   handleRepoSetupComplete: () => void;
   expanded?: boolean;
   linkedRepo?: LinkedGitHubRepo;
+}
+
+interface GitHubConflictResolutionProps {
+  conflicts: string[];
+  isCancellingSync: boolean;
+  isResolving: boolean;
+  onResolveWithAI: () => void;
+  onCancelSync: () => void;
+}
+
+function GitHubConflictResolution({
+  conflicts,
+  isCancellingSync,
+  isResolving,
+  onResolveWithAI,
+  onCancelSync,
+}: GitHubConflictResolutionProps) {
+  if (conflicts.length === 0) return null;
+
+  return (
+    <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
+      <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
+        {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
+        conflicts: {conflicts.join(", ")}
+      </p>
+      <div className="flex gap-2">
+        <Button
+          onClick={onResolveWithAI}
+          disabled={isCancellingSync || isResolving}
+        >
+          {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={onCancelSync}
+          disabled={isCancellingSync || isResolving}
+        >
+          {isCancellingSync ? "Cancelling..." : "Cancel sync"}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function ConnectedGitHubConnector({
@@ -101,8 +141,6 @@ function ConnectedGitHubConnector({
     rebaseAction,
   } = syncState;
   const [showForceDialog, setShowForceDialog] = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const [isCancellingSync, setIsCancellingSync] = useState(false);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
@@ -113,6 +151,16 @@ function ConnectedGitHubConnector({
       // Clear conflicts state when starting AI resolution since user will be navigated to chat
       updateSyncState({ conflicts: [], syncError: null });
     },
+  });
+
+  // Only the stable mutateAsync is kept: depending on the full mutation
+  // result object would recreate handleSyncToGithub on every render.
+  const { mutateAsync: pushToGithub } = useMutation({
+    mutationFn: (options: GithubSyncOptions) =>
+      ipc.github.push({
+        appId,
+        ...options,
+      }),
   });
 
   const handleCancelSync = async () => {
@@ -142,13 +190,11 @@ function ConnectedGitHubConnector({
     }
   };
 
-  const handleDisconnectRepo = async () => {
-    setIsDisconnecting(true);
-    setDisconnectError(null);
-    try {
+  const disconnectRepoMutation = useMutation({
+    mutationFn: async () => {
       await ipc.github.disconnect({ appId });
-      // Clear stale sync state so reconnecting to a different repo doesn't
-      // show a success/error message from the previous repo.
+    },
+    onSuccess: () => {
       updateSyncState({
         isSyncing: false,
         syncError: null,
@@ -159,13 +205,11 @@ function ConnectedGitHubConnector({
         rebaseAction: null,
       });
       refreshApp();
-    } catch (err: any) {
-      setDisconnectError(
-        err.message || t("integrations.github.failedDisconnectRepo"),
-      );
-    } finally {
-      setIsDisconnecting(false);
-    }
+    },
+  });
+
+  const handleDisconnectRepo = async () => {
+    disconnectRepoMutation.mutate();
   };
 
   const handleSyncToGithub = useCallback(
@@ -183,11 +227,7 @@ function ConnectedGitHubConnector({
       setShowForceDialog(false);
 
       try {
-        await ipc.github.push({
-          appId,
-          force,
-          forceWithLease,
-        });
+        await pushToGithub({ force, forceWithLease });
         updateSyncState({
           syncSuccess: true,
           rebaseInProgress: false,
@@ -285,7 +325,7 @@ function ConnectedGitHubConnector({
         updateSyncState({ isSyncing: false });
       }
     },
-    [appId, updateSyncState],
+    [appId, pushToGithub, updateSyncState],
   );
 
   const handleAbortRebase = useCallback(async () => {
@@ -429,6 +469,11 @@ function ConnectedGitHubConnector({
   const showRebaseRecoveryOptions =
     rebaseInProgress || (syncError?.includes("rebase-merge") ?? false);
   const isRebaseActionPending = isSyncing || !!rebaseAction;
+  const isDisconnecting = disconnectRepoMutation.isPending;
+  const disconnectError = disconnectRepoMutation.error
+    ? disconnectRepoMutation.error.message ||
+      t("integrations.github.failedDisconnectRepo")
+    : null;
 
   return (
     <div className="w-full" data-testid="github-connected-repo">
@@ -576,30 +621,13 @@ function ConnectedGitHubConnector({
           )}
         </div>
       )}
-      {/* Conflict Resolution Buttons */}
-      {conflicts.length > 0 && (
-        <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
-          <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
-            conflicts: {conflicts.join(", ")}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              onClick={resolveWithAI}
-              disabled={isCancellingSync || isResolving}
-            >
-              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleCancelSync}
-              disabled={isCancellingSync || isResolving}
-            >
-              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
-            </Button>
-          </div>
-        </div>
-      )}
+      <GitHubConflictResolution
+        conflicts={conflicts}
+        isCancellingSync={isCancellingSync}
+        isResolving={isResolving}
+        onResolveWithAI={resolveWithAI}
+        onCancelSync={handleCancelSync}
+      />
       {rebaseStatusMessage && (
         <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
           {rebaseStatusMessage}
@@ -664,385 +692,179 @@ function ConnectedGitHubConnector({
   );
 }
 
-export function UnconnectedGitHubConnector({
-  appId,
-  folderName,
-  settings,
-  refreshSettings,
-  handleRepoSetupComplete,
-  expanded,
+interface GitHubDeviceConnectionProps {
+  linkedRepo?: LinkedGitHubRepo;
+  isConnecting: boolean;
+  userCode: string | null;
+  verificationUri: string | null;
+  error: string | null;
+  statusMessage: string | null;
+  codeCopied: boolean;
+  onConnect: () => void;
+  onCodeCopied: () => void;
+}
+
+function GitHubDeviceConnection({
   linkedRepo,
-}: UnconnectedGitHubConnectorProps) {
-  // --- Collapsible State ---
-  const [isExpanded, setIsExpanded] = useState(expanded || false);
+  isConnecting,
+  userCode,
+  verificationUri,
+  error,
+  statusMessage,
+  codeCopied,
+  onConnect,
+  onCodeCopied,
+}: GitHubDeviceConnectionProps) {
+  return (
+    <div className="mt-1 w-full" data-testid="github-unconnected-repo">
+      {linkedRepo && (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="font-medium">Reconnect your GitHub account</p>
+          <p className="mt-1">
+            This app is linked to {linkedRepo.org}/{linkedRepo.repo}, but GitHub
+            credentials are missing from settings.
+          </p>
+        </div>
+      )}
+      <Button
+        onClick={onConnect}
+        className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
+        size="lg"
+        variant="outline"
+        disabled={isConnecting}
+      >
+        Connect to GitHub
+        <Github className="h-5 w-5" />
+        {isConnecting && (
+          <svg
+            className="animate-spin h-5 w-5 ml-2"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+        )}
+      </Button>
 
-  // --- GitHub Device Flow State ---
-  const [githubUserCode, setGithubUserCode] = useState<string | null>(null);
-  const [githubVerificationUri, setGithubVerificationUri] = useState<
-    string | null
-  >(null);
-  const [githubError, setGithubError] = useState<string | null>(null);
-  const [isConnectingToGithub, setIsConnectingToGithub] = useState(false);
-  const [githubStatusMessage, setGithubStatusMessage] = useState<string | null>(
-    null,
-  );
-  const [codeCopied, setCodeCopied] = useState(false);
-
-  // --- Repo Setup State ---
-  const [repoSetupMode, setRepoSetupMode] = useState<"create" | "existing">(
-    "create",
-  );
-  const [availableRepos, setAvailableRepos] = useState<GitHubRepo[]>([]);
-  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
-  const [selectedRepo, setSelectedRepo] = useState<string>("");
-  const [availableBranches, setAvailableBranches] = useState<GitHubBranch[]>(
-    [],
-  );
-  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState<string>("main");
-  const [branchInputMode, setBranchInputMode] = useState<"select" | "custom">(
-    "select",
-  );
-  const [customBranchName, setCustomBranchName] = useState<string>("");
-
-  // Create new repo state. Seed with a kebab-case slug of the app name (the
-  // same transform used for the app folder path) so the repo name is a valid
-  // Vercel project name by default.
-  const [repoName, setRepoName] = useState(() => slugifyAppPath(folderName));
-  const [repoAvailable, setRepoAvailable] = useState<boolean | null>(null);
-  const [repoCheckError, setRepoCheckError] = useState<string | null>(null);
-  const [isCheckingRepo, setIsCheckingRepo] = useState(false);
-  const [isCreatingRepo, setIsCreatingRepo] = useState(false);
-  const [createRepoError, setCreateRepoError] = useState<string | null>(null);
-  const [createRepoSuccess, setCreateRepoSuccess] = useState<boolean>(false);
-
-  // Assume org is the authenticated user for now (could add org input later)
-  const githubOrg = ""; // Use empty string for now (GitHub API will default to the authenticated user)
-
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handleConnectToGithub = async () => {
-    setIsConnectingToGithub(true);
-    setGithubError(null);
-    setGithubUserCode(null);
-    setGithubVerificationUri(null);
-    setGithubStatusMessage("Requesting device code from GitHub...");
-
-    // Send IPC message to main process to start the flow
-    ipc.github.startFlow({ appId });
-  };
-
-  useEffect(() => {
-    const cleanupFunctions: (() => void)[] = [];
-
-    // Listener for updates (user code, verification uri, status messages)
-    const removeUpdateListener = ipc.events.github.onFlowUpdate((data) => {
-      console.log("Received github:flow-update", data);
-      if (data.userCode) {
-        setGithubUserCode(data.userCode);
-      }
-      if (data.verificationUri) {
-        setGithubVerificationUri(data.verificationUri);
-      }
-      if (data.message) {
-        setGithubStatusMessage(data.message);
-      }
-
-      setGithubError(null); // Clear previous errors on new update
-      if (!data.userCode && !data.verificationUri && data.message) {
-        // Likely just a status message, keep connecting state
-        setIsConnectingToGithub(true);
-      }
-      if (data.userCode && data.verificationUri) {
-        setIsConnectingToGithub(true); // Still connecting until success/error
-      }
-    });
-    cleanupFunctions.push(removeUpdateListener);
-
-    // Listener for success
-    const removeSuccessListener = ipc.events.github.onFlowSuccess((data) => {
-      console.log("Received github:flow-success", data);
-      setGithubStatusMessage("Successfully connected to GitHub!");
-      setGithubUserCode(null); // Clear user-facing info
-      setGithubVerificationUri(null);
-      setGithubError(null);
-      setIsConnectingToGithub(false);
-      refreshSettings();
-      setIsExpanded(true);
-    });
-    cleanupFunctions.push(removeSuccessListener);
-
-    // Listener for errors
-    const removeErrorListener = ipc.events.github.onFlowError((data) => {
-      console.log("Received github:flow-error", data);
-      setGithubError(data.error || "An unknown error occurred.");
-      setGithubStatusMessage(null);
-      setGithubUserCode(null);
-      setGithubVerificationUri(null);
-      setIsConnectingToGithub(false);
-    });
-    cleanupFunctions.push(removeErrorListener);
-
-    // Cleanup function to remove all listeners when component unmounts or appId changes
-    return () => {
-      cleanupFunctions.forEach((cleanup) => cleanup());
-      // Reset state when appId changes or component unmounts
-      setGithubUserCode(null);
-      setGithubVerificationUri(null);
-      setGithubError(null);
-      setIsConnectingToGithub(false);
-      setGithubStatusMessage(null);
-    };
-  }, []); // Re-run effect if appId changes
-
-  // Load available repos when GitHub is connected
-  useEffect(() => {
-    if (settings?.githubAccessToken && repoSetupMode === "existing") {
-      loadAvailableRepos();
-    }
-  }, [settings?.githubAccessToken, repoSetupMode]);
-
-  const loadAvailableRepos = async () => {
-    setIsLoadingRepos(true);
-    try {
-      const repos = await ipc.github.listRepos();
-      setAvailableRepos(repos);
-    } catch (error) {
-      console.error("Failed to load GitHub repos:", error);
-    } finally {
-      setIsLoadingRepos(false);
-    }
-  };
-
-  // Load branches when a repo is selected
-  useEffect(() => {
-    if (selectedRepo && repoSetupMode === "existing") {
-      loadRepoBranches();
-    }
-  }, [selectedRepo, repoSetupMode]);
-
-  const loadRepoBranches = async () => {
-    if (!selectedRepo) return;
-
-    setIsLoadingBranches(true);
-    setBranchInputMode("select"); // Reset to select mode when loading new repo
-    setCustomBranchName(""); // Clear custom branch name
-    try {
-      const [owner, repo] = selectedRepo.split("/");
-      const branches = await ipc.github.getRepoBranches({ owner, repo });
-      setAvailableBranches(branches);
-      // Default to main if available, otherwise first branch
-      const defaultBranch =
-        branches.find((b) => b.name === "main" || b.name === "master") ||
-        branches[0];
-      if (defaultBranch) {
-        setSelectedBranch(defaultBranch.name);
-      }
-    } catch (error) {
-      console.error("Failed to load repo branches:", error);
-    } finally {
-      setIsLoadingBranches(false);
-    }
-  };
-
-  const checkRepoAvailability = useCallback(
-    async (name: string) => {
-      setRepoCheckError(null);
-      setRepoAvailable(null);
-      if (!name) return;
-      setIsCheckingRepo(true);
-      try {
-        const result = await ipc.github.isRepoAvailable({
-          org: githubOrg,
-          repo: name,
-        });
-        setRepoAvailable(result.available);
-        if (!result.available) {
-          setRepoCheckError(
-            result.error || "Repository name is not available.",
-          );
-        }
-      } catch (err: any) {
-        setRepoCheckError(err.message || "Failed to check repo availability.");
-      } finally {
-        setIsCheckingRepo(false);
-      }
-    },
-    [githubOrg],
-  );
-
-  const debouncedCheckRepoAvailability = useCallback(
-    (name: string) => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      debounceTimeoutRef.current = setTimeout(() => {
-        checkRepoAvailability(name);
-      }, 500);
-    },
-    [checkRepoAvailability],
-  );
-
-  const handleSetupRepo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!appId) return;
-
-    setCreateRepoError(null);
-    setIsCreatingRepo(true);
-    setCreateRepoSuccess(false);
-
-    try {
-      if (repoSetupMode === "create") {
-        await ipc.github.createRepo({
-          org: githubOrg,
-          repo: repoName,
-          appId,
-          branch: selectedBranch,
-        });
-      } else {
-        const [owner, repo] = selectedRepo.split("/");
-        const branchToUse =
-          branchInputMode === "custom" ? customBranchName : selectedBranch;
-        await ipc.github.connectExistingRepo({
-          owner,
-          repo,
-          branch: branchToUse,
-          appId,
-        });
-      }
-
-      setCreateRepoSuccess(true);
-      setRepoCheckError(null);
-      handleRepoSetupComplete();
-    } catch (err: any) {
-      setCreateRepoError(
-        err.message ||
-          `Failed to ${repoSetupMode === "create" ? "create" : "connect to"} repository.`,
-      );
-    } finally {
-      setIsCreatingRepo(false);
-    }
-  };
-
-  if (!settings?.githubAccessToken) {
-    return (
-      <div className="mt-1 w-full" data-testid="github-unconnected-repo">
-        {linkedRepo && (
-          <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-            <p className="font-medium">Reconnect your GitHub account</p>
-            <p className="mt-1">
-              This app is linked to {linkedRepo.org}/{linkedRepo.repo}, but
-              GitHub credentials are missing from settings.
+      {(userCode || statusMessage || error) && (
+        <div className="mt-6 p-4 border rounded-md bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600">
+          <h4 className="font-medium mb-2">GitHub Connection</h4>
+          {error && (
+            <p className="text-red-600 dark:text-red-400 mb-2">
+              Error: {error}
             </p>
-          </div>
-        )}
-        <Button
-          onClick={handleConnectToGithub}
-          className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
-          size="lg"
-          variant="outline"
-          disabled={isConnectingToGithub} // Also disable if appId is null
-        >
-          Connect to GitHub
-          <Github className="h-5 w-5" />
-          {isConnectingToGithub && (
-            <svg
-              className="animate-spin h-5 w-5 ml-2"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              ></circle>
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
           )}
-        </Button>
+          {userCode && verificationUri && (
+            <div className="mb-2">
+              <p>
+                1. Go to:
+                <a
+                  href={verificationUri}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    ipc.system.openExternalUrl(verificationUri);
+                  }}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-1 text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  {verificationUri}
+                </a>
+              </p>
+              <p>
+                2. Enter code:
+                <strong className="ml-1 font-mono text-lg tracking-wider bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded">
+                  {userCode}
+                </strong>
+                <button
+                  className="ml-2 p-1 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 focus:outline-none"
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(userCode)
+                      .then(onCodeCopied)
+                      .catch((err) =>
+                        console.error("Failed to copy code:", err),
+                      );
+                  }}
+                  title="Copy to clipboard"
+                >
+                  {codeCopied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Clipboard className="h-4 w-4" />
+                  )}
+                </button>
+              </p>
+            </div>
+          )}
+          {statusMessage && (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {statusMessage}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-        {/* GitHub Connection Status/Instructions */}
-        {(githubUserCode || githubStatusMessage || githubError) && (
-          <div className="mt-6 p-4 border rounded-md bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600">
-            <h4 className="font-medium mb-2">GitHub Connection</h4>
-            {githubError && (
-              <p className="text-red-600 dark:text-red-400 mb-2">
-                Error: {githubError}
-              </p>
-            )}
-            {githubUserCode && githubVerificationUri && (
-              <div className="mb-2">
-                <p>
-                  1. Go to:
-                  <a
-                    href={githubVerificationUri} // Make it a direct link
-                    onClick={(e) => {
-                      e.preventDefault();
-                      ipc.system.openExternalUrl(githubVerificationUri);
-                    }}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    {githubVerificationUri}
-                  </a>
-                </p>
-                <p>
-                  2. Enter code:
-                  <strong className="ml-1 font-mono text-lg tracking-wider bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded">
-                    {githubUserCode}
-                  </strong>
-                  <button
-                    className="ml-2 p-1 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 focus:outline-none"
-                    onClick={() => {
-                      if (githubUserCode) {
-                        navigator.clipboard
-                          .writeText(githubUserCode)
-                          .then(() => {
-                            setCodeCopied(true);
-                            setTimeout(() => setCodeCopied(false), 2000);
-                          })
-                          .catch((err) =>
-                            console.error("Failed to copy code:", err),
-                          );
-                      }
-                    }}
-                    title="Copy to clipboard"
-                  >
-                    {codeCopied ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Clipboard className="h-4 w-4" />
-                    )}
-                  </button>
-                </p>
-              </div>
-            )}
-            {githubStatusMessage && (
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                {githubStatusMessage}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
+interface GitHubRepoSetupFormProps {
+  isExpanded: boolean;
+  state: GitHubRepoSetupViewState;
+  actions: GitHubRepoSetupViewActions;
+  canSubmit: boolean;
+  onExpand: () => void;
+}
+
+function GitHubRepoSetupForm({
+  isExpanded,
+  state,
+  actions,
+  canSubmit,
+  onExpand,
+}: GitHubRepoSetupFormProps) {
+  const {
+    mode,
+    availableRepos,
+    isLoadingRepos,
+    selectedRepo,
+    availableBranches,
+    isLoadingBranches,
+    selectedBranch,
+    branchInputMode,
+    customBranchName,
+    repoName,
+    repoAvailable,
+    repoCheckError,
+    isCheckingRepo,
+    isCreatingRepo,
+    createRepoError,
+    createRepoSuccess,
+  } = state;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await actions.submit();
+  };
 
   return (
     <div className="w-full" data-testid="github-setup-repo">
-      {/* Collapsible Header */}
       <button
         type="button"
-        onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+        onClick={!isExpanded ? onExpand : undefined}
         className={`w-full p-4 text-left transition-colors rounded-md flex items-center justify-between ${
           !isExpanded
             ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
@@ -1055,127 +877,104 @@ export function UnconnectedGitHubConnector({
         )}
       </button>
 
-      {/* Collapsible Content */}
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out ${
           isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="p-4 pt-0 space-y-4">
-          {/* Mode Selection */}
           <div>
             <div className="flex rounded-md border border-gray-200 dark:border-gray-700">
               <Button
                 type="button"
-                variant={repoSetupMode === "create" ? "default" : "ghost"}
+                variant={mode === "create" ? "default" : "ghost"}
                 className={`flex-1 rounded-none rounded-l-md border-0 ${
-                  repoSetupMode === "create"
+                  mode === "create"
                     ? "bg-primary text-primary-foreground"
                     : "hover:bg-gray-50 dark:hover:bg-gray-800"
                 }`}
-                onClick={() => {
-                  setRepoSetupMode("create");
-                  setCreateRepoError(null);
-                  setCreateRepoSuccess(false);
-                }}
+                onClick={() => actions.setMode("create")}
               >
                 Create new repo
               </Button>
               <Button
                 type="button"
-                variant={repoSetupMode === "existing" ? "default" : "ghost"}
+                variant={mode === "existing" ? "default" : "ghost"}
                 className={`flex-1 rounded-none rounded-r-md border-0 border-l border-gray-200 dark:border-gray-700 ${
-                  repoSetupMode === "existing"
+                  mode === "existing"
                     ? "bg-primary text-primary-foreground"
                     : "hover:bg-gray-50 dark:hover:bg-gray-800"
                 }`}
-                onClick={() => {
-                  setRepoSetupMode("existing");
-                  setCreateRepoError(null);
-                  setCreateRepoSuccess(false);
-                }}
+                onClick={() => actions.setMode("existing")}
               >
                 Connect to existing repo
               </Button>
             </div>
           </div>
 
-          <form className="space-y-4" onSubmit={handleSetupRepo}>
-            {repoSetupMode === "create" ? (
-              <>
-                <div>
-                  <Label className="block text-sm font-medium">
-                    Repository Name
-                  </Label>
-                  <Input
-                    data-testid="github-create-repo-name-input"
-                    className="w-full mt-1"
-                    value={repoName}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      setRepoName(newValue);
-                      setRepoAvailable(null);
-                      setRepoCheckError(null);
-                      debouncedCheckRepoAvailability(newValue);
-                    }}
-                    disabled={isCreatingRepo}
-                  />
-                  {isCheckingRepo && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Checking availability...
-                    </p>
-                  )}
-                  {repoAvailable === true && (
-                    <p className="text-xs text-green-600 mt-1">
-                      Repository name is available!
-                    </p>
-                  )}
-                  {repoAvailable === false && (
-                    <p className="text-xs text-red-600 mt-1">
-                      {repoCheckError}
-                    </p>
-                  )}
-                </div>
-              </>
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            {mode === "create" ? (
+              <div>
+                <Label className="block text-sm font-medium">
+                  Repository Name
+                </Label>
+                <Input
+                  data-testid="github-create-repo-name-input"
+                  className="w-full mt-1"
+                  value={repoName}
+                  onChange={(e) => actions.setRepoName(e.target.value)}
+                  disabled={isCreatingRepo}
+                />
+                {isCheckingRepo && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Checking availability...
+                  </p>
+                )}
+                {repoAvailable === true && (
+                  <p className="text-xs text-green-600 mt-1">
+                    Repository name is available!
+                  </p>
+                )}
+                {repoAvailable === false && (
+                  <p className="text-xs text-red-600 mt-1">{repoCheckError}</p>
+                )}
+              </div>
             ) : (
-              <>
-                <div>
-                  <Label className="block text-sm font-medium">
-                    Select Repository
-                  </Label>
-                  <Select
-                    value={selectedRepo}
-                    onValueChange={(v) => setSelectedRepo(v ?? "")}
-                    disabled={isLoadingRepos}
+              <div>
+                <Label className="block text-sm font-medium">
+                  Select Repository
+                </Label>
+                <Select
+                  value={selectedRepo}
+                  onValueChange={(v) => actions.selectRepo(v ?? "")}
+                  disabled={isLoadingRepos}
+                >
+                  <SelectTrigger
+                    className="w-full mt-1"
+                    data-testid="github-repo-select"
                   >
-                    <SelectTrigger
-                      className="w-full mt-1"
-                      data-testid="github-repo-select"
-                    >
-                      <SelectValue
-                        placeholder={
-                          isLoadingRepos
-                            ? "Loading repositories..."
-                            : "Select a repository"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableRepos.map((repo) => (
-                        <SelectItem key={repo.full_name} value={repo.full_name}>
-                          {repo.full_name} {repo.private && "(private)"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
+                    <SelectValue
+                      placeholder={
+                        isLoadingRepos
+                          ? "Loading repositories..."
+                          : "Select a repository"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRepos.map((repo) => (
+                      <SelectItem key={repo.full_name} value={repo.full_name}>
+                        {repo.full_name} {repo.private && "(private)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
-            {/* Branch Selection */}
             <div>
               <Label className="block text-sm font-medium">Branch</Label>
-              {repoSetupMode === "existing" && selectedRepo ? (
+              {mode === "existing" && selectedRepo ? (
                 <div className="space-y-2">
                   <Select
                     value={
@@ -1183,11 +982,9 @@ export function UnconnectedGitHubConnector({
                     }
                     onValueChange={(value) => {
                       if (value === "custom") {
-                        setBranchInputMode("custom");
-                        setCustomBranchName("");
+                        actions.useCustomBranch();
                       } else if (value) {
-                        setBranchInputMode("select");
-                        setSelectedBranch(value);
+                        actions.selectBranch(value);
                       }
                     }}
                     disabled={isLoadingBranches}
@@ -1222,7 +1019,7 @@ export function UnconnectedGitHubConnector({
                       data-testid="github-custom-branch-input"
                       className="w-full"
                       value={customBranchName}
-                      onChange={(e) => setCustomBranchName(e.target.value)}
+                      onChange={(e) => actions.setCustomBranch(e.target.value)}
                       placeholder="Enter branch name (e.g., feature/new-feature)"
                       disabled={isCreatingRepo}
                     />
@@ -1232,7 +1029,7 @@ export function UnconnectedGitHubConnector({
                 <Input
                   className="w-full mt-1"
                   value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  onChange={(e) => actions.selectBranch(e.target.value)}
                   placeholder="main"
                   disabled={isCreatingRepo}
                   data-testid="github-new-repo-branch-input"
@@ -1240,23 +1037,12 @@ export function UnconnectedGitHubConnector({
               )}
             </div>
 
-            <Button
-              type="submit"
-              disabled={
-                isCreatingRepo ||
-                (repoSetupMode === "create" &&
-                  (repoAvailable === false || !repoName)) ||
-                (repoSetupMode === "existing" &&
-                  (!selectedRepo ||
-                    !selectedBranch ||
-                    (branchInputMode === "custom" && !customBranchName.trim())))
-              }
-            >
+            <Button type="submit" disabled={!canSubmit}>
               {isCreatingRepo
-                ? repoSetupMode === "create"
+                ? mode === "create"
                   ? "Creating..."
                   : "Connecting..."
-                : repoSetupMode === "create"
+                : mode === "create"
                   ? "Create Repo"
                   : "Connect to Repo"}
             </Button>
@@ -1267,7 +1053,7 @@ export function UnconnectedGitHubConnector({
           )}
           {createRepoSuccess && (
             <p className="text-green-600 mt-2">
-              {repoSetupMode === "create"
+              {mode === "create"
                 ? "Repository created and linked!"
                 : "Connected to repository!"}
             </p>
@@ -1275,6 +1061,80 @@ export function UnconnectedGitHubConnector({
         </div>
       </div>
     </div>
+  );
+}
+
+export function UnconnectedGitHubConnector({
+  appId,
+  folderName,
+  settings,
+  refreshSettings,
+  handleRepoSetupComplete,
+  expanded,
+  linkedRepo,
+}: UnconnectedGitHubConnectorProps) {
+  // --- Collapsible State ---
+  const [isExpanded, setIsExpanded] = useState(expanded || false);
+
+  const handleConnected = useCallback(() => {
+    setIsExpanded(true);
+  }, []);
+
+  const {
+    flow: githubFlow,
+    isConnecting: isConnectingToGithub,
+    connect: handleConnectToGithub,
+  } = useGitHubDeviceFlow({
+    appId,
+    refreshSettings,
+    onConnected: handleConnected,
+  });
+  const {
+    userCode: githubUserCode,
+    verificationUri: githubVerificationUri,
+    error: githubError,
+    message: githubStatusMessage,
+  } = githubFlow;
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  const {
+    state: repoSetup,
+    actions: repoSetupActions,
+    canSubmit: canSubmitRepoSetup,
+  } = useGitHubRepoSetup({
+    appId,
+    folderName,
+    hasGitHubCredentials: !!settings?.githubAccessToken,
+    onSetupComplete: handleRepoSetupComplete,
+  });
+
+  if (!settings?.githubAccessToken) {
+    return (
+      <GitHubDeviceConnection
+        linkedRepo={linkedRepo}
+        isConnecting={isConnectingToGithub}
+        userCode={githubUserCode}
+        verificationUri={githubVerificationUri}
+        error={githubError}
+        statusMessage={githubStatusMessage}
+        codeCopied={codeCopied}
+        onConnect={handleConnectToGithub}
+        onCodeCopied={() => {
+          setCodeCopied(true);
+          setTimeout(() => setCodeCopied(false), 2000);
+        }}
+      />
+    );
+  }
+
+  return (
+    <GitHubRepoSetupForm
+      isExpanded={isExpanded}
+      state={repoSetup}
+      actions={repoSetupActions}
+      canSubmit={canSubmitRepoSetup}
+      onExpand={() => setIsExpanded(true)}
+    />
   );
 }
 

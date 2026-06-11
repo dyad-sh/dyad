@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Globe, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { ipc, App } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -16,20 +15,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { slugifyAppPath } from "@/shared/slugify";
+import {
+  useVercelProjectSetup,
+  useVercelTokenSetup,
+} from "./VercelConnector.hooks";
 
 interface VercelConnectorProps {
   appId: number | null;
   folderName: string;
-}
-
-interface VercelProject {
-  id: string;
-  name: string;
-  framework?: string | null;
 }
 
 interface ConnectedVercelConnectorProps {
@@ -46,6 +41,15 @@ interface UnconnectedVercelConnectorProps {
   refreshSettings: () => void;
   refreshApp: () => void;
 }
+
+type VercelTokenViewState = ReturnType<typeof useVercelTokenSetup>["state"];
+type VercelTokenViewActions = ReturnType<typeof useVercelTokenSetup>["actions"];
+type VercelProjectSetupViewState = ReturnType<
+  typeof useVercelProjectSetup
+>["state"];
+type VercelProjectSetupViewActions = ReturnType<
+  typeof useVercelProjectSetup
+>["actions"];
 
 function ConnectedVercelConnector({
   appId,
@@ -218,353 +222,199 @@ function ConnectedVercelConnector({
   );
 }
 
-function UnconnectedVercelConnector({
-  appId,
-  folderName,
-  settings,
-  neonProjectId,
-  refreshSettings,
-  refreshApp,
-}: UnconnectedVercelConnectorProps) {
-  const { t } = useTranslation("home");
-  // --- Manual Token Entry State ---
-  const [accessToken, setAccessToken] = useState("");
-  const [isSavingToken, setIsSavingToken] = useState(false);
-  const [tokenError, setTokenError] = useState<string | null>(null);
-  const [tokenSuccess, setTokenSuccess] = useState(false);
+interface VercelTokenFormProps {
+  state: VercelTokenViewState;
+  actions: VercelTokenViewActions;
+  canSubmit: boolean;
+}
 
-  // --- Project Setup State ---
-  const [projectSetupMode, setProjectSetupMode] = useState<
-    "create" | "existing"
-  >("create");
-  const [availableProjects, setAvailableProjects] = useState<VercelProject[]>(
-    [],
-  );
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<string>("");
+function VercelTokenForm({ state, actions, canSubmit }: VercelTokenFormProps) {
+  const { accessToken, isSavingToken, tokenError, tokenSuccess } = state;
 
-  // Create new project state. Seed with a kebab-case slug of the app name (the
-  // same transform used for the app folder path) since Vercel requires
-  // lowercase project names.
-  const [projectName, setProjectName] = useState(() =>
-    slugifyAppPath(folderName),
-  );
-  const [projectAvailable, setProjectAvailable] = useState<boolean | null>(
-    null,
-  );
-  const [projectCheckError, setProjectCheckError] = useState<string | null>(
-    null,
-  );
-  const [isCheckingProject, setIsCheckingProject] = useState(false);
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
-  const [createProjectError, setCreateProjectError] = useState<string | null>(
-    null,
-  );
-  const [createProjectSuccess, setCreateProjectSuccess] =
-    useState<boolean>(false);
-
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Load available projects when Vercel is connected
-  useEffect(() => {
-    if (settings?.vercelAccessToken && projectSetupMode === "existing") {
-      loadAvailableProjects();
-    }
-  }, [settings?.vercelAccessToken, projectSetupMode]);
-
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // For Neon-connected apps, preview what will be auto-configured on Vercel
-  // (env var keys + trusted domains) so the user approves before deploying.
-  const showSyncPreview =
-    !!neonProjectId && appId !== null && projectSetupMode === "create";
-  const {
-    data: syncPreview,
-    isLoading: isSyncPreviewLoading,
-    error: syncPreviewError,
-  } = useQuery({
-    queryKey: queryKeys.vercel.syncPreview({ appId }),
-    queryFn: () => ipc.vercel.getSyncPreview({ appId: appId! }),
-    enabled: showSyncPreview,
-    staleTime: 60 * 1000,
-  });
-
-  const loadAvailableProjects = async () => {
-    setIsLoadingProjects(true);
-    try {
-      const projects = await ipc.vercel.listProjects();
-      setAvailableProjects(projects);
-    } catch (error) {
-      console.error("Failed to load Vercel projects:", error);
-    } finally {
-      setIsLoadingProjects(false);
-    }
-  };
-
-  const handleSaveAccessToken = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accessToken.trim()) return;
-
-    setIsSavingToken(true);
-    setTokenError(null);
-    setTokenSuccess(false);
-
-    try {
-      await ipc.vercel.saveToken({
-        token: accessToken.trim(),
-      });
-      setTokenSuccess(true);
-      setAccessToken("");
-      refreshSettings();
-    } catch (err: any) {
-      setTokenError(err.message || "Failed to save access token.");
-    } finally {
-      setIsSavingToken(false);
-    }
+    await actions.submit();
   };
 
-  const checkProjectAvailability = useCallback(async (name: string) => {
-    setProjectCheckError(null);
-    setProjectAvailable(null);
-    if (!name) return;
-    setIsCheckingProject(true);
-    try {
-      const result = await ipc.vercel.isProjectAvailable({
-        name,
-      });
-      setProjectAvailable(result.available);
-      if (!result.available) {
-        setProjectCheckError(result.error || "Project name is not available.");
-      }
-    } catch (err: any) {
-      setProjectCheckError(
-        err.message || "Failed to check project availability.",
-      );
-    } finally {
-      setIsCheckingProject(false);
-    }
-  }, []);
+  return (
+    <div className="mt-1 w-full" data-testid="vercel-unconnected-project">
+      <div className="w-ful">
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="font-medium">Connect to Vercel</h3>
+        </div>
 
-  const debouncedCheckProjectAvailability = useCallback(
-    (name: string) => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      debounceTimeoutRef.current = setTimeout(() => {
-        checkProjectAvailability(name);
-      }, 500);
-    },
-    [checkProjectAvailability],
-  );
+        <div className="space-y-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+            <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+              To connect your app to Vercel, you'll need to create an access
+              token:
+            </p>
+            <ol className="list-decimal list-inside text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <li>If you don't have a Vercel account, sign up first</li>
+              <li>Go to Vercel settings to create a token</li>
+              <li>Copy the token and paste it below</li>
+            </ol>
 
-  const handleSetupProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!appId) return;
-
-    setCreateProjectError(null);
-    setIsCreatingProject(true);
-    setCreateProjectSuccess(false);
-
-    try {
-      if (projectSetupMode === "create") {
-        const result = await ipc.vercel.createProject({
-          name: projectName,
-          appId,
-        });
-        if (result?.syncWarning) {
-          toast.warning(result.syncWarning);
-        }
-      } else {
-        await ipc.vercel.connectExistingProject({
-          projectId: selectedProject,
-          appId,
-        });
-      }
-      setCreateProjectSuccess(true);
-      setProjectCheckError(null);
-      refreshApp();
-    } catch (err: any) {
-      setCreateProjectError(
-        err.message ||
-          `Failed to ${projectSetupMode === "create" ? "create" : "connect to"} project.`,
-      );
-    } finally {
-      setIsCreatingProject(false);
-    }
-  };
-
-  if (!settings?.vercelAccessToken) {
-    return (
-      <div className="mt-1 w-full" data-testid="vercel-unconnected-project">
-        <div className="w-ful">
-          <div className="flex items-center gap-2 mb-4">
-            <h3 className="font-medium">Connect to Vercel</h3>
+            <div className="flex gap-2 mt-3">
+              <Button
+                onClick={() => {
+                  ipc.system.openExternalUrl("https://vercel.com/signup");
+                }}
+                variant="outline"
+                className="flex-1"
+              >
+                Sign Up for Vercel
+              </Button>
+              <Button
+                onClick={() => {
+                  ipc.system.openExternalUrl(
+                    "https://vercel.com/account/settings/tokens",
+                  );
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Open Vercel Settings
+              </Button>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
-              <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
-                To connect your app to Vercel, you'll need to create an access
-                token:
-              </p>
-              <ol className="list-decimal list-inside text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                <li>If you don't have a Vercel account, sign up first</li>
-                <li>Go to Vercel settings to create a token</li>
-                <li>Copy the token and paste it below</li>
-              </ol>
-
-              <div className="flex gap-2 mt-3">
-                <Button
-                  onClick={() => {
-                    ipc.system.openExternalUrl("https://vercel.com/signup");
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  Sign Up for Vercel
-                </Button>
-                <Button
-                  onClick={() => {
-                    ipc.system.openExternalUrl(
-                      "https://vercel.com/account/settings/tokens",
-                    );
-                  }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  Open Vercel Settings
-                </Button>
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <Label className="block text-sm font-medium mb-1">
+                Vercel Access Token
+              </Label>
+              <Input
+                type="password"
+                placeholder="Enter your Vercel access token"
+                value={accessToken}
+                onChange={(e) => actions.setToken(e.target.value)}
+                disabled={isSavingToken}
+                className="w-full"
+              />
             </div>
 
-            <form onSubmit={handleSaveAccessToken} className="space-y-3">
-              <div>
-                <Label className="block text-sm font-medium mb-1">
-                  Vercel Access Token
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="Enter your Vercel access token"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  disabled={isSavingToken}
-                  className="w-full"
-                />
-              </div>
+            <Button type="submit" disabled={!canSubmit} className="w-full">
+              {isSavingToken ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4 mr-2"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Saving Token...
+                </>
+              ) : (
+                "Save Access Token"
+              )}
+            </Button>
+          </form>
 
-              <Button
-                type="submit"
-                disabled={!accessToken.trim() || isSavingToken}
-                className="w-full"
-              >
-                {isSavingToken ? (
-                  <>
-                    <svg
-                      className="animate-spin h-4 w-4 mr-2"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    Saving Token...
-                  </>
-                ) : (
-                  "Save Access Token"
-                )}
-              </Button>
-            </form>
+          {tokenError && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+              <p className="text-sm text-red-800 dark:text-red-200">
+                {tokenError}
+              </p>
+            </div>
+          )}
 
-            {tokenError && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
-                <p className="text-sm text-red-800 dark:text-red-200">
-                  {tokenError}
-                </p>
-              </div>
-            )}
-
-            {tokenSuccess && (
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-3">
-                <p className="text-sm text-green-800 dark:text-green-200">
-                  Successfully connected to Vercel! You can now set up your
-                  project below.
-                </p>
-              </div>
-            )}
-          </div>
+          {tokenSuccess && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-3">
+              <p className="text-sm text-green-800 dark:text-green-200">
+                Successfully connected to Vercel! You can now set up your
+                project below.
+              </p>
+            </div>
+          )}
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+interface VercelProjectSetupFormProps {
+  state: VercelProjectSetupViewState;
+  actions: VercelProjectSetupViewActions;
+  canSubmit: boolean;
+  syncPreview: ReactNode;
+}
+
+function VercelProjectSetupForm({
+  state,
+  actions,
+  canSubmit,
+  syncPreview,
+}: VercelProjectSetupFormProps) {
+  const {
+    mode,
+    availableProjects,
+    isLoadingProjects,
+    selectedProject,
+    projectName,
+    projectAvailable,
+    projectCheckError,
+    isCheckingProject,
+    isCreatingProject,
+    createProjectError,
+    createProjectSuccess,
+  } = state;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await actions.submit();
+  };
 
   return (
     <div className="mt-4 w-full rounded-md" data-testid="vercel-setup-project">
-      {/* Collapsible Header */}
       <div className="font-medium mb-2">Set up your Vercel project</div>
 
-      {/* Collapsible Content */}
-      <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out`}
-      >
+      <div className="overflow-hidden transition-all duration-300 ease-in-out">
         <div className="pt-0 space-y-4">
-          {/* Mode Selection */}
           <div>
             <div className="flex rounded-md border border-gray-200 dark:border-gray-700">
               <Button
                 type="button"
-                variant={projectSetupMode === "create" ? "default" : "ghost"}
+                variant={mode === "create" ? "default" : "ghost"}
                 className={`flex-1 rounded-none rounded-l-md border-0 ${
-                  projectSetupMode === "create"
+                  mode === "create"
                     ? "bg-primary text-primary-foreground"
                     : "hover:bg-gray-50 dark:hover:bg-gray-800"
                 }`}
-                onClick={() => {
-                  setProjectSetupMode("create");
-                  setCreateProjectError(null);
-                  setCreateProjectSuccess(false);
-                }}
+                onClick={() => actions.setMode("create")}
               >
                 Create new project
               </Button>
               <Button
                 type="button"
-                variant={projectSetupMode === "existing" ? "default" : "ghost"}
+                variant={mode === "existing" ? "default" : "ghost"}
                 className={`flex-1 rounded-none rounded-r-md border-0 border-l border-gray-200 dark:border-gray-700 ${
-                  projectSetupMode === "existing"
+                  mode === "existing"
                     ? "bg-primary text-primary-foreground"
                     : "hover:bg-gray-50 dark:hover:bg-gray-800"
                 }`}
-                onClick={() => {
-                  setProjectSetupMode("existing");
-                  setCreateProjectError(null);
-                  setCreateProjectSuccess(false);
-                }}
+                onClick={() => actions.setMode("existing")}
               >
                 Connect to existing project
               </Button>
             </div>
           </div>
 
-          <form className="space-y-4" onSubmit={handleSetupProject}>
-            {projectSetupMode === "create" ? (
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            {mode === "create" ? (
               <>
                 <div>
                   <Label className="block text-sm font-medium">
@@ -574,13 +424,7 @@ function UnconnectedVercelConnector({
                     data-testid="vercel-create-project-name-input"
                     className="w-full mt-1"
                     value={projectName}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      setProjectName(newValue);
-                      setProjectAvailable(null);
-                      setProjectCheckError(null);
-                      debouncedCheckProjectAvailability(newValue);
-                    }}
+                    onChange={(e) => actions.setProjectName(e.target.value)}
                     disabled={isCreatingProject}
                   />
                   {isCheckingProject && (
@@ -599,97 +443,48 @@ function UnconnectedVercelConnector({
                     </p>
                   )}
                 </div>
-
-                {showSyncPreview &&
-                  (isSyncPreviewLoading || syncPreviewError || syncPreview) && (
-                    <div
-                      className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3"
-                      data-testid="vercel-sync-preview"
-                    >
-                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                        {t("integrations.vercel.syncPreviewTitle")}
-                      </p>
-                      {isSyncPreviewLoading ? (
-                        <p className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          {t("integrations.vercel.syncPreviewLoading")}
-                        </p>
-                      ) : syncPreviewError ? (
-                        <p className="text-xs text-red-600 dark:text-red-400">
-                          {t("integrations.vercel.syncPreviewError")}
-                        </p>
-                      ) : syncPreview ? (
-                        <>
-                          <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
-                            {t("integrations.vercel.syncPreviewIntro", {
-                              branchType: syncPreview.branchType,
-                            })}
-                          </p>
-                          <ul className="list-disc list-inside text-xs font-mono text-blue-800 dark:text-blue-200 space-y-0.5">
-                            {syncPreview.envKeys.map((key) => (
-                              <li key={key}>{key}</li>
-                            ))}
-                          </ul>
-                          {syncPreview.authActive && (
-                            <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
-                              {t("integrations.vercel.syncPreviewAuthDomain")}
-                            </p>
-                          )}
-                        </>
-                      ) : null}
-                    </div>
-                  )}
+                {syncPreview}
               </>
             ) : (
-              <>
-                <div>
-                  <Label className="block text-sm font-medium">
-                    Select Project
-                  </Label>
-                  <Select
-                    value={selectedProject}
-                    onValueChange={(v) => setSelectedProject(v ?? "")}
-                    disabled={isLoadingProjects}
+              <div>
+                <Label className="block text-sm font-medium">
+                  Select Project
+                </Label>
+                <Select
+                  value={selectedProject}
+                  onValueChange={(v) => actions.selectProject(v ?? "")}
+                  disabled={isLoadingProjects}
+                >
+                  <SelectTrigger
+                    className="w-full mt-1"
+                    data-testid="vercel-project-select"
                   >
-                    <SelectTrigger
-                      className="w-full mt-1"
-                      data-testid="vercel-project-select"
-                    >
-                      <SelectValue
-                        placeholder={
-                          isLoadingProjects
-                            ? "Loading projects..."
-                            : "Select a project"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableProjects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          {project.name}{" "}
-                          {project.framework && `(${project.framework})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
+                    <SelectValue
+                      placeholder={
+                        isLoadingProjects
+                          ? "Loading projects..."
+                          : "Select a project"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}{" "}
+                        {project.framework && `(${project.framework})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
-            <Button
-              type="submit"
-              disabled={
-                isCreatingProject ||
-                (projectSetupMode === "create" &&
-                  (projectAvailable === false || !projectName)) ||
-                (projectSetupMode === "existing" && !selectedProject)
-              }
-            >
+            <Button type="submit" disabled={!canSubmit}>
               {isCreatingProject
-                ? projectSetupMode === "create"
+                ? mode === "create"
                   ? "Creating..."
                   : "Connecting..."
-                : projectSetupMode === "create"
+                : mode === "create"
                   ? "Create Project"
                   : "Connect to Project"}
             </Button>
@@ -700,7 +495,7 @@ function UnconnectedVercelConnector({
           )}
           {createProjectSuccess && (
             <p className="text-green-600 mt-2">
-              {projectSetupMode === "create"
+              {mode === "create"
                 ? "Project created and linked!"
                 : "Connected to project!"}
             </p>
@@ -708,6 +503,108 @@ function UnconnectedVercelConnector({
         </div>
       </div>
     </div>
+  );
+}
+
+function UnconnectedVercelConnector({
+  appId,
+  folderName,
+  settings,
+  neonProjectId,
+  refreshSettings,
+  refreshApp,
+}: UnconnectedVercelConnectorProps) {
+  const { t } = useTranslation("home");
+  const {
+    state: tokenState,
+    actions: tokenActions,
+    canSubmit: canSubmitToken,
+  } = useVercelTokenSetup({ refreshSettings });
+
+  const {
+    state: projectSetup,
+    actions: projectActions,
+    canSubmit: canSubmitProjectSetup,
+  } = useVercelProjectSetup({
+    appId,
+    folderName,
+    hasVercelCredentials: !!settings?.vercelAccessToken,
+    refreshApp,
+  });
+  const projectSetupMode = projectSetup.mode;
+
+  // For Neon-connected apps, preview what will be auto-configured on Vercel
+  // (env var keys + trusted domains) so the user approves before deploying.
+  const showSyncPreview =
+    !!neonProjectId && appId !== null && projectSetupMode === "create";
+  const {
+    data: syncPreview,
+    isLoading: isSyncPreviewLoading,
+    error: syncPreviewError,
+  } = useQuery({
+    queryKey: queryKeys.vercel.syncPreview({ appId }),
+    queryFn: () => ipc.vercel.getSyncPreview({ appId: appId! }),
+    enabled: showSyncPreview,
+    staleTime: 60 * 1000,
+  });
+
+  if (!settings?.vercelAccessToken) {
+    return (
+      <VercelTokenForm
+        state={tokenState}
+        actions={tokenActions}
+        canSubmit={canSubmitToken}
+      />
+    );
+  }
+
+  return (
+    <VercelProjectSetupForm
+      state={projectSetup}
+      actions={projectActions}
+      canSubmit={canSubmitProjectSetup}
+      syncPreview={
+        showSyncPreview &&
+        (isSyncPreviewLoading || syncPreviewError || syncPreview) ? (
+          <div
+            className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3"
+            data-testid="vercel-sync-preview"
+          >
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+              {t("integrations.vercel.syncPreviewTitle")}
+            </p>
+            {isSyncPreviewLoading ? (
+              <p className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {t("integrations.vercel.syncPreviewLoading")}
+              </p>
+            ) : syncPreviewError ? (
+              <p className="text-xs text-red-600 dark:text-red-400">
+                {t("integrations.vercel.syncPreviewError")}
+              </p>
+            ) : syncPreview ? (
+              <>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                  {t("integrations.vercel.syncPreviewIntro", {
+                    branchType: syncPreview.branchType,
+                  })}
+                </p>
+                <ul className="list-disc list-inside text-xs font-mono text-blue-800 dark:text-blue-200 space-y-0.5">
+                  {syncPreview.envKeys.map((key) => (
+                    <li key={key}>{key}</li>
+                  ))}
+                </ul>
+                {syncPreview.authActive && (
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                    {t("integrations.vercel.syncPreviewAuthDomain")}
+                  </p>
+                )}
+              </>
+            ) : null}
+          </div>
+        ) : null
+      }
+    />
   );
 }
 

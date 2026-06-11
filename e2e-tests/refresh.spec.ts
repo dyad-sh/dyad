@@ -165,6 +165,44 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
+  "preview address bar accepts typed relative routes",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.sendPrompt("tc=manual-preview-route");
+
+    await po.previewPanel.expectPreviewIframeIsVisible();
+
+    const iframe = po.previewPanel.getPreviewIframeElement();
+    await expect(
+      iframe.contentFrame().getByRole("heading", { name: "Home Page" }),
+    ).toBeVisible({ timeout: Timeout.LONG });
+
+    await po.previewPanel.fillPreviewAddressBar("manual-only");
+
+    await expect(
+      iframe.contentFrame().getByRole("heading", { name: "Manual Only Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(po.previewPanel.getPreviewAddressBarInput()).toHaveValue(
+      "/manual-only",
+    );
+
+    await po.previewPanel.clickPreviewNavigateBack();
+    await expect(
+      iframe.contentFrame().getByRole("heading", { name: "Home Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(po.previewPanel.getPreviewAddressBarInput()).toHaveValue("/");
+
+    await po.previewPanel.clickPreviewNavigateForward();
+    await expect(
+      iframe.contentFrame().getByRole("heading", { name: "Manual Only Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(po.previewPanel.getPreviewAddressBarInput()).toHaveValue(
+      "/manual-only",
+    );
+  },
+);
+
+testSkipIfWindows(
   "spa navigation inside iframe does not change iframe src attribute",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });

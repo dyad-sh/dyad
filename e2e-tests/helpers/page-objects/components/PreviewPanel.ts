@@ -171,6 +171,16 @@ export class PreviewPanel {
     await this.page.getByTestId("preview-navigate-forward-button").click();
   }
 
+  getPreviewAddressBarInput() {
+    return this.page.getByTestId("preview-address-bar-input");
+  }
+
+  async fillPreviewAddressBar(path: string) {
+    const input = this.getPreviewAddressBarInput();
+    await input.fill(path);
+    await input.press("Enter");
+  }
+
   async clickPreviewOpenBrowser() {
     await this.page.getByTestId("preview-open-browser-button").click();
   }

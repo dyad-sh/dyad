@@ -56,9 +56,7 @@ testSkipIfWindows(
     ).toBeVisible({ timeout: Timeout.MEDIUM });
 
     // Verify address bar shows root path
-    await expect(po.page.getByTestId("preview-address-bar-path")).toHaveText(
-      "/",
-    );
+    await expect(po.previewPanel.getPreviewAddressBarInput()).toHaveValue("/");
 
     // Get the app path to modify the Index.tsx file
     const appPath = await po.appManagement.getCurrentAppPath();

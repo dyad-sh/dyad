@@ -23,6 +23,7 @@ import {
   writeCrashSentinel,
   clearCrashSentinel,
   crashSentinelExists,
+  readCrashSentinel,
   recordRendererCrash,
   readRendererCrashRecord,
   clearRendererCrashRecord,
@@ -341,6 +342,10 @@ export async function onReady() {
       logger.warn("Last known performance:", settings.lastKnownPerformance);
       pendingForceCloseData = settings.lastKnownPerformance;
     }
+
+    // The chat that was streaming when the crash happened, if any, so the
+    // dialog can offer a one-click upload of it.
+    pendingActiveChatId = readCrashSentinel()?.activeChatId ?? null;
   }
 
   // TODO: Remove legacyIsRunningCrash migration path after a few releases
@@ -502,6 +507,7 @@ declare global {
 
 let mainWindow: BrowserWindow | null = null;
 let pendingForceCloseData: any = null;
+let pendingActiveChatId: number | null = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
 
@@ -580,6 +586,9 @@ const createWindow = () => {
           ...(pendingForceCloseData && {
             performanceData: pendingForceCloseData,
           }),
+          ...(pendingActiveChatId != null && {
+            activeChatId: pendingActiveChatId,
+          }),
         });
       }
 
@@ -615,6 +624,7 @@ const createWindow = () => {
       });
 
       pendingForceCloseData = null;
+      pendingActiveChatId = null;
       pendingCrashDetected = false;
     }
 

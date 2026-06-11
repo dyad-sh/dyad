@@ -133,7 +133,7 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
-import { readSettings } from "@/main/settings";
+import { readSettings, setSentinelActiveChat } from "@/main/settings";
 import {
   buildLocalAgentAttachmentInfo,
   getInlineImageMimeType,
@@ -279,6 +279,15 @@ export function registerChatStreamHandlers() {
           DyadErrorKind.NotFound,
         );
       }
+
+      // Record the streaming chat in the crash sentinel so a later force-close
+      // can offer to upload it. We intentionally don't clear this when the
+      // stream ends: the chat of the most recent stream stays the most likely
+      // crash culprit even afterwards (its output stays mounted, and the
+      // apply/build/preview steps run after the stream), so it remains the best
+      // guess until the next stream replaces it. The latest stream wins, and the
+      // value is cleared on clean exit.
+      setSentinelActiveChat(req.chatId);
 
       // Handle redo option: remove the most recent messages if needed
       if (req.redo) {

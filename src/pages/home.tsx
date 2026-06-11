@@ -20,7 +20,6 @@ import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
 
@@ -57,20 +56,9 @@ export default function HomePage() {
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
-  const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
-  const [performanceData, setPerformanceData] = useState<any>(undefined);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
   const queryClient = useQueryClient();
-
-  // Listen for force-close events
-  useEffect(() => {
-    const unsubscribe = ipc.events.system.onForceCloseDetected((data) => {
-      setPerformanceData(data.performanceData);
-      setForceCloseDialogOpen(true);
-    });
-    return () => unsubscribe();
-  }, []);
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
@@ -236,11 +224,6 @@ export default function HomePage() {
             <SetupDyadProButton />
           )}
         </div>
-        <ForceCloseDialog
-          isOpen={forceCloseDialogOpen}
-          onClose={() => setForceCloseDialogOpen(false)}
-          performanceData={performanceData}
-        />
         <SetupBanner />
 
         <div className="w-full">

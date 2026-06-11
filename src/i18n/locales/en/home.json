@@ -153,6 +153,7 @@
     "uploadChatSession": "Upload Chat Session",
     "uploadChatDescription": "Share chat logs and code for troubleshooting. Data is used only to resolve your issue and auto-deleted after a limited time.",
     "preparingUpload": "Preparing Upload...",
+    "failedToLoadChatSession": "Failed to load chat session. Please try again or report manually.",
     "helpBotTitle": "Dyad Help Bot",
     "askQuestion": "Ask a question about using Dyad.",
     "conversationLogged": "This conversation may be logged and used to improve the product. Please do not put any sensitive information in here.",

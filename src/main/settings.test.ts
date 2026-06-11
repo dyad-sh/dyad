@@ -12,6 +12,9 @@ import {
   encrypt,
   decrypt,
   notifyRendererErrorToastListenerReady,
+  writeCrashSentinel,
+  setSentinelActiveChat,
+  readCrashSentinel,
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
@@ -908,3 +911,63 @@ function scrubSettings(result: UserSettings) {
     telemetryUserId: "[scrubbed]",
   };
 }
+
+describe("crash sentinel", () => {
+  const mockUserDataPath = "/mock/user/data";
+  const sentinelPath = `${mockUserDataPath}/session.lock`;
+  let store: Record<string, string>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUserDataPath.mockReturnValue(mockUserDataPath);
+    mockPath.join.mockImplementation((...args: string[]) => args.join("/"));
+    store = {};
+    mockFs.writeFileSync.mockImplementation((p, data) => {
+      store[p as string] = data as string;
+    });
+    mockFs.readFileSync.mockImplementation((p) => {
+      const value = store[p as string];
+      if (value === undefined) {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      return value;
+    });
+  });
+
+  it("writeCrashSentinel writes JSON with a timestamp and no active chat", () => {
+    writeCrashSentinel();
+    const data = readCrashSentinel();
+    expect(typeof data?.ts).toBe("number");
+    expect(data?.activeChatId).toBeUndefined();
+  });
+
+  it("setSentinelActiveChat records the chat id, preserving the timestamp", () => {
+    writeCrashSentinel();
+    const ts = readCrashSentinel()?.ts;
+    setSentinelActiveChat(42);
+    const data = readCrashSentinel();
+    expect(data?.activeChatId).toBe(42);
+    expect(data?.ts).toBe(ts);
+  });
+
+  it("readCrashSentinel returns null for the legacy bare-timestamp format", () => {
+    store[sentinelPath] = "1700000000000";
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel returns null when the sentinel is missing", () => {
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel returns null when ts is not a number", () => {
+    store[sentinelPath] = JSON.stringify({ ts: "nope", activeChatId: 1 });
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel ignores a non-numeric activeChatId", () => {
+    store[sentinelPath] = JSON.stringify({ ts: 123, activeChatId: "nope" });
+    expect(readCrashSentinel()).toEqual({ ts: 123, activeChatId: undefined });
+  });
+});

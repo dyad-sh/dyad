@@ -153,6 +153,7 @@
     "uploadChatSession": "Subir Sesión de Chat",
     "uploadChatDescription": "Comparte registros de chat y código para solucionar problemas. Los datos se utilizan solo para resolver tu problema y se eliminan automáticamente después de un tiempo limitado.",
     "preparingUpload": "Preparando Subida...",
+    "failedToLoadChatSession": "No se pudo cargar la sesión de chat. Vuelve a intentarlo o repórtalo manualmente.",
     "helpBotTitle": "Bot de Ayuda de Dyad",
     "askQuestion": "Haz una pregunta sobre el uso de Dyad.",
     "conversationLogged": "Esta conversación puede ser registrada y utilizada para mejorar el producto. Por favor, no introduzcas información confidencial aquí.",

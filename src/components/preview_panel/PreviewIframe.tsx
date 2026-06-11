@@ -1606,7 +1606,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
 
           {/* Address Bar - white pill with device mode, refresh + external inside */}
-          <div className="relative w-1/2 min-w-20 flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
+          {/* min-w-fit: the icon buttons inside are flex-shrink-0, so letting the
+              pill shrink below its content makes them overflow and intercept
+              clicks meant for the toolbar buttons to the right (e.g. Restart). */}
+          <div className="relative w-1/2 min-w-fit flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
             <Popover open={isDevicePopoverOpen} modal={false}>
               <Tooltip>
                 <TooltipTrigger

@@ -1,4 +1,4 @@
-import { formatMessagesForSummary } from "@/ipc/handlers/chat_stream_handlers";
+import { formatMessagesForSummary } from "@/ipc/utils/chat_response_utils";
 import { describe, it, expect } from "vitest";
 
 describe("formatMessagesForSummary", () => {

@@ -80,6 +80,29 @@ writeSettings({
 - Avoid unguarded top-level `app.on(...)` or similar Electron API calls in modules that are imported broadly by tests. Many unit tests mock only the Electron APIs they touch, so prefer guarded calls like `app?.on?.(...)` or move event registration behind an explicit initialization function.
 - When splitting large handlers behind service boundaries, leave the handler responsible for IPC registration and request orchestration while moving runtime/policy logic into `src/ipc/services/*`. Preserve any intentional module side effects in the extracted service, such as `fixPath()` for child process PATH setup.
 
+## Unit testing handlers and services
+
+Prefer the shared harness in `src/testing/handler_test_harness.ts` over hand-built `vi.mock` plumbing:
+
+```ts
+let harness: HandlerTestHarness;
+beforeEach(() => {
+  harness = setupHandlerTestHarness(); // real in-memory SQLite db with migrations
+  registerMyHandlers();
+});
+afterEach(() => harness.dispose());
+
+it("creates a thing", async () => {
+  const result = await harness.invokeHandler("things:create", { name: "x" });
+  // assert against harness.db rows, harness.sentMessages, harness.gitService.calls
+});
+```
+
+- The harness installs the in-memory db behind the global `db` proxy (via `setDatabaseForTesting`), so handlers with direct `import { db }` work without mocks. Seed rows with normal drizzle inserts.
+- `harness.invokeHandler(channel, input)` calls handlers registered through `createTypedHandler` — no `vi.mock("./base")` introspection needed.
+- Handlers/services with explicit dependencies (e.g. `PromptExpander`, `ChatStreamExecutor`) should accept them via constructor/params so tests can pass fakes directly — `ChatStreamExecutor` takes a `streamTextImpl` for a fake LLM stream.
+- New services extracted from handlers (`src/ipc/services/*`) should ship with unit tests in the same directory.
+
 ## React Query key factory
 
 All React Query keys must be defined in `src/lib/queryKeys.ts` using the centralized factory pattern. This provides:

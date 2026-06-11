@@ -11,7 +11,7 @@ import { processFullResponseActions } from "@/ipc/processors/response_processor"
 import {
   removeDyadTags,
   hasUnclosedDyadWrite,
-} from "@/ipc/handlers/chat_stream_handlers";
+} from "@/ipc/utils/chat_response_utils";
 import fs from "node:fs";
 import { db } from "@/db";
 import { cleanFullResponse } from "@/ipc/utils/cleanFullResponse";

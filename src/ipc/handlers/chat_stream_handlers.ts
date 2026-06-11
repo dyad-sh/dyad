@@ -1,93 +1,36 @@
 import { v4 as uuidv4 } from "uuid";
 import { app, ipcMain, IpcMainInvokeEvent } from "electron";
 import { createTypedHandler } from "./base";
-import { computeStreamingPatch } from "../utils/stream_text_utils";
 import { chatContracts } from "../types/chat";
-import {
-  ModelMessage,
-  TextPart,
-  ImagePart,
-  streamText,
-  ToolSet,
-  TextStreamPart,
-  stepCountIs,
-  hasToolCall,
-  type ToolExecutionOptions,
-} from "ai";
+import { ModelMessage, ToolSet, type ToolExecutionOptions } from "ai";
 
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { chats, messages, mcpServers } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import type { SmartContextMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
-import { detectFrameworkType } from "../utils/framework_utils";
-import { getThemePromptById } from "../utils/theme_utils";
-import {
-  getSupabaseAvailableSystemPrompt,
-  SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
-} from "../../prompts/supabase_prompt";
-import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
-import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  CodebaseFile,
-  extractCodebase,
-  readFileWithCache,
-} from "../../utils/codebase";
-import {
-  dryRunSearchReplace,
-  processFullResponseActions,
-} from "../processors/response_processor";
+import { extractCodebase } from "../../utils/codebase";
+import { processFullResponseActions } from "../processors/response_processor";
 import {
   streamTestResponse,
   getTestResponse,
   noteAck,
 } from "./testing_chat_handlers";
-import { getModelClient, ModelClient } from "../utils/get_model_client";
+import { getModelClient } from "../utils/get_model_client";
 import log from "electron-log";
-import { sendTelemetryEvent } from "../utils/telemetry";
-import {
-  getSupabaseContext,
-  getSupabaseClientCode,
-} from "../../supabase_admin/supabase_context";
-import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
-import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
-import fs from "node:fs";
-import * as path from "path";
-import * as crypto from "crypto";
-import { readFile, writeFile } from "fs/promises";
-import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
-import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
-import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
-import { cleanFullResponse } from "../utils/cleanFullResponse";
-import { generateProblemReport } from "../processors/tsc";
-import { createProblemFixPrompt } from "@/shared/problem_prompt";
-import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
-import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
-import {
-  getDyadAddDependencyTags,
-  getDyadWriteTags,
-  getDyadDeleteTags,
-  getDyadRenameTags,
-} from "../utils/dyad_tag_parser";
-import { fileExists } from "../utils/file_utils";
-import {
-  appendCancelledResponseNotice,
-  filterCancelledMessagePairs,
-} from "@/shared/chatCancellation";
+import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
   extractMentionedAppsCodebases,
   extractMentionedAppsReferences,
@@ -95,56 +38,40 @@ import {
   type MentionedAppReference,
 } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
-import {
-  parseMediaMentions,
-  stripResolvedMediaMentions,
-} from "@/shared/parse_media_mentions";
-import { prompts as promptsTable } from "../../db/schema";
-import { inArray } from "drizzle-orm";
-import { replacePromptReference } from "../utils/replacePromptReference";
-import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference";
-import { resolveMediaMentions } from "../utils/resolve_media_mentions";
-import { parsePlanFile, validatePlanId } from "./planUtils";
-import { ensureDyadGitignored } from "./gitignoreUtils";
-import {
-  appendAttachmentManifestEntriesWithLogicalNames,
-  createUniqueAttachmentLogicalName,
-  DYAD_MEDIA_DIR_NAME,
-  type AttachmentManifestEntryInput,
-} from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
-import {
-  isBasicAgentMode,
-  isLocalAgentBackedMode,
-  isSupabaseConnected,
-  isTurboEditsV2Enabled,
-} from "@/lib/schemas";
+import { isBasicAgentMode, isLocalAgentBackedMode } from "@/lib/schemas";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
   unmarkMessageAsUsingFreeAgentQuota,
 } from "./free_agent_quota_handlers";
-import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
-import {
-  processChatMessagesWithVersionedFiles as getVersionedFiles,
-  VersionedFiles,
-} from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings, setSentinelActiveChat } from "@/main/settings";
 import {
   buildLocalAgentAttachmentInfo,
-  getInlineImageMimeType,
   hasScriptReadableAttachment,
-  isTextFile,
   resolveAttachmentDeliveryConfig,
-  type PendingStoredChatAttachment,
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
-
-type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
+import {
+  chatAttachmentService,
+  createAttachmentCollector,
+} from "../services/chat_attachment_service";
+import { PromptExpander } from "../services/prompt_expander";
+import {
+  buildMessageHistory,
+  toHistoryChatMessages,
+} from "../services/message_history_builder";
+import { buildChatSystemPrompt } from "../services/chat_system_prompt_builder";
+import { ChatStreamExecutor } from "../services/chat_stream_executor";
+import {
+  createCodebasePrompt,
+  createOtherAppsCodebasePrompt,
+  formatMessagesForSummary,
+} from "../utils/chat_response_utils";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -153,95 +80,6 @@ const activeStreams = new Map<number, AbortController>();
 
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
-
-// Use escapeXmlAttr from shared/xmlEscape for XML escaping
-
-// Safely parse an MCP tool key that combines server and tool names.
-// We split on the LAST occurrence of "__" to avoid ambiguity if either
-// side contains "__" as part of its sanitized name.
-function parseMcpToolKey(toolKey: string): {
-  serverName: string;
-  toolName: string;
-} {
-  const separator = "__";
-  const lastIndex = toolKey.lastIndexOf(separator);
-  if (lastIndex === -1) {
-    return { serverName: "", toolName: toolKey };
-  }
-  const serverName = toolKey.slice(0, lastIndex);
-  const toolName = toolKey.slice(lastIndex + separator.length);
-  return { serverName, toolName };
-}
-
-// Helper function to process stream chunks
-async function processStreamChunks({
-  fullStream,
-  fullResponse,
-  abortController,
-  chatId,
-  processResponseChunkUpdate,
-}: {
-  fullStream: AsyncIterableStream<TextStreamPart<ToolSet>>;
-  fullResponse: string;
-  abortController: AbortController;
-  chatId: number;
-  processResponseChunkUpdate: (params: {
-    fullResponse: string;
-  }) => Promise<string>;
-}): Promise<{ fullResponse: string; incrementalResponse: string }> {
-  let incrementalResponse = "";
-  let inThinkingBlock = false;
-
-  for await (const part of fullStream) {
-    let chunk = "";
-    if (
-      inThinkingBlock &&
-      !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
-        part.type,
-      )
-    ) {
-      chunk = "</think>";
-      inThinkingBlock = false;
-    }
-    if (part.type === "text-delta") {
-      chunk += part.text;
-    } else if (part.type === "reasoning-delta") {
-      if (!inThinkingBlock) {
-        chunk = "<think>";
-        inThinkingBlock = true;
-      }
-
-      chunk += escapeDyadTags(part.text);
-    } else if (part.type === "tool-call") {
-      const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(JSON.stringify(part.input));
-      chunk = `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>\n`;
-    } else if (part.type === "tool-result") {
-      const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(part.output);
-      chunk = `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-result>\n`;
-    }
-
-    if (!chunk) {
-      continue;
-    }
-
-    fullResponse += chunk;
-    incrementalResponse += chunk;
-    fullResponse = cleanFullResponse(fullResponse);
-    fullResponse = await processResponseChunkUpdate({
-      fullResponse,
-    });
-
-    // If the stream was aborted, exit early
-    if (abortController.signal.aborted) {
-      logger.log(`Stream for chat ${chatId} was aborted`);
-      break;
-    }
-  }
-
-  return { fullResponse, incrementalResponse };
-}
 
 export function registerChatStreamHandlers() {
   // Abort in-flight LLM streams on quit so the process can exit promptly and
@@ -263,7 +101,7 @@ export function registerChatStreamHandlers() {
   );
 
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
-    let attachmentPaths: string[] = [];
+    const attachmentCollector = createAttachmentCollector();
     try {
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
@@ -334,93 +172,20 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      // Process attachments if any
-      let attachmentInfo = "";
-      // Display-only attachment info uses <dyad-attachment> tags for inline rendering
-      let displayAttachmentInfo = "";
-      let storedAttachments: StoredChatAttachment[] = [];
-      const pendingStoredAttachments: PendingStoredChatAttachment[] = [];
-      const manifestEntries: AttachmentManifestEntryInput[] = [];
-      const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
 
-      if (req.attachments && req.attachments.length > 0) {
-        attachmentInfo = "\n\nAttachments:\n";
-
-        // Create persistent .dyad/media directory for this app
-        const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
-        if (!fs.existsSync(mediaDir)) {
-          fs.mkdirSync(mediaDir, { recursive: true });
-        }
-        await ensureDyadGitignored(appPath);
-
-        for (const attachment of req.attachments) {
-          // Extract the base64 data (remove the data:mime/type;base64, prefix)
-          const base64Data = attachment.data.split(";base64,").pop() || "";
-          const fileBuffer = Buffer.from(base64Data, "base64");
-          const hash = crypto
-            .createHash("sha256")
-            .update(fileBuffer)
-            .digest("hex");
-          const fileExtension = path.extname(attachment.name);
-          const filename = `${hash}${fileExtension}`;
-          const logicalName = createUniqueAttachmentLogicalName(
-            attachment.name,
-            usedLogicalNames,
-          );
-
-          // Save to .dyad/media dir
-          const persistentPath = path.join(mediaDir, filename);
-          await writeFile(persistentPath, fileBuffer);
-          attachmentPaths.push(persistentPath);
-          pendingStoredAttachments.push({
-            filePath: persistentPath,
-            attachmentType: attachment.attachmentType,
-          });
-          manifestEntries.push({
-            requestedLogicalName: logicalName,
-            originalName: attachment.name,
-            storedFileName: filename,
-            mimeType: attachment.type,
-            sizeBytes: fileBuffer.byteLength,
-            createdAt: new Date().toISOString(),
-          });
-          sendTelemetryEvent("attachment.stored", {
-            appId: chat.app.id,
-            chatId: req.chatId,
-            attachmentType: attachment.attachmentType,
-            mimeType: attachment.type,
-            sizeBytes: fileBuffer.byteLength,
-          });
-
-          // Build dyad-media:// URL for display
-          // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
-          // Encode path segments so special characters (spaces, #, ?, %) don't
-          // break URL parsing. The protocol handler already decodeURIComponent's.
-          const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/.dyad/media/${encodeURIComponent(filename)}`;
-
-          // Build display tag for inline rendering (escape attribute values)
-          displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;
-
-          if (attachment.attachmentType === "upload-to-codebase") {
-            // Provide the .dyad/media path so the AI can copy it into the codebase
-            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool when tools are available, or emit a <dyad-copy> tag otherwise, to copy this file into the codebase at the appropriate location.\n`;
-          } else {
-            // For chat-context, provide file info for reference (no path to avoid auto-copying)
-            attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
-            // If it's a text-based file, try to include the content
-            if (await isTextFile(persistentPath)) {
-              try {
-                attachmentInfo += `<dyad-text-attachment filename="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" path="${escapeXmlAttr(persistentPath)}">
-                </dyad-text-attachment>
-                \n\n`;
-              } catch (err) {
-                logger.error(`Error reading file content: ${err}`);
-              }
-            }
-          }
-        }
-      }
+      // Process attachments if any. The AI-facing instructions go into the
+      // user message; the display-facing <dyad-attachment> tags go into the
+      // stored message content.
+      const { attachmentInfo, displayAttachmentInfo } =
+        await chatAttachmentService.persistIncomingAttachments({
+          attachments: req.attachments ?? [],
+          appPath,
+          appRelativePath: chat.app.path,
+          appId: chat.app.id,
+          chatId: req.chatId,
+          collector: attachmentCollector,
+        });
 
       // Build the full AI prompt. Attachment-specific instructions are added
       // to the user message, never the system prompt.
@@ -431,189 +196,45 @@ export function registerChatStreamHandlers() {
       if (displayAttachmentInfo) {
         displayUserPrompt = req.prompt + displayAttachmentInfo;
       }
-      // Inline referenced prompt contents for mentions like @prompt:<id>
-      try {
-        const matches = Array.from(userPrompt.matchAll(/@prompt:(\d+)/g));
-        if (matches.length > 0) {
-          const ids = Array.from(new Set(matches.map((m) => Number(m[1]))));
-          const referenced = await db
-            .select()
-            .from(promptsTable)
-            .where(inArray(promptsTable.id, ids));
-          if (referenced.length > 0) {
-            const promptsMap: Record<number, string> = {};
-            for (const p of referenced) {
-              promptsMap[p.id] = p.content;
-            }
-            userPrompt = replacePromptReference(userPrompt, promptsMap);
-          }
-        }
-      } catch (e) {
-        logger.error("Failed to inline referenced prompts:", e);
-      }
 
+      const promptExpander = new PromptExpander({ db });
+      // Inline referenced prompt contents for mentions like @prompt:<id>
+      userPrompt = await promptExpander.expandPromptReferences(userPrompt);
       // Expand /slug skill references (e.g. /webapp-testing) to prompt content
-      try {
-        const slashSkillPattern = /(?:^|\s)\/([a-zA-Z0-9-]+)(?=\s|$)/;
-        if (slashSkillPattern.test(userPrompt)) {
-          const allPrompts = db.select().from(promptsTable).all();
-          const promptsBySlug: Record<string, string> = {};
-          for (const p of allPrompts) {
-            if (p.slug && !promptsBySlug[p.slug]) {
-              promptsBySlug[p.slug] = p.content;
-            }
-          }
-          userPrompt = replaceSlashSkillReference(userPrompt, promptsBySlug);
-        }
-      } catch (e) {
-        logger.error("Failed to expand slash skill references:", e);
-      }
+      userPrompt = promptExpander.expandSlashSkills(userPrompt);
 
       // Resolve @media: mentions to image attachments
-      const mediaRefs = parseMediaMentions(userPrompt);
-      if (mediaRefs.length > 0) {
-        try {
-          const resolvedMedia = await resolveMediaMentions(
-            mediaRefs,
-            chat.app.path,
-            chat.app.name,
-          );
-          const resolvedMediaRefs = resolvedMedia.map((media) =>
-            encodeURIComponent(media.fileName),
-          );
-          let mediaDisplayInfo = "";
-          for (const media of resolvedMedia) {
-            attachmentPaths.push(media.filePath);
-            const logicalName = createUniqueAttachmentLogicalName(
-              media.fileName,
-              usedLogicalNames,
-            );
-            const stat = await fs.promises.stat(media.filePath);
-            pendingStoredAttachments.push({
-              filePath: media.filePath,
-              attachmentType: "chat-context",
-            });
-            manifestEntries.push({
-              requestedLogicalName: logicalName,
-              originalName: media.fileName,
-              storedFileName: media.fileName,
-              mimeType: media.mimeType,
-              sizeBytes: stat.size,
-              createdAt: new Date().toISOString(),
-            });
-            const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
-            mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
-          }
-          // Strip only resolved @media: tags from the prompt text.
-          // This preserves adjacent user text when mentions are directly followed
-          // by text without a whitespace separator.
-          userPrompt = stripResolvedMediaMentions(
-            userPrompt,
-            resolvedMediaRefs,
-          );
-          // Build display prompt with attachment tags for inline rendering.
-          if (mediaDisplayInfo) {
-            const strippedPrompt = stripResolvedMediaMentions(
-              displayUserPrompt ?? req.prompt,
-              resolvedMediaRefs,
-            );
-            displayUserPrompt = strippedPrompt + mediaDisplayInfo;
-          }
-        } catch (e) {
-          logger.error("Failed to resolve media mentions:", e);
-        }
-      }
+      ({ userPrompt, displayUserPrompt } =
+        await chatAttachmentService.resolveMediaMentionAttachments({
+          userPrompt,
+          displayUserPrompt,
+          originalPrompt: req.prompt,
+          appRelativePath: chat.app.path,
+          appName: chat.app.name,
+          collector: attachmentCollector,
+        }));
 
-      const finalizedManifestEntries =
-        await appendAttachmentManifestEntriesWithLogicalNames(
+      const storedAttachments: StoredChatAttachment[] =
+        await chatAttachmentService.finalizeStoredAttachments({
           appPath,
-          manifestEntries,
-        );
-      storedAttachments = finalizedManifestEntries.map((entry, index) => ({
-        ...entry,
-        filePath: pendingStoredAttachments[index].filePath,
-        attachmentType: pendingStoredAttachments[index].attachmentType,
-      }));
+          collector: attachmentCollector,
+        });
 
       // Expand /implement-plan= into full implementation prompt
       // Keep the original short form for display in the UI; the expanded
       // content is only injected into the AI message history.
-      let implementPlanDisplayPrompt: string | undefined;
-      const implementPlanMatch = userPrompt.match(/^\/implement-plan=(.+)$/);
-      if (implementPlanMatch) {
-        try {
-          implementPlanDisplayPrompt = userPrompt;
-          const planSlug = implementPlanMatch[1];
-          validatePlanId(planSlug);
-          const appPath = getDyadAppPath(chat.app.path);
-          const planFilePath = path.join(
-            appPath,
-            ".dyad",
-            "plans",
-            `${planSlug}.md`,
-          );
-          const raw = await fs.promises.readFile(planFilePath, "utf-8");
-          const { meta, content } = parsePlanFile(raw);
+      const implementPlanExpansion = await promptExpander.expandImplementPlan(
+        userPrompt,
+        appPath,
+      );
+      userPrompt = implementPlanExpansion.userPrompt;
+      const implementPlanDisplayPrompt = implementPlanExpansion.displayPrompt;
 
-          const planPath = `.dyad/plans/${planSlug}.md`;
-
-          userPrompt = `Please implement the following plan:
-
-## ${meta.title || "Implementation Plan"}
-
-${content}
-
-Start implementing this plan now. Follow the steps outlined and create/modify the necessary files.
-You may update the plan at \`${planPath}\` to mark your progress.`;
-        } catch (e) {
-          implementPlanDisplayPrompt = undefined;
-          logger.error("Failed to expand /implement-plan= prompt:", e);
-        }
-      }
-
-      const componentsToProcess = req.selectedComponents || [];
-
-      if (componentsToProcess.length > 0) {
-        userPrompt += "\n\nSelected components:\n";
-
-        for (const component of componentsToProcess) {
-          let componentSnippet = "[component snippet not available]";
-          try {
-            const componentFileContent = await readFile(
-              path.join(getDyadAppPath(chat.app.path), component.relativePath),
-              "utf8",
-            );
-            const lines = componentFileContent.split(/\r?\n/);
-            const selectedIndex = component.lineNumber - 1;
-
-            // Let's get one line before and three after for context.
-            const startIndex = Math.max(0, selectedIndex - 1);
-            const endIndex = Math.min(lines.length, selectedIndex + 4);
-
-            const snippetLines = lines.slice(startIndex, endIndex);
-            const selectedLineInSnippetIndex = selectedIndex - startIndex;
-
-            if (snippetLines[selectedLineInSnippetIndex]) {
-              snippetLines[selectedLineInSnippetIndex] =
-                `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
-            }
-
-            componentSnippet = snippetLines.join("\n");
-          } catch (err) {
-            logger.error(
-              `Error reading selected component file content: ${err}`,
-            );
-          }
-
-          userPrompt += `\n${componentsToProcess.length > 1 ? `${componentsToProcess.indexOf(component) + 1}. ` : ""}Component: ${component.name} (file: ${component.relativePath})
-
-Snippet:
-\`\`\`
-${componentSnippet}
-\`\`\`
-`;
-        }
-      }
+      userPrompt = await promptExpander.appendSelectedComponents(
+        userPrompt,
+        appPath,
+        req.selectedComponents || [],
+      );
 
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
@@ -711,7 +332,6 @@ ${componentSnippet}
       });
 
       let fullResponse = "";
-      let maxTokensUsed: number | undefined;
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -730,7 +350,6 @@ ${componentSnippet}
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =
           await getModelClient(settings.selectedModel, settings);
 
-        const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
         // only include the selected components' files for codebase context.
         //
@@ -843,33 +462,6 @@ ${componentSnippet}
           codebaseInfo.length / 4,
         );
 
-        // Prepare message history for the AI
-        const messageHistoryRaw = updatedChat.messages.map((message) => ({
-          role: message.role as "user" | "assistant" | "system",
-          content: message.content,
-          sourceCommitHash: message.sourceCommitHash,
-          commitHash: message.commitHash,
-        }));
-
-        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
-        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
-        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
-
-        // The DB stores display-friendly versions (short /implement-plan= form
-        // or clean <dyad-attachment> tags). Replace the last user message with the
-        // full AI prompt so the model receives expanded plan content or attachment paths.
-        if (implementPlanDisplayPrompt || displayUserPrompt) {
-          for (let i = messageHistory.length - 1; i >= 0; i--) {
-            if (messageHistory[i].role === "user") {
-              messageHistory[i] = {
-                ...messageHistory[i],
-                content: effectiveAiUserPrompt,
-              };
-              break;
-            }
-          }
-        }
-
         // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
         // this is to enable more cache hits. Practically, users should
         // rarely go over this limit because they will hit the model's
@@ -881,172 +473,40 @@ ${componentSnippet}
           ? 201
           : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
-        // If we need to limit the context, we take only the most recent turns
-        let limitedMessageHistory = messageHistory;
-        if (messageHistory.length > maxChatTurns * 2) {
-          // Each turn is a user + assistant pair
-          // Calculate how many messages to keep (maxChatTurns * 2)
-          let recentMessages = messageHistory
-            .filter((msg) => msg.role !== "system")
-            .slice(-maxChatTurns * 2);
-
-          // Ensure the first message is a user message
-          if (recentMessages.length > 0 && recentMessages[0].role !== "user") {
-            // Find the first user message
-            const firstUserIndex = recentMessages.findIndex(
-              (msg) => msg.role === "user",
-            );
-            if (firstUserIndex > 0) {
-              // Drop assistant messages before the first user message
-              recentMessages = recentMessages.slice(firstUserIndex);
-            } else if (firstUserIndex === -1) {
-              logger.warn(
-                "No user messages found in recent history, set recent messages to empty",
-              );
-              recentMessages = [];
-            }
-          }
-
-          limitedMessageHistory = [...recentMessages];
-
-          logger.log(
-            `Limiting chat history from ${messageHistory.length} to ${limitedMessageHistory.length} messages (max ${maxChatTurns} turns)`,
-          );
-        }
-
-        const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
-
-        // Get theme prompt for the app (null themeId means "no theme")
-        const themePrompt = await getThemePromptById(updatedChat.app.themeId);
-        logger.log(
-          `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
-        );
-
-        const frameworkType = detectFrameworkType(
-          getDyadAppPath(updatedChat.app.path),
-        );
-
-        // Migration on read converts "agent" to "build", so no need to check for it here
-        let systemPrompt = constructSystemPrompt({
-          aiRules,
-          chatMode: selectedChatMode,
-          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
-          themePrompt,
-          basicAgentMode: isBasicAgentMode(settings),
-          frameworkType,
-          hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
-          enableAppBlueprint:
-            settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
+        // Prepare message history for the AI. The DB stores display-friendly
+        // versions (short /implement-plan= form or clean <dyad-attachment>
+        // tags); replace the last user message with the full AI prompt so the
+        // model receives expanded plan content or attachment paths.
+        const limitedMessageHistory = buildMessageHistory({
+          messages: updatedChat.messages.map((message) => ({
+            role: message.role as "user" | "assistant" | "system",
+            content: message.content,
+            sourceCommitHash: message.sourceCommitHash,
+            commitHash: message.commitHash,
+          })),
+          replaceLastUserMessageWith:
+            implementPlanDisplayPrompt || displayUserPrompt
+              ? effectiveAiUserPrompt
+              : undefined,
+          maxChatTurns,
         });
 
-        // Add information about mentioned apps for build mode only.
-        // Full codebase injection (build mode): full file contents already
-        // concatenated into `otherAppsCodebaseInfo`.
-        //
-        // Agent/ask/plan modes don't need anything in the system prompt —
-        // handleLocalAgentStream injects a `<system-reminder>` into the
-        // user's latest message so the system prompt stays static.
-        if (otherAppsCodebaseInfo) {
-          const mentionedAppsList = mentionedAppsCodebases
-            .map(({ appName }) => appName)
-            .join(", ");
-
-          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
-        }
-
-        const isSecurityReviewIntent =
-          req.prompt.startsWith("/security-review");
-        if (isSecurityReviewIntent) {
-          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
-          try {
-            const appPath = getDyadAppPath(updatedChat.app.path);
-            const rulesPath = path.join(appPath, "SECURITY_RULES.md");
-            let securityRules = "";
-
-            await fs.promises.access(rulesPath);
-            securityRules = await fs.promises.readFile(rulesPath, "utf8");
-
-            if (securityRules && securityRules.trim().length > 0) {
-              systemPrompt +=
-                "\n\n# Project-specific security rules:\n" + securityRules;
-            }
-          } catch (error) {
-            // Best-effort: if reading rules fails, continue without them
-            logger.info("Failed to read security rules", error);
-          }
-        }
-
-        if (
-          updatedChat.app?.supabaseProjectId &&
-          isSupabaseConnected(settings)
-        ) {
-          const supabaseClientCode = await getSupabaseClientCode({
-            projectId: updatedChat.app.supabaseProjectId,
-            organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
-          });
-          systemPrompt +=
-            "\n\n" +
-            getSupabaseAvailableSystemPrompt(supabaseClientCode) +
-            "\n\n" +
-            // For local agent, we will explicitly fetch the database context when needed.
-            (selectedChatMode === "local-agent"
-              ? ""
-              : await getSupabaseContext({
-                  supabaseProjectId: updatedChat.app.supabaseProjectId,
-                  organizationSlug:
-                    updatedChat.app.supabaseOrganizationSlug ?? null,
-                }));
-        } else if (updatedChat.app?.neonProjectId) {
-          // Neon is connected — inject Neon prompt instead of Supabase
-          systemPrompt +=
-            "\n\n" +
-            (await buildNeonPromptForApp({
-              appPath: updatedChat.app.path,
-              neonProjectId: updatedChat.app.neonProjectId!,
-              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
-              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
-              selectedChatMode,
-            })) +
-            "\n\n";
-        } else if (
-          // In local agent mode, we will suggest integrations as part of the add-integration tool
-          selectedChatMode !== "local-agent" &&
-          // If in security review mode, we don't need to mention integrations are available.
-          !isSecurityReviewIntent
-        ) {
-          systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
-        }
-        const isSummarizeIntent = req.prompt.startsWith(
-          "Summarize from chat-id=",
-        );
-        if (isSummarizeIntent) {
-          systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
-        }
-
-        if (attachmentDeliveryConfig.addSystemCopyInstructions) {
-          systemPrompt += `
-
-When files are attached to this conversation for upload to the codebase, copy them into the project using this exact format:
-
-<dyad-copy from="/absolute/path/to/.dyad/media/source.ext" to="path/to/destination/filename.ext" description="Upload file to codebase"></dyad-copy>
-
-Use the attached file path from the user's message as the \`from\` value. Choose an appropriate project-relative \`to\` path.
-
-`;
-        }
-
-        if (attachmentDeliveryConfig.addSystemVisionInstructions) {
-          systemPrompt += `
-
-# Image Analysis Instructions
-This conversation includes one or more image attachments. When the user uploads images:
-1. If the user explicitly asks for analysis, description, or information about the image, please analyze the image content.
-2. Describe what you see in the image if asked.
-3. You can use images as references when the user has coding or design-related questions.
-4. For diagrams or wireframes, try to understand the content and structure shown.
-5. For screenshots of code or errors, try to identify the issue or explain the code.
-`;
-        }
+        const {
+          systemPrompt,
+          aiRules,
+          themePrompt,
+          frameworkType,
+          isSummarizeIntent,
+        } = await buildChatSystemPrompt({
+          app: updatedChat.app,
+          appPath,
+          settings,
+          selectedChatMode,
+          requestPrompt: req.prompt,
+          mentionedAppsCodebases,
+          otherAppsCodebaseInfo,
+          attachmentDeliveryConfig,
+        });
 
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
@@ -1078,22 +538,10 @@ This conversation includes one or more image attachments. When the user uploads 
               ] as const)
             : [];
 
-        const limitedHistoryChatMessages = limitedMessageHistory.map((msg) => ({
-          role: msg.role as "user" | "assistant" | "system",
-          // Why remove thinking tags?
-          // Thinking tags are generally not critical for the context
-          // and eats up extra tokens.
-          content:
-            selectedChatMode === "ask"
-              ? removeDyadTags(removeNonEssentialTags(msg.content))
-              : removeNonEssentialTags(msg.content),
-          providerOptions: {
-            "dyad-engine": {
-              sourceCommitHash: msg.sourceCommitHash,
-              commitHash: msg.commitHash,
-            },
-          },
-        }));
+        const limitedHistoryChatMessages = toHistoryChatMessages({
+          history: limitedMessageHistory,
+          selectedChatMode,
+        });
 
         let chatMessages: ModelMessage[] = [
           ...codebasePrefix,
@@ -1106,18 +554,19 @@ This conversation includes one or more image attachments. When the user uploads 
           const lastUserIndex = chatMessages.length - 2;
           const lastUserMessage = chatMessages[lastUserIndex];
           if (lastUserMessage.role === "user") {
-            if (attachmentPaths.length > 0) {
+            if (attachmentCollector.attachmentPaths.length > 0) {
               // Replace the last message with one that includes attachments
-              chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
-                lastUserMessage,
-                attachmentPaths,
-                {
-                  includeImageAttachments:
-                    attachmentDeliveryConfig.includeImageParts,
-                  inlineTextAttachments:
-                    attachmentDeliveryConfig.inlineTextAttachments,
-                },
-              );
+              chatMessages[lastUserIndex] =
+                await chatAttachmentService.prepareMessageWithAttachments(
+                  lastUserMessage,
+                  attachmentCollector.attachmentPaths,
+                  {
+                    includeImageAttachments:
+                      attachmentDeliveryConfig.includeImageParts,
+                    inlineTextAttachments:
+                      attachmentDeliveryConfig.inlineTextAttachments,
+                  },
+                );
             }
             // Save aiMessagesJson for modes that use handleLocalAgentStream
             // (which reads from DB and needs structured image content)
@@ -1160,165 +609,39 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies ModelMessage,
           ];
         }
-        const simpleStreamText = async ({
-          chatMessages,
-          modelClient,
-          tools,
-          systemPromptOverride = systemPrompt,
-          dyadDisableFiles = false,
-          files,
-        }: {
-          chatMessages: ModelMessage[];
-          modelClient: ModelClient;
-          files: CodebaseFile[];
-          tools?: ToolSet;
-          systemPromptOverride?: string;
-          dyadDisableFiles?: boolean;
-        }) => {
-          if (isEngineEnabled) {
-            logger.log(
-              "sending AI request to engine with request id:",
-              dyadRequestId,
-            );
-          } else {
-            logger.log("sending AI request");
-          }
-          let versionedFiles: VersionedFiles | undefined;
-          if (isDeepContextEnabled) {
-            versionedFiles = await getVersionedFiles({
-              files,
-              chatMessages,
-              appPath,
-            });
-          }
-          const smartContextMode: SmartContextMode = isDeepContextEnabled
-            ? "deep"
-            : "balanced";
-          const providerOptions = getProviderOptions({
-            dyadAppId: updatedChat.app.id,
-            dyadRequestId,
-            dyadDisableFiles,
-            smartContextMode,
-            files,
-            versionedFiles,
-            mentionedAppsCodebases,
-            builtinProviderId: modelClient.builtinProviderId,
-            settings,
-          });
 
-          const streamResult = streamText({
-            headers: getAiHeaders({
-              builtinProviderId: modelClient.builtinProviderId,
-            }),
-            maxOutputTokens: await getMaxTokens(settings.selectedModel),
-            temperature: await getTemperature(settings.selectedModel),
-            maxRetries: 2,
-            model: modelClient.model,
-            stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
-            providerOptions,
-            system: systemPromptOverride,
-            tools,
-            messages: chatMessages.filter((m) => m.content),
-            onFinish: async (response) => {
-              const totalTokens = response.usage?.totalTokens;
-
-              if (typeof totalTokens === "number") {
-                // We use the highest total tokens used (we are *not* accumulating)
-                // since we're trying to figure it out if we're near the context limit.
-                maxTokensUsed = Math.max(maxTokensUsed ?? 0, totalTokens);
-
-                // Persist the aggregated token usage on the placeholder assistant message
-                await db
-                  .update(messages)
-                  .set({ maxTokensUsed: maxTokensUsed })
-                  .where(eq(messages.id, placeholderAssistantMessage.id))
-                  .catch((error) => {
-                    logger.error(
-                      "Failed to save total tokens for assistant message",
-                      error,
-                    );
-                  });
-
-                logger.log(
-                  `Total tokens used (aggregated for message ${placeholderAssistantMessage.id}): ${maxTokensUsed}`,
-                );
-              } else {
-                logger.log("Total tokens used: unknown");
-              }
-            },
-            onError: (error: any) => {
-              let errorMessage = (error as any)?.error?.message;
-              const responseBody = error?.error?.responseBody;
-              if (errorMessage && responseBody) {
-                errorMessage += "\n\nDetails: " + responseBody;
-              }
-              const message = errorMessage || JSON.stringify(error);
-              const requestIdPrefix = isEngineEnabled
-                ? `[Request ID: ${dyadRequestId}] `
-                : "";
-              logger.error(
-                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
-                error,
-              );
+        const executor = new ChatStreamExecutor(
+          {
+            db,
+            sendChunk: (payload) =>
+              safeSend(event.sender, "chat:response:chunk", payload),
+            // Note: intentionally not safeSend — matches original behavior of
+            // surfacing stream errors even during teardown.
+            sendError: (error) =>
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
-                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
-              });
-              // Clean up the abort controller
-              activeStreams.delete(req.chatId);
-            },
-            abortSignal: abortController.signal,
-          });
-          // Read .fullStream now (not lazily) so the SDK's `teeStream()`
-          // runs synchronously, then cancel the orphaned tee branch
-          // before any chunks are pumped. See `cancelOrphanedBaseStream`
-          // for the underlying SDK behavior and why this is required.
-          const fullStream = streamResult.fullStream;
-          cancelOrphanedBaseStream(streamResult);
-          return {
-            fullStream,
-            usage: streamResult.usage,
-          };
-        };
-
-        let lastDbSaveAt = 0;
-        // Tracks what was last sent to the renderer so we can emit only the
-        // tail diff. `cleanFullResponse` may retroactively rewrite earlier
-        // bytes inside an in-progress dyad-tag's attribute values, so we
-        // compute the longest common prefix on each send rather than
-        // assuming pure appends.
-        let lastSentContent = "";
-
-        const processResponseChunkUpdate = async ({
-          fullResponse,
-        }: {
-          fullResponse: string;
-        }) => {
-          // Store the current partial response
-          partialResponses.set(req.chatId, fullResponse);
-          // Save to DB (in case user is switching chats during the stream)
-          const now = Date.now();
-          if (now - lastDbSaveAt >= 150) {
-            await db
-              .update(messages)
-              .set({ content: fullResponse })
-              .where(eq(messages.id, placeholderAssistantMessage.id));
-
-            lastDbSaveAt = now;
-          }
-
-          const patch = computeStreamingPatch(fullResponse, lastSentContent);
-          lastSentContent = fullResponse;
-          if (!patch) {
-            return fullResponse;
-          }
-          safeSend(event.sender, "chat:response:chunk", {
+                error,
+              }),
+            onPartialResponse: (partial) =>
+              partialResponses.set(req.chatId, partial),
+            onStreamErrorCleanup: () => activeStreams.delete(req.chatId),
+          },
+          {
             chatId: req.chatId,
-            streamingMessageId: placeholderAssistantMessage.id,
-            streamingPatch: patch,
-          });
-          return fullResponse;
-        };
+            appId: updatedChat.app.id,
+            appPath,
+            chatContext,
+            placeholderMessageId: placeholderAssistantMessage.id,
+            abortController,
+            settings,
+            modelClient,
+            isEngineEnabled,
+            isDeepContextEnabled,
+            dyadRequestId,
+            systemPrompt,
+            mentionedAppsCodebases,
+          },
+        );
 
         // Handle ask mode: use local-agent in read-only mode
         // This gives users access to code reading tools while in ask mode
@@ -1459,9 +782,8 @@ This conversation includes one or more image attachments. When the user uploads 
 
           // Only run MCP agent path if build mode has enabled MCP servers
           if (hasEnabledMcpServers) {
-            const { fullStream } = await simpleStreamText({
+            const { fullStream } = await executor.streamSimple({
               chatMessages: limitedHistoryChatMessages,
-              modelClient,
               tools: {
                 ...tools,
                 "generate-code": {
@@ -1484,12 +806,9 @@ This conversation includes one or more image attachments. When the user uploads 
               dyadDisableFiles: true,
             });
 
-            const result = await processStreamChunks({
+            const result = await executor.processStreamChunks({
               fullStream,
               fullResponse,
-              abortController,
-              chatId: req.chatId,
-              processResponseChunkUpdate,
             });
             fullResponse = result.fullResponse;
             chatMessages.push({
@@ -1503,290 +822,14 @@ This conversation includes one or more image attachments. When the user uploads 
           }
         }
 
-        // When calling streamText, the messages need to be properly formatted for mixed content
-        const { fullStream } = await simpleStreamText({
-          chatMessages,
-          modelClient,
-          files: files,
-        });
-
-        // Process the stream as before
+        // Run the main stream plus recovery passes (Turbo Edits fixes,
+        // unclosed dyad-write continuation, auto-fix problems).
         try {
-          const result = await processStreamChunks({
-            fullStream,
-            fullResponse,
-            abortController,
-            chatId: req.chatId,
-            processResponseChunkUpdate,
+          fullResponse = await executor.runMainStream({
+            chatMessages,
+            files,
+            initialFullResponse: fullResponse,
           });
-          fullResponse = result.fullResponse;
-
-          if (isTurboEditsV2Enabled(settings)) {
-            let issues = await dryRunSearchReplace({
-              fullResponse,
-              appPath: getDyadAppPath(updatedChat.app.path),
-            });
-            sendTelemetryEvent("search_replace:fix", {
-              attemptNumber: 0,
-              success: issues.length === 0,
-              issueCount: issues.length,
-              errors: issues.map((i) => ({
-                filePath: i.filePath,
-                error: i.error,
-              })),
-            });
-
-            let searchReplaceFixAttempts = 0;
-            const originalFullResponse = fullResponse;
-            const previousAttempts: ModelMessage[] = [];
-            while (
-              issues.length > 0 &&
-              searchReplaceFixAttempts < 2 &&
-              !abortController.signal.aborted
-            ) {
-              logger.warn(
-                `Detected search-replace issues (attempt #${searchReplaceFixAttempts + 1}): ${issues.map((i) => i.error).join(", ")}`,
-              );
-              const formattedSearchReplaceIssues = issues
-                .map(({ filePath, error }) => {
-                  return `File path: ${filePath}\nError: ${error}`;
-                })
-                .join("\n\n");
-
-              fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
-              await processResponseChunkUpdate({
-                fullResponse,
-              });
-
-              logger.info(
-                `Attempting to fix search-replace issues, attempt #${searchReplaceFixAttempts + 1}`,
-              );
-
-              const fixSearchReplacePrompt =
-                searchReplaceFixAttempts === 0
-                  ? `There was an issue with the following \`dyad-search-replace\` tags. Make sure you use \`dyad-read\` to read the latest version of the file and then trying to do search & replace again.`
-                  : `There was an issue with the following \`dyad-search-replace\` tags. Please fix the errors by generating the code changes using \`dyad-write\` tags instead.`;
-              searchReplaceFixAttempts++;
-              const userPrompt = {
-                role: "user",
-                content: `${fixSearchReplacePrompt}
-                
-${formattedSearchReplaceIssues}`,
-              } as const;
-
-              const { fullStream: fixSearchReplaceStream } =
-                await simpleStreamText({
-                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
-                  chatMessages: [
-                    ...chatMessages,
-                    { role: "assistant", content: originalFullResponse },
-                    ...previousAttempts,
-                    userPrompt,
-                  ],
-                  modelClient,
-                  files: files,
-                });
-              previousAttempts.push(userPrompt);
-              const result = await processStreamChunks({
-                fullStream: fixSearchReplaceStream,
-                fullResponse,
-                abortController,
-                chatId: req.chatId,
-                processResponseChunkUpdate,
-              });
-              fullResponse = result.fullResponse;
-              previousAttempts.push({
-                role: "assistant",
-                content: removeNonEssentialTags(result.incrementalResponse),
-              });
-
-              // Re-check for issues after the fix attempt
-              issues = await dryRunSearchReplace({
-                fullResponse: result.incrementalResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
-              });
-
-              sendTelemetryEvent("search_replace:fix", {
-                attemptNumber: searchReplaceFixAttempts,
-                success: issues.length === 0,
-                issueCount: issues.length,
-                errors: issues.map((i) => ({
-                  filePath: i.filePath,
-                  error: i.error,
-                })),
-              });
-            }
-          }
-
-          if (
-            !abortController.signal.aborted &&
-            hasUnclosedDyadWrite(fullResponse)
-          ) {
-            let continuationAttempts = 0;
-            while (
-              hasUnclosedDyadWrite(fullResponse) &&
-              continuationAttempts < 2 &&
-              !abortController.signal.aborted
-            ) {
-              logger.warn(
-                `Received unclosed dyad-write tag, attempting to continue, attempt #${continuationAttempts + 1}`,
-              );
-              continuationAttempts++;
-
-              const { fullStream: contStream } = await simpleStreamText({
-                // Build messages: replay history, then ask the model to continue from the partial response.
-                chatMessages: [
-                  ...chatMessages,
-                  {
-                    role: "assistant",
-                    content: fullResponse,
-                  },
-                  {
-                    role: "user",
-                    content:
-                      "Your previous response did not finish completely. Continue exactly where you left off without any preamble.",
-                  },
-                ],
-                modelClient,
-                files: files,
-              });
-              for await (const part of contStream) {
-                // If the stream was aborted, exit early
-                if (abortController.signal.aborted) {
-                  logger.log(`Stream for chat ${req.chatId} was aborted`);
-                  break;
-                }
-                if (part.type !== "text-delta") continue; // ignore reasoning for continuation
-                fullResponse += part.text;
-                fullResponse = cleanFullResponse(fullResponse);
-                fullResponse = await processResponseChunkUpdate({
-                  fullResponse,
-                });
-              }
-            }
-          }
-          const addDependencies = getDyadAddDependencyTags(fullResponse);
-          if (
-            !abortController.signal.aborted &&
-            // If there are dependencies, we don't want to auto-fix problems
-            // because there's going to be type errors since the packages aren't
-            // installed yet.
-            addDependencies.length === 0 &&
-            settings.enableAutoFixProblems
-          ) {
-            try {
-              // IF auto-fix is enabled
-              let problemReport = await generateProblemReport({
-                fullResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
-              });
-
-              let autoFixAttempts = 0;
-              const originalFullResponse = fullResponse;
-              const previousAttempts: ModelMessage[] = [];
-              while (
-                problemReport.problems.length > 0 &&
-                autoFixAttempts < 2 &&
-                !abortController.signal.aborted
-              ) {
-                fullResponse += `<dyad-problem-report summary="${problemReport.problems.length} problems">
-${problemReport.problems
-  .map(
-    (problem) =>
-      `<problem file="${escapeXmlAttr(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXmlContent(problem.message)}</problem>`,
-  )
-  .join("\n")}
-</dyad-problem-report>`;
-
-                logger.info(
-                  `Attempting to auto-fix problems, attempt #${autoFixAttempts + 1}`,
-                );
-                autoFixAttempts++;
-                const problemFixPrompt = createProblemFixPrompt(problemReport);
-
-                const virtualFileSystem = new AsyncVirtualFileSystem(
-                  getDyadAppPath(updatedChat.app.path),
-                  {
-                    fileExists: (fileName: string) => fileExists(fileName),
-                    readFile: (fileName: string) => readFileWithCache(fileName),
-                  },
-                );
-                const writeTags = getDyadWriteTags(fullResponse);
-                const renameTags = getDyadRenameTags(fullResponse);
-                const deletePaths = getDyadDeleteTags(fullResponse);
-                virtualFileSystem.applyResponseChanges({
-                  deletePaths,
-                  renameTags,
-                  writeTags,
-                });
-
-                const { formattedOutput: codebaseInfo, files } =
-                  await extractCodebase({
-                    appPath,
-                    chatContext,
-                    virtualFileSystem,
-                  });
-                const { modelClient } = await getModelClient(
-                  settings.selectedModel,
-                  settings,
-                );
-
-                const { fullStream } = await simpleStreamText({
-                  modelClient,
-                  files: files,
-                  chatMessages: [
-                    ...chatMessages.map((msg, index) => {
-                      if (
-                        index === 0 &&
-                        msg.role === "user" &&
-                        typeof msg.content === "string" &&
-                        msg.content.startsWith(CODEBASE_PROMPT_PREFIX)
-                      ) {
-                        return {
-                          role: "user",
-                          content: createCodebasePrompt(codebaseInfo),
-                        } as const;
-                      }
-                      return msg;
-                    }),
-                    {
-                      role: "assistant",
-                      content: removeNonEssentialTags(originalFullResponse),
-                    },
-                    ...previousAttempts,
-                    { role: "user", content: problemFixPrompt },
-                  ],
-                });
-                previousAttempts.push({
-                  role: "user",
-                  content: problemFixPrompt,
-                });
-                const result = await processStreamChunks({
-                  fullStream,
-                  fullResponse,
-                  abortController,
-                  chatId: req.chatId,
-                  processResponseChunkUpdate,
-                });
-                fullResponse = result.fullResponse;
-                previousAttempts.push({
-                  role: "assistant",
-                  content: removeNonEssentialTags(result.incrementalResponse),
-                });
-
-                problemReport = await generateProblemReport({
-                  fullResponse,
-                  appPath: getDyadAppPath(updatedChat.app.path),
-                });
-              }
-            } catch (error) {
-              logger.error(
-                "Error generating problem report or auto-fixing:",
-                settings.enableAutoFixProblems,
-                error,
-              );
-            }
-          }
         } catch (streamError) {
           // Check if this was an abort error
           if (abortController.signal.aborted) {
@@ -1951,216 +994,6 @@ ${problemReport.problems
 
     return true;
   });
-}
-
-export function formatMessagesForSummary(
-  messages: { role: string; content: string | undefined }[],
-) {
-  if (messages.length <= 8) {
-    // If we have 8 or fewer messages, include all of them
-    return messages
-      .map((m) => `<message role="${m.role}">${m.content}</message>`)
-      .join("\n");
-  }
-
-  // Take first 2 messages and last 6 messages
-  const firstMessages = messages.slice(0, 2);
-  const lastMessages = messages.slice(-6);
-
-  // Combine them with an indicator of skipped messages
-  const combinedMessages = [
-    ...firstMessages,
-    {
-      role: "system",
-      content: `[... ${messages.length - 8} messages omitted ...]`,
-    },
-    ...lastMessages,
-  ];
-
-  return combinedMessages
-    .map((m) => `<message role="${m.role}">${m.content}</message>`)
-    .join("\n");
-}
-
-// Helper function to replace text attachment placeholders with full content
-async function replaceTextAttachmentWithContent(
-  text: string,
-  filePath: string,
-  fileName: string,
-): Promise<string> {
-  try {
-    if (await isTextFile(filePath)) {
-      // Read the full content
-      const fullContent = await readFile(filePath, "utf-8");
-
-      // Replace the placeholder tag with the full content.
-      // The path attribute in the tag is XML-escaped (via escapeXmlAttr), so we
-      // must also XML-escape the path before regex-escaping to ensure a match.
-      const xmlEscapedPath = escapeXmlAttr(filePath);
-      const escapedPath = xmlEscapedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const tagPattern = new RegExp(
-        `<dyad-text-attachment filename="[^"]*" type="[^"]*" path="${escapedPath}">\\s*<\\/dyad-text-attachment>`,
-        "g",
-      );
-
-      const replacedText = text.replace(
-        tagPattern,
-        `Full content of ${fileName}:\n\`\`\`\n${fullContent}\n\`\`\``,
-      );
-
-      logger.log(
-        `Replaced text attachment content for: ${fileName} - length before: ${text.length} - length after: ${replacedText.length}`,
-      );
-      return replacedText;
-    }
-    return text;
-  } catch (error) {
-    logger.error(`Error processing text file: ${error}`);
-    return text;
-  }
-}
-
-// Helper function to convert traditional message to one with proper image attachments
-async function prepareMessageWithAttachments(
-  message: ModelMessage,
-  attachmentPaths: string[],
-  {
-    includeImageAttachments = true,
-    inlineTextAttachments = true,
-  }: {
-    includeImageAttachments?: boolean;
-    inlineTextAttachments?: boolean;
-  } = {},
-): Promise<ModelMessage> {
-  let textContent = message.content;
-  // Get the original text content
-  if (typeof textContent !== "string") {
-    logger.warn(
-      "Message content is not a string - shouldn't happen but using message as-is",
-    );
-    return message;
-  }
-
-  if (inlineTextAttachments) {
-    // Process text file attachments - replace placeholder tags with full content
-    for (const filePath of attachmentPaths) {
-      const fileName = path.basename(filePath);
-      textContent = await replaceTextAttachmentWithContent(
-        textContent,
-        filePath,
-        fileName,
-      );
-    }
-  }
-
-  // For user messages with attachments, create a content array
-  const contentParts: (TextPart | ImagePart)[] = [];
-
-  // Add the text part first with possibly modified content
-  contentParts.push({
-    type: "text",
-    text: textContent,
-  });
-
-  if (includeImageAttachments) {
-    // Add image parts for any image attachments
-    for (const filePath of attachmentPaths) {
-      const mimeType = getInlineImageMimeType(filePath);
-      if (mimeType) {
-        try {
-          // Read the file as a buffer and convert to base64 string
-          // Using base64 strings instead of raw Buffers ensures proper JSON serialization
-          // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
-          const imageBuffer = await readFile(filePath);
-          const base64Data = imageBuffer.toString("base64");
-
-          // Add the image to the content parts with base64 data and mediaType
-          contentParts.push({
-            type: "image",
-            image: base64Data,
-            mediaType: mimeType,
-          });
-
-          logger.log(`Added image attachment: ${filePath}`);
-        } catch (error) {
-          logger.error(`Error reading image file: ${error}`);
-        }
-      }
-    }
-  }
-
-  // Return the message with the content array
-  return {
-    role: "user",
-    content: contentParts,
-  };
-}
-
-function removeNonEssentialTags(text: string): string {
-  return removeProblemReportTags(removeThinkingTags(text));
-}
-
-function removeThinkingTags(text: string): string {
-  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
-  return text.replace(thinkRegex, "").trim();
-}
-
-export function removeProblemReportTags(text: string): string {
-  const problemReportRegex =
-    /<dyad-problem-report[^>]*>[\s\S]*?<\/dyad-problem-report>/g;
-  return text.replace(problemReportRegex, "").trim();
-}
-
-export function removeDyadTags(text: string): string {
-  const dyadRegex = /<dyad-[^>]*>[\s\S]*?<\/dyad-[^>]*>/g;
-  return text.replace(dyadRegex, "").trim();
-}
-
-export function hasUnclosedDyadWrite(text: string): boolean {
-  // Find the last opening dyad-write tag
-  const openRegex = /<dyad-write[^>]*>/g;
-  let lastOpenIndex = -1;
-  let match;
-
-  while ((match = openRegex.exec(text)) !== null) {
-    lastOpenIndex = match.index;
-  }
-
-  // If no opening tag found, there's nothing unclosed
-  if (lastOpenIndex === -1) {
-    return false;
-  }
-
-  // Look for a closing tag after the last opening tag
-  const textAfterLastOpen = text.substring(lastOpenIndex);
-  const hasClosingTag = /<\/dyad-write>/.test(textAfterLastOpen);
-
-  return !hasClosingTag;
-}
-
-function escapeDyadTags(text: string): string {
-  // Escape dyad tags in reasoning content
-  // We are replacing the opening tag with a look-alike character
-  // to avoid issues where thinking content includes dyad tags
-  // and are mishandled by:
-  // 1. FE markdown parser
-  // 2. Main process response processor
-  return text.replace(/<dyad/g, "＜dyad").replace(/<\/dyad/g, "＜/dyad");
-}
-
-const CODEBASE_PROMPT_PREFIX = "This is my codebase.";
-function createCodebasePrompt(codebaseInfo: string): string {
-  return `${CODEBASE_PROMPT_PREFIX} ${codebaseInfo}`;
-}
-
-function createOtherAppsCodebasePrompt(otherAppsCodebaseInfo: string): string {
-  return `
-# Referenced Apps
-
-These are the other apps that I've mentioned in my prompt. These other apps' codebases are READ-ONLY.
-
-${otherAppsCodebaseInfo}
-`;
 }
 
 async function getMcpTools(

@@ -174,7 +174,14 @@ If `npm run build` / Electron Forge packaging fails with `Failed to locate modul
 - **Version restore clean state**: If a restore/switch-version test fails with `Cannot revert: working tree has uncommitted changes` from a runtime `pnpm-workspace.yaml`, and exact version numbers are under test, amend that runtime file into the current generated commit instead of adding a new baseline commit that shifts `Version N`.
 - **Completion notifications for another chat**: When testing completion notifications while viewing a different chat, make the fake LLM response slow (for example `[sleep=medium]`) or otherwise prove navigation has settled before completion. Fast canned responses can complete while the route still points at the original chat, so the notification handler correctly treats it as the active chat.
 - **Updating E2E snapshots**: Pass the update flag directly to the project script, e.g. `PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec>.ts --update-snapshots`. Do not insert an extra `--` before `--update-snapshots`; Playwright will compare instead of updating.
+- **Click timeouts with "subtree intercepts pointer events" across many specs**: When several unrelated specs all time out clicking the same button and the call log says another element's "subtree intercepts pointer events", it's a CSS layout overlap (often a flex item shrinking below its `flex-shrink-0` content — see rules/ui-styling.md), not a flaky test. Look at the failure screenshot first and fix the app layout instead of retrying clicks.
+- **Filesystem-heavy IPC assertions**: Operations that delete or copy whole app directories (e.g. bulk app delete) can exceed the 5s default expect timeout on CI runners. Give the post-operation assertion an explicit `{ timeout: 30_000 }`.
 - **Fake Anthropic engine routes**: When app code uses Anthropic direct passthrough, the fake LLM server must handle `/v1/messages` (and provider-prefixed variants like `/engine/v1/messages`), not just `/chat/completions`. Anthropic tool results come back as user messages with `tool_result` content blocks, so fixture turn counting must skip those as user prompts.
+
+## Triaging failures from a CI run's html-report
+
+- In the merged `html-report` artifact's `results.json`, failure screenshots are embedded as base64 in `attachments[].body` (the `path` field is empty or CI-side); decode the body to view them. Trace zips live in the artifact's `data/` directory, keyed by the hash in the CI-side path.
+- Before root-causing a failure on a PR branch, download the `html-report` from a recent main-branch CI run and check whether the same spec fails there — pre-existing main failures are out of scope for the PR's deflake.
 
 ## Real Socket Firewall E2E tests
 

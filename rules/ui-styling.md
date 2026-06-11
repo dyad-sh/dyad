@@ -27,6 +27,10 @@ Use `MoreHorizontal` for compact preview-mode overflow and `MoreVertical` for
 the right-most preview utility/actions menu. This keeps two ellipsis controls in
 the same preview header visually distinct.
 
+## Flex containers with non-shrinkable children
+
+Don't put an explicit `min-w-*` on a flex item whose children are `flex-shrink-0` (icon buttons, etc.) if that value is smaller than the children's combined width. An explicit `min-width` overrides flexbox's content-based minimum, so the item gets squeezed below its content and the overflow paints over sibling elements — visually broken and it intercepts their pointer events (this broke the preview Restart button at narrow widths). Use `min-w-fit` to let the item refuse to shrink below its content.
+
 ## Tailwind v4 conventions
 
 The project uses **Tailwind v4** (see `tailwindcss: ^4.x` in `package.json`). A few v4-specific affordances that don't work in v3:

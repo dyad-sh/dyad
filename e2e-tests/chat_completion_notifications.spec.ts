@@ -18,6 +18,8 @@ interface ChatActionsPageObject {
 }
 
 const SLOW_COMPLETION_PROMPT = "hello [sleep=medium]";
+const NOTIFICATION_APP_FIXTURE = "minimal-with-ai-rules";
+const NOTIFICATION_APP_NAME = "minimal-with-ai-rules";
 
 const testWithNotificationsEnabled = testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
@@ -38,6 +40,12 @@ async function enableNotifications(po: {
   await po.navigation.goToSettingsTab();
   await po.settings.enableChatEventNotifications();
   await po.navigation.goToChatTab();
+}
+
+async function importNotificationApp(po: {
+  importApp(appDir: string): Promise<void>;
+}): Promise<void> {
+  await po.importApp(NOTIFICATION_APP_FIXTURE);
 }
 
 async function simulateAppHidden(po: { page: Page }): Promise<void> {
@@ -115,10 +123,7 @@ testWithNotificationsEnabled(
   "chat completion notification when app hidden",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    // Wait for the initial stream triggered by importing the app to finish
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
 
     await enableNotifications(po);
 
@@ -136,7 +141,7 @@ testWithNotificationsEnabled(
         `dyad-chat-complete-${chatId}`,
       );
 
-    expect(notification.title).toBe("minimal");
+    expect(notification.title).toBe(NOTIFICATION_APP_NAME);
     expect(notification.body).toContain("Chat response completed");
     expect(notification.requireInteraction).toBeFalsy();
     expect(notification.closed).toBe(false);
@@ -148,8 +153,7 @@ testWithNotificationsEnabled(
   "chat completion notification when viewing different chat",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -165,7 +169,7 @@ testWithNotificationsEnabled(
         `dyad-chat-complete-${chatId}`,
       );
 
-    expect(notification.title).toBe("minimal");
+    expect(notification.title).toBe(NOTIFICATION_APP_NAME);
     expect(notification.body).toContain("Chat response completed");
     expect(notification.requireInteraction).toBeFalsy();
     expect(notification.closed).toBe(false);
@@ -177,10 +181,7 @@ testWithNotificationsEnabled(
   "notification auto-closes when user focuses chat",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    // Wait for the initial stream triggered by importing the app to finish
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
 
     await enableNotifications(po);
 
@@ -221,10 +222,7 @@ testWithNotificationsEnabled(
   "notification click navigates to the chat",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    // Wait for the initial stream triggered by importing the app to finish
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
 
     await enableNotifications(po);
 
@@ -253,10 +251,7 @@ testWithNotificationsEnabled(
   "duplicate notification tags close previous notification",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    // Wait for the initial stream triggered by importing the app to finish
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
 
     await enableNotifications(po);
 
@@ -297,7 +292,7 @@ testWithNotificationsEnabled(
 // Verifies no notifications are created when the feature is disabled.
 test("notification not created when notifications disabled", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await importNotificationApp(po);
   await po.browserNotifications.injectFakeNotifications();
 
   // Notifications should be disabled by default
@@ -318,10 +313,7 @@ testWithNotificationsEnabled(
   "notification permission denied shows fallback warning",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    // Wait for the initial stream triggered by importing the app to finish
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
 
     await enableNotifications(po);
 
@@ -351,8 +343,7 @@ testWithNotificationsEnabled(
   "agent consent notification when app hidden",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -383,8 +374,7 @@ testWithNotificationsEnabled(
   "agent consent notification when viewing different chat",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -415,8 +405,7 @@ testWithNotificationsEnabled(
   "agent consent notification click navigates to chat",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -448,8 +437,7 @@ testWithNotificationsEnabled(
   "mcp consent notification when app hidden",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -483,8 +471,7 @@ testWithNotificationsEnabled(
   "mcp consent notification when viewing different chat",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -518,8 +505,7 @@ testWithNotificationsEnabled(
   "mcp consent notification click navigates to chat",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -553,8 +539,7 @@ testWithNotificationsEnabled(
   "planning questionnaire notification when app hidden",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -592,8 +577,7 @@ testWithNotificationsEnabled(
   "planning questionnaire notification when viewing different chat",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);
@@ -631,8 +615,7 @@ testWithNotificationsEnabled(
   "planning questionnaire notification click navigates to chat",
   async ({ po, electronApp }) => {
     await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await importNotificationApp(po);
     await enableNotifications(po);
 
     const chatId = await createChat(po);

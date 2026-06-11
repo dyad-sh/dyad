@@ -434,9 +434,7 @@ export class ChatStreamExecutor {
         searchReplaceFixAttempts++;
         const userPrompt = {
           role: "user",
-          content: `${fixSearchReplacePrompt}
-
-${formattedSearchReplaceIssues}`,
+          content: `${fixSearchReplacePrompt}\n                \n${formattedSearchReplaceIssues}`,
         } as const;
 
         const { fullStream: fixSearchReplaceStream } = await this.streamSimple({

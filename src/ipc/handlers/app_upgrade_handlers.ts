@@ -8,7 +8,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { gitAddAll, gitCommit } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import { simpleSpawn } from "../utils/simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
@@ -190,8 +190,7 @@ async function applyComponentTagger(appPath: string) {
   // Commit changes
   try {
     logger.info("Staging and committing changes");
-    await gitAddAll({ path: appPath });
-    await gitCommit({
+    await gitService.stageAllAndCommit({
       path: appPath,
       message: "[dyad] add Dyad component tagger",
     });
@@ -250,8 +249,7 @@ async function applyCapacitor({
   // Commit changes
   try {
     logger.info("Staging and committing Capacitor changes");
-    await gitAddAll({ path: appPath });
-    await gitCommit({
+    await gitService.stageAllAndCommit({
       path: appPath,
       message: "[dyad] add Capacitor for mobile app support",
     });

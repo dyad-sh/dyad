@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, IpcMainInvokeEvent } from "electron";
 import { createTypedHandler } from "./base";
 import { computeStreamingPatch } from "../utils/stream_text_utils";
 import { chatContracts } from "../types/chat";
@@ -244,6 +244,17 @@ async function processStreamChunks({
 }
 
 export function registerChatStreamHandlers() {
+  // Abort in-flight LLM streams on quit so the process can exit promptly and
+  // the module-level stream-tracking maps don't outlive their renderer.
+  // (Guarded: `app` is undefined when this module is imported in unit tests.)
+  app?.on?.("before-quit", () => {
+    for (const controller of activeStreams.values()) {
+      controller.abort();
+    }
+    activeStreams.clear();
+    partialResponses.clear();
+  });
+
   createTypedHandler(
     chatContracts.responseAck,
     async (_event, { chatId, lastSeq }) => {

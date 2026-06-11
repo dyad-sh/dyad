@@ -95,6 +95,10 @@ When a test uses both raw Playwright `toMatchAriaSnapshot()` and `po.snapshotMes
 
 Snapshot sanitizers should normalize the captured snapshot text, not mutate React-owned DOM with `innerHTML` before snapshotting. DOM mutation during E2E can trigger React `NotFoundError: Failed to execute 'removeChild' on 'Node'` on the next render.
 
+Custom snapshot helpers that read/write baseline files directly must fail the test after writing a missing baseline (Playwright's default `updateSnapshots: "missing"` writes the file AND fails). Returning silently after the write lets a renamed or typo'd snapshot name pass green on CI without ever comparing.
+
+Snapshot normalizers must be idempotent — `normalize(normalize(x)) === normalize(x)` — and should have a unit test asserting it. In particular, when re-formatting YAML single-quoted lines from `ariaSnapshot()`, unescape doubled `''` to `'` before re-escaping, or quotes double on every pass (`''` → `''''`). To find baselines affected by a normalizer change, run the normalizer over all committed `.aria.yml` files and diff: normalizer-produced baselines should be fixed points (raw `toMatchAriaSnapshot` baselines will differ and can be ignored).
+
 If app-file snapshots unexpectedly include `dist/` assets after running `pnpm --dir scaffold build`, delete `scaffold/dist` and rerun `npm run build` before regenerating E2E baselines. The packaged Electron app snapshots the scaffold contents from the last package build, so a stale packaged `scaffold/dist` can keep contaminating snapshots even after the source directory is cleaned.
 When changing provider request model IDs, search all request-dump snapshots for the old model value. Local-agent snapshots can include the same engine model payloads as `engine.spec.ts`, so updating only the obvious engine snapshot may leave stale expected dumps.
 

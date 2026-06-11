@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Github,
@@ -125,6 +126,7 @@ function ConnectedGitHubConnector({
   triggerAutoSync,
   onAutoSyncComplete,
 }: ConnectedGitHubConnectorProps) {
+  const { t } = useTranslation(["home", "common"]);
   // Sync state is stored in a global atom keyed by appId so it survives
   // unmounts when the user navigates away from the Publish tab while a push
   // is still running. See githubSyncAtoms.ts.
@@ -151,7 +153,9 @@ function ConnectedGitHubConnector({
     },
   });
 
-  const pushMutation = useMutation({
+  // Only the stable mutateAsync is kept: depending on the full mutation
+  // result object would recreate handleSyncToGithub on every render.
+  const { mutateAsync: pushToGithub } = useMutation({
     mutationFn: (options: GithubSyncOptions) =>
       ipc.github.push({
         appId,
@@ -223,7 +227,7 @@ function ConnectedGitHubConnector({
       setShowForceDialog(false);
 
       try {
-        await pushMutation.mutateAsync({ force, forceWithLease });
+        await pushToGithub({ force, forceWithLease });
         updateSyncState({
           syncSuccess: true,
           rebaseInProgress: false,
@@ -321,7 +325,7 @@ function ConnectedGitHubConnector({
         updateSyncState({ isSyncing: false });
       }
     },
-    [appId, pushMutation, updateSyncState],
+    [appId, pushToGithub, updateSyncState],
   );
 
   const handleAbortRebase = useCallback(async () => {
@@ -466,7 +470,10 @@ function ConnectedGitHubConnector({
     rebaseInProgress || (syncError?.includes("rebase-merge") ?? false);
   const isRebaseActionPending = isSyncing || !!rebaseAction;
   const isDisconnecting = disconnectRepoMutation.isPending;
-  const disconnectError = disconnectRepoMutation.error?.message || null;
+  const disconnectError = disconnectRepoMutation.error
+    ? disconnectRepoMutation.error.message ||
+      t("integrations.github.failedDisconnectRepo")
+    : null;
 
   return (
     <div className="w-full" data-testid="github-connected-repo">

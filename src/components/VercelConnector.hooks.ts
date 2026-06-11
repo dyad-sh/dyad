@@ -23,11 +23,8 @@ export function useVercelTokenSetup({
   );
 
   const saveTokenMutation = useMutation({
-    mutationFn: async () => {
-      if (!state.accessToken.trim()) return;
-      await ipc.vercel.saveToken({
-        token: state.accessToken.trim(),
-      });
+    mutationFn: async (token: string) => {
+      await ipc.vercel.saveToken({ token });
     },
     onSuccess: () => {
       dispatch({ type: "clear-token" });
@@ -36,14 +33,18 @@ export function useVercelTokenSetup({
   });
 
   const submit = useCallback(async () => {
-    await saveTokenMutation.mutateAsync().catch(() => undefined);
-  }, [saveTokenMutation]);
+    const token = state.accessToken.trim();
+    if (!token) return;
+    await saveTokenMutation.mutateAsync(token).catch(() => undefined);
+  }, [saveTokenMutation, state.accessToken]);
 
   return {
     state: {
       ...state,
       isSavingToken: saveTokenMutation.isPending,
-      tokenError: saveTokenMutation.error?.message || null,
+      tokenError: saveTokenMutation.error
+        ? saveTokenMutation.error.message || "Failed to save access token."
+        : null,
       tokenSuccess: saveTokenMutation.isSuccess,
     },
     actions: {
@@ -126,7 +127,9 @@ export function useVercelProjectSetup({
 
   const setupProjectMutation = useMutation({
     mutationFn: async () => {
-      if (!appId) return;
+      if (!appId) {
+        throw new Error("No app selected.");
+      }
       if (state.mode === "create") {
         const result = await ipc.vercel.createProject({
           name: state.projectName,
@@ -152,6 +155,7 @@ export function useVercelProjectSetup({
   }, [setupProjectMutation]);
 
   const canSubmit =
+    appId !== null &&
     !setupProjectMutation.isPending &&
     (state.mode === "create"
       ? state.projectAvailable !== false && !!state.projectName
@@ -171,8 +175,10 @@ export function useVercelProjectSetup({
       createProjectSuccess: setupProjectMutation.isSuccess,
     },
     actions: {
-      setMode: (mode: "create" | "existing") =>
-        dispatch({ type: "set-mode", mode }),
+      setMode: (mode: "create" | "existing") => {
+        setupProjectMutation.reset();
+        dispatch({ type: "set-mode", mode });
+      },
       setProjectName,
       selectProject: (projectId: string) =>
         dispatch({ type: "select-project", projectId }),

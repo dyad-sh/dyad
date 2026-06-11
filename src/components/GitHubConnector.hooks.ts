@@ -111,11 +111,19 @@ export function useGitHubRepoSetup({
     enabled: state.mode === "existing" && !!state.selectedRepo,
   });
 
+  // Apply branch defaults only once per selected repo; background refetches
+  // (e.g. on window refocus) must not clobber the user's branch selection.
+  const branchDefaultsRepoRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (branchesQuery.data) {
+    if (
+      branchesQuery.data &&
+      branchDefaultsRepoRef.current !== state.selectedRepo
+    ) {
+      branchDefaultsRepoRef.current = state.selectedRepo;
       dispatch({ type: "branches-loaded", branches: branchesQuery.data });
     }
-  }, [branchesQuery.data]);
+  }, [branchesQuery.data, state.selectedRepo]);
 
   const checkRepoAvailability = useCallback(
     async (name: string) => {
@@ -167,7 +175,9 @@ export function useGitHubRepoSetup({
 
   const setupRepoMutation = useMutation({
     mutationFn: async () => {
-      if (!appId) return;
+      if (!appId) {
+        throw new Error("No app selected.");
+      }
       if (state.mode === "create") {
         await ipc.github.createRepo({
           org: githubOrg,
@@ -199,6 +209,7 @@ export function useGitHubRepoSetup({
   }, [setupRepoMutation]);
 
   const canSubmit =
+    appId !== null &&
     !setupRepoMutation.isPending &&
     (state.mode === "create"
       ? state.repoAvailable !== false && !!state.repoName
@@ -223,8 +234,10 @@ export function useGitHubRepoSetup({
       createRepoSuccess: setupRepoMutation.isSuccess,
     },
     actions: {
-      setMode: (mode: "create" | "existing") =>
-        dispatch({ type: "set-mode", mode }),
+      setMode: (mode: "create" | "existing") => {
+        setupRepoMutation.reset();
+        dispatch({ type: "set-mode", mode });
+      },
       setRepoName,
       selectRepo: (repo: string) => dispatch({ type: "select-repo", repo }),
       selectBranch: (branch: string) =>

@@ -17,13 +17,12 @@ import {
   gitListBranches,
   gitListRemoteBranches,
   isGitStatusClean,
-  gitAddAll,
-  gitCommit,
   getCurrentCommitHash,
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
 } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
@@ -191,8 +190,7 @@ export async function prepareLocalBranch({
         }
 
         try {
-          await gitAddAll({ path: appPath });
-          const commitHash = await gitCommit({
+          const commitHash = await gitService.stageAllAndCommit({
             path: appPath,
             message:
               "chore: auto-commit local changes before connecting to GitHub",

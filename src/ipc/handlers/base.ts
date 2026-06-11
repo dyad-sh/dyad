@@ -8,6 +8,28 @@ import {
 } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
 
+type RegisteredHandler = (
+  event: IpcMainInvokeEvent,
+  input: any,
+) => Promise<unknown>;
+
+// Registry of raw handler implementations keyed by channel. Lets unit tests
+// invoke a handler directly (after calling the module's register*Handlers())
+// without mocking electron or introspecting ipcMain.handle calls.
+const registeredHandlers = new Map<string, RegisteredHandler>();
+
+export function getRegisteredHandlerForTesting(
+  channel: string,
+): RegisteredHandler {
+  const handler = registeredHandlers.get(channel);
+  if (!handler) {
+    throw new Error(
+      `No handler registered for channel "${channel}". Did you call the module's register*Handlers() function first?`,
+    );
+  }
+  return handler;
+}
+
 /**
  * Creates a typed IPC handler from a contract.
  * Provides runtime validation of inputs and type-safe handler implementation.
@@ -31,7 +53,9 @@ export function createTypedHandler<
     input: z.infer<TInput>,
   ) => Promise<z.infer<TOutput>>,
 ): void {
-  ipcMain.handle(
+  registeredHandlers.set(contract.channel, handler);
+  // Optional chaining: ipcMain is undefined in unit tests (no electron runtime).
+  ipcMain?.handle(
     contract.channel,
     async (event: IpcMainInvokeEvent, rawInput: unknown) => {
       // Runtime validation of input
@@ -99,7 +123,9 @@ export function createLoggedTypedHandler(logger: {
       input: z.infer<TInput>,
     ) => Promise<z.infer<TOutput>>,
   ): void {
-    ipcMain.handle(
+    registeredHandlers.set(contract.channel, handler);
+    // Optional chaining: ipcMain is undefined in unit tests (no electron runtime).
+    ipcMain?.handle(
       contract.channel,
       async (event: IpcMainInvokeEvent, rawInput: unknown) => {
         // Runtime validation of input

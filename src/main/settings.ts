@@ -34,7 +34,9 @@ const logger = log.scope("settings");
 //
 // It is OK to add new fields to DEFAULT_SETTINGS.
 // However, be VERY careful about removing fields from DEFAULT_SETTINGS.
-const DEFAULT_SETTINGS: UserSettings = {
+// (Exported for the unit-test harness; production code should go through
+// readSettings instead of using this directly.)
+export const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",
     provider: "auto",

@@ -1,7 +1,7 @@
-import { db } from "@/db";
 import { apps, appCollections } from "@/db/schema";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 import { createTypedHandler } from "./base";
+import { getHandlerContext } from "./handler_context";
 import { appCollectionContracts } from "../types/app_collections";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -35,6 +35,7 @@ function isUniqueNameError(error: unknown): boolean {
 
 export function registerAppCollectionHandlers() {
   createTypedHandler(appCollectionContracts.list, async () => {
+    const { db } = getHandlerContext();
     const rows = db
       .select()
       .from(appCollections)
@@ -58,6 +59,7 @@ export function registerAppCollectionHandlers() {
   });
 
   createTypedHandler(appCollectionContracts.create, async (_, params) => {
+    const { db } = getHandlerContext();
     const { name, appIds } = params;
     const trimmed = name.trim();
     if (!trimmed) {
@@ -116,6 +118,7 @@ export function registerAppCollectionHandlers() {
   });
 
   createTypedHandler(appCollectionContracts.update, async (_, params) => {
+    const { db } = getHandlerContext();
     const { id, name, appIds } = params;
     const trimmed = name.trim();
     if (!trimmed) {
@@ -176,6 +179,7 @@ export function registerAppCollectionHandlers() {
   });
 
   createTypedHandler(appCollectionContracts.delete, async (_, id) => {
+    const { db } = getHandlerContext();
     // ON DELETE SET NULL on apps.collection_id handles this at the DB level,
     // but we null out explicitly first so the operation is robust regardless
     // of whether foreign_keys pragma is enabled in the current connection.
@@ -197,6 +201,7 @@ export function registerAppCollectionHandlers() {
   });
 
   createTypedHandler(appCollectionContracts.assignApps, async (_, params) => {
+    const { db } = getHandlerContext();
     const { collectionId, appIds } = params;
     if (appIds.length === 0) return;
     db.transaction((tx) => {

@@ -97,13 +97,11 @@ import { createFromTemplate } from "./createFromTemplate";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import {
-  gitCommit,
-  gitAdd,
-  gitInit,
   gitListBranches,
   gitRenameBranch,
   getCurrentCommitHash,
 } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import { normalizePath } from "../../../shared/normalizePath";
 import { safeJoin } from "../utils/path_utils";
 import {
@@ -437,16 +435,8 @@ export function registerAppHandlers() {
     await ensureDyadGitignored(fullAppPath);
 
     // Initialize git repo and create first commit
-
-    await gitInit({ path: fullAppPath, ref: "main" });
-
-    // Stage all files
-    await gitAdd({ path: fullAppPath, filepath: "." });
-
-    // Create initial commit
-    const commitHash = await gitCommit({
+    const commitHash = await gitService.initRepoWithInitialCommit({
       path: fullAppPath,
-      message: "Init Dyad app",
     });
 
     // Update chat with initial commit hash
@@ -519,16 +509,7 @@ export function registerAppHandlers() {
 
     if (!withHistory) {
       // Initialize git repo and create first commit
-      await gitInit({ path: newAppPath, ref: "main" });
-
-      // Stage all files
-      await gitAdd({ path: newAppPath, filepath: "." });
-
-      // Create initial commit
-      await gitCommit({
-        path: newAppPath,
-        message: "Init Dyad app",
-      });
+      await gitService.initRepoWithInitialCommit({ path: newAppPath });
     }
 
     // 4. Create a new app entry in the database
@@ -1014,10 +995,9 @@ export function registerAppHandlers() {
 
       // Check if git repository exists and commit the change
       if (fs.existsSync(path.join(appPath, ".git"))) {
-        await gitAdd({ path: appPath, filepath: filePath });
-
-        await gitCommit({
+        await gitService.commitFile({
           path: appPath,
+          filepath: filePath,
           message: `Updated ${filePath}`,
         });
       }

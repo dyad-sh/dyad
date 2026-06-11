@@ -98,6 +98,19 @@ export function closeDatabase(): void {
 }
 
 /**
+ * Replaces the database instance resolved by the `db` proxy. Test-only seam
+ * so unit tests can point handlers at an in-memory database (see
+ * `src/testing/test_db.ts`). Pass null to clear the override.
+ */
+export function setDatabaseForTesting(
+  database:
+    | (BetterSQLite3Database<typeof schema> & { $client: Database.Database })
+    | null,
+): void {
+  _db = database;
+}
+
+/**
  * Get the database instance (throws if not initialized)
  */
 export function getDb(): BetterSQLite3Database<typeof schema> & {

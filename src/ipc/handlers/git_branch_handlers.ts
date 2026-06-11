@@ -18,10 +18,9 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   getGitUncommittedFilesWithStatus,
-  gitAddAll,
-  gitCommit,
   gitDiscardAllChanges,
 } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -406,8 +405,7 @@ async function handleCommitChanges(
 ): Promise<string> {
   return withAppGitOp(appId, "commit", async (appPath) => {
     await ensureDyadGitignored(appPath);
-    await gitAddAll({ path: appPath });
-    return gitCommit({ path: appPath, message });
+    return gitService.stageAllAndCommit({ path: appPath, message });
   });
 }
 

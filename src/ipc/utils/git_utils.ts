@@ -1059,10 +1059,15 @@ export async function gitSetRemoteUrl({
         }
       } else if (result.exitCode !== 0) {
         // Handle other errors
-        throw new DyadError(
-          `Failed to add remote: ${result.stderr}`,
-          DyadErrorKind.Conflict,
-        );
+        const stderr = result.stderr || "";
+        let message = `Failed to add remote: ${stderr}`;
+        let kind: DyadErrorKind = DyadErrorKind.Conflict;
+        if (/not a git repository/i.test(stderr)) {
+          message =
+            "The selected folder is not a git repository. Initialize it with `git init` (or pick a folder that already is one) before connecting it to a remote.";
+          kind = DyadErrorKind.NotFound;
+        }
+        throw new DyadError(message, kind);
       }
     } catch (error: any) {
       logger.error("Error setting up remote:", error);

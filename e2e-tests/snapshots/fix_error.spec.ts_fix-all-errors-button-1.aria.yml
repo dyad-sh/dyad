@@ -8,7 +8,6 @@
 - button "Error Third error in helper Copy Fix with AI"
 - button "Fix All Errors (3)"
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - paragraph: "Fix all of the following errors:"
 - list:
   - listitem: First error in Index
@@ -17,6 +16,5 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Undo"
 - button "Retry"

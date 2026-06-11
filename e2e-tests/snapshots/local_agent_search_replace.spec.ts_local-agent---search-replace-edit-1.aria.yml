@@ -2,7 +2,6 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=local-agent/search-replace
 - paragraph: Let me first read the file to see its contents.
@@ -11,7 +10,6 @@
 - button "Search & Replace App.tsx src/App.tsx"
 - paragraph: Done! I've updated the message using search_replace. The edit was applied successfully.
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

@@ -2,7 +2,6 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=local-agent/parallel-tools
 - paragraph: I'll create two files for you in parallel.
@@ -14,7 +13,6 @@
   - listitem: src/utils/string.ts - Contains capitalize and lowercase functions
 - paragraph: Both files are now ready to use in your project.
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

@@ -2,7 +2,6 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=local-agent/todo-followup-loop
 - paragraph: I'll create a todo list to track these tasks.Let me create the utility function first.
@@ -13,7 +12,6 @@
 - 'button "README.md src/utils/README.md Edit Summary: Update documentation"'
 - paragraph: Marking documentation as done.All tasks are now complete! I've created the utility function, written unit tests, and updated the documentation.
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

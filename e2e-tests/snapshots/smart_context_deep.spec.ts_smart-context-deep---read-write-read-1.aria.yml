@@ -10,7 +10,6 @@
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: replace file"'
 - button "Copy"
 - text: auto
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"

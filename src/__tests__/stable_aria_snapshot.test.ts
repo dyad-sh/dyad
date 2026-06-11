@@ -77,16 +77,13 @@ describe("normalizeMessagesAriaSnapshot", () => {
     ).toBe(`- img "uploaded-file.png"\n`);
   });
 
-  it("normalizes version file-count text", () => {
+  it("drops version file-count text", () => {
     expect(
       normalizeMessagesAriaSnapshot(`- text: "Version 2: (1 files changed)"
 - text: "/Version 3: \\\\(\\\\d+ files changed\\\\)/"
 - text: "Version 4: wrote 2 file(s)"
 `),
-    ).toBe(`- text: "[[Version 2: files changed]]"
-- text: "[[Version 3: files changed]]"
-- text: "[[Version 4: files changed]]"
-`);
+    ).toBe(`\n`);
   });
 
   it("normalizes generated AI rules prompts", () => {

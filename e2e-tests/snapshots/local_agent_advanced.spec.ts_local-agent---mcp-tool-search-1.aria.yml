@@ -2,7 +2,6 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=local-agent/mcp-tool-search
 - paragraph: Let me find an MCP tool for adding numbers.

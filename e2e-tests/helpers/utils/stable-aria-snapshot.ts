@@ -97,6 +97,10 @@ function shouldDropLine(line: string) {
     /^- text: (test-model|gpt-[\w.-]+|claude-[\w.-]+|o\d[\w.-]*|gemini-[\w.-]+|llama[\w.-]*|qwen[\w.-]*|deepseek[\w.-]*)$/.test(
       trimmed,
     ) ||
+    // Version indicators depend on async git commits and arrive at
+    // unpredictable times, causing snapshot races.  File-write
+    // correctness is verified separately by snapshotAppFiles.
+    /^- text: "\[\[Version \d+: files changed\]\]"$/.test(trimmed) ||
     trimmed === "- text: Request ID" ||
     trimmed === "- text: Undo" ||
     trimmed === "- text: Retry" ||

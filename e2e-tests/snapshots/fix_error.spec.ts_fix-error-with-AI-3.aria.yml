@@ -2,7 +2,6 @@
 - paragraph: I will intentionally add an error
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"'
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
   - link "http://localhost:42101/src/pages/Index.tsx:6:6":
@@ -12,6 +11,5 @@
 - code: Fixing the error...
 - button "Index.tsx src/pages/Index.tsx Edit"
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Undo"
 - button "Retry"

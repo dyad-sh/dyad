@@ -2,7 +2,6 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=local-agent/enable-nitro
 - paragraph: I'll add a Nitro server layer so the app can run server-side code.
@@ -12,7 +11,6 @@
   - code: "`server/routes/api/`"
 - paragraph: Server layer added. Now I'll write the API route.
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

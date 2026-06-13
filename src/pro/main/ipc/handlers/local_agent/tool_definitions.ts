@@ -59,6 +59,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import {
+  isCodeExplorerBenchmarking,
   recordCodeExplorerBenchmarkEvent,
   summarizeBenchmarkValue,
 } from "./benchmark_recorder";
@@ -461,21 +462,23 @@ export function shouldIncludeTool(
   if (options.readOnly && tool.modifiesState) {
     return false;
   }
-  if (tool.isEnabled) {
-    const enabled = tool.isEnabled(ctx);
-    if (tool.name === "explore_code") {
-      const availability = getExploreCodeAvailability(ctx);
-      recordCodeExplorerBenchmarkEvent({
-        type: "tool_availability",
-        phase: "main",
-        chatId: ctx.chatId,
-        appId: ctx.appId,
-        toolName: tool.name,
-        enabled,
-        reason: availability.reason,
-        tsconfigPath: availability.tsconfigPath,
-      });
+  if (tool.name === "explore_code" && isCodeExplorerBenchmarking()) {
+    const availability = getExploreCodeAvailability(ctx);
+    recordCodeExplorerBenchmarkEvent({
+      type: "tool_availability",
+      phase: "main",
+      chatId: ctx.chatId,
+      appId: ctx.appId,
+      toolName: tool.name,
+      enabled: availability.enabled,
+      reason: availability.reason,
+      tsconfigPath: availability.tsconfigPath,
+    });
+    if (!availability.enabled) {
+      return false;
     }
+  } else if (tool.isEnabled) {
+    const enabled = tool.isEnabled(ctx);
     if (!enabled) {
       return false;
     }
@@ -555,38 +558,45 @@ export function buildAgentToolSet(
           // (including failures) for retry/fallback telemetry
           trackFileEditTool(ctx, tool.name, processedArgs);
 
-          recordCodeExplorerBenchmarkEvent({
-            type: "tool_call_start",
-            phase: "main",
-            chatId: ctx.chatId,
-            appId: ctx.appId,
-            toolName: tool.name,
-            argsPreview: summarizeBenchmarkValue(processedArgs),
-          });
-          const startedAt = Date.now();
+          const benchmarkEnabled = isCodeExplorerBenchmarking();
+          const startedAt = benchmarkEnabled ? Date.now() : 0;
+          if (benchmarkEnabled) {
+            recordCodeExplorerBenchmarkEvent({
+              type: "tool_call_start",
+              phase: "main",
+              chatId: ctx.chatId,
+              appId: ctx.appId,
+              toolName: tool.name,
+              argsPreview: summarizeBenchmarkValue(processedArgs),
+            });
+          }
           const result = await tool.execute(processedArgs, ctx);
-          recordCodeExplorerBenchmarkEvent({
-            type: "tool_call_end",
-            phase: "main",
-            chatId: ctx.chatId,
-            appId: ctx.appId,
-            toolName: tool.name,
-            elapsedMs: Date.now() - startedAt,
-            resultPreview: summarizeBenchmarkValue(result),
-          });
+          if (benchmarkEnabled) {
+            recordCodeExplorerBenchmarkEvent({
+              type: "tool_call_end",
+              phase: "main",
+              chatId: ctx.chatId,
+              appId: ctx.appId,
+              toolName: tool.name,
+              elapsedMs: Date.now() - startedAt,
+              resultPreview: summarizeBenchmarkValue(result),
+            });
+          }
 
           return convertToolResultForAiSdk(result);
         } catch (error) {
-          recordCodeExplorerBenchmarkEvent({
-            type: "tool_call_error",
-            phase: "main",
-            chatId: ctx.chatId,
-            appId: ctx.appId,
-            toolName: tool.name,
-            argsPreview: summarizeBenchmarkValue(args),
-            error: getToolErrorSummary(error),
-          });
           const errorMessage = getToolErrorSummary(error);
+          if (isCodeExplorerBenchmarking()) {
+            recordCodeExplorerBenchmarkEvent({
+              type: "tool_call_error",
+              phase: "main",
+              chatId: ctx.chatId,
+              appId: ctx.appId,
+              toolName: tool.name,
+              argsPreview: summarizeBenchmarkValue(args),
+              error: errorMessage,
+            });
+          }
           const errorDetails = getToolErrorDisplayDetails(error);
 
           ctx.onXmlComplete(

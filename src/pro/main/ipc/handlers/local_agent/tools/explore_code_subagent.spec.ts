@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   getAiHeaders: vi.fn(),
   getProviderOptions: vi.fn(),
   cancelOrphanedBaseStream: vi.fn(),
+  isCodeExplorerBenchmarking: vi.fn(),
   recordCodeExplorerBenchmarkEvent: vi.fn(),
   runRawExploreCode: vi.fn(),
 }));
@@ -67,6 +68,7 @@ vi.mock("@/ipc/utils/stream_text_utils", () => ({
 }));
 
 vi.mock("../benchmark_recorder", () => ({
+  isCodeExplorerBenchmarking: mocks.isCodeExplorerBenchmarking,
   recordCodeExplorerBenchmarkEvent: mocks.recordCodeExplorerBenchmarkEvent,
   summarizeBenchmarkValue: (value: unknown) =>
     typeof value === "string" ? value : JSON.stringify(value),
@@ -102,6 +104,7 @@ describe("runExploreCodeSubagent", () => {
     });
     mocks.getMaxTokens.mockResolvedValue(32_000);
     mocks.getTemperature.mockResolvedValue(0);
+    mocks.isCodeExplorerBenchmarking.mockReturnValue(false);
     mocks.getAiHeaders.mockReturnValue({ "x-test": "header" });
     mocks.getProviderOptions.mockReturnValue({ dyad: "options" });
     mocks.runRawExploreCode.mockResolvedValue(buildRawExploreResult());

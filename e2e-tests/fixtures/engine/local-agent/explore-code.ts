@@ -10,6 +10,7 @@ export const fixture: LocalAgentFixture = {
           name: "explore_code",
           args: {
             query: "App component render flow",
+            intent: "explain",
             max_files: 4,
           },
         },

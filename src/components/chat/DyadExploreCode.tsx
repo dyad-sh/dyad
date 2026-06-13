@@ -38,6 +38,7 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const aborted = state === "aborted";
+  const errored = state === "error";
   const query = node?.properties?.query || "";
   const appName = node?.properties?.appName || "";
   const files = node?.properties?.files || "";
@@ -86,6 +87,7 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
         {aborted && (
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
+        {errored && <DyadStateIndicator state="error" errorLabel="Failed" />}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>

@@ -9,13 +9,14 @@ import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import { MODEL_PRICING, formatDollars, usageCost } from "./pricing.mjs";
 
 const require = createRequire(import.meta.url);
 const eph = require("electron-playwright-helpers");
 
-const ROOT = path.resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const CONFIG_PATH = path.join(ROOT, "benchmarks/code-explorer/tasks.json");
 const REPOS_DIR = path.join(ROOT, "benchmarks/code-explorer/repos");
 const RESULTS_DIR = path.join(ROOT, "benchmark-results/code-explorer");
@@ -87,6 +88,9 @@ const fullMatrix = buildMatrix(
 const resumedRows = values["resume-from"]
   ? loadResumedRows(fullMatrix, values["resume-from"])
   : [];
+const retryPreservedRows = values["retry-from"]
+  ? loadRetryPreservedRows(fullMatrix, values["retry-from"])
+  : [];
 const matrix = values["retry-from"]
   ? buildRetryMatrix(config, values["retry-from"])
   : values["resume-from"]
@@ -99,10 +103,13 @@ if (values["dry-run"]) {
       {
         runId,
         totalTrials:
-          matrix.length + importedArmRows.length + resumedRows.length,
+          matrix.length +
+          importedArmRows.length +
+          resumedRows.length +
+          retryPreservedRows.length,
         liveTrials: matrix.length,
         importedTrials: importedArmRows.length,
-        resumedTrials: resumedRows.length,
+        resumedTrials: resumedRows.length + retryPreservedRows.length,
         concurrency,
         imported: importedArmRows.map((row) => ({
           repo: row.repo,
@@ -158,9 +165,10 @@ const benchmarkAuth =
     : { mode: authMode, model: values.model };
 
 console.log(
-  `Running ${matrix.length} live trial(s), importing ${importedArmRows.length} trial(s), resuming ${resumedRows.length} trial(s), with concurrency ${Math.min(concurrency, Math.max(matrix.length, 1))}`,
+  `Running ${matrix.length} live trial(s), importing ${importedArmRows.length} trial(s), resuming ${resumedRows.length + retryPreservedRows.length} trial(s), with concurrency ${Math.min(concurrency, Math.max(matrix.length, 1))}`,
 );
 try {
+  writeResumedRows(resultsPath, retryPreservedRows);
   writeResumedRows(resultsPath, resumedRows);
   writeImportedRows(resultsPath, importedArmRows);
   await runTrials(matrix, concurrency, resultsPath, benchmarkAuth);
@@ -243,7 +251,7 @@ function buildRetryMatrix(config, retryRunId) {
       );
     }
     const repeat = Number(repeatText);
-    for (const arm of selectedArms) {
+    for (const arm of executableArms) {
       retryRows.push({ repo, task, arm, repeat });
     }
   }
@@ -283,6 +291,33 @@ function loadResumedRows(expectedRows, resumeRunId) {
     }));
 }
 
+function loadRetryPreservedRows(expectedRows, retryRunId) {
+  const runsPath = path.join(RESULTS_DIR, retryRunId, "runs.jsonl");
+  if (!fs.existsSync(runsPath)) {
+    throw new Error(`Cannot retry missing benchmark run: ${retryRunId}`);
+  }
+
+  const sourceRows = readRunRows(runsPath);
+  const failedGroups = new Set(
+    sourceRows
+      .filter((row) => row.status !== "ok")
+      .map((row) => runRowGroupKey(row)),
+  );
+  const expectedKeys = new Set(expectedRows.map(trialKey));
+  return sourceRows
+    .filter(
+      (row) =>
+        row.status === "ok" &&
+        expectedKeys.has(runRowKey(row)) &&
+        !failedGroups.has(runRowGroupKey(row)),
+    )
+    .map((row) => ({
+      ...row,
+      resumedFromRunId: retryRunId,
+      resumedFromTrialRunId: row.runId,
+    }));
+}
+
 function readRunRows(runsPath) {
   const text = fs.readFileSync(runsPath, "utf8").trim();
   if (!text) {
@@ -296,6 +331,10 @@ function readRunRows(runsPath) {
 
 function runRowKey(row) {
   return `${row.repo}\0${row.task}\0${row.repeat}\0${row.arm}`;
+}
+
+function runRowGroupKey(row) {
+  return `${row.repo}\0${row.task}\0${row.repeat}`;
 }
 
 function trialKey(row) {
@@ -426,10 +465,6 @@ function findImportedSourceRow({
     if (exactRepeat) {
       return exactRepeat;
     }
-    const byPosition = candidates[0];
-    if (byPosition) {
-      return byPosition;
-    }
   }
   return null;
 }
@@ -493,13 +528,13 @@ function resolvePrimaryCompareArm(arms, explicitArm) {
     }
     return explicitArm;
   }
-  if (arms.has("explore-v2")) {
-    return "explore-v2";
+  const exploreArm = [...arms].find((arm) => isExploreArm(arm));
+  if (!exploreArm) {
+    throw new Error(
+      "--arms must include at least one explore arm when --compare-arm is omitted",
+    );
   }
-  if (arms.has("explore")) {
-    return "explore";
-  }
-  return [...arms].find((arm) => isExploreArm(arm)) ?? "explore";
+  return exploreArm;
 }
 
 function isExploreArm(arm) {
@@ -936,7 +971,12 @@ function handleResponsesEventAsChatChunk({
   setUsage,
 }) {
   if (!event.data || event.data === "[DONE]") return;
-  const parsed = JSON.parse(event.data);
+  let parsed;
+  try {
+    parsed = JSON.parse(event.data);
+  } catch {
+    return;
+  }
   if (event.event === "response.output_text.delta" && parsed.delta) {
     ensureRole();
     writeChunk({ content: parsed.delta });
@@ -949,7 +989,12 @@ function handleResponsesEventAsChatChunk({
     markToolCall();
     const index = toolCallIndexes.size;
     const callId = item.call_id ?? item.id ?? `call_${index}`;
-    toolCallIndexes.set(parsed.output_index ?? callId, index);
+    rememberToolCallIndex(toolCallIndexes, index, [
+      parsed.output_index,
+      item.id,
+      item.call_id,
+      callId,
+    ]);
     writeChunk({
       tool_calls: [
         {
@@ -964,8 +1009,12 @@ function handleResponsesEventAsChatChunk({
   }
   if (event.event === "response.function_call_arguments.delta") {
     ensureRole();
-    const key = parsed.output_index ?? parsed.item_id ?? 0;
-    const index = toolCallIndexes.get(key) ?? 0;
+    const index =
+      findToolCallIndex(toolCallIndexes, [
+        parsed.output_index,
+        parsed.item_id,
+        parsed.call_id,
+      ]) ?? 0;
     writeChunk({
       tool_calls: [
         {
@@ -980,6 +1029,25 @@ function handleResponsesEventAsChatChunk({
     const usage = parsed.response?.usage ?? parsed.usage;
     if (usage) setUsage(responsesUsageToChatUsage(usage));
   }
+}
+
+function rememberToolCallIndex(toolCallIndexes, index, keys) {
+  for (const key of keys) {
+    if (key !== undefined && key !== null) {
+      toolCallIndexes.set(key, index);
+    }
+  }
+}
+
+function findToolCallIndex(toolCallIndexes, keys) {
+  for (const key of keys) {
+    if (key === undefined || key === null) continue;
+    const index = toolCallIndexes.get(key);
+    if (index !== undefined) {
+      return index;
+    }
+  }
+  return null;
 }
 
 function responsesUsageToChatUsage(usage) {
@@ -1059,6 +1127,10 @@ function fetchRepo(repo) {
     );
   } else {
     execFileSync("git", ["fetch", "--depth=1", "origin"], {
+      cwd: repoPath,
+      stdio: "inherit",
+    });
+    execFileSync("git", ["reset", "--hard", "FETCH_HEAD"], {
       cwd: repoPath,
       stdio: "inherit",
     });
@@ -1307,10 +1379,11 @@ async function runTrial(trial, benchmarkAuth) {
       return window.electron.ipcRenderer.invoke("get-chat", chatId);
     }, importResult.chatId);
     const finalText = chat.messages?.at(-1)?.content ?? "";
+    const visibleFinalText = visibleAnswerText(finalText);
     const passedRubric = trial.task.expected.every((term) =>
-      finalText.toLowerCase().includes(term.toLowerCase()),
+      visibleFinalText.toLowerCase().includes(term.toLowerCase()),
     );
-    const quality = scoreFinalText(finalText, trial.task.expected);
+    const quality = scoreFinalText(visibleFinalText, trial.task.expected);
     const metrics = readBenchmarkMetrics(benchmarkRunId);
 
     return {
@@ -1417,8 +1490,8 @@ function discoverRelatedWorkspaceContextPaths(repoPath, appSubPath) {
 }
 
 function referencedWorkspacePackageDirs({ repoPath, appSubPath, packageDirs }) {
-  const tsconfig = readFocusedTsconfig(repoPath, appSubPath);
-  if (!tsconfig) {
+  const pathEntries = readFocusedTsconfigPathEntries(repoPath, appSubPath);
+  if (pathEntries.length === 0) {
     return [];
   }
 
@@ -1428,14 +1501,8 @@ function referencedWorkspacePackageDirs({ repoPath, appSubPath, packageDirs }) {
       .filter(([name]) => Boolean(name)),
   );
   const referenced = new Set();
-  const pathValues = Object.entries(
-    tsconfig.compilerOptions?.paths ?? {},
-  ).flatMap(([alias, targets]) => [
-    alias,
-    ...(Array.isArray(targets) ? targets : []),
-  ]);
 
-  for (const value of pathValues) {
+  for (const { value, baseSubPath } of pathEntries) {
     const packageFromScopedName = scopedPackageName(value);
     if (packageFromScopedName && packageByName.has(packageFromScopedName)) {
       addContextPackageDir(
@@ -1444,7 +1511,7 @@ function referencedWorkspacePackageDirs({ repoPath, appSubPath, packageDirs }) {
       );
     }
 
-    const resolved = resolveTsconfigTarget(repoPath, appSubPath, value);
+    const resolved = resolveTsconfigTarget(repoPath, baseSubPath, value);
     if (!resolved) continue;
     const containingPackage = packageDirs.find(
       (dir) => resolved === dir || resolved.startsWith(`${dir}/`),
@@ -1463,15 +1530,64 @@ function addContextPackageDir(referenced, dir) {
   }
 }
 
-function readFocusedTsconfig(repoPath, appSubPath) {
+function readFocusedTsconfigPathEntries(repoPath, appSubPath) {
   for (const configName of ["tsconfig.app.json", "tsconfig.json"]) {
     const configPath = path.join(repoPath, appSubPath, configName);
-    const config = readJsonFile(configPath);
-    if (config) {
-      return config;
+    if (fs.existsSync(configPath)) {
+      return readTsconfigPathEntries(repoPath, configPath, new Set());
     }
   }
-  return null;
+  return [];
+}
+
+function readTsconfigPathEntries(repoPath, configPath, seen) {
+  const resolvedConfigPath = path.resolve(configPath);
+  if (seen.has(resolvedConfigPath)) {
+    return [];
+  }
+  seen.add(resolvedConfigPath);
+
+  const config = readJsonFile(resolvedConfigPath);
+  if (!config) {
+    return [];
+  }
+
+  const entries = [];
+  const extendsPath = resolveTsconfigExtendsPath(
+    path.dirname(resolvedConfigPath),
+    config.extends,
+  );
+  if (extendsPath) {
+    entries.push(...readTsconfigPathEntries(repoPath, extendsPath, seen));
+  }
+
+  const baseSubPath =
+    normalizeRelativePath(
+      path.relative(repoPath, path.dirname(resolvedConfigPath)),
+    ) || ".";
+  for (const [alias, targets] of Object.entries(
+    config.compilerOptions?.paths ?? {},
+  )) {
+    entries.push({ value: alias, baseSubPath });
+    if (Array.isArray(targets)) {
+      for (const target of targets) {
+        entries.push({ value: target, baseSubPath });
+      }
+    }
+  }
+  return entries;
+}
+
+function resolveTsconfigExtendsPath(baseDir, extendsValue) {
+  if (typeof extendsValue !== "string" || !extendsValue.startsWith(".")) {
+    return null;
+  }
+
+  const resolved = path.resolve(baseDir, extendsValue);
+  const candidates = path.extname(resolved)
+    ? [resolved]
+    : [`${resolved}.json`, path.join(resolved, "tsconfig.json")];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
 function resolveTsconfigTarget(repoPath, appSubPath, value) {
@@ -2287,9 +2403,7 @@ function readBenchmarkMetrics(trialRunId) {
           )
       : [];
   const postReportMainBroadSearchCalls = postReportMainToolEvents.filter(
-    (event) =>
-      (event.toolName === "grep" || event.toolName === "list_files") &&
-      !isSearchEventWithinTargets(event, reportedSearchTargets),
+    (event) => isBroadPostReportSearchEvent(event, reportedSearchTargets),
   ).length;
   const postReportReadFileEvents = postReportMainToolEvents.filter(
     (event) => event.toolName === "read_file",
@@ -2565,6 +2679,37 @@ function isSearchEventWithinTargets(event, targets) {
       target.include === include &&
       (target.literal === null || target.literal === literal),
   );
+}
+
+function isBroadPostReportSearchEvent(event, targets) {
+  if (event.toolName === "grep") {
+    return !isSearchEventWithinTargets(event, targets);
+  }
+  if (event.toolName !== "list_files") {
+    return false;
+  }
+  const args = parsePreviewJson(event.argsPreview);
+  const directory =
+    typeof args?.directory === "string"
+      ? normalizeGlobPrefix(args.directory)
+      : "";
+  if (!args?.recursive) {
+    return false;
+  }
+  if (!directory) {
+    return true;
+  }
+  return !targets.some((target) =>
+    normalizeGlobPrefix(target.include).startsWith(directory),
+  );
+}
+
+function normalizeGlobPrefix(value) {
+  return String(value)
+    .replace(/\\/g, "/")
+    .replace(/\/?\*\*.*$/, "")
+    .replace(/\/?\*.*$/, "")
+    .replace(/\/$/, "");
 }
 
 function parseQuotedField(line, field) {
@@ -3248,7 +3393,7 @@ function scoreFinalText(finalText, expectedTerms) {
 
 function visibleAnswerText(finalText) {
   return finalText
-    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "")
     .replace(/<dyad-[\s\S]*?<\/dyad-[^>]+>/g, "")
     .replace(/<dyad-[^>]+\/>/g, "")
     .trim();

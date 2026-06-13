@@ -41,6 +41,25 @@ export function getExploreCodeAvailability(ctx: AgentContext): {
   reason: string | null;
   tsconfigPath: string | null;
 } {
+  return getExploreCodeAvailabilityForAppPath(ctx, ctx.appPath);
+}
+
+function getExploreCodeAvailabilityForAppPath(
+  ctx: AgentContext,
+  appPath: string,
+): {
+  enabled: boolean;
+  reason: string | null;
+  tsconfigPath: string | null;
+} {
+  if (!ctx.isDyadPro) {
+    return {
+      enabled: false,
+      reason: "dyad_pro_required",
+      tsconfigPath: null,
+    };
+  }
+
   const settings = readSettings();
   if (!settings.enableCodeExplorer) {
     return {
@@ -50,7 +69,7 @@ export function getExploreCodeAvailability(ctx: AgentContext): {
     };
   }
 
-  const availability = getCodeExplorerAvailability(ctx.appPath);
+  const availability = getCodeExplorerAvailability(appPath);
   return {
     enabled: availability.ready,
     reason: availability.ready
@@ -120,8 +139,11 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const availability = getExploreCodeAvailability(ctx);
     const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
+    const availability = getExploreCodeAvailabilityForAppPath(
+      ctx,
+      targetAppPath,
+    );
     const effectiveArgs = normalizeExploreCodeArgsForApp({
       appPath: targetAppPath,
       args,
@@ -145,7 +167,7 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
         toolName: "explore_code",
       });
       ctx.onXmlComplete(
-        `<dyad-explore-code ${buildExploreCodeAttributes(args)} cached="true">\n${escapeXmlContent(cachedReport)}\n</dyad-explore-code>`,
+        `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)} cached="true">\n${escapeXmlContent(cachedReport)}\n</dyad-explore-code>`,
       );
       return cachedReport;
     }

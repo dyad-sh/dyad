@@ -6,6 +6,15 @@ testSkipIfWindows("local-agent - explore_code experiment", async ({ po }) => {
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
+  await po.page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enableCodeExplorer: false,
+    });
+  });
+  await expect
+    .poll(() => po.settings.recordSettings().enableCodeExplorer)
+    .toBe(false);
+
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("request", { name: "disabled" });
 
@@ -28,9 +37,8 @@ testSkipIfWindows("local-agent - explore_code experiment", async ({ po }) => {
   await card.click();
   await expect(card).toContainText("explore_code report");
   await expect(card).toContainText("src/App.tsx");
-  await expect(card).toContainText("src/main.tsx");
-  await expect(card).toContainText("Findings");
-  await expect(card).toContainText("Compiler signal: strong");
+  await expect(card).toContainText("compiler-backed symbol window");
+  await expect(card).toContainText("Read targets");
 
   await po.snapshotMessages();
 });

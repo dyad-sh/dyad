@@ -1,5 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import type {
   CodeExplorerWorkerInput,
@@ -80,6 +81,7 @@ function getCachedIndex(
   const watchedPaths = [
     ...built.tsconfigPaths,
     ...built.index.rootFileNames,
+    ...sourceDirectories(built.index.rootFileNames),
   ].filter(Boolean);
   indexCache.set(key, {
     key,
@@ -88,6 +90,10 @@ function getCachedIndex(
     newestMtimeMs: newestMtimeMs(watchedPaths),
   });
   return built;
+}
+
+function sourceDirectories(filePaths: string[]): string[] {
+  return [...new Set(filePaths.map((filePath) => path.dirname(filePath)))];
 }
 
 function isCacheFresh(cached: CachedIndex): boolean {

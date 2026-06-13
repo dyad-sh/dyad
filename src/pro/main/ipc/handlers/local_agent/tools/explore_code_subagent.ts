@@ -11,6 +11,7 @@ import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import type { UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  isCodeExplorerBenchmarking,
   recordCodeExplorerBenchmarkEvent,
   summarizeBenchmarkValue,
 } from "../benchmark_recorder";
@@ -105,6 +106,9 @@ export async function runExploreCodeSubagent({
   let explainBounceUsed = false;
 
   const record = (event: Record<string, unknown>): void => {
+    if (!isCodeExplorerBenchmarking()) {
+      return;
+    }
     recordCodeExplorerBenchmarkEvent({
       phase: SUBAGENT_PHASE,
       chatId: ctx.chatId,
@@ -199,6 +203,15 @@ export async function runExploreCodeSubagent({
       // Drain the stream so tool calls execute.
     }
 
+    if (observations.length === 0) {
+      await collectRawExploreObservation({
+        args,
+        ctx,
+        observations,
+        candidateRegistry,
+      });
+    }
+
     const reportText = renderFinalReport({
       args,
       intent,
@@ -232,6 +245,38 @@ export async function runExploreCodeSubagent({
     }
     throw error;
   }
+}
+
+async function collectRawExploreObservation({
+  args,
+  ctx,
+  observations,
+  candidateRegistry,
+}: {
+  args: ExploreCodeArgs;
+  ctx: AgentContext;
+  observations: SubagentObservation[];
+  candidateRegistry: CandidateRegistry;
+}): Promise<void> {
+  const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
+  const effectiveArgs = normalizeExploreCodeArgsForApp({
+    appPath: targetAppPath,
+    args,
+  });
+  const rawResult = await runRawExploreCode({
+    appPath: targetAppPath,
+    args: effectiveArgs,
+  });
+  const resultText = formatRawExploreCodeResult(rawResult);
+  const candidates = candidateRegistry.register(
+    candidatesFromRawExploreCodeResult(rawResult),
+  );
+  observations.push({
+    toolName: "explore_code",
+    args: effectiveArgs,
+    result: annotateObservationResult(resultText, candidates),
+    candidates,
+  });
 }
 
 function renderFinalReport({
@@ -387,13 +432,15 @@ function buildExploreCodeSubagentTools({
       inputSchema: submitReportSchema,
       execute: async (selection: ExploreSelection) => {
         const result = onSubmitReport(selection);
-        record({
-          type: "submit_report_result",
-          toolName: "submit_report",
-          resultPreview: summarizeBenchmarkValue(result),
-          accepted: result === "Report accepted.",
-          submittedIntent: args.intent ?? "locate",
-        });
+        if (isCodeExplorerBenchmarking()) {
+          record({
+            type: "submit_report_result",
+            toolName: "submit_report",
+            resultPreview: summarizeBenchmarkValue(result),
+            accepted: result === "Report accepted.",
+            submittedIntent: args.intent ?? "locate",
+          });
+        }
         return result;
       },
     },
@@ -420,7 +467,8 @@ function buildObservedExploreCodeTool({
       "Compiler-backed code explorer. Use this for TypeScript, TSX, JavaScript, or JSX symbols and flows included in the configured TypeScript project. It returns relevant symbols and line-numbered source windows grouped by file.",
     inputSchema: rawExploreCodeSchema,
     execute: async (toolArgs: RawExploreCodeArgs) => {
-      const startedAt = Date.now();
+      const benchmarkEnabled = isCodeExplorerBenchmarking();
+      const startedAt = benchmarkEnabled ? Date.now() : 0;
       const budgetMessage = readOnlyToolBudget.reserve("explore_code");
       if (budgetMessage) {
         observations.push({
@@ -431,11 +479,13 @@ function buildObservedExploreCodeTool({
         });
         return budgetMessage;
       }
-      record({
-        type: "tool_call_start",
-        toolName: "explore_code",
-        argsPreview: summarizeBenchmarkValue(toolArgs),
-      });
+      if (benchmarkEnabled) {
+        record({
+          type: "tool_call_start",
+          toolName: "explore_code",
+          argsPreview: summarizeBenchmarkValue(toolArgs),
+        });
+      }
       try {
         const lockedArgs: RawExploreCodeArgs = {
           ...toolArgs,
@@ -471,12 +521,14 @@ function buildObservedExploreCodeTool({
           result: annotatedResult,
           candidates,
         });
-        record({
-          type: "tool_call_end",
-          toolName: "explore_code",
-          elapsedMs: Date.now() - startedAt,
-          resultPreview: summarizeBenchmarkValue(resultText),
-        });
+        if (benchmarkEnabled) {
+          record({
+            type: "tool_call_end",
+            toolName: "explore_code",
+            elapsedMs: Date.now() - startedAt,
+            resultPreview: summarizeBenchmarkValue(resultText),
+          });
+        }
         return annotatedResult;
       } catch (error) {
         if (ctx.abortSignal?.aborted) {
@@ -489,12 +541,14 @@ function buildObservedExploreCodeTool({
           result: errorMessage,
           candidates: [],
         });
-        record({
-          type: "tool_call_error",
-          toolName: "explore_code",
-          argsPreview: summarizeBenchmarkValue(toolArgs),
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (benchmarkEnabled) {
+          record({
+            type: "tool_call_error",
+            toolName: "explore_code",
+            argsPreview: summarizeBenchmarkValue(toolArgs),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         return errorMessage;
       }
     },
@@ -524,7 +578,8 @@ function wrapSubagentTool<TArgs>({
     description: tool.description,
     inputSchema: tool.inputSchema,
     execute: async (toolArgs: TArgs) => {
-      const startedAt = Date.now();
+      const benchmarkEnabled = isCodeExplorerBenchmarking();
+      const startedAt = benchmarkEnabled ? Date.now() : 0;
       const budgetMessage = readOnlyToolBudget.reserve(tool.name);
       if (budgetMessage) {
         observations.push({
@@ -535,11 +590,13 @@ function wrapSubagentTool<TArgs>({
         });
         return budgetMessage;
       }
-      record({
-        type: "tool_call_start",
-        toolName: tool.name,
-        argsPreview: summarizeBenchmarkValue(toolArgs),
-      });
+      if (benchmarkEnabled) {
+        record({
+          type: "tool_call_start",
+          toolName: tool.name,
+          argsPreview: summarizeBenchmarkValue(toolArgs),
+        });
+      }
       try {
         const compactResult = compactBroadCall?.(toolArgs);
         if (compactResult) {
@@ -549,12 +606,14 @@ function wrapSubagentTool<TArgs>({
             result: compactResult,
             candidates: [],
           });
-          record({
-            type: "tool_call_end",
-            toolName: tool.name,
-            elapsedMs: Date.now() - startedAt,
-            resultPreview: summarizeBenchmarkValue(compactResult),
-          });
+          if (benchmarkEnabled) {
+            record({
+              type: "tool_call_end",
+              toolName: tool.name,
+              elapsedMs: Date.now() - startedAt,
+              resultPreview: summarizeBenchmarkValue(compactResult),
+            });
+          }
           return compactResult;
         }
 
@@ -573,12 +632,14 @@ function wrapSubagentTool<TArgs>({
           result: annotatedResult,
           candidates: registeredCandidates,
         });
-        record({
-          type: "tool_call_end",
-          toolName: tool.name,
-          elapsedMs: Date.now() - startedAt,
-          resultPreview: summarizeBenchmarkValue(result),
-        });
+        if (benchmarkEnabled) {
+          record({
+            type: "tool_call_end",
+            toolName: tool.name,
+            elapsedMs: Date.now() - startedAt,
+            resultPreview: summarizeBenchmarkValue(result),
+          });
+        }
         return typeof result === "string" ? annotatedResult : result;
       } catch (error) {
         if (ctx.abortSignal?.aborted) {
@@ -591,12 +652,14 @@ function wrapSubagentTool<TArgs>({
           result: errorMessage,
           candidates: [],
         });
-        record({
-          type: "tool_call_error",
-          toolName: tool.name,
-          argsPreview: summarizeBenchmarkValue(toolArgs),
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (benchmarkEnabled) {
+          record({
+            type: "tool_call_error",
+            toolName: tool.name,
+            argsPreview: summarizeBenchmarkValue(toolArgs),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         return errorMessage;
       }
     },

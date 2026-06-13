@@ -375,8 +375,9 @@ function declarationKey(fileName: string, start: number): string {
 function isInProjectSource(appPath: string, fileName: string): boolean {
   const relative = normalizePath(path.relative(appPath, fileName));
   if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
-  if (relative.includes("/node_modules/")) return false;
-  if (relative.includes("/.dyad/")) return false;
+  const segments = relative.split("/");
+  if (segments.includes("node_modules")) return false;
+  if (segments.includes(".dyad")) return false;
   if (relative.endsWith(".d.ts")) return false;
   return /\.(tsx?|jsx?)$/.test(relative);
 }

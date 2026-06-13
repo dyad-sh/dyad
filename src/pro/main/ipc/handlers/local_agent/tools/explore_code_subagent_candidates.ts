@@ -373,13 +373,7 @@ export function candidatesFromReadFileResult(
   return [
     buildCandidate({
       path: readArgs.path,
-      range:
-        readArgs.startLine || readArgs.endLine
-          ? {
-              start: readArgs.startLine ?? 1,
-              end: readArgs.endLine ?? readArgs.startLine ?? 1,
-            }
-          : null,
+      range: rangeFromReadFileResult(result, readArgs),
       symbols: [],
       source: "read_file",
       provenance: ["source range read directly by the sub-agent"],
@@ -387,6 +381,23 @@ export function candidatesFromReadFileResult(
       observedText: result,
     }),
   ];
+}
+
+function rangeFromReadFileResult(
+  result: string,
+  readArgs: { startLine?: number; endLine?: number },
+): CandidateRange | null {
+  if (!readArgs.startLine && !readArgs.endLine) {
+    return null;
+  }
+  const start = readArgs.startLine ?? 1;
+  const lineCount = result.length === 0 ? 0 : result.split("\n").length;
+  const inferredEnd =
+    readArgs.endLine ?? Math.max(start, start + lineCount - 1);
+  return {
+    start,
+    end: inferredEnd,
+  };
 }
 
 function parseReadFileArgs(

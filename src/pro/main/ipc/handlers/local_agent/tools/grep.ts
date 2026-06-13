@@ -450,6 +450,11 @@ async function runLiteralSearch({
   const matchesByKey = new Map<string, RipgrepMatch>();
   let stoppedEarly = false;
   for (const query of literalQueries) {
+    const remaining = limit - matchesByKey.size;
+    if (remaining <= 0) {
+      stoppedEarly = true;
+      break;
+    }
     const result = await runRipgrep({
       appPath,
       query,
@@ -458,7 +463,7 @@ async function runLiteralSearch({
       includeIgnored: args.include_ignored,
       caseSensitive: args.case_sensitive,
       literal: true,
-      maxMatches: limit,
+      maxMatches: remaining,
       excludeDyadFolder,
     });
     stoppedEarly ||= result.stoppedEarly;
@@ -492,7 +497,10 @@ function hasExplicitRegexIntent(query: string): boolean {
   if (/\b[\w.$]+\[[\w.$'"]+\]/.test(query)) {
     return false;
   }
-  return /\\[AbBdDsSwWzZ]|\[[^\]]+\]|\(\?|\{\d+(?:,\d*)?\}/.test(query);
+  return (
+    /\\.|\[[^\]]+\]|\(\?|\{\d+(?:,\d*)?\}/.test(query) ||
+    /\([^)]*\|[^)]*\)/.test(query)
+  );
 }
 
 function looksLikeCodeLiteral(query: string): boolean {

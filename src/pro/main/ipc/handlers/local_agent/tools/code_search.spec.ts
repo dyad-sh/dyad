@@ -124,11 +124,11 @@ describe("codeSearchTool", () => {
       expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
     });
 
-    it("is disabled when code explorer is enabled and ready", () => {
+    it("stays enabled when code explorer is enabled and ready for referenced-app fallback", () => {
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(false);
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
     });
 
     it("stays enabled when code explorer is enabled but not ready", () => {

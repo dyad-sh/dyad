@@ -1,8 +1,9 @@
-import { streamText, stepCountIs, type ToolSet } from "ai";
+import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import crypto from "node:crypto";
 import log from "electron-log";
 
 import { readSettings } from "@/main/settings";
+import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
 import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
@@ -171,21 +172,12 @@ export async function runExploreCodeSubagent({
       system: buildExploreCodeSubagentSystemPrompt(),
       prompt: buildExploreCodeSubagentPrompt(args),
       tools,
-      prepareStep: () => {
-        // First step must use the compiler-backed explorer.
-        if (observations.length === 0) {
-          return forceExploreCodeStep();
-        }
-        // Last allowed step with nothing accepted yet: force a report so we get
-        // the model's own candidate selection instead of the heuristic fallback.
-        if (
-          !acceptedRef.current &&
-          observations.length >= SUBAGENT_MAX_STEPS - 1
-        ) {
-          return forceSubmitReportStep();
-        }
-        return undefined;
-      },
+      prepareStep: ({ messages }) =>
+        prepareExploreCodeSubagentStep({
+          messages,
+          observations,
+          acceptedRef,
+        }),
       stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
       abortSignal: ctx.abortSignal,
       onStepFinish: (step) => {
@@ -625,6 +617,46 @@ function compactBroadListFilesCall(args: unknown): string | null {
 function formatToolError(toolName: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return `Tool ${toolName} failed: ${message}`;
+}
+
+function prepareExploreCodeSubagentStep({
+  messages,
+  observations,
+  acceptedRef,
+}: {
+  messages: ModelMessage[];
+  observations: SubagentObservation[];
+  acceptedRef: { current: AcceptedReport | null };
+}) {
+  let forcedStep: ReturnType<
+    typeof forceExploreCodeStep | typeof forceSubmitReportStep
+  > | null = null;
+
+  // First step must use the compiler-backed explorer.
+  if (observations.length === 0) {
+    forcedStep = forceExploreCodeStep();
+  } else if (
+    // Last allowed step with nothing accepted yet: force a report so we get
+    // the model's own candidate selection instead of the heuristic fallback.
+    !acceptedRef.current &&
+    observations.length >= SUBAGENT_MAX_STEPS - 1
+  ) {
+    forcedStep = forceSubmitReportStep();
+  }
+
+  const cleanedMessages = messages.map(cleanMessage);
+  const hasCleanedMessages = cleanedMessages.some(
+    (message, index) => message !== messages[index],
+  );
+
+  if (!hasCleanedMessages) {
+    return forcedStep ?? undefined;
+  }
+
+  return {
+    ...forcedStep,
+    messages: cleanedMessages,
+  };
 }
 
 function forceSubmitReportStep() {

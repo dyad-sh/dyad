@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { streamText } from "ai";
+import type { ModelMessage } from "ai";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -113,7 +114,7 @@ describe("runExploreCodeSubagent", () => {
   it("runs one conversation that forces explore_code first and accepts a candidate-ID report", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: createToolStream(async () => {
-        expect(options.prepareStep()).toEqual({
+        expect(options.prepareStep(createPrepareStepOptions())).toEqual({
           activeTools: ["explore_code"],
           toolChoice: { type: "tool", toolName: "explore_code" },
         });
@@ -126,7 +127,7 @@ describe("runExploreCodeSubagent", () => {
           'exact source lines: "export async function saveWidget(input: WidgetInput) {"',
         );
         // With evidence observed and nothing forced, the model is free to act.
-        expect(options.prepareStep()).toBeUndefined();
+        expect(options.prepareStep(createPrepareStepOptions())).toBeUndefined();
         const accepted = await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
           flow: [
@@ -216,6 +217,50 @@ describe("runExploreCodeSubagent", () => {
 
     expect(report).toContain("Confidence: high | Action: answer_from_report");
     expect(report).toContain("Missing: none");
+  });
+
+  it("strips OpenAI item references from step messages while preserving forced tool choice", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        const step = options.prepareStep(
+          createPrepareStepOptions([
+            { role: "user", content: "Find the save flow" },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "reasoning",
+                  text: "Thinking...",
+                  providerOptions: {
+                    openai: {
+                      itemId: "rs_abc123",
+                      reasoningEncryptedContent: "encrypted-data",
+                    },
+                  },
+                },
+                { type: "text", text: "I should inspect the code." },
+              ],
+            },
+          ]),
+        );
+
+        expect(step).toMatchObject({
+          activeTools: ["explore_code"],
+          toolChoice: { type: "tool", toolName: "explore_code" },
+        });
+        const reasoningPart = step.messages[1].content[0];
+        expect(reasoningPart.providerOptions.openai.itemId).toBeUndefined();
+        expect(
+          reasoningPart.providerOptions.openai.reasoningEncryptedContent,
+        ).toBe("encrypted-data");
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
   });
 
   it("downgrades confidence to medium when missing coverage remains", async () => {
@@ -560,7 +605,7 @@ describe("runExploreCodeSubagent", () => {
             query: `widget save flow ${index}`,
           });
         }
-        expect(options.prepareStep()).toEqual({
+        expect(options.prepareStep(createPrepareStepOptions())).toEqual({
           activeTools: ["submit_report"],
           toolChoice: { type: "tool", toolName: "submit_report" },
         });
@@ -799,6 +844,10 @@ function createMockContext(appPath = "/tmp/app"): AgentContext {
     availableMcpTools: [],
     nitroEnabled: false,
   } as unknown as AgentContext;
+}
+
+function createPrepareStepOptions(messages: ModelMessage[] = []) {
+  return { messages };
 }
 
 function buildRawExploreResult() {

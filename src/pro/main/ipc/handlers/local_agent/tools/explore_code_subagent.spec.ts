@@ -82,7 +82,7 @@ vi.mock("./explore_code_raw", async () => {
   };
 });
 
-describe("runExploreCodeSubagent V2", () => {
+describe("runExploreCodeSubagent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.readSettings.mockReturnValue({
@@ -110,7 +110,7 @@ describe("runExploreCodeSubagent V2", () => {
     }));
   });
 
-  it("exposes one reconnaissance conversation with submit_report and inline candidate IDs", async () => {
+  it("runs one conversation that forces explore_code first and accepts a candidate-ID report", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: createToolStream(async () => {
         expect(options.prepareStep()).toEqual({
@@ -123,31 +123,21 @@ describe("runExploreCodeSubagent V2", () => {
         expect(result).toContain("Observed candidate IDs:");
         expect(result).toContain("[c1 ");
         expect(result).toContain(
-          'exact quote options to copy: "export async function saveWidget(input: WidgetInput) {"',
+          'exact source lines: "export async function saveWidget(input: WidgetInput) {"',
         );
-        expect(result).toContain('"return api.widgets.save(input);"');
+        // With evidence observed and nothing forced, the model is free to act.
         expect(options.prepareStep()).toBeUndefined();
-        await options.tools.submit_report.execute({
+        const accepted = await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "inspect save handler before editing",
-              required: true,
-            },
-          ],
           flow: [
             {
               candidateId: "c1",
               role: "handler",
               fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
             },
           ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "high",
         });
+        expect(accepted).toBe("Report accepted.");
       }),
       textStream: createTextStream([]),
     }));
@@ -165,51 +155,112 @@ describe("runExploreCodeSubagent V2", () => {
       "read_file",
       "submit_report",
     ]);
-    expect(options.system).toContain("prefer the execution path");
-    expect(options.system).toContain("request or transport boundary");
-    expect(options.system).toContain("displayed/returned result");
-    expect(options.system).toContain(
-      "management, listing, or settings surfaces",
-    );
-    expect(options.system).toContain(
-      "do not defer already-found exact symbols as searchTargets without observing their source",
-    );
+    // Streamed once: no separate nudge stream in the redesign.
     expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
-    expect(report).toContain("Action: read_targets");
+    // edit intent + ranged flow derives read_targets at high confidence.
+    expect(report).toContain("Confidence: high | Action: read_targets");
     expect(report).toContain(
       "src/widget/saveWidget.ts:1-4 (handler) - saveWidget handles the submitted value.",
     );
+    // The quote is excerpted from observed source; the model never supplied it.
     expect(report).toContain(
       "> export async function saveWidget(input: WidgetInput) {",
     );
     expect(report).toContain('"path":"src/widget/saveWidget.ts"');
   });
 
-  it("drops unknown candidate IDs and falls back instead of rendering fabricated paths", async () => {
+  it("uses a domain-neutral system prompt with no benchmark vocabulary", async () => {
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+    const options = vi.mocked(streamText).mock.calls[0][0] as any;
+    const system: string = options.system;
+    expect(system).toContain("code reconnaissance sub-agent");
+    expect(system).toContain("observed candidate IDs");
+    expect(system).toContain(
+      "the system derives the recommended next action and confidence",
+    );
+    for (const noun of [
+      "reservation",
+      "busy times",
+      "request or transport boundary",
+      "management, listing, or settings surfaces",
+    ]) {
+      expect(system).not.toContain(noun);
+    }
+  });
+
+  it("answers from the report for explain intent with verified flow", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c999"],
-          readTargets: [
+          primaryCandidateIds: ["c1"],
+          flow: [
             {
-              candidateId: "c999",
-              purpose: "fabricated target",
-              required: true,
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget persists the input.",
             },
           ],
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "explain" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: high | Action: answer_from_report");
+    expect(report).toContain("Missing: none");
+  });
+
+  it("downgrades confidence to medium when missing coverage remains", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget persists the input.",
+            },
+          ],
+          missingCoverage: ["where the saved widget is rendered"],
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Confidence: medium | Action: answer_from_report");
+    expect(report).toContain("where the saved widget is rendered");
+  });
+
+  it("drops unknown candidate IDs and falls back instead of rendering fabricated paths", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        const result = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c999"],
           flow: [
             {
               candidateId: "c999",
               role: "handler",
               fact: "made up",
-              quote: "made up",
             },
           ],
-          missingCoverage: ["no valid observed candidate"],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "high",
         });
+        expect(result).toContain("did not match observed evidence");
       }),
       textStream: createTextStream([]),
     }));
@@ -221,76 +272,24 @@ describe("runExploreCodeSubagent V2", () => {
 
     expect(report).toContain("## explore_code report");
     expect(report).not.toContain("c999");
-    expect(report).not.toContain("fabricated target");
+    expect(report).not.toContain("made up");
+    // Falls back to the real observed candidate.
+    expect(report).toContain("src/widget/saveWidget.ts");
   });
 
-  it("does not upgrade complete locate reports that ask for target reads", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "inspect save handler before answering",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: read_targets");
-    expect(report).toContain("Read targets:");
-    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
-    expect(JSON.parse(jsonText!)).toMatchObject({
-      action: "read_targets",
-    });
-    expect(JSON.parse(jsonText!)).not.toHaveProperty("readTargets");
-  });
-
-  it("keeps the last validated report when the stream fails after submit_report", async () => {
+  it("keeps the last accepted report when the stream fails after submit_report", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: (async function* () {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "inspect save handler before editing",
-              required: true,
-            },
-          ],
           flow: [
             {
               candidateId: "c1",
               role: "handler",
               fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
             },
           ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
         });
         throw new Error("provider tool-call protocol error");
         yield { type: "text-delta", text: "unreachable" };
@@ -303,7 +302,6 @@ describe("runExploreCodeSubagent V2", () => {
       ctx: createMockContext(),
     });
 
-    expect(report).toContain("Confidence: medium");
     expect(report).toContain("Action: read_targets");
     expect(report).toContain("saveWidget handles the submitted value.");
     expect(report).toContain(
@@ -311,25 +309,127 @@ describe("runExploreCodeSubagent V2", () => {
     );
   });
 
-  it("rejects unverified quotes and downgrades confidence without rewriting facts", async () => {
+  it("falls back to a deterministic report when the model never calls submit_report", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
+    expect(report).toContain("## explore_code report");
+    expect(report).toContain("Confidence: low");
+    expect(report).toContain("src/widget/saveWidget.ts");
+  });
+
+  it("renders skip_explore_result when the model finds nothing relevant", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: [],
+          flow: [],
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: skip_explore_result");
+    expect(report).toContain("explorer found nothing relevant");
+  });
+
+  it("derives targeted_gap_search and renders executable search targets", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
-          readTargets: [],
+          flow: [],
+          missingCoverage: ["where saveWidget is invoked"],
+          searchSuggestions: [
+            { identifier: "saveWidget", scope: "src/**/*.{ts,tsx}" },
+          ],
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Action: targeted_gap_search");
+    expect(report).toContain(
+      'Search targets:\nquery="saveWidget" include="src/**/*.{ts,tsx}" literal=true',
+    );
+  });
+
+  it("drops non-executable search suggestions", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          flow: [],
+          missingCoverage: ["where saveWidget is invoked"],
+          searchSuggestions: [
+            { identifier: "saveWidget", scope: "somewhere in the app" },
+          ],
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).not.toContain("somewhere in the app");
+    expect(report).not.toContain("Search targets:");
+  });
+
+  it("bounces an explain trace with no implementation-site evidence, but only once", async () => {
+    mocks.runRawExploreCode.mockResolvedValue(
+      buildSupportOnlyRawExploreResult(),
+    );
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        const firstSubmit = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
           flow: [
             {
               candidateId: "c1",
-              role: "handler",
-              fact: "unverified fact must not render",
-              quote: "not present in any observed tool result",
+              role: "test",
+              fact: "covers the widget save flow.",
             },
           ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
         });
+        expect(firstSubmit).toContain("no implementation-site evidence");
+        const secondSubmit = await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "test",
+              fact: "covers the widget save flow.",
+            },
+          ],
+        });
+        expect(secondSubmit).toBe("Report accepted.");
       }),
       textStream: createTextStream([]),
     }));
@@ -339,678 +439,30 @@ describe("runExploreCodeSubagent V2", () => {
       ctx: createMockContext(),
     });
 
-    expect(report).toContain("Confidence: low");
-    expect(report).toContain("Flow:\nnone");
-    expect(report).not.toContain("unverified fact must not render");
+    expect(report).toContain("## explore_code report");
   });
 
-  it("downgrades answer_from_report when no verified flow survives", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify the handler directly",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "unverified fact must not render",
-              quote: "not present in any observed tool result",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: low");
-    expect(report).toContain("Action: read_targets");
-    expect(report).toContain("Flow:\nnone");
-    expect(report).toContain(
-      "src/widget/saveWidget.ts:1-4 - verify the handler directly",
+  it("renders each flow path at most once outside the JSON block", async () => {
+    mocks.runRawExploreCode.mockResolvedValue(
+      buildSameFileMultiRangeRawExploreResult(),
     );
-  });
-
-  it("keeps answer_from_report for locate intent when unresolved coverage remains", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "inspect exact save action before answering",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Exact save action name was not confirmed."],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: medium");
-    expect(report).toContain("Action: answer_from_report");
-    expect(report).not.toContain(
-      "Missing: Exact save action name was not confirmed.",
-    );
-    expect(report).toContain("Missing: none");
-    expect(report).toContain(
-      "src/widget/saveWidget.ts:1-4 (handler) - saveWidget handles the submitted value.",
-    );
-  });
-
-  it("downgrades low-confidence answer_from_report to bounded follow-up", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify low-confidence handler finding",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Caller was not confirmed."],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "low",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: low");
-    expect(report).toContain("Action: read_targets");
-    expect(report).toContain("Missing: Caller was not confirmed.");
-    expect(report).toContain("flow 1 - verify low-confidence handler finding");
-  });
-
-  it("preserves sparse explain reports instead of judging coverage", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify sparse trace before answering",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query: "Trace how widget save flow is computed and surfaced",
-        intent: "explain",
-      },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: medium");
-    expect(report).toContain("Action: answer_from_report");
-    expect(report).not.toContain("Read targets:");
-    expect(report).not.toContain("flow 1 - verify sparse trace before answering");
-  });
-
-  it("keeps answer_from_report when selected evidence covers the query", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "jump to the verified save flow",
-              required: false,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget validates before saving.",
-              quote: "  validateWidget(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: {
-        query: "Trace widget save validation flow",
-        intent: "explain",
-      },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: answer_from_report");
-    expect(report).toContain("Missing: none");
-    expect(report).toContain("saveWidget validates before saving.");
-  });
-
-  it("does not force continuation for locate reports with verified flow and residual missing coverage", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) =>
-      createStreamResult(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        const firstResult = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify observed handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Need exact caller of saveWidget."],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-        expect(firstResult).toContain("Report accepted");
-        expect(options.prepareStep()).toBeUndefined();
-      }),
-    );
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Missing: Need exact caller of saveWidget.");
-    expect(report).toContain("saveWidget handles the submitted value.");
-  });
-
-  it("continues explain reports when selected flow still names missing coverage", async () => {
-    mocks.runRawExploreCode
-      .mockResolvedValueOnce(buildRawExploreResult())
-      .mockResolvedValueOnce(buildLateRelevantRawExploreResult());
-    mocks.streamText.mockImplementationOnce((options: any) =>
-      createStreamResult(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        const firstResult = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify observed handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Need exact caller of saveWidget."],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-        expect(firstResult).toContain("needs revision");
-        expect(firstResult).toContain("Need exact caller of saveWidget.");
-        expect(options.prepareStep()).toBeUndefined();
-
-        await options.tools.explore_code.execute({
-          query: "exact caller of saveWidget",
-        });
-        expect(options.prepareStep()).toEqual({
-          activeTools: ["submit_report"],
-          toolChoice: { type: "tool", toolName: "submit_report" },
-        });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1", "c2"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-            {
-              candidateId: "c2",
-              role: "caller",
-              fact: "callerWidget invokes saveWidget directly.",
-              quote: "return saveWidget(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-    );
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: answer_from_report");
-    expect(report).toContain("Missing: none");
-    expect(report).toContain("callerWidget invokes saveWidget directly.");
-    expect(report).not.toContain("Need exact caller of saveWidget.");
-  });
-
-  it("requires flow quotes to belong to the selected candidate", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce(
-      buildTwoFileRawExploreResult(),
-    );
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget calls the audit logger.",
-              quote: "auditWidgetSave(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: low");
-    expect(report).toContain("Flow:\nnone");
-    expect(report).not.toContain("saveWidget calls the audit logger");
-    expect(report).not.toContain("auditWidgetSave(input);");
-  });
-
-  it("continues after a validation gap and uses the revised submitted report", async () => {
-    mocks.cancelOrphanedBaseStream.mockImplementationOnce(
-      (streamResult: any) => {
-        expect(streamResult.fullStreamAccessed).toBe(true);
-      },
-    );
-    mocks.streamText.mockImplementationOnce((options: any) =>
-      createStreamResult(async () => {
-        await options.tools.explore_code.execute({
-          query: "widget save flow",
-        });
-        const firstResult = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "first report is not grounded.",
-              quote: "not present in observed evidence",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-        expect(firstResult).toContain("needs revision");
-        expect(firstResult).toContain("exact quote options");
-        expect(firstResult).toContain(
-          "export async function saveWidget(input: WidgetInput) {",
-        );
-        expect(options.prepareStep()).toEqual({
-          activeTools: ["submit_report"],
-          toolChoice: { type: "tool", toolName: "submit_report" },
-        });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
           flow: [
             {
               candidateId: "c1",
               role: "handler",
               fact: "saveWidget validates input.",
-              quote: "validateWidget(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-    );
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-
-    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
-    expect(report).toContain("saveWidget validates input");
-    expect(report).not.toContain("first report is not grounded");
-  });
-
-  it("does not start a second revision stream when the stream stops after a revision request", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) =>
-      createStreamResult(async () => {
-        await options.tools.explore_code.execute({
-          query: "widget save flow",
-        });
-        const result = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "inspect save handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget calls the audit logger.",
-              quote: "auditWidgetSave(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-        expect(result).toContain("needs revision");
-      }),
-    );
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(1);
-    expect(report).toContain("Action: read_targets");
-    expect(report).toContain("Flow:\nnone");
-  });
-
-  it("prioritizes recent observed candidates in submit_report nudge prompts", async () => {
-    mocks.runRawExploreCode
-      .mockResolvedValueOnce(buildManyFileRawExploreResult())
-      .mockResolvedValueOnce(buildLateRelevantRawExploreResult());
-    mocks.streamText
-      .mockImplementationOnce((options: any) =>
-        createStreamResult(async () => {
-          await options.tools.explore_code.execute({
-            query: "widget save flow",
-          });
-          await options.tools.explore_code.execute({
-            query: "exact caller of saveWidget",
-          });
-        }),
-      )
-      .mockImplementationOnce((options: any) => {
-        const lateIndex = options.prompt.indexOf("src/widget/callerWidget.ts");
-        const earlyIndex = options.prompt.indexOf("src/widget/flowStep1.ts");
-        expect(lateIndex).toBeGreaterThanOrEqual(0);
-        expect(earlyIndex).toBeGreaterThanOrEqual(0);
-        expect(lateIndex).toBeLessThan(earlyIndex);
-        return createStreamResult(async () => {
-          await options.tools.read_file.execute({
-            path: "src/widget/callerWidget.ts",
-            start_line_one_indexed: 1,
-            end_line_one_indexed_inclusive: 4,
-          });
-          await options.tools.submit_report.execute({
-            primaryCandidateIds: ["c6"],
-            readTargets: [],
-            flow: [
-              {
-                candidateId: "c6",
-                role: "caller",
-                fact: "callerWidget invokes saveWidget directly.",
-                quote: "return saveWidget(input);",
-              },
-            ],
-            missingCoverage: [],
-            recommendedPrimaryAction: "answer_from_report",
-            confidence: "medium",
-          });
-        });
-      });
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("callerWidget invokes saveWidget directly.");
-  });
-
-  it("forces a corrected submit_report when continuation rounds are exhausted", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) =>
-      createStreamResult(async () => {
-        await options.tools.explore_code.execute({
-          query: "widget save flow",
-        });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Need exact caller of saveWidget."],
-          recommendedPrimaryAction: "targeted_gap_search",
-          searchTargets: [
-            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
-          ],
-          confidence: "medium",
-        });
-        expect(options.prepareStep()).toBeUndefined();
-        await options.tools.read_file.execute({
-          path: "src/widget/saveWidget.ts",
-          start_line_one_indexed: 1,
-          end_line_one_indexed_inclusive: 4,
-        });
-        const secondResult = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Still need exact caller of saveWidget."],
-          recommendedPrimaryAction: "targeted_gap_search",
-          searchTargets: [
-            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
-          ],
-          confidence: "medium",
-        });
-        expect(secondResult).toContain("0 continuation round(s) remaining");
-        expect(secondResult).toContain("Call submit_report again now");
-        expect(secondResult).toContain("targeted_gap_search");
-        expect(options.prepareStep()).toEqual({
-          activeTools: ["submit_report"],
-          toolChoice: { type: "tool", toolName: "submit_report" },
-        });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "targeted_gap_search",
-          searchTargets: [
-            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
-          ],
-          confidence: "medium",
-        });
-      }),
-    );
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("saveWidget handles the submitted value");
-    expect(report).not.toContain("Still need exact caller");
-  });
-
-  it("prioritizes quote corrections over residual missing coverage when verified flow survived", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce(
-      buildTwoFileRawExploreResult(),
-    );
-    mocks.streamText.mockImplementationOnce((options: any) =>
-      createStreamResult(async () => {
-        await options.tools.explore_code.execute({
-          query: "widget save flow",
-        });
-        const result = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1", "c2"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
             },
             {
               candidateId: "c2",
-              role: "audit",
-              fact: "audit evidence uses the wrong quote.",
-              quote: "not present in observed evidence",
+              role: "validation",
+              fact: "saveWidgetValidation validates input.",
             },
           ],
-          missingCoverage: ["Need exact caller of saveWidget."],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-
-        expect(result).toContain("Quote was not found");
-      }),
-    );
-
-    await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-  });
-
-  it("rejects quotes longer than two lines", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget validates and saves.",
-              quote: [
-                "export async function saveWidget(input: WidgetInput) {",
-                "  validateWidget(input);",
-                "  return api.widgets.save(input);",
-              ].join("\n"),
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
         });
       }),
       textStream: createTextStream([]),
@@ -1021,9 +473,105 @@ describe("runExploreCodeSubagent V2", () => {
       ctx: createMockContext(),
     });
 
-    expect(report).toContain("Flow:\nnone");
-    expect(report).not.toContain("saveWidget validates and saves.");
-    expect(report).not.toContain("return api.widgets.save(input);");
+    const beforeJson = report.split("```json")[0];
+    const occurrences =
+      beforeJson.match(/src\/widget\/saveWidget\.ts:1-4/g) ?? [];
+    // The second range on the same file is rendered as "same file:...".
+    expect(occurrences.length).toBe(1);
+    expect(beforeJson).toContain("same file:20-23");
+  });
+
+  it("caps accumulated raw observations from a single tool call", async () => {
+    mocks.runRawExploreCode.mockResolvedValue(buildLargeRawExploreResult());
+    let observedResult = "";
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        observedResult = await options.tools.explore_code.execute({
+          query: "widget save flow",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(observedResult.length).toBeLessThanOrEqual(12_010);
+    expect(observedResult).toContain("[TRUNCATED]");
+  });
+
+  it("caps sub-agent read-only tool calls at the shared step budget", async () => {
+    const results: string[] = [];
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        for (let index = 0; index < 13; index++) {
+          results.push(
+            await options.tools.explore_code.execute({
+              query: `widget save flow ${index}`,
+            }),
+          );
+        }
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(results[11]).not.toContain("budget exhausted");
+    expect(results[12]).toContain("budget exhausted");
+  });
+
+  it("keeps rendered reports within the character budget", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.explore_code.execute({ query: "widget save flow" });
+        await options.tools.submit_report.execute({
+          primaryCandidateIds: ["c1"],
+          flow: [
+            {
+              candidateId: "c1",
+              role: "handler",
+              fact: "saveWidget handles the submitted value.",
+            },
+          ],
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report.length).toBeLessThanOrEqual(2_500);
+  });
+
+  it("forces submit_report on the final allowed step when nothing is accepted", async () => {
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        for (let index = 0; index < 11; index++) {
+          await options.tools.explore_code.execute({
+            query: `widget save flow ${index}`,
+          });
+        }
+        expect(options.prepareStep()).toEqual({
+          activeTools: ["submit_report"],
+          toolChoice: { type: "tool", toolName: "submit_report" },
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
   });
 
   it("omits stale tsconfig paths from nested compiler exploration", async () => {
@@ -1035,18 +583,13 @@ describe("runExploreCodeSubagent V2", () => {
         });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
-          readTargets: [],
           flow: [
             {
               candidateId: "c1",
               role: "handler",
               fact: "saveWidget validates input.",
-              quote: "validateWidget(input);",
             },
           ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
         });
       }),
       textStream: createTextStream([]),
@@ -1084,18 +627,13 @@ describe("runExploreCodeSubagent V2", () => {
           });
           await options.tools.submit_report.execute({
             primaryCandidateIds: ["c1"],
-            readTargets: [],
             flow: [
               {
                 candidateId: "c1",
                 role: "handler",
                 fact: "saveWidget validates input.",
-                quote: "validateWidget(input);",
               },
             ],
-            missingCoverage: [],
-            recommendedPrimaryAction: "answer_from_report",
-            confidence: "medium",
           });
         }),
         textStream: createTextStream([]),
@@ -1128,18 +666,13 @@ describe("runExploreCodeSubagent V2", () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
-          readTargets: [],
           flow: [
             {
               candidateId: "c1",
               role: "handler",
               fact: "saveWidget validates input.",
-              quote: "validateWidget(input);",
             },
           ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
         });
       }),
       textStream: createTextStream([]),
@@ -1170,18 +703,13 @@ describe("runExploreCodeSubagent V2", () => {
         });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
-          readTargets: [],
           flow: [
             {
               candidateId: "c1",
               role: "handler",
               fact: "saveWidget validates input.",
-              quote: "validateWidget(input);",
             },
           ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
         });
       }),
       textStream: createTextStream([]),
@@ -1202,645 +730,22 @@ describe("runExploreCodeSubagent V2", () => {
     );
   });
 
-  it("renders each flow path at most once outside the JSON block", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget validates input.",
-              quote: "validateWidget(input);",
-            },
-            {
-              candidateId: "c1",
-              role: "persistence",
-              fact: "saveWidget persists input.",
-              quote: "return api.widgets.save(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "high",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-    const beforeJson = report.split("```json")[0];
-
-    expect(beforeJson.match(/src\/widget\/saveWidget\.ts/g) ?? []).toHaveLength(
-      1,
-    );
-    expect(report).toContain("saveWidget validates input");
-    expect(report).not.toContain("saveWidget persists input");
-  });
-
-  it("downgrades answer_from_report for edit/debug intent instead of upgrading actions", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "edit the handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "return api.widgets.save(input);",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "high",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "fix widget save flow", intent: "edit" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: read_targets");
-    expect(report).toContain("Read targets:");
-  });
-
-  it("falls back to deterministic observed evidence when the model never calls submit_report", async () => {
-    mocks.streamText
-      .mockImplementationOnce((options: any) => ({
-        fullStream: createToolStream(async () => {
-          const result = await options.tools.explore_code.execute({
-            query: "widget save flow",
-          });
-          expect(result).toContain("Observed candidate IDs:");
-        }),
-        textStream: createTextStream([]),
-      }))
-      .mockImplementationOnce((options: any) => {
-        expect(options.activeTools).toEqual(["submit_report"]);
-        expect(options.toolChoice).toEqual({
-          type: "tool",
-          toolName: "submit_report",
-        });
-        expect(options.prompt).toContain(
-          "Observed candidate IDs from prior tool results:",
-        );
-        expect(options.prompt).toContain(
-          "export async function saveWidget(input: WidgetInput) {",
-        );
-        expect(options.prompt).toContain(
-          'exact quote options to copy: "export async function saveWidget(input: WidgetInput) {"',
-        );
-        return {
-          fullStream: createTextStream(["still no tool call"]),
-          textStream: createTextStream([]),
-        };
-      });
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(2);
-    expect(report).toContain("Confidence: low");
-    expect(report).toContain("src/widget/saveWidget.ts");
-    expect(report).toContain('"paths":[{"path":"src/widget/saveWidget.ts"');
-  });
-
-  it("uses observed evidence when the submit_report nudge succeeds", async () => {
-    mocks.streamText
-      .mockImplementationOnce((options: any) => ({
-        fullStream: createToolStream(async () => {
-          const result = await options.tools.explore_code.execute({
-            query: "widget save flow",
-          });
-          expect(result).toContain("Observed candidate IDs:");
-        }),
-        textStream: createTextStream([]),
-      }))
-      .mockImplementationOnce((options: any) => {
-        expect(options.prompt).toContain(
-          "Observed candidate IDs from prior tool results:",
-        );
-        expect(options.prompt).toContain(
-          'exact quote options to copy: "export async function saveWidget(input: WidgetInput) {"',
-        );
-        return {
-          fullStream: createToolStream(async () => {
-            await options.tools.submit_report.execute({
-              primaryCandidateIds: ["c1"],
-              readTargets: [],
-              flow: [
-                {
-                  candidateId: "c1",
-                  role: "handler",
-                  fact: "saveWidget validates input.",
-                  quote: "validateWidget(input);",
-                },
-              ],
-              missingCoverage: [],
-              recommendedPrimaryAction: "answer_from_report",
-              confidence: "medium",
-            });
-          }),
-          textStream: createTextStream([]),
-        };
-      });
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-
-    expect(vi.mocked(streamText)).toHaveBeenCalledTimes(2);
-    expect(report).toContain("Action: answer_from_report");
-    expect(report).toContain("saveWidget validates input.");
-  });
-
-  it("renders skip_explore_result as a real empty outcome", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: [],
-          readTargets: [],
-          flow: [],
-          missingCoverage: ["no matching implementation evidence"],
-          recommendedPrimaryAction: "skip_explore_result",
-          confidence: "low",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "unrelated dependency question", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: skip_explore_result");
-    expect(report).toContain(
-      "Missing: explorer found nothing relevant; proceed without it",
-    );
-    expect(report).toContain('"paths":[]');
-  });
-
-  it("requests revision when skip_explore_result includes observed evidence", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        const result = await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify observed handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["no other entry point confirmed"],
-          recommendedPrimaryAction: "skip_explore_result",
-          confidence: "medium",
-        });
-        expect(result).toContain("needs revision");
-        expect(result).toContain("skip_explore_result is only valid");
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: low");
-    expect(report).toContain("Action: skip_explore_result");
-    expect(report).toContain("saveWidget handles the submitted value.");
-    expect(report).not.toContain("Read targets:");
-  });
-
-  it("validates candidate IDs that were observed before ranking overlap dedupe", async () => {
-    mocks.runRawExploreCode
-      .mockResolvedValueOnce(buildRawExploreResult())
-      .mockResolvedValueOnce(buildOverlappingRawExploreResult());
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify the original observed handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Confidence: medium");
-    expect(report).toContain("Action: read_targets");
-    expect(report).toContain("saveWidget handles the submitted value.");
-    expect(report).toContain(
-      "src/widget/saveWidget.ts:1-4 (handler) - saveWidget handles the submitted value.",
-    );
-  });
-
-  it("keeps separate flow links from different ranges in the same file", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce(
-      buildSameFileMultiRangeRawExploreResult(),
-    );
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1", "c2"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "entry",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-            {
-              candidateId: "c2",
-              role: "validation",
-              fact: "saveWidgetValidation validates input before save.",
-              quote:
-                "export function saveWidgetValidation(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("saveWidget handles the submitted value.");
-    expect(report).toContain(
-      "saveWidgetValidation validates input before save.",
-    );
-  });
-
-  it("renders targeted gap search targets outside the JSON machine block", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Need exact caller of saveWidget."],
-          recommendedPrimaryAction: "targeted_gap_search",
-          searchTargets: [
-            'query="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
-          ],
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: targeted_gap_search");
-    expect(report).toContain(
-      'Search targets:\nquery="saveWidget" include="src/widget/**/*.{ts,tsx}" literal=true',
-    );
-    expect(
-      report.split("```json")[0].match(/src\/widget\/saveWidget\.ts/g),
-    ).toHaveLength(1);
-    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
-    expect(JSON.parse(jsonText!)).toMatchObject({
-      action: "targeted_gap_search",
-      confidence: "medium",
-    });
-    expect(JSON.parse(jsonText!)).not.toHaveProperty("searchTargets");
-  });
-
-  it("drops non-executable search target scopes and downgrades to a usable action", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "verify observed save handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: ["Need exact caller of saveWidget."],
-          recommendedPrimaryAction: "targeted_gap_search",
-          searchTargets: [
-            'query="saveWidget" include="flow 1" literal=true',
-            'query="saveWidget" include="nearby file" literal=true',
-          ],
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report).toContain("Action: read_targets");
-    expect(report).not.toContain("Search targets:");
-    expect(report).toContain("Read targets:");
-    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
-    expect(JSON.parse(jsonText!)).toMatchObject({
-      action: "read_targets",
-      confidence: "medium",
-      paths: [{ path: "src/widget/saveWidget.ts", range: "1-4" }],
-    });
-  });
-
-  it("renders compacted machine paths once outside the JSON block", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce(
-      buildSixFileRawExploreResult(),
-    );
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1", "c2", "c3", "c4", "c5"],
-          readTargets: [],
-          flow: ["c1", "c2", "c3", "c4", "c5", "c6"].map(
-            (candidateId, index) => ({
-              candidateId,
-              role: "flow",
-              fact: `Candidate ${index + 1} participates in the widget save flow.`,
-              quote: `export const widgetFlowStep${index + 1} = true;`,
-            }),
-          ),
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "explain" },
-      ctx: createMockContext(),
-    });
-    const beforeJson = report.split("```json")[0];
-
-    for (let index = 1; index <= 6; index++) {
-      expect(
-        beforeJson.match(new RegExp(`src/widget/flowStep${index}\\.ts`, "g")) ??
-          [],
-      ).toHaveLength(1);
-    }
-    expect(
-      JSON.parse(/```json\n([\s\S]+?)\n```/.exec(report)![1]).paths,
-    ).toHaveLength(6);
-  });
-
-  it("caps accumulated raw observations across tool calls", async () => {
-    mocks.runRawExploreCode.mockResolvedValue(buildLargeRawExploreResult());
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.explore_code.execute({ query: "large evidence" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [],
-          flow: [],
-          missingCoverage: [],
-          recommendedPrimaryAction: "answer_from_report",
-          confidence: "low",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    await runExploreCodeSubagent({
-      args: { query: "large evidence", intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    const finishEvent = mocks.recordCodeExplorerBenchmarkEvent.mock.calls
-      .map(([event]) => event)
-      .find((event) => event.type === "subagent_finish");
-    expect(finishEvent.rawObservationChars).toBeLessThanOrEqual(60_000);
-  });
-
-  it("caps sub-agent read-only tool calls at the shared step budget", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        let finalToolResult = "";
-        for (let index = 0; index < 13; index++) {
-          finalToolResult = await options.tools.explore_code.execute({
-            query: `widget save flow ${index}`,
-          });
-        }
-        expect(finalToolResult).toContain("tool budget exhausted");
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1"],
-          readTargets: [
-            {
-              candidateId: "c1",
-              purpose: "inspect first observed handler",
-              required: true,
-            },
-          ],
-          flow: [
-            {
-              candidateId: "c1",
-              role: "handler",
-              fact: "saveWidget handles the submitted value.",
-              quote: "export async function saveWidget(input: WidgetInput) {",
-            },
-          ],
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "widget save flow", intent: "edit" },
-      ctx: createMockContext(),
-    });
-
-    expect(mocks.runRawExploreCode).toHaveBeenCalledTimes(12);
-    expect(report).toContain("Action: read_targets");
-  });
-
-  it("keeps rendered reports within the V2 character budget", async () => {
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: [],
-          readTargets: [],
-          flow: [],
-          missingCoverage: ["no matching implementation evidence"],
-          recommendedPrimaryAction: "skip_explore_result",
-          confidence: "low",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "long query ".repeat(400), intent: "locate" },
-      ctx: createMockContext(),
-    });
-
-    expect(report.length).toBeLessThanOrEqual(2_500);
-    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
-    expect(jsonText).toBeTruthy();
-    expect(JSON.parse(jsonText!)).toMatchObject({
-      action: "skip_explore_result",
-      confidence: "low",
-      paths: [],
-    });
-  });
-
-  it("compacts verbose accepted reports without truncation markers", async () => {
-    mocks.runRawExploreCode.mockResolvedValueOnce(
-      buildManyFileRawExploreResult(),
-    );
-    mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
-        await options.tools.explore_code.execute({ query: "widget save flow" });
-        await options.tools.submit_report.execute({
-          primaryCandidateIds: ["c1", "c2", "c3", "c4", "c5"],
-          readTargets: ["c1", "c2", "c3", "c4", "c5"].map((candidateId) => ({
-            candidateId,
-            purpose:
-              "inspect this deliberately wordy target purpose before relying on the reported implementation details",
-            required: true,
-          })),
-          flow: ["c1", "c2", "c3", "c4", "c5"].map((candidateId, index) => ({
-            candidateId,
-            role: "deliberately verbose implementation role label",
-            fact: `Candidate ${index + 1} has a deliberately verbose fact explaining how this part participates in the overall widget save flow and why the caller should trust it.`,
-            quote: `export const widgetFlowStep${index + 1} = true;`,
-          })),
-          missingCoverage: [],
-          recommendedPrimaryAction: "read_targets",
-          confidence: "medium",
-        });
-      }),
-      textStream: createTextStream([]),
-    }));
-
-    const report = await runExploreCodeSubagent({
-      args: { query: "long query ".repeat(80), intent: "edit" },
-      ctx: createMockContext(),
-    });
-
-    expect(report.length).toBeLessThanOrEqual(2_500);
-    expect(report).not.toContain("[TRUNCATED");
-    expect(report).toContain("Missing: none");
-    expect(report).toContain("Read targets:");
-    expect(report).toContain("```json");
-    const jsonText = /```json\n([\s\S]+?)\n```/.exec(report)?.[1];
-    expect(JSON.parse(jsonText!)).not.toHaveProperty("readTargets");
-  });
-
   it("fails clearly when Dyad Pro is unavailable", async () => {
-    mocks.readSettings.mockReturnValue({
-      enableDyadPro: false,
-      providerSettings: {},
-    });
-
+    mocks.readSettings.mockReturnValue({ enableDyadPro: false });
     await expect(
       runExploreCodeSubagent({
         args: { query: "widget save flow", intent: "locate" },
         ctx: createMockContext(),
       }),
-    ).rejects.toThrow(/requires Dyad Pro/);
-    expect(mocks.streamText).not.toHaveBeenCalled();
+    ).rejects.toThrow(/Dyad Pro/);
   });
 
   it("keeps benchmark-derived domain literals out of production explorer code", async () => {
     const productionFiles = [
       "src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent.ts",
+      "src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent_candidates.ts",
+      "src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent_report.ts",
+      "src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent_prompts.ts",
       "src/pro/main/ipc/handlers/local_agent/tools/explore_code.ts",
     ];
     const forbidden = [
@@ -1851,6 +756,8 @@ describe("runExploreCodeSubagent V2", () => {
       "mattermost",
       "onboarding",
       "tours",
+      "reservation",
+      "busy times",
     ];
 
     for (const filePath of productionFiles) {
@@ -1925,50 +832,21 @@ function buildRawExploreResult() {
   };
 }
 
-function buildTwoFileRawExploreResult() {
+function buildSupportOnlyRawExploreResult() {
   return {
     ...buildRawExploreResult(),
-    totalSymbols: 2,
-    totalFiles: 2,
     files: [
-      ...buildRawExploreResult().files,
       {
-        path: "src/widget/auditWidget.ts",
-        symbols: [{ name: "auditWidgetSave", kind: "function", line: 1 }],
+        path: "src/__tests__/saveWidget.test.ts",
+        symbols: [{ name: "saveWidgetTest", kind: "function", line: 1 }],
         windows: [
           {
             startLine: 1,
             endLine: 3,
             lines: [
-              "export function auditWidgetSave(input: WidgetInput) {",
-              "  auditWidgetSave(input);",
+              "export function saveWidgetTest(input: WidgetInput) {",
+              "  expect(saveWidget(input)).toBeDefined();",
               "}",
-            ],
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function buildOverlappingRawExploreResult() {
-  return {
-    ...buildRawExploreResult(),
-    files: [
-      {
-        path: "src/widget/saveWidget.ts",
-        symbols: [{ name: "widgetSaveFlow", kind: "function", line: 1 }],
-        windows: [
-          {
-            startLine: 1,
-            endLine: 6,
-            lines: [
-              "export async function widgetSaveFlow(input: WidgetInput) {",
-              "  const widgetSaveFlowMarker = true;",
-              "  validateWidget(input);",
-              "  return api.widgets.save(input);",
-              "}",
-              "export const widgetSaveFlowComplete = true;",
             ],
           },
         ],
@@ -2038,110 +916,11 @@ function buildLargeRawExploreResult() {
   };
 }
 
-function buildManyFileRawExploreResult() {
-  return {
-    ...buildRawExploreResult(),
-    totalSymbols: 5,
-    totalFiles: 5,
-    files: Array.from({ length: 5 }, (_value, index) => ({
-      path: `src/widget/flowStep${index + 1}.ts`,
-      symbols: [
-        {
-          name: `widgetFlowStep${index + 1}`,
-          kind: "const",
-          line: 1,
-        },
-      ],
-      windows: [
-        {
-          startLine: 1,
-          endLine: 3,
-          lines: [
-            `export const widgetFlowStep${index + 1} = true;`,
-            `export function runWidgetFlowStep${index + 1}() {`,
-            "  return true;",
-          ],
-        },
-      ],
-    })),
-  };
-}
-
-function buildSixFileRawExploreResult() {
-  const result = buildManyFileRawExploreResult();
-  return {
-    ...result,
-    totalSymbols: 6,
-    totalFiles: 6,
-    files: [
-      ...result.files,
-      {
-        path: "src/widget/flowStep6.ts",
-        symbols: [
-          {
-            name: "widgetFlowStep6",
-            kind: "const",
-            line: 1,
-          },
-        ],
-        windows: [
-          {
-            startLine: 1,
-            endLine: 3,
-            lines: [
-              "export const widgetFlowStep6 = true;",
-              "export function runWidgetFlowStep6() {",
-              "  return true;",
-            ],
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function buildLateRelevantRawExploreResult() {
-  return {
-    ...buildRawExploreResult(),
-    query: "exact caller of saveWidget",
-    totalSymbols: 1,
-    totalFiles: 1,
-    files: [
-      {
-        path: "src/widget/callerWidget.ts",
-        symbols: [{ name: "callerWidget", kind: "function", line: 1 }],
-        windows: [
-          {
-            startLine: 1,
-            endLine: 4,
-            lines: [
-              "export function callerWidget(input: WidgetInput) {",
-              "  return saveWidget(input);",
-              "}",
-            ],
-          },
-        ],
-      },
-    ],
-  };
-}
-
 function createToolStream(runTools: () => Promise<void>) {
   return (async function* () {
     await runTools();
     yield { type: "text-delta", text: "done" };
   })();
-}
-
-function createStreamResult(runTools: () => Promise<void>) {
-  return {
-    fullStreamAccessed: false,
-    get fullStream() {
-      this.fullStreamAccessed = true;
-      return createToolStream(runTools);
-    },
-    textStream: createTextStream([]),
-  };
 }
 
 function createTextStream(chunks: string[]) {

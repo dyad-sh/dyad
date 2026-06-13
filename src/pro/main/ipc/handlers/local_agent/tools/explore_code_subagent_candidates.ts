@@ -11,6 +11,8 @@ export const MAX_OBSERVATION_CHARS = 12_000;
 export const MAX_TOTAL_OBSERVATION_CHARS = 60_000;
 export const MAX_RANGE_LINES = 120;
 export const MAX_INTERNAL_CANDIDATES = 80;
+const OBSERVATION_BUDGET_EXHAUSTED_MESSAGE =
+  "[Result omitted: observation budget exhausted. Call submit_report with observed candidate IDs.]";
 
 const GREP_CLUSTER_GAP_LINES = 30;
 const GREP_CONTEXT_LINES = 20;
@@ -103,7 +105,7 @@ export function formatObservationResult(
     remainingBudget > 0 ? remainingBudget : 0,
   );
   if (maxChars <= 0) {
-    return "";
+    return OBSERVATION_BUDGET_EXHAUSTED_MESSAGE;
   }
   if (text.length <= maxChars) {
     return text;
@@ -391,7 +393,10 @@ function rangeFromReadFileResult(
     return null;
   }
   const start = readArgs.startLine ?? 1;
-  const lineCount = result.length === 0 ? 0 : result.split("\n").length;
+  const lineCount =
+    result.length === 0
+      ? 0
+      : result.split("\n").length - (result.endsWith("\n") ? 1 : 0);
   const inferredEnd =
     readArgs.endLine ?? Math.max(start, start + lineCount - 1);
   return {

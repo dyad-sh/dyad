@@ -530,10 +530,8 @@ describe("exploreCode", () => {
       maxDepth: 2,
     });
 
-    expect(result.files.map((file) => file.path)).toContain(
-      "channels/src/send_post.ts",
-    );
-    expect(result.files.map((file) => file.path)).toContain(
+    expect(result.files.map((file) => file.path)).toContain("src/send_post.ts");
+    expect(result.files.map((file) => file.path)).not.toContain(
       "platform/client/src/client.ts",
     );
   });

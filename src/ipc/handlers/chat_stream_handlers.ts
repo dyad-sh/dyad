@@ -155,14 +155,6 @@ const activeStreams = new Map<number, AbortController>();
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
 
-app?.on?.("before-quit", () => {
-  for (const abortController of activeStreams.values()) {
-    abortController.abort();
-  }
-  activeStreams.clear();
-  partialResponses.clear();
-});
-
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
 
 // Safely parse an MCP tool key that combines server and tool names.
@@ -278,7 +270,6 @@ export function registerChatStreamHandlers() {
       // Create an AbortController for this stream
       const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
-      setSentinelActiveChat(req.chatId);
 
       // Notify renderer that stream is starting
       safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });

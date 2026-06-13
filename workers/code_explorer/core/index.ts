@@ -43,8 +43,7 @@ export function buildCodeExplorerIndex(
     tsconfigPath: input.tsconfigPath,
     tsBuildInfoCacheDir: input.tsBuildInfoCacheDir,
   });
-  const projectRoot = projects[0]?.projectRoot ?? input.appPath;
-  const index = buildIndex(ts, projectRoot, projects);
+  const index = buildIndex(ts, input.appPath, projects);
   const indexMs = Math.round(performance.now() - indexStart);
   return {
     index,

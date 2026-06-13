@@ -46,6 +46,19 @@ describe("computeExecCommand", () => {
     expect(command.exec).toBe(`"/opt/dyad/dyad" %u`);
     expect(command.tryExec).toBe("/opt/dyad/dyad");
   });
+
+  it("escapes characters reserved inside quoted Exec values", () => {
+    const command = computeExecCommand({
+      defaultApp: false,
+      execPath: "/opt/dyad/dyad",
+      argv: [],
+      appImagePath: `/home/u$er/My "Apps"/dyad \`v1\`.AppImage`,
+    });
+
+    expect(command.exec).toBe(
+      `"/home/u\\$er/My \\"Apps\\"/dyad \\\`v1\\\`.AppImage" %u`,
+    );
+  });
 });
 
 describe("buildDesktopFile", () => {

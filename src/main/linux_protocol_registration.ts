@@ -31,10 +31,11 @@ interface ExecCommand {
   tryExec: string;
 }
 
-// Double-quote a path for a .desktop Exec/TryExec value. Field codes like
+// Double-quote a path for a .desktop Exec value. Inside the quotes the
+// characters " ` $ \ must each be escaped with a backslash. Field codes like
 // `%u` must stay outside the quotes.
 function quote(value: string): string {
-  return `"${value}"`;
+  return `"${value.replace(/(["`$\\])/g, "\\$1")}"`;
 }
 
 // The Exec target differs per packaging format. Pure so it can be unit-tested
@@ -108,7 +109,11 @@ export async function registerDyadProtocolLinux(): Promise<void> {
       appImagePath: process.env.APPIMAGE,
     });
 
-    const appsDir = path.join(os.homedir(), ".local", "share", "applications");
+    // Honor XDG_DATA_HOME so the file lands where the desktop environment
+    // actually searches; fall back to the spec default otherwise.
+    const dataHome =
+      process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
+    const appsDir = path.join(dataHome, "applications");
     const desktopPath = path.join(appsDir, DESKTOP_FILENAME);
 
     await fs.promises.mkdir(appsDir, { recursive: true });
@@ -116,16 +121,17 @@ export async function registerDyadProtocolLinux(): Promise<void> {
 
     // Refresh the desktop database cache. The update-desktop-database command
     // isn't installed on every distro; if it's missing, the xdg-mime call below
-    // still updates ~/.config/mimeapps.list on its own.
-    await execFileAsync("update-desktop-database", [appsDir]).catch((error) => {
+    // still updates ~/.config/mimeapps.list on its own. The timeout guards
+    // against either tool hanging on a stale lock or corrupt database.
+    await execFileAsync("update-desktop-database", [appsDir], {
+      timeout: 5000,
+    }).catch((error) => {
       logger.warn("update-desktop-database failed:", error);
     });
 
-    await execFileAsync("xdg-mime", [
-      "default",
-      DESKTOP_FILENAME,
-      MIME_TYPE,
-    ]).catch((error) => {
+    await execFileAsync("xdg-mime", ["default", DESKTOP_FILENAME, MIME_TYPE], {
+      timeout: 5000,
+    }).catch((error) => {
       logger.warn("xdg-mime default failed:", error);
     });
 

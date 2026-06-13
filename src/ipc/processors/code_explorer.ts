@@ -16,14 +16,21 @@ const WORKSPACE_CONFIG_DIRS = ["apps", "packages"];
 const WORKSPACE_CONFIG_NAMES = ["tsconfig.app.json", "tsconfig.json"];
 const MAX_WORKSPACE_CONFIGS_TO_CHECK = 40;
 const WORKER_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_WORKER_SESSIONS = 8;
+const AVAILABILITY_CACHE_TTL_MS = 30_000;
 
 interface WorkerSession {
   worker: Worker;
   queue: Promise<unknown>;
   idleTimer: NodeJS.Timeout | undefined;
+  lastUsedAt: number;
 }
 
 const workerSessions = new Map<string, WorkerSession>();
+const availabilityCache = new Map<
+  string,
+  { expiresAt: number; availability: CodeExplorerAvailability }
+>();
 
 export interface CodeExplorerAvailability {
   ready: boolean;
@@ -36,6 +43,23 @@ export function isCodeExplorerReady(appPath: string): boolean {
 }
 
 export function getCodeExplorerAvailability(
+  appPath: string,
+): CodeExplorerAvailability {
+  const cacheKey = path.resolve(appPath);
+  const cached = availabilityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.availability;
+  }
+
+  const availability = computeCodeExplorerAvailability(appPath);
+  availabilityCache.set(cacheKey, {
+    expiresAt: Date.now() + AVAILABILITY_CACHE_TTL_MS,
+    availability,
+  });
+  return availability;
+}
+
+function computeCodeExplorerAvailability(
   appPath: string,
 ): CodeExplorerAvailability {
   try {
@@ -209,14 +233,17 @@ export async function runCodeExplorer(
 ): Promise<CodeExplorerResult> {
   const key = workerSessionKey(input);
   const session = getWorkerSession(key);
+  session.lastUsedAt = Date.now();
   clearIdleTimer(session);
 
   const run = session.queue
     .catch(() => undefined)
     .then(() => runCodeExplorerOnWorker(session.worker, input));
-  session.queue = run.finally(() => {
-    scheduleWorkerSessionCleanup(key, session);
-  });
+  session.queue = run
+    .catch(() => undefined)
+    .finally(() => {
+      scheduleWorkerSessionCleanup(key, session);
+    });
   return run;
 }
 
@@ -227,28 +254,46 @@ function workerSessionKey(input: CodeExplorerWorkerInput): string {
 function getWorkerSession(key: string): WorkerSession {
   const existing = workerSessions.get(key);
   if (existing) {
+    existing.lastUsedAt = Date.now();
     return existing;
   }
 
+  pruneWorkerSessions();
   const workerPath = path.join(__dirname, "code_explorer_worker.js");
   const worker = new Worker(workerPath);
   const session: WorkerSession = {
     worker,
     queue: Promise.resolve(),
     idleTimer: undefined,
+    lastUsedAt: Date.now(),
   };
   worker.on("error", (error) => {
     logger.error(`Code explorer worker error: ${error.message}`);
+    clearIdleTimer(session);
     workerSessions.delete(key);
   });
   worker.on("exit", (code) => {
     if (code !== 0) {
       logger.warn(`Code explorer worker exited with code ${code}`);
     }
+    clearIdleTimer(session);
     workerSessions.delete(key);
   });
   workerSessions.set(key, session);
   return session;
+}
+
+function pruneWorkerSessions(): void {
+  while (workerSessions.size >= MAX_WORKER_SESSIONS) {
+    const oldest = [...workerSessions.entries()].sort(
+      (left, right) => left[1].lastUsedAt - right[1].lastUsedAt,
+    )[0];
+    if (!oldest) return;
+    const [key, session] = oldest;
+    clearIdleTimer(session);
+    workerSessions.delete(key);
+    void session.worker.terminate();
+  }
 }
 
 function runCodeExplorerOnWorker(

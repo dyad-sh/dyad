@@ -228,6 +228,7 @@ interface DyadStateIndicatorProps {
   state: CustomTagState;
   pendingLabel?: string;
   abortedLabel?: string;
+  errorLabel?: string;
   finishedLabel?: string;
 }
 
@@ -239,6 +240,7 @@ export function DyadStateIndicator({
   state,
   pendingLabel,
   abortedLabel,
+  errorLabel,
   finishedLabel,
 }: DyadStateIndicatorProps) {
   if (state === "pending") {
@@ -255,6 +257,15 @@ export function DyadStateIndicator({
       <span className="inline-flex items-center gap-1 text-red-500 dark:text-red-400 text-xs shrink-0">
         <CircleX size={14} />
         {abortedLabel && <span>{abortedLabel}</span>}
+      </span>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <span className="inline-flex items-center gap-1 text-red-500 dark:text-red-400 text-xs shrink-0">
+        <CircleX size={14} />
+        {errorLabel && <span>{errorLabel}</span>}
       </span>
     );
   }

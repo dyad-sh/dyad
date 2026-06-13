@@ -5,9 +5,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
 import { MODEL_PRICING, formatDollars } from "./pricing.mjs";
 
-const ROOT = path.resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const RESULTS_DIR = path.join(ROOT, "benchmark-results/code-explorer");
 const TASKS_PATH = path.join(ROOT, "benchmarks/code-explorer/tasks.json");
 const BENCHMARK_MD = path.join(ROOT, "BENCHMARK.md");
@@ -174,6 +175,7 @@ function run(command, args) {
     cwd: ROOT,
     stdio: "inherit",
     env: process.env,
+    shell: process.platform === "win32",
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -201,9 +203,12 @@ function findNewRunId(beforeRunIds) {
 }
 
 function findPreviousRunId(currentRunId) {
-  return listRunIds()
-    .filter((runId) => runId !== currentRunId)
-    .at(-1);
+  const runIds = listRunIds();
+  const currentIndex = runIds.indexOf(currentRunId);
+  if (currentIndex === -1) {
+    return runIds.filter((runId) => runId < currentRunId).at(-1);
+  }
+  return currentIndex > 0 ? runIds[currentIndex - 1] : undefined;
 }
 
 function writePreviousComparison(runId, previousRunId) {
@@ -229,7 +234,7 @@ function writePreviousComparison(runId, previousRunId) {
     ...allArms(current, previous).map((arm) => {
       const now = current.byArm?.[arm] ?? {};
       const before = previous.byArm?.[arm] ?? {};
-      return `| ${arm} | ${(now.mainTotalTokens ?? 0) - (before.mainTotalTokens ?? 0)} | ${(now.subagentTotalTokens ?? 0) - (before.subagentTotalTokens ?? 0)} | ${(now.totalTokens ?? 0) - (before.totalTokens ?? 0)} | ${formatDollars((now.costUsd ?? 0) - (before.costUsd ?? 0))} | ${(now.mainToolCalls ?? 0) - (before.mainToolCalls ?? 0)} | ${(now.subagentToolCalls ?? 0) - (before.subagentToolCalls ?? 0)} | ${(now.toolCalls ?? 0) - (before.toolCalls ?? 0)} | ${(now.elapsedMs ?? 0) - (before.elapsedMs ?? 0)} |`;
+      return `| ${arm} | ${(now.mainUncachedInputTokens ?? 0) - (before.mainUncachedInputTokens ?? 0)} | ${(now.subagentTotalTokens ?? 0) - (before.subagentTotalTokens ?? 0)} | ${(now.totalTokens ?? 0) - (before.totalTokens ?? 0)} | ${formatDollars((now.costUsd ?? 0) - (before.costUsd ?? 0))} | ${(now.mainToolCalls ?? 0) - (before.mainToolCalls ?? 0)} | ${(now.subagentToolCalls ?? 0) - (before.subagentToolCalls ?? 0)} | ${(now.toolCalls ?? 0) - (before.toolCalls ?? 0)} | ${(now.elapsedMs ?? 0) - (before.elapsedMs ?? 0)} |`;
     }),
     "",
     `## Current Task Deltas${compareLabel(current)}`,

@@ -7,7 +7,7 @@ const DEFAULT_PREVIEW_LIMIT = 6_000;
 export function recordCodeExplorerBenchmarkEvent(
   event: Record<string, unknown>,
 ): void {
-  const runId = process.env.DYAD_BENCHMARK_RUN_ID;
+  const runId = getCodeExplorerBenchmarkRunId();
   if (!runId) {
     return;
   }
@@ -28,6 +28,14 @@ export function recordCodeExplorerBenchmarkEvent(
   }
 }
 
+export function isCodeExplorerBenchmarking(): boolean {
+  return getCodeExplorerBenchmarkRunId() !== undefined;
+}
+
+function getCodeExplorerBenchmarkRunId(): string | undefined {
+  return process.env.DYAD_BENCHMARK_RUN_ID || undefined;
+}
+
 function sanitizeRunId(runId: string): string {
   return runId.replace(/[^A-Za-z0-9_.-]/g, "_");
 }
@@ -42,18 +50,19 @@ export function summarizeBenchmarkValue(
     text = value;
   } else {
     try {
-      text = JSON.stringify(value, (_key, nestedValue) => {
-        if (typeof nestedValue === "bigint") {
-          return nestedValue.toString();
-        }
-        if (typeof nestedValue === "object" && nestedValue !== null) {
-          if (seen.has(nestedValue)) {
-            return "[Circular]";
+      text =
+        JSON.stringify(value, (_key, nestedValue) => {
+          if (typeof nestedValue === "bigint") {
+            return nestedValue.toString();
           }
-          seen.add(nestedValue);
-        }
-        return nestedValue;
-      });
+          if (typeof nestedValue === "object" && nestedValue !== null) {
+            if (seen.has(nestedValue)) {
+              return "[Circular]";
+            }
+            seen.add(nestedValue);
+          }
+          return nestedValue;
+        }) ?? String(value);
     } catch {
       text = String(value);
     }

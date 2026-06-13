@@ -88,14 +88,18 @@ function validAppRelativeTsconfigPath(
   }
   const resolvedPath = path.resolve(appPath, tsconfigPath);
   const appRoot = path.resolve(appPath);
-  if (
-    resolvedPath !== appRoot &&
-    !resolvedPath.startsWith(`${appRoot}${path.sep}`)
-  ) {
+  const relative = path.relative(appRoot, resolvedPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     return undefined;
   }
   try {
-    return fs.statSync(resolvedPath).isFile() ? tsconfigPath : undefined;
+    const realResolvedPath = fs.realpathSync(resolvedPath);
+    const realAppRoot = fs.realpathSync(appRoot);
+    const realRelative = path.relative(realAppRoot, realResolvedPath);
+    if (realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
+      return undefined;
+    }
+    return fs.statSync(realResolvedPath).isFile() ? tsconfigPath : undefined;
   } catch {
     return undefined;
   }

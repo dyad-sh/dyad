@@ -6,8 +6,117 @@ import {
   handleLocalAgentFixture,
   extractLocalAgentFixture,
 } from "./localAgentHandler";
+import {
+  buildExploreCodeNestedToolArgs,
+  buildExploreCodeSubmitReportArgs,
+  isExploreCodeSubagentPrompt,
+} from "./exploreCodeFixtures";
 
 let globalCounter = 0;
+
+function hasExploreCodeToolResult(
+  messages: any[],
+  getTextContent: (msg: any) => string,
+): boolean {
+  return messages.some((message: any) => {
+    if (message?.role !== "tool") {
+      return false;
+    }
+    const text = getTextContent(message);
+    return (
+      text.includes("Found ") ||
+      text.includes("Code exploration:") ||
+      text.includes("src/App.tsx")
+    );
+  });
+}
+
+function sendToolCallJson(
+  res: Response,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  res.json({
+    id: `chatcmpl-${Date.now()}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model: "fake-model",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: toolName,
+                arguments: JSON.stringify(args),
+              },
+            },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
+    ],
+  });
+}
+
+async function streamToolCall(
+  res: Response,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const now = Date.now();
+  const mkChunk = (delta: any, finish: string | null = null) =>
+    `data: ${JSON.stringify({
+      id: `chatcmpl-${now}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(now / 1000),
+      model: "fake-model",
+      choices: [{ index: 0, delta, finish_reason: finish }],
+    })}\n\n`;
+
+  res.write(mkChunk({ role: "assistant" }));
+  res.write(
+    mkChunk({
+      tool_calls: [
+        {
+          index: 0,
+          id: `call_${now}`,
+          type: "function",
+          function: { name: toolName, arguments: "" },
+        },
+      ],
+    }),
+  );
+
+  const argsText = JSON.stringify(args);
+  const batchSize = 20;
+  for (let index = 0; index < argsText.length; index += batchSize) {
+    res.write(
+      mkChunk({
+        tool_calls: [
+          {
+            index: 0,
+            function: { arguments: argsText.slice(index, index + batchSize) },
+          },
+        ],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  res.write(mkChunk({}, "tool_calls"));
+  res.write("data: [DONE]\n\n");
+  res.end();
+}
 
 export const createChatCompletionHandler =
   (prefix: string) => async (req: Request, res: Response) => {
@@ -100,7 +209,19 @@ export const createChatCompletionHandler =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
     }
     if (isExploreCodeSubagentPrompt(userTextContent)) {
-      messageContent = buildExploreCodeSubagentReport();
+      const toolName = hasExploreCodeToolResult(messages, getTextContent)
+        ? "submit_report"
+        : "explore_code";
+      const input =
+        toolName === "submit_report"
+          ? buildExploreCodeSubmitReportArgs()
+          : buildExploreCodeNestedToolArgs();
+      if (stream) {
+        await streamToolCall(res, toolName, input);
+        return;
+      }
+      sendToolCallJson(res, toolName, input);
+      return;
     }
 
     // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)
@@ -527,82 +648,6 @@ export default Index;
       }
     }, 10);
   };
-
-function isExploreCodeSubagentPrompt(text: string): boolean {
-  return (
-    text.includes("Return exactly this shape:") &&
-    text.includes("## explore_code report")
-  );
-}
-
-function buildExploreCodeSubagentReport(): string {
-  return [
-    "## explore_code report",
-    "",
-    'Query: "App component render flow"',
-    "Task class: component-flow",
-    "Confidence: high",
-    "Compiler signal: strong",
-    "",
-    "Structured summary:",
-    "```json",
-    JSON.stringify(
-      {
-        confidence: "high",
-        taskClass: "component-flow",
-        compilerSignal: "strong",
-        primaryFiles: [
-          {
-            path: "src/App.tsx",
-            range: "1-20",
-            symbols: ["App"],
-            purpose: "defines the visible page content",
-          },
-          {
-            path: "src/main.tsx",
-            range: "1-20",
-            symbols: ["root.render"],
-            purpose: "mounts App into the DOM",
-          },
-        ],
-        secondaryFiles: [],
-        editTarget: null,
-        coverage: {
-          observed: ["component/UI handler"],
-          missing: [],
-        },
-        recommendedPrimaryAction: {
-          action: "answer_from_report",
-          reason:
-            "The report has enough high-confidence findings for an answer-only investigation.",
-        },
-      },
-      null,
-      2,
-    ),
-    "```",
-    "",
-    "Findings:",
-    "1. src/App.tsx:1-20 - App",
-    "   Fact: defines the App component and root render content.",
-    "   Evidence: App is the exported root component.",
-    "2. src/main.tsx:1-20 - root.render",
-    "   Fact: mounts the App component into the DOM.",
-    "   Evidence: main.tsx imports App and renders it.",
-    "",
-    "Flow:",
-    "main.tsx mounts App, and App owns the visible page content.",
-    "",
-    "Edit target:",
-    "none - this is an answer-only render-flow question.",
-    "",
-    "Recommended primary action:",
-    "answer_from_report: The report has enough high-confidence findings for an answer-only investigation.",
-    "",
-    "Skip / unknown:",
-    "No unrelated files were needed.",
-  ].join("\n");
-}
 
 export function generateDump(req: Request) {
   const timestamp = Date.now();

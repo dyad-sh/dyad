@@ -73,7 +73,7 @@ export function filterDyadInternalFiles<T extends { path: string }>(
   files: T[],
   appName: string | undefined,
 ): T[] {
-  if (!appName) {
+  if (!appName || isCurrentAppAlias(appName)) {
     return files;
   }
   return files.filter((file) => !isDyadInternalPath(file.path));
@@ -94,7 +94,7 @@ export function assertDyadInternalAccessAllowed({
   fullFilePath: string;
   appName: string | undefined;
 }): void {
-  if (!appName) {
+  if (!appName || isCurrentAppAlias(appName)) {
     return;
   }
   const relativeFromApp = path.relative(targetAppPath, fullFilePath);

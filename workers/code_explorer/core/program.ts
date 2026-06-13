@@ -7,6 +7,7 @@ const WORKSPACE_CONFIG_DIRS = ["apps", "packages"];
 const WORKSPACE_CONFIG_NAMES = ["tsconfig.app.json", "tsconfig.json"];
 const MAX_WORKSPACE_CONFIGS_TO_CHECK = 40;
 const MAX_PROJECT_REFERENCES = 8;
+const MAX_PROJECT_ROOT_PARENT_DEPTH = 60;
 const PROJECT_ROOT_MARKERS = [
   "package.json",
   "pnpm-workspace.yaml",
@@ -245,7 +246,7 @@ function findProjectRoot(appPath: string): string {
   let projectRoot = path.resolve(appPath);
   let current = projectRoot;
 
-  while (true) {
+  for (let depth = 0; depth <= MAX_PROJECT_ROOT_PARENT_DEPTH; depth++) {
     const currentHasRootMarker = PROJECT_ROOT_MARKERS.some((marker) =>
       fs.existsSync(path.join(current, marker)),
     );

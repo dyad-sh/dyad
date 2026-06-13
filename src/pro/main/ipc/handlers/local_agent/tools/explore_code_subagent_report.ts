@@ -182,7 +182,10 @@ export function resolveSelection({
     (selection.flow ?? []).length > 0 ||
     (selection.readTargets ?? []).length > 0;
   const resolvedAnything =
-    primary.length > 0 || flow.length > 0 || readTargets.length > 0;
+    primary.length > 0 ||
+    flow.length > 0 ||
+    readTargets.length > 0 ||
+    searchTargets.length > 0;
   // The model pointed at candidates, but every one was hallucinated. Fall back.
   if (referencedAnything && !resolvedAnything) {
     return null;
@@ -540,8 +543,8 @@ export function buildDeterministicReport({
         ? [
             "Read targets:",
             ...readTargets.map(
-              (_candidate, index) =>
-                `flow ${index + 1} - observed fallback target`,
+              (candidate) =>
+                `flow ${primary.indexOf(candidate) + 1} - observed fallback target`,
             ),
           ].join("\n")
         : "",

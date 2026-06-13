@@ -72,6 +72,7 @@ import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -214,6 +215,10 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  // Linux: claim the dyad:// scheme for this build (best-effort, see module).
+  // setAsDefaultProtocolClient above is unreliable on Linux.
+  void registerDyadProtocolLinux();
+
   // Load React DevTools extension in development
   if (process.env.NODE_ENV === "development") {
     let chromeUserData: string;

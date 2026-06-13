@@ -6,6 +6,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { runExploreCodeSubagent } from "./explore_code_subagent";
+import {
+  candidatesFromReadFileResult,
+  formatObservationResult,
+  MAX_TOTAL_OBSERVATION_CHARS,
+} from "./explore_code_subagent_candidates";
 import type { AgentContext } from "./types";
 
 vi.mock("electron-log", () => ({
@@ -820,6 +825,31 @@ describe("runExploreCodeSubagent", () => {
         ).not.toContain(literal);
       }
     }
+  });
+});
+
+describe("explore_code subagent observation helpers", () => {
+  it("does not extend read_file candidate ranges for a trailing newline", () => {
+    const [candidate] = candidatesFromReadFileResult("alpha\nbeta\n", {
+      path: "src/file.ts",
+      start_line_one_indexed: 10,
+    });
+
+    expect(candidate.range).toEqual({ start: 10, end: 11 });
+  });
+
+  it("explains when the observation budget is exhausted", () => {
+    const result = formatObservationResult("new result", [
+      {
+        toolName: "read_file",
+        args: {},
+        result: "x".repeat(MAX_TOTAL_OBSERVATION_CHARS),
+        candidates: [],
+      },
+    ]);
+
+    expect(result).toContain("observation budget exhausted");
+    expect(result).toContain("submit_report");
   });
 });
 

@@ -92,7 +92,7 @@ const retryPreservedRows = values["retry-from"]
   ? loadRetryPreservedRows(fullMatrix, values["retry-from"])
   : [];
 const matrix = values["retry-from"]
-  ? buildRetryMatrix(config, values["retry-from"])
+  ? buildRetryMatrix(fullMatrix, values["retry-from"])
   : values["resume-from"]
     ? buildResumeMatrix(fullMatrix, values["resume-from"])
     : fullMatrix;
@@ -229,33 +229,38 @@ function enrichTrialForDryRun(trial) {
   };
 }
 
-function buildRetryMatrix(config, retryRunId) {
+function buildRetryMatrix(expectedRows, retryRunId) {
   const runsPath = path.join(RESULTS_DIR, retryRunId, "runs.jsonl");
   if (!fs.existsSync(runsPath)) {
     throw new Error(`Cannot retry missing benchmark run: ${retryRunId}`);
   }
+  const expectedByGroup = new Map(
+    expectedRows.map((trial) => [trialGroupKey(trial), trial]),
+  );
   const rows = readRunRows(runsPath);
   const failedPairs = new Set(
     rows
       .filter((row) => row.status !== "ok")
-      .map((row) => `${row.repo}\0${row.task}\0${row.repeat}`),
+      .map((row) => `${row.repo}\0${row.task}\0${row.repeat}`)
+      .filter((key) => expectedByGroup.has(key)),
   );
   const retryRows = [];
   for (const key of failedPairs) {
-    const [repoName, taskId, repeatText] = key.split("\0");
-    const repo = config.repos.find((item) => item.name === repoName);
-    const task = repo?.tasks.find((item) => item.id === taskId);
-    if (!repo || !task) {
-      throw new Error(
-        `Retry source ${retryRunId} references unknown task ${repoName}/${taskId}`,
-      );
-    }
-    const repeat = Number(repeatText);
+    const trial = expectedByGroup.get(key);
     for (const arm of executableArms) {
-      retryRows.push({ repo, task, arm, repeat });
+      retryRows.push({
+        repo: trial.repo,
+        task: trial.task,
+        arm,
+        repeat: trial.repeat,
+      });
     }
   }
   return retryRows;
+}
+
+function trialGroupKey(trial) {
+  return `${trial.repo.name}\0${trial.task.id}\0${trial.repeat}`;
 }
 
 function buildResumeMatrix(expectedRows, resumeRunId) {
@@ -353,12 +358,12 @@ function splitList(value) {
 
 function normalizeSelectedArms(arms) {
   if (!arms) return arms;
-  return new Set(
-    [...arms].map((arm) => {
-      if (arm === "explore") return "explore-v2";
-      return arm;
-    }),
-  );
+  return new Set([...arms].map(normalizeArmAlias));
+}
+
+function normalizeArmAlias(arm) {
+  if (arm === "explore") return "explore-v2";
+  return arm;
 }
 
 function validateArms(arms) {
@@ -517,18 +522,21 @@ function writeResumedRows(resultsPath, rows) {
 
 function resolvePrimaryCompareArm(arms, explicitArm) {
   if (explicitArm) {
-    validateArms(new Set([explicitArm]));
-    if (!arms.has(explicitArm)) {
+    const normalizedArm = normalizeArmAlias(explicitArm);
+    validateArms(new Set([normalizedArm]));
+    if (!arms.has(normalizedArm)) {
       throw new Error(
-        `--compare-arm must be included in --arms: ${explicitArm}`,
+        `--compare-arm must be included in --arms: ${normalizedArm}`,
       );
     }
-    if (explicitArm === "baseline") {
+    if (normalizedArm === "baseline") {
       throw new Error("--compare-arm must be an explore arm");
     }
-    return explicitArm;
+    return normalizedArm;
   }
-  const exploreArm = [...arms].find((arm) => isExploreArm(arm));
+  const exploreArm = arms.has("explore-v2")
+    ? "explore-v2"
+    : [...arms].find((arm) => isExploreArm(arm));
   if (!exploreArm) {
     throw new Error(
       "--arms must include at least one explore arm when --compare-arm is omitted",
@@ -830,7 +838,7 @@ function extractInstructionsFromMessages(messages) {
 }
 
 function chatMessagesToResponsesInput(messages) {
-  if (!Array.isArray(messages)) return "";
+  if (!Array.isArray(messages)) return [];
   const input = [];
   for (const message of messages) {
     if (message.role === "system") continue;
@@ -2380,12 +2388,18 @@ function readBenchmarkMetrics(trialRunId) {
       event.toolName === "explore_code" &&
       hasUsableExploreReport(event.resultPreview),
   );
+  const firstExploreMainEndIndex = events.findIndex(
+    (event) =>
+      event.type === "tool_call_end" &&
+      getEventPhase(event) === "main" &&
+      event.toolName === "explore_code",
+  );
   const reportedReadTargets =
     firstUsableExploreMainEndIndex >= 0
       ? extractExploreReportReadTargets(
           events[firstUsableExploreMainEndIndex].resultPreview,
         )
-      : new Set();
+      : [];
   const reportedSearchTargets =
     firstUsableExploreMainEndIndex >= 0
       ? extractExploreReportSearchTargets(
@@ -2393,9 +2407,9 @@ function readBenchmarkMetrics(trialRunId) {
         )
       : [];
   const postReportMainToolEvents =
-    firstUsableExploreMainEndIndex >= 0
+    firstExploreMainEndIndex >= 0
       ? events
-          .slice(firstUsableExploreMainEndIndex + 1)
+          .slice(firstExploreMainEndIndex + 1)
           .filter(
             (event) =>
               event.type === "tool_call_start" &&
@@ -3025,7 +3039,13 @@ function evaluateExploreV2Acceptance(rows) {
   }
   const invalidV1SourceArms = [...v1SourceArms]
     .filter(
-      (arm) => arm !== "explore-candidate-followup" && arm !== "explore-v1",
+      (arm) =>
+        ![
+          "explore",
+          "explore-candidate",
+          "explore-candidate-followup",
+          "explore-v1",
+        ].includes(arm),
     )
     .sort();
   if (invalidV1SourceArms.length > 0) {

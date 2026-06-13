@@ -275,14 +275,14 @@ function getWorkerSession(key: string): WorkerSession {
   worker.on("error", (error) => {
     logger.error(`Code explorer worker error: ${error.message}`);
     clearIdleTimer(session);
-    workerSessions.delete(key);
+    deleteWorkerSession(key, session);
   });
   worker.on("exit", (code) => {
     if (code !== 0) {
       logger.warn(`Code explorer worker exited with code ${code}`);
     }
     clearIdleTimer(session);
-    workerSessions.delete(key);
+    deleteWorkerSession(key, session);
   });
   workerSessions.set(key, session);
   return session;
@@ -296,7 +296,7 @@ function pruneWorkerSessions(): void {
     if (!oldest) return;
     const [key, session] = oldest;
     clearIdleTimer(session);
-    workerSessions.delete(key);
+    deleteWorkerSession(key, session);
     void session.worker.terminate();
   }
 }
@@ -356,7 +356,13 @@ function scheduleWorkerSessionCleanup(
 ): void {
   clearIdleTimer(session);
   session.idleTimer = setTimeout(() => {
-    workerSessions.delete(key);
+    deleteWorkerSession(key, session);
     void session.worker.terminate();
   }, WORKER_IDLE_TIMEOUT_MS);
+}
+
+function deleteWorkerSession(key: string, session: WorkerSession): void {
+  if (workerSessions.get(key) === session) {
+    workerSessions.delete(key);
+  }
 }

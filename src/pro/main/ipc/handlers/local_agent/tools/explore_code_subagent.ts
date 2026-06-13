@@ -103,6 +103,7 @@ export async function runExploreCodeSubagent({
   const candidateRegistry = createCandidateRegistry();
   const readOnlyToolBudget = createReadOnlyToolBudget();
   const acceptedRef: { current: AcceptedReport | null } = { current: null };
+  let subagentStepCount = 0;
   let explainBounceUsed = false;
 
   const record = (event: Record<string, unknown>): void => {
@@ -176,12 +177,15 @@ export async function runExploreCodeSubagent({
       system: buildExploreCodeSubagentSystemPrompt(),
       prompt: buildExploreCodeSubagentPrompt(args),
       tools,
-      prepareStep: ({ messages }) =>
-        prepareExploreCodeSubagentStep({
+      prepareStep: ({ messages }) => {
+        subagentStepCount++;
+        return prepareExploreCodeSubagentStep({
           messages,
           observations,
           acceptedRef,
-        }),
+          stepCount: subagentStepCount,
+        });
+      },
       stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
       abortSignal: ctx.abortSignal,
       onStepFinish: (step) => {
@@ -618,7 +622,8 @@ function wrapSubagentTool<TArgs>({
         }
 
         const result = await tool.execute(toolArgs, ctx);
-        const resultText = formatObservationResult(result, observations);
+        const resultText =
+          typeof result === "string" ? result : JSON.stringify(result, null, 2);
         const registeredCandidates = candidateRegistry.register(
           candidatesFromResult(toolArgs, result),
         );
@@ -686,10 +691,12 @@ function prepareExploreCodeSubagentStep({
   messages,
   observations,
   acceptedRef,
+  stepCount,
 }: {
   messages: ModelMessage[];
   observations: SubagentObservation[];
   acceptedRef: { current: AcceptedReport | null };
+  stepCount: number;
 }) {
   let forcedStep: ReturnType<
     typeof forceExploreCodeStep | typeof forceSubmitReportStep
@@ -702,7 +709,7 @@ function prepareExploreCodeSubagentStep({
     // Last allowed step with nothing accepted yet: force a report so we get
     // the model's own candidate selection instead of the heuristic fallback.
     !acceptedRef.current &&
-    observations.length >= SUBAGENT_MAX_STEPS - 1
+    stepCount >= SUBAGENT_MAX_STEPS
   ) {
     forcedStep = forceSubmitReportStep();
   }

@@ -11,6 +11,7 @@ export interface ExploreCodeInput {
   appPath: string;
   query: string;
   tsconfigPath?: string;
+  tsBuildInfoCacheDir?: string;
   maxFiles?: number;
   maxDepth?: number;
 }
@@ -31,12 +32,16 @@ export interface BuiltCodeExplorerIndex {
 
 export function buildCodeExplorerIndex(
   ts: TypeScriptModule,
-  input: Pick<ExploreCodeInput, "appPath" | "tsconfigPath">,
+  input: Pick<
+    ExploreCodeInput,
+    "appPath" | "tsconfigPath" | "tsBuildInfoCacheDir"
+  >,
 ): BuiltCodeExplorerIndex {
   const indexStart = performance.now();
   const projects = createProjectPrograms(ts, {
     appPath: input.appPath,
     tsconfigPath: input.tsconfigPath,
+    tsBuildInfoCacheDir: input.tsBuildInfoCacheDir,
   });
   const projectRoot = projects[0]?.projectRoot ?? input.appPath;
   const index = buildIndex(ts, projectRoot, projects);

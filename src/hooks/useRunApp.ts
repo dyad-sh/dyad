@@ -196,10 +196,11 @@ export function useAppOutputSubscription() {
               mode,
             },
           });
+          bumpPreviewReloadToken(output.appId);
         }
       }
     },
-    [setAppUrl],
+    [bumpPreviewReloadToken, setAppUrl],
   );
 
   const onHotModuleReload = useCallback(

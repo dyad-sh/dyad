@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   currentConsoleEntriesAtom,
+  currentAppUrlAtom,
   currentPreviewAppExitAtom,
   currentPreviewErrorAtom,
+  currentPreviewReloadTokenAtom,
   setConsoleEntriesForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
@@ -258,6 +260,36 @@ describe("useAppOutputSubscription", () => {
       timestamp: 123,
     });
     expect(store.get(currentConsoleEntriesAtom)).toEqual([]);
+
+    unmount();
+  });
+
+  it("reloads the preview when the proxy reports a ready URL", () => {
+    const { store, Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    expect(store.get(currentPreviewReloadTokenAtom)).toBe(0);
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "stdout",
+          appId: 1,
+          message:
+            "[dyad-proxy-server]started=[http://localhost:42101] original=[http://localhost:32101] mode=[host]",
+        });
+      }
+    });
+
+    expect(store.get(currentAppUrlAtom)).toEqual({
+      appUrl: "http://localhost:42101",
+      appId: 1,
+      originalUrl: "http://localhost:32101",
+      mode: "host",
+    });
+    expect(store.get(currentPreviewReloadTokenAtom)).toBe(1);
 
     unmount();
   });

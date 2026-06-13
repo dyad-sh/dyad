@@ -870,6 +870,17 @@ if (IS_TEST_BUILD) {
         deepLinkQueue.handle(url);
       }
     });
+
+    // On a cold start the deep link arrives in this instance's argv (the
+    // .desktop Exec %u), and second-instance only fires for later launches, so
+    // drain the initial argv here. The queue holds it until the app is ready.
+    const initialDeepLink = process.argv.find((arg) =>
+      arg.startsWith("dyad://"),
+    );
+    if (initialDeepLink) {
+      deepLinkQueue.handle(initialDeepLink);
+    }
+
     startAppWhenReady();
   }
 }

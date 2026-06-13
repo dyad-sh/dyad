@@ -77,6 +77,7 @@ export function buildDesktopFile(command: ExecCommand): string {
     "Type=Application",
     "Name=Dyad",
     `Exec=${command.exec}`,
+    // TryExec is a bare path; the spec doesn't allow it to be quoted or escaped.
     `TryExec=${command.tryExec}`,
     `MimeType=${MIME_TYPE};`,
     "NoDisplay=true",
@@ -129,13 +130,22 @@ export async function registerDyadProtocolLinux(): Promise<void> {
       logger.warn("update-desktop-database failed:", error);
     });
 
-    await execFileAsync("xdg-mime", ["default", DESKTOP_FILENAME, MIME_TYPE], {
-      timeout: 5000,
-    }).catch((error) => {
-      logger.warn("xdg-mime default failed:", error);
-    });
+    // xdg-mime is the step that actually sets the default, so only claim
+    // success when it succeeds.
+    const registered = await execFileAsync(
+      "xdg-mime",
+      ["default", DESKTOP_FILENAME, MIME_TYPE],
+      { timeout: 5000 },
+    )
+      .then(() => true)
+      .catch((error) => {
+        logger.warn("xdg-mime default failed:", error);
+        return false;
+      });
 
-    logger.info(`Registered ${MIME_TYPE} handler at ${desktopPath}`);
+    if (registered) {
+      logger.info(`Registered ${MIME_TYPE} handler at ${desktopPath}`);
+    }
   } catch (error) {
     logger.warn("Failed to register dyad:// protocol handler:", error);
   }

@@ -75,6 +75,46 @@ describe("exploreCode", () => {
     ).toBe(true);
   });
 
+  it("writes incremental build info to the provided cache directory", () => {
+    const cacheDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "code-explorer-tsbuildinfo-"),
+    );
+    tempDirs.push(cacheDir);
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "src/session.ts": [
+        "export function createSession(userId: string) {",
+        "  return { token: `session:${userId}` };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    const result = exploreCode(ts, {
+      appPath,
+      query: "create session",
+      tsBuildInfoCacheDir: cacheDir,
+    });
+
+    expect(result.files.map((file) => file.path)).toContain("src/session.ts");
+    expect(
+      fs.readdirSync(cacheDir).some((name) => name.endsWith(".tsbuildinfo")),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(appPath, "src", "session.js"))).toBe(false);
+  });
+
   it("discovers a workspace app tsconfig when the repo root has none", () => {
     const appPath = createTempProject({
       "apps/web/tsconfig.json": JSON.stringify(

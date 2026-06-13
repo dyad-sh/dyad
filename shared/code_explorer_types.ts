@@ -2,6 +2,7 @@ export interface CodeExplorerWorkerInput {
   appPath: string;
   query: string;
   tsconfigPath?: string;
+  tsBuildInfoCacheDir?: string;
   maxFiles?: number;
   maxDepth?: number;
 }

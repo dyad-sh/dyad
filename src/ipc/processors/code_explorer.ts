@@ -9,6 +9,7 @@ import type {
   CodeExplorerWorkerOutput,
 } from "../../../shared/code_explorer_types";
 import log from "electron-log";
+import { getTypeScriptCachePath } from "@/paths/paths";
 
 const logger = log.scope("code-explorer");
 const DEFAULT_CONFIGS = ["tsconfig.app.json", "tsconfig.json"];
@@ -231,14 +232,18 @@ export function toCodeExplorerError(error: unknown): Error {
 export async function runCodeExplorer(
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerResult> {
-  const key = workerSessionKey(input);
+  const workerInput: CodeExplorerWorkerInput = {
+    ...input,
+    tsBuildInfoCacheDir: getTypeScriptCachePath(),
+  };
+  const key = workerSessionKey(workerInput);
   const session = getWorkerSession(key);
   session.lastUsedAt = Date.now();
   clearIdleTimer(session);
 
   const run = session.queue
     .catch(() => undefined)
-    .then(() => runCodeExplorerOnWorker(session.worker, input));
+    .then(() => runCodeExplorerOnWorker(session.worker, workerInput));
   session.queue = run
     .catch(() => undefined)
     .finally(() => {

@@ -149,9 +149,11 @@ export function createProjectPrograms(
   {
     appPath,
     tsconfigPath,
+    tsBuildInfoCacheDir,
   }: {
     appPath: string;
     tsconfigPath?: string;
+    tsBuildInfoCacheDir?: string;
   },
 ): ProjectProgram[] {
   const rootConfig = resolveTsconfigPath({ appPath, tsconfigPath });
@@ -160,7 +162,9 @@ export function createProjectPrograms(
   const programs = configs.map((configPath) => ({
     projectRoot,
     tsconfigPath: configPath,
-    program: createProgramFromConfig(ts, projectRoot, configPath),
+    program: createProgramFromConfig(ts, projectRoot, configPath, {
+      tsBuildInfoCacheDir,
+    }),
   }));
 
   if (!programs.some((entry) => entry.program.getRootFileNames().length > 0)) {
@@ -209,11 +213,69 @@ function createProgramFromConfig(
   ts: TypeScriptModule,
   projectRoot: string,
   tsconfigPath: string,
+  {
+    tsBuildInfoCacheDir,
+  }: {
+    tsBuildInfoCacheDir?: string;
+  },
 ): import("typescript").Program {
   const parsed = readConfig(ts, tsconfigPath);
   const options = { ...parsed.options, noEmit: true };
-  const host = ts.createCompilerHost(options, true);
+
+  if (
+    tsBuildInfoCacheDir &&
+    !options.tsBuildInfoFile &&
+    options.incremental !== false
+  ) {
+    fs.mkdirSync(tsBuildInfoCacheDir, { recursive: true });
+    options.tsBuildInfoFile = path.join(
+      tsBuildInfoCacheDir,
+      `${safePathHash(projectRoot)}-${safePathHash(tsconfigPath)}.tsbuildinfo`,
+    );
+    options.incremental = true;
+  }
+
+  if (options.tsBuildInfoFile) {
+    options.noEmit = false;
+  }
+
+  const host = options.tsBuildInfoFile
+    ? ts.createIncrementalCompilerHost(options)
+    : ts.createCompilerHost(options, true);
   host.getCurrentDirectory = () => projectRoot;
+
+  const originalWriteFile = host.writeFile;
+  host.writeFile = (
+    fileName,
+    data,
+    writeByteOrderMark,
+    onError,
+    sourceFiles,
+  ) => {
+    if (fileName.endsWith(".tsbuildinfo")) {
+      originalWriteFile.call(
+        host,
+        fileName,
+        data,
+        writeByteOrderMark,
+        onError,
+        sourceFiles,
+      );
+    }
+  };
+
+  if (options.tsBuildInfoFile) {
+    const builderProgram = ts.createIncrementalProgram({
+      rootNames: parsed.fileNames,
+      options,
+      host,
+      projectReferences: parsed.projectReferences,
+      configFileParsingDiagnostics: ts.getConfigFileParsingDiagnostics(parsed),
+    });
+    builderProgram.emit();
+    return builderProgram.getProgram();
+  }
+
   return ts.createProgram({
     rootNames: parsed.fileNames,
     options,
@@ -221,6 +283,12 @@ function createProgramFromConfig(
     projectReferences: parsed.projectReferences,
     configFileParsingDiagnostics: ts.getConfigFileParsingDiagnostics(parsed),
   });
+}
+
+function safePathHash(filePath: string): string {
+  return Buffer.from(path.resolve(filePath))
+    .toString("base64")
+    .replace(/[/+=]/g, "_");
 }
 
 function readConfig(

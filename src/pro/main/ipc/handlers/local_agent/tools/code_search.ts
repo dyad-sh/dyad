@@ -103,7 +103,9 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
   inputSchema: codeSearchSchema,
   defaultConsent: "always",
 
-  // Requires Dyad Pro engine API
+  // Requires Dyad Pro engine API. Keep this available even when explore_code is
+  // enabled for the current app because this tool can target referenced apps
+  // that are not TypeScript-explorable.
   isEnabled: (ctx) => ctx.isDyadPro,
 
   getConsentPreview: (args) =>

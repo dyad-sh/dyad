@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
   enableSandboxScriptExecution: true,
+  enableCodeExplorer: false,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: false,
@@ -122,14 +123,27 @@ export function writeCrashSentinel(): void {
 export function setSentinelActiveChat(chatId: number): void {
   try {
     const existing = readCrashSentinel();
+    const sentinelPath = getCrashSentinelPath();
     const data: CrashSentinelData = {
-      ts: existing?.ts ?? Date.now(),
+      ts: existing?.ts ?? readLegacyCrashSentinelTimestamp(sentinelPath),
       activeChatId: chatId,
     };
-    fs.writeFileSync(getCrashSentinelPath(), JSON.stringify(data));
+    fs.writeFileSync(sentinelPath, JSON.stringify(data));
   } catch (error) {
     logger.error("Error updating crash sentinel active chat:", error);
   }
+}
+
+function readLegacyCrashSentinelTimestamp(sentinelPath: string): number {
+  try {
+    const legacyTimestamp = Number(fs.readFileSync(sentinelPath, "utf8"));
+    if (Number.isFinite(legacyTimestamp) && legacyTimestamp > 0) {
+      return legacyTimestamp;
+    }
+  } catch {
+    // Missing or malformed legacy sentinels can be replaced with a fresh timestamp.
+  }
+  return Date.now();
 }
 
 export function clearCrashSentinel(): void {

@@ -351,6 +351,30 @@ export default function SettingsPage() {
                   referencing an existing app.
                 </div>
               </div>
+              <div
+                id={SETTING_IDS.enableCodeExplorer}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-code-explorer"
+                    aria-label="Enable code explorer"
+                    checked={!!settings?.enableCodeExplorer}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableCodeExplorer: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-code-explorer">
+                    Enable code explorer
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Let the local agent explore configured TypeScript projects
+                  with a compiler-backed code graph.
+                </div>
+              </div>
             </div>
           </div>
 

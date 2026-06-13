@@ -16,7 +16,7 @@ export function resolveTargetAppPath(
   ctx: AgentContext,
   appName: string | undefined,
 ): string {
-  if (!appName) {
+  if (!appName || isCurrentAppAlias(appName)) {
     return ctx.appPath;
   }
   const appPath = ctx.referencedApps.get(appName.toLowerCase());
@@ -30,6 +30,10 @@ export function resolveTargetAppPath(
     `Unknown app_name '${appName}'. Available referenced apps: ${availableStr}`,
     DyadErrorKind.NotFound,
   );
+}
+
+function isCurrentAppAlias(appName: string): boolean {
+  return /^(current|current app|this app|active app)$/i.test(appName.trim());
 }
 
 /**
@@ -69,7 +73,7 @@ export function filterDyadInternalFiles<T extends { path: string }>(
   files: T[],
   appName: string | undefined,
 ): T[] {
-  if (!appName) {
+  if (!appName || isCurrentAppAlias(appName)) {
     return files;
   }
   return files.filter((file) => !isDyadInternalPath(file.path));
@@ -90,7 +94,7 @@ export function assertDyadInternalAccessAllowed({
   fullFilePath: string;
   appName: string | undefined;
 }): void {
-  if (!appName) {
+  if (!appName || isCurrentAppAlias(appName)) {
     return;
   }
   const relativeFromApp = path.relative(targetAppPath, fullFilePath);

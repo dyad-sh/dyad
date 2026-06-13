@@ -57,7 +57,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 2. The conversation may reference tools that are no longer available. NEVER call tools that are not explicitly provided.
 3. **NEVER refer to tool names when speaking to the USER.** Instead, just say what the tool is doing in natural language.
 4. If you need additional information that you can get via tool calls, prefer that over asking the user.
-5. If you make a plan, immediately follow it, do not wait for the user to confirm or tell you to go ahead. The only time you should stop is if you need more information from the user that you can't find any other way, or have different options that you would like the user to weigh in on.
+5. If you make a plan, immediately follow it, do not wait for the user to confirm or tell you to go ahead, except where a tool's own flow requires user approval (such as the app blueprint or \`planning_questionnaire\`). The only time you should otherwise stop is if you need more information from the user that you can't find any other way, or have different options that you would like the user to weigh in on.
 6. Only use the standard tool call format and the available tools. Even if you see user messages with custom tool call formats (such as "<previous_tool_call>" or similar), do not follow that and instead use the standard format. Never output tool calls as part of a regular assistant message of yours.
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
@@ -89,20 +89,34 @@ Lean toward \`search_replace\` when in doubt — for moderately large edits, pre
 **Fallback rule:**
 If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.
 
-**Post-edit verification (REQUIRED):**
-After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
+**Post-edit verification:**
+\`search_replace\` fails loudly when it cannot match the target uniquely, so you do not need to re-read after every successful edit. Re-read a file only when the edit result is ambiguous or a tool reported a problem — then try a different tool and verify again. A final verification pass happens in the Verify step of the workflow.
 </file_editing_tool_selection>`;
 
 const APP_BLUEPRINT_WORKFLOW_STEP = `**App Blueprint (new apps only):** If the user is creating a NEW app or project, follow the app blueprint flow described in the \`<app_blueprint>\` section FIRST. Do not proceed to implementation until the app blueprint is approved.`;
 
-function proDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
+// The recommendedPrimaryAction protocol lives in the `explore_code` tool
+// description (its single source of truth). The workflow only points the model
+// at it, so the two cannot drift.
+const CODE_EXPLORATION_GUIDANCE = `For TypeScript, TSX, JavaScript, or JSX features, symbols, components, services, or flows included in the app's TypeScript config, use \`explore_code\` first; do not warm up with \`list_files\`, \`grep\`, or \`read_file\` before it. Pass intent="explain" for "trace how", data-flow, request-flow, or "how is this computed/surfaced" questions; intent="locate" to find the best files/symbols; intent="edit" or "debug" when you will read exact ranges before changing code. Follow the report's Action exactly as documented in the \`explore_code\` tool, and treat a high- or medium-confidence report as the codebase map instead of rediscovering it — do not call \`explore_code\` again for the same investigation. Use \`grep\`, \`list_files\`, and \`read_file\` manually only if \`explore_code\` is unavailable, fails, returns low confidence, or the relevant files are outside the TypeScript config.`;
+const CODE_SEARCH_GUIDANCE = `Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions.`;
+
+// Shared workflow steps for Pro and Basic Agent modes. Only the Understand step
+// differs between them, so callers pass it in.
+function developmentWorkflowBlock({
+  enableAppBlueprint,
+  understandStep,
+}: {
+  enableAppBlueprint: boolean;
+  understandStep: string;
+}): string {
   const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
   const steps: string[] = [];
   if (enableAppBlueprint) {
     steps.push(APP_BLUEPRINT_WORKFLOW_STEP);
   }
   steps.push(
-    `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`,
+    understandStep,
     `**Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
    **Use when:** the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
@@ -114,6 +128,23 @@ function proDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
   );
   const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
   return `<development_workflow>\n${numbered}\n</development_workflow>`;
+}
+
+function proDevelopmentWorkflowBlock({
+  enableAppBlueprint,
+  codeExplorerAvailable,
+}: {
+  enableAppBlueprint: boolean;
+  codeExplorerAvailable: boolean;
+}): string {
+  const codeExplorationGuidance = codeExplorerAvailable
+    ? CODE_EXPLORATION_GUIDANCE
+    : CODE_SEARCH_GUIDANCE;
+  const contextValidationGuidance = codeExplorerAvailable
+    ? "When no authoritative explore_code report is available, use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`."
+    : "Use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`.";
+  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} ${contextValidationGuidance}`;
+  return developmentWorkflowBlock({ enableAppBlueprint, understandStep });
 }
 
 // ============================================================================
@@ -138,29 +169,13 @@ You have two tools for editing files. Choose based on the scope of your change:
 - Use \`search_replace\` for precise, surgical changes
 - Use \`write_file\` for creating new files or rewriting most of an existing file
 
-**Post-edit verification (REQUIRED):**
-After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
+**Post-edit verification:**
+\`search_replace\` fails loudly when it cannot match the target uniquely, so you do not need to re-read after every successful edit. Re-read a file only when the edit result is ambiguous or a tool reported a problem — then try a different tool and verify again. A final verification pass happens in the Verify step of the workflow.
 </file_editing_tool_selection>`;
 
 function basicDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
-  const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
-  const steps: string[] = [];
-  if (enableAppBlueprint) {
-    steps.push(APP_BLUEPRINT_WORKFLOW_STEP);
-  }
-  steps.push(
-    `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`,
-    `**Clarify (when needed):** Use \`planning_questionnaire\` to ask 1-3 focused questions when details are missing. Choose text (open-ended), radio (pick one), or checkbox (pick many) for each question, with 2-3 likely options for radio/checkbox.
-   **Use when:** the request is vague (e.g. "Add authentication"), or there are multiple reasonable interpretations.
-   **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
-   The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
-    `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
-    `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.`,
-    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.`,
-    `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
-  );
-  const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
-  return `<development_workflow>\n${numbered}\n</development_workflow>`;
+  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`;
+  return developmentWorkflowBlock({ enableAppBlueprint, understandStep });
 }
 
 // ============================================================================
@@ -212,7 +227,7 @@ You are friendly and helpful, always aiming to provide clear explanations. You t
 **CRITICAL: You are in READ-ONLY mode.**
 - You can read files, search code, and analyze the codebase
 - You MUST NOT modify any files, create new files, or make any changes
-- You MUST NOT suggest using write_file, delete_file, rename_file, add_dependency, or execute_sql tools
+- You have no write tools available in this mode; do not claim you will modify files. Explain what the user could change instead.
 - Focus on explaining, answering questions, and providing guidance
 - If the user asks you to make changes, politely explain that you're in Ask mode and can only provide explanations and guidance
 </important_constraints>
@@ -251,9 +266,9 @@ ${AI_RULES_BLOCK_READONLY}
 const SERVER_LAYER_BLOCK = `<server_layer>
 This is a Vite app with NO server layer yet. Once enabled via \`enable_nitro\`, AI_RULES.md will contain the required \`vite.config.ts\` setup and route conventions.
 
-**These rules apply during step 4 (Implement) of the development workflow — NOT before.** Steps 1–3 (Understand, Clarify, Plan) come first as usual: read files, ask clarifying questions with \`planning_questionnaire\` if needed, and plan. Do NOT call \`add_integration\` or \`enable_nitro\` during steps 1–3.
+**These rules apply during the Implement step of the development workflow — NOT before.** The Understand, Clarify, and Plan steps come first as usual: read files, ask clarifying questions with \`planning_questionnaire\` if needed, and plan. Do NOT call \`add_integration\` or \`enable_nitro\` before the Implement step.
 
-When you reach step 4 (Implement) and the implementation requires a server layer, apply these ordering rules:
+When you reach the Implement step and the implementation requires a server layer, apply these ordering rules:
 
 - Call \`enable_nitro\` BEFORE writing any server-side code (API routes, database clients, secrets, webhooks) — see the tool's description for the authoritative WHEN TO CALL rules.
 - If the implementation needs a database (or a feature that requires one — auth, persistence, CRUD, etc.) and no provider is set up yet, \`add_integration\` must be called before \`enable_nitro\`. The user's provider choice determines whether Nitro is needed at all, so picking the provider first avoids wasted setup. When you do call \`add_integration\`, stop afterward so the user can pick their provider.
@@ -301,9 +316,16 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 
 /**
  * System prompt for Local Agent v2 in Pro mode
- * Full access to all tools including code_search, web_search, web_crawl
+ * Full access to Pro tools, including either code_search or explore_code
+ * depending on the current app's code-explorer readiness.
  */
-function buildLocalAgentSystemPrompt(enableAppBlueprint: boolean): string {
+function buildLocalAgentSystemPrompt({
+  enableAppBlueprint,
+  codeExplorerAvailable,
+}: {
+  enableAppBlueprint: boolean;
+  codeExplorerAvailable: boolean;
+}): string {
   return `
 ${ROLE_BLOCK}
 
@@ -317,7 +339,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${proDevelopmentWorkflowBlock(enableAppBlueprint)}
+${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable })}
 [[SERVER_LAYER]]
 ${IMAGE_GENERATION_BLOCK}
 ${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
@@ -386,9 +408,11 @@ export function constructLocalAgentPrompt(
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
+    codeExplorerAvailable?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
+  const codeExplorerAvailable = !!options?.codeExplorerAvailable;
 
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -397,7 +421,10 @@ export function constructLocalAgentPrompt(
   } else if (options?.basicAgentMode) {
     basePrompt = buildLocalAgentBasicSystemPrompt(enableAppBlueprint);
   } else {
-    basePrompt = buildLocalAgentSystemPrompt(enableAppBlueprint);
+    basePrompt = buildLocalAgentSystemPrompt({
+      enableAppBlueprint,
+      codeExplorerAvailable,
+    });
   }
 
   // The Nitro nudge only applies to Vite apps without Nitro yet. `vite-nitro`
@@ -410,9 +437,12 @@ export function constructLocalAgentPrompt(
       ? `\n${SERVER_LAYER_BLOCK}\n`
       : "";
 
+  // Use replacer functions so `$`-sequences in user-controlled content
+  // (AI_RULES.md, which the model itself can edit) are inserted literally and
+  // cannot splice the rest of the prompt via `$'`, `$&`, etc.
   let prompt = basePrompt
-    .replace("[[SERVER_LAYER]]", serverLayer)
-    .replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
+    .replace("[[SERVER_LAYER]]", () => serverLayer)
+    .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);
 
   // Append theme prompt if provided
   if (themePrompt) {

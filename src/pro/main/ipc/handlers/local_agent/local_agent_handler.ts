@@ -38,6 +38,7 @@ import {
   getAiHeaders,
   DYAD_INTERNAL_REQUEST_ID_HEADER,
 } from "@/ipc/utils/provider_options";
+import { recordCodeExplorerBenchmarkEvent } from "./benchmark_recorder";
 
 import {
   AgentToolName,
@@ -249,9 +250,13 @@ function buildChatMessageHistory(
 function injectReferencedAppsReminder(
   messageHistory: ModelMessage[],
   referencedApps: readonly { appName: string }[],
+  options: { codeExplorerAvailable: boolean },
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
-  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+  const searchTool = options.codeExplorerAvailable
+    ? "`explore_code`"
+    : "`code_search`";
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, ${searchTool}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
 
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];
@@ -769,7 +774,9 @@ export async function handleLocalAgentStream(
     // `<system-reminder>` block (instead of appending it to the system prompt)
     // so the system prompt stays static and cacheable.
     if (referencedApps.length > 0) {
-      injectReferencedAppsReminder(messageHistory, referencedApps);
+      injectReferencedAppsReminder(messageHistory, referencedApps, {
+        codeExplorerAvailable: agentTools.explore_code != undefined,
+      });
     }
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
@@ -964,6 +971,10 @@ export async function handleLocalAgentStream(
                     injectReferencedAppsReminder(
                       compactedMessageHistory,
                       referencedApps,
+                      {
+                        codeExplorerAvailable:
+                          agentTools.explore_code != undefined,
+                      },
                     );
                   }
                   baseMessageHistoryCount = compactedMessageHistory.length;
@@ -1035,6 +1046,16 @@ export async function handleLocalAgentStream(
               return result;
             },
             onStepFinish: async (step) => {
+              recordCodeExplorerBenchmarkEvent({
+                type: "stream_step_finish",
+                phase: "main",
+                chatId: req.chatId,
+                appId: chat.app.id,
+                toolCallCount: step.toolCalls.length,
+                toolNames: step.toolCalls.map((toolCall) => toolCall.toolName),
+                usage: step.usage,
+              });
+
               if (!hasInjectedPlanningQuestionnaireReflection) {
                 const questionnaireError =
                   getPlanningQuestionnaireErrorFromStep(step);
@@ -1083,6 +1104,13 @@ export async function handleLocalAgentStream(
               const totalTokens = response.usage?.totalTokens;
               const inputTokens = response.usage?.inputTokens;
               const cachedInputTokens = response.usage?.cachedInputTokens;
+              recordCodeExplorerBenchmarkEvent({
+                type: "stream_finish",
+                phase: "main",
+                chatId: req.chatId,
+                appId: chat.app.id,
+                usage: response.usage,
+              });
               logger.log(
                 "Total tokens used:",
                 totalTokens,

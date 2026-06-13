@@ -528,6 +528,7 @@ export const constructSystemPrompt = ({
   frameworkType,
   hasSupabaseProject,
   enableAppBlueprint,
+  codeExplorerAvailable,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -551,6 +552,11 @@ export const constructSystemPrompt = ({
   hasSupabaseProject?: boolean;
   /** If false, omit the app blueprint block from the local-agent prompt. */
   enableAppBlueprint?: boolean;
+  /**
+   * If true, the local-agent prompt should prefer the compiler-backed
+   * TypeScript exploration tool over code_search for broad codebase discovery.
+   */
+  codeExplorerAvailable?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -563,6 +569,7 @@ export const constructSystemPrompt = ({
       frameworkType,
       hasSupabaseProject,
       enableAppBlueprint,
+      codeExplorerAvailable,
     });
   }
 

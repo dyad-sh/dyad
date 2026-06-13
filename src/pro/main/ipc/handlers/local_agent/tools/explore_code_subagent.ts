@@ -65,7 +65,7 @@ const logger = log.scope("explore_code_subagent");
 const SUBAGENT_MODEL = { provider: "auto", name: "value" } as const;
 const SUBAGENT_PHASE = "explore_code_subagent";
 const SUBAGENT_MAX_STEPS = 12;
-const SUBAGENT_MAX_OUTPUT_TOKENS = 4_000;
+const SUBAGENT_MAX_OUTPUT_TOKENS = 16_000;
 const SUBAGENT_MAX_RETRIES = 1;
 const ROOT_RECURSIVE_LIST_FILES_MESSAGE =
   "Root recursive listing is intentionally compacted for the explorer sub-agent. Use targeted grep/explore_code first, or list a specific directory.";

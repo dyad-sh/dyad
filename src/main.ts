@@ -566,6 +566,9 @@ const createWindow = () => {
   let devToolsReloadedCount = 0;
 
   mainWindow.webContents.on("did-finish-load", () => {
+    // Must run on first load, else deep links break in dev.
+    deepLinkQueue.markReady();
+
     if (process.env.NODE_ENV === "development") {
       // In dev, wait until AFTER the DevTools-triggered reload before sending the message
       if (devToolsReloadedCount === 0) {
@@ -573,8 +576,6 @@ const createWindow = () => {
         return; // Ignore first load, we will reload momentarily
       }
     }
-
-    deepLinkQueue.markReady();
 
     // Summarize native crash minidumps before sending app:crash_detected. If
     // the main process crashed natively, that summary becomes the crash cause

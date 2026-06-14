@@ -196,6 +196,7 @@ const config: ForgeConfig = {
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({
       options: {
+        mimeType: ["x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),

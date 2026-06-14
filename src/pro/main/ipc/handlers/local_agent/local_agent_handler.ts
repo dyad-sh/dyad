@@ -2105,12 +2105,13 @@ async function getMcpTools(
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
               const { serverName, toolName } = parseMcpToolKey(key);
+              const callId = execCtx.toolCallId;
               const content = JSON.stringify(args, null, 2);
               const autoApprovedAttr = autoApprovedReason
                 ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
                 : "";
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}"${autoApprovedAttr}>\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
+                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${callId}"${autoApprovedAttr}>\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
               );
 
               const res = await mcpTool.execute(args, execCtx);
@@ -2118,7 +2119,7 @@ async function getMcpTools(
                 typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${callId}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
               );
 
               return resultStr;

@@ -1,4 +1,5 @@
 import type { IpcMainInvokeEvent } from "electron";
+import { randomUUID } from "node:crypto";
 import { asSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 import type { MCPClient } from "@ai-sdk/mcp";
@@ -131,6 +132,9 @@ export function buildMcpCapabilityMap(params: {
   for (const def of params.defs) {
     map[def.jsName] = async (rawArgs: unknown) => {
       const args = rawArgs ?? {};
+      // Correlates the call/result blocks for the merged UI card. The SDK
+      // toolCallId isn't available on this sandbox path, so generate one.
+      const callId = randomUUID();
       const inputPreview =
         typeof args === "string"
           ? args
@@ -184,7 +188,7 @@ export function buildMcpCapabilityMap(params: {
         ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
         : "";
       params.ctx.onXmlComplete(
-        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
+        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
       );
 
       try {
@@ -201,7 +205,7 @@ export function buildMcpCapabilityMap(params: {
             : res;
         const resultStr = typeof res === "string" ? res : JSON.stringify(res);
         params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
         );
         return normalized;
       } catch (error) {

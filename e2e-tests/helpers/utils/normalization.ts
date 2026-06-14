@@ -26,6 +26,42 @@ export function normalizeItemReferences(dump: any): void {
  * Normalizes tool_call IDs and tool_call_id references to be deterministic.
  * Tool call IDs have the format "call_[timestamp]_[index]" which changes between runs.
  */
+/**
+ * Normalizes MCP `call-id="..."` attributes embedded inside message content
+ * strings (used by the merged tool card to pair call/result blocks). These
+ * carry the provider tool-call id, which is non-deterministic, so replace each
+ * distinct value with a stable placeholder in first-seen order.
+ */
+export function normalizeMcpCallIds(dump: any): void {
+  const oldToNew: Record<string, string> = {};
+  let idx = 0;
+  const scrub = (s: string): string =>
+    s.replace(/call-id="([^"]*)"/g, (_match, id: string) => {
+      if (!(id in oldToNew)) {
+        oldToNew[id] = `[[MCP_CALL_ID_${idx++}]]`;
+      }
+      return `call-id="${oldToNew[id]}"`;
+    });
+
+  const visit = (value: unknown, set: (v: unknown) => void): void => {
+    if (typeof value === "string") {
+      set(scrub(value));
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => visit(item, (v) => (value[i] = v)));
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const key of Object.keys(value)) {
+        visit((value as any)[key], (v) => ((value as any)[key] = v));
+      }
+    }
+  };
+
+  visit(dump, () => {});
+}
+
 export function normalizeToolCallIds(dump: any): void {
   const oldToNewId: Record<string, string> = {};
   let toolCallIndex = 0;

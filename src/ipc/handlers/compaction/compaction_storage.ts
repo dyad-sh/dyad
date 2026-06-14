@@ -36,15 +36,16 @@ function getChatBackupDir(appPath: string, chatId: number): string {
  * and truncate large tool results for token efficiency.
  */
 export function transformToolTags(content: string): string {
-  // Transform <dyad-mcp-tool-call> to <tool-use>
+  // Transform <dyad-mcp-tool-call> to <tool-use>. Attribute matching is
+  // order/extra tolerant so optional attrs like call-id don't break it.
   let result = content.replace(
-    /<dyad-mcp-tool-call server="([^"]*)" tool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
+    /<dyad-mcp-tool-call\b[^>]*?\bserver="([^"]*)"[^>]*?\btool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
     '<tool-use name="$2" server="$1">\n$3\n</tool-use>',
   );
 
   // Transform <dyad-mcp-tool-result> to <tool-result> with truncation
   result = result.replace(
-    /<dyad-mcp-tool-result server="([^"]*)" tool="([^"]*)">\n([\s\S]*?)\n<\/dyad-mcp-tool-result>/g,
+    /<dyad-mcp-tool-result\b[^>]*?\bserver="([^"]*)"[^>]*?\btool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-result>/g,
     (_match, server, tool, resultContent: string) => {
       const chars = resultContent.length;
       const truncated = chars > TOOL_RESULT_TRUNCATION_LIMIT;

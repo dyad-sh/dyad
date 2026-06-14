@@ -5,6 +5,7 @@
 export {
   normalizeItemReferences,
   normalizeToolCallIds,
+  normalizeMcpCallIds,
   normalizeVersionedFiles,
   normalizePath,
 } from "./normalization";

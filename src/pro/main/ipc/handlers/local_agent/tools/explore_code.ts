@@ -117,8 +117,9 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
   },
 
   buildXml: (args, isComplete) => {
-    if (isComplete || !args.query) return undefined;
-    return `<dyad-explore-code ${buildExploreCodeAttributes(args)}>Exploring...</dyad-explore-code>`;
+    if (!args.query) return undefined;
+    if (isComplete) return undefined;
+    return `<dyad-explore-code ${buildExploreCodeAttributes(args)}>Exploring...`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -133,9 +134,18 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
       fallbackTsconfigPath: availability.tsconfigPath,
     });
 
+    const streamExploreProgress = (progressText: string) => {
+      ctx.onXmlStream(
+        `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)}>\n${escapeXmlContent(progressText)}`,
+      );
+    };
+
+    streamExploreProgress("Exploring...");
+
     const resultText = await runExploreCodeSubagent({
       args: effectiveArgs,
       ctx,
+      onProgress: streamExploreProgress,
     });
     ctx.onXmlComplete(
       `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)}>\n${escapeXmlContent(resultText)}\n</dyad-explore-code>`,

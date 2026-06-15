@@ -101,6 +101,39 @@ describe("exploreCodeTool", () => {
     }
   });
 
+  it("streams in-progress XML while the sub-agent runs", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-stream-"));
+    const ctx = createMockContext(appPath);
+    mocks.runExploreCodeSubagent.mockImplementation(
+      async ({
+        onProgress,
+      }: {
+        onProgress?: (progressText: string) => void;
+      }) => {
+        onProgress?.(
+          'Exploring...\n\n1. explore_code "App flow" → 2 candidates',
+        );
+        return buildReport("src/App.tsx", "1-10");
+      },
+    );
+
+    try {
+      await exploreCodeTool.execute(
+        { query: "App flow", intent: "locate" },
+        ctx,
+      );
+
+      expect(ctx.onXmlStream).toHaveBeenCalledWith(
+        expect.stringContaining("Exploring..."),
+      );
+      expect(ctx.onXmlStream).toHaveBeenCalledWith(
+        expect.stringContaining('1. explore_code "App flow" → 2 candidates'),
+      );
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to the detected tsconfig when the supplied path is stale", async () => {
     const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-cache-"));
     await fs.writeFile(
@@ -133,6 +166,34 @@ describe("exploreCodeTool", () => {
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });
     }
+  });
+
+  describe("buildXml", () => {
+    it("returns undefined when query is missing", () => {
+      const xml = exploreCodeTool.buildXml?.({}, false);
+      expect(xml).toBeUndefined();
+    });
+
+    it("returns undefined when complete (execute handles final XML)", () => {
+      const xml = exploreCodeTool.buildXml?.(
+        { query: "App flow", intent: "locate" },
+        true,
+      );
+      expect(xml).toBeUndefined();
+    });
+
+    it("builds an unclosed in-progress tag while streaming", () => {
+      const xml = exploreCodeTool.buildXml?.(
+        { query: "App flow", intent: "locate", app_name: "other-app" },
+        false,
+      );
+      expect(xml).toContain("<dyad-explore-code");
+      expect(xml).toContain('query="App flow"');
+      expect(xml).toContain('intent="locate"');
+      expect(xml).toContain('app_name="other-app"');
+      expect(xml).toContain("Exploring...");
+      expect(xml).not.toContain("</dyad-explore-code>");
+    });
   });
 });
 

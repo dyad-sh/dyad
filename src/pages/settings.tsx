@@ -358,7 +358,7 @@ export default function SettingsPage() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enable-code-explorer"
-                    aria-label="Enable code explorer"
+                    aria-label="Enable code explorer (Pro)"
                     checked={!!settings?.enableCodeExplorer}
                     onCheckedChange={(checked) => {
                       updateSettings({
@@ -367,7 +367,7 @@ export default function SettingsPage() {
                     }}
                   />
                   <Label htmlFor="enable-code-explorer">
-                    Enable code explorer
+                    Enable code explorer (Pro)
                   </Label>
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">

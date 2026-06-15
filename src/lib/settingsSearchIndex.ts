@@ -482,7 +482,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
   {
     id: SETTING_IDS.enableCodeExplorer,
-    label: "Enable code explorer",
+    label: "Enable code explorer (Pro)",
     description:
       "Let the local agent explore configured TypeScript projects with a compiler-backed code graph",
     keywords: [

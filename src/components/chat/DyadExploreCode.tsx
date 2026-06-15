@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScanSearch } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
@@ -33,10 +33,15 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
   children,
   node,
 }) => {
-  const [isContentVisible, setIsContentVisible] = useState(false);
-
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
+  const [isContentVisible, setIsContentVisible] = useState(inProgress);
+
+  useEffect(() => {
+    if (!inProgress && isContentVisible) {
+      setIsContentVisible(false);
+    }
+  }, [inProgress]);
   const aborted = state === "aborted";
   const errored = state === "error";
   const query = node?.properties?.query || "";

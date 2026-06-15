@@ -53,6 +53,7 @@ import {
   buildExploreCodeSubagentPrompt,
   buildExploreCodeSubagentSystemPrompt,
 } from "./explore_code_subagent_prompts";
+import { formatExploreProgressLog } from "./explore_code_subagent_progress";
 
 const logger = log.scope("explore_code_subagent");
 
@@ -82,9 +83,11 @@ interface ReadOnlyToolBudget {
 export async function runExploreCodeSubagent({
   args,
   ctx,
+  onProgress,
 }: {
   args: ExploreCodeArgs;
   ctx: AgentContext;
+  onProgress?: (progressText: string) => void;
 }): Promise<string> {
   const settings = readSettings();
   assertDyadValueAvailable(settings);
@@ -114,6 +117,7 @@ export async function runExploreCodeSubagent({
     observations,
     candidateRegistry,
     readOnlyToolBudget,
+    onProgress,
     onSubmitReport: (selection): string => {
       const candidates = getObservedCandidates(observations);
       const resolved = resolveSelection({ selection, candidates });
@@ -188,6 +192,7 @@ export async function runExploreCodeSubagent({
         ctx,
         observations,
         candidateRegistry,
+        onProgress,
       });
     }
 
@@ -218,11 +223,13 @@ async function collectRawExploreObservation({
   ctx,
   observations,
   candidateRegistry,
+  onProgress,
 }: {
   args: ExploreCodeArgs;
   ctx: AgentContext;
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
+  onProgress?: (progressText: string) => void;
 }): Promise<void> {
   const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
   const effectiveArgs = normalizeExploreCodeArgsForApp({
@@ -237,12 +244,25 @@ async function collectRawExploreObservation({
   const candidates = candidateRegistry.register(
     candidatesFromRawExploreCodeResult(rawResult),
   );
-  observations.push({
-    toolName: "explore_code",
-    args: effectiveArgs,
-    result: annotateObservationResult(resultText, candidates),
-    candidates,
-  });
+  pushObservation(
+    observations,
+    {
+      toolName: "explore_code",
+      args: effectiveArgs,
+      result: annotateObservationResult(resultText, candidates),
+      candidates,
+    },
+    onProgress,
+  );
+}
+
+function pushObservation(
+  observations: SubagentObservation[],
+  observation: SubagentObservation,
+  onProgress?: (progressText: string) => void,
+): void {
+  observations.push(observation);
+  onProgress?.(formatExploreProgressLog(observations));
 }
 
 function renderFinalReport({
@@ -296,6 +316,7 @@ function buildExploreCodeSubagentTools({
   observations,
   candidateRegistry,
   readOnlyToolBudget,
+  onProgress,
   onSubmitReport,
 }: {
   args: ExploreCodeArgs;
@@ -303,6 +324,7 @@ function buildExploreCodeSubagentTools({
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
   readOnlyToolBudget: ReadOnlyToolBudget;
+  onProgress?: (progressText: string) => void;
   onSubmitReport: (selection: ExploreSelection) => string;
 }): ToolSet {
   const childCtx: AgentContext = {
@@ -322,6 +344,7 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
+      onProgress,
       compactBroadCall: compactBroadListFilesCall,
       candidatesFromResult: (toolArgs, result) =>
         candidatesFromListFilesResult(String(result), toolArgs),
@@ -332,6 +355,7 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
+      onProgress,
       candidatesFromResult: (toolArgs, result) =>
         candidatesFromGrepResult(String(result), toolArgs),
     }),
@@ -341,6 +365,7 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
+      onProgress,
       candidatesFromResult: (toolArgs, result) =>
         candidatesFromReadFileResult(String(result), toolArgs),
     }),
@@ -350,6 +375,7 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
+      onProgress,
     }),
     submit_report: {
       description:
@@ -368,12 +394,14 @@ function buildObservedExploreCodeTool({
   observations,
   candidateRegistry,
   readOnlyToolBudget,
+  onProgress,
 }: {
   parentArgs: ExploreCodeArgs;
   ctx: AgentContext;
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
   readOnlyToolBudget: ReadOnlyToolBudget;
+  onProgress?: (progressText: string) => void;
 }) {
   return {
     description:
@@ -382,12 +410,16 @@ function buildObservedExploreCodeTool({
     execute: async (toolArgs: RawExploreCodeArgs) => {
       const budgetMessage = readOnlyToolBudget.reserve("explore_code");
       if (budgetMessage) {
-        observations.push({
-          toolName: "explore_code",
-          args: toolArgs,
-          result: budgetMessage,
-          candidates: [],
-        });
+        pushObservation(
+          observations,
+          {
+            toolName: "explore_code",
+            args: toolArgs,
+            result: budgetMessage,
+            candidates: [],
+          },
+          onProgress,
+        );
         return budgetMessage;
       }
       try {
@@ -419,24 +451,32 @@ function buildObservedExploreCodeTool({
           annotateObservationResult(resultText, candidates),
           observations,
         );
-        observations.push({
-          toolName: "explore_code",
-          args: effectiveToolArgs,
-          result: annotatedResult,
-          candidates,
-        });
+        pushObservation(
+          observations,
+          {
+            toolName: "explore_code",
+            args: effectiveToolArgs,
+            result: annotatedResult,
+            candidates,
+          },
+          onProgress,
+        );
         return annotatedResult;
       } catch (error) {
         if (ctx.abortSignal?.aborted) {
           throw error;
         }
         const errorMessage = formatToolError("explore_code", error);
-        observations.push({
-          toolName: "explore_code",
-          args: toolArgs,
-          result: errorMessage,
-          candidates: [],
-        });
+        pushObservation(
+          observations,
+          {
+            toolName: "explore_code",
+            args: toolArgs,
+            result: errorMessage,
+            candidates: [],
+          },
+          onProgress,
+        );
         return errorMessage;
       }
     },
@@ -449,6 +489,7 @@ function wrapSubagentTool<TArgs>({
   observations,
   candidateRegistry,
   readOnlyToolBudget,
+  onProgress,
   candidatesFromResult,
   compactBroadCall,
 }: {
@@ -457,6 +498,7 @@ function wrapSubagentTool<TArgs>({
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
   readOnlyToolBudget: ReadOnlyToolBudget;
+  onProgress?: (progressText: string) => void;
   candidatesFromResult: (args: TArgs, result: unknown) => ExplorerCandidate[];
   compactBroadCall?: (args: TArgs) => string | null;
 }) {
@@ -466,23 +508,31 @@ function wrapSubagentTool<TArgs>({
     execute: async (toolArgs: TArgs) => {
       const budgetMessage = readOnlyToolBudget.reserve(tool.name);
       if (budgetMessage) {
-        observations.push({
-          toolName: tool.name,
-          args: toolArgs,
-          result: budgetMessage,
-          candidates: [],
-        });
+        pushObservation(
+          observations,
+          {
+            toolName: tool.name,
+            args: toolArgs,
+            result: budgetMessage,
+            candidates: [],
+          },
+          onProgress,
+        );
         return budgetMessage;
       }
       try {
         const compactResult = compactBroadCall?.(toolArgs);
         if (compactResult) {
-          observations.push({
-            toolName: tool.name,
-            args: toolArgs,
-            result: compactResult,
-            candidates: [],
-          });
+          pushObservation(
+            observations,
+            {
+              toolName: tool.name,
+              args: toolArgs,
+              result: compactResult,
+              candidates: [],
+            },
+            onProgress,
+          );
           return compactResult;
         }
 
@@ -496,12 +546,16 @@ function wrapSubagentTool<TArgs>({
           annotateObservationResult(resultText, registeredCandidates),
           observations,
         );
-        observations.push({
-          toolName: tool.name,
-          args: toolArgs,
-          result: annotatedResult,
-          candidates: registeredCandidates,
-        });
+        pushObservation(
+          observations,
+          {
+            toolName: tool.name,
+            args: toolArgs,
+            result: annotatedResult,
+            candidates: registeredCandidates,
+          },
+          onProgress,
+        );
         // Always return the annotated string the observation log recorded. For
         // non-string tool output (e.g. structured list_files results) returning
         // the raw object would hand the model a result with no candidate-ID
@@ -512,12 +566,16 @@ function wrapSubagentTool<TArgs>({
           throw error;
         }
         const errorMessage = formatToolError(tool.name, error);
-        observations.push({
-          toolName: tool.name,
-          args: toolArgs,
-          result: errorMessage,
-          candidates: [],
-        });
+        pushObservation(
+          observations,
+          {
+            toolName: tool.name,
+            args: toolArgs,
+            result: errorMessage,
+            candidates: [],
+          },
+          onProgress,
+        );
         return errorMessage;
       }
     },

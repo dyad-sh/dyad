@@ -541,8 +541,11 @@ describe("runExploreCodeSubagent", () => {
       ctx: createMockContext(),
     });
 
-    expect(observedResult.length).toBeLessThanOrEqual(12_010);
+    expect(observedResult.length).toBeLessThanOrEqual(20_010);
     expect(observedResult).toContain("[TRUNCATED]");
+    // The candidate-ID block must survive truncation (it is prepended), so the
+    // model always has IDs to cite in submit_report even for huge tool output.
+    expect(observedResult).toContain("Observed candidate IDs:");
   });
 
   it("caps sub-agent read-only tool calls at the tool-call budget (50), independent of the step cap", async () => {
@@ -593,7 +596,7 @@ describe("runExploreCodeSubagent", () => {
       ctx: createMockContext(),
     });
 
-    expect(report.length).toBeLessThanOrEqual(2_500);
+    expect(report.length).toBeLessThanOrEqual(8_000);
   });
 
   it("forces submit_report on the final allowed step when nothing is accepted", async () => {

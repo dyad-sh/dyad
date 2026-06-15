@@ -122,31 +122,4 @@ describe("getModelClient", () => {
       "gemini/gemini-3-flash-preview",
     ]);
   });
-
-  test("uses Responses API for Dyad Engine auto value model in local-agent mode", async () => {
-    const { modelClient } = await getModelClient(
-      {
-        provider: "auto",
-        name: "value",
-      },
-      {
-        enableDyadPro: true,
-        selectedChatMode: "local-agent",
-        providerSettings: {
-          auto: {
-            apiKey: {
-              value: "dyad-pro-key",
-            },
-          },
-        },
-      } as unknown as UserSettings,
-    );
-
-    expect((modelClient.model as { modelId: string }).modelId).toBe(
-      "dyad/value",
-    );
-    expect(modelClient.model.constructor.name).toBe(
-      "OpenAIResponsesLanguageModel",
-    );
-  });
 });

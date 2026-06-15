@@ -277,16 +277,6 @@ async function getProModelClient({
       builtinProviderId: model.provider,
     };
   }
-  if (
-    settings.selectedChatMode === "local-agent" &&
-    model.provider === "auto" &&
-    model.name === "value"
-  ) {
-    return {
-      model: provider.responses(modelId, { providerId: model.provider }),
-      builtinProviderId: "openai",
-    };
-  }
   if (model.provider === "anthropic") {
     return {
       model: provider.anthropic(modelId, { providerId: model.provider }),

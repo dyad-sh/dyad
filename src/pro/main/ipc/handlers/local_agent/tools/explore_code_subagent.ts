@@ -56,7 +56,7 @@ import {
 
 const logger = log.scope("explore_code_subagent");
 
-const SUBAGENT_MODEL = { provider: "auto", name: "value" } as const;
+const SUBAGENT_MODEL = { provider: "openai", name: "gpt-5.4-mini" } as const;
 // Max model turns in the agent loop. Each step may issue several parallel tool
 // calls, so this is distinct from the read-only tool-call budget below.
 const SUBAGENT_MAX_STEPS = 12;
@@ -102,6 +102,11 @@ export async function runExploreCodeSubagent({
   const acceptedRef: { current: AcceptedReport | null } = { current: null };
   let subagentStepCount = 0;
   let explainBounceUsed = false;
+  // Set only when a report is finally accepted (not on a bounced submit_report).
+  // Used to stop the agent loop right after acceptance so the AI SDK does not
+  // spend an extra Dyad Engine step feeding the "Report accepted." tool result
+  // back to the model (which could also run more read-only tools post-report).
+  let reportFinalized = false;
 
   const tools = buildExploreCodeSubagentTools({
     args,
@@ -132,6 +137,7 @@ export async function runExploreCodeSubagent({
         resolved,
         outcome: deriveOutcome(intent, resolved),
       };
+      reportFinalized = true;
       return "Report accepted.";
     },
   });
@@ -166,7 +172,7 @@ export async function runExploreCodeSubagent({
           stepCount: subagentStepCount,
         });
       },
-      stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
+      stopWhen: [stepCountIs(SUBAGENT_MAX_STEPS), () => reportFinalized],
       abortSignal: ctx.abortSignal,
     });
     const fullStream = streamResult.fullStream;
@@ -496,7 +502,11 @@ function wrapSubagentTool<TArgs>({
           result: annotatedResult,
           candidates: registeredCandidates,
         });
-        return typeof result === "string" ? annotatedResult : result;
+        // Always return the annotated string the observation log recorded. For
+        // non-string tool output (e.g. structured list_files results) returning
+        // the raw object would hand the model a result with no candidate-ID
+        // annotations, breaking the candidate-selection contract.
+        return annotatedResult;
       } catch (error) {
         if (ctx.abortSignal?.aborted) {
           throw error;

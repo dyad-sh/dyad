@@ -7,8 +7,8 @@ import type { CodeExplorerResult } from "../../../../../../../shared/code_explor
 // read-only tool. The model only ever references candidates by their stable
 // id, which is what keeps the final report grounded in real tool output.
 
-export const MAX_OBSERVATION_CHARS = 12_000;
-export const MAX_TOTAL_OBSERVATION_CHARS = 60_000;
+export const MAX_OBSERVATION_CHARS = 20_000;
+export const MAX_TOTAL_OBSERVATION_CHARS = 150_000;
 export const MAX_RANGE_LINES = 120;
 export const MAX_INTERNAL_CANDIDATES = 80;
 const OBSERVATION_BUDGET_EXHAUSTED_MESSAGE =
@@ -117,8 +117,13 @@ export function formatObservationResult(
   return `${text.slice(0, maxChars - suffix.length)}${suffix}`;
 }
 
-// Append the observed candidate IDs (with exact quote options the model may
+// Prepend the observed candidate IDs (with exact quote options the model may
 // copy) so the model can reference real evidence instead of inventing paths.
+// They go BEFORE the tool output on purpose: `formatObservationResult`
+// truncates large results from the end, so an appended ID block would be the
+// first thing dropped on a big grep/explore_code result — leaving the model
+// with no IDs to cite in submit_report and silently degrading it to the
+// deterministic fallback. Putting the IDs first guarantees they survive.
 export function annotateObservationResult(
   result: string,
   candidates: ExplorerCandidate[],
@@ -138,9 +143,9 @@ export function annotateObservationResult(
       return `${requireCandidateId(candidate)} ${formatCandidateRef(candidate)}${quoteText}`;
     })
     .slice(0, 40);
-  return `${result}\n\nObserved candidate IDs:\n${ids
+  return `Observed candidate IDs:\n${ids
     .map((entry) => `- [${entry}]`)
-    .join("\n")}`;
+    .join("\n")}\n\n${result}`;
 }
 
 // ---------------------------------------------------------------------------

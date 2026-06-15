@@ -151,7 +151,13 @@ export const Annotator = ({
       });
 
       onSubmit([file], "chat-context");
-      setChatInput("Please update the UI based on these screenshots");
+      const screenshotPrompt =
+        "Please update the UI based on these screenshots";
+      setChatInput((prev) =>
+        prev.trim()
+          ? `${prev.trimEnd()}\n\n${screenshotPrompt}`
+          : screenshotPrompt,
+      );
       handleAnnotatorClick();
     } catch (error) {
       console.error("Failed to export annotated image:", error);

@@ -32,6 +32,8 @@
   "installCommand": "Install command",
   "startCommand": "Start command",
   "bothCommandsRequired": "Both commands are required when customizing.",
+  "autoUpgradeAnnotator": "Auto-upgrade app to enable Dyad annotator features",
+  "autoUpgradeFailed": "The app was imported successfully, but the automatic component tagger upgrade failed. You can manually upgrade it from app settings if needed.",
   "noAiRulesFound": "No AI_RULES.md found. Dyad will automatically generate one after importing.",
   "importingApp": "Importing app...",
   "import": "Import",

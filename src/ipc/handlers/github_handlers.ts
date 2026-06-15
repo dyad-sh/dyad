@@ -39,6 +39,10 @@ import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { slugifyAppPath } from "@/shared/slugify";
+import {
+  isComponentTaggerUpgradeNeeded,
+  applyComponentTagger,
+} from "../utils/app_upgrade_utils";
 
 const logger = log.scope("github_handlers");
 
@@ -1248,7 +1252,13 @@ async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
 ): Promise<CloneRepoResult> {
-  const { url, installCommand, startCommand, appName } = params;
+  const {
+    url,
+    installCommand,
+    startCommand,
+    appName,
+    optimizeForDyad = true,
+  } = params;
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1334,7 +1344,25 @@ async function handleCloneRepoFromUrl(
       })
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
-    // Return success object
+
+    let autoUpgradeWarning = false;
+    if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
+      try {
+        await applyComponentTagger(appPath, { installDependencies: false });
+        logger.log(
+          `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
+        );
+      } catch (upgradeError) {
+        // Auto-upgrade  Failures are logged but don't block import.
+        // User will be notified via warning toast to manually upgrade if needed.
+        autoUpgradeWarning = true;
+        logger.warn(
+          `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
+          upgradeError,
+        );
+      }
+    }
+
     return {
       app: {
         ...newApp,
@@ -1344,9 +1372,9 @@ async function handleCloneRepoFromUrl(
         vercelTeamSlug: null,
       },
       hasAiRules,
+      autoUpgradeWarning,
     };
   } catch (err: any) {
-    // Catch any remaining unexpected errors and return an error object
     logger.error("[GitHub Handler] Unexpected error in clone flow:", err);
     return {
       error: err.message || "An unexpected error occurred during cloning.",

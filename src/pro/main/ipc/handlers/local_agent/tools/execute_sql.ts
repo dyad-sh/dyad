@@ -17,10 +17,6 @@ const executeSqlSchema = z.object({
   description: z.string().optional().describe("Brief description of the query"),
 });
 
-// Bound the consent preview so a pathological query can't push a huge string
-// through IPC and React state. The banner scrolls within this anyway.
-const MAX_CONSENT_PREVIEW_CHARS = 2000;
-
 export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
   {
     name: "execute_sql",
@@ -33,10 +29,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       !!ctx.supabaseProjectId ||
       (!!ctx.neonProjectId && !!ctx.neonActiveBranchId),
 
-    getConsentPreview: (args) =>
-      args.query.length > MAX_CONSENT_PREVIEW_CHARS
-        ? args.query.slice(0, MAX_CONSENT_PREVIEW_CHARS) + "…"
-        : args.query,
+    getConsentPreview: (args) => args.query,
 
     getConsentMetadata: (args) => ({
       sqlMutatesSchema: doesSqlMutateSchema(args.query),

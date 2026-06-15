@@ -51,14 +51,8 @@ describe("executeSqlTool", () => {
   });
 
   it("returns the full query as the consent preview", () => {
-    const query = "SELECT * FROM users WHERE id = 1;";
-    expect(executeSqlTool.getConsentPreview?.({ query })).toBe(query);
-  });
-
-  it("caps an oversized consent preview with an ellipsis", () => {
     const query = "a".repeat(5000);
-    const preview = executeSqlTool.getConsentPreview?.({ query });
-    expect(preview).toBe("a".repeat(2000) + "…");
+    expect(executeSqlTool.getConsentPreview?.({ query })).toBe(query);
   });
 
   it("writes a Supabase migration file for schema-mutating SQL", async () => {

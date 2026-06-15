@@ -4,7 +4,10 @@ import * as path from "node:path";
 import * as ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { exploreCode } from "../../../workers/code_explorer/core";
+import {
+  buildCodeExplorerIndex,
+  exploreCode,
+} from "../../../workers/code_explorer/core";
 import {
   clearCodeExplorerWorkerCachesForTests,
   processCodeExplorerWithTypeScript,
@@ -78,6 +81,72 @@ describe("exploreCode", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("indexes module-suffixed source files while excluding declarations", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "NodeNext",
+            moduleResolution: "NodeNext",
+            allowJs: true,
+            strict: true,
+          },
+          include: ["src/**/*"],
+        },
+        null,
+        2,
+      ),
+      "src/badge-esm.mts": [
+        "export function loadEsmBadge() {",
+        "  return 'esm';",
+        "}",
+        "",
+      ].join("\n"),
+      "src/badge-cjs.cts": [
+        "export function loadCjsBadge() {",
+        "  return 'cjs';",
+        "}",
+        "",
+      ].join("\n"),
+      "src/badge-runtime.mjs": [
+        "export function loadRuntimeBadge() {",
+        "  return 'runtime';",
+        "}",
+        "",
+      ].join("\n"),
+      "src/badge-legacy.cjs": [
+        "exports.loadLegacyBadge = function loadLegacyBadge() {",
+        "  return 'legacy';",
+        "};",
+        "",
+      ].join("\n"),
+      "src/badge-types.d.ts": [
+        "export declare function loadDeclaredBadge(): string;",
+        "",
+      ].join("\n"),
+      "src/badge-types.d.mts": [
+        "export declare function loadDeclaredEsmBadge(): string;",
+        "",
+      ].join("\n"),
+      "src/badge-types.d.cts": [
+        "export declare function loadDeclaredCjsBadge(): string;",
+        "",
+      ].join("\n"),
+    });
+
+    const built = buildCodeExplorerIndex(ts, { appPath });
+    const indexedPaths = [...built.index.byFile.keys()];
+
+    expect(indexedPaths).toContain("src/badge-esm.mts");
+    expect(indexedPaths).toContain("src/badge-cjs.cts");
+    expect(indexedPaths).toContain("src/badge-runtime.mjs");
+    expect(indexedPaths).toContain("src/badge-legacy.cjs");
+    expect(indexedPaths).not.toContain("src/badge-types.d.ts");
+    expect(indexedPaths).not.toContain("src/badge-types.d.mts");
+    expect(indexedPaths).not.toContain("src/badge-types.d.cts");
   });
 
   it("writes incremental build info to the provided cache directory", () => {

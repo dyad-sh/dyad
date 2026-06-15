@@ -23,6 +23,9 @@ const NODE_SYNTAX_KINDS = new Set<string>([
   "EnumDeclaration",
 ]);
 
+const SOURCE_FILE_EXTENSION_REGEX = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+const DECLARATION_FILE_EXTENSION_REGEX = /\.d\.(?:ts|mts|cts)$/;
+
 export function buildIndex(
   ts: TypeScriptModule,
   appPath: string,
@@ -378,6 +381,6 @@ function isInProjectSource(appPath: string, fileName: string): boolean {
   const segments = relative.split("/");
   if (segments.includes("node_modules")) return false;
   if (segments.includes(".dyad")) return false;
-  if (relative.endsWith(".d.ts")) return false;
-  return /\.(tsx?|jsx?)$/.test(relative);
+  if (DECLARATION_FILE_EXTENSION_REGEX.test(relative)) return false;
+  return SOURCE_FILE_EXTENSION_REGEX.test(relative);
 }

@@ -1,29 +1,8 @@
 - paragraph: tc=local-agent/explore-code
 - paragraph: I'll inspect the TypeScript symbols around the app component.
-- 'button "CODE \"App component render flow\" markdown Copy ## explore_code report Query: \"App component render flow\" | Intent: explain | Confidence: low | Action: read_targets Flow: 1. src/App.tsx:1-4 (observed) - compiler-backed symbol window Missing: submit_report was not called Read targets: flow 1 - observed fallback target ```json {\"action\":\"read_targets\",\"confidence\":\"low\",\"paths\":[{\"path\":\"src/App.tsx\",\"range\":\"1-4\"}]} ```" [expanded]':
-  - img
-  - text: ""
-  - img
-  - text: ""
-  - button "Copy":
-    - img
-    - text: ""
-  - code: "## explore_code report Query: \"App component render flow\" | Intent: explain | Confidence: low | Action: read_targets Flow: 1. src/App.tsx:1-4 (observed) - compiler-backed symbol window Missing: submit_report was not called Read targets: flow 1 - observed fallback target ```json {\"action\":\"read_targets\",\"confidence\":\"low\",\"paths\":[{\"path\":\"src/App.tsx\",\"range\":\"1-4\"}]} ```"
+- 'button "CODE \"App component render flow\" markdown Copy ## explore_code report Query: \"App component render flow\" | Intent: explain | Confidence: low | Action: read_targets Flow: 1. src/App.tsx:1-4 (observed) - compiler-backed symbol window Missing: submit_report was not called Read targets: flow 1 - observed fallback target ```json {\"action\":\"read_targets\",\"confidence\":\"low\",\"paths\":[{\"path\":\"src/App.tsx\",\"range\":\"1-4\"}]} ```" [expanded]'
 - paragraph: The report shows that src/main.tsx mounts App and src/App.tsx owns the visible page content.
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

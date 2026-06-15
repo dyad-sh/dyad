@@ -120,11 +120,12 @@ export class PageObject {
   }
 
   private async expectStableMessageAriaSnapshot(
-    actualSnapshot: string,
+    captureSnapshot: () => Promise<string>,
     name?: string,
   ) {
     const snapshotPath = this.nextStableMessageSnapshotPath(name);
     if (!snapshotPath) {
+      const actualSnapshot = await captureSnapshot();
       expect(actualSnapshot).toMatchSnapshot();
       return;
     }
@@ -137,6 +138,7 @@ export class PageObject {
       (updateSnapshots === "missing" && !snapshotExists);
 
     if (shouldUpdate) {
+      const actualSnapshot = await captureSnapshot();
       fs.writeFileSync(snapshotPath, actualSnapshot);
       if (updateSnapshots === "missing") {
         // Match Playwright's snapshot semantics: a missing baseline is
@@ -154,6 +156,23 @@ export class PageObject {
     }
 
     const expectedSnapshot = fs.readFileSync(snapshotPath, "utf8");
+
+    let actualSnapshot = await captureSnapshot();
+    if (actualSnapshot !== expectedSnapshot) {
+      try {
+        await expect(async () => {
+          actualSnapshot = await captureSnapshot();
+          expect(actualSnapshot).toBe(expectedSnapshot);
+        }).toPass({
+          intervals: [100, 250, 500, 1_000],
+          timeout: Timeout.SHORT,
+        });
+        return;
+      } catch {
+        // Attach the last observed mismatch below for the normal snapshot diff.
+      }
+    }
+
     if (actualSnapshot !== expectedSnapshot && this.testInfo) {
       const baseName = path.basename(snapshotPath, ".aria.yml");
       const actualPath = this.testInfo.outputPath(
@@ -445,19 +464,20 @@ export class PageObject {
       return;
     }
 
-    const rawSnapshot = await messagesList.ariaSnapshot({ timeout });
-    let normalizedSnapshot = normalizeMessagesAriaSnapshot(rawSnapshot);
-    if (replaceDumpPath) {
-      // Scrub machine-specific paths after snapshotting so React-owned DOM is not mutated.
-      normalizedSnapshot = normalizedSnapshot
-        .replace(
-          /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
-          "[[compaction-backup-path]]",
-        )
-        .replace(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
-    }
-    normalizedSnapshot = `${normalizedSnapshot.trimEnd()}\n`;
-    await this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
+    await this.expectStableMessageAriaSnapshot(async () => {
+      const rawSnapshot = await messagesList.ariaSnapshot({ timeout });
+      let normalizedSnapshot = normalizeMessagesAriaSnapshot(rawSnapshot);
+      if (replaceDumpPath) {
+        // Scrub machine-specific paths after snapshotting so React-owned DOM is not mutated.
+        normalizedSnapshot = normalizedSnapshot
+          .replace(
+            /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
+            "[[compaction-backup-path]]",
+          )
+          .replace(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
+      }
+      return `${normalizedSnapshot.trimEnd()}\n`;
+    }, name);
   }
 
   async snapshotStableAria(
@@ -465,9 +485,10 @@ export class PageObject {
     name: string,
     { timeout }: { timeout?: number } = {},
   ) {
-    const rawSnapshot = await locator.ariaSnapshot({ timeout });
-    const normalizedSnapshot = `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
-    await this.expectStableMessageAriaSnapshot(normalizedSnapshot, name);
+    await this.expectStableMessageAriaSnapshot(async () => {
+      const rawSnapshot = await locator.ariaSnapshot({ timeout });
+      return `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
+    }, name);
   }
 
   async snapshotServerDump(

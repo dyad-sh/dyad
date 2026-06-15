@@ -178,6 +178,7 @@ export class PageObject {
 
   private async baseSetup() {
     await this.githubConnector.clearPushEvents();
+    await this.githubConnector.resetRepos();
   }
 
   async setUp({

@@ -26,7 +26,7 @@ const mockUser = {
   email: "testuser@example.com",
 };
 
-const mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
+let mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
 
 const mockRepos = [
   {
@@ -361,6 +361,18 @@ export function handleClearPushEvents(req: Request, res: Response) {
   console.log("* Clearing push events");
   pushEvents.length = 0;
   res.json({ cleared: true, timestamp: new Date() });
+}
+
+export function handleResetRepos(req: Request, res: Response) {
+  console.log("* Resetting repos root");
+  try {
+    fs.rmSync(mockReposRoot, { recursive: true, force: true });
+  } catch (err) {
+    console.warn("* Warning: failed to remove old repos root", err);
+  }
+  mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
+  console.log(`* New repos root: ${mockReposRoot}`);
+  res.json({ reset: true, timestamp: new Date() });
 }
 
 // Handle Git operations (push, pull, clone, etc.) using git-http-mock-server

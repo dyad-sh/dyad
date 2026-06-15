@@ -155,8 +155,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Look at the active account name in the output (e.g., `Logged in to github.com account keppo-bot[bot]`). The account is a bot if the name ends with `[bot]`.
 
-   **If the account is a bot, do NOT create the PR.** PRs *authored* by bot accounts do not trigger third-party code reviewers (Cursor Bugbot, Gemini Code Assist, cubic, Copilot), so the PR must be created by a human. Instead:
-
+   **If the account is a bot, do NOT create the PR.** PRs _authored_ by bot accounts do not trigger third-party code reviewers (Cursor Bugbot, Gemini Code Assist, cubic, Copilot), so the PR must be created by a human. Instead:
    - Construct the PR-creation link for the pushed branch: `https://github.com/<owner>/<repo>/pull/new/<branch-name>` (use the repo the branch was pushed to)
    - Write the suggested PR title and body (same format as the `gh pr create` body below) so the user can paste them in
    - In the final summary, tell the user to create the PR themselves using that link, title, and body

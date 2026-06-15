@@ -280,4 +280,61 @@ export class AppManagement {
       `Dependencies not fully installed in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
     );
   }
+
+  async ensureCodeExplorerReady() {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath) {
+      throw new Error("No app selected");
+    }
+
+    const maxDurationMs = 180_000;
+    const retryIntervalMs = 5_000;
+    const startTime = Date.now();
+    let lastOutput = "";
+
+    while (Date.now() - startTime < maxDurationMs) {
+      try {
+        const stdout = execFileSync(
+          process.execPath,
+          [
+            "-e",
+            [
+              'const fs = require("fs");',
+              'const path = require("path");',
+              "const appPath = process.cwd();",
+              'require.resolve("typescript", { paths: [appPath] });',
+              'const hasTsconfig = fs.existsSync(path.join(appPath, "tsconfig.app.json")) || fs.existsSync(path.join(appPath, "tsconfig.json"));',
+              'if (!hasTsconfig) throw new Error("No tsconfig.app.json or tsconfig.json found");',
+              'console.log("Code explorer ready");',
+            ].join(""),
+          ],
+          {
+            cwd: appPath,
+            stdio: "pipe",
+            encoding: "utf8",
+          },
+        );
+        lastOutput = (stdout || "").toString().trim();
+        if (lastOutput.includes("Code explorer ready")) {
+          return;
+        }
+      } catch (error: any) {
+        const stdOut = error?.stdout ? error.stdout.toString() : "";
+        const stdErr = error?.stderr ? error.stderr.toString() : "";
+        lastOutput = [stdOut, stdErr, error?.message]
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, maxDurationMs - elapsed);
+      const waitMs = Math.min(retryIntervalMs, remaining);
+      if (waitMs <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
+    throw new Error(
+      `Code explorer was not ready in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
+    );
+  }
 }

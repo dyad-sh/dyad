@@ -84,6 +84,7 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
+import { isCodeExplorerReady } from "../processors/code_explorer";
 import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
@@ -116,6 +117,7 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isBasicAgentMode,
+  isDyadProEnabled,
   isLocalAgentBackedMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
@@ -922,9 +924,13 @@ ${componentSnippet}
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
-        const frameworkType = detectFrameworkType(
-          getDyadAppPath(updatedChat.app.path),
-        );
+        const frameworkType = detectFrameworkType(appPath);
+        // Gate on Pro to match the `explore_code` tool's `isEnabled`, so the
+        // prompt never points the model at a tool that isn't in the toolset.
+        const codeExplorerAvailable =
+          isDyadProEnabled(settings) &&
+          !!settings.enableCodeExplorer &&
+          isCodeExplorerReady(appPath);
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -937,6 +943,7 @@ ${componentSnippet}
           hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
           enableAppBlueprint:
             settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
+          codeExplorerAvailable,
         });
 
         // Add information about mentioned apps for build mode only.
@@ -1331,6 +1338,7 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             readOnly: true,
+            codeExplorerAvailable,
           });
 
           // Return value indicates success/failure for quota tracking.

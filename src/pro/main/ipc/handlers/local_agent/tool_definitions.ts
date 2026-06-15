@@ -31,6 +31,7 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
+import { exploreCodeTool } from "./tools/explore_code";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -84,6 +85,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   listFilesTool,
   grepTool,
   codeSearchTool,
+  exploreCodeTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,
@@ -452,8 +454,11 @@ export function shouldIncludeTool(
   if (options.readOnly && tool.modifiesState) {
     return false;
   }
-  if (tool.isEnabled && !tool.isEnabled(ctx)) {
-    return false;
+  if (tool.isEnabled) {
+    const enabled = tool.isEnabled(ctx);
+    if (!enabled) {
+      return false;
+    }
   }
   return true;
 }

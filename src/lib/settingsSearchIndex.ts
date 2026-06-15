@@ -44,6 +44,7 @@ export const SETTING_IDS = {
     "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableMcpToolSearch: "setting-enable-mcp-tool-search",
+  enableCodeExplorer: "setting-enable-code-explorer",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -474,6 +475,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "warning",
       "toast",
       "upgrade",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableCodeExplorer,
+    label: "Enable code explorer (Pro)",
+    description:
+      "Let the local agent explore configured TypeScript projects with a compiler-backed code graph",
+    keywords: [
+      "code",
+      "explorer",
+      "typescript",
+      "symbol",
+      "graph",
+      "agent",
+      "tools",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

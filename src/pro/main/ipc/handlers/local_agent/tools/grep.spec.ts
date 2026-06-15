@@ -69,6 +69,20 @@ export function greet(name: string) {
     );
 
     await fs.promises.writeFile(
+      path.join(testDir, "booking.ts"),
+      `export function createBooking(input: { id: string }) {
+  return createBooking({ id: input.id });
+}
+
+function update() {
+  const items = ["first"];
+  const selected = items[idx];
+  setState();
+  return onClick={() => createBooking({ id: "next" })};
+}`,
+    );
+
+    await fs.promises.writeFile(
       path.join(testDir, "readme.md"),
       `# Hello Project
 This is a hello world example.
@@ -147,6 +161,14 @@ function deepHello() {
       expect(() => schema.parse({ query: "test", limit: 1 })).not.toThrow();
       expect(() => schema.parse({ query: "test", limit: 250 })).not.toThrow();
     });
+
+    it("validates literal mode", () => {
+      const schema = grepTool.inputSchema;
+
+      expect(() =>
+        schema.parse({ query: "createBooking({", literal: true }),
+      ).not.toThrow();
+    });
   });
 
   describe("execute - basic search", () => {
@@ -165,6 +187,19 @@ function deepHello() {
       // Should contain file:line: format
       expect(result).toMatch(/test1\.ts:\d+:/);
       expect(result).toMatch(/test2\.ts:\d+:/);
+    });
+
+    it("searches exact text with punctuation in literal mode", async () => {
+      const result = await grepTool.execute(
+        { query: "createBooking({", literal: true },
+        mockContext,
+      );
+
+      expect(result).toContain("booking.ts:2:");
+      expect(result).toContain("createBooking({ id: input.id })");
+      expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
+        expect.stringContaining('literal="true"'),
+      );
     });
 
     it("returns no matches found when nothing matches", async () => {
@@ -376,6 +411,57 @@ function deepHello() {
       expect(result).toContain("hello");
       expect(result).toContain("goodbye");
     });
+
+    it("throws a clear regex error for an invalid regex instead of inferring literal", async () => {
+      // `function{` is an invalid regex; previously this was inferred as a
+      // literal search. Now it fails as a regex with an actionable message.
+      await expect(
+        grepTool.execute({ query: "hello|function{" }, mockContext),
+      ).rejects.toThrow(/Invalid regex pattern[\s\S]*literal=true/);
+    });
+
+    it("runs a code-shaped query as a regex without inferring literal", async () => {
+      const result = await grepTool.execute(
+        { query: "setState()" },
+        mockContext,
+      );
+
+      // `()` is an empty group, so the regex still matches the call site — but
+      // there is no literal-inference note.
+      expect(result).toContain("booking.ts");
+      expect(result).not.toContain("looked like a code literal");
+    });
+
+    it("treats bracketed punctuation as a regex character class, not a literal", async () => {
+      const result = await grepTool.execute(
+        { query: "items[idx]" },
+        mockContext,
+      );
+
+      // Without literal inference, `[idx]` is a character class, so the literal
+      // source text `items[idx]` is not matched.
+      expect(result).toBe("No matches found.");
+    });
+
+    it("finds punctuated code text when literal=true is set", async () => {
+      const result = await grepTool.execute(
+        { query: "items[idx]", literal: true },
+        mockContext,
+      );
+
+      expect(result).toContain("booking.ts");
+      expect(result).toContain("items[idx]");
+    });
+
+    it("does not treat regex punctuation as syntax in literal mode", async () => {
+      const result = await grepTool.execute(
+        { query: "createBooking({", literal: true },
+        mockContext,
+      );
+
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("booking.ts");
+    });
   });
 
   describe("execute - result limiting", () => {
@@ -562,6 +648,14 @@ function deepHello() {
       );
       expect(result).toContain('case-sensitive="true"');
     });
+
+    it("includes literal in attributes when true", () => {
+      const result = grepTool.buildXml?.(
+        { query: "createBooking({", literal: true },
+        false,
+      );
+      expect(result).toContain('literal="true"');
+    });
   });
 
   describe("getConsentPreview", () => {
@@ -584,6 +678,14 @@ function deepHello() {
         include_ignored: true,
       });
       expect(preview).toBe('Search for "hello" including ignored files');
+    });
+
+    it("includes literal mode in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "createBooking({",
+        literal: true,
+      });
+      expect(preview).toBe('Search for "createBooking({" as literal text');
     });
 
     it("includes app_name in preview", () => {

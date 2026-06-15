@@ -18,6 +18,9 @@ import {
 } from "../ui/tooltip";
 import { useTranslation } from "react-i18next";
 
+const INPUT_PREVIEW_COLLAPSED_LINES = 6;
+const INPUT_PREVIEW_EXPANDED_MAX_HEIGHT = "40vh";
+
 interface AgentConsentBannerProps {
   consent: PendingAgentConsent;
   onDecision: (decision: "accept-once" | "accept-always" | "decline") => void;
@@ -38,11 +41,11 @@ export function AgentConsentBanner({
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
+  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
+    React.useState<number>();
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
 
-  // Measure overflow only while collapsed; the expanded box has different
-  // dimensions. Re-runs on collapse so the flag refreshes once the box shrinks.
   React.useLayoutEffect(() => {
     if (!inputPreview) {
       setInputHasOverflow(false);
@@ -53,14 +56,23 @@ export function AgentConsentBanner({
     if (!element) return;
 
     const compute = () => {
-      if (isInputExpanded) return;
-      setInputHasOverflow(element.scrollHeight > element.clientHeight + 1);
+      const computedStyle = window.getComputedStyle(element);
+      const parsedLineHeight = Number.parseFloat(computedStyle.lineHeight);
+      const lineHeight = Number.isFinite(parsedLineHeight)
+        ? parsedLineHeight
+        : 20;
+      const collapsedMaxHeight = Math.round(
+        lineHeight * INPUT_PREVIEW_COLLAPSED_LINES,
+      );
+
+      setInputCollapsedMaxHeight(collapsedMaxHeight);
+      setInputHasOverflow(element.scrollHeight > collapsedMaxHeight + 1);
     };
 
     compute();
     window.addEventListener("resize", compute);
     return () => window.removeEventListener("resize", compute);
-  }, [inputPreview, isInputExpanded]);
+  }, [inputPreview]);
 
   return (
     <div className="border-b border-border bg-muted/50">
@@ -103,14 +115,17 @@ export function AgentConsentBanner({
                 <span>{t("changesDatabaseSchema")}</span>
               </div>
             )}
-            <div className="bg-muted p-1.5 rounded">
+            <div className="rounded bg-muted p-1.5">
               <div
                 ref={inputRef}
-                className={`text-sm whitespace-pre-wrap break-words ${
-                  isInputExpanded
-                    ? "max-h-[40vh] overflow-auto"
-                    : "line-clamp-6 overflow-hidden"
+                className={`text-sm whitespace-pre-wrap break-words transition-[max-height] duration-200 ease-out motion-reduce:transition-none ${
+                  isInputExpanded ? "overflow-auto" : "overflow-hidden"
                 }`}
+                style={{
+                  maxHeight: isInputExpanded
+                    ? INPUT_PREVIEW_EXPANDED_MAX_HEIGHT
+                    : inputCollapsedMaxHeight,
+                }}
               >
                 {inputPreview}
               </div>

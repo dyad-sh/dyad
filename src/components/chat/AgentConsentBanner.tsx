@@ -40,9 +40,9 @@ export function AgentConsentBanner({
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
-  const isExpandedRef = React.useRef(isInputExpanded);
-  isExpandedRef.current = isInputExpanded;
 
+  // Measure overflow only while collapsed; the expanded box has different
+  // dimensions. Re-runs on collapse so the flag refreshes once the box shrinks.
   React.useEffect(() => {
     if (!inputPreview) {
       setInputHasOverflow(false);
@@ -52,17 +52,15 @@ export function AgentConsentBanner({
     const element = inputRef.current;
     if (!element) return;
 
-    // Only measure while collapsed; the expanded box has different dimensions.
-    // Overflow means the full content is taller than the clamped preview.
     const compute = () => {
-      if (isExpandedRef.current) return;
+      if (isInputExpanded) return;
       setInputHasOverflow(element.scrollHeight > element.clientHeight + 1);
     };
 
     compute();
     window.addEventListener("resize", compute);
     return () => window.removeEventListener("resize", compute);
-  }, [inputPreview]);
+  }, [inputPreview, isInputExpanded]);
 
   return (
     <div className="border-b border-border bg-muted/50">
@@ -111,7 +109,7 @@ export function AgentConsentBanner({
                 className={`text-sm whitespace-pre-wrap ${
                   isInputExpanded
                     ? "max-h-[40vh] overflow-auto"
-                    : "line-clamp-4 overflow-hidden"
+                    : "line-clamp-6 overflow-hidden"
                 }`}
               >
                 {inputPreview}

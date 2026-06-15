@@ -38,8 +38,6 @@ export function AgentConsentBanner({
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
-  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
-    React.useState<number>(0);
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -52,22 +50,15 @@ export function AgentConsentBanner({
     const element = inputRef.current;
     if (!element) return;
 
+    // The collapsed preview is clipped to whole lines via CSS line-clamp, so
+    // overflow just means the full content is taller than the clamped box.
     const compute = () => {
-      const computedStyle = window.getComputedStyle(element);
-      const parsedLineHeight = parseFloat(computedStyle.lineHeight || "16");
-      const lineHeight = Number.isFinite(parsedLineHeight)
-        ? parsedLineHeight
-        : 16;
-      const maxLines = 6;
-      const maxHeightPx = Math.max(0, Math.round(lineHeight * maxLines));
-      setInputCollapsedMaxHeight(maxHeightPx);
-      setInputHasOverflow(element.scrollHeight > maxHeightPx + 1);
+      setInputHasOverflow(element.scrollHeight > element.clientHeight + 1);
     };
 
     compute();
-    const onResize = () => compute();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
   }, [inputPreview]);
 
   return (
@@ -111,15 +102,17 @@ export function AgentConsentBanner({
                 <span>{t("changesDatabaseSchema")}</span>
               </div>
             )}
-            <div
-              ref={inputRef}
-              className="bg-muted p-1.5 rounded text-sm whitespace-pre-wrap"
-              style={{
-                maxHeight: isInputExpanded ? "40vh" : inputCollapsedMaxHeight,
-                overflow: isInputExpanded ? "auto" : "hidden",
-              }}
-            >
-              {inputPreview}
+            <div className="bg-muted p-1.5 rounded">
+              <div
+                ref={inputRef}
+                className={`text-sm whitespace-pre-wrap ${
+                  isInputExpanded
+                    ? "max-h-[40vh] overflow-auto"
+                    : "line-clamp-4 overflow-hidden"
+                }`}
+              >
+                {inputPreview}
+              </div>
             </div>
             {inputHasOverflow && (
               <button

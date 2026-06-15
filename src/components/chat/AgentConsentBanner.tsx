@@ -43,7 +43,7 @@ export function AgentConsentBanner({
 
   // Measure overflow only while collapsed; the expanded box has different
   // dimensions. Re-runs on collapse so the flag refreshes once the box shrinks.
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!inputPreview) {
       setInputHasOverflow(false);
       return;
@@ -106,7 +106,7 @@ export function AgentConsentBanner({
             <div className="bg-muted p-1.5 rounded">
               <div
                 ref={inputRef}
-                className={`text-sm whitespace-pre-wrap ${
+                className={`text-sm whitespace-pre-wrap break-words ${
                   isInputExpanded
                     ? "max-h-[40vh] overflow-auto"
                     : "line-clamp-6 overflow-hidden"

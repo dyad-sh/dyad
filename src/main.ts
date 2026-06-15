@@ -72,6 +72,7 @@ import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -214,6 +215,10 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  // Linux: claim the dyad:// scheme for this build (best-effort, see module).
+  // setAsDefaultProtocolClient above is unreliable on Linux.
+  void registerDyadProtocolLinux();
+
   // Load React DevTools extension in development
   if (process.env.NODE_ENV === "development") {
     let chromeUserData: string;
@@ -561,6 +566,9 @@ const createWindow = () => {
   let devToolsReloadedCount = 0;
 
   mainWindow.webContents.on("did-finish-load", () => {
+    // Must run on first load, else deep links break in dev.
+    deepLinkQueue.markReady();
+
     if (process.env.NODE_ENV === "development") {
       // In dev, wait until AFTER the DevTools-triggered reload before sending the message
       if (devToolsReloadedCount === 0) {
@@ -568,8 +576,6 @@ const createWindow = () => {
         return; // Ignore first load, we will reload momentarily
       }
     }
-
-    deepLinkQueue.markReady();
 
     // Summarize native crash minidumps before sending app:crash_detected. If
     // the main process crashed natively, that summary becomes the crash cause
@@ -865,6 +871,19 @@ if (IS_TEST_BUILD) {
         deepLinkQueue.handle(url);
       }
     });
+
+    // On a cold start the deep link arrives in this instance's argv (the
+    // .desktop Exec %u), and second-instance only fires for later launches, so
+    // drain the initial argv here. The queue holds it until the app is ready.
+    // This runs on every launch, so match by dyad:// prefix to ignore the
+    // normal (no-deep-link) startup args.
+    const initialDeepLink = process.argv.find((arg) =>
+      arg.startsWith("dyad://"),
+    );
+    if (initialDeepLink) {
+      deepLinkQueue.handle(initialDeepLink);
+    }
+
     startAppWhenReady();
   }
 }

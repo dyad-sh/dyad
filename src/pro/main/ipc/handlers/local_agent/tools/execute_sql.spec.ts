@@ -50,6 +50,11 @@ describe("executeSqlTool", () => {
     ).toEqual({ sqlMutatesSchema: false });
   });
 
+  it("returns the full query as the consent preview", () => {
+    const query = "a".repeat(5000);
+    expect(executeSqlTool.getConsentPreview?.({ query })).toBe(query);
+  });
+
   it("writes a Supabase migration file for schema-mutating SQL", async () => {
     await executeSqlTool.execute(
       {

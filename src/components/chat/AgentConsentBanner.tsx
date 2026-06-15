@@ -40,6 +40,8 @@ export function AgentConsentBanner({
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
+  const isExpandedRef = React.useRef(isInputExpanded);
+  isExpandedRef.current = isInputExpanded;
 
   React.useEffect(() => {
     if (!inputPreview) {
@@ -50,9 +52,10 @@ export function AgentConsentBanner({
     const element = inputRef.current;
     if (!element) return;
 
-    // The collapsed preview is clipped to whole lines via CSS line-clamp, so
-    // overflow just means the full content is taller than the clamped box.
+    // Only measure while collapsed; the expanded box has different dimensions.
+    // Overflow means the full content is taller than the clamped preview.
     const compute = () => {
+      if (isExpandedRef.current) return;
       setInputHasOverflow(element.scrollHeight > element.clientHeight + 1);
     };
 

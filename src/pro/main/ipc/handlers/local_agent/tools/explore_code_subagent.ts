@@ -57,7 +57,14 @@ import {
 const logger = log.scope("explore_code_subagent");
 
 const SUBAGENT_MODEL = { provider: "auto", name: "value" } as const;
+// Max model turns in the agent loop. Each step may issue several parallel tool
+// calls, so this is distinct from the read-only tool-call budget below.
 const SUBAGENT_MAX_STEPS = 12;
+// Max individual read-only tool executions (grep/list_files/read_file/
+// explore_code) across the whole run. Higher than the step cap so a step that
+// batches several parallel calls doesn't starve later reasoning turns.
+// submit_report is exempt and never counts against this.
+const SUBAGENT_MAX_TOOL_CALLS = 50;
 const SUBAGENT_MAX_OUTPUT_TOKENS = 16_000;
 const SUBAGENT_MAX_RETRIES = 1;
 const ROOT_RECURSIVE_LIST_FILES_MESSAGE =
@@ -268,8 +275,8 @@ function createReadOnlyToolBudget(): ReadOnlyToolBudget {
   let usedCalls = 0;
   return {
     reserve(toolName: string): string | null {
-      if (usedCalls >= SUBAGENT_MAX_STEPS) {
-        return `Sub-agent read-only tool budget exhausted after ${SUBAGENT_MAX_STEPS} calls. Do not call ${toolName} again; call submit_report with observed candidate IDs.`;
+      if (usedCalls >= SUBAGENT_MAX_TOOL_CALLS) {
+        return `Sub-agent read-only tool budget exhausted after ${SUBAGENT_MAX_TOOL_CALLS} calls. Do not call ${toolName} again; call submit_report with observed candidate IDs.`;
       }
       usedCalls += 1;
       return null;

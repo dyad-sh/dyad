@@ -117,25 +117,34 @@ describe("codeSearchTool", () => {
   });
 
   describe("isEnabled", () => {
-    it("is enabled for Dyad Pro when code explorer is disabled", () => {
+    it("is enabled for Dyad Pro when the code explorer setting is disabled", () => {
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
       expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
     });
 
-    it("stays enabled when code explorer is enabled and ready for referenced-app fallback", () => {
+    it("is disabled when explore_code is enabled and ready for the current app", () => {
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(false);
     });
 
-    it("stays enabled when code explorer is enabled but not ready", () => {
+    it("stays enabled when the code explorer setting is on but the app is not ready", () => {
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(false);
 
       expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+    });
+
+    it("is disabled for non-Pro regardless of explorer readiness", () => {
+      mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
+      mocks.isCodeExplorerReady.mockReturnValue(false);
+
+      expect(
+        codeSearchTool.isEnabled?.({ ...mockContext, isDyadPro: false }),
+      ).toBe(false);
     });
   });
 

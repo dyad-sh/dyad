@@ -40,8 +40,8 @@ describe("exploreCodeTool", () => {
     );
   });
 
-  it("reuses a chat-local report when referenced files are unchanged", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-cache-"));
+  it("runs the sub-agent on every call (no report cache)", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-"));
     await fs.mkdir(path.join(appPath, "src"), { recursive: true });
     await fs.writeFile(
       path.join(appPath, "src/App.tsx"),
@@ -50,50 +50,19 @@ describe("exploreCodeTool", () => {
     const ctx = createMockContext(appPath);
 
     try {
-      const first = await exploreCodeTool.execute(
+      await exploreCodeTool.execute(
         { query: "App flow", intent: "locate" },
         ctx,
       );
-      const second = await exploreCodeTool.execute(
+      // Same normalized query: with no cache, this still re-runs the sub-agent.
+      await exploreCodeTool.execute(
         { query: " App   flow ", intent: "locate" },
         ctx,
       );
 
-      expect(first).toBe(second);
-      expect(mocks.runExploreCodeSubagent).toHaveBeenCalledTimes(1);
-      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
-        expect.stringContaining('cached="true"'),
-      );
-      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
-        expect.stringContaining('intent="locate"'),
-      );
-    } finally {
-      await fs.rm(appPath, { recursive: true, force: true });
-    }
-  });
-
-  it("invalidates a cached report when a referenced file changes", async () => {
-    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-cache-"));
-    await fs.mkdir(path.join(appPath, "src"), { recursive: true });
-    const appFilePath = path.join(appPath, "src/App.tsx");
-    await fs.writeFile(appFilePath, "export const App = 1;\n");
-    const ctx = createMockContext(appPath);
-
-    try {
-      await exploreCodeTool.execute(
-        { query: "App flow", intent: "locate" },
-        ctx,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      await fs.writeFile(appFilePath, "export const App = 2;\n");
-      await exploreCodeTool.execute(
-        { query: "App flow", intent: "locate" },
-        ctx,
-      );
-
       expect(mocks.runExploreCodeSubagent).toHaveBeenCalledTimes(2);
-      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
-        expect.not.stringContaining('cached="true"'),
+      expect(ctx.onXmlComplete).not.toHaveBeenCalledWith(
+        expect.stringContaining('cached="true"'),
       );
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });

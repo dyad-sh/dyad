@@ -4,20 +4,29 @@ import { resolveTargetAppPath } from "./resolve_app_context";
 import type { AgentContext } from "./types";
 
 describe("resolveTargetAppPath", () => {
-  it("treats current-app aliases as the current app", () => {
+  it("resolves the current app when app_name is omitted", () => {
     const ctx = createContext();
 
     expect(resolveTargetAppPath(ctx, undefined)).toBe("/apps/current");
-    expect(resolveTargetAppPath(ctx, "current app")).toBe("/apps/current");
-    expect(resolveTargetAppPath(ctx, " this app ")).toBe("/apps/current");
-    expect(resolveTargetAppPath(ctx, "ACTIVE APP")).toBe("/apps/current");
   });
 
-  it("still rejects unknown referenced app names", () => {
+  it("resolves a referenced app by name (case-insensitive)", () => {
+    const ctx = createContext();
+
+    expect(resolveTargetAppPath(ctx, "other-app")).toBe("/apps/other");
+    expect(resolveTargetAppPath(ctx, "OTHER-APP")).toBe("/apps/other");
+  });
+
+  it("rejects unknown app names, including current-app-style strings", () => {
     const ctx = createContext();
 
     expect(() => resolveTargetAppPath(ctx, "does-not-exist")).toThrow(
       /Unknown app_name 'does-not-exist'/,
+    );
+    // No alias handling: the sub-agent prompt instructs the model to omit
+    // app_name for the current app rather than passing "current app".
+    expect(() => resolveTargetAppPath(ctx, "current app")).toThrow(
+      /Unknown app_name 'current app'/,
     );
   });
 });

@@ -18,7 +18,6 @@ const WORKSPACE_CONFIG_NAMES = ["tsconfig.app.json", "tsconfig.json"];
 const MAX_WORKSPACE_CONFIGS_TO_CHECK = 40;
 const WORKER_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_WORKER_SESSIONS = 8;
-const AVAILABILITY_CACHE_TTL_MS = 30_000;
 
 interface WorkerSession {
   worker: Worker;
@@ -28,10 +27,6 @@ interface WorkerSession {
 }
 
 const workerSessions = new Map<string, WorkerSession>();
-const availabilityCache = new Map<
-  string,
-  { expiresAt: number; availability: CodeExplorerAvailability }
->();
 
 export interface CodeExplorerAvailability {
   ready: boolean;
@@ -43,24 +38,11 @@ export function isCodeExplorerReady(appPath: string): boolean {
   return getCodeExplorerAvailability(appPath).ready;
 }
 
+// Cheap to recompute (a `require.resolve` + a few `fs` probes, ~3µs on the
+// common path), and called only ~3x per turn — so it runs uncached. That also
+// means a freshly-installed TypeScript or added tsconfig is reflected
+// immediately rather than after a cache TTL.
 export function getCodeExplorerAvailability(
-  appPath: string,
-): CodeExplorerAvailability {
-  const cacheKey = path.resolve(appPath);
-  const cached = availabilityCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.availability;
-  }
-
-  const availability = computeCodeExplorerAvailability(appPath);
-  availabilityCache.set(cacheKey, {
-    expiresAt: Date.now() + AVAILABILITY_CACHE_TTL_MS,
-    availability,
-  });
-  return availability;
-}
-
-function computeCodeExplorerAvailability(
   appPath: string,
 ): CodeExplorerAvailability {
   try {

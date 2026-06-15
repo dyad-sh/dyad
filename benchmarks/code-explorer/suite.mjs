@@ -11,7 +11,7 @@ import { MODEL_PRICING, formatDollars } from "./pricing.mjs";
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const RESULTS_DIR = path.join(ROOT, "benchmark-results/code-explorer");
 const TASKS_PATH = path.join(ROOT, "benchmarks/code-explorer/tasks.json");
-const BENCHMARK_MD = path.join(ROOT, "BENCHMARK.md");
+const BENCHMARK_MD = path.join(ROOT, "benchmarks/code-explorer/BENCHMARK.md");
 const GENERATED_START = "<!-- CODE_EXPLORER_BENCHMARK_LATEST_START -->";
 const GENERATED_END = "<!-- CODE_EXPLORER_BENCHMARK_LATEST_END -->";
 

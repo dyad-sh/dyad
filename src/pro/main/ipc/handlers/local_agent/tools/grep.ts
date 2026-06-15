@@ -15,6 +15,7 @@ import {
   DYAD_INTERNAL_RIPGREP_EXCLUDE,
   resolveTargetAppPath,
 } from "./resolve_app_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -329,55 +330,41 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     const includePatWasWildcard = args.include_pattern === "*";
     const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
+    // `literal` is an explicit opt-in only: when set we search fixed strings,
+    // otherwise the query is always treated as a regex (the historical
+    // behavior). We never infer literal from the query's shape.
     let allMatches: RipgrepMatch[];
     let stoppedEarly: boolean;
-    let usedInvalidRegexLiteralFallback = false;
-    const inferredLiteralSearch = shouldInferLiteralSearch(args.query);
     try {
-      const result =
-        !args.literal && inferredLiteralSearch
-          ? await runLiteralSearch({
-              appPath: targetAppPath,
-              args,
-              limit: args.include_ignored ? limit + 1 : limit,
-              excludeDyadFolder: Boolean(args.app_name),
-            })
-          : await runRipgrep({
-              appPath: targetAppPath,
-              query: args.query,
-              includePat: args.include_pattern,
-              excludePat: args.exclude_pattern,
-              includeIgnored: args.include_ignored,
-              caseSensitive: args.case_sensitive,
-              literal: args.literal,
-              maxMatches: args.include_ignored ? limit + 1 : undefined,
-              excludeDyadFolder: Boolean(args.app_name),
-            });
+      const result = await runRipgrep({
+        appPath: targetAppPath,
+        query: args.query,
+        includePat: args.include_pattern,
+        excludePat: args.exclude_pattern,
+        includeIgnored: args.include_ignored,
+        caseSensitive: args.case_sensitive,
+        literal: args.literal,
+        maxMatches: args.include_ignored ? limit + 1 : undefined,
+        excludeDyadFolder: Boolean(args.app_name),
+      });
       allMatches = result.matches;
       stoppedEarly = result.stoppedEarly;
     } catch (error) {
-      if (error instanceof RipgrepError && isRegexParseError(error.stderr)) {
-        const fallback = await runLiteralSearch({
-          appPath: targetAppPath,
-          args,
-          limit,
-          excludeDyadFolder: Boolean(args.app_name),
-        });
-        if (fallback.matches.length > 0) {
-          allMatches = fallback.matches;
-          stoppedEarly = fallback.stoppedEarly;
-          usedInvalidRegexLiteralFallback = true;
-        } else {
-          const attrs = buildGrepAttributes(args, 0, 0);
-          const resultText = formatRegexParseError(args.query, error.stderr);
-          ctx.onXmlComplete(
-            `<dyad-grep ${attrs} error="invalid_regex">\n${escapeXmlContent(resultText)}\n</dyad-grep>`,
-          );
-          return resultText;
-        }
-      } else {
-        throw error;
+      // A bad regex is thrown as a clear, regex-specific error (with a hint to
+      // retry with literal=true) rather than silently re-running the query as a
+      // literal search. This preserves the historical "invalid regex fails"
+      // behavior, just with a more actionable message.
+      if (
+        !args.literal &&
+        error instanceof RipgrepError &&
+        isRegexParseError(error.stderr)
+      ) {
+        throw new DyadError(
+          formatRegexParseError(args.query, error.stderr),
+          DyadErrorKind.Validation,
+        );
       }
+      throw error;
     }
 
     const totalCount = allMatches.length;
@@ -411,14 +398,6 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     if (includePatWasWildcard) {
       resultText += `\n\n[NOTE: include_pattern="*" was ignored because it matches all files including git-ignored files! Omit include_pattern to search all files, or use a specific glob like "*.ts".]`;
     }
-    if (usedInvalidRegexLiteralFallback) {
-      resultText +=
-        "\n\n[NOTE: The original regex was invalid, so grep searched the query as fixed text instead.]";
-    } else if (!args.literal && inferredLiteralSearch) {
-      resultText +=
-        "\n\n[NOTE: grep searched the query as fixed text because it looked like a code literal.]";
-    }
-
     ctx.onXmlComplete(
       `<dyad-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</dyad-grep>`,
     );
@@ -429,103 +408,6 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
 function isRegexParseError(stderr: string): boolean {
   return stderr.includes("regex parse error");
-}
-
-async function runLiteralSearch({
-  appPath,
-  args,
-  limit,
-  excludeDyadFolder,
-}: {
-  appPath: string;
-  args: z.infer<typeof grepSchema>;
-  limit: number;
-  excludeDyadFolder: boolean;
-}): Promise<{ matches: RipgrepMatch[]; stoppedEarly: boolean }> {
-  if (args.literal) {
-    return { matches: [], stoppedEarly: false };
-  }
-
-  const literalQueries = splitLiteralFallbackQueries(args.query);
-  const matchesByKey = new Map<string, RipgrepMatch>();
-  let stoppedEarly = false;
-  for (const query of literalQueries) {
-    const remaining = limit - matchesByKey.size;
-    if (remaining <= 0) {
-      stoppedEarly = true;
-      break;
-    }
-    const result = await runRipgrep({
-      appPath,
-      query,
-      includePat: args.include_pattern,
-      excludePat: args.exclude_pattern,
-      includeIgnored: args.include_ignored,
-      caseSensitive: args.case_sensitive,
-      literal: true,
-      maxMatches: remaining,
-      excludeDyadFolder,
-    });
-    stoppedEarly ||= result.stoppedEarly;
-    for (const match of result.matches) {
-      const key = `${match.path}:${match.lineNumber}:${match.lineText}`;
-      matchesByKey.set(key, match);
-      if (matchesByKey.size >= limit) {
-        stoppedEarly = true;
-        break;
-      }
-    }
-    if (matchesByKey.size >= limit) {
-      break;
-    }
-  }
-
-  return { matches: [...matchesByKey.values()], stoppedEarly };
-}
-
-function shouldInferLiteralSearch(query: string): boolean {
-  if (hasExplicitRegexIntent(query)) {
-    return false;
-  }
-
-  return splitLiteralFallbackQueries(query).some((part) =>
-    looksLikeCodeLiteral(part),
-  );
-}
-
-function hasExplicitRegexIntent(query: string): boolean {
-  if (/\b[\w.$]+\[[\w.$'"]+\]/.test(query)) {
-    return false;
-  }
-  return (
-    /\\.|\[[^\]]+\]|\(\?|\{\d+(?:,\d*)?\}/.test(query) ||
-    /\([^)]*\|[^)]*\)/.test(query)
-  );
-}
-
-function looksLikeCodeLiteral(query: string): boolean {
-  const trimmed = query.trim();
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  return (
-    /[()[\]{}<>;,]/.test(trimmed) ||
-    /=>|===|!==|==|!=|<=|>=|\+\+|--/.test(trimmed) ||
-    /["'`]/.test(trimmed) ||
-    /^[\w.$-]+\/[\w.$/-]+$/.test(trimmed)
-  );
-}
-
-function splitLiteralFallbackQueries(query: string): string[] {
-  const alternatives = query
-    .split("|")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (alternatives.length >= 2 && alternatives.length <= 8) {
-    return alternatives;
-  }
-  return [query];
 }
 
 function formatRegexParseError(query: string, stderr: string): string {

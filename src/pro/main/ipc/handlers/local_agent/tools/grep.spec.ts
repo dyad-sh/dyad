@@ -412,66 +412,45 @@ function deepHello() {
       expect(result).toContain("goodbye");
     });
 
-    it("falls back to fixed-text alternatives for invalid regex patterns", async () => {
-      const result = await grepTool.execute(
-        { query: "hello|function{" },
-        mockContext,
-      );
-
-      expect(result).not.toContain("Invalid regex pattern");
-      expect(result).toContain("hello");
-      expect(result).toContain("looked like a code literal");
-      expect(mockContext.onXmlComplete).not.toHaveBeenCalledWith(
-        expect.stringContaining('error="invalid_regex"'),
-      );
+    it("throws a clear regex error for an invalid regex instead of inferring literal", async () => {
+      // `function{` is an invalid regex; previously this was inferred as a
+      // literal search. Now it fails as a regex with an actionable message.
+      await expect(
+        grepTool.execute({ query: "hello|function{" }, mockContext),
+      ).rejects.toThrow(/Invalid regex pattern[\s\S]*literal=true/);
     });
 
-    it("searches code-shaped queries as literals before regex parsing", async () => {
+    it("runs a code-shaped query as a regex without inferring literal", async () => {
       const result = await grepTool.execute(
         { query: "setState()" },
         mockContext,
       );
 
-      expect(result).not.toContain("Invalid regex pattern");
+      // `()` is an empty group, so the regex still matches the call site — but
+      // there is no literal-inference note.
       expect(result).toContain("booking.ts");
-      expect(result).toContain("setState()");
-      expect(result).toContain("looked like a code literal");
+      expect(result).not.toContain("looked like a code literal");
     });
 
-    it("searches code-shaped alternatives as literals", async () => {
-      const result = await grepTool.execute(
-        { query: "missingThing()|onClick={() =>" },
-        mockContext,
-      );
-
-      expect(result).not.toContain("Invalid regex pattern");
-      expect(result).toContain("booking.ts");
-      expect(result).toContain("onClick={() =>");
-      expect(result).toContain("looked like a code literal");
-    });
-
-    it("searches bracketed indexing as a literal, not a character-class regex", async () => {
+    it("treats bracketed punctuation as a regex character class, not a literal", async () => {
       const result = await grepTool.execute(
         { query: "items[idx]" },
         mockContext,
       );
 
-      expect(result).not.toContain("Invalid regex pattern");
-      expect(result).toContain("booking.ts");
-      expect(result).toContain("items[idx]");
-      expect(result).toContain("looked like a code literal");
+      // Without literal inference, `[idx]` is a character class, so the literal
+      // source text `items[idx]` is not matched.
+      expect(result).toBe("No matches found.");
     });
 
-    it("returns no matches when inferred literal search has no matches", async () => {
+    it("finds punctuated code text when literal=true is set", async () => {
       const result = await grepTool.execute(
-        { query: "definitely_missing{" },
+        { query: "items[idx]", literal: true },
         mockContext,
       );
 
-      expect(result).toBe("No matches found.");
-      expect(mockContext.onXmlComplete).not.toHaveBeenCalledWith(
-        expect.stringContaining('error="invalid_regex"'),
-      );
+      expect(result).toContain("booking.ts");
+      expect(result).toContain("items[idx]");
     });
 
     it("does not treat regex punctuation as syntax in literal mode", async () => {

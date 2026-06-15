@@ -545,11 +545,11 @@ describe("runExploreCodeSubagent", () => {
     expect(observedResult).toContain("[TRUNCATED]");
   });
 
-  it("caps sub-agent read-only tool calls at the shared step budget", async () => {
+  it("caps sub-agent read-only tool calls at the tool-call budget (50), independent of the step cap", async () => {
     const results: string[] = [];
     mocks.streamText.mockImplementationOnce((options: any) => ({
       fullStream: createToolStream(async () => {
-        for (let index = 0; index < 13; index++) {
+        for (let index = 0; index < 51; index++) {
           results.push(
             await options.tools.explore_code.execute({
               query: `widget save flow ${index}`,
@@ -565,8 +565,9 @@ describe("runExploreCodeSubagent", () => {
       ctx: createMockContext(),
     });
 
-    expect(results[11]).not.toContain("budget exhausted");
-    expect(results[12]).toContain("budget exhausted");
+    // 50 calls allowed (indices 0-49), the 51st is rejected.
+    expect(results[49]).not.toContain("budget exhausted");
+    expect(results[50]).toContain("budget exhausted");
   });
 
   it("keeps rendered reports within the character budget", async () => {

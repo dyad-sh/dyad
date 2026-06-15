@@ -3,7 +3,7 @@
 > Written 2026-06-06, from analysis of benchmark run `run-2026-06-06T07-17-48-930Z`
 > (4 repos × 12 tasks, baseline vs explore arm). Companion to
 > [`plans/codex_code_explorer.md`](./codex_code_explorer.md) (original design) and
-> [`BENCHMARK.md`](../BENCHMARK.md) (results).
+> [`BENCHMARK.md`](../benchmarks/code-explorer/BENCHMARK.md) (results).
 
 ## Summary
 

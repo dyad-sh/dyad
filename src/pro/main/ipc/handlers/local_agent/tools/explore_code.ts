@@ -1,6 +1,4 @@
 import { z } from "zod";
-import fs from "node:fs";
-import path from "node:path";
 
 import { readSettings } from "@/main/settings";
 import {
@@ -20,20 +18,6 @@ import {
 } from "./explore_code_raw";
 import { runExploreCodeSubagent } from "./explore_code_subagent";
 import { resolveTargetAppPath } from "./resolve_app_context";
-
-interface CachedExploreCodeReport {
-  report: string;
-  fileStats: Map<string, CachedFileStat>;
-  lastUsedAt: number;
-}
-
-interface CachedFileStat {
-  mtimeMs: number;
-  size: number;
-}
-
-const MAX_EXPLORE_CODE_CACHE_ENTRIES = 50;
-const exploreCodeReportCache = new Map<string, CachedExploreCodeReport>();
 
 export function getExploreCodeAvailability(ctx: AgentContext): {
   enabled: boolean;
@@ -148,30 +132,10 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
       args,
       fallbackTsconfigPath: availability.tsconfigPath,
     });
-    const cacheKey = getExploreCodeCacheKey({
-      chatId: ctx.chatId,
-      appPath: targetAppPath,
-      args: effectiveArgs,
-    });
-    const cachedReport = getCachedExploreCodeReport({
-      cacheKey,
-      appPath: targetAppPath,
-    });
-    if (cachedReport) {
-      ctx.onXmlComplete(
-        `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)} cached="true">\n${escapeXmlContent(cachedReport)}\n</dyad-explore-code>`,
-      );
-      return cachedReport;
-    }
 
     const resultText = await runExploreCodeSubagent({
       args: effectiveArgs,
       ctx,
-    });
-    maybeCacheExploreCodeReport({
-      cacheKey,
-      appPath: targetAppPath,
-      report: resultText,
     });
     ctx.onXmlComplete(
       `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)}>\n${escapeXmlContent(resultText)}\n</dyad-explore-code>`,
@@ -179,189 +143,3 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
     return resultText;
   },
 };
-
-function getExploreCodeCacheKey({
-  chatId,
-  appPath,
-  args,
-}: {
-  chatId: number;
-  appPath: string;
-  args: z.infer<typeof exploreCodeSchema>;
-}): string {
-  return [
-    chatId,
-    path.resolve(appPath),
-    normalizeCacheText(args.app_name ?? ""),
-    normalizeCacheText(args.tsconfig_path ?? ""),
-    normalizeCacheText(args.intent ?? "locate"),
-    normalizeCacheText(args.query),
-  ].join("\0");
-}
-
-function normalizeCacheText(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function getCachedExploreCodeReport({
-  cacheKey,
-  appPath,
-}: {
-  cacheKey: string;
-  appPath: string;
-}): string | null {
-  const cached = exploreCodeReportCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-  if (!areCachedFileStatsCurrent(appPath, cached.fileStats)) {
-    exploreCodeReportCache.delete(cacheKey);
-    return null;
-  }
-  cached.lastUsedAt = Date.now();
-  return cached.report;
-}
-
-function maybeCacheExploreCodeReport({
-  cacheKey,
-  appPath,
-  report,
-}: {
-  cacheKey: string;
-  appPath: string;
-  report: string;
-}): void {
-  const fileStats = collectReportFileStats({ appPath, report });
-  if (fileStats.size === 0) {
-    return;
-  }
-  exploreCodeReportCache.set(cacheKey, {
-    report,
-    fileStats,
-    lastUsedAt: Date.now(),
-  });
-  pruneExploreCodeReportCache();
-}
-
-function collectReportFileStats({
-  appPath,
-  report,
-}: {
-  appPath: string;
-  report: string;
-}): Map<string, CachedFileStat> {
-  const fileStats = new Map<string, CachedFileStat>();
-  for (const filePath of extractReportFilePaths(report)) {
-    const resolvedPath = resolveReportFilePath(appPath, filePath);
-    if (!resolvedPath) {
-      continue;
-    }
-    const stat = getFileStat(resolvedPath);
-    if (!stat) {
-      continue;
-    }
-    fileStats.set(filePath, stat);
-  }
-  return fileStats;
-}
-
-function extractReportFilePaths(report: string): string[] {
-  const summary = extractStructuredSummary(report);
-  const paths = new Set<string>();
-  if (Array.isArray(summary?.paths)) {
-    for (const item of summary.paths) {
-      if (item && typeof item === "object") {
-        const filePath = (item as { path?: unknown }).path;
-        if (typeof filePath === "string" && filePath.trim()) {
-          paths.add(filePath.trim());
-        }
-      }
-    }
-  }
-  return [...paths];
-}
-
-function extractStructuredSummary(
-  report: string,
-): Record<string, unknown> | null {
-  const match = /```json\s*([\s\S]*?)\s*```/m.exec(report);
-  if (!match) {
-    return null;
-  }
-  try {
-    const summary = JSON.parse(match[1]);
-    return summary && typeof summary === "object" ? summary : null;
-  } catch {
-    return null;
-  }
-}
-
-function resolveReportFilePath(
-  appPath: string,
-  filePath: string,
-): string | null {
-  if (path.isAbsolute(filePath)) {
-    return null;
-  }
-  const appRoot = path.resolve(appPath);
-  const resolvedPath = path.resolve(appRoot, filePath);
-  if (
-    resolvedPath !== appRoot &&
-    !resolvedPath.startsWith(`${appRoot}${path.sep}`)
-  ) {
-    return null;
-  }
-  return resolvedPath;
-}
-
-function getFileStat(filePath: string): CachedFileStat | null {
-  try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) {
-      return null;
-    }
-    return {
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function areCachedFileStatsCurrent(
-  appPath: string,
-  fileStats: Map<string, CachedFileStat>,
-): boolean {
-  for (const [filePath, cachedStat] of fileStats) {
-    const resolvedPath = resolveReportFilePath(appPath, filePath);
-    if (!resolvedPath) {
-      return false;
-    }
-    const currentStat = getFileStat(resolvedPath);
-    if (
-      !currentStat ||
-      currentStat.mtimeMs !== cachedStat.mtimeMs ||
-      currentStat.size !== cachedStat.size
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function pruneExploreCodeReportCache(): void {
-  if (exploreCodeReportCache.size <= MAX_EXPLORE_CODE_CACHE_ENTRIES) {
-    return;
-  }
-  const entries = [...exploreCodeReportCache.entries()].sort(
-    (left, right) => left[1].lastUsedAt - right[1].lastUsedAt,
-  );
-  for (
-    let index = 0;
-    index < entries.length - MAX_EXPLORE_CODE_CACHE_ENTRIES;
-    index++
-  ) {
-    exploreCodeReportCache.delete(entries[index][0]);
-  }
-}

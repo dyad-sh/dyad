@@ -117,6 +117,7 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isBasicAgentMode,
+  isDyadProEnabled,
   isLocalAgentBackedMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
@@ -924,8 +925,12 @@ ${componentSnippet}
         );
 
         const frameworkType = detectFrameworkType(appPath);
+        // Gate on Pro to match the `explore_code` tool's `isEnabled`, so the
+        // prompt never points the model at a tool that isn't in the toolset.
         const codeExplorerAvailable =
-          !!settings.enableCodeExplorer && isCodeExplorerReady(appPath);
+          isDyadProEnabled(settings) &&
+          !!settings.enableCodeExplorer &&
+          isCodeExplorerReady(appPath);
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({

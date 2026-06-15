@@ -10,6 +10,10 @@ testSkipIfWindows(
     // Create a basic app
     await po.sendPrompt("basic");
 
+    const existingPrompt = "Make the primary button easier to find";
+    await po.chatActions.getChatInput().fill(existingPrompt);
+    await expect(po.chatActions.getChatInput()).toContainText(existingPrompt);
+
     // Click the annotator button to activate annotator mode
     await po.previewPanel.clickPreviewAnnotatorButton();
 
@@ -19,6 +23,7 @@ testSkipIfWindows(
     // Submit the screenshot to chat
     await po.previewPanel.clickAnnotatorSubmit();
 
+    await expect(po.chatActions.getChatInput()).toContainText(existingPrompt);
     await expect(po.chatActions.getChatInput()).toContainText(
       "Please update the UI based on these screenshots",
     );

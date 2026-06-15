@@ -751,6 +751,7 @@ export async function handleLocalAgentStream(
       }
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
+    const registeredToolNames = new Set(Object.keys(allTools));
 
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
@@ -1206,7 +1207,9 @@ export async function handleLocalAgentStream(
                   const entry = getOrCreateStreamingEntry(part.id);
                   if (entry) {
                     entry.argsAccumulated += part.delta;
-                    const toolDef = findToolDefinition(entry.toolName);
+                    const toolDef = registeredToolNames.has(entry.toolName)
+                      ? findToolDefinition(entry.toolName)
+                      : undefined;
                     if (toolDef?.buildXml) {
                       const argsPartial = parsePartialJson(
                         entry.argsAccumulated,
@@ -1224,7 +1227,9 @@ export async function handleLocalAgentStream(
                   // Build final XML and persist
                   const entry = getOrCreateStreamingEntry(part.id);
                   if (entry) {
-                    const toolDef = findToolDefinition(entry.toolName);
+                    const toolDef = registeredToolNames.has(entry.toolName)
+                      ? findToolDefinition(entry.toolName)
+                      : undefined;
                     if (toolDef?.buildXml) {
                       const argsPartial = parsePartialJson(
                         entry.argsAccumulated,

@@ -28,6 +28,7 @@ testSkipIfWindows("local-agent - explore_code experiment", async ({ po }) => {
     .toBe(true);
 
   await po.appManagement.ensurePnpmInstall();
+  await po.appManagement.ensureCodeExplorerReady();
   await po.chatActions.clickNewChat();
   await po.chatActions.selectLocalAgentMode();
   await po.sendPrompt("tc=local-agent/explore-code");

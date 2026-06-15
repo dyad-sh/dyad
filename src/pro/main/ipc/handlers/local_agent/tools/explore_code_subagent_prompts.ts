@@ -2,7 +2,7 @@ import type { ExploreCodeArgs } from "./explore_code_raw";
 
 // The system prompt is deliberately domain-neutral: it describes how to explore
 // and report in general terms, with no nouns borrowed from any specific app or
-// benchmark task. Behaviour that used to be encoded as prose patches (action
+// corpus-specific task. Behaviour that used to be encoded as prose patches (action
 // selection, quote verification, continuation) now lives in code, so the prompt
 // only has to explain the contract.
 export function buildExploreCodeSubagentSystemPrompt(): string {

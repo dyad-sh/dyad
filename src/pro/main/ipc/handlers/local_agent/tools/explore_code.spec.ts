@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   getCodeExplorerAvailability: vi.fn(),
   formatCodeExplorerDisabledReason: vi.fn(),
   runExploreCodeSubagent: vi.fn(),
-  recordCodeExplorerBenchmarkEvent: vi.fn(),
 }));
 
 vi.mock("@/main/settings", () => ({
@@ -25,10 +24,6 @@ vi.mock("@/ipc/processors/code_explorer", () => ({
 
 vi.mock("./explore_code_subagent", () => ({
   runExploreCodeSubagent: mocks.runExploreCodeSubagent,
-}));
-
-vi.mock("../benchmark_recorder", () => ({
-  recordCodeExplorerBenchmarkEvent: mocks.recordCodeExplorerBenchmarkEvent,
 }));
 
 describe("exploreCodeTool", () => {
@@ -71,9 +66,6 @@ describe("exploreCodeTool", () => {
       );
       expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
         expect.stringContaining('intent="locate"'),
-      );
-      expect(mocks.recordCodeExplorerBenchmarkEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "explore_code_cache_hit" }),
       );
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });

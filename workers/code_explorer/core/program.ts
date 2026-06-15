@@ -23,6 +23,12 @@ export interface ProjectProgram {
   program: import("typescript").Program;
 }
 
+export interface ProjectFileSet {
+  projectRoot: string;
+  tsconfigPaths: string[];
+  rootFileNames: string[];
+}
+
 export function resolveTsconfigPath({
   appPath,
   tsconfigPath,
@@ -156,24 +162,52 @@ export function createProjectPrograms(
     tsBuildInfoCacheDir?: string;
   },
 ): ProjectProgram[] {
-  const rootConfig = resolveTsconfigPath({ appPath, tsconfigPath });
-  const projectRoot = findProjectRoot(appPath);
-  const configs = collectConfigPaths(ts, projectRoot, rootConfig);
-  const programs = configs.map((configPath) => ({
-    projectRoot,
+  const fileSet = resolveProjectFileSet(ts, { appPath, tsconfigPath });
+  const programs = fileSet.tsconfigPaths.map((configPath) => ({
+    projectRoot: fileSet.projectRoot,
     tsconfigPath: configPath,
-    program: createProgramFromConfig(ts, projectRoot, configPath, {
+    program: createProgramFromConfig(ts, fileSet.projectRoot, configPath, {
       tsBuildInfoCacheDir,
     }),
   }));
 
-  if (!programs.some((entry) => entry.program.getRootFileNames().length > 0)) {
+  if (fileSet.rootFileNames.length === 0) {
     throw new Error(
-      `No TypeScript source files found from configuration ${path.relative(projectRoot, rootConfig)}`,
+      `No TypeScript source files found from configuration ${path.relative(fileSet.projectRoot, fileSet.tsconfigPaths[0])}`,
     );
   }
 
   return programs;
+}
+
+export function resolveProjectFileSet(
+  ts: TypeScriptModule,
+  {
+    appPath,
+    tsconfigPath,
+  }: {
+    appPath: string;
+    tsconfigPath?: string;
+  },
+): ProjectFileSet {
+  const rootConfig = resolveTsconfigPath({ appPath, tsconfigPath });
+  const projectRoot = findProjectRoot(appPath);
+  const tsconfigPaths = collectConfigPaths(ts, projectRoot, rootConfig);
+  const rootFileNames = [
+    ...new Set(
+      tsconfigPaths.flatMap((configPath) =>
+        readConfig(ts, configPath).fileNames.map((fileName) =>
+          path.resolve(fileName),
+        ),
+      ),
+    ),
+  ].sort();
+
+  return {
+    projectRoot,
+    tsconfigPaths,
+    rootFileNames,
+  };
 }
 
 function collectConfigPaths(

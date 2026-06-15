@@ -5,11 +5,16 @@ import * as ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { exploreCode } from "../../../workers/code_explorer/core";
+import {
+  clearCodeExplorerWorkerCachesForTests,
+  processCodeExplorerWithTypeScript,
+} from "../../../workers/code_explorer/code_explorer_worker";
 
 const tempDirs: string[] = [];
 
 describe("exploreCode", () => {
   afterEach(() => {
+    clearCodeExplorerWorkerCachesForTests();
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -113,6 +118,67 @@ describe("exploreCode", () => {
       fs.readdirSync(cacheDir).some((name) => name.endsWith(".tsbuildinfo")),
     ).toBe(true);
     expect(fs.existsSync(path.join(appPath, "src", "session.js"))).toBe(false);
+  });
+
+  it("invalidates the worker index cache when a tsconfig glob gains a new file", async () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "src/index.ts": [
+        "export function loadExistingDashboard() {",
+        "  return 'dashboard';",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    fs.mkdirSync(path.join(appPath, "src", "features"), { recursive: true });
+
+    const first = await processCodeExplorerWithTypeScript(ts, {
+      appPath,
+      query: "new feature panel",
+      maxFiles: 4,
+      maxDepth: 1,
+    });
+    if (!first.success) {
+      throw new Error(first.error);
+    }
+    expect(first.data.files.map((file) => file.path)).not.toContain(
+      "src/features/newFeature.ts",
+    );
+
+    fs.writeFileSync(
+      path.join(appPath, "src", "features", "newFeature.ts"),
+      [
+        "export function loadNewFeaturePanel() {",
+        "  return 'new feature panel';",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const second = await processCodeExplorerWithTypeScript(ts, {
+      appPath,
+      query: "new feature panel",
+      maxFiles: 4,
+      maxDepth: 1,
+    });
+    if (!second.success) {
+      throw new Error(second.error);
+    }
+    expect(second.data.files.map((file) => file.path)).toContain(
+      "src/features/newFeature.ts",
+    );
   });
 
   it("discovers a workspace app tsconfig when the repo root has none", () => {

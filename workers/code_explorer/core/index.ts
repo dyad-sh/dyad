@@ -28,6 +28,7 @@ export interface BuiltCodeExplorerIndex {
   index: GraphIndex;
   indexMs: number;
   tsconfigPaths: string[];
+  rootFileNames: string[];
 }
 
 export function buildCodeExplorerIndex(
@@ -49,6 +50,9 @@ export function buildCodeExplorerIndex(
     index,
     indexMs,
     tsconfigPaths: projects.map((project) => project.tsconfigPath),
+    rootFileNames: projects.flatMap((project) =>
+      project.program.getRootFileNames(),
+    ),
   };
 }
 

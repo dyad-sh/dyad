@@ -1,5 +1,4 @@
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
-import crypto from "node:crypto";
 import log from "electron-log";
 
 import { readSettings } from "@/main/settings";
@@ -10,11 +9,6 @@ import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import type { UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  isCodeExplorerBenchmarking,
-  recordCodeExplorerBenchmarkEvent,
-  summarizeBenchmarkValue,
-} from "../benchmark_recorder";
 import { grepTool } from "./grep";
 import { listFilesTool } from "./list_files";
 import { readFileTool } from "./read_file";
@@ -39,7 +33,6 @@ import {
   createCandidateRegistry,
   formatObservationResult,
   getObservedCandidates,
-  totalObservationChars,
   type CandidateRegistry,
   type ExplorerCandidate,
   type SubagentObservation,
@@ -64,7 +57,6 @@ import {
 const logger = log.scope("explore_code_subagent");
 
 const SUBAGENT_MODEL = { provider: "auto", name: "value" } as const;
-const SUBAGENT_PHASE = "explore_code_subagent";
 const SUBAGENT_MAX_STEPS = 12;
 const SUBAGENT_MAX_OUTPUT_TOKENS = 16_000;
 const SUBAGENT_MAX_RETRIES = 1;
@@ -90,8 +82,6 @@ export async function runExploreCodeSubagent({
   const settings = readSettings();
   assertDyadValueAvailable(settings);
 
-  const subagentRunId = crypto.randomUUID();
-  const startedAt = Date.now();
   const modelInfo = await getModelClient(SUBAGENT_MODEL, settings);
   const maxOutputTokens = Math.min(
     (await getMaxTokens(SUBAGENT_MODEL)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
@@ -106,27 +96,12 @@ export async function runExploreCodeSubagent({
   let subagentStepCount = 0;
   let explainBounceUsed = false;
 
-  const record = (event: Record<string, unknown>): void => {
-    if (!isCodeExplorerBenchmarking()) {
-      return;
-    }
-    recordCodeExplorerBenchmarkEvent({
-      phase: SUBAGENT_PHASE,
-      chatId: ctx.chatId,
-      appId: ctx.appId,
-      parentToolName: "explore_code",
-      subagentRunId,
-      ...event,
-    });
-  };
-
   const tools = buildExploreCodeSubagentTools({
     args,
     ctx,
     observations,
     candidateRegistry,
     readOnlyToolBudget,
-    record,
     onSubmitReport: (selection): string => {
       const candidates = getObservedCandidates(observations);
       const resolved = resolveSelection({ selection, candidates });
@@ -153,8 +128,6 @@ export async function runExploreCodeSubagent({
       return "Report accepted.";
     },
   });
-
-  record({ type: "subagent_start", model: SUBAGENT_MODEL });
 
   try {
     const streamResult = streamText({
@@ -188,17 +161,6 @@ export async function runExploreCodeSubagent({
       },
       stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
       abortSignal: ctx.abortSignal,
-      onStepFinish: (step) => {
-        record({
-          type: "stream_step_finish",
-          toolCallCount: step.toolCalls.length,
-          toolNames: step.toolCalls.map((toolCall) => toolCall.toolName),
-          usage: step.usage,
-        });
-      },
-      onFinish: (event) => {
-        record({ type: "stream_finish", usage: event.totalUsage });
-      },
     });
     const fullStream = streamResult.fullStream;
     cancelOrphanedBaseStream(streamResult);
@@ -222,28 +184,15 @@ export async function runExploreCodeSubagent({
       acceptedRef,
       observations,
     });
-    recordFinish({ record, acceptedRef, observations, reportText, startedAt });
     return reportText;
   } catch (error) {
     logger.warn("explore_code sub-agent failed", error);
-    const elapsedMs = Date.now() - startedAt;
-    record({
-      type: "subagent_error",
-      elapsedMs,
-      error: error instanceof Error ? error.message : String(error),
-    });
     if (acceptedRef.current || observations.length > 0) {
       const reportText = renderFinalReport({
         args,
         intent,
         acceptedRef,
         observations,
-      });
-      record({
-        type: "subagent_partial_recovery",
-        elapsedMs,
-        reportChars: reportText.length,
-        rawObservationChars: totalObservationChars(observations),
       });
       return reportText;
     }
@@ -306,41 +255,6 @@ function renderFinalReport({
   return buildDeterministicReport({ query: args.query, intent, observations });
 }
 
-function recordFinish({
-  record,
-  acceptedRef,
-  observations,
-  reportText,
-  startedAt,
-}: {
-  record: (event: Record<string, unknown>) => void;
-  acceptedRef: { current: AcceptedReport | null };
-  observations: SubagentObservation[];
-  reportText: string;
-  startedAt: number;
-}): void {
-  const accepted = acceptedRef.current;
-  record({
-    type: "subagent_finish",
-    elapsedMs: Date.now() - startedAt,
-    reportChars: reportText.length,
-    rawObservationChars: totalObservationChars(observations),
-    fromModelSelection: accepted != null,
-    renderedAction: accepted?.outcome.action ?? null,
-    renderedConfidence: accepted?.outcome.confidence ?? null,
-    droppedReasons: accepted?.resolved.droppedReasons ?? [],
-  });
-  if (!accepted) {
-    record({
-      type: "subagent_deterministic_report",
-      candidateCount: observations.reduce(
-        (total, observation) => total + observation.candidates.length,
-        0,
-      ),
-    });
-  }
-}
-
 function assertDyadValueAvailable(settings: UserSettings): void {
   if (!settings.enableDyadPro || !settings.providerSettings?.auto?.apiKey) {
     throw new DyadError(
@@ -369,7 +283,6 @@ function buildExploreCodeSubagentTools({
   observations,
   candidateRegistry,
   readOnlyToolBudget,
-  record,
   onSubmitReport,
 }: {
   args: ExploreCodeArgs;
@@ -377,7 +290,6 @@ function buildExploreCodeSubagentTools({
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
   readOnlyToolBudget: ReadOnlyToolBudget;
-  record: (event: Record<string, unknown>) => void;
   onSubmitReport: (selection: ExploreSelection) => string;
 }): ToolSet {
   const childCtx: AgentContext = {
@@ -397,7 +309,6 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
-      record,
       compactBroadCall: compactBroadListFilesCall,
       candidatesFromResult: (toolArgs, result) =>
         candidatesFromListFilesResult(String(result), toolArgs),
@@ -408,7 +319,6 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
-      record,
       candidatesFromResult: (toolArgs, result) =>
         candidatesFromGrepResult(String(result), toolArgs),
     }),
@@ -418,7 +328,6 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
-      record,
       candidatesFromResult: (toolArgs, result) =>
         candidatesFromReadFileResult(String(result), toolArgs),
     }),
@@ -428,24 +337,13 @@ function buildExploreCodeSubagentTools({
       observations,
       candidateRegistry,
       readOnlyToolBudget,
-      record,
     }),
     submit_report: {
       description:
         "Submit the final code exploration report. Reference observed candidate IDs only; give each flow step an open role label and a fact tied to the query. Do not write quotes or choose an action — those are produced for you.",
       inputSchema: submitReportSchema,
       execute: async (selection: ExploreSelection) => {
-        const result = onSubmitReport(selection);
-        if (isCodeExplorerBenchmarking()) {
-          record({
-            type: "submit_report_result",
-            toolName: "submit_report",
-            resultPreview: summarizeBenchmarkValue(result),
-            accepted: result === "Report accepted.",
-            submittedIntent: args.intent ?? "locate",
-          });
-        }
-        return result;
+        return onSubmitReport(selection);
       },
     },
   };
@@ -457,22 +355,18 @@ function buildObservedExploreCodeTool({
   observations,
   candidateRegistry,
   readOnlyToolBudget,
-  record,
 }: {
   parentArgs: ExploreCodeArgs;
   ctx: AgentContext;
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
   readOnlyToolBudget: ReadOnlyToolBudget;
-  record: (event: Record<string, unknown>) => void;
 }) {
   return {
     description:
       "Compiler-backed code explorer. Use this for TypeScript, TSX, JavaScript, or JSX symbols and flows included in the configured TypeScript project. It returns relevant symbols and line-numbered source windows grouped by file.",
     inputSchema: rawExploreCodeSchema,
     execute: async (toolArgs: RawExploreCodeArgs) => {
-      const benchmarkEnabled = isCodeExplorerBenchmarking();
-      const startedAt = benchmarkEnabled ? Date.now() : 0;
       const budgetMessage = readOnlyToolBudget.reserve("explore_code");
       if (budgetMessage) {
         observations.push({
@@ -482,13 +376,6 @@ function buildObservedExploreCodeTool({
           candidates: [],
         });
         return budgetMessage;
-      }
-      if (benchmarkEnabled) {
-        record({
-          type: "tool_call_start",
-          toolName: "explore_code",
-          argsPreview: summarizeBenchmarkValue(toolArgs),
-        });
       }
       try {
         const lockedArgs: RawExploreCodeArgs = {
@@ -525,14 +412,6 @@ function buildObservedExploreCodeTool({
           result: annotatedResult,
           candidates,
         });
-        if (benchmarkEnabled) {
-          record({
-            type: "tool_call_end",
-            toolName: "explore_code",
-            elapsedMs: Date.now() - startedAt,
-            resultPreview: summarizeBenchmarkValue(resultText),
-          });
-        }
         return annotatedResult;
       } catch (error) {
         if (ctx.abortSignal?.aborted) {
@@ -545,14 +424,6 @@ function buildObservedExploreCodeTool({
           result: errorMessage,
           candidates: [],
         });
-        if (benchmarkEnabled) {
-          record({
-            type: "tool_call_error",
-            toolName: "explore_code",
-            argsPreview: summarizeBenchmarkValue(toolArgs),
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
         return errorMessage;
       }
     },
@@ -565,7 +436,6 @@ function wrapSubagentTool<TArgs>({
   observations,
   candidateRegistry,
   readOnlyToolBudget,
-  record,
   candidatesFromResult,
   compactBroadCall,
 }: {
@@ -574,7 +444,6 @@ function wrapSubagentTool<TArgs>({
   observations: SubagentObservation[];
   candidateRegistry: CandidateRegistry;
   readOnlyToolBudget: ReadOnlyToolBudget;
-  record: (event: Record<string, unknown>) => void;
   candidatesFromResult: (args: TArgs, result: unknown) => ExplorerCandidate[];
   compactBroadCall?: (args: TArgs) => string | null;
 }) {
@@ -582,8 +451,6 @@ function wrapSubagentTool<TArgs>({
     description: tool.description,
     inputSchema: tool.inputSchema,
     execute: async (toolArgs: TArgs) => {
-      const benchmarkEnabled = isCodeExplorerBenchmarking();
-      const startedAt = benchmarkEnabled ? Date.now() : 0;
       const budgetMessage = readOnlyToolBudget.reserve(tool.name);
       if (budgetMessage) {
         observations.push({
@@ -594,13 +461,6 @@ function wrapSubagentTool<TArgs>({
         });
         return budgetMessage;
       }
-      if (benchmarkEnabled) {
-        record({
-          type: "tool_call_start",
-          toolName: tool.name,
-          argsPreview: summarizeBenchmarkValue(toolArgs),
-        });
-      }
       try {
         const compactResult = compactBroadCall?.(toolArgs);
         if (compactResult) {
@@ -610,14 +470,6 @@ function wrapSubagentTool<TArgs>({
             result: compactResult,
             candidates: [],
           });
-          if (benchmarkEnabled) {
-            record({
-              type: "tool_call_end",
-              toolName: tool.name,
-              elapsedMs: Date.now() - startedAt,
-              resultPreview: summarizeBenchmarkValue(compactResult),
-            });
-          }
           return compactResult;
         }
 
@@ -637,14 +489,6 @@ function wrapSubagentTool<TArgs>({
           result: annotatedResult,
           candidates: registeredCandidates,
         });
-        if (benchmarkEnabled) {
-          record({
-            type: "tool_call_end",
-            toolName: tool.name,
-            elapsedMs: Date.now() - startedAt,
-            resultPreview: summarizeBenchmarkValue(result),
-          });
-        }
         return typeof result === "string" ? annotatedResult : result;
       } catch (error) {
         if (ctx.abortSignal?.aborted) {
@@ -657,14 +501,6 @@ function wrapSubagentTool<TArgs>({
           result: errorMessage,
           candidates: [],
         });
-        if (benchmarkEnabled) {
-          record({
-            type: "tool_call_error",
-            toolName: tool.name,
-            argsPreview: summarizeBenchmarkValue(toolArgs),
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
         return errorMessage;
       }
     },

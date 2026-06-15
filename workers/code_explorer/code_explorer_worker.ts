@@ -11,6 +11,7 @@ import {
   searchCodeExplorerIndex,
   type BuiltCodeExplorerIndex,
 } from "./core";
+import { resolveProjectFileSet } from "./core/program";
 
 function loadLocalTypeScript(appPath: string): typeof import("typescript") {
   try {
@@ -33,16 +34,28 @@ interface CachedIndex {
   built: BuiltCodeExplorerIndex;
   watchedPaths: string[];
   newestMtimeMs: number;
+  fileSetFingerprint: string;
 }
 
 let cachedTypeScript: CachedTypeScript | undefined;
 const indexCache = new Map<string, CachedIndex>();
 
-async function processCodeExplorer(
+export async function processCodeExplorer(
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerWorkerOutput> {
   try {
     const ts = loadCachedTypeScript(input.appPath);
+    return processCodeExplorerWithTypeScript(ts, input);
+  } catch (error) {
+    return codeExplorerErrorOutput(error);
+  }
+}
+
+export async function processCodeExplorerWithTypeScript(
+  ts: typeof import("typescript"),
+  input: CodeExplorerWorkerInput,
+): Promise<CodeExplorerWorkerOutput> {
+  try {
     const built = getCachedIndex(ts, input);
     const result = searchCodeExplorerIndex(built, input);
     return {
@@ -50,11 +63,20 @@ async function processCodeExplorer(
       data: result,
     };
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return codeExplorerErrorOutput(error);
   }
+}
+
+function codeExplorerErrorOutput(error: unknown): CodeExplorerWorkerOutput {
+  return {
+    success: false,
+    error: error instanceof Error ? error.message : String(error),
+  };
+}
+
+export function clearCodeExplorerWorkerCachesForTests(): void {
+  cachedTypeScript = undefined;
+  indexCache.clear();
 }
 
 function loadCachedTypeScript(appPath: string): typeof import("typescript") {
@@ -73,7 +95,7 @@ function getCachedIndex(
 ): BuiltCodeExplorerIndex {
   const key = `${input.appPath}\0${input.tsconfigPath ?? ""}`;
   const cached = indexCache.get(key);
-  if (cached && isCacheFresh(cached)) {
+  if (cached && isCacheFresh(ts, input, cached)) {
     return cached.built;
   }
 
@@ -88,6 +110,7 @@ function getCachedIndex(
     built,
     watchedPaths,
     newestMtimeMs: newestMtimeMs(watchedPaths),
+    fileSetFingerprint: fileSetFingerprint(built.rootFileNames),
   });
   return built;
 }
@@ -96,8 +119,29 @@ function sourceDirectories(filePaths: string[]): string[] {
   return [...new Set(filePaths.map((filePath) => path.dirname(filePath)))];
 }
 
-function isCacheFresh(cached: CachedIndex): boolean {
-  return newestMtimeMs(cached.watchedPaths) <= cached.newestMtimeMs;
+function isCacheFresh(
+  ts: typeof import("typescript"),
+  input: CodeExplorerWorkerInput,
+  cached: CachedIndex,
+): boolean {
+  if (newestMtimeMs(cached.watchedPaths) > cached.newestMtimeMs) {
+    return false;
+  }
+
+  const currentFileSet = resolveProjectFileSet(ts, {
+    appPath: input.appPath,
+    tsconfigPath: input.tsconfigPath,
+  });
+  return (
+    fileSetFingerprint(currentFileSet.rootFileNames) ===
+    cached.fileSetFingerprint
+  );
+}
+
+function fileSetFingerprint(fileNames: string[]): string {
+  return [...new Set(fileNames.map((fileName) => path.resolve(fileName)))]
+    .sort()
+    .join("\0");
 }
 
 function newestMtimeMs(paths: string[]): number {

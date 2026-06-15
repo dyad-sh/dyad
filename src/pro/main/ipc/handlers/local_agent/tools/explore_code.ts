@@ -20,7 +20,6 @@ import {
 } from "./explore_code_raw";
 import { runExploreCodeSubagent } from "./explore_code_subagent";
 import { resolveTargetAppPath } from "./resolve_app_context";
-import { recordCodeExplorerBenchmarkEvent } from "../benchmark_recorder";
 
 interface CachedExploreCodeReport {
   report: string;
@@ -159,26 +158,12 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
       appPath: targetAppPath,
     });
     if (cachedReport) {
-      recordCodeExplorerBenchmarkEvent({
-        type: "explore_code_cache_hit",
-        phase: "main",
-        chatId: ctx.chatId,
-        appId: ctx.appId,
-        toolName: "explore_code",
-      });
       ctx.onXmlComplete(
         `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)} cached="true">\n${escapeXmlContent(cachedReport)}\n</dyad-explore-code>`,
       );
       return cachedReport;
     }
 
-    recordCodeExplorerBenchmarkEvent({
-      type: "explore_code_cache_miss",
-      phase: "main",
-      chatId: ctx.chatId,
-      appId: ctx.appId,
-      toolName: "explore_code",
-    });
     const resultText = await runExploreCodeSubagent({
       args: effectiveArgs,
       ctx,

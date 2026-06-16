@@ -145,8 +145,8 @@ jobs:
             echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
             echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           else
-            echo 'build_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
+            echo 'build_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
+            echo 'e2e_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
             echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           fi

@@ -1606,10 +1606,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
 
           {/* Address Bar - white pill with device mode, refresh + external inside */}
-          {/* min-w-fit: the icon buttons inside are flex-shrink-0, so letting the
-              pill shrink below its content makes them overflow and intercept
-              clicks meant for the toolbar buttons to the right (e.g. Restart). */}
-          <div className="relative w-1/2 min-w-fit flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
+          <div className="relative w-1/2 min-w-20 flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
             <Popover open={isDevicePopoverOpen} modal={false}>
               <Tooltip>
                 <TooltipTrigger
@@ -1691,76 +1688,78 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 </ToggleGroup>
               </PopoverContent>
             </Popover>
-            <input
-              aria-label="Preview path"
-              className="flex-1 min-w-[2rem] rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
-              data-testid="preview-address-bar-input"
-              disabled={loading || !selectedAppId}
-              onBlur={() => {
-                if (skipNextAddressBarBlurRef.current) {
-                  skipNextAddressBarBlurRef.current = false;
-                  return;
-                }
-                setAddressBarValue(currentAddressPath);
-                setIsEditingAddressBar(false);
-              }}
-              onChange={(event) => setAddressBarValue(event.target.value)}
-              onFocus={(event) => {
-                setIsEditingAddressBar(true);
-                event.currentTarget.select();
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  submitAddressBarValue();
-                } else if (event.key === "Escape") {
-                  event.preventDefault();
+            <div className="flex min-w-[2rem] flex-1 items-center">
+              <input
+                aria-label="Preview path"
+                className="min-w-0 flex-1 rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
+                data-testid="preview-address-bar-input"
+                disabled={loading || !selectedAppId}
+                onBlur={() => {
+                  if (skipNextAddressBarBlurRef.current) {
+                    skipNextAddressBarBlurRef.current = false;
+                    return;
+                  }
                   setAddressBarValue(currentAddressPath);
                   setIsEditingAddressBar(false);
-                  event.currentTarget.blur();
-                }
-              }}
-              spellCheck={false}
-              value={addressBarValue}
-            />
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label="Show detected routes"
-                className="flex-shrink-0 rounded-full p-1 text-gray-700 opacity-70 hover:bg-gray-200 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700"
-                data-testid="preview-address-bar-routes-button"
-                disabled={loading || !selectedAppId}
-              >
-                <ChevronDown size={12} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                {routesLoading ? (
-                  <DropdownMenuItem disabled>
-                    Loading routes...
-                  </DropdownMenuItem>
-                ) : routesError ? (
-                  <DropdownMenuItem disabled>
-                    Unable to load routes
-                  </DropdownMenuItem>
-                ) : availableRoutes.length > 0 ? (
-                  availableRoutes.map((route) => (
-                    <DropdownMenuItem
-                      key={route.path}
-                      onClick={() => navigateToRoute(route.path)}
-                      className="flex justify-between"
-                    >
-                      <span>{route.label}</span>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs">
-                        {route.path}
-                      </span>
+                }}
+                onChange={(event) => setAddressBarValue(event.target.value)}
+                onFocus={(event) => {
+                  setIsEditingAddressBar(true);
+                  event.currentTarget.select();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitAddressBarValue();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setAddressBarValue(currentAddressPath);
+                    setIsEditingAddressBar(false);
+                    event.currentTarget.blur();
+                  }
+                }}
+                spellCheck={false}
+                value={addressBarValue}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Show detected routes"
+                  className="flex-shrink-0 rounded-full p-1 text-gray-700 opacity-70 hover:bg-gray-200 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700"
+                  data-testid="preview-address-bar-routes-button"
+                  disabled={loading || !selectedAppId}
+                >
+                  <ChevronDown size={12} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  {routesLoading ? (
+                    <DropdownMenuItem disabled>
+                      Loading routes...
                     </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    No routes detected
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  ) : routesError ? (
+                    <DropdownMenuItem disabled>
+                      Unable to load routes
+                    </DropdownMenuItem>
+                  ) : availableRoutes.length > 0 ? (
+                    availableRoutes.map((route) => (
+                      <DropdownMenuItem
+                        key={route.path}
+                        onClick={() => navigateToRoute(route.path)}
+                        className="flex justify-between"
+                      >
+                        <span>{route.label}</span>
+                        <span className="text-gray-500 dark:text-gray-400 text-xs">
+                          {route.path}
+                        </span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      No routes detected
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <Tooltip>
               <TooltipTrigger
                 render={

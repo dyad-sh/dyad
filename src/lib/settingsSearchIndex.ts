@@ -38,6 +38,7 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
+  autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enablePnpmMinimumReleaseAgeWarning:
@@ -449,6 +450,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "pro",
       "credits",
       "secure",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.autoApproveNonSchemaSql,
+    label: "Auto-approve non-schema SQL",
+    description:
+      "In Agent mode, skip the consent prompt when running SQL that does not change the database schema. Schema changes still require approval",
+    keywords: [
+      "sql",
+      "database",
+      "consent",
+      "approve",
+      "schema",
+      "agent",
+      "supabase",
+      "neon",
     ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",

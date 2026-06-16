@@ -36,6 +36,7 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
+import { AutoApproveSqlExperimentSwitch } from "@/components/AutoApproveSqlExperimentSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -268,6 +269,12 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div id={SETTING_IDS.enableCloudSandbox} className="space-y-1">
                 <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.autoApproveNonSchemaSql}
+                className="space-y-1 mt-4"
+              >
+                <AutoApproveSqlExperimentSwitch />
               </div>
               <div
                 id={SETTING_IDS.enableMcpToolSearch}

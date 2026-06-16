@@ -1,6 +1,6 @@
-- paragraph: tc=context-limit-response [high-tokens=110000]
-- paragraph: Here is a simple response to test the context limit banner functionality.
-- paragraph: This message simulates being close to the model's context window limit.
+- paragraph: Summarize from chat-id=1
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
 - button "Copy"
 - button "Undo"
 - button "Retry"

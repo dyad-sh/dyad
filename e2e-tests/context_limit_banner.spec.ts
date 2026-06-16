@@ -23,9 +23,18 @@ test("context limit banner shows 'running out' when near context limit", async (
   );
 
   // Click the summarize button
+  const originalChatId = new URL(po.page.url()).searchParams.get("id");
   await contextLimitBanner.getByRole("button", { name: "Summarize" }).click();
 
   // Wait for the new chat to load and message to complete
+  await expect(async () => {
+    expect(new URL(po.page.url()).searchParams.get("id")).not.toBe(
+      originalChatId,
+    );
+  }).toPass({ timeout: Timeout.MEDIUM });
+  await expect(
+    po.page.getByText(`Summarize from chat-id=${originalChatId}`),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
   await po.chatActions.waitForChatCompletion();
 
   // Snapshot the messages in the new chat

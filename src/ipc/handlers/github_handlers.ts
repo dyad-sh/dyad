@@ -17,13 +17,12 @@ import {
   gitListBranches,
   gitListRemoteBranches,
   isGitStatusClean,
-  gitAddAll,
-  gitCommit,
   getCurrentCommitHash,
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
 } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
@@ -40,6 +39,10 @@ import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { slugifyAppPath } from "@/shared/slugify";
+import {
+  isComponentTaggerUpgradeNeeded,
+  applyComponentTagger,
+} from "../utils/app_upgrade_utils";
 
 const logger = log.scope("github_handlers");
 
@@ -191,8 +194,7 @@ export async function prepareLocalBranch({
         }
 
         try {
-          await gitAddAll({ path: appPath });
-          const commitHash = await gitCommit({
+          const commitHash = await gitService.stageAllAndCommit({
             path: appPath,
             message:
               "chore: auto-commit local changes before connecting to GitHub",
@@ -762,10 +764,10 @@ async function handleCreateRepo(
     throw new Error(errorMessage);
   }
 
-  // Set up remote URL before preparing branch
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${normalizedRepo}.git`;
+  // Set up remote URL before preparing branch.
+  // The URL is stored without credentials; auth is injected per-invocation
+  // via environment variables in git_utils.
+  const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`;
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
@@ -820,10 +822,9 @@ async function handleConnectToExistingRepo(
       );
     }
 
-    // Set up remote URL before preparing branch
-    const remoteUrl = IS_TEST_BUILD
-      ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
-      : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+    // Set up remote URL before preparing branch (credentials are never
+    // stored in the URL; auth is injected per-invocation in git_utils)
+    const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${repo}.git`;
 
     // Prepare local branch with remote URL set up
     await prepareLocalBranch({
@@ -873,10 +874,10 @@ async function handlePushToGithub(
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch || "main";
 
-  // Set up remote URL with token
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set up remote URL (credentials are never stored in the URL; auth is
+  // injected per-invocation in git_utils). Re-setting it on every push also
+  // scrubs tokens that older versions embedded in .git/config.
+  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -986,10 +987,9 @@ async function handleRebaseFromGithub(
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch || "main";
 
-  // Set up remote URL with token
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set up remote URL (credentials are never stored in the URL; auth is
+  // injected per-invocation in git_utils)
+  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -1252,7 +1252,13 @@ async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
 ): Promise<CloneRepoResult> {
-  const { url, installCommand, startCommand, appName } = params;
+  const {
+    url,
+    installCommand,
+    startCommand,
+    appName,
+    optimizeForDyad = true,
+  } = params;
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1304,12 +1310,9 @@ async function handleCloneRepoFromUrl(
         fs.mkdirSync(appPath, { recursive: true });
       }
     }
-    // Use authenticated URL if token exists, otherwise use public HTTPS URL
-    const cloneUrl = accessToken
-      ? IS_TEST_BUILD
-        ? `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`
-        : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repoName}.git`
-      : `https://github.com/${owner}/${repoName}.git`; // Changed: use public HTTPS URL instead of original url
+    // Always clone with a credential-free URL; if a token exists it is
+    // injected per-invocation in git_utils.
+    const cloneUrl = `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`;
     try {
       await gitClone({
         path: appPath,
@@ -1341,7 +1344,25 @@ async function handleCloneRepoFromUrl(
       })
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
-    // Return success object
+
+    let autoUpgradeWarning = false;
+    if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
+      try {
+        await applyComponentTagger(appPath, { installDependencies: false });
+        logger.log(
+          `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
+        );
+      } catch (upgradeError) {
+        // Auto-upgrade  Failures are logged but don't block import.
+        // User will be notified via warning toast to manually upgrade if needed.
+        autoUpgradeWarning = true;
+        logger.warn(
+          `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
+          upgradeError,
+        );
+      }
+    }
+
     return {
       app: {
         ...newApp,
@@ -1351,9 +1372,9 @@ async function handleCloneRepoFromUrl(
         vercelTeamSlug: null,
       },
       hasAiRules,
+      autoUpgradeWarning,
     };
   } catch (err: any) {
-    // Catch any remaining unexpected errors and return an error object
     logger.error("[GitHub Handler] Unexpected error in clone flow:", err);
     return {
       error: err.message || "An unexpected error occurred during cloning.",

@@ -1,15 +1,7 @@
 - paragraph: Summarize from chat-id=1
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-- button "Undo":
-  - img
-- button "Retry":
-  - img
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

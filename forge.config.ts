@@ -13,8 +13,19 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import { readFileSync } from "fs";
+import { createRequire } from "module";
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
+
+const require = createRequire(import.meta.url);
+const { isPrereleaseVersion } =
+  require("./scripts/release-version-utils.js") as {
+    isPrereleaseVersion: (version: string) => boolean;
+  };
+const packageJson = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string };
 
 const pgRuntimeDependencies = [
   "pg",
@@ -100,6 +111,7 @@ const ignore = (file: string) => {
 
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
+const shouldSkipNativeRebuild = process.env.DYAD_SKIP_NATIVE_REBUILD === "true";
 
 if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
   throw new Error(
@@ -162,10 +174,12 @@ const config: ForgeConfig = {
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
-  rebuildConfig: {
-    extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
-    force: true,
-  },
+  rebuildConfig: shouldSkipNativeRebuild
+    ? { onlyModules: [] }
+    : {
+        extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
+        force: true,
+      },
   makers: [
     new MakerSquirrel(
       // @ts-expect-error - incorrect types exported by MakerSquirrel
@@ -185,6 +199,7 @@ const config: ForgeConfig = {
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({
       options: {
+        mimeType: ["x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),
@@ -208,7 +223,7 @@ const config: ForgeConfig = {
         },
         draft: true,
         force: true,
-        prerelease: true,
+        prerelease: isPrereleaseVersion(packageJson.version),
       },
     },
   ],
@@ -232,6 +247,11 @@ const config: ForgeConfig = {
         {
           entry: "workers/tsc/tsc_worker.ts",
           config: "vite.worker.config.mts",
+          target: "main",
+        },
+        {
+          entry: "workers/code_explorer/code_explorer_worker.ts",
+          config: "vite.code-explorer-worker.config.mts",
           target: "main",
         },
         {

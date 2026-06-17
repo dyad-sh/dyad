@@ -1,23 +1,7 @@
 - paragraph: tc=create-ts-errors
 - paragraph: This will get a TypeScript error.
-- 'button "bad-file.ts src/bad-file.ts Edit Summary: This will get a TypeScript error."':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: This will get a TypeScript error."'
 - paragraph: EOM
-- button "Copy":
-  - img
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Undo"
+- button "Retry"

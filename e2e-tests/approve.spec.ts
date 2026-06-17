@@ -14,5 +14,7 @@ testSkipIfWindows("write to index, approve, check preview", async ({ po }) => {
   await expect(po.previewPanel.getPreviewIframeElement()).toBeVisible({
     timeout: Timeout.LONG,
   });
-  await po.previewPanel.snapshotPreview();
+  await po.previewPanel.snapshotPreview({
+    name: "write-to-index-approve-check-preview-3.aria.yml",
+  });
 });

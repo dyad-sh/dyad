@@ -8,6 +8,7 @@ import {
   type ValidInvokeChannel,
   type ValidReceiveChannel,
 } from "./ipc/preload/channels";
+import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "./ipc/contracts/core";
 
 // Use the contract-derived channel arrays
 const validInvokeChannels = VALID_INVOKE_CHANNELS;
@@ -32,6 +33,20 @@ function isValidDynamicReceiveChannel(channel: string): boolean {
 contextBridge.exposeInMainWorld("electron", {
   ipcRenderer: {
     invoke: (channel: ValidInvokeChannel | string, ...args: unknown[]) => {
+      if ((validInvokeChannels as readonly string[]).includes(channel)) {
+        return ipcRenderer.invoke(channel, ...args).then((response) => {
+          if (isIpcInvokeEnvelope(response)) {
+            return unwrapIpcEnvelope(response);
+          }
+          return response;
+        });
+      }
+      throw new Error(`Invalid channel: ${channel}`);
+    },
+    invokeEnvelope: (
+      channel: ValidInvokeChannel | string,
+      ...args: unknown[]
+    ) => {
       if ((validInvokeChannels as readonly string[]).includes(channel)) {
         return ipcRenderer.invoke(channel, ...args);
       }

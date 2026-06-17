@@ -10,6 +10,7 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadLogs } from "./DyadLogs";
 import { DyadGrep } from "./DyadGrep";
+import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
@@ -29,6 +30,7 @@ import { DyadProblemSummary } from "./DyadProblemSummary";
 import { ipc } from "@/ipc/types";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
+import { DyadMcpToolSearch } from "./DyadMcpToolSearch";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
@@ -583,6 +585,26 @@ function renderCustomTag(
         </DyadGrep>
       );
 
+    case "dyad-explore-code":
+      return (
+        <DyadExploreCode
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+              query: attributes.query || "",
+              appName: attributes.app_name || "",
+              files: attributes.files || "",
+              symbols: attributes.symbols || "",
+              indexMs: attributes.index_ms || "",
+              searchMs: attributes.search_ms || "",
+              truncated: attributes.truncated || "",
+            },
+          }}
+        >
+          {content}
+        </DyadExploreCode>
+      );
+
     case "dyad-add-integration":
       return (
         <DyadAddIntegration
@@ -643,6 +665,20 @@ function renderCustomTag(
         </DyadCodebaseContext>
       );
 
+    case "dyad-mcp-tool-search":
+      return (
+        <DyadMcpToolSearch
+          node={{
+            properties: {
+              query: attributes.query || "",
+              server: attributes.server || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadMcpToolSearch>
+      );
     case "dyad-mcp-tool-call":
       return (
         <DyadMcpToolCall

@@ -34,7 +34,9 @@ const logger = log.scope("settings");
 //
 // It is OK to add new fields to DEFAULT_SETTINGS.
 // However, be VERY careful about removing fields from DEFAULT_SETTINGS.
-const DEFAULT_SETTINGS: UserSettings = {
+// (Exported for the unit-test harness; production code should go through
+// readSettings instead of using this directly.)
+export const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",
     provider: "auto",
@@ -58,6 +60,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
   enableSandboxScriptExecution: true,
+  enableCodeExplorer: true,
+  autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: false,
@@ -98,12 +102,49 @@ function getCrashSentinelPath(): string {
   return path.join(getUserDataPath(), CRASH_SENTINEL_FILE);
 }
 
+interface CrashSentinelData {
+  ts: number;
+  // The chat that was last streaming this session, captured at stream start so
+  // the crash dialog can offer to upload it. Absent if no stream ran.
+  activeChatId?: number;
+}
+
 export function writeCrashSentinel(): void {
   try {
-    fs.writeFileSync(getCrashSentinelPath(), String(Date.now()));
+    const data: CrashSentinelData = { ts: Date.now() };
+    fs.writeFileSync(getCrashSentinelPath(), JSON.stringify(data));
   } catch (error) {
     logger.error("Error writing crash sentinel:", error);
   }
+}
+
+// Records the chat that just started streaming into the existing sentinel,
+// preserving its timestamp. The sentinel's lifecycle (created at startup,
+// deleted on clean exit) scopes this to the current session automatically.
+export function setSentinelActiveChat(chatId: number): void {
+  try {
+    const existing = readCrashSentinel();
+    const sentinelPath = getCrashSentinelPath();
+    const data: CrashSentinelData = {
+      ts: existing?.ts ?? readLegacyCrashSentinelTimestamp(sentinelPath),
+      activeChatId: chatId,
+    };
+    fs.writeFileSync(sentinelPath, JSON.stringify(data));
+  } catch (error) {
+    logger.error("Error updating crash sentinel active chat:", error);
+  }
+}
+
+function readLegacyCrashSentinelTimestamp(sentinelPath: string): number {
+  try {
+    const legacyTimestamp = Number(fs.readFileSync(sentinelPath, "utf8"));
+    if (Number.isFinite(legacyTimestamp) && legacyTimestamp > 0) {
+      return legacyTimestamp;
+    }
+  } catch {
+    // Missing or malformed legacy sentinels can be replaced with a fresh timestamp.
+  }
+  return Date.now();
 }
 
 export function clearCrashSentinel(): void {
@@ -118,6 +159,27 @@ export function clearCrashSentinel(): void {
 
 export function crashSentinelExists(): boolean {
   return fs.existsSync(getCrashSentinelPath());
+}
+
+// Reads and parses the sentinel. Returns null if missing or not a JSON object
+// (e.g. the legacy bare-timestamp format from older builds). That's harmless:
+// crash detection is existence-based, and only activeChatId is consumed, so a
+// null here just means no chat to offer for upload.
+export function readCrashSentinel(): CrashSentinelData | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(getCrashSentinelPath(), "utf-8"));
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+    if (typeof parsed.ts !== "number") {
+      return null;
+    }
+    const activeChatId =
+      typeof parsed.activeChatId === "number" ? parsed.activeChatId : undefined;
+    return { ts: parsed.ts, activeChatId };
+  } catch {
+    return null;
+  }
 }
 
 export type RendererCrashPerformanceSnapshot = NonNullable<

@@ -18,8 +18,14 @@ testSkipIfWindows("local-agent - grep search", async ({ po }) => {
   await po.page.getByTestId("dyad-grep").first().click();
   await po.page.getByTestId("dyad-grep").nth(1).click();
   await po.snapshotMessages();
-  await expect(po.page.getByTestId("dyad-grep").first()).toMatchAriaSnapshot();
-  await expect(po.page.getByTestId("dyad-grep").nth(1)).toMatchAriaSnapshot();
+  await po.snapshotStableAria(
+    po.page.getByTestId("dyad-grep").first(),
+    "local-agent---grep-search-2",
+  );
+  await po.snapshotStableAria(
+    po.page.getByTestId("dyad-grep").nth(1),
+    "local-agent---grep-search-3",
+  );
 });
 
 testSkipIfWindows(

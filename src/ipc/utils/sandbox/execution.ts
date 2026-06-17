@@ -9,6 +9,7 @@ import {
   type SandboxHostCallObserver,
 } from "./capabilities";
 import {
+  clampSandboxWallClockTimeoutMs,
   clampSandboxTimeoutMs,
   SANDBOX_ALLOCATION_BUDGET,
   SANDBOX_CALL_DEPTH_LIMIT,
@@ -37,8 +38,12 @@ export interface SandboxExecutionParams {
   appPath: string;
   script: string;
   timeoutMs?: number;
+  wallClockTimeoutMs?: number;
   persistFullOutput?: boolean;
   onHostCall?: SandboxHostCallObserver;
+  onVmBudgetStart?: () => void;
+  onVmBudgetPause?: () => void;
+  onVmBudgetResume?: () => void;
   capabilities?: Record<string, (...args: unknown[]) => unknown>;
 }
 
@@ -127,6 +132,155 @@ async function spillOutput(params: {
   return outputPath;
 }
 
+function createVmRuntimeBudget(timeoutMs: number): {
+  signal: AbortSignal;
+  start: () => void;
+  pause: () => void;
+  resume: () => void;
+  stop: () => void;
+  abort: () => void;
+  getElapsedMs: () => number;
+} {
+  const abortController = new AbortController();
+  let elapsedMs = 0;
+  let runningSince: number | undefined;
+  let timer: NodeJS.Timeout | undefined;
+  let pauseDepth = 0;
+
+  function clearTimer() {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+  }
+
+  function abortIfExpired() {
+    if (elapsedMs >= timeoutMs && !abortController.signal.aborted) {
+      abortController.abort();
+    }
+  }
+
+  function scheduleTimer() {
+    clearTimer();
+    if (abortController.signal.aborted || pauseDepth > 0) {
+      return;
+    }
+    const remainingMs = timeoutMs - elapsedMs;
+    if (remainingMs <= 0) {
+      abortIfExpired();
+      return;
+    }
+    timer = setTimeout(() => {
+      if (runningSince !== undefined) {
+        elapsedMs += Date.now() - runningSince;
+        runningSince = Date.now();
+      }
+      abortIfExpired();
+      if (!abortController.signal.aborted) {
+        scheduleTimer();
+      }
+    }, remainingMs);
+  }
+
+  function start() {
+    if (runningSince === undefined && !abortController.signal.aborted) {
+      runningSince = Date.now();
+      scheduleTimer();
+    }
+  }
+
+  function pause() {
+    if (runningSince !== undefined) {
+      elapsedMs += Date.now() - runningSince;
+      runningSince = undefined;
+    }
+    pauseDepth += 1;
+    clearTimer();
+    abortIfExpired();
+  }
+
+  function resume() {
+    if (pauseDepth === 0) {
+      return;
+    }
+    pauseDepth -= 1;
+    if (pauseDepth > 0 || abortController.signal.aborted) {
+      return;
+    }
+    runningSince = Date.now();
+    scheduleTimer();
+  }
+
+  function stop() {
+    if (runningSince !== undefined) {
+      elapsedMs += Date.now() - runningSince;
+      runningSince = undefined;
+    }
+    clearTimer();
+  }
+
+  return {
+    signal: abortController.signal,
+    start,
+    pause,
+    resume,
+    stop,
+    abort: () => abortController.abort(),
+    getElapsedMs: () =>
+      runningSince === undefined
+        ? elapsedMs
+        : elapsedMs + Date.now() - runningSince,
+  };
+}
+
+function wrapCapabilitiesWithVmBudget(
+  capabilities: Record<string, (...args: unknown[]) => unknown>,
+  budget: Pick<
+    ReturnType<typeof createVmRuntimeBudget>,
+    "pause" | "resume" | "signal"
+  >,
+  hooks: Pick<SandboxExecutionParams, "onVmBudgetPause" | "onVmBudgetResume">,
+): Record<string, (...args: unknown[]) => unknown> {
+  return Object.fromEntries(
+    Object.entries(capabilities).map(([name, capability]) => [
+      name,
+      (...args: unknown[]) => {
+        budget.pause();
+        hooks.onVmBudgetPause?.();
+        if (budget.signal.aborted) {
+          hooks.onVmBudgetResume?.();
+          budget.resume();
+          throw new DyadError(
+            "Sandbox script timed out before host call execution.",
+            DyadErrorKind.External,
+          );
+        }
+        try {
+          const result = capability(...args);
+          if (
+            result !== null &&
+            typeof result === "object" &&
+            "then" in result &&
+            typeof result.then === "function"
+          ) {
+            return Promise.resolve(result).finally(() => {
+              hooks.onVmBudgetResume?.();
+              budget.resume();
+            });
+          }
+          hooks.onVmBudgetResume?.();
+          budget.resume();
+          return result;
+        } catch (error) {
+          hooks.onVmBudgetResume?.();
+          budget.resume();
+          throw error;
+        }
+      },
+    ]),
+  );
+}
+
 export async function executeSandboxScriptInProcess(
   params: SandboxExecutionParams,
 ): Promise<SandboxRunResult> {
@@ -140,16 +294,24 @@ export async function executeSandboxScriptInProcess(
   }
 
   const timeoutMs = clampSandboxTimeoutMs(params.timeoutMs);
-  const started = Date.now();
+  const wallClockTimeoutMs = clampSandboxWallClockTimeoutMs(
+    params.wallClockTimeoutMs,
+  );
   const { Mustard, ExecutionContext } = await loadMustard();
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+  const vmBudget = createVmRuntimeBudget(timeoutMs);
+  let wallClockTimeout: NodeJS.Timeout | undefined;
+  let wallClockTimeoutError: DyadError | undefined;
 
   try {
     const program = new Mustard(params.script);
-    const capabilityMap =
+    const rawCapabilityMap =
       params.capabilities ??
       buildSandboxCapabilitiesWithObserver(params.appPath, params.onHostCall);
+    const capabilityMap = wrapCapabilitiesWithVmBudget(
+      rawCapabilityMap,
+      vmBudget,
+      params,
+    );
     const context = new ExecutionContext({
       capabilities: capabilityMap as unknown as Record<string, Capability>,
       limits: {
@@ -162,10 +324,30 @@ export async function executeSandboxScriptInProcess(
       snapshotKey: `dyad-sandbox:${params.appPath}`,
     });
 
-    const result = await program.run({
-      context,
-      signal: abortController.signal,
-    });
+    vmBudget.start();
+    params.onVmBudgetStart?.();
+    const result = await Promise.race([
+      program.run({
+        context,
+        signal: vmBudget.signal,
+      }),
+      new Promise<never>((_, reject) => {
+        wallClockTimeout = setTimeout(() => {
+          wallClockTimeoutError = new DyadError(
+            `Sandbox host execution timed out after ${wallClockTimeoutMs}ms.`,
+            DyadErrorKind.External,
+          );
+          vmBudget.abort();
+          reject(wallClockTimeoutError);
+        }, wallClockTimeoutMs);
+      }),
+    ]);
+    if (wallClockTimeout) {
+      clearTimeout(wallClockTimeout);
+      wallClockTimeout = undefined;
+    }
+    vmBudget.stop();
+    const executionMs = vmBudget.getElapsedMs();
     const output = stringifyStructuredValue(result);
     const truncated =
       Buffer.byteLength(output, "utf8") > SANDBOX_LLM_OUTPUT_LIMIT_BYTES;
@@ -180,17 +362,23 @@ export async function executeSandboxScriptInProcess(
         : output,
       truncated,
       fullOutputPath,
-      executionMs: Date.now() - started,
+      executionMs,
     };
   } catch (error) {
-    if (abortController.signal.aborted) {
+    vmBudget.stop();
+    if (wallClockTimeoutError) {
+      throw error === wallClockTimeoutError ? error : wallClockTimeoutError;
+    }
+    if (vmBudget.signal.aborted) {
       throw new DyadError(
-        `Sandbox script timed out after ${timeoutMs}ms.`,
+        `Sandbox script timed out after ${timeoutMs}ms of VM execution.`,
         DyadErrorKind.External,
       );
     }
     throw error;
   } finally {
-    clearTimeout(timeout);
+    if (wallClockTimeout) {
+      clearTimeout(wallClockTimeout);
+    }
   }
 }

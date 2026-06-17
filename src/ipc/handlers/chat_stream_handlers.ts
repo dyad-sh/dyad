@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, IpcMainInvokeEvent } from "electron";
 import { createTypedHandler } from "./base";
 import { computeStreamingPatch } from "../utils/stream_text_utils";
 import { chatContracts } from "../types/chat";
@@ -84,6 +84,7 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
+import { isCodeExplorerReady } from "../processors/code_explorer";
 import {
   appendCancelledResponseNotice,
   filterCancelledMessagePairs,
@@ -116,6 +117,7 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isBasicAgentMode,
+  isDyadProEnabled,
   isLocalAgentBackedMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
@@ -133,7 +135,7 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
-import { readSettings } from "@/main/settings";
+import { readSettings, setSentinelActiveChat } from "@/main/settings";
 import {
   buildLocalAgentAttachmentInfo,
   getInlineImageMimeType,
@@ -244,6 +246,17 @@ async function processStreamChunks({
 }
 
 export function registerChatStreamHandlers() {
+  // Abort in-flight LLM streams on quit so the process can exit promptly and
+  // the module-level stream-tracking maps don't outlive their renderer.
+  // (Guarded: `app` is undefined when this module is imported in unit tests.)
+  app?.on?.("before-quit", () => {
+    for (const controller of activeStreams.values()) {
+      controller.abort();
+    }
+    activeStreams.clear();
+    partialResponses.clear();
+  });
+
   createTypedHandler(
     chatContracts.responseAck,
     async (_event, { chatId, lastSeq }) => {
@@ -279,6 +292,15 @@ export function registerChatStreamHandlers() {
           DyadErrorKind.NotFound,
         );
       }
+
+      // Record the streaming chat in the crash sentinel so a later force-close
+      // can offer to upload it. We intentionally don't clear this when the
+      // stream ends: the chat of the most recent stream stays the most likely
+      // crash culprit even afterwards (its output stays mounted, and the
+      // apply/build/preview steps run after the stream), so it remains the best
+      // guess until the next stream replaces it. The latest stream wins, and the
+      // value is cleared on clean exit.
+      setSentinelActiveChat(req.chatId);
 
       // Handle redo option: remove the most recent messages if needed
       if (req.redo) {
@@ -902,9 +924,13 @@ ${componentSnippet}
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
-        const frameworkType = detectFrameworkType(
-          getDyadAppPath(updatedChat.app.path),
-        );
+        const frameworkType = detectFrameworkType(appPath);
+        // Gate on Pro to match the `explore_code` tool's `isEnabled`, so the
+        // prompt never points the model at a tool that isn't in the toolset.
+        const codeExplorerAvailable =
+          isDyadProEnabled(settings) &&
+          !!settings.enableCodeExplorer &&
+          isCodeExplorerReady(appPath);
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -917,6 +943,7 @@ ${componentSnippet}
           hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
           enableAppBlueprint:
             settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
+          codeExplorerAvailable,
         });
 
         // Add information about mentioned apps for build mode only.
@@ -1311,6 +1338,7 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             readOnly: true,
+            codeExplorerAvailable,
           });
 
           // Return value indicates success/failure for quota tracking.

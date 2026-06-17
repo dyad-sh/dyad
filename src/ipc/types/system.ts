@@ -109,6 +109,9 @@ export const ForceCloseDetectedPayloadSchema = z.object({
       systemCpuPercent: z.number().optional(),
     })
     .optional(),
+  // Chat that was streaming at crash time, captured in the crash sentinel.
+  // Present only if a stream ran this session; enables one-click upload.
+  activeChatId: z.number().optional(),
 });
 
 // =============================================================================

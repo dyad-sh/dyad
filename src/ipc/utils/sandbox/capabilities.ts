@@ -8,10 +8,7 @@ import {
   toAttachmentLogicalPath,
 } from "@/ipc/utils/media_path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  SANDBOX_HOST_CALL_TIMEOUT_MS,
-  SANDBOX_READ_FILE_LIMIT_BYTES,
-} from "./limits";
+import { SANDBOX_READ_FILE_LIMIT_BYTES } from "./limits";
 
 type StructuredObject = { [key: string]: unknown };
 
@@ -175,32 +172,6 @@ function isTextPath(filePath: string): boolean {
   return TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
-async function withHostCallTimeout<T>(
-  description: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      fn(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(
-            new DyadError(
-              `${description} timed out after ${SANDBOX_HOST_CALL_TIMEOUT_MS}ms.`,
-              DyadErrorKind.External,
-            ),
-          );
-        }, SANDBOX_HOST_CALL_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
 async function resolveSandboxPath(params: {
   appPath: string;
   guestPath: string;
@@ -279,125 +250,119 @@ export async function sandboxReadFile(
   guestPath: string,
   rawOptions?: unknown,
 ): Promise<string> {
-  return withHostCallTimeout("read_file", async () => {
-    const options = parseReadOptions(rawOptions);
-    const resolved = await resolveSandboxPath({ appPath, guestPath });
-    await assertResolvedPathAllowed({ appPath, ...resolved });
+  const options = parseReadOptions(rawOptions);
+  const resolved = await resolveSandboxPath({ appPath, guestPath });
+  await assertResolvedPathAllowed({ appPath, ...resolved });
 
-    const stat = await fs.stat(resolved.filePath);
-    if (!stat.isFile()) {
-      throw new DyadError(
-        `Path is not a file: ${resolved.displayPath}`,
-        DyadErrorKind.Validation,
-      );
-    }
+  const stat = await fs.stat(resolved.filePath);
+  if (!stat.isFile()) {
+    throw new DyadError(
+      `Path is not a file: ${resolved.displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
 
-    const start = options.start ?? 0;
-    if (
-      options.length !== undefined &&
-      options.length > SANDBOX_READ_FILE_LIMIT_BYTES
-    ) {
-      throw new DyadError(
-        `read_file length ${options.length} exceeds the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Read the file in chunks with start and length instead.`,
-        DyadErrorKind.Validation,
-      );
-    }
-    if (start > stat.size) {
-      return "";
-    }
-    const remainingBytes = stat.size - start;
-    const length = options.length ?? remainingBytes;
-    if (length > SANDBOX_READ_FILE_LIMIT_BYTES) {
-      throw new DyadError(
-        `read_file would read ${length} bytes from ${resolved.displayPath}, exceeding the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Use file_stats to get the size, then read bounded chunks with start and length.`,
-        DyadErrorKind.Validation,
-      );
-    }
+  const start = options.start ?? 0;
+  if (
+    options.length !== undefined &&
+    options.length > SANDBOX_READ_FILE_LIMIT_BYTES
+  ) {
+    throw new DyadError(
+      `read_file length ${options.length} exceeds the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Read the file in chunks with start and length instead.`,
+      DyadErrorKind.Validation,
+    );
+  }
+  if (start > stat.size) {
+    return "";
+  }
+  const remainingBytes = stat.size - start;
+  const length = options.length ?? remainingBytes;
+  if (length > SANDBOX_READ_FILE_LIMIT_BYTES) {
+    throw new DyadError(
+      `read_file would read ${length} bytes from ${resolved.displayPath}, exceeding the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Use file_stats to get the size, then read bounded chunks with start and length.`,
+      DyadErrorKind.Validation,
+    );
+  }
 
-    const handle = await fs.open(resolved.filePath, "r");
-    try {
-      const bytesToRead = Math.min(length, remainingBytes);
-      const buffer = Buffer.alloc(bytesToRead);
-      const { bytesRead } = await handle.read(buffer, 0, bytesToRead, start);
-      const bytes = buffer.subarray(0, bytesRead);
-      return (options.encoding ?? "utf8") === "base64"
-        ? bytes.toString("base64")
-        : bytes.toString("utf8");
-    } finally {
-      await handle.close();
-    }
-  });
+  const handle = await fs.open(resolved.filePath, "r");
+  try {
+    const bytesToRead = Math.min(length, remainingBytes);
+    const buffer = Buffer.alloc(bytesToRead);
+    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, start);
+    const bytes = buffer.subarray(0, bytesRead);
+    return (options.encoding ?? "utf8") === "base64"
+      ? bytes.toString("base64")
+      : bytes.toString("utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function sandboxFileStats(
   appPath: string,
   guestPath: string,
 ): Promise<SandboxFileStats> {
-  return withHostCallTimeout("file_stats", async () => {
-    const resolved = await resolveSandboxPath({ appPath, guestPath });
-    await assertResolvedPathAllowed({ appPath, ...resolved });
-    const stat = await fs.stat(resolved.filePath);
-    if (!stat.isFile()) {
-      throw new DyadError(
-        `Path is not a file: ${resolved.displayPath}`,
-        DyadErrorKind.Validation,
-      );
-    }
-    return {
-      size: stat.size,
-      isText: isTextPath(resolved.filePath),
-      mtime: stat.mtime.toISOString(),
-    };
-  });
+  const resolved = await resolveSandboxPath({ appPath, guestPath });
+  await assertResolvedPathAllowed({ appPath, ...resolved });
+  const stat = await fs.stat(resolved.filePath);
+  if (!stat.isFile()) {
+    throw new DyadError(
+      `Path is not a file: ${resolved.displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  return {
+    size: stat.size,
+    isText: isTextPath(resolved.filePath),
+    mtime: stat.mtime.toISOString(),
+  };
 }
 
 export async function sandboxListFiles(
   appPath: string,
   guestDir?: string,
 ): Promise<string[]> {
-  return withHostCallTimeout("list_files", async () => {
-    const dir = guestDir ?? ".";
-    if (dir === "attachments:" || dir === "attachments") {
-      const attachments = await listStoredAttachments(appPath);
-      return attachments.map((attachment) =>
-        toAttachmentLogicalPath(attachment.logicalName),
-      );
-    }
+  const dir = guestDir ?? ".";
+  if (dir === "attachments:" || dir === "attachments") {
+    const attachments = await listStoredAttachments(appPath);
+    return attachments.map((attachment) =>
+      toAttachmentLogicalPath(attachment.logicalName),
+    );
+  }
 
-    assertAllowedGuestPath(dir);
-    const dirPath = safeJoin(appPath, dir);
-    const realAppPath = await fs.realpath(appPath);
-    let realDirPath: string;
-    try {
-      realDirPath = await fs.realpath(dirPath);
-    } catch (error) {
-      if (isNodeErrorWithCode(error, "ENOENT")) {
-        throw new DyadError(
-          `Directory not found: ${dir}`,
-          DyadErrorKind.NotFound,
-        );
-      }
-      throw error;
-    }
-    const relative = path.relative(realAppPath, realDirPath);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  assertAllowedGuestPath(dir);
+  const dirPath = safeJoin(appPath, dir);
+  const realAppPath = await fs.realpath(appPath);
+  let realDirPath: string;
+  try {
+    realDirPath = await fs.realpath(dirPath);
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
       throw new DyadError(
-        `Sandbox scripts cannot list files outside the app: ${dir}`,
-        DyadErrorKind.Precondition,
+        `Directory not found: ${dir}`,
+        DyadErrorKind.NotFound,
       );
     }
-    const entries = await fs.readdir(realDirPath, { withFileTypes: true });
-    return entries
-      .filter((entry) => !DENIED_PATH_PATTERNS.some((p) => p.test(entry.name)))
-      .map((entry) => {
-        const relativePath = path
-          .join(relative, entry.name)
-          .split(path.sep)
-          .join("/");
-        return entry.isDirectory() ? `${relativePath}/` : relativePath;
-      })
-      .sort();
-  });
+    throw error;
+  }
+  const relative = path.relative(realAppPath, realDirPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new DyadError(
+      `Sandbox scripts cannot list files outside the app: ${dir}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  const entries = await fs.readdir(realDirPath, { withFileTypes: true });
+  return entries
+    .filter((entry) => !DENIED_PATH_PATTERNS.some((p) => p.test(entry.name)))
+    .map((entry) => {
+      const relativePath = path
+        .join(relative, entry.name)
+        .split(path.sep)
+        .join("/");
+      return entry.isDirectory() ? `${relativePath}/` : relativePath;
+    })
+    .sort();
 }
 
 export function buildSandboxCapabilities(appPath: string) {

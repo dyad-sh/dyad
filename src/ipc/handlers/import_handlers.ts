@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 
 import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
-import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 
@@ -128,17 +128,7 @@ export function registerImportHandlers() {
         .catch(() => false);
       if (!isGitRepo) {
         // Initialize git repo and create first commit
-        await gitInit({ path: appPath, ref: "main" });
-
-        // Stage all files
-
-        await gitAdd({ path: appPath, filepath: "." });
-
-        // Create initial commit
-        await gitCommit({
-          path: appPath,
-          message: "Init Dyad app",
-        });
+        await gitService.initRepoWithInitialCommit({ path: appPath });
       }
 
       // Create a new app

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DyadError, DyadErrorKind, isDyadError } from "../../errors/dyad_error";
 
 // =============================================================================
 // Contract Type Definitions
@@ -130,6 +131,103 @@ export type EventChannel<T> = T extends EventContract<infer C, any> ? C : never;
 // Client Generators
 // =============================================================================
 
+const IPC_ENVELOPE_MARKER = "dyad-ipc-envelope-v1";
+
+export interface SerializedIpcError {
+  name?: string;
+  message: string;
+  kind?: DyadErrorKind;
+  stack?: string;
+}
+
+export type IpcInvokeEnvelope<T = unknown> =
+  | {
+      __dyadIpcEnvelope: typeof IPC_ENVELOPE_MARKER;
+      ok: true;
+      value: T;
+    }
+  | {
+      __dyadIpcEnvelope: typeof IPC_ENVELOPE_MARKER;
+      ok: false;
+      error: SerializedIpcError;
+    };
+
+export function createIpcSuccessEnvelope<T>(value: T): IpcInvokeEnvelope<T> {
+  return {
+    __dyadIpcEnvelope: IPC_ENVELOPE_MARKER,
+    ok: true,
+    value,
+  };
+}
+
+export function createIpcErrorEnvelope(error: unknown): IpcInvokeEnvelope {
+  return {
+    __dyadIpcEnvelope: IPC_ENVELOPE_MARKER,
+    ok: false,
+    error: serializeIpcError(error),
+  };
+}
+
+export function isIpcInvokeEnvelope(
+  value: unknown,
+): value is IpcInvokeEnvelope {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { __dyadIpcEnvelope?: unknown }).__dyadIpcEnvelope ===
+      IPC_ENVELOPE_MARKER &&
+    typeof (value as { ok?: unknown }).ok === "boolean"
+  );
+}
+
+export function serializeIpcError(error: unknown): SerializedIpcError {
+  if (isDyadError(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      kind: error.kind,
+      stack: error.stack,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return { message: String(error) };
+}
+
+function isDyadErrorKind(value: unknown): value is DyadErrorKind {
+  return (
+    typeof value === "string" &&
+    Object.values(DyadErrorKind).includes(value as DyadErrorKind)
+  );
+}
+
+export function deserializeIpcError(error: SerializedIpcError): Error {
+  if (isDyadErrorKind(error.kind)) {
+    const dyadError = new DyadError(error.message, error.kind);
+    dyadError.stack = error.stack;
+    return dyadError;
+  }
+
+  const genericError = new Error(error.message);
+  genericError.name = error.name ?? genericError.name;
+  genericError.stack = error.stack;
+  return genericError;
+}
+
+export function unwrapIpcEnvelope<T>(response: IpcInvokeEnvelope<T>): T {
+  if (response.ok) {
+    return response.value;
+  }
+  throw deserializeIpcError(response.error);
+}
+
 /** Type to convert contracts object to client methods */
 type ClientFromContracts<
   T extends Record<string, IpcContract<string, z.ZodType, z.ZodType>>,
@@ -166,7 +264,14 @@ export function createClient<
           `[${contract.channel}] IPC renderer not available. Make sure this is called from the renderer process.`,
         );
       }
-      return ipcRenderer.invoke(contract.channel, input);
+      const invoke =
+        typeof ipcRenderer.invokeEnvelope === "function"
+          ? ipcRenderer.invokeEnvelope
+          : ipcRenderer.invoke;
+      const response = await invoke(contract.channel, input);
+      return isIpcInvokeEnvelope(response)
+        ? unwrapIpcEnvelope(response)
+        : response;
     };
   }
   return client;

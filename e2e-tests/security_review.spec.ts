@@ -16,7 +16,10 @@ testSkipIfWindows("security review", async ({ po }) => {
 
   await po.page.getByRole("button", { name: "Fix Issue" }).first().click();
   await po.chatActions.waitForChatCompletion();
-  await po.snapshotMessages();
+  await po.snapshotMessages({
+    name: "security-review---fix-issue",
+    replaceDumpPath: true,
+  });
 });
 
 testSkipIfWindows(
@@ -66,8 +69,13 @@ test("security review - multi-select and fix issues", async ({ po }) => {
 
   // Click the fix selected button
   await fixSelectedButton.click();
-  await po.chatActions.waitForChatCompletion();
-  await po.snapshotMessages();
+  await expect(async () => {
+    const text = await po.page.getByTestId("messages-list").textContent();
+    expect(text).toMatch(
+      /Please fix the following 2 security issues[\s\S]*Version 2:/,
+    );
+  }).toPass({ timeout: Timeout.MEDIUM });
+  await po.snapshotMessages({ replaceDumpPath: true });
 });
 
 test("security review - creates chat tabs", async ({ po }) => {

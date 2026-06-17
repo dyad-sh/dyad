@@ -1,56 +1,16 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit":
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- img
-- text: "Version 2: (1 files changed)"
-- button "Copy Request ID":
-  - img
-  - text: ""
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
 - paragraph: tc=local-agent/mcp-calculator
 - paragraph: I'll calculate the sum of 5 and 3 using the calculator.
-- button "Tool Call testing-mcp-server calculator_add":
-  - img
-  - text: ""
-  - img
-- button "Tool Result testing-mcp-server calculator_add":
-  - img
-  - text: ""
-  - img
-- button /Script Call calculator_add through MCP \d+[hmsp]+/:
-  - img
-  - text: ""
-  - img
+- button "Tool Call testing-mcp-server calculator_add"
+- button "Tool Result testing-mcp-server calculator_add"
+- button "Script Call calculator_add through MCP [[duration]]"
 - paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- img
-- text: "Version 3: (1 files changed)"
-- button "Copy Request ID":
-  - img
-  - text: ""
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

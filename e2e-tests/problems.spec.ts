@@ -32,7 +32,10 @@ test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
   await expect(
     po.page.getByTestId("problem-summary").last(),
   ).toMatchAriaSnapshot();
-  await po.snapshotMessages({ replaceDumpPath: true });
+  await po.snapshotMessages({
+    name: "problems-auto-fix---gives-up-after-2-attempts-messages",
+    replaceDumpPath: true,
+  });
 });
 
 test("problems auto-fix - complex delete-rename-write", async ({ po }) => {

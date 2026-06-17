@@ -18,6 +18,9 @@ import {
 } from "../ui/tooltip";
 import { useTranslation } from "react-i18next";
 
+const INPUT_PREVIEW_COLLAPSED_LINES = 6;
+const INPUT_PREVIEW_EXPANDED_MAX_HEIGHT = "40vh";
+
 interface AgentConsentBannerProps {
   consent: PendingAgentConsent;
   onDecision: (decision: "accept-once" | "accept-always" | "decline") => void;
@@ -39,11 +42,11 @@ export function AgentConsentBanner({
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
   const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
-    React.useState<number>(0);
+    React.useState<number>();
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!inputPreview) {
       setInputHasOverflow(false);
       return;
@@ -54,20 +57,21 @@ export function AgentConsentBanner({
 
     const compute = () => {
       const computedStyle = window.getComputedStyle(element);
-      const parsedLineHeight = parseFloat(computedStyle.lineHeight || "16");
+      const parsedLineHeight = Number.parseFloat(computedStyle.lineHeight);
       const lineHeight = Number.isFinite(parsedLineHeight)
         ? parsedLineHeight
-        : 16;
-      const maxLines = 6;
-      const maxHeightPx = Math.max(0, Math.round(lineHeight * maxLines));
-      setInputCollapsedMaxHeight(maxHeightPx);
-      setInputHasOverflow(element.scrollHeight > maxHeightPx + 1);
+        : 20;
+      const collapsedMaxHeight = Math.round(
+        lineHeight * INPUT_PREVIEW_COLLAPSED_LINES,
+      );
+
+      setInputCollapsedMaxHeight(collapsedMaxHeight);
+      setInputHasOverflow(element.scrollHeight > collapsedMaxHeight + 1);
     };
 
     compute();
-    const onResize = () => compute();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
   }, [inputPreview]);
 
   return (
@@ -111,15 +115,20 @@ export function AgentConsentBanner({
                 <span>{t("changesDatabaseSchema")}</span>
               </div>
             )}
-            <div
-              ref={inputRef}
-              className="bg-muted p-1.5 rounded text-sm whitespace-pre-wrap"
-              style={{
-                maxHeight: isInputExpanded ? "40vh" : inputCollapsedMaxHeight,
-                overflow: isInputExpanded ? "auto" : "hidden",
-              }}
-            >
-              {inputPreview}
+            <div className="rounded bg-muted p-1.5">
+              <div
+                ref={inputRef}
+                className={`text-sm whitespace-pre-wrap break-words transition-[max-height] duration-200 ease-out motion-reduce:transition-none ${
+                  isInputExpanded ? "overflow-auto" : "overflow-hidden"
+                }`}
+                style={{
+                  maxHeight: isInputExpanded
+                    ? INPUT_PREVIEW_EXPANDED_MAX_HEIGHT
+                    : inputCollapsedMaxHeight,
+                }}
+              >
+                {inputPreview}
+              </div>
             </div>
             {inputHasOverflow && (
               <button

@@ -6,6 +6,7 @@ import {
   protocol,
   net,
   session,
+  crashReporter,
 } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
@@ -22,6 +23,7 @@ import {
   writeCrashSentinel,
   clearCrashSentinel,
   crashSentinelExists,
+  readCrashSentinel,
   recordRendererCrash,
   readRendererCrashRecord,
   clearRendererCrashRecord,
@@ -46,6 +48,15 @@ import {
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
 import {
+  parseMinidumpSummary,
+  type MinidumpSummary,
+} from "./utils/minidump_summary";
+import {
+  listDumpFilesRecursive,
+  moveDump,
+  pruneDumps,
+} from "./utils/crash_dumps";
+import {
   DYAD_INTERNAL_DIR_NAME,
   DYAD_MEDIA_SUBDIR,
   DYAD_SCREENSHOT_SUBDIR,
@@ -56,16 +67,113 @@ import {
 } from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
+import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
 log.scope.labelPadding = false;
 
+// In dev, keep minidumps under the project's ./userData (matching where Dyad
+// writes its other dev files) instead of the OS userData dir, so they don't
+// mingle with a prod install's dumps. Must run before crashReporter.start.
+if (process.env.NODE_ENV === "development") {
+  const devCrashDumps = path.resolve("./userData/Crashpad");
+  fs.mkdirSync(devCrashDumps, { recursive: true });
+  app.setPath("crashDumps", devCrashDumps);
+}
+
+// Capture native crashes (main/renderer/GPU/utility) as local minidumps. Not
+// uploaded; parsed on the next launch into a summary we send as telemetry.
+// Must start before the app is ready. globalExtra annotates every dump with
+// static context; dynamic GPU status is added in onReady.
+crashReporter.start({
+  uploadToServer: false,
+  compress: true,
+  globalExtra: {
+    app_version: app.getVersion(),
+    electron_version: process.versions.electron ?? "unknown",
+    chrome_version: process.versions.chrome ?? "unknown",
+    os: process.platform,
+    arch: process.arch,
+  },
+});
+
 const logger = log.scope("main");
+
+// Cap retained dumps so they don't accumulate indefinitely; keep only a few
+// recent ones for examination/export.
+const MAX_RETAINED_DUMPS = 5;
+let nativeCrashDumpsProcessed = false;
+let pendingNativeBrowserCrash: MinidumpSummary | null = null;
+
+// Summarize each new minidump (signal, faulting module + offset, process type —
+// no memory). A main-process crash is the app crash, so its summary is stashed
+// and attached to app:crash_detected; other (survived child) crashes are left
+// to their own paths. Each dump is then kept under a timestamped name for later
+// examination. Runs once per session.
+function processNativeCrashDumps(): void {
+  if (nativeCrashDumpsProcessed) {
+    return;
+  }
+  nativeCrashDumpsProcessed = true;
+
+  const crashDumpsDir = app.getPath("crashDumps");
+  // Where we keep dumps we've already reported, for later examination. Under
+  // userData (not inside crashDumpsDir) so it stays separate from Crashpad's
+  // own dump dirs and isn't picked up by the scan above.
+  const retainDir = path.join(app.getPath("userData"), "dyad-crash-reports");
+  try {
+    fs.mkdirSync(retainDir, { recursive: true });
+  } catch (error) {
+    // Without the retain dir, moving a dump would fail and drop it. Leave the
+    // dumps in place and try again on the next launch.
+    logger.warn("Could not create crash reports directory:", error);
+    return;
+  }
+
+  for (const file of listDumpFilesRecursive(crashDumpsDir)) {
+    const summary = parseMinidumpSummary(file);
+    if (summary) {
+      logger.info(
+        "Native crash:",
+        summary.ptype,
+        summary.crashReason,
+        summary.faultingModule,
+        summary.faultingOffset,
+      );
+      if (summary.ptype === "browser" && !pendingNativeBrowserCrash) {
+        pendingNativeBrowserCrash = summary;
+        // A browser-process dump is direct evidence of a main-process crash, so
+        // report it even if the crash sentinel wasn't written (e.g. a crash
+        // during early startup).
+        pendingCrashDetected = true;
+      }
+    }
+    // Retain (timestamp-named) so it can be examined/exported and isn't
+    // re-summarized next launch; this also drains Crashpad's dump dirs.
+    moveDump(file, path.join(retainDir, crashReportName(file)));
+  }
+  pruneDumps(retainDir, MAX_RETAINED_DUMPS);
+}
+
+// A readable, sortable dump name from the crash time (the dump's mtime), with a
+// short id suffix to avoid collisions: crash-2026-06-07T20-41-55-123Z-9ac4d4e8.dmp
+function crashReportName(dumpPath: string): string {
+  let mtimeMs = Date.now();
+  try {
+    mtimeMs = fs.statSync(dumpPath).mtimeMs;
+  } catch {
+    // fall back to now
+  }
+  const ts = new Date(mtimeMs).toISOString().replace(/[:.]/g, "-");
+  const id = path.basename(dumpPath).slice(0, 8);
+  return `crash-${ts}-${id}.dmp`;
+}
 const deepLinkQueue = createDeepLinkQueue(handleDeepLinkReturn);
 
 // Load environment variables from .env file
@@ -107,6 +215,10 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  // Linux: claim the dyad:// scheme for this build (best-effort, see module).
+  // setAsDefaultProtocolClient above is unreliable on Linux.
+  void registerDyadProtocolLinux();
+
   // Load React DevTools extension in development
   if (process.env.NODE_ENV === "development") {
     let chromeUserData: string;
@@ -202,6 +314,9 @@ export async function onReady() {
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
 
+  // Remove GitHub tokens that older versions embedded in git remote URLs
+  scrubGithubTokenFromRemotes();
+
   const settings = await readEffectiveSettings();
 
   // Add dyad-apps directory to git safe.directory (required for Windows).
@@ -232,6 +347,10 @@ export async function onReady() {
       logger.warn("Last known performance:", settings.lastKnownPerformance);
       pendingForceCloseData = settings.lastKnownPerformance;
     }
+
+    // The chat that was streaming when the crash happened, if any, so the
+    // dialog can offer a one-click upload of it.
+    pendingActiveChatId = readCrashSentinel()?.activeChatId ?? null;
   }
 
   // TODO: Remove legacyIsRunningCrash migration path after a few releases
@@ -244,6 +363,26 @@ export async function onReady() {
   }
 
   writeCrashSentinel();
+
+  // Record the GPU's feature status (is compositing / WebGL hardware-accelerated)
+  // on every dump written from here on. It's useful context when reading a dump,
+  // since the GPU driver can be involved in a crash. This can't go in
+  // crashReporter.start's globalExtra because the status isn't known until the
+  // app is ready; addExtraParameter adds it to all later dumps.
+  try {
+    const gpu = app.getGPUFeatureStatus();
+    crashReporter.addExtraParameter(
+      "gpu_compositing",
+      String(gpu?.gpu_compositing ?? "unknown"),
+    );
+    crashReporter.addExtraParameter(
+      "gpu_webgl",
+      String(gpu?.webgl ?? "unknown"),
+    );
+  } catch (error) {
+    logger.warn("Could not read GPU status for crash context:", error);
+  }
+  logger.info("Crash dumps directory:", app.getPath("crashDumps"));
 
   // Start performance monitoring
   startPerformanceMonitoring();
@@ -373,6 +512,7 @@ declare global {
 
 let mainWindow: BrowserWindow | null = null;
 let pendingForceCloseData: any = null;
+let pendingActiveChatId: number | null = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
 
@@ -426,6 +566,9 @@ const createWindow = () => {
   let devToolsReloadedCount = 0;
 
   mainWindow.webContents.on("did-finish-load", () => {
+    // Must run on first load, else deep links break in dev.
+    deepLinkQueue.markReady();
+
     if (process.env.NODE_ENV === "development") {
       // In dev, wait until AFTER the DevTools-triggered reload before sending the message
       if (devToolsReloadedCount === 0) {
@@ -434,7 +577,10 @@ const createWindow = () => {
       }
     }
 
-    deepLinkQueue.markReady();
+    // Summarize native crash minidumps before sending app:crash_detected. If
+    // the main process crashed natively, that summary becomes the crash cause
+    // reported in app:crash_detected.
+    processNativeCrashDumps();
 
     // Send force-close once after the correct load
     if (pendingCrashDetected && !forceCloseMessageSent) {
@@ -446,8 +592,14 @@ const createWindow = () => {
           ...(pendingForceCloseData && {
             performanceData: pendingForceCloseData,
           }),
+          ...(pendingActiveChatId != null && {
+            activeChatId: pendingActiveChatId,
+          }),
         });
       }
+
+      const nativeCrash = pendingNativeBrowserCrash;
+      pendingNativeBrowserCrash = null;
 
       sendTelemetryEvent("app:crash_detected", {
         // Mark as error so renderer PostHog before_send sampling does not
@@ -466,9 +618,19 @@ const createWindow = () => {
           time_since_last_heartbeat_ms:
             Date.now() - pendingForceCloseData.timestamp,
         }),
+        // "native" when a main-process minidump was captured for this crash,
+        // else "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
+        crash_cause: nativeCrash ? "native" : "unknown",
+        ...(nativeCrash && {
+          crash_reason: nativeCrash.crashReason,
+          exception_code: nativeCrash.exceptionCode,
+          faulting_module: nativeCrash.faultingModule,
+          faulting_offset: nativeCrash.faultingOffset,
+        }),
       });
 
       pendingForceCloseData = null;
+      pendingActiveChatId = null;
       pendingCrashDetected = false;
     }
 
@@ -709,6 +871,19 @@ if (IS_TEST_BUILD) {
         deepLinkQueue.handle(url);
       }
     });
+
+    // On a cold start the deep link arrives in this instance's argv (the
+    // .desktop Exec %u), and second-instance only fires for later launches, so
+    // drain the initial argv here. The queue holds it until the app is ready.
+    // This runs on every launch, so match by dyad:// prefix to ignore the
+    // normal (no-deep-link) startup args.
+    const initialDeepLink = process.argv.find((arg) =>
+      arg.startsWith("dyad://"),
+    );
+    if (initialDeepLink) {
+      deepLinkQueue.handle(initialDeepLink);
+    }
+
     startAppWhenReady();
   }
 }

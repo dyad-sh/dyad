@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSetAtom } from "jotai";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,27 +10,53 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, Upload } from "lucide-react";
+import { ipc } from "@/ipc/types";
+import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 
-interface ForceCloseDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  performanceData?: {
-    timestamp: number;
-    memoryUsageMB: number;
-    cpuUsagePercent?: number;
-    systemMemoryUsageMB?: number;
-    systemMemoryTotalMB?: number;
-    systemCpuPercent?: number;
-  };
+interface ForceClosePerformanceData {
+  timestamp: number;
+  memoryUsageMB: number;
+  cpuUsagePercent?: number;
+  systemMemoryUsageMB?: number;
+  systemMemoryTotalMB?: number;
+  systemCpuPercent?: number;
 }
 
-export function ForceCloseDialog({
-  isOpen,
-  onClose,
-  performanceData,
-}: ForceCloseDialogProps) {
+// Self-contained: subscribes to the force-close event and owns its open state.
+// Mounted in the root layout so it appears regardless of the current route,
+// e.g. when the app restores a chat on startup.
+export function ForceCloseDialog() {
   const { t } = useTranslation(["home", "common"]);
+  const setHelpDialog = useSetAtom(helpDialogAtom);
+  const [isOpen, setIsOpen] = useState(false);
+  const [performanceData, setPerformanceData] = useState<
+    ForceClosePerformanceData | undefined
+  >(undefined);
+  // The chat that was streaming at crash time (from the crash sentinel). When
+  // present, we offer a one-click upload of that session.
+  const [activeChatId, setActiveChatId] = useState<number | undefined>(
+    undefined,
+  );
+
+  useEffect(() => {
+    const unsubscribe = ipc.events.system.onForceCloseDetected((data) => {
+      setPerformanceData(data.performanceData);
+      setActiveChatId(data.activeChatId);
+      setIsOpen(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const onClose = () => setIsOpen(false);
+
+  const handleUploadChatSession = () => {
+    if (activeChatId == null) return;
+    onClose();
+    setHelpDialog({ open: true, uploadChatId: activeChatId });
+  };
+
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
@@ -129,6 +157,12 @@ export function ForceCloseDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
+          {activeChatId != null && (
+            <Button variant="outline" onClick={handleUploadChatSession}>
+              <Upload className="h-4 w-4" />
+              {t("home:help.uploadChatSession")}
+            </Button>
+          )}
           <AlertDialogAction onClick={onClose}>
             {t("common:ok")}
           </AlertDialogAction>

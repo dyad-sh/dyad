@@ -17,12 +17,8 @@ import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { createFromTemplate } from "./createFromTemplate";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { slugifyAppPath } from "@/shared/slugify";
-import {
-  gitAdd,
-  gitCommit,
-  hasStagedChanges,
-  isGitStatusClean,
-} from "../utils/git_utils";
+import { getGitUncommittedFiles } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 
 const logger = log.scope("template_handlers");
 
@@ -177,9 +173,11 @@ export function registerTemplateHandlers() {
       }
 
       const oldAbsPath = getDyadAppPath(appRecord.path);
-      const isClean = await isGitStatusClean({ path: oldAbsPath });
+      const uncommittedFiles = await getGitUncommittedFiles({
+        path: oldAbsPath,
+      });
 
-      if (!isClean) {
+      if (uncommittedFiles.length > 0) {
         throw new DyadError(
           "Cannot change templates after local modifications. Please commit or discard your changes first.",
           DyadErrorKind.Precondition,
@@ -251,9 +249,12 @@ export function registerTemplateHandlers() {
           // git.
           await ensureDyadGitignored(newAbsPath);
 
-          await gitAdd({ path: newAbsPath, filepath: "." });
+          const commitHash = await gitService.stageAllAndCommitIfChanged({
+            path: newAbsPath,
+            message: `Apply ${templateId} template`,
+          });
 
-          if (!(await hasStagedChanges({ path: newAbsPath }))) {
+          if (commitHash === null) {
             // No-op: template produced the same content. Discard the new
             // dir, leave the DB pointing at the old path, and report no
             // apply. The dev server still needs restart if we stopped it.
@@ -264,11 +265,6 @@ export function registerTemplateHandlers() {
             await fsPromises.rm(newAbsPath, { recursive: true, force: true });
             return { applied: false, needsRestart: appWasStopped };
           }
-
-          const commitHash = await gitCommit({
-            path: newAbsPath,
-            message: `Apply ${templateId} template`,
-          });
 
           await db
             .update(apps)
@@ -346,24 +342,21 @@ export function registerTemplateHandlers() {
       // re-apply it before staging to keep internal metadata out of git.
       await ensureDyadGitignored(workingPath);
 
-      await gitAdd({ path: workingPath, filepath: "." });
-
       // If the clear-and-recopy produced no effective diff (e.g. the template
       // is already applied), skip the commit — git would fail with "nothing to
       // commit" — and report that no change was applied. The dev server still
       // needs to be restarted if we stopped it above, otherwise the preview
       // would remain offline after a no-op apply.
-      if (!(await hasStagedChanges({ path: workingPath }))) {
+      const commitHash = await gitService.stageAllAndCommitIfChanged({
+        path: workingPath,
+        message: `Apply ${templateId} template`,
+      });
+      if (commitHash === null) {
         logger.info(
           `Template ${templateId} already applied to app ${appId}, skipping commit`,
         );
         return { applied: false, needsRestart: appWasStopped };
       }
-
-      const commitHash = await gitCommit({
-        path: workingPath,
-        message: `Apply ${templateId} template`,
-      });
 
       if (chatId) {
         const chatRecord = await db.query.chats.findFirst({

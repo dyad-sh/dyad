@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   removeUnusedAppPackageFiles,
   removeUnusedCopiedResources,
@@ -154,6 +154,144 @@ describe("removeUnusedCopiedResources", () => {
     await expect(fs.readFile(keptLocale, "utf8")).resolves.toBe("fixture");
     await expectMissing(removedLocale);
     await expectMissing(gitLfs);
+  });
+
+  it("removes Git Credential Manager from the Unix git distribution but keeps git's own files", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-cleanup-gcm-unix-"),
+    );
+    tempDirectories.push(buildPath);
+
+    const gitCorePath = path.join(
+      buildPath,
+      "dyad.app/Contents/Resources/git/libexec/git-core",
+    );
+
+    const removedFiles = [
+      "git-credential-manager",
+      "git-credential-manager.dll",
+      "git-credential-manager.deps.json",
+      "git-credential-manager.runtimeconfig.json",
+      "System.Private.CoreLib.dll",
+      "Avalonia.Base.dll",
+      "libcoreclr.dylib",
+      "libSkiaSharp.dylib",
+      "libSystem.Native.dylib",
+      "createdump",
+      // .NET satellite assembly in a locale subdirectory
+      "ja/System.CommandLine.resources.dll",
+    ].map((file) => path.join(gitCorePath, file));
+
+    const keptFiles = [
+      "git",
+      "git-credential",
+      "git-credential-store",
+      "git-credential-cache",
+      "git-remote-https",
+      "mergetools/vimdiff",
+    ].map((file) => path.join(gitCorePath, file));
+
+    await Promise.all(
+      [...removedFiles, ...keptFiles].map((file) => writeFixtureFile(file)),
+    );
+
+    await removeUnusedCopiedResources(buildPath, "darwin");
+
+    await Promise.all(removedFiles.map((file) => expectMissing(file)));
+    // The emptied GCM locale directory is removed as well
+    await expectMissing(path.join(gitCorePath, "ja"));
+    for (const file of keptFiles) {
+      await expect(fs.readFile(file, "utf8")).resolves.toBe("fixture");
+    }
+  });
+
+  it("surfaces unexpected errors when removing empty Unix GCM locale directories", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-cleanup-gcm-rmdir-"),
+    );
+    tempDirectories.push(buildPath);
+
+    const gitCorePath = path.join(
+      buildPath,
+      "dyad.app/Contents/Resources/git/libexec/git-core",
+    );
+    await writeFixtureFile(
+      path.join(gitCorePath, "ja/System.CommandLine.resources.dll"),
+    );
+
+    const error = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
+    const rmdirSpy = vi.spyOn(fs, "rmdir").mockRejectedValueOnce(error);
+
+    await expect(removeUnusedCopiedResources(buildPath, "darwin")).rejects.toBe(
+      error,
+    );
+
+    rmdirSpy.mockRestore();
+  });
+
+  it("removes Git Credential Manager and git-lfs from the Windows git distribution but keeps git's DLLs", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-cleanup-gcm-win-"),
+    );
+    tempDirectories.push(buildPath);
+
+    const gitPath = path.join(buildPath, "resources/git");
+    const binPath = path.join(gitPath, "mingw64/bin");
+
+    const removedFiles = [
+      "git-credential-manager.exe",
+      "git-credential-manager.exe.config",
+      "git-credential-helper-selector.exe",
+      "gcmcore.dll",
+      "GitHub.dll",
+      "Atlassian.Bitbucket.dll",
+      "Avalonia.dll",
+      "Avalonia.Markup.Xaml.dll",
+      "av_libglesv2.dll",
+      "Microsoft.Identity.Client.dll",
+      "System.CommandLine.dll",
+      "MicroCom.Runtime.dll",
+      "SkiaSharp.dll",
+      "libSkiaSharp.dll",
+      "HarfBuzzSharp.dll",
+      "msalruntime_x86.dll",
+    ].map((file) => path.join(binPath, file));
+
+    const keptFiles = [
+      "git.exe",
+      "git-remote-https.exe",
+      "libcurl-4.dll",
+      "libssl-3-x64.dll",
+      "libpcre2-8-0.dll",
+      "zlib1.dll",
+    ].map((file) => path.join(binPath, file));
+
+    const gitLfs = path.join(gitPath, "mingw64/libexec/git-core/git-lfs.exe");
+    const gitconfig = path.join(gitPath, "etc/gitconfig");
+
+    await Promise.all([
+      ...[...removedFiles, ...keptFiles, gitLfs].map((file) =>
+        writeFixtureFile(file),
+      ),
+      writeFixtureFile(
+        gitconfig,
+        "[core]\n\tsymlinks = false\n[credential]\n\thelper = manager\n[http]\n\tsslBackend = schannel\n",
+      ),
+    ]);
+
+    await removeUnusedCopiedResources(buildPath, "win32");
+
+    await Promise.all(removedFiles.map((file) => expectMissing(file)));
+    await expectMissing(gitLfs);
+    for (const file of keptFiles) {
+      await expect(fs.readFile(file, "utf8")).resolves.toBe("fixture");
+    }
+    const scrubbedConfig = await fs.readFile(gitconfig, "utf8");
+    expect(scrubbedConfig).not.toContain("helper = manager");
+    expect(scrubbedConfig).toContain("symlinks = false");
+    expect(scrubbedConfig).toContain("sslBackend = schannel");
   });
 
   it("removes unsupported top-level Electron locale paks on non-mac targets", async () => {

@@ -42,6 +42,7 @@ import {
 import {
   AgentToolName,
   buildAgentToolSet,
+  shouldIncludeTool,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
 } from "./tool_definitions";
@@ -82,7 +83,10 @@ import {
   parseAiMessagesJson,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
-import { buildExecuteSandboxScriptDescription } from "./tools/execute_sandbox_script";
+import {
+  buildExecuteSandboxScriptDescription,
+  executeSandboxScriptTool,
+} from "./tools/execute_sandbox_script";
 import { collectMcpToolDefs } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
@@ -245,9 +249,13 @@ function buildChatMessageHistory(
 function injectReferencedAppsReminder(
   messageHistory: ModelMessage[],
   referencedApps: readonly { appName: string }[],
+  options: { codeExplorerAvailable: boolean },
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
-  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+  const searchTool = options.codeExplorerAvailable
+    ? "`explore_code`"
+    : "`code_search`";
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, ${searchTool}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
 
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];
@@ -684,48 +692,44 @@ export async function handleLocalAgentStream(
       abortSignal: abortController.signal,
     };
 
-    // Build tool set (agent tools + MCP tools)
-    // In read-only mode, only include read-only tools and skip MCP tools
-    // (since we can't determine if MCP tools modify state)
-    // In plan mode, only include planning tools (read + questionnaire/plan tools)
-    const agentTools = buildAgentToolSet(ctx, {
+    // Read-only mode includes only read-only tools (MCP tools are skipped since
+    // we can't tell if they modify state); plan mode includes only planning tools.
+    const buildOptions = {
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
-    });
-    // MCP tool exposure depends on whether `execute_sandbox_script` is
-    // available this turn (which already accounts for the sandbox-script
-    // experiment AND `isSandboxSupportedPlatform()` via the tool's
-    // `isEnabled` check):
-    //   - Sandbox tool present and not read-only/plan-mode: MCP tools are
-    //     NOT registered individually with the LLM. Instead, they're
-    //     exposed as host functions inside `execute_sandbox_script`'s
-    //     MustardScript sandbox so the model can chain MCP calls and file
-    //     reads in one script. The tool's description is built per-turn so
-    //     the type declarations reflect the currently enabled MCP servers.
-    //   - Otherwise (experiment off, platform unsupported, read-only, or
-    //     plan mode): fall back to the pre-branch behavior of registering
-    //     each MCP tool individually with the LLM, so users do not lose
-    //     access to their MCP servers on a platform that cannot run the
-    //     sandbox.
+    };
+    // search_mcp_tools.isEnabled reads this during the build, so set it up front
+    // from the same predicate the builder uses. Off in read-only and plan mode.
     const mcpInSandboxEnabled =
       !readOnly &&
       !planModeOnly &&
-      agentTools.execute_sandbox_script !== undefined;
+      shouldIncludeTool(executeSandboxScriptTool, ctx, buildOptions);
     ctx.mcpToolsEnabled = mcpInSandboxEnabled;
+
+    const agentTools = buildAgentToolSet(ctx, buildOptions);
+    // When execute_sandbox_script is active, MCP tools become sandbox host
+    // functions instead of individual LLM tools. With tool-search on, the sandbox
+    // description points the model at search_mcp_tools instead of inlining them.
+    const useMcpToolSearch =
+      mcpInSandboxEnabled &&
+      !!settings.enableMcpToolSearch &&
+      agentTools.search_mcp_tools != undefined;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
-    if (agentTools.execute_sandbox_script !== undefined) {
+    if (agentTools.execute_sandbox_script != undefined) {
       // Initialize with the MustardScript-only preamble so even a
       // failure in the MCP collection path below leaves the model with
       // the syntax + file-inspection docs (rather than the one-line
       // placeholder from the tool definition).
       agentTools.execute_sandbox_script.description =
-        await buildExecuteSandboxScriptDescription([]);
+        await buildExecuteSandboxScriptDescription([], {
+          useSearch: useMcpToolSearch,
+        });
       if (mcpInSandboxEnabled) {
         try {
           // Collect MCP defs once per turn and reuse for both the
@@ -735,7 +739,9 @@ export async function handleLocalAgentStream(
           const defs = await collectMcpToolDefs();
           ctx.mcpToolDefs = defs;
           agentTools.execute_sandbox_script.description =
-            await buildExecuteSandboxScriptDescription(defs);
+            await buildExecuteSandboxScriptDescription(defs, {
+              useSearch: useMcpToolSearch,
+            });
         } catch (e) {
           logger.warn(
             "Failed to build dynamic execute_sandbox_script description",
@@ -745,6 +751,7 @@ export async function handleLocalAgentStream(
       }
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
+    const registeredToolNames = new Set(Object.keys(allTools));
 
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
@@ -767,7 +774,9 @@ export async function handleLocalAgentStream(
     // `<system-reminder>` block (instead of appending it to the system prompt)
     // so the system prompt stays static and cacheable.
     if (referencedApps.length > 0) {
-      injectReferencedAppsReminder(messageHistory, referencedApps);
+      injectReferencedAppsReminder(messageHistory, referencedApps, {
+        codeExplorerAvailable: agentTools.explore_code != undefined,
+      });
     }
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
@@ -962,6 +971,10 @@ export async function handleLocalAgentStream(
                     injectReferencedAppsReminder(
                       compactedMessageHistory,
                       referencedApps,
+                      {
+                        codeExplorerAvailable:
+                          agentTools.explore_code != undefined,
+                      },
                     );
                   }
                   baseMessageHistoryCount = compactedMessageHistory.length;
@@ -1194,7 +1207,9 @@ export async function handleLocalAgentStream(
                   const entry = getOrCreateStreamingEntry(part.id);
                   if (entry) {
                     entry.argsAccumulated += part.delta;
-                    const toolDef = findToolDefinition(entry.toolName);
+                    const toolDef = registeredToolNames.has(entry.toolName)
+                      ? findToolDefinition(entry.toolName)
+                      : undefined;
                     if (toolDef?.buildXml) {
                       const argsPartial = parsePartialJson(
                         entry.argsAccumulated,
@@ -1212,7 +1227,9 @@ export async function handleLocalAgentStream(
                   // Build final XML and persist
                   const entry = getOrCreateStreamingEntry(part.id);
                   if (entry) {
-                    const toolDef = findToolDefinition(entry.toolName);
+                    const toolDef = registeredToolNames.has(entry.toolName)
+                      ? findToolDefinition(entry.toolName)
+                      : undefined;
                     if (toolDef?.buildXml) {
                       const argsPartial = parsePartialJson(
                         entry.argsAccumulated,

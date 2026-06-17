@@ -29,7 +29,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
-import { HelpDialog } from "./HelpDialog"; // Import the new dialog
+import { HelpDialog } from "./HelpDialog";
+import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { SettingsList } from "./SettingsList";
 import { LibraryList } from "./LibraryList";
 import {
@@ -147,7 +148,7 @@ export function AppSidebar() {
   const [hoverState, setHoverState] =
     useState<AppSidebarHoverState>("no-hover");
   const expandedByHover = useRef(false);
-  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
+  const setHelpDialog = useSetAtom(helpDialogAtom);
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
@@ -266,12 +267,9 @@ export function AppSidebar() {
               icon={HelpCircle}
               label="Help"
               isExpanded={state === "expanded"}
-              onClick={() => setIsHelpDialogOpen(true)}
+              onClick={() => setHelpDialog({ open: true })}
             />
-            <HelpDialog
-              isOpen={isHelpDialogOpen}
-              onClose={() => setIsHelpDialogOpen(false)}
-            />
+            <HelpDialog />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

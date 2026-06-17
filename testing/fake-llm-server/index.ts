@@ -17,6 +17,7 @@ import {
   handleGitPush,
   handleGetPushEvents,
   handleClearPushEvents,
+  handleResetRepos,
   handleRepoCollaborators,
 } from "./githubHandler";
 
@@ -542,6 +543,7 @@ app.post("/github/api/orgs/:org/repos", handleOrgRepos);
 // GitHub test endpoints for verifying push operations
 app.get("/github/api/test/push-events", handleGetPushEvents);
 app.post("/github/api/test/clear-push-events", handleClearPushEvents);
+app.post("/github/api/test/reset-repos", handleResetRepos);
 
 // GitHub Git endpoints - intercept all paths with /github/git prefix
 app.all("/github/git/*", handleGitPush);

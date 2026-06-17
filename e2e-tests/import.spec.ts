@@ -17,8 +17,8 @@ testSkipIfWindows("import app", async ({ po }) => {
     .fill("minimal-imported-app");
   await po.page.getByRole("button", { name: "Import" }).click();
 
-  await po.previewPanel.snapshotPreview();
-  await po.snapshotMessages();
+  await po.previewPanel.snapshotPreview({ name: "import-app-1.aria.yml" });
+  await po.snapshotMessages({ name: "import-app-2" });
 });
 
 testSkipIfWindows("import app with AI rules", async ({ po }) => {
@@ -37,12 +37,17 @@ testSkipIfWindows("import app with AI rules", async ({ po }) => {
     .fill("minimal-imported-app");
   await po.page.getByRole("button", { name: "Import" }).click();
 
-  await po.previewPanel.snapshotPreview();
+  await po.previewPanel.snapshotPreview({
+    name: "import-app-with-AI-rules-1.aria.yml",
+  });
 
   await po.sendPrompt("[dump]");
 
   await po.snapshotServerDump();
-  await po.snapshotMessages({ replaceDumpPath: true });
+  await po.snapshotMessages({
+    name: "import-app-with-AI-rules-2",
+    replaceDumpPath: true,
+  });
 });
 
 testSkipIfWindows("import app with custom commands", async ({ po }) => {

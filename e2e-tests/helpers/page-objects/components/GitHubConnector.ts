@@ -116,6 +116,13 @@ export class GitHubConnector {
     return await response.json();
   }
 
+  async resetRepos() {
+    const response = await this.page.request.post(
+      `http://localhost:${this.fakeLlmPort}/github/api/test/reset-repos`,
+    );
+    return await response.json();
+  }
+
   async getPushEvents(repo?: string) {
     const url = repo
       ? `http://localhost:${this.fakeLlmPort}/github/api/test/push-events?repo=${repo}`

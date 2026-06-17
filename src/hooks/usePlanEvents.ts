@@ -9,7 +9,7 @@ import {
   pendingQuestionnaireAtom,
   planAcceptInNewChatByChatIdAtom,
 } from "@/atoms/planAtoms";
-import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import {
   planEventClient,
@@ -29,7 +29,6 @@ export function usePlanEvents() {
   const setPlanState = useSetAtom(planStateAtom);
   const planState = useAtomValue(planStateAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setPendingPlanImplementation = useSetAtom(
     pendingPlanImplementationAtom,
   );
@@ -41,12 +40,10 @@ export function usePlanEvents() {
 
   // Use refs for values accessed in event handlers to avoid stale closures
   const planStateRef = useRef(planState);
-  const selectedAppIdRef = useRef(selectedAppId);
   const acceptInNewChatByChatIdRef = useRef(acceptInNewChatByChatId);
 
   // Keep refs up to date
   planStateRef.current = planState;
-  selectedAppIdRef.current = selectedAppId;
   acceptInNewChatByChatIdRef.current = acceptInNewChatByChatId;
 
   useEffect(() => {
@@ -117,10 +114,9 @@ export function usePlanEvents() {
         setPreviewMode("preview");
 
         // Create a new chat for implementation and navigate to it
-        if (!planData || !selectedAppIdRef.current) {
+        if (!planData) {
           console.error("Failed to start implementation: missing plan data", {
             hasContent: !!planData,
-            hasAppId: !!selectedAppIdRef.current,
           });
           return;
         }
@@ -129,7 +125,7 @@ export function usePlanEvents() {
         let planSlug: string;
         try {
           planSlug = await planClient.createPlan({
-            appId: selectedAppIdRef.current,
+            appId: payload.appId,
             chatId: payload.chatId,
             title: planData.title,
             summary: planData.summary,
@@ -152,13 +148,16 @@ export function usePlanEvents() {
 
           if (useNewChat) {
             const newChatId = await ipc.chat.createChat({
-              appId: selectedAppIdRef.current,
+              appId: payload.appId,
               initialChatMode: "local-agent",
             });
 
             // Navigate to the new chat
             setSelectedChatId(newChatId);
-            navigate({ to: "/chat", search: { id: newChatId } });
+            navigate({
+              to: "/chat",
+              search: { id: newChatId, appId: payload.appId },
+            });
             implementationChatId = newChatId;
           } else {
             // Continue in the same chat: switch its stored mode to Agent so the

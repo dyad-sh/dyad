@@ -1,0 +1,23 @@
+import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
+
+export const fixture: LocalAgentFixture = {
+  description: "Explore configured TS/JS code with the compiler-backed code explorer",
+  turns: [
+    {
+      text: "I'll inspect the TypeScript symbols around the app component.",
+      toolCalls: [
+        {
+          name: "explore_code",
+          args: {
+            query: "App component render flow",
+            intent: "explain",
+            max_files: 4,
+          },
+        },
+      ],
+    },
+    {
+      text: "The report shows that src/main.tsx mounts App and src/App.tsx owns the visible page content.",
+    },
+  ],
+};

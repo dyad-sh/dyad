@@ -16,9 +16,23 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-const engineFetchMock = vi.fn();
+const mocks = vi.hoisted(() => ({
+  engineFetch: vi.fn(),
+  readSettings: vi.fn(() => ({ enableCodeExplorer: false })),
+  isCodeExplorerReady: vi.fn(() => false),
+}));
+
+const engineFetchMock = mocks.engineFetch;
 vi.mock("./engine_fetch", () => ({
   engineFetch: (...args: any[]) => engineFetchMock(...args),
+}));
+
+vi.mock("@/main/settings", () => ({
+  readSettings: mocks.readSettings,
+}));
+
+vi.mock("@/ipc/processors/code_explorer", () => ({
+  isCodeExplorerReady: mocks.isCodeExplorerReady,
 }));
 
 function mockEngineResponse(relevantFiles: string[]) {
@@ -78,6 +92,8 @@ describe("codeSearchTool", () => {
     };
 
     engineFetchMock.mockReset();
+    mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
+    mocks.isCodeExplorerReady.mockReturnValue(false);
   });
 
   afterEach(async () => {
@@ -97,6 +113,38 @@ describe("codeSearchTool", () => {
         app_name: "other-app",
       });
       expect(parsed.app_name).toBe("other-app");
+    });
+  });
+
+  describe("isEnabled", () => {
+    it("is enabled for Dyad Pro when the code explorer setting is disabled", () => {
+      mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
+      mocks.isCodeExplorerReady.mockReturnValue(true);
+
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+    });
+
+    it("is disabled when explore_code is enabled and ready for the current app", () => {
+      mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
+      mocks.isCodeExplorerReady.mockReturnValue(true);
+
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(false);
+    });
+
+    it("stays enabled when the code explorer setting is on but the app is not ready", () => {
+      mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
+      mocks.isCodeExplorerReady.mockReturnValue(false);
+
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+    });
+
+    it("is disabled for non-Pro regardless of explorer readiness", () => {
+      mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
+      mocks.isCodeExplorerReady.mockReturnValue(false);
+
+      expect(
+        codeSearchTool.isEnabled?.({ ...mockContext, isDyadPro: false }),
+      ).toBe(false);
     });
   });
 

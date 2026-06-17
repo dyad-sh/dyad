@@ -38,11 +38,14 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
+  autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enablePnpmMinimumReleaseAgeWarning:
     "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
+  enableMcpToolSearch: "setting-enable-mcp-tool-search",
+  enableCodeExplorer: "setting-enable-code-explorer",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -432,6 +435,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.advanced,
     sectionLabel: "Advanced",
   },
+  {
+    id: SETTING_IDS.autoApproveNonSchemaSql,
+    label: "Skip consent for non-schema SQL",
+    description:
+      "In Agent mode, skip the consent prompt when running SQL that does not change the database schema. Schema changes still require approval",
+    keywords: [
+      "sql",
+      "database",
+      "consent",
+      "approve",
+      "schema",
+      "agent",
+      "supabase",
+      "neon",
+    ],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
 
   // Experiments
   {
@@ -452,6 +473,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Experiments",
   },
   {
+    id: SETTING_IDS.enableMcpToolSearch,
+    label: "Enable MCP tool search",
+    description:
+      "Let the agent search for MCP tools on demand instead of listing every tool in its context. Requires sandbox script execution",
+    keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
     id: SETTING_IDS.enablePnpmMinimumReleaseAgeWarning,
     label: "Enable pnpm upgrade warning",
     description:
@@ -464,6 +494,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "warning",
       "toast",
       "upgrade",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableCodeExplorer,
+    label: "Enable code explorer (Pro)",
+    description:
+      "Let the local agent explore configured TypeScript projects with a compiler-backed code graph",
+    keywords: [
+      "code",
+      "explorer",
+      "typescript",
+      "symbol",
+      "graph",
+      "agent",
+      "tools",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

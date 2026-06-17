@@ -36,6 +36,7 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
+import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -248,6 +249,12 @@ export default function SettingsPage() {
                   servers are always enabled in Agent mode.
                 </div>
               </div>
+              <div
+                id={SETTING_IDS.autoApproveNonSchemaSql}
+                className="space-y-1 mt-4"
+              >
+                <AutoApproveSqlSwitch />
+              </div>
             </div>
           </div>
 
@@ -268,6 +275,40 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div id={SETTING_IDS.enableCloudSandbox} className="space-y-1">
                 <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.enableMcpToolSearch}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-mcp-tool-search"
+                    aria-label="Enable MCP tool search"
+                    disabled={!settings?.enableSandboxScriptExecution}
+                    checked={
+                      !!settings?.enableMcpToolSearch &&
+                      !!settings?.enableSandboxScriptExecution
+                    }
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableMcpToolSearch: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-mcp-tool-search">
+                    Enable MCP tool search
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  In Agent mode, let the model search for MCP tools instead of
+                  listing every tool's definition in its context. Requires
+                  sandbox script execution.
+                </div>
+                {!settings?.enableSandboxScriptExecution && (
+                  <div className="text-xs text-amber-500">
+                    Cannot be enabled unless sandbox script execution is on.
+                  </div>
+                )}
               </div>
               <div
                 id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
@@ -315,6 +356,30 @@ export default function SettingsPage() {
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Show an app selector in the home chat input to start a chat
                   referencing an existing app.
+                </div>
+              </div>
+              <div
+                id={SETTING_IDS.enableCodeExplorer}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-code-explorer"
+                    aria-label="Enable code explorer (Pro)"
+                    checked={!!settings?.enableCodeExplorer}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableCodeExplorer: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-code-explorer">
+                    Enable code explorer (Pro)
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Let the local agent explore configured TypeScript projects
+                  with a compiler-backed code graph.
                 </div>
               </div>
             </div>

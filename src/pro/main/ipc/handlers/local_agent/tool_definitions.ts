@@ -31,11 +31,13 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
+import { exploreCodeTool } from "./tools/explore_code";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
 import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
+import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
@@ -83,6 +85,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   listFilesTool,
   grepTool,
   codeSearchTool,
+  exploreCodeTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,
@@ -98,6 +101,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   runTypeChecksTool,
   readGuideTool,
   executeSandboxScriptTool,
+  searchMcpToolsTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,
@@ -175,6 +179,23 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   return tool?.defaultConsent ?? "ask";
 }
 
+/**
+ * When autoApproveNonSchemaSql is enabled, execute_sql calls that the schema
+ * classifier determines do not mutate the schema run without a consent prompt.
+ * Schema-mutating SQL still requires consent.
+ */
+export function shouldAutoApproveAgentTool(params: {
+  toolName: AgentToolName;
+  metadata?: { sqlMutatesSchema?: boolean } | null;
+  autoApproveNonSchemaSql: boolean | undefined;
+}): boolean {
+  return (
+    params.toolName === "execute_sql" &&
+    params.metadata?.sqlMutatesSchema === false &&
+    params.autoApproveNonSchemaSql === true
+  );
+}
+
 export function getAgentToolConsent(toolName: AgentToolName): AgentToolConsent {
   const settings = readSettings();
   const stored = settings.agentToolConsents?.[toolName];
@@ -230,6 +251,16 @@ export async function requireAgentToolConsent(
       "Should not ask for consent for a tool marked as 'never'",
       DyadErrorKind.Internal,
     );
+
+  if (
+    shouldAutoApproveAgentTool({
+      toolName: params.toolName,
+      metadata: params.metadata,
+      autoApproveNonSchemaSql: readSettings().autoApproveNonSchemaSql,
+    })
+  ) {
+    return true;
+  }
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
@@ -410,6 +441,56 @@ const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
 
 /**
+ * Whether a tool belongs in this turn's tool set. Single source of truth for
+ * inclusion, so a caller that needs the answer before the set is built (e.g. a
+ * tool whose availability depends on another tool) can ask the same question
+ * the builder does.
+ */
+export function shouldIncludeTool(
+  tool: (typeof TOOL_DEFINITIONS)[number],
+  ctx: AgentContext,
+  options: BuildAgentToolSetOptions = {},
+): boolean {
+  if (getAgentToolConsent(tool.name) === "never") {
+    return false;
+  }
+  // In plan mode, skip state-modifying tools unless they're planning-specific.
+  if (
+    options.planModeOnly &&
+    tool.modifiesState &&
+    !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+  ) {
+    return false;
+  }
+  // Skip plan-mode-only tools when NOT in plan mode.
+  if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  // Skip Pro-only tools in basic agent mode.
+  if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  // Skip app blueprint tools when the feature is disabled.
+  if (
+    options.enableAppBlueprint === false &&
+    APP_BLUEPRINT_TOOLS.has(tool.name)
+  ) {
+    return false;
+  }
+  // In read-only mode, skip tools that modify state.
+  if (options.readOnly && tool.modifiesState) {
+    return false;
+  }
+  if (tool.isEnabled) {
+    const enabled = tool.isEnabled(ctx);
+    if (!enabled) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
 export function buildAgentToolSet(
@@ -419,44 +500,7 @@ export function buildAgentToolSet(
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
-    const consent = getAgentToolConsent(tool.name);
-    if (consent === "never") {
-      continue;
-    }
-
-    // In plan mode, skip state-modifying tools unless they're planning-specific
-    if (
-      options.planModeOnly &&
-      tool.modifiesState &&
-      !PLANNING_SPECIFIC_TOOLS.has(tool.name)
-    ) {
-      continue;
-    }
-
-    // Skip plan-mode-only tools when NOT in plan mode
-    if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
-      continue;
-    }
-
-    // Skip Pro-only tools in basic agent mode
-    if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
-      continue;
-    }
-
-    // Skip app blueprint tools when the feature is disabled
-    if (
-      options.enableAppBlueprint === false &&
-      APP_BLUEPRINT_TOOLS.has(tool.name)
-    ) {
-      continue;
-    }
-
-    // In read-only mode, skip tools that modify state
-    if (options.readOnly && tool.modifiesState) {
-      continue;
-    }
-
-    if (tool.isEnabled && !tool.isEnabled(ctx)) {
+    if (!shouldIncludeTool(tool, ctx, options)) {
       continue;
     }
 

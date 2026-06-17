@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM

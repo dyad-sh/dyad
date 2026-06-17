@@ -42,14 +42,17 @@ testSkipIfWindows(
     const originalChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
     expect(originalChatId).toBeTruthy();
 
-    // The original chat has two user messages, so two restore buttons.
+    // Importing the "minimal" fixture triggers an auto-generated AI_RULES.md
+    // user message, so the chat has three user messages total: AI_RULES, turn
+    // A, turn B. Each gets a restore button.
     const restoreButtons = po.page.getByTestId("restore-to-message-button");
-    await expect(restoreButtons).toHaveCount(2);
+    await expect(restoreButtons).toHaveCount(3);
 
-    // Click the undo icon on the SECOND user message (turn B), then confirm in
-    // the dialog. This should create a new chat with [userA, assistantA] and
-    // revert the app to the state after turn A (i.e. before turn B).
-    await restoreButtons.nth(1).click();
+    // Click the undo icon on the LAST user message (turn B), then confirm in
+    // the dialog. This should create a new chat with [AI_RULES, userA,
+    // assistantA] and revert the app to the state after turn A (i.e. before
+    // turn B).
+    await restoreButtons.nth(2).click();
     await po.page.getByTestId("confirm-restore-to-message-button").click();
 
     // We should navigate to a brand-new chat.
@@ -59,9 +62,9 @@ testSkipIfWindows(
       expect(newChatId).not.toBe(originalChatId);
     }).toPass({ timeout: Timeout.LONG });
 
-    // The new chat contains only the messages before turn B: exactly one user
-    // message (turn A), hence one restore button.
-    await expect(restoreButtons).toHaveCount(1);
+    // The new chat contains only the messages before turn B: the AI_RULES
+    // user message and turn A, so two restore buttons.
+    await expect(restoreButtons).toHaveCount(2);
 
     const messagesList = po.page.getByTestId("messages-list");
     await expect(messagesList).toContainText("tc=write-index");

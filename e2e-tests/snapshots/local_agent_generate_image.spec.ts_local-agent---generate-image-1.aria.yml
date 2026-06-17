@@ -1,9 +1,11 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/generate-image
 - paragraph: I'll generate a hero image for your landing page.
 - button "Image Generation A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines View generated image"

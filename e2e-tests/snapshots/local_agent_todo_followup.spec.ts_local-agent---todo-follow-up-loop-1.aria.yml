@@ -1,9 +1,11 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/todo-followup-loop
 - paragraph: I'll create a todo list to track these tasks.Let me create the utility function first.
 - 'button "helper.ts src/utils/helper.ts Edit Summary: Create helper utility function"'

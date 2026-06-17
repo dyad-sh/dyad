@@ -1,8 +1,10 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
+- button "Restore to this point"
 - paragraph: tc=partial-write
 - paragraph: START OF MESSAGE
 - 'button "new-file.ts src/new-file.ts Edit Summary: this file will be partially written"'

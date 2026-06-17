@@ -63,6 +63,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       // Track if this is a shared module
       if (isSharedServerModule(args.path)) {
         ctx.isSharedModulesChanged = true;
+        ctx.sharedServerModulePaths.push(args.path);
       }
 
       if (fs.existsSync(fullFilePath)) {

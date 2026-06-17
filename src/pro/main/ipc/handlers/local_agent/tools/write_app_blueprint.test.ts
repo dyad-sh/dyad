@@ -56,6 +56,8 @@ function createAgentContext(chatId: number): AgentContext {
     frameworkType: null,
     messageId: 1,
     isSharedModulesChanged: false,
+    sharedServerModulePaths: [],
+    pendingFunctionDeploys: [],
     todos: [] as Todo[],
     dyadRequestId: "test-request",
     fileEditTracker: {},

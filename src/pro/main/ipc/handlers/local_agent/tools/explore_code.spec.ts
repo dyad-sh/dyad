@@ -233,6 +233,8 @@ function createMockContext(appPath: string): AgentContext {
     frameworkType: null,
     messageId: 3,
     isSharedModulesChanged: false,
+    sharedServerModulePaths: [],
+    pendingFunctionDeploys: [],
     chatSummary: undefined,
     todos: [],
     dyadRequestId: "request-id",

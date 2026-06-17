@@ -48,6 +48,12 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       // Track if this involves shared modules
       if (isSharedServerModule(args.from) || isSharedServerModule(args.to)) {
         ctx.isSharedModulesChanged = true;
+        if (isSharedServerModule(args.from)) {
+          ctx.sharedServerModulePaths.push(args.from);
+        }
+        if (isSharedServerModule(args.to)) {
+          ctx.sharedServerModulePaths.push(args.to);
+        }
       }
 
       // Ensure target directory exists
@@ -84,16 +90,21 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
               );
             }
           }
-          if (isServerFunction(args.to) && !ctx.isSharedModulesChanged) {
-            try {
-              await deploySupabaseFunction({
-                supabaseProjectId: ctx.supabaseProjectId,
-                functionName: getFunctionNameFromPath(args.to),
-                appPath: ctx.appPath,
-                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-              });
-            } catch (error) {
-              return `File renamed, but failed to deploy Supabase function: ${error}`;
+          if (isServerFunction(args.to)) {
+            const functionName = getFunctionNameFromPath(args.to);
+            if (!ctx.isSharedModulesChanged) {
+              try {
+                await deploySupabaseFunction({
+                  supabaseProjectId: ctx.supabaseProjectId,
+                  functionName,
+                  appPath: ctx.appPath,
+                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                });
+              } catch (error) {
+                return `File renamed, but failed to deploy Supabase function: ${error}`;
+              }
+            } else {
+              ctx.pendingFunctionDeploys.push(functionName);
             }
           }
         }

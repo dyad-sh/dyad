@@ -10,6 +10,8 @@ import {
 } from "@/ipc/utils/git_utils";
 import {
   deployAllSupabaseFunctions,
+  deploySupabaseFunctions,
+  getSupabaseFunctionsAffectedBySharedModules,
   type SupabaseDeployProgress,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
@@ -66,23 +68,27 @@ export async function deployAllFunctionsIfNeeded(
     | "supabaseProjectId"
     | "supabaseOrganizationSlug"
     | "isSharedModulesChanged"
+    | "sharedServerModulePaths"
+    | "pendingFunctionDeploys"
     | "onXmlStream"
     | "onXmlComplete"
   >,
 ): Promise<FileOperationResult> {
-  if (!ctx.supabaseProjectId || !ctx.isSharedModulesChanged) {
+  if (
+    !ctx.supabaseProjectId ||
+    (!ctx.isSharedModulesChanged && ctx.pendingFunctionDeploys.length === 0)
+  ) {
     return { success: true };
   }
 
   try {
-    logger.info("Shared modules changed, redeploying all Supabase functions");
     const settings = readSettings();
-    const deployErrors = await deployAllSupabaseFunctions({
+    const deployArgs = {
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-      onProgress: (progress) => {
+      onProgress: (progress: SupabaseDeployProgress) => {
         const statusXml = renderSupabaseDeployStatus(progress);
         if (progress.phase === "finished" || progress.phase === "failed") {
           ctx.onXmlComplete(statusXml);
@@ -90,7 +96,54 @@ export async function deployAllFunctionsIfNeeded(
           ctx.onXmlStream(statusXml);
         }
       },
-    });
+    };
+
+    let deployErrors: string[];
+    if (ctx.isSharedModulesChanged) {
+      const impact =
+        ctx.sharedServerModulePaths.length > 0
+          ? await getSupabaseFunctionsAffectedBySharedModules({
+              appPath: ctx.appPath,
+              changedSharedModulePaths: ctx.sharedServerModulePaths,
+            })
+          : ({
+              kind: "all",
+              reason: "changed_shared_paths_missing",
+            } as const);
+
+      if (impact.kind === "partial") {
+        const functionNames = Array.from(
+          new Set([...impact.functionNames, ...ctx.pendingFunctionDeploys]),
+        );
+        if (functionNames.length === 0) {
+          logger.info(
+            "Shared modules changed, no affected Supabase functions to redeploy",
+          );
+          return { success: true };
+        }
+        logger.info(
+          `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`,
+        );
+        deployErrors = await deploySupabaseFunctions({
+          ...deployArgs,
+          functionNames,
+        });
+      } else {
+        logger.info(
+          `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
+        );
+        deployErrors = await deployAllSupabaseFunctions(deployArgs);
+      }
+    } else {
+      const functionNames = Array.from(new Set(ctx.pendingFunctionDeploys));
+      logger.info(
+        `Redeploying pending Supabase functions: ${functionNames.join(", ")}`,
+      );
+      deployErrors = await deploySupabaseFunctions({
+        ...deployArgs,
+        functionNames,
+      });
+    }
 
     if (deployErrors.length > 0) {
       return {

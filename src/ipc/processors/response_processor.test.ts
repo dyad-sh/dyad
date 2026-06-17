@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   readSettingsMock: vi.fn(),
   executeSupabaseSqlMock: vi.fn(),
   writeMigrationFileMock: vi.fn(),
+  deployAllSupabaseFunctionsMock: vi.fn(),
+  deploySupabaseFunctionsMock: vi.fn(),
+  getSupabaseFunctionsAffectedBySharedModulesMock: vi.fn(),
 }));
 
 const {
@@ -19,6 +22,9 @@ const {
   readSettingsMock,
   executeSupabaseSqlMock,
   writeMigrationFileMock,
+  deployAllSupabaseFunctionsMock,
+  deploySupabaseFunctionsMock,
+  getSupabaseFunctionsAffectedBySharedModulesMock,
 } = mocks;
 
 const dbUpdates: Array<Record<string, unknown>> = [];
@@ -82,6 +88,20 @@ vi.mock("../../supabase_admin/supabase_management_client", () => ({
   deploySupabaseFunction: vi.fn(),
 }));
 
+vi.mock("../../supabase_admin/supabase_utils", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../supabase_admin/supabase_utils")
+  >("../../supabase_admin/supabase_utils");
+
+  return {
+    ...actual,
+    deployAllSupabaseFunctions: mocks.deployAllSupabaseFunctionsMock,
+    deploySupabaseFunctions: mocks.deploySupabaseFunctionsMock,
+    getSupabaseFunctionsAffectedBySharedModules:
+      mocks.getSupabaseFunctionsAffectedBySharedModulesMock,
+  };
+});
+
 vi.mock("../utils/file_utils", () => ({
   writeMigrationFile: mocks.writeMigrationFileMock,
 }));
@@ -113,6 +133,12 @@ describe("processFullResponseActions add dependency errors", () => {
     writeMigrationFileMock.mockResolvedValue(
       "supabase/migrations/0000_test.sql",
     );
+    deployAllSupabaseFunctionsMock.mockResolvedValue([]);
+    deploySupabaseFunctionsMock.mockResolvedValue([]);
+    getSupabaseFunctionsAffectedBySharedModulesMock.mockResolvedValue({
+      kind: "partial",
+      functionNames: ["alpha"],
+    });
 
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
@@ -279,5 +305,80 @@ describe("processFullResponseActions add dependency errors", () => {
       changedPaths: ["src/file1.js"],
       deletedPaths: ["src/missing.js"],
     });
+  });
+
+  it("deploys shared-affected and skipped direct Supabase functions", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: null,
+      },
+    } as any);
+
+    const result = await processFullResponseActions(
+      `
+      <dyad-write path="supabase/functions/_shared/foo.ts">export const foo = 1;</dyad-write>
+      <dyad-write path="supabase/functions/beta/index.ts">Deno.serve(() => new Response("ok"));</dyad-write>
+      `,
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(result).toMatchObject({ updatedFiles: true });
+    expect(
+      getSupabaseFunctionsAffectedBySharedModulesMock,
+    ).toHaveBeenCalledWith({
+      appPath: "/mock/apps/test-app",
+      changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+    });
+    expect(deploySupabaseFunctionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionNames: ["alpha", "beta"],
+      }),
+    );
+    expect(deployAllSupabaseFunctionsMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to all Supabase functions for ambiguous shared dependency analysis", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    getSupabaseFunctionsAffectedBySharedModulesMock.mockResolvedValueOnce({
+      kind: "all",
+      reason: "typescript_not_installed",
+    });
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: "org",
+      },
+    } as any);
+
+    await processFullResponseActions(
+      '<dyad-write path="supabase/functions/_shared/foo.ts">export const foo = 1;</dyad-write>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(deployAllSupabaseFunctionsMock).toHaveBeenCalledWith({
+      appPath: "/mock/apps/test-app",
+      supabaseProjectId: "supabase-project",
+      supabaseOrganizationSlug: "org",
+      skipPruneEdgeFunctions: false,
+    });
+    expect(deploySupabaseFunctionsMock).not.toHaveBeenCalled();
   });
 });

@@ -4,10 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deployAllSupabaseFunctions,
+  deploySupabaseFunctions,
   type SupabaseDeployProgress,
 } from "@/supabase_admin/supabase_utils";
 import {
   bulkUpdateFunctions,
+  deleteSupabaseFunction,
   deploySupabaseFunction,
   listSupabaseFunctions,
 } from "@/supabase_admin/supabase_management_client";
@@ -20,6 +22,7 @@ vi.mock("@/supabase_admin/supabase_management_client", async () => {
   return {
     ...actual,
     bulkUpdateFunctions: vi.fn(),
+    deleteSupabaseFunction: vi.fn(),
     deploySupabaseFunction: vi.fn(),
     listSupabaseFunctions: vi.fn(),
   };
@@ -126,5 +129,79 @@ describe("deployAllSupabaseFunctions progress", () => {
       "finished",
     );
     expect(progressEvents.at(-1)?.phase).toBe("failed");
+  });
+
+  it("bundles and activates only the requested subset with subset progress totals", async () => {
+    const progressEvents: SupabaseDeployProgress[] = [];
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        functionNames: ["alpha"],
+        onProgress: (progress) => progressEvents.push(progress),
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "alpha",
+        bundleOnly: true,
+      }),
+    );
+    expect(bulkUpdateFunctions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functions: [expect.objectContaining({ slug: "alpha" })],
+      }),
+    );
+    expect(progressEvents.every((event) => event.total === 1)).toBe(true);
+    expect(progressEvents.at(-1)?.phase).toBe("finished");
+  });
+
+  it("prunes against the complete local function set during partial deploys", async () => {
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "alpha" },
+      { slug: "beta" },
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: "org",
+        skipPruneEdgeFunctions: false,
+        functionNames: ["alpha"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deleteSupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-fn",
+      organizationSlug: "org",
+    });
+  });
+
+  it("does not prune during partial deploys when pruning is skipped", async () => {
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        functionNames: ["alpha"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).not.toHaveBeenCalled();
   });
 });

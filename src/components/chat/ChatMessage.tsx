@@ -1,4 +1,4 @@
-import type { Message } from "@/ipc/types";
+import { ipc, type Message } from "@/ipc/types";
 import {
   DyadMarkdownParser,
   VanillaMarkdownParser,
@@ -210,8 +210,7 @@ const ChatMessage = ({
   const attachmentSize: AttachmentSize =
     attachments.length === 1 ? "lg" : attachments.length <= 3 ? "md" : "sm";
 
-  const showRestoreButton =
-    message.role === "user" && hasUserText && !isStreaming;
+  const showRestoreButton = message.role === "user" && hasUserText;
 
   const handleRestoreToMessage = async () => {
     if (appId == null || selectedChatId == null) {
@@ -219,6 +218,9 @@ const ChatMessage = ({
     }
     setShowRestoreConfirm(false);
     try {
+      if (isStreaming) {
+        await ipc.chat.cancelStream(selectedChatId);
+      }
       const result = await restoreToMessage({
         chatId: selectedChatId,
         messageId: message.id,
@@ -286,9 +288,9 @@ const ChatMessage = ({
                         Restore to this point?
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will restore your app and chat to the state before
-                        this message in a new chat. Your current chat will not
-                        be changed.
+                        {isStreaming
+                          ? "This will stop the current response, then restore your app and chat to the state before this message in a new chat. Your current chat will not be changed."
+                          : "This will restore your app and chat to the state before this message in a new chat. Your current chat will not be changed."}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

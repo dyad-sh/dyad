@@ -148,20 +148,20 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
     // Deploy Supabase function if applicable
     if (ctx.supabaseProjectId && isServerFunction(args.file_path)) {
-      const functionName = extractFunctionNameFromPath(args.file_path);
-      if (!ctx.isSharedModulesChanged) {
-        try {
+      try {
+        const functionName = extractFunctionNameFromPath(args.file_path);
+        if (!ctx.isSharedModulesChanged) {
           await deploySupabaseFunction({
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,
             appPath: ctx.appPath,
             organizationSlug: ctx.supabaseOrganizationSlug ?? null,
           });
-        } catch (error) {
-          return `Search-replace applied, but failed to deploy Supabase function: ${error}`;
+        } else {
+          ctx.pendingFunctionDeploys.push(functionName);
         }
-      } else {
-        ctx.pendingFunctionDeploys.push(functionName);
+      } catch (error) {
+        return `Search-replace applied, but failed to deploy Supabase function: ${error}`;
       }
     }
 

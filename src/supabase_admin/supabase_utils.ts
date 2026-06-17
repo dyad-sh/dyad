@@ -541,8 +541,11 @@ export async function deploySupabaseFunctions({
   try {
     const allValidFunctions = await getValidSupabaseFunctionNames(functionsDir);
     const allValidFunctionNames = new Set(allValidFunctions);
-    const validFunctions = functionNames
-      ? Array.from(new Set(functionNames)).filter((functionName) => {
+    const requestedFunctionNames = functionNames
+      ? Array.from(new Set(functionNames))
+      : undefined;
+    const validFunctions = requestedFunctionNames
+      ? requestedFunctionNames.filter((functionName) => {
           if (allValidFunctionNames.has(functionName)) {
             return true;
           }
@@ -559,8 +562,13 @@ export async function deploySupabaseFunctions({
 
     if (validFunctions.length === 0) {
       logger.info("No valid functions to deploy");
-      if (!functionNames) {
+      if (!requestedFunctionNames) {
         return [];
+      }
+      if (requestedFunctionNames.length > 0) {
+        const errorMessage = `Requested Supabase functions do not exist locally or are missing index.ts: ${requestedFunctionNames.join(", ")}`;
+        logger.error(errorMessage);
+        return [errorMessage];
       }
     }
 

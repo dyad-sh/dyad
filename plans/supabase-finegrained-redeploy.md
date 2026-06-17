@@ -150,7 +150,7 @@ function loadAppTypeScript(
 ): typeof import("typescript") | null {
   try {
     const tsPath = require.resolve("typescript", { paths: [appPath] });
-    return createRequire(__filename)(tsPath);
+    return createRequire(import.meta.url)(tsPath);
   } catch {
     return null; // typescript_not_installed
   }

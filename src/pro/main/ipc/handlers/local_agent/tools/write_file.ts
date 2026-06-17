@@ -67,7 +67,12 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
 
     // Deploy Supabase function if applicable
     if (ctx.supabaseProjectId && isServerFunction(args.path)) {
-      const functionName = extractFunctionNameFromPath(args.path);
+      let functionName: string;
+      try {
+        functionName = extractFunctionNameFromPath(args.path);
+      } catch {
+        return `Successfully wrote ${args.path}`;
+      }
       if (!ctx.isSharedModulesChanged) {
         try {
           await deploySupabaseFunction({

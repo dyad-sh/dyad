@@ -196,7 +196,7 @@ describe("getSupabaseFunctionsAffectedBySharedModules", () => {
     await fs.symlink(
       path.dirname(require.resolve("typescript/package.json")),
       path.join(nodeModulesPath, "typescript"),
-      "dir",
+      process.platform === "win32" ? "junction" : "dir",
     );
   }
 

@@ -10,16 +10,13 @@ import {
   deleteSupabaseFunction,
 } from "../../../../../../supabase_admin/supabase_management_client";
 import {
+  extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("rename_file");
-
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
 
 const renameFileSchema = z.object({
   from: z.string().describe("The current file path"),
@@ -80,7 +77,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             try {
               await deleteSupabaseFunction({
                 supabaseProjectId: ctx.supabaseProjectId,
-                functionName: getFunctionNameFromPath(args.from),
+                functionName: extractFunctionNameFromPath(args.from),
                 organizationSlug: ctx.supabaseOrganizationSlug ?? null,
               });
             } catch (error) {
@@ -91,9 +88,9 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             }
           }
           if (isServerFunction(args.to)) {
-            const functionName = getFunctionNameFromPath(args.to);
             if (!ctx.isSharedModulesChanged) {
               try {
+                const functionName = extractFunctionNameFromPath(args.to);
                 await deploySupabaseFunction({
                   supabaseProjectId: ctx.supabaseProjectId,
                   functionName,
@@ -104,7 +101,13 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                 return `File renamed, but failed to deploy Supabase function: ${error}`;
               }
             } else {
-              ctx.pendingFunctionDeploys.push(functionName);
+              try {
+                ctx.pendingFunctionDeploys.push(
+                  extractFunctionNameFromPath(args.to),
+                );
+              } catch (error) {
+                return `File renamed, but failed to deploy Supabase function: ${error}`;
+              }
             }
           }
         }

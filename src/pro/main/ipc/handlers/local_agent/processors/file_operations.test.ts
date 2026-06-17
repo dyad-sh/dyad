@@ -93,4 +93,29 @@ describe("deployAllFunctionsIfNeeded", () => {
     );
     expect(mocks.deploySupabaseFunctions).not.toHaveBeenCalled();
   });
+
+  it("calls the deploy helper for empty partial impact so pruning can still run", async () => {
+    mocks.getSupabaseFunctionsAffectedBySharedModules.mockResolvedValueOnce({
+      kind: "partial",
+      functionNames: [],
+    });
+
+    const result = await deployAllFunctionsIfNeeded({
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: true,
+      sharedServerModulePaths: ["supabase/functions/_shared/unused.ts"],
+      pendingFunctionDeploys: [],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(mocks.deploySupabaseFunctions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionNames: [],
+      }),
+    );
+  });
 });

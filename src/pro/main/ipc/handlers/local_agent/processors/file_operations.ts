@@ -115,14 +115,10 @@ export async function deployAllFunctionsIfNeeded(
         const functionNames = Array.from(
           new Set([...impact.functionNames, ...ctx.pendingFunctionDeploys]),
         );
-        if (functionNames.length === 0) {
-          logger.info(
-            "Shared modules changed, no affected Supabase functions to redeploy",
-          );
-          return { success: true };
-        }
         logger.info(
-          `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`,
+          functionNames.length > 0
+            ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
+            : "Shared modules changed, no affected Supabase functions to bundle",
         );
         deployErrors = await deploySupabaseFunctions({
           ...deployArgs,

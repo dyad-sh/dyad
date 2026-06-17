@@ -186,6 +186,48 @@ describe("deployAllSupabaseFunctions progress", () => {
     });
   });
 
+  it("runs pruning without bundling when the requested subset is empty", async () => {
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "alpha" },
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: "org",
+        skipPruneEdgeFunctions: false,
+        functionNames: [],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).not.toHaveBeenCalled();
+    expect(bulkUpdateFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-fn",
+      organizationSlug: "org",
+    });
+  });
+
+  it("returns an error when a non-empty requested subset has no valid local functions", async () => {
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        functionNames: ["missing"],
+      }),
+    ).resolves.toEqual([
+      "Requested Supabase functions do not exist locally or are missing index.ts: missing",
+    ]);
+
+    expect(deploySupabaseFunction).not.toHaveBeenCalled();
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+  });
+
   it("does not prune during partial deploys when pruning is skipped", async () => {
     vi.mocked(listSupabaseFunctions).mockResolvedValue([
       { slug: "old-fn" },

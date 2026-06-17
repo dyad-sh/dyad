@@ -633,17 +633,15 @@ export async function processFullResponseActions(
             const functionNames = Array.from(
               new Set([...impact.functionNames, ...pendingFunctionDeploys]),
             );
-            if (functionNames.length === 0) {
-              deployErrors = [];
-            } else {
-              logger.info(
-                `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`,
-              );
-              deployErrors = await deploySupabaseFunctions({
-                ...deployArgs,
-                functionNames,
-              });
-            }
+            logger.info(
+              functionNames.length > 0
+                ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
+                : "Shared modules changed, no affected Supabase functions to bundle",
+            );
+            deployErrors = await deploySupabaseFunctions({
+              ...deployArgs,
+              functionNames,
+            });
           } else {
             logger.info(
               `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
@@ -673,7 +671,7 @@ export async function processFullResponseActions(
       } catch (error) {
         errors.push({
           message:
-            "Failed to redeploy all Supabase functions after shared module change",
+            "Failed to redeploy Supabase functions after shared module change",
           error: error,
         });
       }

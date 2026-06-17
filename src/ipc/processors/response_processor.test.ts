@@ -381,4 +381,38 @@ describe("processFullResponseActions add dependency errors", () => {
     });
     expect(deploySupabaseFunctionsMock).not.toHaveBeenCalled();
   });
+
+  it("calls partial deploy helper for empty shared impact so pruning can still run", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    getSupabaseFunctionsAffectedBySharedModulesMock.mockResolvedValueOnce({
+      kind: "partial",
+      functionNames: [],
+    });
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: null,
+      },
+    } as any);
+
+    await processFullResponseActions(
+      '<dyad-write path="supabase/functions/_shared/unused.ts">export const unused = 1;</dyad-write>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(deploySupabaseFunctionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionNames: [],
+      }),
+    );
+    expect(deployAllSupabaseFunctionsMock).not.toHaveBeenCalled();
+  });
 });

@@ -179,6 +179,23 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   return tool?.defaultConsent ?? "ask";
 }
 
+/**
+ * When autoApproveNonSchemaSql is enabled, execute_sql calls that the schema
+ * classifier determines do not mutate the schema run without a consent prompt.
+ * Schema-mutating SQL still requires consent.
+ */
+export function shouldAutoApproveAgentTool(params: {
+  toolName: AgentToolName;
+  metadata?: { sqlMutatesSchema?: boolean } | null;
+  autoApproveNonSchemaSql: boolean | undefined;
+}): boolean {
+  return (
+    params.toolName === "execute_sql" &&
+    params.metadata?.sqlMutatesSchema === false &&
+    params.autoApproveNonSchemaSql === true
+  );
+}
+
 export function getAgentToolConsent(toolName: AgentToolName): AgentToolConsent {
   const settings = readSettings();
   const stored = settings.agentToolConsents?.[toolName];
@@ -234,6 +251,16 @@ export async function requireAgentToolConsent(
       "Should not ask for consent for a tool marked as 'never'",
       DyadErrorKind.Internal,
     );
+
+  if (
+    shouldAutoApproveAgentTool({
+      toolName: params.toolName,
+      metadata: params.metadata,
+      autoApproveNonSchemaSql: readSettings().autoApproveNonSchemaSql,
+    })
+  ) {
+    return true;
+  }
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;

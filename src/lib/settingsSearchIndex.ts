@@ -38,6 +38,7 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
+  autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enablePnpmMinimumReleaseAgeWarning:
@@ -431,6 +432,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Enable MCP servers for Build mode",
     description: "Allow MCP servers to be used when in Build mode",
     keywords: ["mcp", "build", "agent", "tools", "server"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+  {
+    id: SETTING_IDS.autoApproveNonSchemaSql,
+    label: "Skip consent for non-schema SQL",
+    description:
+      "In Agent mode, skip the consent prompt when running SQL that does not change the database schema. Schema changes still require approval",
+    keywords: [
+      "sql",
+      "database",
+      "consent",
+      "approve",
+      "schema",
+      "agent",
+      "supabase",
+      "neon",
+    ],
     sectionId: SECTION_IDS.advanced,
     sectionLabel: "Advanced",
   },

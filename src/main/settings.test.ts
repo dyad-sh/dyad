@@ -88,6 +88,7 @@ describe("readSettings", () => {
       );
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
+          "autoApproveNonSchemaSql": true,
           "autoExpandPreviewPanel": true,
           "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
@@ -501,6 +502,7 @@ describe("readSettings", () => {
 
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
+          "autoApproveNonSchemaSql": true,
           "autoExpandPreviewPanel": true,
           "enableAppBlueprint": true,
           "enableAutoFixProblems": false,

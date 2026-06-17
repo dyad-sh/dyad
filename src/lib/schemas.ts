@@ -344,6 +344,7 @@ const BaseUserSettingsFields = {
   selectedTemplateId: z.string(),
   selectedThemeId: z.string().optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
+  autoApproveNonSchemaSql: z.boolean().optional(),
   skipPruneEdgeFunctions: z.boolean().optional(),
   acceptedCommunityCode: z.boolean().optional(),
   zoomLevel: ZoomLevelSchema.optional(),

@@ -49,6 +49,19 @@ describe("removeUnusedAppPackageFiles", () => {
       nodePtyPath,
       "build/Release/obj.target/pty/src/unix/pty.o",
     );
+    const windowsBuildDepsArtifact = path.join(
+      nodePtyPath,
+      "build/deps/winpty/src/Release/obj/winpty-agent/Agent.obj",
+    );
+    const windowsDebugArtifacts = [
+      "build/Release/winpty-agent.iobj",
+      "build/Release/winpty-agent.ipdb",
+      "build/Release/winpty-agent.tlog",
+      "build/Release/pty.vcxproj",
+      "build/Release/pty.vcxproj.filters",
+      "build/Release/winpty.lib",
+      "build/Release/winpty.exp",
+    ].map((file) => path.join(nodePtyPath, file));
 
     await Promise.all([
       writeFixtureFile(supportedBinary),
@@ -57,6 +70,8 @@ describe("removeUnusedAppPackageFiles", () => {
       writeFixtureFile(rebuiltBinary),
       writeFixtureFile(spawnHelper),
       writeFixtureFile(buildIntermediate),
+      writeFixtureFile(windowsBuildDepsArtifact),
+      ...windowsDebugArtifacts.map((file) => writeFixtureFile(file)),
       writeFixtureFile(path.join(nodePtyPath, "src/index.ts")),
       writeFixtureFile(path.join(nodePtyPath, "lib/index.js.map")),
     ]);
@@ -69,6 +84,8 @@ describe("removeUnusedAppPackageFiles", () => {
     await expectMissing(unsupportedBinary);
     await expectMissing(debugSymbols);
     await expectMissing(buildIntermediate);
+    await expectMissing(windowsBuildDepsArtifact);
+    await Promise.all(windowsDebugArtifacts.map((file) => expectMissing(file)));
     await expectMissing(path.join(nodePtyPath, "src/index.ts"));
     await expectMissing(path.join(nodePtyPath, "lib/index.js.map"));
   });
@@ -97,6 +114,14 @@ describe("removeUnusedAppPackageFiles", () => {
       betterSqlitePath,
       "build/Release/obj.target/sqlite3/sqlite3.o",
     );
+    const windowsBuildArtifacts = [
+      "build/Release/better_sqlite3.iobj",
+      "build/Release/better_sqlite3.ipdb",
+      "build/Release/better_sqlite3.pdb",
+      "build/Release/sqlite3.lib",
+      "build/Release/test_extension.pdb",
+      "build/Release/test_extension.node",
+    ].map((file) => path.join(betterSqlitePath, file));
 
     await Promise.all([
       writeFixtureFile(runtimeJs),
@@ -104,6 +129,7 @@ describe("removeUnusedAppPackageFiles", () => {
       writeFixtureFile(sqliteSource),
       writeFixtureFile(staticLibrary),
       writeFixtureFile(buildObject),
+      ...windowsBuildArtifacts.map((file) => writeFixtureFile(file)),
       writeFixtureFile(path.join(betterSqlitePath, "src/addon.cpp")),
     ]);
 
@@ -114,6 +140,7 @@ describe("removeUnusedAppPackageFiles", () => {
     await expectMissing(sqliteSource);
     await expectMissing(staticLibrary);
     await expectMissing(buildObject);
+    await Promise.all(windowsBuildArtifacts.map((file) => expectMissing(file)));
     await expectMissing(path.join(betterSqlitePath, "src/addon.cpp"));
   });
 });
@@ -257,6 +284,7 @@ describe("removeUnusedCopiedResources", () => {
       "libSkiaSharp.dll",
       "HarfBuzzSharp.dll",
       "msalruntime_x86.dll",
+      "scalar.exe",
     ].map((file) => path.join(binPath, file));
 
     const keptFiles = [
@@ -269,10 +297,11 @@ describe("removeUnusedCopiedResources", () => {
     ].map((file) => path.join(binPath, file));
 
     const gitLfs = path.join(gitPath, "mingw64/libexec/git-core/git-lfs.exe");
+    const cmdScalar = path.join(gitPath, "cmd/scalar.exe");
     const gitconfig = path.join(gitPath, "etc/gitconfig");
 
     await Promise.all([
-      ...[...removedFiles, ...keptFiles, gitLfs].map((file) =>
+      ...[...removedFiles, ...keptFiles, gitLfs, cmdScalar].map((file) =>
         writeFixtureFile(file),
       ),
       writeFixtureFile(
@@ -285,6 +314,7 @@ describe("removeUnusedCopiedResources", () => {
 
     await Promise.all(removedFiles.map((file) => expectMissing(file)));
     await expectMissing(gitLfs);
+    await expectMissing(cmdScalar);
     for (const file of keptFiles) {
       await expect(fs.readFile(file, "utf8")).resolves.toBe("fixture");
     }

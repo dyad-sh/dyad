@@ -2,7 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/useSettings";
 
-export function AutoApproveSqlExperimentSwitch() {
+export function AutoApproveSqlSwitch() {
   const { settings, updateSettings } = useSettings();
   const isEnabled = !!settings?.autoApproveNonSchemaSql;
 

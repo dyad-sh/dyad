@@ -61,6 +61,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableNativeGit: true,
   enableSandboxScriptExecution: true,
   enableCodeExplorer: true,
+  autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: false,

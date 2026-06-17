@@ -11,7 +11,7 @@ export function AutoApproveSqlSwitch() {
       <div className="flex items-center space-x-2">
         <Switch
           id="enable-auto-approve-non-schema-sql"
-          aria-label="Auto-approve non-schema SQL"
+          aria-label="Skip consent for non-schema SQL"
           checked={isEnabled}
           onCheckedChange={(checked) => {
             updateSettings({
@@ -20,7 +20,7 @@ export function AutoApproveSqlSwitch() {
           }}
         />
         <Label htmlFor="enable-auto-approve-non-schema-sql">
-          Auto-approve non-schema SQL
+          Skip consent for non-schema SQL
         </Label>
       </div>
       <div className="text-sm text-gray-500 dark:text-gray-400">

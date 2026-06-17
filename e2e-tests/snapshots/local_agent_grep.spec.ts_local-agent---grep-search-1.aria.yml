@@ -1,9 +1,11 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/grep-search
 - paragraph: I'll search for 'createRoot' in the codebase to find where the React app is initialized.
 - button "GREP \"createRoot\" (2 matches)" [expanded]

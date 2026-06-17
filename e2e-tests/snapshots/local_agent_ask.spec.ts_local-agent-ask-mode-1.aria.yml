@@ -1,9 +1,11 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/ask-read-file
 - paragraph: Let me read the file to explain its contents.
 - text: Read src/App.tsx

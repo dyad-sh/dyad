@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: "Fix these 2 TypeScript compile-time errors:"
 - list:
   - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)

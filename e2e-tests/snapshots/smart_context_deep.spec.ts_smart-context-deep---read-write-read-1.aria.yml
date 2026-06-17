@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"
 - text: Read src/pages/Index.tsx
@@ -5,6 +6,7 @@
 - button "Copy"
 - text: auto
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=update-index-1
 - paragraph: First read
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: replace file"'
@@ -12,6 +14,7 @@
 - text: auto
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"
 - text: Read src/pages/Index.tsx
@@ -19,6 +22,7 @@
 - button "Copy"
 - text: auto
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: "[dump]"
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy"

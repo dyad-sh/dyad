@@ -1,9 +1,11 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/connection-drop
 - paragraph: I'll create a file for you.
 - 'button "recovered.ts src/recovered.ts Edit Summary: File created after connection recovery"'

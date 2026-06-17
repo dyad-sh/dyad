@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=create-ts-errors-complex
 - paragraph: Tests delete-rename-write order
 - text: main.tsx Delete src/main.tsx

@@ -90,6 +90,7 @@ interface VersionRowProps {
   isCheckingOutVersion: boolean;
   isResolvingPreviewBranch: boolean;
   isRevertingVersion: boolean;
+  isAnyVersionMutationPending: boolean;
   showNoteEditor: boolean;
   shouldAutoFocusNote: boolean;
   versionNumberByOid: Map<string, number>;
@@ -111,6 +112,7 @@ function VersionRow({
   isCheckingOutVersion,
   isResolvingPreviewBranch,
   isRevertingVersion,
+  isAnyVersionMutationPending,
   showNoteEditor,
   shouldAutoFocusNote,
   versionNumberByOid,
@@ -123,7 +125,10 @@ function VersionRow({
   onRestoreVersion,
 }: VersionRowProps) {
   const isRestoreDisabled =
-    isRevertingVersion || isCheckingOutVersion || isResolvingPreviewBranch;
+    isRevertingVersion ||
+    isCheckingOutVersion ||
+    isResolvingPreviewBranch ||
+    isAnyVersionMutationPending;
   const trimmedSearchQuery = searchQuery.trim();
   const displayMessage =
     version.message &&
@@ -354,6 +359,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     isRevertingVersion,
     setVersionFavorite,
     setVersionNote,
+    isAnyVersionMutationPending,
   } = useVersions(appId);
 
   const [selectedVersionId, setSelectedVersionId] = useAtom(
@@ -980,6 +986,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
                   isCheckingOutVersion={isCheckingOutVersion}
                   isResolvingPreviewBranch={isResolvingPreviewBranch}
                   isRevertingVersion={isRevertingVersion}
+                  isAnyVersionMutationPending={isAnyVersionMutationPending}
                   showNoteEditor={
                     expandedNoteVersionIds.has(version.oid) || !!version.note
                   }

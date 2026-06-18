@@ -19,9 +19,13 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
 
-// Shared key so every per-message `useVersions` instance can observe whether
-// *any* restore-to-message is in flight (via `useIsMutating`), not just its own.
+// Shared keys so every `useVersions` instance can observe whether *any*
+// version-modifying operation is in flight (via `useIsMutating`), not just its
+// own. Both operations are serialized by `withLock(appId)` on the backend, but
+// we also want to prevent the UI from kicking off a second one against state
+// left by the first.
 const restoreToMessageMutationKey = ["restoreToMessageVersion"] as const;
+const revertVersionMutationKey = ["revertVersion"] as const;
 
 export function useVersions(appId: number | null) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -71,6 +75,7 @@ export function useVersions(appId: number | null) {
       targetBranchName?: string;
     }
   >({
+    mutationKey: revertVersionMutationKey,
     mutationFn: async ({
       versionId,
       currentChatMessageId,
@@ -192,7 +197,14 @@ export function useVersions(appId: number | null) {
     },
     onSuccess: async (result) => {
       if ("warningMessage" in result) {
-        toast.warning(result.warningMessage);
+        // When `newChatId` is present the codebase *was* reverted and only a
+        // secondary step (e.g. the Neon DB restore) failed. Make the partial
+        // success explicit so the user isn't left thinking nothing happened.
+        if ("newChatId" in result) {
+          toast.warning(`Code restored, but: ${result.warningMessage}`);
+        } else {
+          toast.warning(result.warningMessage);
+        }
       } else {
         toast.success(result.successMessage);
       }
@@ -221,11 +233,16 @@ export function useVersions(appId: number | null) {
     // twice.
   });
 
-  // True when *any* restore-to-message is pending across all messages. Used to
-  // disable every restore button while one restore is running, since the
-  // per-instance `isPending` above is local to the message that was clicked.
-  const isAnyRestoreToMessagePending =
-    useIsMutating({ mutationKey: restoreToMessageMutationKey }) > 0;
+  // True when *any* version-modifying operation (restore-to-message or
+  // revert-version) is pending across every `useVersions` instance. The
+  // per-instance `isPending` flags above are local to the component that
+  // triggered them, so we use `useIsMutating` on the shared keys to disable all
+  // version-modifying buttons (message restore arrows and the version-pane
+  // revert button) while one is running, preventing a confusing second
+  // operation from running against the state left by the first.
+  const isAnyVersionMutationPending =
+    useIsMutating({ mutationKey: restoreToMessageMutationKey }) > 0 ||
+    useIsMutating({ mutationKey: revertVersionMutationKey }) > 0;
 
   return {
     versions: versions || [],
@@ -240,6 +257,6 @@ export function useVersions(appId: number | null) {
     isSettingVersionNote: setVersionNoteMutation.isPending,
     restoreToMessage: restoreToMessageMutation.mutateAsync,
     isRestoringToMessage: restoreToMessageMutation.isPending,
-    isAnyRestoreToMessagePending,
+    isAnyVersionMutationPending,
   };
 }

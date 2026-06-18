@@ -114,7 +114,7 @@ const ChatMessage = ({
     versions: liveVersions,
     restoreToMessage,
     isRestoringToMessage,
-    isAnyRestoreToMessagePending,
+    isAnyVersionMutationPending,
   } = useVersions(appId);
   const { selectChat } = useSelectChat();
   const assistantTextContent =
@@ -260,7 +260,7 @@ const ChatMessage = ({
                       <button
                         data-testid="restore-to-message-button"
                         onClick={() => setShowRestoreConfirm(true)}
-                        disabled={isAnyRestoreToMessagePending}
+                        disabled={isAnyVersionMutationPending}
                         aria-label="Restore to this point"
                         className={`absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200 ${
                           isRestoringToMessage ? "opacity-100" : ""

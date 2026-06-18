@@ -209,33 +209,47 @@ export function registerVersionHandlers() {
         commitHash: versionId,
       });
 
-      return await Promise.all(
-        changedFiles.map(async (file) => {
-          const newContent =
-            file.type === "deleted"
-              ? ""
-              : ((await getFileAtCommit({
-                  path: appPath,
-                  filePath: file.path,
-                  commitHash: versionId,
-                })) ?? "");
-          const oldContent =
-            file.type === "added"
-              ? ""
-              : ((await getOldFileContent({
-                  path: appPath,
-                  filePath: file.path,
-                  commitHash: versionId,
-                })) ?? "");
-          return {
-            path: file.path,
-            type: file.type,
-            oldContent: sanitizeDiffContent(oldContent),
-            newContent: sanitizeDiffContent(newContent),
-          };
-        }),
-      );
+      const loadFileChange = async (file: (typeof changedFiles)[number]) => {
+        const newContent =
+          file.type === "deleted"
+            ? ""
+            : ((await getFileAtCommit({
+                path: appPath,
+                filePath: file.path,
+                commitHash: versionId,
+              })) ?? "");
+        const oldContent =
+          file.type === "added"
+            ? ""
+            : ((await getOldFileContent({
+                path: appPath,
+                filePath: file.path,
+                commitHash: versionId,
+              })) ?? "");
+        return {
+          path: file.path,
+          type: file.type,
+          oldContent: sanitizeDiffContent(oldContent),
+          newContent: sanitizeDiffContent(newContent),
+        };
+      };
+
+      // Each file may spawn up to two git child processes (native git). Bound
+      // the concurrency so commits touching many files (e.g. an initial commit
+      // of a generated app) don't exhaust file descriptors.
+      const CONCURRENCY = 10;
+      const results: Awaited<ReturnType<typeof loadFileChange>>[] = [];
+      for (let i = 0; i < changedFiles.length; i += CONCURRENCY) {
+        const batch = changedFiles.slice(i, i + CONCURRENCY);
+        results.push(...(await Promise.all(batch.map(loadFileChange))));
+      }
+      return results;
     } catch (error: any) {
+      // Preserve the original error kind for DyadErrors thrown by inner
+      // functions; only wrap unexpected (non-Dyad) failures as External.
+      if (error instanceof DyadError) {
+        throw error;
+      }
       logger.error(
         `Error getting version changes for app ${appId} version ${versionId}:`,
         error,

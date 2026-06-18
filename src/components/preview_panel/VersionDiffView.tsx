@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useVersionChanges } from "@/hooks/useVersionChanges";
@@ -41,19 +41,10 @@ function StatusBadge({ type }: { type: VersionChangedFile["type"] }) {
 export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
   const { t } = useTranslation("home");
   const { changes, loading, error } = useVersionChanges(appId, versionId);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-
-  // Auto-select the first changed file when the list loads or the version
-  // changes; keep the current selection if it's still present.
-  useEffect(() => {
-    if (changes && changes.length > 0) {
-      setSelectedPath((prev) =>
-        prev && changes.some((c) => c.path === prev) ? prev : changes[0].path,
-      );
-    } else {
-      setSelectedPath(null);
-    }
-  }, [changes]);
+  // Tracks the file the user explicitly clicked. The displayed selection is
+  // derived during render (below) so switching versions never flashes the
+  // placeholder while waiting for an effect to reconcile a stale path.
+  const [userSelectedPath, setUserSelectedPath] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -79,7 +70,15 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
     );
   }
 
-  const selected = changes.find((c) => c.path === selectedPath) ?? null;
+  // Derive the displayed file from the user's explicit selection, falling back
+  // to the first changed file. Computing this during render (rather than via an
+  // effect) means a version switch immediately shows a valid selection even
+  // when the previously selected path is absent in the new version.
+  const selected =
+    (userSelectedPath
+      ? changes.find((c) => c.path === userSelectedPath)
+      : undefined) ?? changes[0];
+  const selectedPath = selected?.path ?? null;
 
   return (
     <div
@@ -90,7 +89,7 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
         {changes.map((file) => (
           <button
             key={file.path}
-            onClick={() => setSelectedPath(file.path)}
+            onClick={() => setUserSelectedPath(file.path)}
             data-testid="version-diff-file"
             className={cn(
               "flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--background-darkest)]",
@@ -105,18 +104,12 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
         ))}
       </div>
       <div className="w-2/3 min-h-0">
-        {selected ? (
-          <FileDiffEditor
-            key={`${appId}:${selected.path}`}
-            filePath={selected.path}
-            oldContent={selected.oldContent}
-            newContent={selected.newContent}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-gray-500">
-            {t("preview.selectFileToViewDiff")}
-          </div>
-        )}
+        <FileDiffEditor
+          key={`${appId}:${selected.path}`}
+          filePath={selected.path}
+          oldContent={selected.oldContent}
+          newContent={selected.newContent}
+        />
       </div>
     </div>
   );

@@ -55,9 +55,13 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
   }
 
   if (error) {
+    // Surface a generic, user-friendly message rather than the raw git error
+    // (which can include stderr like "fatal: bad object ..."). The underlying
+    // error is logged for debugging.
+    console.error("Failed to load version changes:", error);
     return (
       <div className="flex flex-1 items-center justify-center text-red-500">
-        {error.message}
+        {t("preview.errorLoadingChanges")}
       </div>
     );
   }

@@ -46,18 +46,20 @@ const logger = log.scope("version_handlers");
 const MAX_DIFF_CONTENT_BYTES = 1_000_000; // ~1 MB
 
 function sanitizeDiffContent(content: string): string {
-  // A NUL byte is a strong signal the file is binary.
-  if (/\u0000/.test(content)) {
-    return "<binary file not shown>";
-  }
+  // Size guard first: content.length is an O(1) check that short-circuits
+  // oversized files before the O(N) NUL scan / byte-length traversal below.
   // Fast-path: every UTF-8 character is at least 1 byte, so if the string
-  // length already exceeds the limit, the byte length must too. This avoids
-  // the O(N) Buffer.byteLength traversal for large files.
+  // length already exceeds the limit, the byte length must too — which lets us
+  // skip the Buffer.byteLength traversal for large files entirely.
   if (
     content.length > MAX_DIFF_CONTENT_BYTES ||
     Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES
   ) {
     return "<file too large to display>";
+  }
+  // A NUL byte is a strong signal the file is binary.
+  if (/\u0000/.test(content)) {
+    return "<binary file not shown>";
   }
   return content;
 }

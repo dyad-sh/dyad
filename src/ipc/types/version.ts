@@ -58,7 +58,12 @@ export type VersionChangedFile = z.infer<typeof VersionChangedFileSchema>;
 
 export const GetVersionChangesParamsSchema = z.object({
   appId: z.number(),
-  versionId: z.string(),
+  // Must be a hex commit SHA. This is appended as a positional argument to
+  // native `git diff-tree`/`cat-file`; constraining it to hex characters
+  // prevents a dash-prefixed value from being interpreted as a git option.
+  versionId: z
+    .string()
+    .regex(/^[0-9a-fA-F]{4,64}$/, "versionId must be a hex commit SHA"),
 });
 
 // =============================================================================

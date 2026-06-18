@@ -916,13 +916,16 @@ export async function getChangedFilesForCommit({
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
-    // --root makes diff-tree show the initial (root) commit's files as additions.
+    // Diff the commit explicitly against its FIRST parent so the result matches
+    // the isomorphic-git path below (which walks parent[0]). For merge commits
+    // `-m --first-parent` is NOT sufficient: -m still reports files that merely
+    // differ from the *second* parent even though they were already present on
+    // the first parent, making them appear as spurious additions/modifications.
+    // Diffing the explicit `<parent> <commit>` range avoids that. Root commits
+    // have no parent, so fall back to --root (which shows their files as adds).
     // --no-renames decomposes renames into D + A pairs.
     // -z gives NUL-delimited output for robust parsing of paths with spaces.
-    // -m --first-parent makes merge commits diff against their first parent;
-    // without these, diff-tree emits nothing for a merge and the version would
-    // show "no changes". This matches the isomorphic-git path below, which walks
-    // the first parent (parent[0]).
+    const parentOid = await getParentCommitOid({ path, commitHash });
     const result = await execGit(
       [
         "diff-tree",
@@ -931,10 +934,7 @@ export async function getChangedFilesForCommit({
         "--name-status",
         "-r",
         "-z",
-        "--root",
-        "-m",
-        "--first-parent",
-        commitHash,
+        ...(parentOid ? [parentOid, commitHash] : ["--root", commitHash]),
       ],
       path,
     );

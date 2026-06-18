@@ -230,6 +230,7 @@
     "loadingFileContent": "Loading file content...",
     "noContentAvailable": "No content available",
     "loadingChanges": "Loading changes...",
+    "errorLoadingChanges": "Couldn't load changes for this version.",
     "noChangesInVersion": "No file changes in this version",
     "viewingVersionChanges": "Viewing changes in this version",
     "sendToChat": "Send to chat",

@@ -50,7 +50,13 @@ function sanitizeDiffContent(content: string): string {
   if (/\u0000/.test(content)) {
     return "<binary file not shown>";
   }
-  if (Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES) {
+  // Fast-path: every UTF-8 character is at least 1 byte, so if the string
+  // length already exceeds the limit, the byte length must too. This avoids
+  // the O(N) Buffer.byteLength traversal for large files.
+  if (
+    content.length > MAX_DIFF_CONTENT_BYTES ||
+    Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES
+  ) {
     return "<file too large to display>";
   }
   return content;
@@ -197,37 +203,48 @@ export function registerVersionHandlers() {
       throw new DyadError("Not a git repository", DyadErrorKind.External);
     }
 
-    const changedFiles = await getChangedFilesForCommit({
-      path: appPath,
-      commitHash: versionId,
-    });
+    try {
+      const changedFiles = await getChangedFilesForCommit({
+        path: appPath,
+        commitHash: versionId,
+      });
 
-    return Promise.all(
-      changedFiles.map(async (file) => {
-        const newContent =
-          file.type === "deleted"
-            ? ""
-            : ((await getFileAtCommit({
-                path: appPath,
-                filePath: file.path,
-                commitHash: versionId,
-              })) ?? "");
-        const oldContent =
-          file.type === "added"
-            ? ""
-            : ((await getOldFileContent({
-                path: appPath,
-                filePath: file.path,
-                commitHash: versionId,
-              })) ?? "");
-        return {
-          path: file.path,
-          type: file.type,
-          oldContent: sanitizeDiffContent(oldContent),
-          newContent: sanitizeDiffContent(newContent),
-        };
-      }),
-    );
+      return await Promise.all(
+        changedFiles.map(async (file) => {
+          const newContent =
+            file.type === "deleted"
+              ? ""
+              : ((await getFileAtCommit({
+                  path: appPath,
+                  filePath: file.path,
+                  commitHash: versionId,
+                })) ?? "");
+          const oldContent =
+            file.type === "added"
+              ? ""
+              : ((await getOldFileContent({
+                  path: appPath,
+                  filePath: file.path,
+                  commitHash: versionId,
+                })) ?? "");
+          return {
+            path: file.path,
+            type: file.type,
+            oldContent: sanitizeDiffContent(oldContent),
+            newContent: sanitizeDiffContent(newContent),
+          };
+        }),
+      );
+    } catch (error: any) {
+      logger.error(
+        `Error getting version changes for app ${appId} version ${versionId}:`,
+        error,
+      );
+      throw new DyadError(
+        `Failed to get version changes: ${error.message}`,
+        DyadErrorKind.External,
+      );
+    }
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {

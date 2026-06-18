@@ -332,6 +332,12 @@ async function revertCodebaseToVersion({
           const errorMessage = getNeonErrorMessage(error);
           logger.error("Error in deleteProjectBranch:", errorMessage);
         });
+        // Only claim the database was included when the restore actually
+        // succeeded. Setting this after the catch would wrongly report
+        // "(including database)" even when the Neon restore failed and
+        // `warningMessage` was set.
+        successMessage =
+          "Successfully restored to version (including database)";
       } catch (error) {
         const errorMessage = getNeonErrorMessage(error);
         logger.error("Error in restoreBranchForCheckout:", errorMessage);
@@ -339,7 +345,6 @@ async function revertCodebaseToVersion({
         // Do not throw, so we can finish switching the postgres branch
         // It might throw because they picked a timestamp that's too old.
       }
-      successMessage = "Successfully restored to version (including database)";
     }
     await switchPostgresToDevelopmentBranch({
       neonProjectId: app.neonProjectId,
@@ -861,8 +866,12 @@ export function registerVersionHandlers() {
 
         // Carry over the original chat's title (with a suffix) so the forked
         // chat is identifiable in the sidebar instead of showing up as another
-        // indistinguishable "untitled" entry after one or more restores.
-        const restoredTitle = chat.title ? `${chat.title} (restored)` : null;
+        // indistinguishable "untitled" entry after one or more restores. When
+        // the original is untitled we still apply a bare "(restored)" label so
+        // the fork isn't rendered as a generic "New Chat" entry.
+        const restoredTitle = chat.title
+          ? `${chat.title} (restored)`
+          : "(restored)";
 
         // Create the new chat pointing at the target version and copy over the
         // earlier messages atomically. We insert directly (instead of using the

@@ -17,7 +17,6 @@ jobs:
   prepare-release:
     name: Prepare Release Tag
     runs-on: ubuntu-latest
-    environment: release
     outputs:
       tag: ${{ steps.prepare.outputs.tag }}
       version: ${{ steps.prepare.outputs.version }}
@@ -44,7 +43,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - { name: "windows", image: "windows-latest" }
+          - { name: "windows", image: "windows-2022" }
           # See https://github.com/dyad-sh/dyad/issues/96
           - { name: "linux", image: "ubuntu-22.04" }
           - { name: "macos-intel", image: "macos-15-intel" }
@@ -153,7 +152,6 @@ jobs:
     name: Publish Release
     needs: build
     runs-on: ubuntu-latest
-    environment: release
     steps:
       - name: Github checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5

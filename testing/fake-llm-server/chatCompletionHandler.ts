@@ -6,8 +6,117 @@ import {
   handleLocalAgentFixture,
   extractLocalAgentFixture,
 } from "./localAgentHandler";
+import {
+  buildExploreCodeNestedToolArgs,
+  buildExploreCodeSubmitReportArgs,
+  isExploreCodeSubagentPrompt,
+} from "./exploreCodeFixtures";
 
 let globalCounter = 0;
+
+function hasExploreCodeToolResult(
+  messages: any[],
+  getTextContent: (msg: any) => string,
+): boolean {
+  return messages.some((message: any) => {
+    if (message?.role !== "tool") {
+      return false;
+    }
+    const text = getTextContent(message);
+    return (
+      text.includes("Found ") ||
+      text.includes("Code exploration:") ||
+      text.includes("src/App.tsx")
+    );
+  });
+}
+
+function sendToolCallJson(
+  res: Response,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  res.json({
+    id: `chatcmpl-${Date.now()}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model: "fake-model",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: toolName,
+                arguments: JSON.stringify(args),
+              },
+            },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
+    ],
+  });
+}
+
+async function streamToolCall(
+  res: Response,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const now = Date.now();
+  const mkChunk = (delta: any, finish: string | null = null) =>
+    `data: ${JSON.stringify({
+      id: `chatcmpl-${now}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(now / 1000),
+      model: "fake-model",
+      choices: [{ index: 0, delta, finish_reason: finish }],
+    })}\n\n`;
+
+  res.write(mkChunk({ role: "assistant" }));
+  res.write(
+    mkChunk({
+      tool_calls: [
+        {
+          index: 0,
+          id: `call_${now}`,
+          type: "function",
+          function: { name: toolName, arguments: "" },
+        },
+      ],
+    }),
+  );
+
+  const argsText = JSON.stringify(args);
+  const batchSize = 20;
+  for (let index = 0; index < argsText.length; index += batchSize) {
+    res.write(
+      mkChunk({
+        tool_calls: [
+          {
+            index: 0,
+            function: { arguments: argsText.slice(index, index + batchSize) },
+          },
+        ],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  res.write(mkChunk({}, "tool_calls"));
+  res.write("data: [DONE]\n\n");
+  res.end();
+}
 
 export const createChatCompletionHandler =
   (prefix: string) => async (req: Request, res: Response) => {
@@ -98,6 +207,21 @@ export const createChatCompletionHandler =
     ) {
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
+    }
+    if (isExploreCodeSubagentPrompt(userTextContent)) {
+      const toolName = hasExploreCodeToolResult(messages, getTextContent)
+        ? "submit_report"
+        : "explore_code";
+      const input =
+        toolName === "submit_report"
+          ? buildExploreCodeSubmitReportArgs()
+          : buildExploreCodeNestedToolArgs();
+      if (stream) {
+        await streamToolCall(res, toolName, input);
+        return;
+      }
+      sendToolCallJson(res, toolName, input);
+      return;
     }
 
     // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)

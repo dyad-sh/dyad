@@ -1,6 +1,10 @@
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
 import { DyadError } from "@/errors/dyad_error";
+import {
+  createIpcErrorEnvelope,
+  createIpcSuccessEnvelope,
+} from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 
@@ -18,7 +22,7 @@ export function createLoggedHandler(logger: log.LogFunctions) {
           logger.log(
             `IPC: ${channel} returned: ${JSON.stringify(result)?.slice(0, 100)}...`,
           );
-          return result;
+          return createIpcSuccessEnvelope(result);
         } catch (error) {
           logger.error(
             `Error in ${fn.name}: args: ${JSON.stringify(args)}`,
@@ -27,9 +31,9 @@ export function createLoggedHandler(logger: log.LogFunctions) {
           sendTelemetryException(error, { ipc_channel: channel });
           // Preserve DyadError so telemetry classification stay consistent.
           if (error instanceof DyadError) {
-            throw error;
+            return createIpcErrorEnvelope(error);
           }
-          throw new Error(`[${channel}] ${error}`);
+          return createIpcErrorEnvelope(new Error(`[${channel}] ${error}`));
         }
       },
     );

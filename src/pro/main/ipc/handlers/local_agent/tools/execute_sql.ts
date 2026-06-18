@@ -29,8 +29,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       !!ctx.supabaseProjectId ||
       (!!ctx.neonProjectId && !!ctx.neonActiveBranchId),
 
-    getConsentPreview: (args) =>
-      args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
+    getConsentPreview: (args) => args.query,
 
     getConsentMetadata: (args) => ({
       sqlMutatesSchema: doesSqlMutateSchema(args.query),

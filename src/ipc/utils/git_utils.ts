@@ -137,6 +137,42 @@ import type {
 } from "../git_types";
 
 /**
+ * Builds environment variables for native git network operations (clone,
+ * fetch, pull, push).
+ *
+ * Credentials are passed per-invocation via `http.<url>.extraheader` instead
+ * of being embedded in the remote URL, so tokens are never persisted to
+ * .git/config or echoed back in git error messages. Credential helpers are
+ * cleared and terminal prompting is disabled so git fails fast instead of
+ * invoking system helpers or waiting for input that can never arrive.
+ */
+function getGitNetworkEnv(accessToken?: string): Record<string, string> {
+  const configs: [key: string, value: string][] = [
+    // An empty credential.helper entry resets the helper list, so helpers
+    // from system/global config (osxkeychain, manager, etc.) never run.
+    ["credential.helper", ""],
+  ];
+  if (accessToken) {
+    const basicAuth = Buffer.from(`${accessToken}:x-oauth-basic`).toString(
+      "base64",
+    );
+    configs.push([
+      "http.https://github.com/.extraheader",
+      `Authorization: Basic ${basicAuth}`,
+    ]);
+  }
+  const env: Record<string, string> = {
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: String(configs.length),
+  };
+  configs.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
+}
+
+/**
  * Helper function that wraps exec and throws an error if the exit code is non-zero.
  *
  * Defaults to {@link DyadErrorKind.External} so unexpected failures (network, permissions,
@@ -149,8 +185,9 @@ async function execOrThrow(
   path: string,
   errorMessage?: string,
   kind: DyadErrorKind = DyadErrorKind.External,
+  options?: IGitStringExecutionOptions,
 ): Promise<void> {
-  const result = await execGit(args, path);
+  const result = await execGit(args, path, options);
   if (result.exitCode !== 0) {
     const errorDetails = result.stderr.trim() || result.stdout.trim();
     const error = errorMessage
@@ -1122,11 +1159,9 @@ export async function gitClone({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Dugite version (real Git)
-    // Build authenticated URL if accessToken is provided and URL doesn't already have auth
-    const finalUrl =
-      accessToken && !url.includes("@")
-        ? url.replace("https://", `https://${accessToken}:x-oauth-basic@`)
-        : url;
+    // Strip any embedded auth from URL; credentials are injected per-invocation
+    // via environment variables so they never reach .git/config.
+    const cleanUrl = url.replace(/https:\/\/[^@]+@/, "https://");
     const args = ["clone"];
     if (depth && depth > 0) {
       args.push("--depth", String(depth));
@@ -1134,8 +1169,10 @@ export async function gitClone({
     if (singleBranch) {
       args.push("--single-branch");
     }
-    args.push("--", finalUrl, path);
-    const result = await execGit(args, ".");
+    args.push("--", cleanUrl, path);
+    const result = await execGit(args, ".", {
+      env: getGitNetworkEnv(accessToken),
+    });
 
     if (result.exitCode !== 0) {
       throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
@@ -1243,7 +1280,9 @@ export async function gitPush({
       } else if (force) {
         args.push("--force");
       }
-      const result = await execGit(args, path);
+      const result = await execGit(args, path, {
+        env: getGitNetworkEnv(accessToken),
+      });
       if (result.exitCode !== 0) {
         const errorMsg = result.stderr.toString() || result.stdout.toString();
         throw new DyadError(
@@ -1538,7 +1577,13 @@ export async function gitFetch({
 }: GitFetchParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execOrThrow(["fetch", remote], path, "Failed to fetch from remote");
+    await execOrThrow(
+      ["fetch", remote],
+      path,
+      "Failed to fetch from remote",
+      undefined,
+      { env: getGitNetworkEnv(accessToken) },
+    );
   } else {
     await git.fetch({
       fs,
@@ -1603,15 +1648,19 @@ export async function gitPull({
     // Use withGitAuthor since pull may need to create merge commits
     // and requires user.name and user.email
     const pullArgs = await withGitAuthor([
-      "-c",
-      "credential.helper=",
       "pull",
       "--rebase=false",
       remote,
       branch,
     ]);
     try {
-      await execOrThrow(pullArgs, path, "Failed to pull from remote");
+      await execOrThrow(
+        pullArgs,
+        path,
+        "Failed to pull from remote",
+        undefined,
+        { env: getGitNetworkEnv(accessToken) },
+      );
     } catch (error: any) {
       // Check git state files to detect conflicts instead of parsing error messages
       if (hasGitConflictState({ path })) {

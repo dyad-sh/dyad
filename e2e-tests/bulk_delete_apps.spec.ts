@@ -55,10 +55,11 @@ testSkipIfWindows("bulk delete apps from gallery", async ({ po }) => {
   await po.page.getByTestId("apps-gallery-bulk-delete-button").click();
   await po.page.getByTestId("apps-gallery-bulk-delete-confirm-button").click();
 
-  // Selection mode should exit after a successful bulk delete.
+  // Selection mode should exit after a successful bulk delete. Deleting app
+  // directories can take a while on CI runners, so allow extra time.
   await expect(
     po.page.getByTestId("apps-gallery-selection-toolbar"),
-  ).not.toBeVisible();
+  ).not.toBeVisible({ timeout: 30_000 });
 
   // The two deleted apps should be gone from the gallery and disk.
   await expect(

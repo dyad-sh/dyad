@@ -1,37 +1,11 @@
 - paragraph: basic
-- button "file1.txt file1.txt Edit":
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- img
-- text: "Version 2: wrote 1 file(s)"
+- button "Copy"
+- text: "[[Version 2: files changed]]"
 - paragraph: "[dump]"
-- 'button "Expand image: logo.png"':
-  - img "logo.png"
+- 'button "Expand image: logo.png"'
 - paragraph: "[[dyad-dump-path=*]]"
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Undo"
+- button "Retry"

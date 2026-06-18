@@ -226,10 +226,162 @@ async function pruneElectronLocalePaks(resourcesPath: string): Promise<void> {
   );
 }
 
-async function removeGitLfs(resourcesPath: string): Promise<void> {
-  await rmIfExists(
-    path.join(resourcesPath, "git", "libexec", "git-core", "git-lfs"),
+// dugite-native's git distribution bundles Git Credential Manager (GCM), a
+// self-contained .NET application. Dyad never invokes it: git auth is handled
+// with access tokens and credential helpers are explicitly disabled. GCM and
+// its runtime account for ~105MB on macOS, ~83MB on Linux, and ~26MB on
+// Windows, so it is pruned from the packaged app.
+
+// On macOS/Linux, GCM lives in git/libexec/git-core as a .NET app: managed
+// assemblies (*.dll, including locale subdirectories with satellite
+// *.resources.dll), the CoreCLR native runtime, and GCM's UI libraries.
+// No file shipped by git itself matches these names on Unix.
+const UNIX_GCM_NATIVE_LIB_PREFIXES = [
+  "libAvaloniaNative.",
+  "libclrgc.",
+  "libclrjit.",
+  "libcoreclr.",
+  "libHarfBuzzSharp.",
+  "libhostfxr.",
+  "libhostpolicy.",
+  "libmscordaccore.",
+  "libmscordbi.",
+  "libSkiaSharp.",
+  "libSystem.",
+] as const;
+
+function isUnixGcmFile(name: string): boolean {
+  // This predicate is applied recursively under git/libexec/git-core. Dugite's
+  // current Unix git subdirectories only contain scripts or GCM satellite
+  // assemblies; audit this sweep when upgrading dugite's bundled git layout.
+  return (
+    name.endsWith(".dll") ||
+    name.endsWith(".deps.json") ||
+    name.endsWith(".runtimeconfig.json") ||
+    name === "git-credential-manager" ||
+    // CoreCLR crash-dump helper
+    name === "createdump" ||
+    UNIX_GCM_NATIVE_LIB_PREFIXES.some((prefix) => name.startsWith(prefix))
   );
+}
+
+// On Windows (minGit), GCM lives in <mingw>/bin alongside DLLs git itself
+// needs (libcurl, libssl, libpcre2, ...), so removal is limited to GCM's own
+// binaries and its .NET/Avalonia/MSAL dependencies. lib*.dll names are NOT
+// blanket-matched.
+const WINDOWS_GCM_FILE_PATTERNS: readonly RegExp[] = [
+  /^git-credential-manager\.exe(\.config)?$/,
+  /^git-credential-helper-selector\.exe$/,
+  /^gcmcore\.dll$/,
+  /^(GitHub|GitLab)\.dll$/,
+  /^Atlassian\..+\.dll$/,
+  /^Avalonia(\..+)?\.dll$/,
+  /^av_libglesv2\.dll$/,
+  /^(Microsoft|System)\..+\.dll$/,
+  /^MicroCom\.Runtime\.dll$/,
+  /^(lib)?SkiaSharp\.dll$/,
+  /^(lib)?HarfBuzzSharp\.dll$/,
+  /^msalruntime.*\.dll$/,
+  /^netstandard\.dll$/,
+  /^mscorlib\.dll$/,
+  /^Newtonsoft\.Json\.dll$/,
+] as const;
+
+// minGit subfolder varies by arch (see dugite's git-environment).
+const WINDOWS_MINGW_SUBFOLDERS = ["mingw64", "mingw32", "clangarm64"] as const;
+
+async function removeEmptyDirectories(basePath: string): Promise<void> {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await fs.readdir(basePath, {
+      recursive: true,
+      withFileTypes: true,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  const directories = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    // Deepest first so emptied parents can be removed too
+    .sort((a, b) => b.length - a.length);
+
+  for (const directory of directories) {
+    try {
+      await fs.rmdir(directory);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOTEMPTY" || code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+async function pruneGitCredentialManagerUnix(gitPath: string): Promise<void> {
+  const gitCorePath = path.join(gitPath, "libexec", "git-core");
+  await removeFilesMatching(gitCorePath, ({ name }) => isUnixGcmFile(name));
+  // GCM locale directories (cs, de, ja, ...) only held satellite
+  // *.resources.dll files and are empty after the sweep.
+  await removeEmptyDirectories(gitCorePath);
+}
+
+async function pruneGitCredentialManagerWindows(
+  gitPath: string,
+): Promise<void> {
+  await Promise.all(
+    WINDOWS_MINGW_SUBFOLDERS.map((subfolder) =>
+      removeFilesMatching(path.join(gitPath, subfolder, "bin"), ({ name }) =>
+        WINDOWS_GCM_FILE_PATTERNS.some((pattern) => pattern.test(name)),
+      ),
+    ),
+  );
+
+  // minGit's system gitconfig sets credential.helper=manager; drop the line so
+  // git does not warn about (or attempt to launch) the removed helper.
+  const gitconfigPath = path.join(gitPath, "etc", "gitconfig");
+  let original: string;
+  try {
+    original = await fs.readFile(gitconfigPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  const scrubbed = original
+    .split("\n")
+    .filter((line) => !/^\s*helper\s*=\s*manager\s*\r?$/.test(line))
+    .join("\n");
+  if (scrubbed !== original) {
+    await fs.writeFile(gitconfigPath, scrubbed, "utf8");
+  }
+}
+
+async function pruneGitDistribution(
+  resourcesPath: string,
+  platform: PackagerPlatform,
+): Promise<void> {
+  const gitPath = path.join(resourcesPath, "git");
+  if (platform === "win32") {
+    await pruneGitCredentialManagerWindows(gitPath);
+    // git-lfs (unused by Dyad; removed on Unix below)
+    await Promise.all(
+      WINDOWS_MINGW_SUBFOLDERS.map((subfolder) =>
+        rmIfExists(
+          path.join(gitPath, subfolder, "libexec", "git-core", "git-lfs.exe"),
+        ),
+      ),
+    );
+    return;
+  }
+  await pruneGitCredentialManagerUnix(gitPath);
+  await rmIfExists(path.join(gitPath, "libexec", "git-core", "git-lfs"));
 }
 
 function getResourcePaths(
@@ -278,7 +430,7 @@ export async function removeUnusedCopiedResources(
   );
 
   await Promise.all([
-    removeGitLfs(appResourcesPath),
+    pruneGitDistribution(appResourcesPath, platform),
     ...electronLocaleResourcePaths.flatMap((localeResourcePath) => [
       pruneElectronLocaleDirectories(localeResourcePath),
       pruneElectronLocalePaks(localeResourcePath),

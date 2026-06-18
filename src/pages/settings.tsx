@@ -36,6 +36,7 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
+import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -248,6 +249,12 @@ export default function SettingsPage() {
                   servers are always enabled in Agent mode.
                 </div>
               </div>
+              <div
+                id={SETTING_IDS.autoApproveNonSchemaSql}
+                className="space-y-1 mt-4"
+              >
+                <AutoApproveSqlSwitch />
+              </div>
             </div>
           </div>
 
@@ -349,6 +356,30 @@ export default function SettingsPage() {
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Show an app selector in the home chat input to start a chat
                   referencing an existing app.
+                </div>
+              </div>
+              <div
+                id={SETTING_IDS.enableCodeExplorer}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-code-explorer"
+                    aria-label="Enable code explorer (Pro)"
+                    checked={!!settings?.enableCodeExplorer}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableCodeExplorer: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-code-explorer">
+                    Enable code explorer (Pro)
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Let the local agent explore configured TypeScript projects
+                  with a compiler-backed code graph.
                 </div>
               </div>
             </div>

@@ -10,5 +10,5 @@ testSkipIfWindows("auto-approve", async ({ po }) => {
   await expect(po.previewPanel.getPreviewIframeElement()).toBeVisible({
     timeout: Timeout.LONG,
   });
-  await po.previewPanel.snapshotPreview();
+  await po.previewPanel.snapshotPreview({ name: "auto-approve-2.aria.yml" });
 });

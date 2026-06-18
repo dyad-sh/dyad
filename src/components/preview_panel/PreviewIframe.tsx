@@ -88,6 +88,10 @@ import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
+import {
+  formatPreviewAddressPath,
+  normalizePreviewAddressPath,
+} from "./previewAddressPath";
 
 interface ErrorBannerProps {
   error:
@@ -276,6 +280,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
+  const currentHistoryUrl = navigationHistory[currentHistoryPosition] ?? null;
+  const currentAddressPath = formatPreviewAddressPath(currentHistoryUrl);
+  const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
+  const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
+  const isEditingAddressBarRef = useRef(false);
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
@@ -298,6 +307,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Track which apps have already had the on-load fallback attempted this
   // session so the check doesn't re-run on every HMR/reload.
   const fallbackAttemptedAppIdsRef = useRef<Set<number>>(new Set());
+  const skipNextAddressBarBlurRef = useRef(false);
 
   // Keep refs in sync so the message handler and timeout callbacks always read
   // the latest values.
@@ -308,6 +318,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   useEffect(() => {
     selectedAppIdRef.current = selectedAppId;
   }, [selectedAppId]);
+
+  useEffect(() => {
+    isEditingAddressBarRef.current = isEditingAddressBar;
+  }, [isEditingAddressBar]);
+
+  useEffect(() => {
+    if (!isEditingAddressBarRef.current) {
+      setAddressBarValue(currentAddressPath);
+    }
+  }, [currentAddressPath]);
 
   // Drop any in-flight request state when the user switches apps so a stale
   // guard from a replaced iframe doesn't block future captures.
@@ -1396,52 +1416,91 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Function to navigate to a specific route
   const navigateToRoute = (path: string) => {
-    if (iframeRef.current?.contentWindow && appUrl) {
-      // Create the full URL by combining the base URL with the path
-      const baseUrl = new URL(appUrl).origin;
-      const newUrl = `${baseUrl}${path}`;
+    if (!iframeRef.current?.contentWindow || !appUrl) {
+      return false;
+    }
 
-      // Use postMessage to navigate (same as back/forward) - this uses location.replace()
-      // which provides smooth navigation without the black screen flicker that location.href causes
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "navigate",
-          payload: { url: newUrl },
-        },
-        "*",
-      );
+    const normalized = normalizePreviewAddressPath(path);
+    if (normalized.type === "empty") {
+      return false;
+    }
+    if (normalized.type === "invalid") {
+      showError(normalized.message);
+      return false;
+    }
 
-      // Update navigation history
-      const newHistory = [
-        ...navigationHistory.slice(0, currentHistoryPosition + 1),
-        newUrl,
-      ];
-      setNavigationHistory(newHistory);
-      setCurrentHistoryPosition(newHistory.length - 1);
-      setCanGoBack(true);
-      setCanGoForward(false);
+    // Create the full URL by combining the base URL with the path
+    const baseUrl = new URL(appUrl).origin;
+    const newUrl = new URL(normalized.path, baseUrl).href;
 
-      // Update iframe URL ref to match
-      currentIframeUrlRef.current = newUrl;
+    // Use postMessage to navigate (same as back/forward) - this uses location.replace()
+    // which provides smooth navigation without the black screen flicker that location.href causes
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "navigate",
+        payload: { url: newUrl },
+      },
+      "*",
+    );
 
-      // Update preservedUrls to match navigation (for HMR remounts)
-      if (selectedAppId) {
-        // Clear preserved URL if navigating to root, otherwise update it
-        if (path === "/" || path === "") {
-          setPreservedUrls((prev) => {
-            const next = new Map(prev);
-            next.delete(selectedAppId);
-            return next;
-          });
-        } else {
-          setPreservedUrls((prev) => {
-            const next = new Map(prev);
-            next.set(selectedAppId, newUrl);
-            return next;
-          });
-        }
+    // Update navigation history
+    const newHistory = [
+      ...navigationHistory.slice(0, currentHistoryPosition + 1),
+      newUrl,
+    ];
+    setNavigationHistory(newHistory);
+    setCurrentHistoryPosition(newHistory.length - 1);
+    setCanGoBack(true);
+    setCanGoForward(false);
+
+    // Update iframe URL ref to match
+    currentIframeUrlRef.current = newUrl;
+
+    // Update preservedUrls to match navigation (for HMR remounts)
+    if (selectedAppId) {
+      // Clear preserved URL if navigating to root, otherwise update it
+      const navigatedPath = formatPreviewAddressPath(newUrl);
+      if (navigatedPath === "/") {
+        setPreservedUrls((prev) => {
+          const next = new Map(prev);
+          next.delete(selectedAppId);
+          return next;
+        });
+      } else {
+        setPreservedUrls((prev) => {
+          const next = new Map(prev);
+          next.set(selectedAppId, newUrl);
+          return next;
+        });
       }
     }
+
+    return true;
+  };
+
+  const submitAddressBarValue = () => {
+    const result = normalizePreviewAddressPath(addressBarValue);
+    if (result.type === "empty") {
+      setAddressBarValue(currentAddressPath);
+      setIsEditingAddressBar(false);
+      return;
+    }
+
+    if (result.type === "invalid") {
+      showError(result.message);
+      setAddressBarValue(currentAddressPath);
+      setIsEditingAddressBar(false);
+      return;
+    }
+
+    const didNavigate = navigateToRoute(result.path);
+    if (didNavigate) {
+      skipNextAddressBarBlurRef.current = true;
+      setAddressBarValue(result.path);
+    } else {
+      setAddressBarValue(currentAddressPath);
+    }
+    setIsEditingAddressBar(false);
   };
 
   // Freeze iframe src between remounts so in-iframe SPA navigation (pushState/replaceState)
@@ -1629,55 +1688,78 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 </ToggleGroup>
               </PopoverContent>
             </Popover>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center flex-1 min-w-[2rem] py-1 pl-2 pr-1 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
-                <span
-                  className="truncate flex-1 min-w-0 text-left"
-                  data-testid="preview-address-bar-path"
+            <div className="flex min-w-[2rem] flex-1 items-center">
+              <input
+                aria-label="Preview path"
+                className="min-w-0 flex-1 rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
+                data-testid="preview-address-bar-input"
+                disabled={loading || !selectedAppId}
+                onBlur={() => {
+                  if (skipNextAddressBarBlurRef.current) {
+                    skipNextAddressBarBlurRef.current = false;
+                    return;
+                  }
+                  setAddressBarValue(currentAddressPath);
+                  setIsEditingAddressBar(false);
+                }}
+                onChange={(event) => setAddressBarValue(event.target.value)}
+                onFocus={(event) => {
+                  setIsEditingAddressBar(true);
+                  event.currentTarget.select();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitAddressBarValue();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setAddressBarValue(currentAddressPath);
+                    setIsEditingAddressBar(false);
+                    event.currentTarget.blur();
+                  }
+                }}
+                spellCheck={false}
+                value={addressBarValue}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Show detected routes"
+                  className="flex-shrink-0 rounded-full p-1 text-gray-700 opacity-70 hover:bg-gray-200 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700"
+                  data-testid="preview-address-bar-routes-button"
+                  disabled={loading || !selectedAppId}
                 >
-                  {(() => {
-                    try {
-                      return new URL(navigationHistory[currentHistoryPosition])
-                        .pathname;
-                    } catch {
-                      return "/";
-                    }
-                  })()}
-                </span>
-                <ChevronDown
-                  size={12}
-                  className="flex-shrink-0 ml-1 opacity-50"
-                />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                {routesLoading ? (
-                  <DropdownMenuItem disabled>
-                    Loading routes...
-                  </DropdownMenuItem>
-                ) : routesError ? (
-                  <DropdownMenuItem disabled>
-                    Unable to load routes
-                  </DropdownMenuItem>
-                ) : availableRoutes.length > 0 ? (
-                  availableRoutes.map((route) => (
-                    <DropdownMenuItem
-                      key={route.path}
-                      onClick={() => navigateToRoute(route.path)}
-                      className="flex justify-between"
-                    >
-                      <span>{route.label}</span>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs">
-                        {route.path}
-                      </span>
+                  <ChevronDown size={12} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  {routesLoading ? (
+                    <DropdownMenuItem disabled>
+                      Loading routes...
                     </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    No routes detected
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  ) : routesError ? (
+                    <DropdownMenuItem disabled>
+                      Unable to load routes
+                    </DropdownMenuItem>
+                  ) : availableRoutes.length > 0 ? (
+                    availableRoutes.map((route) => (
+                      <DropdownMenuItem
+                        key={route.path}
+                        onClick={() => navigateToRoute(route.path)}
+                        className="flex justify-between"
+                      >
+                        <span>{route.label}</span>
+                        <span className="text-gray-500 dark:text-gray-400 text-xs">
+                          {route.path}
+                        </span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      No routes detected
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <Tooltip>
               <TooltipTrigger
                 render={

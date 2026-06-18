@@ -15,6 +15,7 @@ import {
   DYAD_INTERNAL_RIPGREP_EXCLUDE,
   resolveTargetAppPath,
 } from "./resolve_app_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -24,7 +25,11 @@ const MAX_LIMIT = 250;
 const MAX_LINE_LENGTH = 500;
 
 const grepSchema = z.object({
-  query: z.string().describe("The regex pattern to search for"),
+  query: z
+    .string()
+    .describe(
+      "The regex pattern to search for, or the exact text when literal is true",
+    ),
   app_name: z
     .string()
     .optional()
@@ -51,6 +56,12 @@ const grepSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether the search should be case sensitive (default: false)"),
+  literal: z
+    .boolean()
+    .optional()
+    .describe(
+      "Search query as exact text instead of a regex. Use this for symbols or snippets containing punctuation such as createBooking({, route paths, JSX tags, or import strings.",
+    ),
   limit: z
     .number()
     .min(1)
@@ -65,6 +76,16 @@ interface RipgrepMatch {
   path: string;
   lineNumber: number;
   lineText: string;
+}
+
+class RipgrepError extends Error {
+  constructor(
+    message: string,
+    public readonly stderr: string,
+  ) {
+    super(message);
+    this.name = "RipgrepError";
+  }
 }
 
 function buildGrepAttributes(
@@ -91,6 +112,9 @@ function buildGrepAttributes(
   if (args.case_sensitive) {
     attrs.push(`case-sensitive="true"`);
   }
+  if (args.literal) {
+    attrs.push(`literal="true"`);
+  }
   if (count !== undefined) {
     attrs.push(`count="${count}"`);
   }
@@ -115,6 +139,7 @@ async function runRipgrep({
   excludePat,
   includeIgnored,
   caseSensitive,
+  literal,
   maxMatches,
   excludeDyadFolder,
 }: {
@@ -124,6 +149,7 @@ async function runRipgrep({
   excludePat?: string;
   includeIgnored?: boolean;
   caseSensitive?: boolean;
+  literal?: boolean;
   maxMatches?: number;
   excludeDyadFolder?: boolean;
 }): Promise<{ matches: RipgrepMatch[]; stoppedEarly: boolean }> {
@@ -144,6 +170,10 @@ async function runRipgrep({
     // Case sensitivity: default is case-insensitive
     if (!caseSensitive) {
       args.push("--ignore-case");
+    }
+
+    if (literal) {
+      args.push("--fixed-strings");
     }
 
     // Include pattern (skip no-op "*" which would override exclusion globs
@@ -172,6 +202,7 @@ async function runRipgrep({
 
     const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
     let buffer = "";
+    let stderr = "";
 
     rg.stdout.on("data", (data) => {
       if (stoppedEarly) {
@@ -227,7 +258,9 @@ async function runRipgrep({
     });
 
     rg.stderr.on("data", (data) => {
-      logger.warn("ripgrep stderr", data.toString());
+      const text = data.toString();
+      stderr += text;
+      logger.warn("ripgrep stderr", text);
     });
 
     rg.on("close", (code) => {
@@ -238,7 +271,7 @@ async function runRipgrep({
 
       // rg exits with code 1 when no matches are found; treat as success
       if (code !== 0 && code !== 1) {
-        reject(new Error(`ripgrep exited with code ${code}`));
+        reject(new RipgrepError(`ripgrep exited with code ${code}`, stderr));
         return;
       }
       resolve({ matches: results, stoppedEarly });
@@ -252,10 +285,11 @@ async function runRipgrep({
 
 export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
   name: "grep",
-  description: `Search for a regex pattern in the codebase using ripgrep.
+  description: `Search for a regex pattern or exact literal text in the codebase using ripgrep.
 
 - Returns matching lines with file paths and line numbers
 - By default, the search is case-insensitive
+- Use literal=true for exact symbols/snippets with punctuation, e.g. createBooking({, import strings, route paths, or JSX tags
 - Use include_pattern to filter by file type (e.g. '*.tsx')
 - Use exclude_pattern to skip certain files (e.g. '*.test.ts')
 - Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.
@@ -270,6 +304,9 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     }
     if (args.include_ignored) {
       preview += " including ignored files";
+    }
+    if (args.literal) {
+      preview += " as literal text";
     }
     if (args.app_name) {
       preview += ` (app: ${args.app_name})`;
@@ -293,16 +330,42 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     const includePatWasWildcard = args.include_pattern === "*";
     const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
-    const { matches: allMatches, stoppedEarly } = await runRipgrep({
-      appPath: targetAppPath,
-      query: args.query,
-      includePat: args.include_pattern,
-      excludePat: args.exclude_pattern,
-      includeIgnored: args.include_ignored,
-      caseSensitive: args.case_sensitive,
-      maxMatches: args.include_ignored ? limit + 1 : undefined,
-      excludeDyadFolder: Boolean(args.app_name),
-    });
+    // `literal` is an explicit opt-in only: when set we search fixed strings,
+    // otherwise the query is always treated as a regex (the historical
+    // behavior). We never infer literal from the query's shape.
+    let allMatches: RipgrepMatch[];
+    let stoppedEarly: boolean;
+    try {
+      const result = await runRipgrep({
+        appPath: targetAppPath,
+        query: args.query,
+        includePat: args.include_pattern,
+        excludePat: args.exclude_pattern,
+        includeIgnored: args.include_ignored,
+        caseSensitive: args.case_sensitive,
+        literal: args.literal,
+        maxMatches: args.include_ignored ? limit + 1 : undefined,
+        excludeDyadFolder: Boolean(args.app_name),
+      });
+      allMatches = result.matches;
+      stoppedEarly = result.stoppedEarly;
+    } catch (error) {
+      // A bad regex is thrown as a clear, regex-specific error (with a hint to
+      // retry with literal=true) rather than silently re-running the query as a
+      // literal search. This preserves the historical "invalid regex fails"
+      // behavior, just with a more actionable message.
+      if (
+        !args.literal &&
+        error instanceof RipgrepError &&
+        isRegexParseError(error.stderr)
+      ) {
+        throw new DyadError(
+          formatRegexParseError(args.query, error.stderr),
+          DyadErrorKind.Validation,
+        );
+      }
+      throw error;
+    }
 
     const totalCount = allMatches.length;
     // Sort for deterministic output (ripgrep's parallel execution can produce varying order)
@@ -335,7 +398,6 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     if (includePatWasWildcard) {
       resultText += `\n\n[NOTE: include_pattern="*" was ignored because it matches all files including git-ignored files! Omit include_pattern to search all files, or use a specific glob like "*.ts".]`;
     }
-
     ctx.onXmlComplete(
       `<dyad-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</dyad-grep>`,
     );
@@ -343,3 +405,24 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     return resultText;
   },
 };
+
+function isRegexParseError(stderr: string): boolean {
+  return stderr.includes("regex parse error");
+}
+
+function formatRegexParseError(query: string, stderr: string): string {
+  const diagnostic = stderr
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+    .slice(0, 5)
+    .join("\n");
+  return [
+    `Invalid regex pattern: ${query}`,
+    "",
+    diagnostic,
+    "",
+    "Use a simpler escaped regex or split this into separate grep calls for each literal term.",
+    "If you are looking for exact text with punctuation, retry with literal=true.",
+  ].join("\n");
+}

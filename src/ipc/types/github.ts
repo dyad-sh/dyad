@@ -92,12 +92,14 @@ export const CloneRepoParamsSchema = z.object({
   appName: z.string().optional(),
   installCommand: z.string().optional(),
   startCommand: z.string().optional(),
+  optimizeForDyad: z.boolean().optional(),
 });
 
 export const CloneRepoResultSchema = z.union([
   z.object({
     app: AppSchema,
     hasAiRules: z.boolean(),
+    autoUpgradeWarning: z.boolean().optional(),
   }),
   z.object({
     error: z.string(),

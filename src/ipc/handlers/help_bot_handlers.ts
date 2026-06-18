@@ -1,3 +1,4 @@
+import { app } from "electron";
 import { streamText, Tool } from "ai";
 import { readSettings } from "../../main/settings";
 
@@ -22,6 +23,16 @@ const helpSessions = new Map<string, HelpMessage[]>();
 const activeHelpStreams = new Map<string, AbortController>();
 
 export function registerHelpBotHandlers() {
+  // Abort in-flight help-bot streams and drop session history on quit.
+  // (Guarded: `app` is undefined when this module is imported in unit tests.)
+  app?.on?.("before-quit", () => {
+    for (const controller of activeHelpStreams.values()) {
+      controller.abort();
+    }
+    activeHelpStreams.clear();
+    helpSessions.clear();
+  });
+
   createTypedHandler(helpContracts.start, async (event, params) => {
     const { sessionId, message } = params;
     try {

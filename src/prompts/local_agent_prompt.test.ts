@@ -7,6 +7,27 @@ describe("local_agent_prompt", () => {
     expect(prompt).toMatchSnapshot();
   });
 
+  it("agent mode system prompt with code explorer available", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      codeExplorerAvailable: true,
+    });
+    expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain("use `explore_code` first");
+    expect(prompt).toContain(
+      "do not warm up with `list_files`, `grep`, or `read_file` before it",
+    );
+    expect(prompt).toContain(
+      "Follow the report's Action exactly as documented in the `explore_code` tool",
+    );
+    expect(prompt).toContain(
+      "do not call `explore_code` again for the same investigation",
+    );
+    expect(prompt).toContain(
+      "When no authoritative explore_code report is available",
+    );
+    expect(prompt).not.toContain("Use `grep` and `code_search`");
+  });
+
   it("agent mode system prompt (vite framework includes Nitro nudge)", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       frameworkType: "vite",

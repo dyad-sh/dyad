@@ -5,6 +5,9 @@ import {
   parseRoutesFromRouterFile,
   parseRoutesFromRouterFiles,
   parseRoutesFromNextFiles,
+  parseRoutesFromAstroFiles,
+  parseRoutesFromTanStackStartFiles,
+  isTanStackStartAppFile,
 } from "@/hooks/useParseRouter";
 
 describe("buildRouteLabel", () => {
@@ -283,5 +286,184 @@ describe("parseRoutesFromNextFiles", () => {
         ["/about", "/settings"].sort(),
       );
     });
+  });
+});
+
+describe("parseRoutesFromAstroFiles", () => {
+  it("should parse static routes from src/pages", () => {
+    const files = [
+      "astro.config.mjs",
+      "src/pages/index.astro",
+      "src/pages/about.astro",
+      "src/pages/privacy.html",
+      "src/pages/blog/index.md",
+      "src/pages/docs/getting-started.mdx",
+    ];
+
+    const routes = parseRoutesFromAstroFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/about", "/blog", "/docs/getting-started", "/privacy"].sort(),
+    );
+  });
+
+  it("should skip dynamic routes and non-page files", () => {
+    const files = [
+      "src/pages/index.astro",
+      "src/pages/posts/[slug].astro",
+      "src/pages/api/users.ts",
+      "src/pages/api/readme.mdx",
+      "src/components/Card.astro",
+      "src/pages/_draft.astro",
+    ];
+
+    const routes = parseRoutesFromAstroFiles(files);
+    expect(routes.map((r) => r.path)).toEqual(["/"]);
+  });
+});
+
+describe("parseRoutesFromTanStackStartFiles", () => {
+  it("should parse static file routes from src/routes", () => {
+    const files = [
+      "app.config.ts",
+      "src/routeTree.gen.ts",
+      "src/routes/__root.tsx",
+      "src/routes/index.tsx",
+      "src/routes/about.tsx",
+      "src/routes/dashboard/index.tsx",
+      "src/routes/settings.profile.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/about", "/dashboard", "/settings/profile"].sort(),
+    );
+  });
+
+  it("should skip dynamic and pathless routes", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/index.tsx",
+      "src/routes/posts/$postId.tsx",
+      "src/routes/_auth.tsx",
+      "src/routes/_auth/login.tsx",
+      "src/routes/users/route.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/login", "/users"].sort(),
+    );
+  });
+
+  it("should strip TanStack route module suffixes from flat routes", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/index.lazy.tsx",
+      "src/routes/posts.lazy.tsx",
+      "src/routes/about.component.tsx",
+      "src/routes/settings.profile.loader.tsx",
+      "src/routes/users.errorComponent.tsx",
+      "src/routes/admin.pendingComponent.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/", "/admin", "/about", "/posts", "/settings/profile", "/users"].sort(),
+    );
+  });
+
+  it("should preserve literal route segments that match module suffix names", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/component.tsx",
+      "src/routes/docs/loader.tsx",
+      "src/routes/docs/loader.route.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/component", "/docs/loader"].sort(),
+    );
+  });
+
+  it("should strip route before module suffixes for directory route files", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/posts/route.tsx",
+      "src/routes/posts/route.lazy.tsx",
+      "src/routes/users/route.component.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/posts", "/users"].sort(),
+    );
+  });
+
+  it("should preserve escaped dots in TanStack route segments", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/script[.]js.tsx",
+      "src/routes/api[.]v1.tsx",
+      "src/routes/files[.]json.lazy.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/api.v1", "/files.json", "/script.js"].sort(),
+    );
+  });
+
+  it("should strip non-nested trailing underscores from route segments", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/posts_.new.tsx",
+      "src/routes/docs_/guide.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/docs/guide", "/posts/new"].sort(),
+    );
+  });
+
+  it("should skip route group folders from route paths", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/(marketing)/about.tsx",
+      "src/routes/(dashboard)/settings.profile.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path).sort()).toEqual(
+      ["/about", "/settings/profile"].sort(),
+    );
+  });
+
+  it("should exclude dash-prefixed ignored route files and folders", () => {
+    const files = [
+      "src/routes/__root.tsx",
+      "src/routes/about.tsx",
+      "src/routes/-components/Button.tsx",
+      "src/routes/posts/-helpers.tsx",
+      "src/routes/admin.-utils.tsx",
+    ];
+
+    const routes = parseRoutesFromTanStackStartFiles(files);
+    expect(routes.map((r) => r.path)).toEqual(["/about"]);
+  });
+});
+
+describe("isTanStackStartAppFile", () => {
+  it("detects TanStack Start-specific generated and root route files", () => {
+    expect(isTanStackStartAppFile("src/routeTree.gen.ts")).toBe(true);
+    expect(isTanStackStartAppFile("src/routeTree.gen.js")).toBe(true);
+    expect(isTanStackStartAppFile("src/routes/__root.tsx")).toBe(true);
+    expect(isTanStackStartAppFile("src/routes/__root.jsx")).toBe(true);
+  });
+
+  it("does not treat generic app config files as TanStack Start signals", () => {
+    expect(isTanStackStartAppFile("app.config.ts")).toBe(false);
+    expect(isTanStackStartAppFile("app.config.js")).toBe(false);
   });
 });

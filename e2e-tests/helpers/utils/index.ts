@@ -10,3 +10,4 @@ export {
 } from "./normalization";
 
 export { prettifyDump, type PrettifyDumpOptions } from "./dump-prettifier";
+export { normalizeMessagesAriaSnapshot } from "./stable-aria-snapshot";

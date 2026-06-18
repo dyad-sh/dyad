@@ -31,6 +31,7 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
+import { exploreCodeTool } from "./tools/explore_code";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -84,6 +85,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   listFilesTool,
   grepTool,
   codeSearchTool,
+  exploreCodeTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,
@@ -177,6 +179,23 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   return tool?.defaultConsent ?? "ask";
 }
 
+/**
+ * When autoApproveNonSchemaSql is enabled, execute_sql calls that the schema
+ * classifier determines do not mutate the schema run without a consent prompt.
+ * Schema-mutating SQL still requires consent.
+ */
+export function shouldAutoApproveAgentTool(params: {
+  toolName: AgentToolName;
+  metadata?: { sqlMutatesSchema?: boolean } | null;
+  autoApproveNonSchemaSql: boolean | undefined;
+}): boolean {
+  return (
+    params.toolName === "execute_sql" &&
+    params.metadata?.sqlMutatesSchema === false &&
+    params.autoApproveNonSchemaSql === true
+  );
+}
+
 export function getAgentToolConsent(toolName: AgentToolName): AgentToolConsent {
   const settings = readSettings();
   const stored = settings.agentToolConsents?.[toolName];
@@ -232,6 +251,16 @@ export async function requireAgentToolConsent(
       "Should not ask for consent for a tool marked as 'never'",
       DyadErrorKind.Internal,
     );
+
+  if (
+    shouldAutoApproveAgentTool({
+      toolName: params.toolName,
+      metadata: params.metadata,
+      autoApproveNonSchemaSql: readSettings().autoApproveNonSchemaSql,
+    })
+  ) {
+    return true;
+  }
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
@@ -452,8 +481,11 @@ export function shouldIncludeTool(
   if (options.readOnly && tool.modifiesState) {
     return false;
   }
-  if (tool.isEnabled && !tool.isEnabled(ctx)) {
-    return false;
+  if (tool.isEnabled) {
+    const enabled = tool.isEnabled(ctx);
+    if (!enabled) {
+      return false;
+    }
   }
   return true;
 }

@@ -18,6 +18,7 @@ import {
   AlertCircleIcon,
   MessageSquareIcon,
   CopyIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { ipc } from "@/ipc/types";
 import {
@@ -27,10 +28,12 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import { useTranslation } from "react-i18next";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
@@ -239,12 +242,11 @@ function CopyButton({ text }: { text: string }) {
 // Main component
 // =============================================================================
 
-interface HelpDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
+export function HelpDialog() {
+  const { t } = useTranslation(["home", "common"]);
+  const [helpDialog, setHelpDialog] = useAtom(helpDialogAtom);
+  const isOpen = helpDialog.open;
+  const onClose = () => setHelpDialog({ open: false });
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [screen, setScreen] = useState<DialogScreen>("main");
@@ -256,6 +258,9 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
   const [isBugScreenshotOpen, setIsBugScreenshotOpen] = useState(false);
   const hasNavigated = useRef(false);
+  // Tracks which chat (if any) we've already preloaded for the crash-triggered
+  // upload flow, so the preload effect fires once per open.
+  const preloadedChatId = useRef<number | null>(null);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
@@ -281,11 +286,53 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
     setDebugBundle(null);
     setSessionId("");
     hasNavigated.current = false;
+    preloadedChatId.current = null;
   };
 
   useEffect(() => {
     if (!isOpen) resetDialogState();
   }, [isOpen]);
+
+  // Crash-triggered upload: when opened with a uploadChatId, skip the main
+  // screen, preload that chat's debug bundle, and jump straight to review.
+  useEffect(() => {
+    if (!isOpen) return;
+    const chatId = helpDialog.uploadChatId;
+    if (chatId == null || preloadedChatId.current === chatId) return;
+    preloadedChatId.current = chatId;
+    setIsUploading(true);
+    // Guard against the dialog closing before the bundle resolves, which would
+    // otherwise leave it on the review screen with a stale bundle.
+    let active = true;
+    ipc.misc
+      .getSessionDebugBundle(chatId)
+      .then((bundle) => {
+        if (!active) return;
+        setDebugBundle(bundle);
+        // Clear uploadChatId once loaded so canceling from review back to the
+        // main screen doesn't keep rendering the preload spinner.
+        setHelpDialog({ open: true });
+        // Move to review with an explicit forward direction. The preload only
+        // runs from the main screen, so we set the transition directly rather
+        // than reading the screen value asynchronously via navigateTo.
+        setDirection(1);
+        setScreen("review");
+        hasNavigated.current = true;
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("Failed to load chat session:", error);
+        showError(t("home:help.failedToLoadChatSession"));
+        onClose();
+      })
+      .finally(() => {
+        if (active) setIsUploading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, helpDialog.uploadChatId]);
 
   const handleClose = () => onClose();
 
@@ -666,9 +713,30 @@ ${formatLogsSection(debugInfo)}
     </AnimatedScreen>
   );
 
+  // Shown while a crash-triggered upload preloads its bundle, so the user who
+  // clicked "Upload Chat Session" sees a spinner instead of the main help menu
+  // before the review screen appears.
+  const renderPreloadingScreen = () => (
+    <AnimatedScreen
+      screenKey="main"
+      direction={direction}
+      skipInitial={!hasNavigated.current}
+    >
+      <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
+        <Loader2Icon className="h-6 w-6 animate-spin" />
+        <span>{t("home:help.preparingUpload")}</span>
+        <Button variant="outline" size="sm" onClick={handleClose}>
+          {t("common:cancel")}
+        </Button>
+      </div>
+    </AnimatedScreen>
+  );
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  const isCrashPreloading = helpDialog.uploadChatId != null;
 
   return (
     <>
@@ -681,7 +749,10 @@ ${formatLogsSection(debugInfo)}
           }
         >
           <AnimatePresence mode="wait" custom={direction}>
-            {screen === "main" && renderMainScreen()}
+            {screen === "main" &&
+              (isCrashPreloading
+                ? renderPreloadingScreen()
+                : renderMainScreen())}
             {screen === "review" && renderReviewScreen()}
             {screen === "upload-complete" && renderUploadCompleteScreen()}
           </AnimatePresence>

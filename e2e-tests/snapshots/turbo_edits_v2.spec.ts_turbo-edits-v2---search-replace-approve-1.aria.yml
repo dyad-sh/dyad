@@ -2,15 +2,8 @@
 - paragraph: Example with turbo edit v2
 - button "Search & Replace Index.tsx src/pages/Index.tsx"
 - paragraph: End of turbo edit
-- button "Copy":
-  - img
-- img
+- button "Copy"
 - text: auto
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-- button "Undo":
-  - img
-- button "Retry":
-  - img
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

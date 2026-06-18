@@ -1,17 +1,7 @@
 - paragraph: tc=add-supabase
 - paragraph: Adding supabase...
-- img
 - text: Integration Complete Supabase integration complete
 - paragraph: "This app is connected to the Supabase project: Fake Supabase Project"
-- button "Copy":
-  - img
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- button "Undo"
+- button "Retry"

@@ -139,32 +139,41 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
 7. **Create or update the PR (REQUIRED):**
 
-   **CRITICAL:** Do NOT tell the user to visit a URL to create a PR. You MUST create it automatically.
-
    First, check if a PR already exists for this branch:
 
    ```
    gh pr view --json number,url
    ```
 
-   If a PR already exists, skip PR creation (the push already updated it).
+   If a PR already exists, skip PR creation (the push already updated it — this works regardless of which account is active).
 
-   If NO PR exists, create one using `gh pr create`:
+   If NO PR exists, check whether the active GitHub account is a bot:
+
+   ```
+   gh auth status
+   ```
+
+   Look at the active account name in the output (e.g., `Logged in to github.com account keppo-bot[bot]`). The account is a bot if the name ends with `[bot]`.
+
+   **If the account is a bot, do NOT create the PR.** PRs _authored_ by bot accounts do not trigger third-party code reviewers (Cursor Bugbot, Gemini Code Assist, cubic, Copilot), so the PR must be created by a human. Instead:
+   - Construct the PR-creation link for the pushed branch: `https://github.com/<owner>/<repo>/pull/new/<branch-name>` (use the repo the branch was pushed to)
+   - Write the suggested PR title and body (same format as the `gh pr create` body below) so the user can paste them in
+   - In the final summary, tell the user to create the PR themselves using that link, title, and body
+   - Skip step 9 (there is no PR to edit yet); later pushes to the branch will update the PR normally once the user has created it
+
+   **If the account is NOT a bot:** do NOT tell the user to visit a URL to create a PR. You MUST create it automatically using `gh pr create`:
 
    ```
    gh pr create --title "<descriptive title>" --body "$(cat <<'EOF'
    ## Summary
    <1-3 bullet points summarizing the changes>
-
-   ## Test plan
-   <How to test these changes>
-
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
    EOF
    )"
    ```
 
    Use the commit messages and changed files to write a good title and summary.
+
+   **PR description style:** do NOT state the obvious (what the diff already shows). Concisely capture the design decisions and trade-offs, staying close to the original prompt / user intent — why this approach, what was deliberately not done, and any behavior boundaries a reviewer should know.
 
 8. **Do NOT automatically add `cc:request`:**
 
@@ -205,4 +214,4 @@ If any files were modified by the skill (check with `git status`):
 - Confirm tests passed
 - Confirm the branch has been pushed
 - Report any learnings added to `AGENTS.md` or `rules/` (and whether a follow-up push was made)
-- **Include the PR URL** (either newly created or existing)
+- **Include the PR URL** (either newly created or existing) — or, if PR creation was skipped because the active account is a bot, include the PR-creation link plus the suggested title and body for the user to paste

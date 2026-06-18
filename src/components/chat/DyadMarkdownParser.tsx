@@ -10,6 +10,7 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadLogs } from "./DyadLogs";
 import { DyadGrep } from "./DyadGrep";
+import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
@@ -582,6 +583,26 @@ function renderCustomTag(
         >
           {content}
         </DyadGrep>
+      );
+
+    case "dyad-explore-code":
+      return (
+        <DyadExploreCode
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+              query: attributes.query || "",
+              appName: attributes.app_name || "",
+              files: attributes.files || "",
+              symbols: attributes.symbols || "",
+              indexMs: attributes.index_ms || "",
+              searchMs: attributes.search_ms || "",
+              truncated: attributes.truncated || "",
+            },
+          }}
+        >
+          {content}
+        </DyadExploreCode>
       );
 
     case "dyad-add-integration":

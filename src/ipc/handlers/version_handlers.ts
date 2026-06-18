@@ -266,7 +266,8 @@ async function revertCodebaseToVersion({
     await gitAddAll({ path: appPath });
     await gitCommit({
       path: appPath,
-      message: "Saved pending changes before restore",
+      message:
+        "Saved uncommitted changes before restoring to an earlier version",
     });
   }
 

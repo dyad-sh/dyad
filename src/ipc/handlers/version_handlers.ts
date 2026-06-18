@@ -462,12 +462,17 @@ export function registerVersionHandlers() {
         // Determine the version that existed right before the target message.
         // Primary signal: the assistant message that responded to the target
         // user message stores `sourceCommitHash` = the commit current when that
-        // turn started (i.e. before its code changes).
-        const followingMessage = chat.messages[targetIndex + 1];
-        let targetCommitHash: string | null =
-          followingMessage?.role === "assistant"
-            ? (followingMessage.sourceCommitHash ?? null)
-            : null;
+        // turn started (i.e. before its code changes). Walk forward past any
+        // intervening user messages (e.g. consecutive prompts or compaction
+        // summaries) to find that responding assistant message.
+        let targetCommitHash: string | null = null;
+        for (let i = targetIndex + 1; i < chat.messages.length; i++) {
+          const m = chat.messages[i];
+          if (m.role === "assistant") {
+            targetCommitHash = m.sourceCommitHash ?? null;
+            break;
+          }
+        }
         // Fallback: the assistant message preceding the target user message
         // stores `commitHash` = the version that existed when it finished, which
         // is the state right before the target message was sent.
@@ -513,40 +518,52 @@ export function registerVersionHandlers() {
         // indistinguishable "untitled" entry after one or more restores.
         const restoredTitle = chat.title ? `${chat.title} (restored)` : null;
 
-        // Create the new chat pointing at the target version. We insert directly
-        // (instead of using the createChat handler) so `initialCommitHash` is the
-        // target version rather than the current (not-yet-reverted) tree.
-        const [newChat] = await db
-          .insert(chats)
-          .values({
-            appId,
-            title: restoredTitle,
-            chatMode: chat.chatMode,
-            initialCommitHash: targetCommitHash,
-          })
-          .returning();
+        // Create the new chat pointing at the target version and copy over the
+        // earlier messages atomically. We insert directly (instead of using the
+        // createChat handler) so `initialCommitHash` is the target version
+        // rather than the current (not-yet-reverted) tree. Wrapping both inserts
+        // in a transaction ensures we never leave behind an orphaned, empty
+        // "(restored)" chat if the messages insert fails after the chat insert.
+        // better-sqlite3 transactions are synchronous, so the callback uses the
+        // sync query API (`.get()`/`.run()`) rather than `await`.
+        const newChat = db.transaction((tx) => {
+          const createdChat = tx
+            .insert(chats)
+            .values({
+              appId,
+              title: restoredTitle,
+              chatMode: chat.chatMode,
+              initialCommitHash: targetCommitHash,
+            })
+            .returning()
+            .get();
 
-        // Copy all messages that came before the target message into the new
-        // chat, preserving their fields and ordering.
-        if (messagesBefore.length > 0) {
-          await db.insert(messages).values(
-            messagesBefore.map((m) => ({
-              chatId: newChat.id,
-              role: m.role,
-              content: m.content,
-              approvalState: m.approvalState,
-              sourceCommitHash: m.sourceCommitHash,
-              commitHash: m.commitHash,
-              requestId: m.requestId,
-              maxTokensUsed: m.maxTokensUsed,
-              model: m.model,
-              aiMessagesJson: m.aiMessagesJson,
-              usingFreeAgentModeQuota: m.usingFreeAgentModeQuota,
-              isCompactionSummary: m.isCompactionSummary,
-              createdAt: m.createdAt,
-            })),
-          );
-        }
+          // Copy all messages that came before the target message into the new
+          // chat, preserving their fields and ordering.
+          if (messagesBefore.length > 0) {
+            tx.insert(messages)
+              .values(
+                messagesBefore.map((m) => ({
+                  chatId: createdChat.id,
+                  role: m.role,
+                  content: m.content,
+                  approvalState: m.approvalState,
+                  sourceCommitHash: m.sourceCommitHash,
+                  commitHash: m.commitHash,
+                  requestId: m.requestId,
+                  maxTokensUsed: m.maxTokensUsed,
+                  model: m.model,
+                  aiMessagesJson: m.aiMessagesJson,
+                  usingFreeAgentModeQuota: m.usingFreeAgentModeQuota,
+                  isCompactionSummary: m.isCompactionSummary,
+                  createdAt: m.createdAt,
+                })),
+              )
+              .run();
+          }
+
+          return createdChat;
+        });
 
         if (warningMessage) {
           return { newChatId: newChat.id, warningMessage };

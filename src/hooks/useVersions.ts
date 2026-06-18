@@ -144,7 +144,11 @@ export function useVersions(appId: number | null) {
         await restartApp();
       }
     },
-    meta: { showErrorToast: true },
+    // No `meta.showErrorToast` here: `handleRestoreToMessage` in
+    // `ChatMessage.tsx` already wraps this `mutateAsync` (and the preceding
+    // `cancelStream` call) in a try/catch that surfaces the error via
+    // `showError`. Enabling the global toast too would show the same error
+    // twice.
   });
 
   // True when *any* restore-to-message is pending across all messages. Used to

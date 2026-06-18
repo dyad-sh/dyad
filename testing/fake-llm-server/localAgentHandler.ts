@@ -657,6 +657,11 @@ export async function handleLocalAgentFixture(
       }
     }
 
+    // Optional delay so tests can cancel the stream while it is still open.
+    if (turn.delayMs && turn.delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, turn.delayMs));
+    }
+
     // If this turn has tool calls, stream them
     if (turn.toolCalls && turn.toolCalls.length > 0) {
       const dropAfterToolCalls =

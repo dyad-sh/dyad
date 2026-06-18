@@ -76,7 +76,7 @@ import {
   ensureToolResultOrdering,
   type InjectedMessage,
 } from "./prepare_step_utils";
-import { loadTodos } from "./todo_persistence";
+import { deleteTodos, loadTodos } from "./todo_persistence";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
@@ -1474,6 +1474,7 @@ export async function handleLocalAgentStream(
           content: appendCancelledResponseNotice(fullResponse ?? ""),
         })
         .where(eq(messages.id, placeholderMessageId));
+      await clearTodosOnCancel(event, appPath, chat.id);
       return false; // Cancelled - don't consume quota
     }
 
@@ -1632,6 +1633,7 @@ export async function handleLocalAgentStream(
           content: appendCancelledResponseNotice(fullResponse ?? ""),
         })
         .where(eq(messages.id, placeholderMessageId));
+      await clearTodosOnCancel(event, appPath, chat.id);
       return false; // Cancelled - don't consume quota
     }
 
@@ -1654,6 +1656,26 @@ export async function handleLocalAgentStream(
       streamingPreview = "";
     }
   }
+}
+
+/**
+ * Clear a chat's todos when its turn is cancelled.
+ *
+ * Removes the persisted todos file from disk and emits an empty todos-update so
+ * the renderer drops the stale list. Without this, todos created mid-turn would
+ * survive the cancellation (both on disk and in the UI) and get reloaded on the
+ * next turn, even though the work that produced them was aborted.
+ */
+async function clearTodosOnCancel(
+  event: IpcMainInvokeEvent,
+  appPath: string,
+  chatId: number,
+): Promise<void> {
+  await deleteTodos(appPath, chatId);
+  safeSend(event.sender, "agent-tool:todos-update", {
+    chatId,
+    todos: [],
+  });
 }
 
 function buildTerminatedRetryContinuationInstruction(): ModelMessage {

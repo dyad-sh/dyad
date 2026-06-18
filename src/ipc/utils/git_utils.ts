@@ -919,6 +919,10 @@ export async function getChangedFilesForCommit({
     // --root makes diff-tree show the initial (root) commit's files as additions.
     // --no-renames decomposes renames into D + A pairs.
     // -z gives NUL-delimited output for robust parsing of paths with spaces.
+    // -m --first-parent makes merge commits diff against their first parent;
+    // without these, diff-tree emits nothing for a merge and the version would
+    // show "no changes". This matches the isomorphic-git path below, which walks
+    // the first parent (parent[0]).
     const result = await execGit(
       [
         "diff-tree",
@@ -928,6 +932,8 @@ export async function getChangedFilesForCommit({
         "-r",
         "-z",
         "--root",
+        "-m",
+        "--first-parent",
         commitHash,
       ],
       path,

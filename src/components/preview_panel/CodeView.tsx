@@ -66,7 +66,10 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
 
   const isVersionDiffMode = selectedVersionId != null && app.id != null;
 
-  if (app.files && app.files.length > 0) {
+  // The version diff view is driven by the selected commit, not the current
+  // working-tree files, so it must render even when the checkout has no files
+  // (e.g. a deletion-only version or an otherwise empty working tree).
+  if (isVersionDiffMode || (app.files && app.files.length > 0)) {
     return (
       <div
         className={`flex flex-col bg-background ${isFullscreen ? "fixed inset-0 z-50 h-screen w-screen shadow-2xl" : "h-full"}`}
@@ -90,7 +93,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
           <div className="text-sm text-gray-500">
             {isVersionDiffMode
               ? t("preview.viewingVersionChanges")
-              : `${app.files.length} ${t("preview.files")}`}
+              : `${app.files?.length ?? 0} ${t("preview.files")}`}
           </div>
           <div className="flex-1" />
           <Tooltip>
@@ -118,7 +121,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         ) : (
           <div className="flex flex-1 overflow-hidden">
             <div className="w-1/3 border-r overflow-hidden flex flex-col min-h-0">
-              <FileTree appId={app.id ?? null} files={app.files} />
+              <FileTree appId={app.id ?? null} files={app.files ?? []} />
             </div>
             <div className="w-2/3">
               {selectedFile ? (

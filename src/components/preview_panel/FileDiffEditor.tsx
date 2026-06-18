@@ -18,11 +18,7 @@ export function FileDiffEditor({
   oldContent,
   newContent,
 }: FileDiffEditorProps) {
-  const { theme } = useTheme();
-  const isDarkMode =
-    theme === "dark" ||
-    (theme === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const { isDarkMode } = useTheme();
   const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
 
   return (

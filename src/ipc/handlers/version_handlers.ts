@@ -13,6 +13,7 @@ import { versionContracts } from "../types/version";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import { readSettings } from "../../main/settings";
 import {
+  gitAddAll,
   gitCheckout,
   gitCommit,
   gitStageToRevert,
@@ -108,6 +109,27 @@ async function revertCodebaseToVersion({
     path: appPath,
     ref: "main",
   });
+
+  // A cancelled/aborted stream leaves the AI's partial file writes uncommitted
+  // in the working tree (`cancelStream` only aborts; it never commits). That
+  // would make `gitStageToRevert` refuse to run ("working tree has uncommitted
+  // changes"). Commit those pending changes first so they're preserved as a
+  // version (consistent with Dyad's one-commit-per-turn model) and the revert
+  // can proceed against a clean tree. This must run before
+  // `storeDbTimestampAtCurrentVersion` so the Neon timestamp binds to the
+  // committed state rather than the soon-to-be-discarded dirty tree.
+  if (!(await isGitStatusClean({ path: appPath }))) {
+    // Stage everything first so untracked files (e.g. a newly added
+    // pnpm-workspace.yaml) are included. With native git, `git commit` only
+    // commits staged changes, so without this the commit would fail with
+    // "nothing added to commit but untracked files present" and the revert
+    // would abort.
+    await gitAddAll({ path: appPath });
+    await gitCommit({
+      path: appPath,
+      message: "Saved pending changes before restore",
+    });
+  }
 
   if (app.neonProjectId && app.neonDevelopmentBranchId) {
     // We are going to add a new commit on top, so let's store

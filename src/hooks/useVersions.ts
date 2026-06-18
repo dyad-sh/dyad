@@ -240,9 +240,17 @@ export function useVersions(appId: number | null) {
   // version-modifying buttons (message restore arrows and the version-pane
   // revert button) while one is running, preventing a confusing second
   // operation from running against the state left by the first.
+  // Both `useIsMutating` calls must run on every render — combining them with
+  // `||` directly would short-circuit and skip the second hook whenever the
+  // first is truthy, violating the rules of hooks ("Should have a queue").
+  const restoreToMessagePending = useIsMutating({
+    mutationKey: restoreToMessageMutationKey,
+  });
+  const revertVersionPending = useIsMutating({
+    mutationKey: revertVersionMutationKey,
+  });
   const isAnyVersionMutationPending =
-    useIsMutating({ mutationKey: restoreToMessageMutationKey }) > 0 ||
-    useIsMutating({ mutationKey: revertVersionMutationKey }) > 0;
+    restoreToMessagePending > 0 || revertVersionPending > 0;
 
   return {
     versions: versions || [],

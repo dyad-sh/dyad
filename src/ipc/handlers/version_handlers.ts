@@ -833,6 +833,15 @@ export function registerVersionHandlers() {
 
         const messagesBefore = chat.messages.slice(0, targetIndex);
 
+        // Restoring to the very first message would preserve no prior messages,
+        // producing an empty "(restored)" chat that gives the user no useful
+        // context. Bail out with a warning instead of creating that empty chat.
+        if (messagesBefore.length === 0) {
+          return {
+            warningMessage: "Cannot restore before the first message.",
+          };
+        }
+
         // Determine the version that existed right before the target message.
         // Primary signal: the assistant message that responded to the target
         // user message stores `sourceCommitHash` = the commit current when that
@@ -891,9 +900,12 @@ export function registerVersionHandlers() {
         // chat is identifiable in the sidebar instead of showing up as another
         // indistinguishable "untitled" entry after one or more restores. When
         // the original is untitled we still apply a bare "(restored)" label so
-        // the fork isn't rendered as a generic "New Chat" entry.
-        const restoredTitle = chat.title
-          ? `${chat.title} (restored)`
+        // the fork isn't rendered as a generic "New Chat" entry. Strip any
+        // existing "(restored)" suffix first so repeated restores don't pile up
+        // (e.g. "My App (restored) (restored)") and clutter the sidebar.
+        const baseTitle = chat.title?.replace(/ \(restored\)$/, "") ?? null;
+        const restoredTitle = baseTitle
+          ? `${baseTitle} (restored)`
           : "(restored)";
 
         // Create the new chat pointing at the target version and copy over the
@@ -932,7 +944,12 @@ export function registerVersionHandlers() {
                   maxTokensUsed: m.maxTokensUsed,
                   model: m.model,
                   aiMessagesJson: m.aiMessagesJson,
-                  usingFreeAgentModeQuota: m.usingFreeAgentModeQuota,
+                  // Don't carry over the free-agent quota flag. The copied
+                  // messages represent already-completed turns; preserving the
+                  // flag would make getFreeAgentQuotaStatus (which counts every
+                  // row globally) double-count those past requests and could
+                  // exhaust a non-Pro user's quota without any new model call.
+                  usingFreeAgentModeQuota: false,
                   isCompactionSummary: m.isCompactionSummary,
                   createdAt: m.createdAt,
                 })),

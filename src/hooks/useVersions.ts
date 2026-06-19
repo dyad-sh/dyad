@@ -208,20 +208,27 @@ export function useVersions(appId: number | null) {
       } else {
         toast.success(result.successMessage);
       }
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.versions.list({ appId }),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.branches.current({ appId }),
-      });
-      // restoreToMessageVersion creates a brand new chat, so refresh the chat
-      // list (like every other chat-creation path) or the sidebar won't show it.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.chats.all,
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.problems.byApp({ appId }),
-      });
+      // These invalidations are independent, so run them concurrently. Since
+      // `mutateAsync` only resolves after `onSuccess` completes, awaiting them
+      // sequentially would delay navigation to the forked chat (the caller
+      // navigates once `mutateAsync` resolves), leaving the user on a spinner.
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.versions.list({ appId }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.branches.current({ appId }),
+        }),
+        // restoreToMessageVersion creates a brand new chat, so refresh the chat
+        // list (like every other chat-creation path) or the sidebar won't show
+        // it.
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.chats.all,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.problems.byApp({ appId }),
+        }),
+      ]);
       if (settings?.runtimeMode2 === "cloud") {
         await restartApp();
       }

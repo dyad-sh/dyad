@@ -210,7 +210,11 @@ const ChatMessage = ({
   const attachmentSize: AttachmentSize =
     attachments.length === 1 ? "lg" : attachments.length <= 3 ? "md" : "sm";
 
-  const showRestoreButton = message.role === "user" && hasUserText;
+  // Exclude cancelled prompts: they render greyed out with a "Cancelled" label,
+  // and showing an undo arrow on a turn that never completed (and may have left
+  // partial file changes) is confusing.
+  const showRestoreButton =
+    message.role === "user" && hasUserText && !isCancelled;
 
   const handleRestoreToMessage = async () => {
     if (appId == null || selectedChatId == null) {

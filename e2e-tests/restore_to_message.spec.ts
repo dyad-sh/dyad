@@ -76,5 +76,20 @@ testSkipIfWindows(
       expect(content).toContain("Testing:write-index!");
       expect(content).not.toContain("Testing:write-index(2)!");
     }).toPass({ timeout: Timeout.LONG });
+
+    // The original chat must be left intact: the confirmation dialog promises
+    // "Your current chat will not be changed". Navigate back to it and verify
+    // both turns are still present.
+    await po.page.getByRole("link", { name: "Apps" }).hover();
+    await expect(po.page.getByTestId("chat-list-container")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.page.getByTestId(`chat-list-item-${originalChatId}`).click();
+    await expect(async () => {
+      const currentChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
+      expect(currentChatId).toBe(originalChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+    await expect(messagesList).toContainText("tc=write-index");
+    await expect(messagesList).toContainText("tc=write-index-2");
   },
 );

@@ -57,6 +57,7 @@ export { imageGenerationContracts } from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
 export { appCollectionContracts } from "./app_collections";
 export { terminalContracts } from "./terminal";
+export { testsContracts, testsEvents } from "./tests";
 
 // =============================================================================
 // Client Exports
@@ -93,6 +94,7 @@ export { imageGenerationClient } from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 export { appCollectionClient } from "./app_collections";
 export { terminalClient } from "./terminal";
+export { testsClient, testsEventClient } from "./tests";
 
 // =============================================================================
 // Type Exports
@@ -342,6 +344,15 @@ export type {
   GenerateImageResponse,
 } from "./image_generation";
 
+// Tests types
+export type {
+  TestSpec,
+  TestRunStatus,
+  TestResult,
+  RunAppTestsResult,
+  TestOutputPayload,
+} from "./tests";
+
 // App blueprint types
 export type {
   AppBlueprintVisual,
@@ -416,6 +427,7 @@ import { imageGenerationClient } from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
+import { testsClient, testsEventClient } from "./tests";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -478,6 +490,7 @@ export const ipc = {
   appBlueprint: appBlueprintClient,
   appCollection: appCollectionClient,
   terminal: terminalClient,
+  tests: testsClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -487,5 +500,6 @@ export const ipc = {
     system: systemEventClient,
     misc: miscEventClient,
     appBlueprint: appBlueprintEventClient,
+    tests: testsEventClient,
   },
 } as const;

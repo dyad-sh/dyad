@@ -202,6 +202,7 @@
     "configure": "Configure",
     "security": "Security",
     "publish": "Publish",
+    "tests": "Tests",
     "plan": "Plan",
     "moreOptions": "More options",
     "rebuild": "Rebuild",

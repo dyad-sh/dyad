@@ -14,6 +14,7 @@ import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
+import { DyadGenerateTest } from "./DyadGenerateTest";
 import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
@@ -475,6 +476,21 @@ function renderCustomTag(
         >
           {content}
         </DyadWrite>
+      );
+
+    case "dyad-generate-test":
+      return (
+        <DyadGenerateTest
+          node={{
+            properties: {
+              path: attributes.path || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadGenerateTest>
       );
 
     case "dyad-rename":

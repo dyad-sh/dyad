@@ -345,9 +345,33 @@ If the user asks for server-side code in a Vite app (API routes, database access
 This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
 `;
 
+/**
+ * Guidance for writing end-to-end tests. Shared between the Build-mode
+ * `<dyad-generate-test>` tag prompt and the Pro `generate_test` tool
+ * description, so both surfaces produce the same kind of test.
+ */
+export const TEST_WRITING_GUIDANCE = `# Writing end-to-end tests
+
+When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
+
+- Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
+- In Build mode, emit it with a \`<dyad-generate-test>\` tag (NOT \`<dyad-write>\`) so it shows up in the Tests panel:
+  <dyad-generate-test path="tests/signup.spec.ts" description="Tests the signup flow">
+  ...test code...
+  </dyad-generate-test>
+- Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
+- Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
+- Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
+- Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.
+- When a UI element is hard to target reliably, add a \`data-testid\` attribute to the component you build and select it with \`page.getByTestId("...")\`. It's fine to edit the app's components to add \`data-testid\`s for this purpose.
+- Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
+- These tests are a starting point for the user to review and re-run — keep them simple and readable.`;
+
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
+
+${TEST_WRITING_GUIDANCE}
 
 ${BUILD_SYSTEM_POSTFIX}`;
 

@@ -167,6 +167,59 @@ describe.each([
     expect(changes).toEqual([{ path: "feature.txt", type: "added" }]);
   });
 
+  it("reports both sides when a file is replaced by a directory", async () => {
+    const dir = await setupRepo();
+    await write(dir, "thing", "i am a file\n");
+    await commitAll(dir, "thing is a file");
+
+    // Replace the file `thing` with a directory `thing/` containing files.
+    await fs.promises.rm(path.join(dir, "thing"));
+    await write(dir, "thing/a.txt", "nested a\n");
+    await write(dir, "thing/b.txt", "nested b\n");
+    const commit = await commitAll(dir, "thing becomes a directory");
+
+    const changes = await getChangedFilesForCommit({
+      path: dir,
+      commitHash: commit,
+    });
+
+    expect(new Set(changes)).toEqual(
+      new Set([
+        { path: "thing", type: "deleted" },
+        { path: "thing/a.txt", type: "added" },
+        { path: "thing/b.txt", type: "added" },
+      ]),
+    );
+  });
+
+  it("reports both sides when a directory is replaced by a file", async () => {
+    const dir = await setupRepo();
+    await write(dir, "thing/a.txt", "nested a\n");
+    await write(dir, "thing/b.txt", "nested b\n");
+    await commitAll(dir, "thing is a directory");
+
+    // Replace the directory `thing/` with a single file `thing`.
+    await fs.promises.rm(path.join(dir, "thing"), {
+      recursive: true,
+      force: true,
+    });
+    await write(dir, "thing", "i am a file now\n");
+    const commit = await commitAll(dir, "thing becomes a file");
+
+    const changes = await getChangedFilesForCommit({
+      path: dir,
+      commitHash: commit,
+    });
+
+    expect(new Set(changes)).toEqual(
+      new Set([
+        { path: "thing/a.txt", type: "deleted" },
+        { path: "thing/b.txt", type: "deleted" },
+        { path: "thing", type: "added" },
+      ]),
+    );
+  });
+
   it("excludes Dyad-managed runtime files", async () => {
     const dir = await setupRepo();
     await write(dir, "app.ts", "v1\n");

@@ -42,7 +42,13 @@ export type RevertVersionResponse = z.infer<typeof RevertVersionResponseSchema>;
 
 export const CheckoutVersionParamsSchema = z.object({
   appId: z.number(),
-  versionId: z.string(),
+  // Unlike getVersionChanges, this accepts arbitrary git refs (e.g. the "main"
+  // branch for the restore-to-latest flow), so it can't be constrained to a hex
+  // SHA. We still reject leading-dash values so a ref can't be interpreted as a
+  // git option when passed to native `git checkout`.
+  versionId: z
+    .string()
+    .refine((v) => !v.startsWith("-"), "versionId must not start with '-'"),
 });
 
 export const VersionChangeTypeSchema = z.enum(["added", "modified", "deleted"]);

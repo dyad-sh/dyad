@@ -866,6 +866,21 @@ async function getParentCommitOid({
   path,
   commitHash,
 }: GitListChangedFilesParams): Promise<string | null> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Stay on the native backend rather than mixing in isomorphic-git, which
+    // may be unable to read objects in shallow/partial clones that native git
+    // handles fine. `--verify --quiet` exits non-zero (without erroring) for a
+    // root commit, where `<commit>^` does not resolve.
+    const result = await execGit(
+      ["rev-parse", "--verify", "--quiet", `${commitHash}^`],
+      path,
+    );
+    if (result.exitCode !== 0) {
+      return null;
+    }
+    return result.stdout.toString().trim() || null;
+  }
   const { commit } = await git.readCommit({
     fs,
     dir: path,
@@ -988,8 +1003,18 @@ export async function getChangedFilesForCommit({
       const [parent, current] = entries;
       const parentType = parent ? await parent.type() : undefined;
       const currentType = current ? await current.type() : undefined;
-      // Let walk recurse into directories without emitting them.
       if (parentType === "tree" || currentType === "tree") {
+        // One side may be a blob while the other is a directory (a file was
+        // replaced by a directory, or vice versa). The tree side is handled by
+        // walk recursing into its children, but the blob side must be emitted
+        // here as an add/delete, otherwise half of the commit is suppressed.
+        if (currentType === "blob") {
+          return { path: filepath, type: "added" as GitChangedFileType };
+        }
+        if (parentType === "blob") {
+          return { path: filepath, type: "deleted" as GitChangedFileType };
+        }
+        // Pure directory on the relevant side(s): let walk recurse, emit nothing.
         return undefined;
       }
 

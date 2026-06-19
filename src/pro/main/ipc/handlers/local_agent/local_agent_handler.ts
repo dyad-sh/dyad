@@ -19,6 +19,7 @@ import { chats, messages, mcpServers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 
 import {
@@ -1972,6 +1973,17 @@ async function getMcpTools(
                     ? args.join(" ")
                     : JSON.stringify(args).slice(0, 500);
 
+              const autoApprove = buildMcpAutoApprove({
+                settings: readSettings(),
+                isDyadPro: ctx.isDyadPro,
+                chatId: ctx.chatId,
+                serverName: s.name,
+                toolName: name,
+                toolDescription: mcpTool.description,
+                inputSchema: mcpTool.inputSchema,
+                args,
+              });
+
               const ok = await requireMcpToolConsent(event, {
                 serverId: s.id,
                 serverName: s.name,
@@ -1979,6 +1991,7 @@ async function getMcpTools(
                 toolDescription: mcpTool.description,
                 inputPreview,
                 chatId: ctx.chatId,
+                autoApprove,
               });
 
               if (!ok) throw new Error(`User declined running tool ${key}`);
@@ -1995,7 +2008,7 @@ async function getMcpTools(
                 typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
               );
 
               return resultStr;

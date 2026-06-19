@@ -1,0 +1,67 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  streamText: vi.fn(),
+  getModelClient: vi.fn(),
+}));
+
+vi.mock("ai", () => ({ streamText: mocks.streamText }));
+vi.mock("@/ipc/utils/get_model_client", () => ({
+  getModelClient: mocks.getModelClient,
+}));
+
+import { classifyMcpToolConsent } from "./mcp_auto_consent";
+
+function withText(text: string) {
+  mocks.getModelClient.mockResolvedValue({ modelClient: { model: {} } });
+  mocks.streamText.mockReturnValue({ text: Promise.resolve(text) });
+}
+
+const baseInput = {
+  serverName: "srv",
+  toolName: "tool",
+  toolDescription: "does a thing",
+  inputSchema: { type: "object" },
+  args: { a: 1 },
+  recentTurns: [],
+  settings: {} as any,
+};
+
+describe("classifyMcpToolConsent", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns allow and the reason for a valid allow decision", async () => {
+    withText('{"reason":"safe read","decision":"allow"}');
+    const d = await classifyMcpToolConsent(baseInput);
+    expect(d.decision).toBe("allow");
+    expect(d.reason).toBe("safe read");
+  });
+
+  it("parses a decision wrapped in prose/code fences", async () => {
+    withText('Here:\n```json\n{"reason":"x","decision":"ask"}\n```');
+    const d = await classifyMcpToolConsent(baseInput);
+    expect(d.decision).toBe("ask");
+  });
+
+  it("fails closed (ask) on unparseable output", async () => {
+    withText("no json here at all");
+    const d = await classifyMcpToolConsent(baseInput);
+    expect(d.decision).toBe("ask");
+  });
+
+  it("fails closed (ask) when the model call throws", async () => {
+    mocks.getModelClient.mockResolvedValue({ modelClient: { model: {} } });
+    mocks.streamText.mockImplementation(() => {
+      throw new Error("network");
+    });
+    const d = await classifyMcpToolConsent(baseInput);
+    expect(d.decision).toBe("ask");
+  });
+
+  it("defaults the reason when the model omits it", async () => {
+    withText('{"decision":"allow"}');
+    const d = await classifyMcpToolConsent(baseInput);
+    expect(d.decision).toBe("allow");
+    expect(d.reason).toBeTruthy();
+  });
+});

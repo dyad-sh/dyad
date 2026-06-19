@@ -37,6 +37,12 @@ export class Settings {
       .click();
   }
 
+  async toggleSandboxScriptExecution() {
+    await this.page
+      .getByRole("switch", { name: "Enable sandbox script execution" })
+      .click();
+  }
+
   async toggleCloudSandboxExperiment() {
     await this.page
       .getByRole("switch", { name: "Enable Cloud Sandbox" })

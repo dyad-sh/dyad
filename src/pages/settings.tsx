@@ -37,6 +37,7 @@ import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
+import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -275,6 +276,12 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div id={SETTING_IDS.enableCloudSandbox} className="space-y-1">
                 <CloudSandboxExperimentSwitch />
+              </div>
+              <div
+                id={SETTING_IDS.autoApproveSafeMcpTools}
+                className="space-y-1 mt-4"
+              >
+                <AutoApproveMcpSwitch />
               </div>
               <div
                 id={SETTING_IDS.enableMcpToolSearch}

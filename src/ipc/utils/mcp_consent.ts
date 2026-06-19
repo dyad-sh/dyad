@@ -85,17 +85,26 @@ export async function requireMcpToolConsent(
     toolDescription?: string | null;
     inputPreview?: string | null;
     chatId: number;
+    // Optional auto-approve hook (agent mode, Pro). Runs only on the "ask"
+    // path, so explicit always/denied choices still win.
+    autoApprove?: () => Promise<boolean>;
   },
 ): Promise<boolean> {
   const current = await getStoredConsent(params.serverId, params.toolName);
   if (current === "always") return true;
   if (current === "denied") return false;
 
-  // Ask renderer for a decision via event bridge
+  if (params.autoApprove && (await params.autoApprove())) {
+    return true;
+  }
+
+  // Ask renderer for a decision via event bridge. Strip non-serializable
+  // fields (the autoApprove callback) before sending over IPC.
+  const { autoApprove: _autoApprove, ...serializableParams } = params;
   const requestId = `${params.serverId}:${params.toolName}:${crypto.randomUUID()}`;
   (event.sender as any).send("mcp:tool-consent-request", {
     requestId,
-    ...params,
+    ...serializableParams,
   });
   const response = await waitForConsent(requestId);
 

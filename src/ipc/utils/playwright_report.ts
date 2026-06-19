@@ -158,7 +158,9 @@ export function parsePlaywrightReport(
     const file = path.isAbsolute(rawFile)
       ? path.relative(appPath, rawFile)
       : rawFile;
-    const normalized = file.split(path.sep).join("/");
+    // Normalize all separators to POSIX. A global replace is more robust than
+    // split(path.sep) because Playwright may report mixed separators on Windows.
+    const normalized = file.replace(/\\/g, "/");
 
     const entry =
       byFile.get(normalized) ??

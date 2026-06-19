@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
+import { normalizeTestPath } from "../utils/normalize_test_path";
 
 import log from "electron-log";
 import {
@@ -577,7 +578,9 @@ export async function processFullResponseActions(
     // deep-link, but on disk they behave exactly like a <dyad-write>.
     const dyadGenerateTestTags = getDyadGenerateTestTags(fullResponse);
     for (const tag of dyadGenerateTestTags) {
-      const filePath = tag.path;
+      // Force the path under tests/ (defense-in-depth, mirroring the Pro
+      // generate_test tool) so a stray tag can't overwrite app source files.
+      const filePath = normalizeTestPath(tag.path);
       const fullFilePath = safeJoin(appPath, filePath);
 
       // Ensure directory exists

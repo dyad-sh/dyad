@@ -259,7 +259,8 @@ export async function ensurePlaywrightBootstrap({
   if (!packageInstalled) {
     onOutput?.("Installing @playwright/test...\n");
     const installDep = await spawnStreaming({
-      command: "npm install --save-dev @playwright/test",
+      command: "npm",
+      args: ["install", "--save-dev", "@playwright/test"],
       cwd: appPath,
       signal,
       onOutput,
@@ -303,7 +304,8 @@ export async function ensurePlaywrightBootstrap({
   if (!usesChannel && !isPlaywrightBrowserInstalled(appPath)) {
     onOutput?.("\nDownloading the Chromium test browser...\n");
     const installBrowser = await spawnStreaming({
-      command: "npx playwright install chromium",
+      command: "npx",
+      args: ["playwright", "install", "chromium"],
       cwd: appPath,
       signal,
       onOutput,

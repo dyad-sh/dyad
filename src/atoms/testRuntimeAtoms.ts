@@ -33,12 +33,14 @@ export interface TestRunState {
   startedAt?: number;
 }
 
-export const EMPTY_TEST_RUN_STATE: TestRunState = {
+// Frozen (deeply) so the shared default can't be mutated in place and leak
+// across apps. Callers must spread into a new object to modify.
+export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
   phase: "idle",
   output: "",
-  results: {},
-  runningFiles: [],
-};
+  results: Object.freeze({}),
+  runningFiles: Object.freeze([]),
+}) as unknown as TestRunState;
 
 // Per-app maps, mirroring previewRunStateByAppIdAtom.
 export const testSpecsByAppIdAtom = atom<Map<number, TestSpec[]>>(new Map());

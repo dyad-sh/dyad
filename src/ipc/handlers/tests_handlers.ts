@@ -95,20 +95,33 @@ export function registerTestsHandlers() {
       const resolved = path.isAbsolute(params.path)
         ? path.resolve(params.path)
         : path.resolve(appPath, params.path);
-      const rel = path.relative(appPath, resolved);
-      const insideApp =
-        rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
-      if (!insideApp || path.extname(resolved).toLowerCase() !== ".png") {
+      if (path.extname(resolved).toLowerCase() !== ".png") {
         return { dataUrl: null };
       }
       if (!fs.existsSync(resolved)) {
         return { dataUrl: null };
       }
+      // Resolve symlinks before the containment check: a symlink inside the app
+      // dir could otherwise point outside it (e.g. test-results/x.png ->
+      // /etc/passwd) and pass a string-only check while the read escapes.
+      let realPath: string;
       try {
-        const buf = fs.readFileSync(resolved);
+        realPath = fs.realpathSync(resolved);
+      } catch (error) {
+        logger.warn(`Failed to resolve screenshot path ${resolved}: ${error}`);
+        return { dataUrl: null };
+      }
+      const rel = path.relative(appPath, realPath);
+      const insideApp =
+        rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+      if (!insideApp) {
+        return { dataUrl: null };
+      }
+      try {
+        const buf = fs.readFileSync(realPath);
         return { dataUrl: `data:image/png;base64,${buf.toString("base64")}` };
       } catch (error) {
-        logger.warn(`Failed to read screenshot ${resolved}: ${error}`);
+        logger.warn(`Failed to read screenshot ${realPath}: ${error}`);
         return { dataUrl: null };
       }
     },
@@ -173,11 +186,17 @@ export function registerTestsHandlers() {
           // ignore
         }
 
-        const fileArg = testFile ? ` ${JSON.stringify(testFile)}` : "";
-        const command = `npx playwright test${fileArg} --reporter=list,json`;
+        // Pass args as an array (never a shell string) so a test path can't be
+        // interpreted as a shell command.
+        const args = ["playwright", "test"];
+        if (testFile) {
+          args.push(testFile);
+        }
+        args.push("--reporter=list,json");
 
         const run = await spawnStreaming({
-          command,
+          command: "npx",
+          args,
           cwd: appPath,
           env: {
             ...process.env,

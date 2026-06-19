@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
+import treeKill from "tree-kill";
 import log from "electron-log/main";
 
 const logger = log.scope("spawn_streaming");
@@ -22,6 +23,7 @@ export interface SpawnStreamingResult {
  */
 export async function spawnStreaming({
   command,
+  args = [],
   cwd,
   env,
   signal,
@@ -29,6 +31,8 @@ export async function spawnStreaming({
   onProcess,
 }: {
   command: string;
+  /** Arguments passed as an array so they're never parsed by a shell. */
+  args?: string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
@@ -36,12 +40,26 @@ export async function spawnStreaming({
   onProcess?: (child: ChildProcess) => void;
 }): Promise<SpawnStreamingResult> {
   return new Promise<SpawnStreamingResult>((resolve, reject) => {
-    logger.info(`Running (streaming): ${command}`);
-    const child = spawn(command, {
+    logger.info(`Running (streaming): ${command} ${args.join(" ")}`);
+
+    // Pass a copy of the environment rather than the live global object to
+    // avoid concurrent mutation side effects.
+    let spawnEnv: NodeJS.ProcessEnv;
+    if (env) {
+      spawnEnv = { ...env };
+    } else {
+      spawnEnv = { ...process.env };
+    }
+
+    // Never run through a shell on Unix: a shell would parse metacharacters in
+    // arguments (e.g. a test path containing `$(...)` or backticks), enabling
+    // command injection. Windows needs a shell to resolve `.cmd` shims like
+    // `npm`/`npx`, and passes args via the safe array form.
+    const child = spawn(command, args, {
       cwd,
-      shell: true,
+      shell: process.platform === "win32",
       stdio: "pipe",
-      env,
+      env: spawnEnv,
     });
     onProcess?.(child);
 
@@ -52,11 +70,21 @@ export async function spawnStreaming({
     const onAbort = () => {
       aborted = true;
       logger.info(`Aborting: ${command}`);
-      // Kill the whole process group where possible.
-      try {
-        child.kill("SIGTERM");
-      } catch (err) {
-        logger.warn(`Failed to kill streaming process: ${err}`);
+      // Kill the whole process tree — with a shell (Windows) or fast package
+      // managers, the spawned child forks descendants (npx/playwright/chromium)
+      // that a plain child.kill() would leave orphaned.
+      if (child.pid) {
+        treeKill(child.pid, "SIGTERM", (err) => {
+          if (err) {
+            logger.warn(`Failed to tree-kill streaming process: ${err}`);
+          }
+        });
+      } else {
+        try {
+          child.kill("SIGTERM");
+        } catch (err) {
+          logger.warn(`Failed to kill streaming process: ${err}`);
+        }
       }
     };
 

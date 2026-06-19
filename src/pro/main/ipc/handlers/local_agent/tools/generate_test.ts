@@ -6,6 +6,7 @@ import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
+import { normalizeTestPath } from "@/ipc/utils/normalize_test_path";
 
 const logger = log.scope("generate_test");
 
@@ -21,15 +22,6 @@ const generateTestSchema = z.object({
     .optional()
     .describe("Brief description of what the test covers"),
 });
-
-/**
- * Normalize a test path so it always lands under the app's `tests/` folder.
- */
-function normalizeTestPath(rawPath: string): string {
-  const normalized = rawPath.replace(/\\/g, "/").replace(/^\.\//, "");
-  if (normalized.startsWith("tests/")) return normalized;
-  return `tests/${normalized.replace(/^\/+/, "")}`;
-}
 
 export const generateTestTool: ToolDefinition<
   z.infer<typeof generateTestSchema>

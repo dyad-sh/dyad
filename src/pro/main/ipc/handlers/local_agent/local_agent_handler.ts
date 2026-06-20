@@ -2000,7 +2000,7 @@ async function getMcpTools(
               const { serverName, toolName } = parseMcpToolKey(key);
               const content = JSON.stringify(args, null, 2);
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
+                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}">\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
               );
 
               const res = await mcpTool.execute(args, execCtx);
@@ -2008,7 +2008,7 @@ async function getMcpTools(
                 typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
               );
 
               return resultStr;

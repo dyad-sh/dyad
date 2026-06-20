@@ -11,6 +11,10 @@ const RECENT_MESSAGE_LIMIT = 10;
 const USER_MAX_LEN = 10000;
 const ASSISTANT_MAX_LEN = 1000;
 const TOOL_ARGS_MAX_LEN = 200;
+// Post-turn side effects (e.g. deploy errors) are persisted as assistant text
+// parts wrapping <dyad-*> blocks. Strip them so that tool/system output does
+// not reach the classifier. Bodies are escaped at creation, so no breakout.
+const DYAD_TAG_RE = /<dyad-([a-z0-9-]+)\b[^>]*>[\s\S]*?<\/dyad-\1>/g;
 
 export interface RecentTurn {
   role: "user" | "assistant";
@@ -44,7 +48,8 @@ export function assistantTrace(parsed: ModelMessage[]): string {
     if (!Array.isArray(m.content)) continue;
     for (const part of m.content) {
       if (part.type === "text" && typeof part.text === "string") {
-        out.push(part.text);
+        const text = part.text.replace(DYAD_TAG_RE, "").trim();
+        if (text) out.push(text);
       } else if (part.type === "tool-call") {
         out.push(summarizeToolCall(part.toolName, part.input));
       }

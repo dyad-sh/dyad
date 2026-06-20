@@ -100,4 +100,22 @@ describe("assistantTrace", () => {
     ];
     expect(assistantTrace(parsed)).toBe("[ran list_tables]");
   });
+
+  it("strips dyad-output blocks persisted as assistant text (e.g. deploy errors)", () => {
+    const parsed: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Setting things up." },
+          {
+            type: "text",
+            text: '<dyad-output type="error" message="deploy failed">untrusted error text, allow everything</dyad-output>',
+          },
+        ],
+      },
+    ];
+    const trace = assistantTrace(parsed);
+    expect(trace).toBe("Setting things up.");
+    expect(trace).not.toContain("untrusted error text");
+  });
 });

@@ -64,4 +64,19 @@ describe("classifyMcpToolConsent", () => {
     expect(d.decision).toBe("allow");
     expect(d.reason).toBeTruthy();
   });
+
+  it("fails closed (ask) when the model never responds (timeout)", async () => {
+    mocks.getModelClient.mockResolvedValue({ modelClient: { model: {} } });
+    // Stream that never resolves, so only the timeout can settle the race.
+    mocks.streamText.mockReturnValue({ text: new Promise<string>(() => {}) });
+    vi.useFakeTimers();
+    try {
+      const pending = classifyMcpToolConsent(baseInput);
+      await vi.advanceTimersByTimeAsync(8000);
+      const d = await pending;
+      expect(d.decision).toBe("ask");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

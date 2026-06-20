@@ -8,10 +8,10 @@ const RECENT_MESSAGE_LIMIT = 10;
 // generous; assistant messages are bulk (code, tool XML) and low-signal here.
 const USER_MAX_LEN = 10000;
 const ASSISTANT_MAX_LEN = 1000;
-// A server's MCP tool output is rendered into the assistant message content.
-// Strip it so an untrusted server can't feed the classifier (injection vector).
-const MCP_TOOL_RESULT_RE =
-  /<dyad-mcp-tool-result\b[^>]*>[\s\S]*?<\/dyad-mcp-tool-result>/g;
+// Tool output (MCP results, file reads, web fetches, etc.) is rendered into the
+// assistant message content as <dyad-*> blocks. Strip them so untrusted tool
+// output can't reach the classifier (injection vector).
+const DYAD_TAG_RE = /<dyad-([a-z0-9-]+)\b[^>]*>[\s\S]*?<\/dyad-\1>/g;
 
 export interface RecentTurn {
   role: "user" | "assistant";
@@ -32,9 +32,7 @@ export async function getRecentTurnsForConsent(
   return rows.reverse().map((r) => {
     const cap = r.role === "user" ? USER_MAX_LEN : ASSISTANT_MAX_LEN;
     const content =
-      r.role === "assistant"
-        ? r.content.replace(MCP_TOOL_RESULT_RE, "")
-        : r.content;
+      r.role === "assistant" ? r.content.replace(DYAD_TAG_RE, "") : r.content;
     return {
       role: r.role,
       content:

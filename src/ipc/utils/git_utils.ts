@@ -514,6 +514,17 @@ export async function gitStageToRevert({
   path,
   targetOid,
 }: GitStageToRevertParams): Promise<void> {
+  // Safety: refuse to run if the work-tree isn't clean. Covers both git
+  // backends (isGitStatusClean branches on enableNativeGit internally). The
+  // frontend gate (UncommittedChangesGateDialog) normally prevents reaching
+  // here with a dirty tree; this is the defensive backstop.
+  if (!(await isGitStatusClean({ path }))) {
+    throw new DyadError(
+      "Cannot revert: working tree has uncommitted changes.",
+      DyadErrorKind.Conflict,
+    );
+  }
+
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Get the current HEAD commit hash
@@ -530,21 +541,6 @@ export async function gitStageToRevert({
     // If we're already at the target commit, nothing to do
     if (currentCommit === targetOid) {
       return;
-    }
-
-    // Safety: refuse to run if the work-tree isn't clean.
-    const statusResult = await execGit(["status", "--porcelain"], path);
-    if (statusResult.exitCode !== 0) {
-      throw new DyadError(
-        `Failed to get status: ${statusResult.stderr.trim() || statusResult.stdout.trim()}`,
-        DyadErrorKind.Conflict,
-      );
-    }
-    if (statusResult.stdout.trim() !== "") {
-      throw new DyadError(
-        "Cannot revert: working tree has uncommitted changes.",
-        DyadErrorKind.Conflict,
-      );
     }
 
     // Reset the working directory and index to match the target commit state

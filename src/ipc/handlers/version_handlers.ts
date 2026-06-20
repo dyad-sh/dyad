@@ -13,8 +13,10 @@ import { versionContracts } from "../types/version";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import { readSettings } from "../../main/settings";
 import {
+  gitAddAll,
   gitCheckout,
   gitCommit,
+  gitDiscardAllChanges,
   gitStageToRevert,
   getCurrentCommitHash,
   gitCommitExists,
@@ -386,7 +388,13 @@ export function registerVersionHandlers() {
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
-    const { appId, previousVersionId, currentChatMessageId } = params;
+    const {
+      appId,
+      previousVersionId,
+      currentChatMessageId,
+      uncommittedChangesStrategy,
+      commitMessage,
+    } = params;
     return withLock(appId, async () => {
       let successMessage = "Restored version";
       let warningMessage = "";
@@ -409,6 +417,26 @@ export function registerVersionHandlers() {
         path: appPath,
         ref: "main",
       });
+
+      // Resolve any uncommitted changes on `main` per the user's choice before
+      // reverting. Done here (under the lock, after checking out main) so the
+      // commit lands on main rather than a detached preview HEAD. If no strategy
+      // was provided, gitStageToRevert below throws the "uncommitted changes"
+      // error as a backstop.
+      if (
+        uncommittedChangesStrategy &&
+        !(await isGitStatusClean({ path: appPath }))
+      ) {
+        if (uncommittedChangesStrategy === "commit") {
+          await gitAddAll({ path: appPath });
+          await gitCommit({
+            path: appPath,
+            message: commitMessage?.trim() || "Commit changes before revert",
+          });
+        } else {
+          await gitDiscardAllChanges({ path: appPath });
+        }
+      }
 
       if (app.neonProjectId && app.neonDevelopmentBranchId) {
         // We are going to add a new commit on top, so let's store

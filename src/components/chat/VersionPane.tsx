@@ -723,9 +723,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             onClick={async (e) => {
                               e.stopPropagation();
 
-                              await revertVersion({
+                              const result = await revertVersion({
                                 versionId: version.oid,
                               });
+                              // Cancelled at the uncommitted-changes prompt.
+                              if (!result) {
+                                return;
+                              }
                               setSelectedVersionId(null);
                               // Close the pane after revert to force a refresh on next open
                               onClose();

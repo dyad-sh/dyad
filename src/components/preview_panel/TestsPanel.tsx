@@ -257,7 +257,7 @@ export function TestsPanel() {
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { runApp } = useRunApp();
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
 
   const [loadingSpecs, setLoadingSpecs] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
@@ -266,26 +266,45 @@ export function TestsPanel() {
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
 
+  const loadSpecs = useCallback(
+    ({ withSpinner }: { withSpinner: boolean }) => {
+      if (selectedAppId == null) return;
+      const appId = selectedAppId;
+      let cancelled = false;
+      if (withSpinner) setLoadingSpecs(true);
+      ipc.tests
+        .listAppTests({ appId })
+        .then((res) => {
+          if (!cancelled) setSpecs({ appId, specs: res.specs });
+        })
+        .catch((err) => {
+          if (!cancelled) showError(err);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingSpecs(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    },
+    [selectedAppId, setSpecs],
+  );
+
   // Discover specs on mount / app change.
   useEffect(() => {
-    if (selectedAppId == null) return;
-    let cancelled = false;
-    setLoadingSpecs(true);
-    ipc.tests
-      .listAppTests({ appId: selectedAppId })
-      .then((res) => {
-        if (!cancelled) setSpecs({ appId: selectedAppId, specs: res.specs });
-      })
-      .catch((err) => {
-        if (!cancelled) showError(err);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSpecs(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedAppId, setSpecs]);
+    return loadSpecs({ withSpinner: true });
+  }, [loadSpecs]);
+
+  // Re-discover specs when a chat turn finishes — the AI may have generated a
+  // new test file (via <dyad-generate-test>), which wouldn't otherwise appear
+  // until the panel is remounted. Done quietly, without the loading spinner.
+  const prevStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      loadSpecs({ withSpinner: false });
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming, loadSpecs]);
 
   // Subscribe to streamed run output.
   useEffect(() => {

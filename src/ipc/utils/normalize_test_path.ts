@@ -2,9 +2,17 @@
  * Normalize a test path so it always lands under the app's `tests/` folder.
  * Used by both the Pro `generate_test` tool and the Build-mode
  * `<dyad-generate-test>` tag processor so neither can write outside `tests/`.
+ *
+ * Defense-in-depth: `.` and `..` segments are stripped before the `tests/`
+ * prefix is applied, so the result can never traverse out of `tests/` even
+ * for a caller that doesn't also run it through `safeJoin`.
  */
 export function normalizeTestPath(rawPath: string): string {
-  const normalized = rawPath.replace(/\\/g, "/").replace(/^\.\//, "");
-  if (normalized.startsWith("tests/")) return normalized;
-  return `tests/${normalized.replace(/^\/+/, "")}`;
+  const sanitized = rawPath
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((segment) => segment !== "" && segment !== "." && segment !== "..")
+    .join("/");
+  if (sanitized === "tests" || sanitized.startsWith("tests/")) return sanitized;
+  return `tests/${sanitized}`;
 }

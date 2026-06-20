@@ -24,6 +24,12 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("tests_handlers");
 
+// A test file must look exactly like the spec paths `listAppTests` produces:
+// relative, under `tests/`, ending in a spec extension, with no traversal or
+// leading dash. This stops a compromised renderer from passing a flag-like
+// value (e.g. `--config=…`) that Playwright would interpret as a CLI option.
+const TEST_FILE_PATTERN = /^tests\/(?!.*\.\.)[\w\-./]+\.spec\.(ts|tsx|js|jsx)$/;
+
 // Abort controllers for in-flight runs, keyed by appId, so the Stop button can
 // cancel an in-progress bootstrap or test run.
 const testRunControllers = new Map<number, AbortController>();
@@ -133,6 +139,18 @@ export function registerTestsHandlers() {
       const { appId, testFile } = params;
       const app = await getApp(appId);
       const appPath = getDyadAppPath(app.path);
+
+      // Reject anything that doesn't look like one of our spec paths before it
+      // reaches the Playwright CLI (the Zod schema only checks it's a string).
+      if (testFile !== undefined && !TEST_FILE_PATTERN.test(testFile)) {
+        return {
+          appId,
+          results: [],
+          infraError: {
+            message: `Invalid test file: ${testFile}`,
+          },
+        };
+      }
 
       // Gate: the dev server must be running so baseURL resolves.
       const baseUrl = getRunningBaseUrl(appId);

@@ -454,6 +454,8 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.advanced,
     sectionLabel: "Advanced",
   },
+
+  // Experiments
   {
     id: SETTING_IDS.autoApproveSafeMcpTools,
     label: "Skip consent for safe MCP tools",
@@ -473,8 +475,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },
-
-  // Experiments
   {
     id: SETTING_IDS.enableCloudSandbox,
     label: "Enable Cloud Sandbox (Pro)",

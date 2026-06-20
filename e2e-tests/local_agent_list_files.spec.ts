@@ -21,13 +21,16 @@ testSkipIfWindows("local-agent - list_files", async ({ po }) => {
   await expect(listFiles2).toMatchAriaSnapshot();
 });
 
-testSkipIfWindows("local-agent - list_files include_hidden", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
-  await po.importApp("minimal-with-dyad");
-  await po.chatActions.selectLocalAgentMode();
+testSkipIfWindows(
+  "local-agent - list_files include_ignored",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal-with-dyad");
+    await po.chatActions.selectLocalAgentMode();
 
-  await po.sendPrompt("tc=local-agent/list-files-include-hidden");
-  const listFiles = po.page.getByTestId("dyad-list-files").first();
-  await listFiles.click();
-  await expect(listFiles).toMatchAriaSnapshot();
-});
+    await po.sendPrompt("tc=local-agent/list-files-include-ignored");
+    const listFiles = po.page.getByTestId("dyad-list-files").first();
+    await listFiles.click();
+    await expect(listFiles).toMatchAriaSnapshot();
+  },
+);

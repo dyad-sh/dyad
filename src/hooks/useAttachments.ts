@@ -98,6 +98,11 @@ export function useAttachments() {
     setPendingFiles(null);
   };
 
+  const replaceAttachments = (newAttachments: FileAttachment[]) => {
+    setAttachments(newAttachments);
+    setPendingFiles(null);
+  };
+
   const handlePaste = async (e: React.ClipboardEvent) => {
     if (pendingFiles) return;
 
@@ -153,6 +158,7 @@ export function useAttachments() {
     clearAttachments,
     handlePaste,
     addAttachments,
+    replaceAttachments,
     confirmPendingFiles,
     cancelPendingFiles,
   };

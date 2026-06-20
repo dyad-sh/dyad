@@ -9,18 +9,34 @@ import {
   VertexProviderSetting,
   migrateStoredSettings,
 } from "../lib/schemas";
-import { safeStorage } from "electron";
+import {
+  BrowserWindow,
+  safeStorage,
+  type WebContents,
+  type BrowserWindow as BrowserWindowInstance,
+} from "electron";
 import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
 import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 import { DEFAULT_THEME_ID } from "@/shared/themes";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import {
+  getRemoteDesktopConfig,
+  type RemoteDesktopConfig,
+} from "@/ipc/shared/remote_desktop_config";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { ZodError } from "zod";
 
 const logger = log.scope("settings");
 
-// IF YOU NEED TO UPDATE THIS, YOU'RE PROBABLY DOING SOMETHING WRONG!
-// Need to maintain backwards compatibility!
-const DEFAULT_SETTINGS: UserSettings = {
+// WARNING: Do not change values once it's been
+// set in DEFAULT_SETTINGS.
+//
+// It is OK to add new fields to DEFAULT_SETTINGS.
+// However, be VERY careful about removing fields from DEFAULT_SETTINGS.
+// (Exported for the unit-test harness; production code should go through
+// readSettings instead of using this directly.)
+export const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",
     provider: "auto",
@@ -34,6 +50,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableProSmartFilesContextMode: true,
   selectedChatMode: "build",
   enableAutoFixProblems: false,
+  enableAppBlueprint: true,
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
@@ -42,14 +59,237 @@ const DEFAULT_SETTINGS: UserSettings = {
   lastKnownPerformance: undefined,
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
+  enableSandboxScriptExecution: true,
+  enableCodeExplorer: true,
+  autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
+  enablePnpmMinimumReleaseAgeWarning: false,
+  previewIdleTimeoutPolicy: "default",
 };
 
+const CRASH_SENTINEL_FILE = "session.lock";
+const RENDERER_CRASH_FILE = "renderer-crash.json";
 const SETTINGS_FILE = "user-settings.json";
+const RESTORE_SETTINGS_DOCS_URL =
+  "https://www.dyad.sh/docs/guides/migrate-restore#restoring-settings-from-backup";
+let initialLoadIsFirstSession = false;
+
+export function setInitialLoadIsFirstSession(value: boolean): void {
+  initialLoadIsFirstSession = value;
+}
+
+export function getInitialLoadIsFirstSession(): boolean {
+  return initialLoadIsFirstSession;
+}
+
+interface RendererErrorToast {
+  message: string;
+  action?: {
+    label: string;
+    url: string;
+  };
+}
+
+const pendingRendererErrors: RendererErrorToast[] = [];
+const rendererErrorToastReadyWebContents = new WeakSet<WebContents>();
 
 export function getSettingsFilePath(): string {
   return path.join(getUserDataPath(), SETTINGS_FILE);
+}
+
+function getCrashSentinelPath(): string {
+  return path.join(getUserDataPath(), CRASH_SENTINEL_FILE);
+}
+
+interface CrashSentinelData {
+  ts: number;
+  // The chat that was last streaming this session, captured at stream start so
+  // the crash dialog can offer to upload it. Absent if no stream ran.
+  activeChatId?: number;
+}
+
+export function writeCrashSentinel(): void {
+  try {
+    const data: CrashSentinelData = { ts: Date.now() };
+    fs.writeFileSync(getCrashSentinelPath(), JSON.stringify(data));
+  } catch (error) {
+    logger.error("Error writing crash sentinel:", error);
+  }
+}
+
+// Records the chat that just started streaming into the existing sentinel,
+// preserving its timestamp. The sentinel's lifecycle (created at startup,
+// deleted on clean exit) scopes this to the current session automatically.
+export function setSentinelActiveChat(chatId: number): void {
+  try {
+    const existing = readCrashSentinel();
+    const sentinelPath = getCrashSentinelPath();
+    const data: CrashSentinelData = {
+      ts: existing?.ts ?? readLegacyCrashSentinelTimestamp(sentinelPath),
+      activeChatId: chatId,
+    };
+    fs.writeFileSync(sentinelPath, JSON.stringify(data));
+  } catch (error) {
+    logger.error("Error updating crash sentinel active chat:", error);
+  }
+}
+
+function readLegacyCrashSentinelTimestamp(sentinelPath: string): number {
+  try {
+    const legacyTimestamp = Number(fs.readFileSync(sentinelPath, "utf8"));
+    if (Number.isFinite(legacyTimestamp) && legacyTimestamp > 0) {
+      return legacyTimestamp;
+    }
+  } catch {
+    // Missing or malformed legacy sentinels can be replaced with a fresh timestamp.
+  }
+  return Date.now();
+}
+
+export function clearCrashSentinel(): void {
+  try {
+    fs.unlinkSync(getCrashSentinelPath());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.error("Error clearing crash sentinel:", error);
+    }
+  }
+}
+
+export function crashSentinelExists(): boolean {
+  return fs.existsSync(getCrashSentinelPath());
+}
+
+// Reads and parses the sentinel. Returns null if missing or not a JSON object
+// (e.g. the legacy bare-timestamp format from older builds). That's harmless:
+// crash detection is existence-based, and only activeChatId is consumed, so a
+// null here just means no chat to offer for upload.
+export function readCrashSentinel(): CrashSentinelData | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(getCrashSentinelPath(), "utf-8"));
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+    if (typeof parsed.ts !== "number") {
+      return null;
+    }
+    const activeChatId =
+      typeof parsed.activeChatId === "number" ? parsed.activeChatId : undefined;
+    return { ts: parsed.ts, activeChatId };
+  } catch {
+    return null;
+  }
+}
+
+export type RendererCrashPerformanceSnapshot = NonNullable<
+  UserSettings["lastKnownPerformance"]
+>;
+
+export interface RendererCrashRecord {
+  reason: string;
+  exitCode?: number;
+  timestamp: number;
+  count: number;
+  performance?: RendererCrashPerformanceSnapshot;
+}
+
+function getRendererCrashPath(): string {
+  return path.join(getUserDataPath(), RENDERER_CRASH_FILE);
+}
+
+// Record a renderer crash so we can send a telemetry event on the next renderer
+// load. The renderer is dead at the time of writing, so the event cannot be
+// captured directly; we persist a small JSON record and forward it once the
+// renderer IPC bridge comes back up. If the renderer crashes again before the
+// record is consumed, we keep the latest reason/exitCode and bump `count`.
+export function recordRendererCrash(
+  details: Omit<RendererCrashRecord, "count" | "timestamp"> &
+    Partial<Pick<RendererCrashRecord, "timestamp">>,
+): void {
+  try {
+    const previous = readRendererCrashRecord();
+    const record: RendererCrashRecord = {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      timestamp: details.timestamp ?? Date.now(),
+      count: (previous?.count ?? 0) + 1,
+      // Latest snapshot wins; if the caller didn't supply one (e.g. settings
+      // unreadable at crash time) fall back to whatever the previous record
+      // had so we don't lose pre-existing context.
+      performance: details.performance ?? previous?.performance,
+    };
+    const filePath = getRendererCrashPath();
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(record));
+    fs.renameSync(tmpPath, filePath);
+  } catch (error) {
+    logger.error("Error writing renderer crash record:", error);
+  }
+}
+
+export function readRendererCrashRecord(): RendererCrashRecord | null {
+  try {
+    const filePath = getRendererCrashPath();
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    if (typeof raw !== "object" || raw === null) {
+      return null;
+    }
+    const reason = typeof raw.reason === "string" ? raw.reason : "unknown";
+    const exitCode =
+      typeof raw.exitCode === "number" ? raw.exitCode : undefined;
+    const timestamp =
+      typeof raw.timestamp === "number" ? raw.timestamp : Date.now();
+    const count =
+      typeof raw.count === "number" && raw.count > 0 ? raw.count : 1;
+    const performance = parseRendererCrashPerformance(raw.performance);
+    return { reason, exitCode, timestamp, count, performance };
+  } catch (error) {
+    logger.error("Error reading renderer crash record:", error);
+    return null;
+  }
+}
+
+export function clearRendererCrashRecord(): void {
+  try {
+    fs.unlinkSync(getRendererCrashPath());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.error("Error clearing renderer crash record:", error);
+    }
+  }
+}
+
+// Lenient parser for the performance block on a renderer-crash record.
+// We deliberately accept partial data rather than throwing: the record may
+// have been written by an older build, and the fields are best-effort
+// telemetry — losing one of them shouldn't drop the whole crash report.
+function parseRendererCrashPerformance(
+  raw: unknown,
+): RendererCrashPerformanceSnapshot | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const candidate = raw as Record<string, unknown>;
+  if (typeof candidate.timestamp !== "number") {
+    return undefined;
+  }
+  if (typeof candidate.memoryUsageMB !== "number") {
+    return undefined;
+  }
+  const optionalNumber = (key: string): number | undefined =>
+    typeof candidate[key] === "number" ? (candidate[key] as number) : undefined;
+  return {
+    timestamp: candidate.timestamp,
+    memoryUsageMB: candidate.memoryUsageMB,
+    cpuUsagePercent: optionalNumber("cpuUsagePercent"),
+    systemMemoryUsageMB: optionalNumber("systemMemoryUsageMB"),
+    systemMemoryTotalMB: optionalNumber("systemMemoryTotalMB"),
+    systemCpuPercent: optionalNumber("systemCpuPercent"),
+  };
 }
 
 export function readSettings(): UserSettings {
@@ -59,135 +299,39 @@ export function readSettings(): UserSettings {
       fs.writeFileSync(filePath, JSON.stringify(DEFAULT_SETTINGS, null, 2));
       return DEFAULT_SETTINGS;
     }
-    const rawSettings = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    const combinedSettings: UserSettings = {
-      ...DEFAULT_SETTINGS,
-      ...rawSettings,
-    };
-    const supabase = combinedSettings.supabase;
-    if (supabase) {
-      // Decrypt legacy tokens (kept but ignored)
-      if (supabase.refreshToken) {
-        const encryptionType = supabase.refreshToken.encryptionType;
-        if (encryptionType) {
-          supabase.refreshToken = {
-            value: decrypt(supabase.refreshToken),
-            encryptionType,
-          };
-        }
-      }
-      if (supabase.accessToken) {
-        const encryptionType = supabase.accessToken.encryptionType;
-        if (encryptionType) {
-          supabase.accessToken = {
-            value: decrypt(supabase.accessToken),
-            encryptionType,
-          };
-        }
-      }
-      // Decrypt tokens for each organization in the organizations map
-      if (supabase.organizations) {
-        for (const orgId in supabase.organizations) {
-          const org = supabase.organizations[orgId];
-          if (org.accessToken) {
-            const encryptionType = org.accessToken.encryptionType;
-            if (encryptionType) {
-              org.accessToken = {
-                value: decrypt(org.accessToken),
-                encryptionType,
-              };
-            }
-          }
-          if (org.refreshToken) {
-            const encryptionType = org.refreshToken.encryptionType;
-            if (encryptionType) {
-              org.refreshToken = {
-                value: decrypt(org.refreshToken),
-                encryptionType,
-              };
-            }
-          }
-        }
-      }
-    }
-    const neon = combinedSettings.neon;
-    if (neon) {
-      if (neon.refreshToken) {
-        const encryptionType = neon.refreshToken.encryptionType;
-        if (encryptionType) {
-          neon.refreshToken = {
-            value: decrypt(neon.refreshToken),
-            encryptionType,
-          };
-        }
-      }
-      if (neon.accessToken) {
-        const encryptionType = neon.accessToken.encryptionType;
-        if (encryptionType) {
-          neon.accessToken = {
-            value: decrypt(neon.accessToken),
-            encryptionType,
-          };
-        }
-      }
-    }
-    if (combinedSettings.githubAccessToken) {
-      const encryptionType = combinedSettings.githubAccessToken.encryptionType;
-      combinedSettings.githubAccessToken = {
-        value: decrypt(combinedSettings.githubAccessToken),
-        encryptionType,
-      };
-    }
-    if (combinedSettings.vercelAccessToken) {
-      const encryptionType = combinedSettings.vercelAccessToken.encryptionType;
-      combinedSettings.vercelAccessToken = {
-        value: decrypt(combinedSettings.vercelAccessToken),
-        encryptionType,
-      };
-    }
-    for (const provider in combinedSettings.providerSettings) {
-      if (combinedSettings.providerSettings[provider].apiKey) {
-        const encryptionType =
-          combinedSettings.providerSettings[provider].apiKey.encryptionType;
-        combinedSettings.providerSettings[provider].apiKey = {
-          value: decrypt(combinedSettings.providerSettings[provider].apiKey),
-          encryptionType,
-        };
-      }
-      // Decrypt Vertex service account key if present
-      const v = combinedSettings.providerSettings[
-        provider
-      ] as VertexProviderSetting;
-      if (provider === "vertex" && v?.serviceAccountKey) {
-        const encryptionType = v.serviceAccountKey.encryptionType;
-        v.serviceAccountKey = {
-          value: decrypt(v.serviceAccountKey),
-          encryptionType,
-        };
-      }
-    }
-
-    // Validate stored settings (allows deprecated values like "agent" chat mode)
-    const storedSettings = StoredUserSettingsSchema.parse(combinedSettings);
-    // "conservative" is deprecated, use undefined to use the default value
-    if (storedSettings.proSmartContextOption === "conservative") {
-      storedSettings.proSmartContextOption = undefined;
-    }
-    // Migrate stored settings to active settings (converts deprecated values)
-    const migratedSettings = migrateStoredSettings(storedSettings);
-    // Validate the migrated settings against the active schema
-    return UserSettingsSchema.parse(migratedSettings);
+    return readExistingSettingsFile(filePath);
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;
   }
 }
 
+export function resolveEffectiveSettings(
+  settings: UserSettings,
+  remoteConfig: RemoteDesktopConfig | null,
+): UserSettings {
+  if (typeof settings.blockUnsafeNpmPackages === "boolean") {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    blockUnsafeNpmPackages:
+      remoteConfig?.defaults?.blockUnsafeNpmPackages ?? true,
+  };
+}
+
+export async function readEffectiveSettings(): Promise<UserSettings> {
+  const settings = readSettings();
+  const remoteConfig = await getRemoteDesktopConfig();
+  return resolveEffectiveSettings(settings, remoteConfig);
+}
+
 export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();
-    const currentSettings = readSettings();
-    const newSettings = { ...currentSettings, ...settings };
+    const settingsForWrite = readSettingsForWrite(filePath);
+    const newSettings = { ...settingsForWrite.settings, ...settings };
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -249,9 +393,313 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     }
     // Use StoredUserSettingsSchema for writing to maintain backwards compatibility
     const validatedSettings = StoredUserSettingsSchema.parse(newSettings);
-    fs.writeFileSync(filePath, JSON.stringify(validatedSettings, null, 2));
+    writeSettingsFileAtomically(
+      filePath,
+      JSON.stringify(validatedSettings, null, 2),
+      {
+        preserveUnreadableBackup: settingsForWrite.wasUnreadable,
+      },
+    );
   } catch (error) {
     logger.error("Error writing settings:", error);
+    throw toSettingsWriteError(error);
+  }
+}
+
+export function tryWriteSettings(
+  settings: Partial<UserSettings>,
+  context: string,
+): boolean {
+  try {
+    writeSettings(settings);
+    return true;
+  } catch (error) {
+    logger.error(`Failed to write settings while ${context}:`, error);
+    return false;
+  }
+}
+
+function toSettingsWriteError(error: unknown): DyadError {
+  if (error instanceof DyadError) {
+    return error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const kind =
+    error instanceof ZodError
+      ? DyadErrorKind.Validation
+      : DyadErrorKind.External;
+  return new DyadError(`Failed to write settings: ${message}`, kind, {
+    cause: error,
+  });
+}
+
+function readExistingSettingsFile(filePath: string): UserSettings {
+  const rawSettings = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  const combinedSettings: UserSettings = {
+    ...DEFAULT_SETTINGS,
+    ...rawSettings,
+    hasRunBefore: rawSettings.hasRunBefore ?? true,
+  };
+  const supabase = combinedSettings.supabase;
+  if (supabase) {
+    // Decrypt legacy tokens (kept but ignored)
+    if (supabase.refreshToken) {
+      const decrypted = decryptStoredSecret(
+        supabase.refreshToken,
+        "Supabase refresh token",
+      );
+      if (decrypted) {
+        supabase.refreshToken = decrypted;
+      } else {
+        delete supabase.refreshToken;
+      }
+    }
+    if (supabase.accessToken) {
+      const decrypted = decryptStoredSecret(
+        supabase.accessToken,
+        "Supabase access token",
+      );
+      if (decrypted) {
+        supabase.accessToken = decrypted;
+      } else {
+        delete supabase.accessToken;
+      }
+    }
+    // Decrypt tokens for each organization in the organizations map
+    if (supabase.organizations) {
+      for (const orgId in supabase.organizations) {
+        const org = supabase.organizations[orgId];
+        const accessToken = org.accessToken
+          ? decryptStoredSecret(
+              org.accessToken,
+              `Supabase access token for organization ${orgId}`,
+            )
+          : undefined;
+        const refreshToken = org.refreshToken
+          ? decryptStoredSecret(
+              org.refreshToken,
+              `Supabase refresh token for organization ${orgId}`,
+            )
+          : undefined;
+
+        if (!accessToken || !refreshToken) {
+          delete supabase.organizations[orgId];
+          continue;
+        }
+
+        org.accessToken = accessToken;
+        org.refreshToken = refreshToken;
+      }
+    }
+  }
+  const neon = combinedSettings.neon;
+  if (neon) {
+    if (neon.refreshToken) {
+      const decrypted = decryptStoredSecret(
+        neon.refreshToken,
+        "Neon refresh token",
+      );
+      if (decrypted) {
+        neon.refreshToken = decrypted;
+      } else {
+        delete neon.refreshToken;
+      }
+    }
+    if (neon.accessToken) {
+      const decrypted = decryptStoredSecret(
+        neon.accessToken,
+        "Neon access token",
+      );
+      if (decrypted) {
+        neon.accessToken = decrypted;
+      } else {
+        delete neon.accessToken;
+      }
+    }
+  }
+  if (combinedSettings.githubAccessToken) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.githubAccessToken,
+      "GitHub access token",
+    );
+    if (decrypted) {
+      combinedSettings.githubAccessToken = decrypted;
+    } else {
+      delete combinedSettings.githubAccessToken;
+    }
+  }
+  if (combinedSettings.vercelAccessToken) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.vercelAccessToken,
+      "Vercel access token",
+    );
+    if (decrypted) {
+      combinedSettings.vercelAccessToken = decrypted;
+    } else {
+      delete combinedSettings.vercelAccessToken;
+    }
+  }
+  for (const provider in combinedSettings.providerSettings) {
+    if (combinedSettings.providerSettings[provider].apiKey) {
+      const decrypted = decryptStoredSecret(
+        combinedSettings.providerSettings[provider].apiKey,
+        `${provider} API key`,
+      );
+      if (decrypted) {
+        combinedSettings.providerSettings[provider].apiKey = decrypted;
+      } else {
+        delete combinedSettings.providerSettings[provider].apiKey;
+      }
+    }
+    // Decrypt Vertex service account key if present
+    const v = combinedSettings.providerSettings[
+      provider
+    ] as VertexProviderSetting;
+    if (provider === "vertex" && v?.serviceAccountKey) {
+      const decrypted = decryptStoredSecret(
+        v.serviceAccountKey,
+        "Vertex service account key",
+      );
+      if (decrypted) {
+        v.serviceAccountKey = decrypted;
+      } else {
+        delete v.serviceAccountKey;
+      }
+    }
+  }
+
+  // Validate stored settings (allows deprecated values like "agent" chat mode)
+  const storedSettings = StoredUserSettingsSchema.parse(combinedSettings);
+  // "conservative" is deprecated, use undefined to use the default value
+  if (storedSettings.proSmartContextOption === "conservative") {
+    storedSettings.proSmartContextOption = undefined;
+  }
+  // Migrate stored settings to active settings (converts deprecated values)
+  const migratedSettings = migrateStoredSettings(storedSettings);
+  // Validate the migrated settings against the active schema
+  return UserSettingsSchema.parse(migratedSettings);
+}
+
+function decryptStoredSecret(data: Secret, label: string): Secret | undefined {
+  try {
+    const encryptionType = data.encryptionType;
+    return {
+      value: decrypt(data),
+      encryptionType,
+    };
+  } catch (error) {
+    if (isSafeStorageNotReadyError(error)) {
+      throw error;
+    }
+    logger.warn(`Could not decrypt ${label}; ignoring stored secret.`, error);
+    return undefined;
+  }
+}
+
+function isSafeStorageNotReadyError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("safeStorage cannot be used before app is ready")
+  );
+}
+
+function readSettingsForWrite(filePath: string): {
+  settings: UserSettings;
+  wasUnreadable: boolean;
+} {
+  if (!fs.existsSync(filePath)) {
+    return { settings: DEFAULT_SETTINGS, wasUnreadable: false };
+  }
+
+  try {
+    return {
+      settings: readExistingSettingsFile(filePath),
+      wasUnreadable: false,
+    };
+  } catch (error) {
+    logger.error("Existing settings file is unreadable:", error);
+    notifyRendererError({
+      message:
+        "Dyad could not read your existing settings file, so it fell back to default settings.",
+      action: {
+        label: "Read restore docs",
+        url: RESTORE_SETTINGS_DOCS_URL,
+      },
+    });
+    return { settings: DEFAULT_SETTINGS, wasUnreadable: true };
+  }
+}
+
+function notifyRendererError(payload: RendererErrorToast): void {
+  const windows = BrowserWindow.getAllWindows().filter((window) =>
+    rendererErrorToastReadyWebContents.has(window.webContents),
+  );
+  if (windows.length === 0) {
+    pendingRendererErrors.push(payload);
+    return;
+  }
+  sendRendererErrorToast(windows, payload);
+}
+
+export function notifyRendererErrorToastListenerReady(
+  webContents: WebContents,
+): void {
+  rendererErrorToastReadyWebContents.add(webContents);
+  const window = BrowserWindow.fromWebContents(webContents);
+  if (window) {
+    flushPendingRendererErrors([window]);
+  }
+}
+
+function flushPendingRendererErrors(windows: BrowserWindowInstance[]): void {
+  if (pendingRendererErrors.length === 0) {
+    return;
+  }
+
+  const pending = pendingRendererErrors.splice(0);
+  for (const payload of pending) {
+    sendRendererErrorToast(windows, payload);
+  }
+}
+
+function sendRendererErrorToast(
+  windows: BrowserWindowInstance[],
+  payload: RendererErrorToast,
+): void {
+  for (const window of windows) {
+    window.webContents.send("toast:error", payload);
+  }
+}
+
+function writeSettingsFileAtomically(
+  filePath: string,
+  contents: string,
+  options: { preserveUnreadableBackup?: boolean } = {},
+): void {
+  const tempFilePath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  const backupFilePath = `${filePath}.bak`;
+  const recoveryBackupFilePath = `${filePath}.recovery-${Date.now()}.bak`;
+
+  try {
+    fs.writeFileSync(tempFilePath, contents);
+    if (fs.existsSync(filePath)) {
+      fs.copyFileSync(
+        filePath,
+        options.preserveUnreadableBackup
+          ? recoveryBackupFilePath
+          : backupFilePath,
+      );
+    }
+    fs.renameSync(tempFilePath, filePath);
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+    } catch (cleanupError) {
+      logger.warn("Failed to remove temporary settings file:", cleanupError);
+    }
+    throw error;
   }
 }
 

@@ -22,10 +22,10 @@ const LANGUAGE_OPTIONS: { value: Language; nativeLabel: string }[] = [
   { value: "en", nativeLabel: "English" },
   { value: "zh-CN", nativeLabel: "简体中文" },
   { value: "pt-BR", nativeLabel: "Português (Brasil)" },
+  { value: "es", nativeLabel: "Español" },
   // Additional languages will be added as translations are completed:
   // { value: "ja", nativeLabel: "日本語" },
   // { value: "ko", nativeLabel: "한국어" },
-  // { value: "es", nativeLabel: "Español" },
   // { value: "fr", nativeLabel: "Français" },
   // { value: "de", nativeLabel: "Deutsch" },
 ];

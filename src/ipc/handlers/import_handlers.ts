@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -11,7 +11,9 @@ import { eq } from "drizzle-orm";
 
 import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
-import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -88,13 +90,22 @@ export function registerImportHandlers() {
       try {
         await fs.access(sourcePath);
       } catch {
-        throw new Error("Source folder does not exist");
+        throw new DyadError(
+          "Source folder does not exist",
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Determine the app path based on skipCopy
       const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
 
       if (!skipCopy) {
+        if (!isAppLocationAccessible(appPath)) {
+          throw new Error(
+            `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
+          );
+        }
+
         // Check if the app already exists in dyad-apps
         const errorMessage = "An app with this name already exists";
         try {
@@ -117,21 +128,12 @@ export function registerImportHandlers() {
         .catch(() => false);
       if (!isGitRepo) {
         // Initialize git repo and create first commit
-        await gitInit({ path: appPath, ref: "main" });
-
-        // Stage all files
-
-        await gitAdd({ path: appPath, filepath: "." });
-
-        // Create initial commit
-        await gitCommit({
-          path: appPath,
-          message: "Init Dyad app",
-        });
+        await gitService.initRepoWithInitialCommit({ path: appPath });
       }
 
       // Create a new app
-      // Store the full absolute path when skipCopy is true, otherwise store appName
+      // Store the full absolute path when skipCopy is true, otherwise store appName.
+      // Imported apps don't need an app blueprint — the schema default (false) is correct.
       const [app] = await db
         .insert(apps)
         .values({
@@ -142,11 +144,14 @@ export function registerImportHandlers() {
         })
         .returning();
 
+      const initialChatMode = await getInitialChatModeForNewChat();
+
       // Create an initial chat for this app
       const [chat] = await db
         .insert(chats)
         .values({
           appId: app.id,
+          chatMode: initialChatMode,
         })
         .returning();
       return { appId: app.id, chatId: chat.id };

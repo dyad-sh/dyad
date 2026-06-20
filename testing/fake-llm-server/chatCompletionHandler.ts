@@ -6,8 +6,117 @@ import {
   handleLocalAgentFixture,
   extractLocalAgentFixture,
 } from "./localAgentHandler";
+import {
+  buildExploreCodeNestedToolArgs,
+  buildExploreCodeSubmitReportArgs,
+  isExploreCodeSubagentPrompt,
+} from "./exploreCodeFixtures";
 
 let globalCounter = 0;
+
+function hasExploreCodeToolResult(
+  messages: any[],
+  getTextContent: (msg: any) => string,
+): boolean {
+  return messages.some((message: any) => {
+    if (message?.role !== "tool") {
+      return false;
+    }
+    const text = getTextContent(message);
+    return (
+      text.includes("Found ") ||
+      text.includes("Code exploration:") ||
+      text.includes("src/App.tsx")
+    );
+  });
+}
+
+function sendToolCallJson(
+  res: Response,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  res.json({
+    id: `chatcmpl-${Date.now()}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model: "fake-model",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: toolName,
+                arguments: JSON.stringify(args),
+              },
+            },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
+    ],
+  });
+}
+
+async function streamToolCall(
+  res: Response,
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const now = Date.now();
+  const mkChunk = (delta: any, finish: string | null = null) =>
+    `data: ${JSON.stringify({
+      id: `chatcmpl-${now}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(now / 1000),
+      model: "fake-model",
+      choices: [{ index: 0, delta, finish_reason: finish }],
+    })}\n\n`;
+
+  res.write(mkChunk({ role: "assistant" }));
+  res.write(
+    mkChunk({
+      tool_calls: [
+        {
+          index: 0,
+          id: `call_${now}`,
+          type: "function",
+          function: { name: toolName, arguments: "" },
+        },
+      ],
+    }),
+  );
+
+  const argsText = JSON.stringify(args);
+  const batchSize = 20;
+  for (let index = 0; index < argsText.length; index += batchSize) {
+    res.write(
+      mkChunk({
+        tool_calls: [
+          {
+            index: 0,
+            function: { arguments: argsText.slice(index, index + batchSize) },
+          },
+        ],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  res.write(mkChunk({}, "tool_calls"));
+  res.write("data: [DONE]\n\n");
+  res.end();
+}
 
 export const createChatCompletionHandler =
   (prefix: string) => async (req: Request, res: Response) => {
@@ -59,7 +168,8 @@ export const createChatCompletionHandler =
     if (
       !localAgentFixture &&
       (userTextContent.includes("incomplete todo(s)") ||
-        userTextContent.includes("previous response stream was interrupted"))
+        userTextContent.includes("previous response stream was interrupted") ||
+        userTextContent.includes("did not finish completely"))
     ) {
       for (const msg of userMessages) {
         const textContent = getTextContent(msg);
@@ -85,12 +195,33 @@ export const createChatCompletionHandler =
 
     let messageContent = CANNED_MESSAGE;
 
+    // Route plan comment messages to generate dump for testing
+    if (userTextContent.includes("I have the following comments on the plan")) {
+      messageContent =
+        "I'll update the plan based on your comments.\n\n" + generateDump(req);
+    }
+
     // Handle compaction summary requests (from generateText() in compaction_handler)
     if (
       userTextContent.startsWith("Please summarize the following conversation:")
     ) {
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
+    }
+    if (isExploreCodeSubagentPrompt(userTextContent)) {
+      const toolName = hasExploreCodeToolResult(messages, getTextContent)
+        ? "submit_report"
+        : "explore_code";
+      const input =
+        toolName === "submit_report"
+          ? buildExploreCodeSubmitReportArgs()
+          : buildExploreCodeNestedToolArgs();
+      if (stream) {
+        await streamToolCall(res, toolName, input);
+        return;
+      }
+      sendToolCallJson(res, toolName, input);
+      return;
     }
 
     // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)
@@ -110,6 +241,13 @@ export const createChatCompletionHandler =
       lastMessage.content.includes("[sleep=medium]")
     ) {
       await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.includes("[sleep=long]")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
     }
 
     // Handle merge conflict resolution prompts (both old and new formats)
@@ -334,11 +472,13 @@ export default Index;
       }
     }
 
+    // Continuation requests: the partial assistant output is in a preceding assistant
+    // message, then a user message asks to continue ("did not finish completely").
+    // Check any message for the marker. See chat_stream_handlers continuation prompt.
     if (
-      lastMessage &&
-      lastMessage.content &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.trim().endsWith("[[STRING_TO_BE_FINISHED]]")
+      messages.some((m: any) =>
+        getTextContent(m).includes("[[STRING_TO_BE_FINISHED]]"),
+      )
     ) {
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
@@ -509,7 +649,7 @@ export default Index;
     }, 10);
   };
 
-function generateDump(req: Request) {
+export function generateDump(req: Request) {
   const timestamp = Date.now();
   const generatedDir = path.join(__dirname, "generated");
 

@@ -8,7 +8,7 @@ import * as schema from "./schema";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "node:path";
 import fs from "node:fs";
-import { getDyadAppPath, getUserDataPath } from "../paths/paths";
+import { getUserDataPath } from "../paths/paths";
 import log from "electron-log";
 
 const logger = log.scope("db");
@@ -21,6 +21,11 @@ let _db: ReturnType<typeof drizzle> | null = null;
  */
 export function getDatabasePath(): string {
   return path.join(getUserDataPath(), "sqlite.db");
+}
+
+export function getDatabaseFilePaths(): string[] {
+  const dbPath = getDatabasePath();
+  return [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
 }
 
 /**
@@ -48,26 +53,61 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   }
 
   fs.mkdirSync(getUserDataPath(), { recursive: true });
-  fs.mkdirSync(getDyadAppPath("."), { recursive: true });
 
   const sqlite = new Database(dbPath, { timeout: 10000 });
   sqlite.pragma("foreign_keys = ON");
+
+  try {
+    sqlite.pragma("journal_mode = WAL");
+  } catch (error) {
+    logger.warn(
+      "Could not enable WAL mode, falling back to default journal mode:",
+      error,
+    );
+  }
 
   _db = drizzle(sqlite, { schema });
 
   try {
     const migrationsFolder = path.join(__dirname, "..", "..", "drizzle");
     if (!fs.existsSync(migrationsFolder)) {
-      logger.error("Migrations folder not found:", migrationsFolder);
-    } else {
-      logger.log("Running migrations from:", migrationsFolder);
-      migrate(_db, { migrationsFolder });
+      throw new Error(`Migrations folder not found: ${migrationsFolder}`);
     }
+    logger.log("Running migrations from:", migrationsFolder);
+    migrate(_db, { migrationsFolder });
   } catch (error) {
     logger.error("Migration error:", error);
+    _db = null;
+    sqlite.close();
+    throw error;
   }
 
   return _db as any;
+}
+
+export function closeDatabase(): void {
+  if (!_db) {
+    return;
+  }
+
+  const database = _db as BetterSQLite3Database<typeof schema> & {
+    $client: Database.Database;
+  };
+  _db = null;
+  database.$client.close();
+}
+
+/**
+ * Replaces the database instance resolved by the `db` proxy. Test-only seam
+ * so unit tests can point handlers at an in-memory database (see
+ * `src/testing/test_db.ts`). Pass null to clear the override.
+ */
+export function setDatabaseForTesting(
+  database:
+    | (BetterSQLite3Database<typeof schema> & { $client: Database.Database })
+    | null,
+): void {
+  _db = database;
 }
 
 /**

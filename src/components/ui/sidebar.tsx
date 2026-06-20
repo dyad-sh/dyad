@@ -2,7 +2,6 @@ import * as React from "react";
 import { type VariantProps, cva } from "class-variance-authority";
 import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,8 +14,9 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "19rem";
-const SIDEBAR_WIDTH_ICON = "4.5rem";
+// Expanded width = labeled rail (4rem) + the inline panel column (14rem).
+const SIDEBAR_WIDTH = "18rem";
+const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
@@ -235,8 +235,7 @@ function SidebarTrigger({
         data-sidebar="trigger"
         data-slot="sidebar-trigger"
         className={cn(
-          buttonVariants({ variant: "ghost", size: "sidebar" }),
-          "cursor-pointer ml-1 hover:bg-sidebar",
+          "flex items-center justify-center w-10 h-10 rounded-xl text-sidebar-foreground cursor-pointer transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
           className,
         )}
         onClick={(event) => {
@@ -362,7 +361,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="sidebar-group"
       data-sidebar="group"
-      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      className={cn("relative flex w-full min-w-0 flex-col py-2", className)}
       {...props}
     />
   );
@@ -488,7 +487,6 @@ function SidebarMenuButton<T extends React.ElementType = "button">({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>;
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const Comp = as || "button";
-  const { state } = useSidebar();
 
   const button = (
     <Comp
@@ -514,12 +512,7 @@ function SidebarMenuButton<T extends React.ElementType = "button">({
   return (
     <Tooltip>
       <TooltipTrigger render={button} />
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== "collapsed"}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" {...tooltip} />
     </Tooltip>
   );
 }

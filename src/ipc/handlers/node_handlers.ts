@@ -10,8 +10,53 @@ import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  getCommandExecutionDisplayDetails,
+  getPackageManagerCommandEnv,
+  PNPM_GLOBAL_INSTALL_PACKAGE,
+  runCommand,
+} from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("node_handlers");
+const BRAILLE_SPINNER_PATTERN = /^[\u2800-\u28ff]+$/u;
+
+function reloadNodePath() {
+  if (platform() === "win32") {
+    const newPath = execSync("cmd /c echo %PATH%", {
+      encoding: "utf8",
+    }).trim();
+    process.env.PATH = newPath;
+  } else {
+    fixPath();
+  }
+
+  const settings = readSettings();
+  if (settings.customNodePath) {
+    const separator = platform() === "win32" ? ";" : ":";
+    process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
+    logger.debug("Added custom Node.js path to PATH:", settings.customNodePath);
+  }
+}
+
+function formatInstallFailureReason(error: unknown): string {
+  const details = getCommandExecutionDisplayDetails(error);
+  const message = error instanceof Error ? error.message : String(error);
+  const detailLines = (details ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line && !BRAILLE_SPINNER_PATTERN.test(line) && /[a-z0-9]/iu.test(line),
+    );
+  const reason = (detailLines.at(-1) || message).trim();
+
+  if (!reason) {
+    return "the install command failed";
+  }
+
+  return reason;
+}
 
 // Test-only: Mock state for Node.js installation status
 // null = use real check, true = mock as installed, false = mock as not installed
@@ -25,16 +70,16 @@ function getNodeDownloadUrl(): string {
   }
 
   // Default to mac download url.
-  let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
+  let nodeDownloadUrl = "https://nodejs.org/dist/v22.22.3/node-v22.22.3.pkg";
   if (platform() == "win32") {
     if (arch() === "arm64" || arch() === "arm") {
       nodeDownloadUrl =
-        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
+        "https://nodejs.org/dist/v22.22.3/node-v22.22.3-arm64.msi";
     } else {
       // x64 is the most common architecture for Windows so it's the
       // default download url.
       nodeDownloadUrl =
-        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
+        "https://nodejs.org/dist/v22.22.3/node-v22.22.3-x64.msi";
     }
   }
   return nodeDownloadUrl;
@@ -68,7 +113,7 @@ export function registerNodeHandlers() {
       logger.log("Using mock Node.js status:", mockNodeInstalled);
       if (mockNodeInstalled) {
         return {
-          nodeVersion: "v22.14.0",
+          nodeVersion: "v22.22.3",
           pnpmVersion: "9.0.0",
           nodeDownloadUrl,
         };
@@ -83,31 +128,64 @@ export function registerNodeHandlers() {
       // If not, try to install it using corepack.
       // If both fail, then pnpm is not available.
       runShellCommand(
-        "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)",
+        `pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g ${PNPM_GLOBAL_INSTALL_PACKAGE} && pnpm --version)`,
+        { env: getPackageManagerCommandEnv() },
       ),
     ]);
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
   });
 
-  createTypedHandler(systemContracts.reloadEnvPath, async () => {
-    logger.debug("Reloading env path, previously:", process.env.PATH);
-    if (platform() === "win32") {
-      const newPath = execSync("cmd /c echo %PATH%", {
-        encoding: "utf8",
-      }).trim();
-      process.env.PATH = newPath;
-    } else {
-      fixPath();
-    }
-    const settings = readSettings();
-    if (settings.customNodePath) {
-      const separator = platform() === "win32" ? ";" : ":";
-      process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
-      logger.debug(
-        "Added custom Node.js path to PATH:",
-        settings.customNodePath,
+  createTypedHandler(systemContracts.installPnpm, async () => {
+    try {
+      const testInstallPnpmVersion = IS_TEST_BUILD
+        ? process.env.DYAD_TEST_INSTALL_PNPM_VERSION
+        : undefined;
+      if (testInstallPnpmVersion) {
+        process.env.DYAD_TEST_PNPM_VERSION = testInstallPnpmVersion;
+        reloadNodePath();
+        return { pnpmVersion: testInstallPnpmVersion };
+      }
+
+      // Use --force in case pnpm is already installed, but user
+      // wants to upgrade.
+      await runCommand(
+        "npm",
+        ["install", "-g", "--force", PNPM_GLOBAL_INSTALL_PACKAGE],
+        {
+          env: getPackageManagerCommandEnv(),
+        },
+      );
+      reloadNodePath();
+
+      const result = await runCommand("pnpm", ["--version"], {
+        env: getPackageManagerCommandEnv(),
+      });
+      const pnpmVersion = result.stdout.trim();
+      if (!pnpmVersion) {
+        throw new Error(
+          "pnpm installed, but its version could not be verified",
+        );
+      }
+
+      return { pnpmVersion };
+    } catch (error) {
+      logger.error("Failed to install pnpm:", error);
+      const details = getCommandExecutionDisplayDetails(error);
+      if (details) {
+        logger.error("pnpm install command output:", details);
+      }
+
+      const reason = formatInstallFailureReason(error);
+      throw new DyadError(
+        `Could not install pnpm because of ${reason}`,
+        DyadErrorKind.Precondition,
       );
     }
+  });
+
+  createTypedHandler(systemContracts.reloadEnvPath, async () => {
+    logger.debug("Reloading env path, previously:", process.env.PATH);
+    reloadNodePath();
     logger.debug("Reloaded env path, now:", process.env.PATH);
   });
 

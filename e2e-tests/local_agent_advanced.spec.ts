@@ -1,5 +1,6 @@
 import path from "path";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 /**
  * Test for security review in local-agent mode
@@ -56,6 +57,7 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
     .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
     .fill(testMcpServerPath);
   await po.page.getByRole("button", { name: "Add Server" }).click();
+  await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
 
   await po.navigation.goToAppsTab();
   await po.importApp("minimal");
@@ -66,12 +68,93 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
     skipWaitForCompletion: true,
   });
 
-  // MCP tools require consent - wait for the consent banner
-  await po.agentConsent.waitForAgentConsentBanner();
-  await po.agentConsent.clickAgentConsentAlwaysAllow();
+  // Depending on saved MCP consent state, the tool may either pause for
+  // consent or complete directly.
+  const alwaysAllowButton = po.page.getByRole("button", {
+    name: "Always allow",
+  });
+  const consentAppeared = await Promise.race([
+    alwaysAllowButton
+      .waitFor({ state: "visible", timeout: Timeout.MEDIUM })
+      .then(() => true)
+      .catch(() => false),
+    po.page
+      .getByRole("button", { name: "Retry" })
+      .waitFor({ state: "visible", timeout: Timeout.MEDIUM })
+      .then(() => false)
+      .catch(() => false),
+  ]);
+  if (consentAppeared) {
+    await po.agentConsent.clickAgentConsentAlwaysAllow();
+  }
 
   // Wait for chat to complete
   await po.chatActions.waitForChatCompletion();
+
+  await po.snapshotMessages();
+});
+
+/**
+ * Test for the MCP tool search experiment: the model discovers an MCP tool with
+ * search_mcp_tools, then calls it from execute_sandbox_script. Sandbox script
+ * execution is on by default; this turns on the experiment flag.
+ */
+testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
+  await po.setUpDyadPro({ localAgent: true });
+  await po.navigation.goToSettingsTab();
+
+  // Configure the test MCP server.
+  await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
+  await po.page
+    .getByRole("textbox", { name: "My MCP Server" })
+    .fill("testing-mcp-server");
+  await po.page.getByRole("textbox", { name: "node" }).fill("node");
+  const testMcpServerPath = path.join(
+    __dirname,
+    "..",
+    "testing",
+    "fake-stdio-mcp-server.mjs",
+  );
+  await po.page
+    .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
+    .fill(testMcpServerPath);
+  await po.page.getByRole("button", { name: "Add Server" }).click();
+  await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
+
+  // Turn on the MCP tool search experiment (Playwright scrolls to the switch).
+  await po.page.getByRole("switch", { name: "Enable MCP tool search" }).click();
+
+  await po.navigation.goToAppsTab();
+  await po.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
+
+  // The model searches for an MCP tool; search_mcp_tools auto-approves.
+  await po.sendPrompt("tc=local-agent/mcp-tool-search", {
+    skipWaitForCompletion: true,
+  });
+  await po.chatActions.waitForChatCompletion();
+
+  // The search card renders with the query the model searched for.
+  await expect(po.page.getByText("MCP Tools").first()).toBeVisible();
+  await expect(po.page.getByText("add numbers").first()).toBeVisible();
+
+  await po.snapshotMessages();
+});
+
+/**
+ * Test for enable_nitro tool in local-agent mode on a Vite app.
+ */
+testSkipIfWindows("local-agent - enable nitro", async ({ po }) => {
+  await po.setUpDyadPro({ localAgent: true });
+  await po.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
+
+  await po.sendPrompt("tc=local-agent/enable-nitro", {
+    skipWaitForCompletion: true,
+  });
+
+  // Install of Nitro dependencies goes through socket firewall, which can be slow on first run.
+  await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
   await po.snapshotMessages();
 });

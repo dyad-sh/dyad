@@ -21,7 +21,12 @@ export const queryKeys = {
   system: {
     all: ["system"] as const,
     appVersion: ["system", "appVersion"] as const,
+    nodejsStatus: ["system", "nodejsStatus"] as const,
     platform: ["system", "platform"] as const,
+    initialLoadTelemetryContext: [
+      "system",
+      "initialLoadTelemetryContext",
+    ] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -40,8 +45,18 @@ export const queryKeys = {
     all: ["apps"] as const,
     detail: ({ appId }: { appId: number | null }) =>
       ["apps", "detail", appId] as const,
+    screenshots: ({ appId }: { appId: number | null }) =>
+      ["apps", "screenshots", appId] as const,
+    thumbnails: ["apps", "thumbnails"] as const,
     search: ({ query }: { query: string }) =>
       ["apps", "search", query] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // App Collections
+  // ─────────────────────────────────────────────────────────────────────────────
+  appCollections: {
+    all: ["appCollections"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +65,8 @@ export const queryKeys = {
   chats: {
     all: ["chats"] as const,
     list: ({ appId }: { appId: number | null }) => ["chats", appId] as const,
+    detail: ({ chatId }: { chatId: number | null }) =>
+      ["chats", "detail", chatId] as const,
     search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["chats", "search", appId, query] as const,
   },
@@ -216,6 +233,8 @@ export const queryKeys = {
     byProviders: ["language-models-by-providers"] as const,
     forProvider: ({ providerId }: { providerId: string }) =>
       ["language-models", providerId] as const,
+    ollamaLocal: ["language-models", "ollama-local"] as const,
+    lmStudioLocal: ["language-models", "lmstudio-local"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -223,6 +242,11 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   userBudget: {
     info: ["userBudgetInfo"] as const,
+  },
+
+  cloudSandboxes: {
+    status: ({ appId }: { appId: number | null }) =>
+      ["cloudSandboxStatus", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -236,9 +260,11 @@ export const queryKeys = {
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
-    all: ["vercel-deployments"] as const,
+    all: ["vercel"] as const,
     deployments: ({ appId }: { appId: number }) =>
-      ["vercel-deployments", appId] as const,
+      ["vercel", "deployments", appId] as const,
+    syncPreview: ({ appId }: { appId: number | null }) =>
+      ["vercel", "syncPreview", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -279,6 +305,15 @@ export const queryKeys = {
       projectId: string;
       organizationSlug: string | null;
     }) => ["supabase", "branches", projectId, organizationSlug] as const,
+    edgeLogs: ({
+      projectId,
+      appId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      appId: number | null;
+      organizationSlug: string | null;
+    }) => ["supabase", "edgeLogs", projectId, appId, organizationSlug] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -290,11 +325,34 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Migration
+  // ─────────────────────────────────────────────────────────────────────────────
+  migration: {
+    all: ["migration"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Neon
   // ─────────────────────────────────────────────────────────────────────────────
   neon: {
+    all: ["neon"] as const,
+    projects: ["neon", "projects"] as const,
     project: ({ appId }: { appId: number | null }) =>
-      ["neon-project", appId] as const,
+      ["neon", "project", appId] as const,
+    emailPasswordConfig: ({
+      appId,
+      branchId,
+    }: {
+      appId: number | null;
+      branchId: string | null;
+    }) => ["neon", "emailPasswordConfig", appId, branchId] as const,
+    branchEnvVars: ({
+      appId,
+      branchType,
+    }: {
+      appId: number | null;
+      branchType: "production" | "development";
+    }) => ["neon", "branch-env-vars", appId, branchType] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -303,6 +361,13 @@ export const queryKeys = {
   appEnvVars: {
     byApp: ({ appId }: { appId: number | null }) =>
       ["app-env-vars", appId] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Media
+  // ─────────────────────────────────────────────────────────────────────────────
+  media: {
+    all: ["media"] as const,
   },
 } as const;
 
@@ -322,6 +387,9 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.system)[keyof typeof queryKeys.system]>
   | QueryKeyOf<(typeof queryKeys.settings)[keyof typeof queryKeys.settings]>
   | QueryKeyOf<(typeof queryKeys.apps)[keyof typeof queryKeys.apps]>
+  | QueryKeyOf<
+      (typeof queryKeys.appCollections)[keyof typeof queryKeys.appCollections]
+    >
   | QueryKeyOf<(typeof queryKeys.chats)[keyof typeof queryKeys.chats]>
   | QueryKeyOf<(typeof queryKeys.plans)[keyof typeof queryKeys.plans]>
   | QueryKeyOf<(typeof queryKeys.proposals)[keyof typeof queryKeys.proposals]>
@@ -354,6 +422,9 @@ export type AppQueryKey =
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
   | QueryKeyOf<
+      (typeof queryKeys.cloudSandboxes)[keyof typeof queryKeys.cloudSandboxes]
+    >
+  | QueryKeyOf<
       (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
     >
   | QueryKeyOf<(typeof queryKeys.vercel)[keyof typeof queryKeys.vercel]>
@@ -363,7 +434,7 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.mcp)[keyof typeof queryKeys.mcp]>
   | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>
   | QueryKeyOf<(typeof queryKeys.github)[keyof typeof queryKeys.github]>
+  | QueryKeyOf<(typeof queryKeys.migration)[keyof typeof queryKeys.migration]>
   | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
-  | QueryKeyOf<
-      (typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]
-    >;
+  | QueryKeyOf<(typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]>
+  | QueryKeyOf<(typeof queryKeys.media)[keyof typeof queryKeys.media]>;

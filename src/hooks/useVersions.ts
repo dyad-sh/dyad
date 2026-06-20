@@ -1,18 +1,20 @@
-import { useEffect } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { versionsListAtom } from "@/atoms/appAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
 import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { useRunApp } from "./useRunApp";
+import { useSettings } from "./useSettings";
 
 export function useVersions(appId: number | null) {
-  const [, setVersionsAtom] = useAtom(versionsListAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const queryClient = useQueryClient();
+  const { restartApp } = useRunApp();
+  const { settings } = useSettings();
 
   const {
     data: versions,
@@ -32,12 +34,6 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
-  useEffect(() => {
-    if (versions) {
-      setVersionsAtom(versions);
-    }
-  }, [versions, setVersionsAtom]);
-
   const revertVersionMutation = useMutation<
     RevertVersionResponse,
     Error,
@@ -55,7 +51,7 @@ export function useVersions(appId: number | null) {
     }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
-        throw new Error("App ID is null");
+        throw new DyadError("App ID is null", DyadErrorKind.External);
       }
       return ipc.version.revertVersion({
         appId: currentAppId,
@@ -86,6 +82,9 @@ export function useVersions(appId: number | null) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.problems.byApp({ appId }),
       });
+      if (settings?.runtimeMode2 === "cloud") {
+        await restartApp();
+      }
     },
     meta: { showErrorToast: true },
   });

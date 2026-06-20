@@ -1,8 +1,16 @@
 import { BrowserWindow } from "electron";
 import log from "electron-log";
+import {
+  DyadError,
+  isDyadErrorKindFilteredFromTelemetry,
+} from "@/errors/dyad_error";
+import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { TelemetryEventPayload } from "@/ipc/types";
 
 const logger = log.scope("telemetry");
+const FILTERED_EXCEPTION_MESSAGES = new Set([
+  "Supabase access token not found. Please authenticate first.",
+]);
 
 /**
  * Sends a telemetry event from the main process to the renderer,
@@ -36,10 +44,41 @@ export function sendTelemetryException(
     error instanceof Error
       ? error
       : new Error(String(error ?? "Unknown error"));
+
+  if (shouldFilterTelemetryException(err)) {
+    return;
+  }
+
   sendTelemetryEvent("$exception", {
-    $exception_type: err.name,
-    $exception_message: err.message,
-    $exception_stack_trace_raw: err.stack,
+    exception_name: err.name,
+    exception_message: err.message,
+    exception_stack_trace: err.stack,
     ...context,
   });
+}
+
+export function shouldFilterTelemetryException(error: unknown): boolean {
+  if (error instanceof DyadError) {
+    return isDyadErrorKindFilteredFromTelemetry(error.kind);
+  }
+
+  if (
+    error instanceof Error &&
+    error.name === "RateLimitError" &&
+    error.message.includes("(429)")
+  ) {
+    return true;
+  }
+
+  if (
+    error instanceof Error &&
+    isGenericFetchFailedError(error.name, error.message)
+  ) {
+    return true;
+  }
+
+  const message =
+    error instanceof Error ? error.message : String(error ?? "Unknown error");
+
+  return FILTERED_EXCEPTION_MESSAGES.has(message);
 }

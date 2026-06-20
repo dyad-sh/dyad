@@ -27,7 +27,7 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
   const isFinished = state === "finished";
   const content = typeof children === "string" ? children : "";
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, clearPauseOnly } = useStreamChat();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleContinue = () => {
@@ -36,7 +36,12 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
     streamMessage({
       prompt: "Continue",
       chatId,
-      onSettled: () => setIsLoading(false),
+      onSettled: ({ success, pausedByStepLimit }) => {
+        setIsLoading(false);
+        if (success && !pausedByStepLimit) {
+          clearPauseOnly();
+        }
+      },
     });
   };
 

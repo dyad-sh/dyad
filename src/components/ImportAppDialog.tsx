@@ -11,21 +11,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
 import { useMutation } from "@tanstack/react-query";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { Folder, X, Loader2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { GithubRepository } from "@/ipc/types";
 import { useGithubRepos } from "@/hooks/useGithubRepos";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
 import { useLoadApps } from "@/hooks/useLoadApps";
+
 import {
   Accordion,
   AccordionContent,
@@ -52,10 +53,11 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const [installCommand, setInstallCommand] = useState("");
   const [startCommand, setStartCommand] = useState("");
   const [copyToDyadApps, setCopyToDyadApps] = useState(true);
-  const navigate = useNavigate();
   const { streamMessage } = useStreamChat({ hasChatId: false });
+  const { selectChat } = useSelectChat();
   const { refreshApps } = useLoadApps();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const [optimizeForDyad, setOptimizeForDyad] = useState(true);
   // GitHub import state
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
@@ -72,6 +74,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     if (isOpen) {
       setGithubAppName("");
       setGithubNameExists(false);
+      // Reset optimize flag when dialog opens so tabs don't carry over state
+      setOptimizeForDyad(true);
     }
   }, [isOpen]);
 
@@ -95,7 +99,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         setGithubNameExists(result.exists);
       } catch (error: unknown) {
         showError(
-          t("home:failedCheckAppName", { error: (error as any).toString() }),
+          t("home:failedCheckAppName", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
         );
       } finally {
         setIsCheckingGithubName(false);
@@ -106,37 +112,57 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     const match = url.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
     return match ? match[2] : null;
   };
+  const processCloneResult = async (
+    result: Awaited<ReturnType<typeof ipc.github.cloneRepoFromUrl>>,
+  ): Promise<boolean> => {
+    if ("error" in result) {
+      showError(result.error);
+      return false;
+    }
+    setSelectedAppId(result.app.id);
+    try {
+      await refreshApps();
+    } catch (e) {
+      console.error("Failed to refresh apps", e);
+    }
+    showSuccess(t("home:successfullyImported", { name: result.app.name }));
+    if (result.autoUpgradeWarning) {
+      showWarning(t("home:autoUpgradeFailed"));
+    }
+    const chatId = await ipc.chat.createChat(result.app.id);
+    selectChat({ chatId, appId: result.app.id });
+    if (!result.hasAiRules) {
+      streamMessage({
+        prompt: AI_RULES_PROMPT,
+        chatId,
+        appId: result.app.id,
+      });
+    }
+    onClose();
+    return true;
+  };
+
   const handleImportFromUrl = async () => {
     setImporting(true);
     try {
-      const match = extractRepoNameFromUrl(url);
-      const repoName = match ? match[2] : "";
+      const repoName = extractRepoNameFromUrl(url) ?? "";
       const appName = githubAppName.trim() || repoName;
       const result = await ipc.github.cloneRepoFromUrl({
         url,
         installCommand: installCommand.trim() || undefined,
         startCommand: startCommand.trim() || undefined,
         appName,
+        optimizeForDyad,
       });
-      if ("error" in result) {
-        showError(result.error);
+      if (!(await processCloneResult(result))) {
         setImporting(false);
         return;
       }
-      setSelectedAppId(result.app.id);
-      showSuccess(t("home:successfullyImported", { name: result.app.name }));
-      const chatId = await ipc.chat.createChat(result.app.id);
-      navigate({ to: "/chat", search: { id: chatId } });
-      if (!result.hasAiRules) {
-        streamMessage({
-          prompt: AI_RULES_PROMPT,
-          chatId,
-        });
-      }
-      onClose();
     } catch (error: unknown) {
       showError(
-        t("home:failedImportRepo", { error: (error as any).toString() }),
+        t("home:failedImportRepo", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setImporting(false);
@@ -153,26 +179,17 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         installCommand: installCommand.trim() || undefined,
         startCommand: startCommand.trim() || undefined,
         appName,
+        optimizeForDyad,
       });
-      if ("error" in result) {
-        showError(result.error);
+      if (!(await processCloneResult(result))) {
         setImporting(false);
         return;
       }
-      setSelectedAppId(result.app.id);
-      showSuccess(t("home:successfullyImported", { name: result.app.name }));
-      const chatId = await ipc.chat.createChat(result.app.id);
-      navigate({ to: "/chat", search: { id: chatId } });
-      if (!result.hasAiRules) {
-        streamMessage({
-          prompt: AI_RULES_PROMPT,
-          chatId,
-        });
-      }
-      onClose();
     } catch (error: unknown) {
       showError(
-        t("home:failedImportRepo", { error: (error as any).toString() }),
+        t("home:failedImportRepo", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setImporting(false);
@@ -193,7 +210,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         setGithubNameExists(result.exists);
       } catch (error: unknown) {
         showError(
-          t("home:failedCheckAppName", { error: (error as any).toString() }),
+          t("home:failedCheckAppName", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
         );
       } finally {
         setIsCheckingGithubName(false);
@@ -216,7 +235,10 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       });
       setNameExists(result.exists);
     } catch (error: unknown) {
-      showError("Failed to check app name: " + (error as any).toString());
+      showError(
+        "Failed to check app name: " +
+          (error instanceof Error ? error.message : String(error)),
+      );
     } finally {
       setIsCheckingName(false);
     }
@@ -261,11 +283,12 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       );
       onClose();
 
-      navigate({ to: "/chat", search: { id: result.chatId } });
+      selectChat({ chatId: result.chatId, appId: result.appId });
       if (!hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId: result.chatId,
+          appId: result.appId,
         });
       }
       setSelectedAppId(result.appId);
@@ -577,6 +600,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     {repos.map((repo) => (
                       <div
                         key={repo.full_name}
+                        data-testid={`github-repo-row-${repo.full_name.replace(/[^a-zA-Z0-9_-]/g, "-")}`}
                         className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors min-w-0"
                       >
                         <div className="min-w-0 flex-1 overflow-hidden mr-2">
@@ -612,6 +636,23 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                             {t("home:advancedOptions")}
                           </AccordionTrigger>
                           <AccordionContent className="space-y-4">
+                            <div className="flex items-center space-x-2 py-1">
+                              <Checkbox
+                                id="optimize-for-dyad-repos"
+                                checked={optimizeForDyad}
+                                onCheckedChange={(checked) =>
+                                  setOptimizeForDyad(checked === true)
+                                }
+                                disabled={importing}
+                              />
+                              <Label
+                                htmlFor="optimize-for-dyad-repos"
+                                className="text-xs sm:text-sm cursor-pointer"
+                              >
+                                {t("home:autoUpgradeAnnotator")} (
+                                {t("common:recommended")})
+                              </Label>
+                            </div>
                             <div className="grid gap-2">
                               <Label className="text-xs sm:text-sm">
                                 {t("home:installCommand")}
@@ -696,6 +737,23 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     {t("home:advancedOptions")}
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4">
+                    <div className="flex items-center space-x-2 py-1">
+                      <Checkbox
+                        id="optimize-for-dyad-url"
+                        checked={optimizeForDyad}
+                        onCheckedChange={(checked) =>
+                          setOptimizeForDyad(checked === true)
+                        }
+                        disabled={importing}
+                      />
+                      <Label
+                        htmlFor="optimize-for-dyad-url"
+                        className="text-xs sm:text-sm cursor-pointer"
+                      >
+                        {t("home:autoUpgradeAnnotator")} (
+                        {t("common:recommended")})
+                      </Label>
+                    </div>
                     <div className="grid gap-2">
                       <Label className="text-xs sm:text-sm">
                         {t("home:installCommand")}

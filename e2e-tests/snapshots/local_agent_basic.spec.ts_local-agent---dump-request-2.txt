@@ -1,20 +1,11 @@
 ===
-role: system
-message: [[SYSTEM_MESSAGE]]
-
-===
 role: user
-message: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
+message: [{"type":"text","text":"Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what."}]
 
 ===
 role: assistant
-message: 
-  <dyad-write path="file1.txt">
-  A file (2)
-  </dyad-write>
-  More
-  EOM
+message: [{"type":"text","text":"\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"}]
 
 ===
 role: user
-message: [dump]
+message: [{"type":"text","text":"[dump]"}]

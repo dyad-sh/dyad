@@ -7,6 +7,7 @@ export const SECTION_IDS = {
   integrations: "integrations",
   agentPermissions: "agent-permissions",
   toolsMcp: "tools-mcp",
+  advanced: "advanced",
   experiments: "experiments",
   dangerZone: "danger-zone",
 } as const;
@@ -18,11 +19,14 @@ export const SETTING_IDS = {
   releaseChannel: "setting-release-channel",
   runtimeMode: "setting-runtime-mode",
   nodePath: "setting-node-path",
+  customAppsFolder: "setting-custom-apps-folder",
   defaultChatMode: "setting-default-chat-mode",
   autoApprove: "setting-auto-approve",
   autoFix: "setting-auto-fix",
   autoExpandPreview: "setting-auto-expand-preview",
-  chatCompletionNotification: "setting-chat-completion-notification",
+  keepPreviewsRunning: "setting-keep-previews-running",
+  appBlueprint: "setting-app-blueprint",
+  chatEventNotification: "setting-chat-event-notification",
   thinkingBudget: "setting-thinking-budget",
   maxChatTurns: "setting-max-chat-turns",
   maxToolCallSteps: "setting-max-tool-call-steps",
@@ -33,7 +37,15 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  enableCloudSandbox: "setting-enable-cloud-sandbox",
+  autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
+  enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
+  blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
+  enablePnpmMinimumReleaseAgeWarning:
+    "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
+  enableMcpToolSearch: "setting-enable-mcp-tool-search",
+  enableCodeExplorer: "setting-enable-code-explorer",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -98,6 +110,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.general,
     sectionLabel: "General",
   },
+  {
+    id: SETTING_IDS.customAppsFolder,
+    label: "Customize Apps Folder",
+    description:
+      "Set the top-level folder that Dyad will store new applications in",
+    keywords: ["customize", "apps", "path", "folder", "directory", "dyad-apps"],
+    sectionId: SECTION_IDS.general,
+    sectionLabel: "General",
+  },
 
   // Workflow Settings
   {
@@ -125,6 +146,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Workflow",
   },
   {
+    id: SETTING_IDS.appBlueprint,
+    label: "App Blueprint",
+    description:
+      "Generate a lightweight app blueprint (name, design, color, template) before building new apps",
+    keywords: [
+      "blueprint",
+      "app",
+      "new app",
+      "template",
+      "questionnaire",
+      "design",
+      "workflow",
+    ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
     id: SETTING_IDS.autoExpandPreview,
     label: "Auto Expand Preview",
     description:
@@ -134,11 +172,37 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Workflow",
   },
   {
-    id: SETTING_IDS.chatCompletionNotification,
-    label: "Chat Completion Notification",
+    id: SETTING_IDS.keepPreviewsRunning,
+    label: "Keep app previews running forever",
     description:
-      "Show a native notification when a chat response completes while the app is not focused",
-    keywords: ["notification", "chat", "complete", "alert", "background"],
+      "Prevent idle app previews from being stopped after 10 minutes; uses more memory but enables faster preview loads when switching apps",
+    keywords: [
+      "preview",
+      "idle",
+      "timeout",
+      "gc",
+      "garbage collect",
+      "memory",
+      "forever",
+      "keep",
+      "running",
+    ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.chatEventNotification,
+    label: "Notifications",
+    description:
+      "Show native notifications when a chat response completes or a questionnaire needs your input while the app is not focused",
+    keywords: [
+      "notification",
+      "chat",
+      "complete",
+      "questionnaire",
+      "alert",
+      "background",
+    ],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },
@@ -194,7 +258,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: SECTION_IDS.ai,
     sectionLabel: "AI",
   },
-
   // Provider Settings
   {
     id: SECTION_IDS.providers,
@@ -314,25 +377,147 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Tools (MCP)",
   },
 
-  // Experiments
+  // Advanced
+  {
+    id: SECTION_IDS.advanced,
+    label: "Advanced",
+    description: "Power-user settings for Git, sandboxing, packages, and MCP",
+    keywords: [
+      "advanced",
+      "git",
+      "sandbox",
+      "npm",
+      "mcp",
+      "security",
+      "native",
+    ],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
   {
     id: SETTING_IDS.nativeGit,
     label: "Enable Native Git",
     description:
       "Use native Git for faster performance without external installation",
-    keywords: ["git", "native", "experiment", "beta", "performance"],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
+    keywords: ["git", "native", "performance"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
   },
-
+  {
+    id: SETTING_IDS.enableSandboxScriptExecution,
+    label: "Enable sandbox script execution",
+    description:
+      "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
+    keywords: [
+      "script",
+      "scripts",
+      "sandbox",
+      "attachments",
+      "mustard",
+      "agent",
+    ],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+  {
+    id: SETTING_IDS.blockUnsafeNpmPackages,
+    label: "Block unsafe npm packages",
+    description: "Uses socket.dev to detect unsafe packages and blocks them",
+    keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
   {
     id: SETTING_IDS.enableMcpServersForBuildMode,
     label: "Enable MCP servers for Build mode",
     description: "Allow MCP servers to be used when in Build mode",
-    keywords: ["mcp", "build", "agent", "tools", "experiment", "server"],
+    keywords: ["mcp", "build", "agent", "tools", "server"],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+  {
+    id: SETTING_IDS.autoApproveNonSchemaSql,
+    label: "Skip consent for non-schema SQL",
+    description:
+      "In Agent mode, skip the consent prompt when running SQL that does not change the database schema. Schema changes still require approval",
+    keywords: [
+      "sql",
+      "database",
+      "consent",
+      "approve",
+      "schema",
+      "agent",
+      "supabase",
+      "neon",
+    ],
+    sectionId: SECTION_IDS.advanced,
+    sectionLabel: "Advanced",
+  },
+
+  // Experiments
+  {
+    id: SETTING_IDS.enableCloudSandbox,
+    label: "Enable Cloud Sandbox (Pro)",
+    description:
+      "Run your app on the Cloud for a more secure runtime that uses fewer local system resources",
+    keywords: [
+      "cloud",
+      "sandbox",
+      "runtime",
+      "experiment",
+      "pro",
+      "credits",
+      "secure",
+    ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },
+  {
+    id: SETTING_IDS.enableMcpToolSearch,
+    label: "Enable MCP tool search",
+    description:
+      "Let the agent search for MCP tools on demand instead of listing every tool in its context. Requires sandbox script execution",
+    keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enablePnpmMinimumReleaseAgeWarning,
+    label: "Enable pnpm upgrade warning",
+    description:
+      "Show the pnpm release-age warning toast and one-click pnpm upgrade action",
+    keywords: [
+      "pnpm",
+      "npm",
+      "package",
+      "release",
+      "warning",
+      "toast",
+      "upgrade",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableCodeExplorer,
+    label: "Enable code explorer (Pro)",
+    description:
+      "Let the local agent explore configured TypeScript projects with a compiler-backed code graph",
+    keywords: [
+      "code",
+      "explorer",
+      "typescript",
+      "symbol",
+      "graph",
+      "agent",
+      "tools",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+
   {
     id: SETTING_IDS.enableSelectAppFromHomeChatInput,
     label: "Enable Select App from Home Chat Input",

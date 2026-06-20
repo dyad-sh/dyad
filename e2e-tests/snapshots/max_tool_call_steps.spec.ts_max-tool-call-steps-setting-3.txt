@@ -1,1 +1,1 @@
-- "maxToolCallSteps": 100
+- "maxToolCallSteps": 200

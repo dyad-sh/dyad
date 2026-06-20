@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "node:http";
-import { z } from "zod";
+import { z } from "zod/v3";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 

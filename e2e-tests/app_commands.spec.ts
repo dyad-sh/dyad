@@ -2,6 +2,8 @@ import { expect } from "@playwright/test";
 import { test } from "./helpers/test_helper";
 
 test("configure app commands", async ({ po }) => {
+  await po.setUp();
+
   // Create an app first
   await po.sendPrompt("tc=1");
 
@@ -87,6 +89,7 @@ test("configure app commands", async ({ po }) => {
 
   // Save the updated commands
   await po.page.getByTestId("save-app-commands").click();
+  await po.toastNotifications.waitForToastWithText("App commands saved");
 
   // Verify the updated commands are displayed
   await expect(po.page.getByTestId("current-install-command")).toHaveText(
@@ -97,7 +100,8 @@ test("configure app commands", async ({ po }) => {
   );
 
   // Test clearing commands
-  await po.page.getByTestId("clear-app-commands").click();
+  await po.page.getByTestId("clear-app-commands").dispatchEvent("click");
+  await po.toastNotifications.waitForToastWithText("App commands saved");
 
   // Verify commands are cleared and default message is shown again
   await expect(

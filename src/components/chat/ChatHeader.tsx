@@ -4,6 +4,7 @@ import {
   PlusCircle,
   GitBranch,
   Info,
+  SquareTerminal,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -31,6 +32,9 @@ import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
+import { cn } from "@/lib/utils";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -50,9 +54,13 @@ export function ChatHeader({
   const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
   const [selectedChatId] = useAtom(selectedChatIdAtom);
+  const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
+    terminalOpenByChatIdAtom,
+  );
   const { invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
   const { isStreaming } = useStreamChat();
+  const initialChatMode = useInitialChatMode();
   const isAnyCheckoutVersionInProgress = useAtomValue(
     isAnyCheckoutVersionInProgressAtom,
   );
@@ -88,7 +96,10 @@ export function ChatHeader({
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const chatId = await ipc.chat.createChat(appId);
+        const chatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode,
+        });
         await invalidateChats();
         selectChat({ chatId, appId });
       } catch (error) {
@@ -105,6 +116,21 @@ export function ChatHeader({
   const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
 
   const currentBranchName = branchInfo?.branch;
+  const isTerminalOpen = selectedChatId
+    ? (terminalOpenByChatId.get(selectedChatId) ?? false)
+    : false;
+  const isTerminalDisabled = !appId || !selectedChatId;
+
+  const handleToggleTerminal = () => {
+    if (!appId || !selectedChatId) return;
+
+    const nextOpen = !isTerminalOpen;
+    setTerminalOpenByChatId((prev) => {
+      const next = new Map(prev);
+      next.set(selectedChatId, nextOpen);
+      return next;
+    });
+  };
 
   return (
     <div className="flex flex-col w-full @container">
@@ -209,17 +235,46 @@ export function ChatHeader({
           </Button>
         </div>
 
-        <button
-          data-testid="toggle-preview-panel-button"
-          onClick={onTogglePreview}
-          className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
-        >
-          {isPreviewOpen ? (
-            <PanelRightClose size={20} />
-          ) : (
-            <PanelRightOpen size={20} />
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-testid="toggle-terminal-button"
+                    onClick={handleToggleTerminal}
+                    disabled={isTerminalDisabled}
+                    aria-label={t("terminal.toggleAriaLabel")}
+                    aria-pressed={isTerminalOpen}
+                    className={cn(
+                      "cursor-pointer rounded-md p-2 hover:bg-(--background-lightest) disabled:cursor-not-allowed disabled:opacity-50",
+                      isTerminalOpen && "bg-primary/10 text-primary",
+                    )}
+                  />
+                }
+              >
+                <SquareTerminal size={20} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isTerminalDisabled
+                  ? t("terminal.toggleDisabledTooltip")
+                  : t("terminal.toggleTooltip")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <button
+            data-testid="toggle-preview-panel-button"
+            onClick={onTogglePreview}
+            className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
+          >
+            {isPreviewOpen ? (
+              <PanelRightClose size={20} />
+            ) : (
+              <PanelRightOpen size={20} />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -26,7 +26,7 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import {
-  chatInputValueAtom,
+  chatInputValuesByIdAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
@@ -58,7 +58,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo } from "@/lib/toast";
+import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -72,11 +72,19 @@ import {
   visualEditingSelectedComponentAtom,
   currentComponentCoordinatesAtom,
   pendingVisualChangesAtom,
+  isRestoringQueuedSelectionAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
+import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
+import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
+import {
+  chatImageGenerationJobsAtom,
+  dismissedImageGenerationJobIdsAtom,
+} from "@/atoms/imageGenerationAtoms";
+import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -98,14 +106,38 @@ import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
+import { useChatMode } from "@/hooks/useChatMode";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const { t } = useTranslation("chat");
   const posthog = usePostHog();
-  const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
+  const inputValuesById = useAtomValue(chatInputValuesByIdAtom);
+  const setInputValuesById = useSetAtom(chatInputValuesByIdAtom);
+  const inputValue = chatId ? (inputValuesById.get(chatId) ?? "") : "";
+  const setInputValue = useCallback(
+    (newValue: string | ((prev: string) => string)) => {
+      if (!chatId) return;
+
+      setInputValuesById((currentMap) => {
+        const prev = currentMap.get(chatId) ?? "";
+        const next = typeof newValue === "function" ? newValue(prev) : newValue;
+        const newMap = new Map(currentMap);
+        newMap.set(chatId, next);
+        return newMap;
+      });
+    },
+    [chatId, setInputValuesById],
+  );
   const { settings } = useSettings();
+  const {
+    selectedMode: chatMode,
+    effectiveMode,
+    isLoading: isChatModeLoading,
+  } = useChatMode(chatId);
+  const initialChatMode = useInitialChatMode();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const {
@@ -120,6 +152,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     removeQueuedMessage,
     reorderQueuedMessages,
     clearAllQueuedMessages,
+    isPaused,
+    pauseQueue,
+    clearPauseOnly,
+    resumeQueue,
+    clearCompletionFlag,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -147,6 +184,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
+  const setIsRestoringQueuedSelection = useSetAtom(
+    isRestoringQueuedSelectionAtom,
+  );
   const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
     pendingAgentConsentsAtom,
   );
@@ -164,6 +204,29 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
+  const handleOpenImageGenerator = useCallback(() => {
+    setImageGeneratorOpen(true);
+  }, []);
+
+  // Image generation jobs for auto-adding to chat on send
+  const chatImageJobs = useAtomValue(chatImageGenerationJobsAtom);
+  const [dismissedImageJobIds, setDismissedImageJobIds] = useAtom(
+    dismissedImageGenerationJobIdsAtom,
+  );
+  const visibleSuccessfulImageJobs = useMemo(() => {
+    const appJobs = appId
+      ? chatImageJobs.filter((job) => job.targetAppId === appId)
+      : chatImageJobs;
+    return appJobs.filter(
+      (job) =>
+        !dismissedImageJobIds.has(job.id) &&
+        job.status === "success" &&
+        job.result,
+    );
+  }, [chatImageJobs, dismissedImageJobIds, appId]);
+  const hasSuccessfulImageJobs = visibleSuccessfulImageJobs.length > 0;
+
   // Use the attachments hook
   const {
     attachments,
@@ -175,6 +238,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDragLeave,
     handleDrop,
     clearAttachments,
+    replaceAttachments,
     handlePaste,
     confirmPendingFiles,
     cancelPendingFiles,
@@ -192,7 +256,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
-    settings?.selectedChatMode !== "local-agent" &&
+    effectiveMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -230,10 +294,23 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
 
   // Detect transition to plan mode from another mode in a chat with messages
-  const prevModeRef = useRef(settings?.selectedChatMode);
+  const prevModeRef = useRef(chatMode);
+  const prevModeChatIdRef = useRef(chatId);
+  const hasInitializedModeRef = useRef(false);
   useEffect(() => {
+    if (isChatModeLoading) return;
+    if (
+      !hasInitializedModeRef.current ||
+      prevModeChatIdRef.current !== chatId
+    ) {
+      hasInitializedModeRef.current = true;
+      prevModeChatIdRef.current = chatId;
+      prevModeRef.current = chatMode;
+      return;
+    }
+
     const prevMode = prevModeRef.current;
-    const currentMode = settings?.selectedChatMode;
+    const currentMode = chatMode;
     prevModeRef.current = currentMode;
 
     if (prevMode && prevMode !== "plan" && currentMode === "plan") {
@@ -242,7 +319,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         setNeedsFreshPlanChat(true);
       }
     }
-  }, [settings?.selectedChatMode, chatId, messagesById, setNeedsFreshPlanChat]);
+  }, [
+    chatMode,
+    chatId,
+    isChatModeLoading,
+    messagesById,
+    setNeedsFreshPlanChat,
+  ]);
 
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
@@ -276,17 +359,111 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   }, [chatId, setMessagesById]);
 
+  // Shared cleanup run after a submit consumes the composer's contents: clears
+  // the input, any selected/visual-editing components, and the preview overlay.
+  // Attachments are cleared separately because their timing varies by path
+  // (they must be handed to stream/queue first, then cleared).
+  const clearComposerAfterSubmit = useCallback(() => {
+    setInputValue("");
+    setSelectedComponents([]);
+    setVisualEditingSelectedComponent(null);
+    // Clear overlays in the preview iframe
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
+  }, [
+    setInputValue,
+    setSelectedComponents,
+    setVisualEditingSelectedComponent,
+    previewIframeRef,
+  ]);
+
+  // Shared cleanup for exiting queued message editing state
+  const resetEditingState = useCallback(() => {
+    setEditingQueuedMessageId(null);
+    clearComposerAfterSubmit();
+    clearAttachments();
+  }, [setEditingQueuedMessageId, clearComposerAfterSubmit, clearAttachments]);
+
+  // Clear editing state if the edited queued message is auto-dequeued
+  useEffect(() => {
+    if (!editingQueuedMessageId) return;
+    const stillInQueue = queuedMessages.some(
+      (m) => m.id === editingQueuedMessageId,
+    );
+    if (!stillInQueue) {
+      resetEditingState();
+    }
+  }, [editingQueuedMessageId, queuedMessages, resetEditingState]);
+
+  // Track editing state in a ref for unmount cleanup
+  const editingQueuedMessageIdRef = useRef(editingQueuedMessageId);
+  editingQueuedMessageIdRef.current = editingQueuedMessageId;
+
+  // Clear editing extras on unmount to avoid leaking state across navigations
+  useEffect(() => {
+    return () => {
+      if (editingQueuedMessageIdRef.current) {
+        clearAttachments();
+        setSelectedComponents([]);
+        setVisualEditingSelectedComponent(null);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-clear pause state when queue becomes empty (Users expect that deleting all queued messages returns them to normal send mode)
+
+  useEffect(() => {
+    if (chatId && isPaused && queuedMessages.length === 0) {
+      clearPauseOnly();
+    }
+  }, [chatId, isPaused, queuedMessages.length, clearPauseOnly]);
+
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
       const msg = queuedMessages.find((m) => m.id === id);
       if (!msg) return;
+      // Auto-save current edits if switching between queued messages
+      if (editingQueuedMessageId && editingQueuedMessageId !== id) {
+        const componentsToSave =
+          selectedComponents && selectedComponents.length > 0
+            ? selectedComponents
+            : [];
+        updateQueuedMessage(editingQueuedMessageId, {
+          prompt: inputValue,
+          attachments,
+          selectedComponents: componentsToSave,
+        });
+      }
       // Load the message content into the input
       setInputValue(msg.prompt);
+      // Restore attachments and selected components from the queued message
+      replaceAttachments(msg.attachments ?? []);
+      setIsRestoringQueuedSelection(true);
+      setSelectedComponents(msg.selectedComponents ?? []);
+      // Reset visual editing target to avoid stale toolbar state
+      setVisualEditingSelectedComponent(null);
       // Set editing mode
       setEditingQueuedMessageId(id);
     },
-    [queuedMessages, setInputValue],
+    [
+      queuedMessages,
+      editingQueuedMessageId,
+      inputValue,
+      attachments,
+      selectedComponents,
+      setInputValue,
+      replaceAttachments,
+      setSelectedComponents,
+      setVisualEditingSelectedComponent,
+      setIsRestoringQueuedSelection,
+      updateQueuedMessage,
+    ],
   );
 
   const handleMoveUp = useCallback(
@@ -313,17 +490,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     (id: string) => {
       // Clear editing state if deleting the message being edited
       if (editingQueuedMessageId === id) {
-        setEditingQueuedMessageId(null);
-        setInputValue("");
+        resetEditingState();
       }
       removeQueuedMessage(id);
     },
-    [editingQueuedMessageId, removeQueuedMessage, setInputValue],
+    [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );
 
   const handleSubmit = async () => {
     if (
-      (!inputValue.trim() && attachments.length === 0) ||
+      (!inputValue.trim() &&
+        attachments.length === 0 &&
+        !hasSuccessfulImageJobs) ||
       !chatId ||
       pendingFiles
     ) {
@@ -334,31 +512,55 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       await toggleRecording();
     }
 
+    // Build prompt with auto-added image mentions
+    const imageMentions = visibleSuccessfulImageJobs
+      .map((job) => `@media:${encodeURIComponent(job.result!.fileName)}`)
+      .join(" ");
+    const promptWithImages = inputValue.trim()
+      ? imageMentions
+        ? `${inputValue} ${imageMentions}`
+        : inputValue
+      : imageMentions;
+
+    // Dismiss image jobs that were auto-added
+    if (visibleSuccessfulImageJobs.length > 0) {
+      setDismissedImageJobIds((prev) => {
+        const next = new Set(prev);
+        for (const job of visibleSuccessfulImageJobs) {
+          next.add(job.id);
+        }
+        return next;
+      });
+    }
+
     // If switching to plan mode from another mode in a chat with messages,
     // create a new chat for a clean context.
-    if (needsFreshPlanChat && settings?.selectedChatMode === "plan" && appId) {
-      const currentInput = inputValue;
-      setInputValue("");
+    if (needsFreshPlanChat && chatMode === "plan" && appId) {
+      clearComposerAfterSubmit();
       setNeedsFreshPlanChat(false);
 
-      const newChatId = await ipc.chat.createChat(appId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "plan",
+      });
       setSelectedChatId(newChatId);
       navigate({ to: "/chat", search: { id: newChatId } });
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       showInfo("We've switched you to a new chat for a clean context");
 
       await streamMessage({
-        prompt: currentInput,
+        prompt: promptWithImages,
         chatId: newChatId,
         attachments,
         redo: false,
+        requestedChatMode: "plan",
       });
       clearAttachments();
-      posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+      posthog.capture("chat:submit", { chatMode });
       return;
     }
 
-    const currentInput = inputValue;
+    const currentInput = promptWithImages;
 
     // Use all selected components for multi-component editing
     const componentsToSend =
@@ -370,13 +572,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (editingQueuedMessageId) {
       updateQueuedMessage(editingQueuedMessageId, {
         prompt: currentInput,
+        attachments,
+        selectedComponents: componentsToSend,
       });
-      setInputValue("");
-      setEditingQueuedMessageId(null);
+      resetEditingState();
       return;
     }
 
-    // If streaming, queue the message instead of sending immediately
+    // Queue while actively streaming. If we're paused but currently idle,
+    // send the new message immediately and keep existing queued items paused.
     if (isStreaming) {
       const queued = queueMessage({
         prompt: currentInput,
@@ -385,17 +589,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
       if (queued) {
         // Only clear input, attachments, and components on successful queue
-        setInputValue("");
+        clearComposerAfterSubmit();
         clearAttachments();
-        setSelectedComponents([]);
-        setVisualEditingSelectedComponent(null);
-        // Clear overlays in the preview iframe
-        if (previewIframeRef?.contentWindow) {
-          previewIframeRef.contentWindow.postMessage(
-            { type: "clear-dyad-component-overlays" },
-            "*",
-          );
-        }
       }
       // If queue failed, leave input/attachments intact for the user
       return;
@@ -403,16 +598,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // Not streaming - send immediately
     // Clear input and components before sending
-    setInputValue("");
-    setSelectedComponents([]);
-    setVisualEditingSelectedComponent(null);
-    // Clear overlays in the preview iframe
-    if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
-    }
+    clearComposerAfterSubmit();
 
     // Send message with attachments and clear them after sending
     await streamMessage({
@@ -421,23 +607,24 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
+      requestedChatMode: isChatModeLoading ? null : chatMode,
     });
     clearAttachments();
-    posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+    posthog.capture("chat:submit", { chatMode });
   };
 
   const handleCancel = () => {
-    // Clear all queued messages first, BEFORE the IPC call, to ensure
-    // the queue is empty even if the backend response arrives quickly.
-    // This prevents race conditions where the queue-processing effect
-    // could potentially run if the backend responds before queue clearing.
-    clearAllQueuedMessages();
-    // Reset editing state so the "Editing queued message" banner is dismissed
-    if (editingQueuedMessageId) {
-      setEditingQueuedMessageId(null);
-      setInputValue("");
+    // Only clear the queue if NOT paused
+    if (!isPaused) {
+      clearAllQueuedMessages();
     }
+    // Always reset editing state when cancelling, regardless of pause state
+    if (editingQueuedMessageId) {
+      resetEditingState();
+    }
+    // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {
+      clearCompletionFlag();
       ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);
@@ -450,7 +637,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const newChatId = await ipc.chat.createChat(appId);
+        const newChatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode,
+        });
         setSelectedChatId(newChatId);
         navigate({
           to: "/chat",
@@ -486,6 +676,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           error: result.extraFilesError,
           posthog,
         });
+      }
+      for (const warningMessage of result.warningMessages ?? []) {
+        showWarning(warningMessage);
+      }
+      if (!result.success) {
+        setError(result.error ?? "An error occurred while approving");
       }
     } catch (err) {
       console.error("Error approving proposal:", err);
@@ -620,6 +816,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onMoveDown={handleMoveDown}
               isStreaming={isStreaming}
               hasError={!!error}
+              isPaused={isPaused}
+              onPauseQueue={pauseQueue}
+              onResumeQueue={resumeQueue}
             />
           )}
           {/* Show editing indicator when editing a queued message */}
@@ -630,10 +829,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setEditingQueuedMessageId(null);
-                  setInputValue("");
-                }}
+                onClick={() => resetEditingState()}
                 className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 Cancel
@@ -644,8 +840,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingAgentConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            settings.selectedChatMode !== "ask" &&
-            settings.selectedChatMode !== "local-agent" && (
+            effectiveMode !== "ask" &&
+            effectiveMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}
@@ -718,6 +914,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <AttachmentsList
             attachments={attachments}
             onRemove={removeAttachment}
+          />
+
+          {/* Chat image generation strip */}
+          <ChatImageGenerationStrip
+            onGenerateImage={handleOpenImageGenerator}
           />
 
           {/* Use the DragDropOverlay component */}
@@ -826,7 +1027,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <button
                       onClick={handleSubmit}
                       disabled={
-                        (!inputValue.trim() && attachments.length === 0) ||
+                        (!inputValue.trim() &&
+                          attachments.length === 0 &&
+                          !hasSuccessfulImageJobs) ||
                         disableSendButton
                       }
                       aria-label={t("sendMessage")}
@@ -850,12 +1053,21 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               showTokenBar={showTokenBar}
               toggleShowTokenBar={toggleShowTokenBar}
               appId={appId ?? undefined}
+              onGenerateImage={handleOpenImageGenerator}
             />
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}
         </div>
       </div>
+
+      {/* Image Generator Dialog */}
+      <ImageGeneratorDialog
+        open={imageGeneratorOpen}
+        onOpenChange={setImageGeneratorOpen}
+        defaultAppId={appId ?? undefined}
+        source="chat"
+      />
     </>
   );
 }
@@ -867,7 +1079,7 @@ function SuggestionButton({
 }: {
   onClick: () => void;
   children: React.ReactNode;
-  tooltipText: string;
+  tooltipText: string | string[];
 }) {
   const { isStreaming } = useStreamChat();
   return (
@@ -884,7 +1096,11 @@ function SuggestionButton({
       >
         {children}
       </TooltipTrigger>
-      <TooltipContent>{tooltipText}</TooltipContent>
+      <TooltipContent>
+        {Array.isArray(tooltipText)
+          ? tooltipText.map((line) => <div key={line}>{line}</div>)
+          : tooltipText}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -918,7 +1134,10 @@ function RefactorFileButton({ path }: { path: string }) {
     });
   };
   return (
-    <SuggestionButton onClick={onClick} tooltipText={t("refactorDescription")}>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText={[t("refactorDescription"), path]}
+    >
       <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
         {t("refactorFile", { path: path.split("/").slice(-2).join("/") })}
       </span>
@@ -1393,6 +1612,10 @@ function SqlQueryItem({ query }: { query: SqlQuery }) {
 
   const queryContent = query.content;
   const queryDescription = query.description;
+  const sqlMutatesSchema = useMemo(
+    () => doesSqlMutateSchema(queryContent),
+    [queryContent],
+  );
 
   return (
     <li
@@ -1405,6 +1628,12 @@ function SqlQueryItem({ query }: { query: SqlQuery }) {
           <span className="text-sm font-medium">
             {queryDescription || t("sqlQuery")}
           </span>
+          {sqlMutatesSchema && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+              {t("changesDatabaseSchema")}
+            </span>
+          )}
         </div>
         <div>
           {isExpanded ? (

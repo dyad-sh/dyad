@@ -2,6 +2,7 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, escapeXmlContent, AgentContext } from "./types";
 import { engineFetch } from "./engine_fetch";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("web_fetch");
 
@@ -10,7 +11,7 @@ function validateHttpUrl(url: string): void {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`Invalid URL: ${url}`);
+    throw new DyadError(`Invalid URL: ${url}`, DyadErrorKind.Validation);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(
@@ -109,7 +110,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       const result = await callWebFetch(args.url, ctx);
 
       if (!result) {
-        throw new Error("Web fetch returned no results");
+        throw new DyadError(
+          "Web fetch returned no results",
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Combine markdown from all pages
@@ -118,7 +122,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         .join("\n\n---\n\n");
 
       if (!allContent) {
-        throw new Error("No content available from web fetch");
+        throw new DyadError(
+          "No content available from web fetch",
+          DyadErrorKind.NotFound,
+        );
       }
 
       logger.log(

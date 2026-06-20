@@ -1,8 +1,10 @@
 import express from "express";
 import { createServer } from "http";
 import cors from "cors";
+import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { createResponsesHandler } from "./responsesHandler";
+import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import {
   handleDeviceCode,
   handleAccessToken,
@@ -15,6 +17,7 @@ import {
   handleGitPush,
   handleGetPushEvents,
   handleClearPushEvents,
+  handleResetRepos,
   handleRepoCollaborators,
 } from "./githubHandler";
 
@@ -74,8 +77,175 @@ export const CANNED_MESSAGE = `
   More
   EOM`;
 
+type FakeCloudSandbox = {
+  id: string;
+  files: Record<string, Buffer>;
+  createdAt: number;
+  previewAuthToken: string;
+  syncRevision: number;
+  initialSyncCompleted: boolean;
+  lastActiveAt: number;
+  lastSuccessfulSyncAt: number | null;
+};
+
+const cloudSandboxes = new Map<string, FakeCloudSandbox>();
+
+function getFakeCloudPreviewUrl(sandboxId: string) {
+  return `http://localhost:${PORT}/cloud-preview/${sandboxId}`;
+}
+
+function createServiceResponse<T>(responseObject: T) {
+  return {
+    success: true,
+    message: "ok",
+    responseObject,
+    statusCode: 200,
+  };
+}
+
+async function parseMultipartFormData(req: express.Request) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        headers.append(key, entry);
+      }
+      continue;
+    }
+
+    if (value !== undefined) {
+      headers.set(key, value);
+    }
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const request = new Request("http://localhost/fake-cloud-upload", {
+    method: req.method,
+    headers,
+    body: Buffer.concat(chunks),
+  });
+
+  return request.formData();
+}
+
+async function parseCloudSandboxUpload(req: express.Request) {
+  if (!req.is("multipart/form-data")) {
+    return {
+      replaceAll: req.body.replaceAll === true,
+      deletedFiles: Array.isArray(req.body.deletedFiles)
+        ? req.body.deletedFiles
+        : [],
+      files: Object.fromEntries(
+        Object.entries(req.body.files ?? {}).map(([filePath, content]) => [
+          filePath,
+          Buffer.from(String(content), "utf8"),
+        ]),
+      ) as Record<string, Buffer>,
+    };
+  }
+
+  const formData = await parseMultipartFormData(req);
+  const manifestValue = formData.get("manifest");
+
+  if (typeof manifestValue !== "string") {
+    throw new Error("Expected multipart sandbox upload manifest.");
+  }
+
+  const manifest = JSON.parse(manifestValue) as {
+    replaceAll: boolean;
+    deletedFiles?: string[];
+    files?: Array<{ path: string; fieldName: string }>;
+  };
+  const files: Record<string, Buffer> = {};
+
+  for (const entry of manifest.files ?? []) {
+    const filePart = formData.get(entry.fieldName);
+    if (!(filePart instanceof File)) {
+      throw new Error(`Expected multipart file part ${entry.fieldName}.`);
+    }
+
+    files[entry.path] = Buffer.from(await filePart.arrayBuffer());
+  }
+
+  return {
+    replaceAll: manifest.replaceAll === true,
+    deletedFiles: manifest.deletedFiles ?? [],
+    files,
+  };
+}
+
+function escapeHtml(text: string) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function getSandboxPreviewHtml(sandbox: FakeCloudSandbox) {
+  const interestingSource =
+    sandbox.files["src/App.tsx"]?.toString("utf8") ??
+    sandbox.files["src/App.jsx"]?.toString("utf8") ??
+    sandbox.files["app/page.tsx"]?.toString("utf8") ??
+    sandbox.files["index.html"]?.toString("utf8") ??
+    "";
+
+  const fileList = Object.keys(sandbox.files)
+    .sort()
+    .slice(0, 12)
+    .map((file) => `<li>${escapeHtml(file)}</li>`)
+    .join("");
+  const snapshotHasher = crypto.createHash("sha1");
+  for (const [filePath, content] of Object.entries(sandbox.files).sort(
+    ([leftPath], [rightPath]) => leftPath.localeCompare(rightPath),
+  )) {
+    snapshotHasher.update(filePath);
+    snapshotHasher.update("\0");
+    snapshotHasher.update(content);
+    snapshotHasher.update("\0");
+  }
+  const snapshotDigest = snapshotHasher.digest("hex").slice(0, 12);
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Cloud Sandbox Preview</title>
+  </head>
+  <body>
+    <main>
+      <h1>Cloud Sandbox Preview</h1>
+      <p data-testid="cloud-sandbox-id">Sandbox: ${escapeHtml(sandbox.id)}</p>
+      <p>Uploaded files: ${Object.keys(sandbox.files).length}</p>
+      <p data-testid="cloud-snapshot-digest">Snapshot digest: ${snapshotDigest}</p>
+      <ul>${fileList}</ul>
+      <pre>${escapeHtml(interestingSource.slice(0, 1500))}</pre>
+    </main>
+  </body>
+</html>`;
+}
+
 app.get("/health", (req, res) => {
   res.send("OK");
+});
+
+app.get("/api/default-approve-builds.txt", (req, res) => {
+  res
+    .type("text/plain")
+    .send(
+      [
+        "# dyad-default-allow-builds-schema=v1",
+        "# dyad-default-allow-builds-data-version=2026-05-21.2",
+        "# dyad-default-allow-builds-channel=remote",
+        "@swc/core",
+        "esbuild",
+        "sharp",
+        "",
+      ].join("\n"),
+    );
 });
 
 app.get("/api/language-model-catalog", (req, res) => {
@@ -324,6 +494,10 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
   );
   // Also add responses API endpoints for each provider
   app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
+  app.post(
+    `/${provider}/v1/messages`,
+    createAnthropicMessagesHandler(provider),
+  );
 });
 
 // Azure-specific endpoints (Azure client uses different URL patterns)
@@ -336,6 +510,7 @@ app.post(
 // Default test provider handler:
 app.post("/v1/chat/completions", createChatCompletionHandler("."));
 app.post("/v1/responses", createResponsesHandler("."));
+app.post("/v1/messages", createAnthropicMessagesHandler("."));
 
 // GitHub API Mock Endpoints
 console.log("Setting up GitHub mock endpoints");
@@ -368,24 +543,10 @@ app.post("/github/api/orgs/:org/repos", handleOrgRepos);
 // GitHub test endpoints for verifying push operations
 app.get("/github/api/test/push-events", handleGetPushEvents);
 app.post("/github/api/test/clear-push-events", handleClearPushEvents);
+app.post("/github/api/test/reset-repos", handleResetRepos);
 
 // GitHub Git endpoints - intercept all paths with /github/git prefix
 app.all("/github/git/*", handleGitPush);
-
-// Dyad Engine turbo-file-edit endpoint for edit_file tool
-app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
-  const { path: filePath, description } = req.body;
-  console.log(
-    `* turbo-file-edit: ${filePath} - ${description || "no description"}`,
-  );
-
-  try {
-    res.json({ result: "TURBO EDITED filePath" });
-  } catch (error) {
-    console.error(`* turbo-file-edit error:`, error);
-    res.status(400).json({ error: String(error) });
-  }
-});
 
 // Dyad Engine code-search endpoint for code_search tool
 app.post("/engine/v1/tools/code-search", (req, res) => {
@@ -434,6 +595,13 @@ app.post("/engine/v1/images/generations", (req, res) => {
   }
 });
 
+app.get("/test-image.png", (_req, res) => {
+  const tinyPngBase64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+  res.type("png").send(Buffer.from(tinyPngBase64, "base64"));
+});
+
 // Dyad Engine web-crawl endpoint for web_fetch tool
 app.post("/engine/v1/tools/web-crawl", (req, res) => {
   const { url, markdownOnly } = req.body;
@@ -454,6 +622,186 @@ app.post("/engine/v1/tools/web-crawl", (req, res) => {
     console.error(`* web-crawl error:`, error);
     res.status(400).json({ error: String(error) });
   }
+});
+
+app.post("/engine/v1/sandboxes", (_req, res) => {
+  const sandboxId = `sandbox-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+  const previewAuthToken = `fake-preview-auth-token-${sandboxId}`;
+  const createdAt = Date.now();
+  cloudSandboxes.set(sandboxId, {
+    id: sandboxId,
+    files: {},
+    createdAt,
+    previewAuthToken,
+    syncRevision: 0,
+    initialSyncCompleted: false,
+    lastActiveAt: createdAt,
+    lastSuccessfulSyncAt: null,
+  });
+
+  res.json({
+    sandboxId,
+    previewUrl: getFakeCloudPreviewUrl(sandboxId),
+    previewAuthToken,
+  });
+});
+
+app.delete("/engine/v1/sandboxes/:sandboxId", (req, res) => {
+  cloudSandboxes.delete(req.params.sandboxId);
+  res.status(204).end();
+});
+
+app.post("/engine/v1/sandboxes/:sandboxId/files", async (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  const upload = await parseCloudSandboxUpload(req);
+
+  console.log(
+    `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(upload.replaceAll)} fileCount=${Object.keys(upload.files).length} deletedCount=${upload.deletedFiles.length}`,
+  );
+
+  sandbox.lastActiveAt = Date.now();
+  sandbox.lastSuccessfulSyncAt = Date.now();
+  sandbox.initialSyncCompleted = true;
+  sandbox.syncRevision += 1;
+  sandbox.files = upload.replaceAll
+    ? { ...upload.files }
+    : {
+        ...sandbox.files,
+        ...upload.files,
+      };
+
+  for (const deletedFile of upload.deletedFiles) {
+    delete sandbox.files[deletedFile];
+  }
+
+  res.json({
+    previewUrl: getFakeCloudPreviewUrl(sandbox.id),
+    previewAuthToken: sandbox.previewAuthToken,
+  });
+});
+
+app.post("/engine/v1/sandboxes/reconcile", (_req, res) => {
+  res.json({
+    reconciledSandboxIds: [],
+  });
+});
+
+app.get("/engine/v1/sandboxes/:sandboxId/status", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  sandbox.lastActiveAt = Date.now();
+
+  res.json(
+    createServiceResponse({
+      sandboxId: sandbox.id,
+      status: "running",
+      previewUrl: getFakeCloudPreviewUrl(sandbox.id),
+      previewAuthToken: sandbox.previewAuthToken,
+      previewPort: PORT,
+      syncRevision: sandbox.syncRevision,
+      initialSyncCompleted: sandbox.initialSyncCompleted,
+      appStatus: "running",
+      syncAgentHealthy: true,
+      createdAt: new Date(sandbox.createdAt).toISOString(),
+      lastActiveAt: new Date(sandbox.lastActiveAt).toISOString(),
+      lastSuccessfulSyncAt: sandbox.lastSuccessfulSyncAt
+        ? new Date(sandbox.lastSuccessfulSyncAt).toISOString()
+        : null,
+      expiresAt: new Date(sandbox.lastActiveAt + 10 * 60 * 1000).toISOString(),
+      billingState: "active",
+      billingStartedAt: new Date(sandbox.createdAt).toISOString(),
+      billingLockedAt: null,
+      lastChargedAt: null,
+      nextChargeAt: new Date(sandbox.createdAt + 60 * 1000).toISOString(),
+      billingSlicesCharged: 0,
+      creditsCharged: 0,
+      terminationReason: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    }),
+  );
+});
+
+app.post("/engine/v1/sandboxes/:sandboxId/restart", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  sandbox.lastActiveAt = Date.now();
+
+  res.json({
+    previewUrl: getFakeCloudPreviewUrl(sandbox.id),
+    previewAuthToken: sandbox.previewAuthToken,
+  });
+});
+
+app.post("/engine/v1/sandboxes/:sandboxId/share-links", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  const expiresInSeconds =
+    typeof req.body.expiresInSeconds === "number"
+      ? req.body.expiresInSeconds
+      : 600;
+  const shareLinkId = `share-link-${sandbox.id}`;
+
+  res.json(
+    createServiceResponse({
+      sandboxId: sandbox.id,
+      shareLinkId,
+      url: `${getFakeCloudPreviewUrl(sandbox.id)}?share=${shareLinkId}`,
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+    }),
+  );
+});
+
+app.get("/engine/v1/sandboxes/:sandboxId/logs", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const messages = [
+    "Creating sandbox...",
+    "Installing dependencies...",
+    `Starting preview for ${sandbox.id}...`,
+  ];
+
+  messages.forEach((message) => {
+    res.write(`data: ${JSON.stringify({ message })}\n\n`);
+  });
+  res.write("data: [DONE]\n\n");
+  res.end();
+});
+
+app.get("/cloud-preview/:sandboxId", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).send("Sandbox not found");
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(getSandboxPreviewHtml(sandbox));
 });
 
 // Start the server

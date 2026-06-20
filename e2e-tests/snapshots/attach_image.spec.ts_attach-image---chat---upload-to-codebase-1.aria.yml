@@ -1,42 +1,15 @@
 - paragraph: basic
-- button "file1.txt file1.txt Edit":
-  - img
-  - text: /file1\.txt.*/
-  - button "Edit":
-    - img
-    - text: /Edit/
-  - img
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- img
-- text: /wrote 1 file\(s\).*/
+- button "Copy"
+- text: "[[Version 2: files changed]]"
 - paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
-- 'button "Expand image: logo.png"':
-  - img "logo.png"
+- 'button "Expand image: logo.png"'
 - paragraph: Uploading image to codebase
-- img
 - text: file.png Copy
-- img
 - text: "Copied To: new/image/file.png Uploaded image to codebase"
 - paragraph: "[[dyad-dump-path=*]]"
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: test-model
-- img
-- text: less than a minute ago
-- button "Undo":
-  - img
-  - text: /Undo/
-- button "Retry":
-  - img
-  - text: /Retry/
+- button "Copy"
+- text: "[[Version 3: files changed]]"
+- button "Undo"
+- button "Retry"

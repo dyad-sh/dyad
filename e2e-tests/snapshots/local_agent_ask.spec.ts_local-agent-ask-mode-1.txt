@@ -2,324 +2,452 @@
   "body": {
     "model": "anthropic/claude-opus-4-5",
     "max_tokens": 32000,
-    "temperature": 0,
+    "thinking": {
+      "type": "adaptive",
+      "display": "summarized"
+    },
+    "output_config": {
+      "effort": "medium"
+    },
+    "system": [
+      {
+        "type": "text",
+        "text": "[[SYSTEM_MESSAGE]]"
+      }
+    ],
     "messages": [
       {
-        "role": "system",
-        "content": "[[SYSTEM_MESSAGE]]"
-      },
-      {
         "role": "user",
-        "content": "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what."
-      },
-      {
-        "role": "assistant",
-        "content": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
-      },
-      {
-        "role": "user",
-        "content": "tc=local-agent/ask-read-file"
-      },
-      {
-        "role": "assistant",
-        "content": "Let me read the file to explain its contents.",
-        "tool_calls": [
+        "content": [
           {
+            "type": "text",
+            "text": "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what."
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "tc=local-agent/ask-read-file"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Let me read the file to explain its contents."
+          },
+          {
+            "type": "tool_use",
             "id": "[[TOOL_CALL_0]]",
-            "type": "function",
-            "function": {
-              "name": "read_file",
-              "arguments": "{\"path\":\"src/App.tsx\"}"
+            "name": "read_file",
+            "input": {
+              "path": "src/App.tsx"
             }
           }
         ]
       },
       {
-        "role": "tool",
-        "tool_call_id": "[[TOOL_CALL_0]]",
-        "content": "{\"type\":\"text\",\"value\":\"const App = () => <div>Minimal imported app</div>;\\n\\nexport default App;\\n\"}"
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "[[TOOL_CALL_0]]",
+            "content": "{\"type\":\"text\",\"value\":\"const App = () => <div>Minimal imported app</div>;\\n\\nexport default App;\\n\"}"
+          }
+        ]
       },
       {
         "role": "assistant",
-        "content": "This is a simple React component that renders a div with the text 'Minimal imported app'. The component is exported as the default export."
+        "content": [
+          {
+            "type": "text",
+            "text": "This is a simple React component that renders a div with the text 'Minimal imported app'. The component is exported as the default export."
+          }
+        ]
       },
       {
         "role": "user",
-        "content": "[dump]"
+        "content": [
+          {
+            "type": "text",
+            "text": "[dump]"
+          }
+        ]
       }
     ],
     "tools": [
       {
-        "type": "function",
-        "function": {
-          "name": "read_file",
-          "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "description": "The file path to read"
-              },
-              "start_line_one_indexed": {
-                "description": "The one-indexed line number to start reading from (inclusive).",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              },
-              "end_line_one_indexed_inclusive": {
-                "description": "The one-indexed line number to end reading at (inclusive).",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              }
+        "name": "read_file",
+        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "The file path to read"
             },
-            "required": [
-              "path"
-            ],
-            "additionalProperties": false
-          }
-        }
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to read from instead of the current app. Omit to read from the current app.",
+              "type": "string"
+            },
+            "start_line_one_indexed": {
+              "description": "The one-indexed line number to start reading from (inclusive).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "end_line_one_indexed_inclusive": {
+              "description": "The one-indexed line number to end reading at (inclusive).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
       },
       {
-        "type": "function",
-        "function": {
-          "name": "list_files",
-          "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "directory": {
-                "description": "Optional subdirectory to list",
+        "name": "list_files",
+        "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "directory": {
+              "description": "Optional subdirectory to list",
+              "type": "string"
+            },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to list from instead of the current app. Omit to list the current app.",
+              "type": "string"
+            },
+            "recursive": {
+              "description": "Whether to list files recursively (default: false)",
+              "type": "boolean"
+            },
+            "include_ignored": {
+              "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "grep",
+        "description": "Search for a regex pattern or exact literal text in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use literal=true for exact symbols/snippets with punctuation, e.g. createBooking({, import strings, route paths, or JSX tags\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The regex pattern to search for, or the exact text when literal is true"
+            },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
+              "type": "string"
+            },
+            "include_pattern": {
+              "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
+              "type": "string"
+            },
+            "exclude_pattern": {
+              "description": "Glob pattern for files to exclude",
+              "type": "string"
+            },
+            "include_ignored": {
+              "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
+              "type": "boolean"
+            },
+            "case_sensitive": {
+              "description": "Whether the search should be case sensitive (default: false)",
+              "type": "boolean"
+            },
+            "literal": {
+              "description": "Search query as exact text instead of a regex. Use this for symbols or snippets containing punctuation such as createBooking({, route paths, JSX tags, or import strings.",
+              "type": "boolean"
+            },
+            "limit": {
+              "description": "Maximum number of matches to return (default: 100, max: 250). Use include_pattern to narrow results if limit is reached.",
+              "type": "number",
+              "minimum": 1,
+              "maximum": 250
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "explore_code",
+        "description": "Ask a code reconnaissance sub-agent to explore code included in a configured TypeScript project.\n\nUse this when you need to understand how a TypeScript, TSX, JavaScript, or JSX feature, symbol, type, component, service, or flow is implemented across files. It returns a compact report: a Flow of file/line ranges with quoted evidence, optional Read targets and Search targets, a Confidence, and an Action. Treat a high- or medium-confidence report as the codebase map and follow its Action rather than rediscovering the code.\n\nSet the intent argument to what you will do with the result: explain for \"trace how\", data-flow, request-flow, or \"how is this computed/surfaced\" questions; locate for finding the best files/symbols; edit or debug when you will read exact ranges before changing code or verifying behavior.\n\nFollow the report's Action:\n\n| Action | Do next | Do NOT |\n|--------|---------|--------|\n| answer_from_report | Answer or plan directly from the report. | Re-read discovery files, grep, or call explore_code again. |\n| read_targets | explain/locate: answer from the report, citing the listed targets as jump points. edit/debug: read only the listed tight ranges before changing or verifying code. | Read targets just to confirm the map for explain/locate (unless confidence is low or the user asked for edits/debugging/exact verification). |\n| targeted_gap_search | Run only the rendered Search targets with their exact terms/scopes, then answer from the report plus those results and name any remaining gap. | Invent broader searches, open arbitrary hits, or call explore_code again. |\n| skip_explore_result | Proceed without the report; nothing relevant was found. | Treat it as a map. |\n\nIf confidence is low, inspect the listed read/search targets before relying on the report. If an Action calls for Search targets but none are rendered, answer from the observed Flow and name the remaining gap. Do not call explore_code repeatedly for the same investigation after a high- or medium-confidence report.\n\nOnly use this for files included in the app's TypeScript config. JavaScript and JSX require TypeScript config support such as allowJs. If the project does not have TypeScript installed and configured, use grep/list_files/read_file instead.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Natural-language code exploration query"
+            },
+            "app_name": {
+              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to explore instead of the current app. Omit to explore the current app.",
+              "type": "string"
+            },
+            "tsconfig_path": {
+              "description": "Optional app-relative path to a TypeScript config file. Omit to use tsconfig.app.json or tsconfig.json.",
+              "type": "string"
+            },
+            "max_files": {
+              "description": "Maximum number of relevant files to return (default: 5, max: 8).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "max_depth": {
+              "description": "Graph expansion depth from matching symbols (default: 2, max: 3).",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "intent": {
+              "type": "string",
+              "enum": [
+                "explain",
+                "locate",
+                "edit",
+                "debug"
+              ],
+              "description": "Required. What the result will be used for. Use explain/locate when you will answer or point at code from the map. Use edit/debug when exact ranges will be read before changing code or verifying behavior."
+            }
+          },
+          "required": [
+            "query",
+            "intent"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "set_chat_summary",
+        "description": "Set the title/summary for this chat. Call this tool exactly once early in the turn, as soon as you understand the user's request well enough to write a short title. Do not wait until the end of the turn.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "A short summary/title for the chat"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "read_logs",
+        "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "type": {
+              "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
+              "type": "string",
+              "enum": [
+                "all",
+                "client",
+                "server",
+                "edge-function",
+                "network-requests"
+              ]
+            },
+            "level": {
+              "description": "Filter by log level (default: all)",
+              "type": "string",
+              "enum": [
+                "all",
+                "info",
+                "warn",
+                "error"
+              ]
+            },
+            "searchTerm": {
+              "description": "Search for logs containing this text (case-insensitive)",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Maximum number of logs to return (default: 50, max: 200)",
+              "type": "number",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "web_search",
+        "description": "\nUse this tool to access real-time information beyond your training data cutoff.\n\nWhen to Search:\n- Current API documentation, library versions, or breaking changes\n- Latest best practices, security advisories, or bug fixes\n- Specific error messages or troubleshooting solutions\n- Recent framework updates or deprecation notices\n\nQuery Tips:\n- Be specific: Include version numbers, exact error messages, or technical terms\n- Add context: \"React 19 useEffect cleanup\" not just \"React hooks\"\n\nExamples:\n\n<example>\nOpenAI GPT-5 API model names\n</example>\n\n<example>\nNextJS 14 app router middleware auth\n</example>\n",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query to look up on the web"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "web_crawl",
+        "description": "\nYou can crawl a website so you can clone it.\n\n### When You MUST Trigger a Crawl\nTrigger a crawl ONLY if BOTH conditions are true:\n\n1. The user's message shows intent to CLONE / COPY / REPLICATE / RECREATE / DUPLICATE / MIMIC a website.\n   - Keywords include: clone, copy, replicate, recreate, duplicate, mimic, build the same, make the same.\n\n2. The user's message contains a URL or something that appears to be a domain name.\n   - e.g. \"example.com\", \"https://example.com\"\n   - Do not require 'http://' or 'https://'.\n",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "URL to crawl"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "web_fetch",
+        "description": "Fetch and read the content of a web page as markdown given its URL.\n\n### When to Use This Tool\nUse this tool when the user's message contains a URL (or domain name) and they want to:\n- **Read** the page's content (e.g. documentation, blog post, article)\n- **Reference** information from the page (e.g. API docs, tutorials, guides)\n- **Extract** data or context from a live web page to inform their code\n- **Follow a link** someone shared to understand its contents\n\nExamples:\n- \"Use the docs at docs.example.com/api to set up the client\"\n- \"What does this page say? https://example.com/blog/post\"\n- \"Follow the guide at example.com/tutorial\"\n\n### When NOT to Use This Tool\n- The user wants to **visually clone or replicate** a website → use `web_crawl` instead\n- The user needs to **search the web** for information without a specific URL → use `web_search` instead\n",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "URL to fetch content from"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "run_type_checks",
+        "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "paths": {
+              "description": "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
+              "type": "array",
+              "items": {
                 "type": "string"
-              },
-              "recursive": {
-                "description": "Whether to list files recursively (default: false)",
-                "type": "boolean"
-              },
-              "include_hidden": {
-                "description": "Whether to include .dyad files which are git-ignored (default: false)",
-                "type": "boolean"
               }
-            },
-            "additionalProperties": false
-          }
-        }
+            }
+          },
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
       },
       {
-        "type": "function",
-        "function": {
-          "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "string",
-                "description": "The regex pattern to search for"
-              },
-              "include_pattern": {
-                "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
-                "type": "string"
-              },
-              "exclude_pattern": {
-                "description": "Glob pattern for files to exclude",
-                "type": "string"
-              },
-              "case_sensitive": {
-                "description": "Whether the search should be case sensitive (default: false)",
-                "type": "boolean"
-              },
-              "limit": {
-                "description": "Maximum number of matches to return (default: 100, max: 250). Use include_pattern to narrow results if limit is reached.",
-                "type": "number",
-                "minimum": 1,
-                "maximum": 250
-              }
-            },
-            "required": [
-              "query"
-            ],
-            "additionalProperties": false
-          }
-        }
+        "name": "read_guide",
+        "description": "Read a detailed instruction guide. Use this when the system prompt tells you to load a guide before implementing a feature.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "guide": {
+              "type": "string",
+              "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
+            }
+          },
+          "required": [
+            "guide"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
       },
       {
-        "type": "function",
-        "function": {
-          "name": "code_search",
-          "description": "Search the codebase semantically to find files relevant to a query. Use this tool when you need to discover which files contain code related to a specific concept, feature, or functionality. Returns a list of file paths that are most relevant to the search query.\n\n### When to Use This Tool\n\n- Explore unfamiliar codebases\n- Ask \"how / where / what\" questions to understand behavior\n- Find code by meaning rather than exact text\n\n### When NOT to Use\n\nSkip this tool for:\n1. Exact text matches (use `grep`)\n2. Reading known files (use `read_file`)\n3. Simple symbol lookups (use `grep`)\n",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "string",
-                "description": "Search query to find relevant files"
-              }
+        "name": "execute_sandbox_script",
+        "description": "Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files.\n\nUse this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.\n\nSupported language surface:\n- let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.\n- Top-level await is supported. Top-level return is not supported; return the final expression value instead, e.g. `const text = await read_file(\"attachments:data.csv\"); text.length;`.\n- The script has no ambient authority. It can only act through the host functions below.\n\nRecommendations:\n- Avoid defining nested helper functions in the main function.\n\nUnsupported / unavailable:\n- No var, import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, fetch, timers, setTimeout, setInterval, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.\n- String.prototype.localeCompare is not supported; compare with <, >, or === instead.\n- `console.*` is not available.\n- Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.\n\nAvoid returning shared references:\n\n```\nconst row = { key: \"x\", total: 1 };\n({ a: row, b: row }); // rejected\n```\n\nUse cloned/plain rows instead:\n\n```\nconst row = { key: \"x\", total: 1 };\n({\n  a: { key: row.key, total: row.total },\n  b: { key: row.key, total: row.total }\n});\n```\n\nExecution thread:\n- 'main' (default) runs in-process. Use for small / fast scripts.\n- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations).\n\nHost functions:\n```ts\ntype ReadFileOptions = {\n  start?: number; // zero-indexed byte offset\n  length?: number; // max bytes to read\n  encoding?: \"utf8\" | \"base64\";\n};\n\ntype FileStats = {\n  size: number;\n  isText: boolean;\n  mtime: string; // ISO timestamp\n};\n\ndeclare function read_file(\n  path: string,\n  options?: ReadFileOptions,\n): Promise<string>;\n\ndeclare function list_files(dir?: \".\" | \"attachments:\" | string): Promise<string[]>;\n\ndeclare function file_stats(path: string): Promise<FileStats>;\n```\n\nPaths are app-relative (including `.dyad/media/<stored-name>`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "script": {
+              "type": "string",
+              "maxLength": 131072,
+              "description": "Sandboxed JavaScript subset source code to execute."
             },
-            "required": [
-              "query"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "set_chat_summary",
-          "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "summary": {
-                "type": "string",
-                "description": "A short summary/title for the chat"
-              }
+            "description": {
+              "description": "One-line human-readable summary of what the script does.",
+              "type": "string",
+              "maxLength": 160
             },
-            "required": [
-              "summary"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "read_logs",
-          "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "type": {
-                "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
-                "type": "string",
-                "enum": [
-                  "all",
-                  "client",
-                  "server",
-                  "edge-function",
-                  "network-requests"
-                ]
-              },
-              "level": {
-                "description": "Filter by log level (default: all)",
-                "type": "string",
-                "enum": [
-                  "all",
-                  "info",
-                  "warn",
-                  "error"
-                ]
-              },
-              "searchTerm": {
-                "description": "Search for logs containing this text (case-insensitive)",
-                "type": "string"
-              },
-              "limit": {
-                "description": "Maximum number of logs to return (default: 50, max: 200)",
-                "type": "number",
-                "minimum": 1,
-                "maximum": 200
-              }
-            },
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "web_search",
-          "description": "\nUse this tool to access real-time information beyond your training data cutoff.\n\nWhen to Search:\n- Current API documentation, library versions, or breaking changes\n- Latest best practices, security advisories, or bug fixes\n- Specific error messages or troubleshooting solutions\n- Recent framework updates or deprecation notices\n\nQuery Tips:\n- Be specific: Include version numbers, exact error messages, or technical terms\n- Add context: \"React 19 useEffect cleanup\" not just \"React hooks\"\n\nExamples:\n\n<example>\nOpenAI GPT-5 API model names\n</example>\n\n<example>\nNextJS 14 app router middleware auth\n</example>\n",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "string",
-                "description": "The search query to look up on the web"
-              }
-            },
-            "required": [
-              "query"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "web_crawl",
-          "description": "\nYou can crawl a website so you can clone it.\n\n### When You MUST Trigger a Crawl\nTrigger a crawl ONLY if BOTH conditions are true:\n\n1. The user's message shows intent to CLONE / COPY / REPLICATE / RECREATE / DUPLICATE / MIMIC a website.\n   - Keywords include: clone, copy, replicate, recreate, duplicate, mimic, build the same, make the same.\n\n2. The user's message contains a URL or something that appears to be a domain name.\n   - e.g. \"example.com\", \"https://example.com\"\n   - Do not require 'http://' or 'https://'.\n",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "url": {
-                "type": "string",
-                "description": "URL to crawl"
-              }
-            },
-            "required": [
-              "url"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "web_fetch",
-          "description": "Fetch and read the content of a web page as markdown given its URL.\n\n### When to Use This Tool\nUse this tool when the user's message contains a URL (or domain name) and they want to:\n- **Read** the page's content (e.g. documentation, blog post, article)\n- **Reference** information from the page (e.g. API docs, tutorials, guides)\n- **Extract** data or context from a live web page to inform their code\n- **Follow a link** someone shared to understand its contents\n\nExamples:\n- \"Use the docs at docs.example.com/api to set up the client\"\n- \"What does this page say? https://example.com/blog/post\"\n- \"Follow the guide at example.com/tutorial\"\n\n### When NOT to Use This Tool\n- The user wants to **visually clone or replicate** a website → use `web_crawl` instead\n- The user needs to **search the web** for information without a specific URL → use `web_search` instead\n",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "url": {
-                "type": "string",
-                "description": "URL to fetch content from"
-              }
-            },
-            "required": [
-              "url"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "run_type_checks",
-          "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "paths": {
-                "description": "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "additionalProperties": false
-          }
-        }
+            "execution_thread": {
+              "default": "main",
+              "description": "Where to run the script. Default 'main' runs in-process and is the only thread that exposes MCP tools — use it for any script that calls MCP host functions, and for small / fast operations. Use 'worker' for compute-heavy work (parsing multi-MB attachments, large aggregations, anything that might take more than a few hundred milliseconds) so chat streaming and other main-process work isn't stalled. MCP host functions are NOT available on the worker thread.",
+              "type": "string",
+              "enum": [
+                "main",
+                "worker"
+              ]
+            }
+          },
+          "required": [
+            "script"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
       }
     ],
-    "tool_choice": "auto",
+    "tool_choice": {
+      "type": "auto"
+    },
     "stream": true
   },
   "headers": {

@@ -6,16 +6,19 @@ import { gitClone, getCurrentCommitHash } from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { getTemplateOrThrow } from "../utils/template_utils";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("createFromTemplate");
 
 export async function createFromTemplate({
   fullAppPath,
+  templateId: requestedTemplateId,
 }: {
   fullAppPath: string;
+  templateId?: string;
 }) {
   const settings = readSettings();
-  const templateId = settings.selectedTemplateId;
+  const templateId = requestedTemplateId ?? settings.selectedTemplateId;
 
   if (templateId === "react") {
     await copyDirectoryRecursive(
@@ -27,7 +30,10 @@ export async function createFromTemplate({
 
   const template = await getTemplateOrThrow(templateId);
   if (!template.githubUrl) {
-    throw new Error(`Template ${templateId} has no GitHub URL`);
+    throw new DyadError(
+      `Template ${templateId} has no GitHub URL`,
+      DyadErrorKind.External,
+    );
   }
   const repoCachePath = await cloneRepo(template.githubUrl);
   await copyRepoToApp(repoCachePath, fullAppPath);
@@ -36,10 +42,16 @@ export async function createFromTemplate({
 async function cloneRepo(repoUrl: string): Promise<string> {
   const url = new URL(repoUrl);
   if (url.protocol !== "https:") {
-    throw new Error("Repository URL must use HTTPS.");
+    throw new DyadError(
+      "Repository URL must use HTTPS.",
+      DyadErrorKind.External,
+    );
   }
   if (url.hostname !== "github.com") {
-    throw new Error("Repository URL must be a github.com URL.");
+    throw new DyadError(
+      "Repository URL must be a github.com URL.",
+      DyadErrorKind.Validation,
+    );
   }
 
   // Pathname will be like "/org/repo" or "/org/repo.git"
@@ -97,7 +109,10 @@ async function cloneRepo(repoUrl: string): Promise<string> {
       const commitData = await response.json();
       const remoteSha = commitData.sha;
       if (!remoteSha) {
-        throw new Error("SHA not found in GitHub API response.");
+        throw new DyadError(
+          "SHA not found in GitHub API response.",
+          DyadErrorKind.NotFound,
+        );
       }
 
       logger.info(`Successfully fetched remote SHA: ${remoteSha}`);

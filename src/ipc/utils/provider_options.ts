@@ -3,7 +3,10 @@ import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
-import { getExtraProviderOptions } from "./thinking_utils";
+import {
+  getAnthropicProviderOptions,
+  getThinkingBudgetEffort,
+} from "./thinking_utils";
 
 export interface MentionedAppCodebase {
   appName: string;
@@ -24,7 +27,7 @@ export interface GetProviderOptionsParams {
 
 /**
  * Builds provider options for the AI SDK streamText call.
- * Handles provider-specific configuration including thinking configs for Google/Vertex.
+ * Handles provider-specific configuration including thinking configs for Google/Vertex/Anthropic.
  */
 export function getProviderOptions({
   dyadAppId,
@@ -50,9 +53,9 @@ export function getProviderOptions({
         files,
       })),
     },
-    "dyad-gateway": getExtraProviderOptions(builtinProviderId, settings),
     openai: {
       reasoningSummary: "auto",
+      reasoningEffort: getThinkingBudgetEffort(settings.thinkingBudget),
     } satisfies OpenAIResponsesProviderOptions,
   };
 
@@ -83,6 +86,10 @@ export function getProviderOptions({
     } satisfies GoogleGenerativeAIProviderOptions;
   }
 
+  if (providerId === "anthropic") {
+    providerOptions.anthropic = getAnthropicProviderOptions(settings);
+  }
+
   return providerOptions;
 }
 
@@ -96,16 +103,11 @@ export interface GetAiHeadersParams {
 }
 
 /**
- * Returns AI request headers based on the provider.
- * Currently adds Anthropic-specific beta header for extended context.
+ * Returns extra AI request headers for the provider (e.g. beta flags).
+ * Currently none; reserved for future provider-specific headers.
  */
-export function getAiHeaders({
-  builtinProviderId,
-}: GetAiHeadersParams): Record<string, string> | undefined {
-  if (builtinProviderId === "anthropic") {
-    return {
-      "anthropic-beta": "context-1m-2025-08-07",
-    };
-  }
+export function getAiHeaders(
+  _params: GetAiHeadersParams,
+): Record<string, string> | undefined {
   return undefined;
 }

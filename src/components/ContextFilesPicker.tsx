@@ -128,7 +128,10 @@ export function ContextFilesPicker() {
         Codebase context
       </DialogTrigger>
 
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-md max-h-[80vh] overflow-y-auto"
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         <DialogHeader>
           <DialogTitle>Codebase Context</DialogTitle>
           <DialogDescription>

@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useMemo } from "react";
+import React, { useDeferredValue, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,20 +10,27 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadLogs } from "./DyadLogs";
 import { DyadGrep } from "./DyadGrep";
+import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
+import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
-import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import {
+  isStreamingByIdAtom,
+  selectedChatIdAtom,
+  streamingPreviewByChatIdAtom,
+} from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
 import { ipc } from "@/ipc/types";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
+import { DyadMcpToolSearch } from "./DyadMcpToolSearch";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
@@ -34,76 +41,35 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
-import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
+import { DyadDbTableSchema } from "./DyadDbTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
+import { DyadNeonProjectInfo } from "./DyadNeonProjectInfo";
 import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
+import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
+import { DyadReadGuide } from "./DyadReadGuide";
+import { DyadScript } from "./DyadScript";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
-import { unescapeXmlAttr, unescapeXmlContent } from "../../../shared/xmlEscape";
-
-const DYAD_CUSTOM_TAGS = [
-  "dyad-write",
-  "dyad-rename",
-  "dyad-delete",
-  "dyad-add-dependency",
-  "dyad-execute-sql",
-  "dyad-read-logs",
-  "dyad-add-integration",
-  "dyad-output",
-  "dyad-problem-report",
-  "dyad-chat-summary",
-  "dyad-edit",
-  "dyad-grep",
-  "dyad-search-replace",
-  "dyad-codebase-context",
-  "dyad-web-search-result",
-  "dyad-web-search",
-  "dyad-web-crawl",
-  "dyad-web-fetch",
-  "dyad-code-search-result",
-  "dyad-code-search",
-  "dyad-read",
-  "think",
-  "dyad-command",
-  "dyad-mcp-tool-call",
-  "dyad-mcp-tool-result",
-  "dyad-list-files",
-  "dyad-database-schema",
-  "dyad-supabase-table-schema",
-  "dyad-supabase-project-info",
-  "dyad-status",
-  "dyad-compaction",
-  "dyad-copy",
-  "dyad-image-generation",
-  // Plan mode tags
-  "dyad-write-plan",
-  "dyad-exit-plan",
-  "dyad-questionnaire",
-  // Step limit notification
-  "dyad-step-limit",
-];
+import {
+  advanceParser,
+  type Block,
+  getOpenBlock,
+  initialParserState,
+  parseFullMessage,
+  type ParserState,
+} from "@/lib/streamingMessageParser";
 
 interface DyadMarkdownParserProps {
   content: string;
+  messageId?: number;
+  showStreamingPreview?: boolean;
 }
-
-type CustomTagInfo = {
-  tag: string;
-  attributes: Record<string, string>;
-  content: string;
-  fullMatch: string;
-  inProgress?: boolean;
-};
-
-type ContentPiece =
-  | { type: "markdown"; content: string }
-  | { type: "custom-tag"; tagInfo: CustomTagInfo };
 
 const customLink = ({
   node: _node,
@@ -139,70 +105,175 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 };
 
 /**
- * Custom component to parse markdown content with Dyad-specific tags
+ * Custom component to parse markdown content with Dyad-specific tags.
+ *
+ * The block list is sourced from a component-local incremental parser. Completed
+ * blocks keep referential identity across streaming chunks, so React.memo can
+ * skip prior blocks and leave only the open trailing block to re-render.
  */
 export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,
+  messageId,
+  showStreamingPreview = false,
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
+  const isStreamingMap = useAtomValue(isStreamingByIdAtom);
+  const isStreaming =
+    chatId != null ? (isStreamingMap.get(chatId) ?? false) : false;
   const deferredContent = useDeferredValue(content);
   const contentToParse = isStreaming ? deferredContent : content;
 
-  // Extract content pieces (markdown and custom tags)
-  const contentPieces = useMemo(() => {
-    return parseCustomTags(contentToParse);
-  }, [contentToParse]);
+  // Component-local parser cache. Closed-block refs stay stable across chunks
+  // so MemoClosedBlocks can skip its subtree; only the open trailing block
+  // changes shape per chunk. On prefix-mismatch (full-message replace, etc.)
+  // we restart from initialParserState — same correctness as a one-shot parse.
+  //
+  // Note: we write to parserCacheRef inside useMemo. React docs flag this as
+  // a side effect during render; in practice the cache is purely advisory and
+  // advanceParser is deterministic on (state, content), so the worst case
+  // (StrictMode dev double-render, discarded concurrent render) is a wasted
+  // re-parse, not a correctness issue.
+  const parserCacheRef = useRef<{
+    messageId?: number;
+    content: string;
+    state: ParserState;
+  } | null>(null);
 
-  // Extract error messages and track positions
-  const { errorMessages, lastErrorIndex, errorCount } = useMemo(() => {
+  const parserState = useMemo(() => {
+    const cached = parserCacheRef.current;
+    if (
+      cached &&
+      cached.messageId === messageId &&
+      contentToParse.startsWith(cached.content)
+    ) {
+      const state = advanceParser(cached.state, contentToParse);
+      parserCacheRef.current = { messageId, content: contentToParse, state };
+      return state;
+    }
+    const state = advanceParser(initialParserState(), contentToParse);
+    parserCacheRef.current = { messageId, content: contentToParse, state };
+    return state;
+  }, [messageId, contentToParse]);
+
+  const closedBlocks = parserState.blocks;
+  const openBlock = getOpenBlock(parserState);
+
+  // The button is hidden while streaming, so avoid scanning the block list on
+  // every chunk. Do the full scan only for settled content.
+  const { errorMessages, errorCount, lastErrorIndex } = useMemo(() => {
+    if (isStreaming) {
+      return EMPTY_ERROR_SCAN;
+    }
     const errors: string[] = [];
     let lastIndex = -1;
-    let count = 0;
-
-    contentPieces.forEach((piece, index) => {
+    closedBlocks.forEach((block, index) => {
       if (
-        piece.type === "custom-tag" &&
-        piece.tagInfo.tag === "dyad-output" &&
-        piece.tagInfo.attributes.type === "error"
+        block.kind === "custom-tag" &&
+        block.tag === "dyad-output" &&
+        block.attributes.type === "error"
       ) {
-        const errorMessage = piece.tagInfo.attributes.message;
-        if (errorMessage?.trim()) {
-          errors.push(errorMessage.trim());
-          count++;
+        const msg = block.attributes.message?.trim();
+        if (msg) {
+          errors.push(msg);
           lastIndex = index;
         }
       }
     });
-
     return {
       errorMessages: errors,
+      errorCount: errors.length,
       lastErrorIndex: lastIndex,
-      errorCount: count,
     };
-  }, [contentPieces]);
+  }, [closedBlocks, isStreaming]);
+
+  const showFixAll =
+    errorCount > 1 && !isStreaming && chatId !== null && chatId !== undefined;
 
   return (
     <>
-      {contentPieces.map((piece, index) => (
-        <React.Fragment key={index}>
-          {piece.type === "markdown"
-            ? piece.content && (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    code: CodeHighlight,
-                    a: customLink,
-                  }}
-                >
-                  {piece.content}
-                </ReactMarkdown>
-              )
-            : renderCustomTag(piece.tagInfo, { isStreaming })}
-          {index === lastErrorIndex &&
-            errorCount > 1 &&
-            !isStreaming &&
-            chatId && (
+      <MemoClosedBlocks
+        blocks={closedBlocks}
+        lastErrorIndex={lastErrorIndex}
+        errorMessages={errorMessages}
+        showFixAll={showFixAll}
+        chatId={chatId ?? null}
+      />
+      {openBlock ? renderBlock(openBlock, isStreaming) : null}
+      {showStreamingPreview && chatId !== null && chatId !== undefined && (
+        <StreamingPreviewBlocks chatId={chatId} isStreaming={isStreaming} />
+      )}
+    </>
+  );
+};
+
+// Stable ref for the "nothing to scan" return path so MemoClosedBlocks's
+// memo doesn't invalidate every render during streaming.
+const EMPTY_ERROR_SCAN: {
+  errorMessages: string[];
+  errorCount: number;
+  lastErrorIndex: number;
+} = { errorMessages: [], errorCount: 0, lastErrorIndex: -1 };
+
+function StreamingPreviewBlocks({
+  chatId,
+  isStreaming,
+}: {
+  chatId: number;
+  isStreaming: boolean;
+}) {
+  const previewStates = useAtomValue(streamingPreviewByChatIdAtom);
+  const previewXml = previewStates.get(chatId);
+  const previewBlocks = useMemo<Block[] | null>(() => {
+    if (!previewXml) return null;
+    return parseFullMessage(previewXml).blocks;
+  }, [previewXml]);
+
+  if (!previewBlocks) return null;
+
+  return (
+    <>
+      {previewBlocks.map((block) => (
+        <React.Fragment key={`preview-${block.id}`}>
+          {renderBlock(block, isStreaming)}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+function renderBlock(block: Block, isStreaming: boolean): React.ReactNode {
+  if (block.kind === "markdown") {
+    return block.content ? <MemoMarkdown content={block.content} /> : null;
+  }
+  return <MemoBlockCustomTag block={block} isStreaming={isStreaming} />;
+}
+
+// Memoized wrapper for closed blocks. Memo hits when blocks ref + error
+// props are unchanged, so the closed-block subtree is skipped per chunk.
+// Closed children also memo on `prev.block === next.block` and skip their
+// subtrees on commit chunks.
+const MemoClosedBlocks = React.memo(function MemoClosedBlocks({
+  blocks,
+  lastErrorIndex,
+  errorMessages,
+  showFixAll,
+  chatId,
+}: {
+  blocks: Block[];
+  lastErrorIndex: number;
+  errorMessages: string[];
+  showFixAll: boolean;
+  chatId: number | null;
+}) {
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <React.Fragment key={block.id}>
+          {renderBlock(block, false)}
+          {showFixAll &&
+            index === lastErrorIndex &&
+            chatId !== null &&
+            chatId !== undefined && (
               <div className="mt-3 w-full flex">
                 <FixAllErrorsButton
                   errorMessages={errorMessages}
@@ -214,136 +285,69 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
       ))}
     </>
   );
-};
+});
 
-/**
- * Pre-process content to handle unclosed custom tags
- * Adds closing tags at the end of the content for any unclosed custom tags
- * Assumes the opening tags are complete and valid
- * Returns the processed content and a map of in-progress tags
- */
-function preprocessUnclosedTags(content: string): {
-  processedContent: string;
-  inProgressTags: Map<string, Set<number>>;
-} {
-  let processedContent = content;
-  // Map to track which tags are in progress and their positions
-  const inProgressTags = new Map<string, Set<number>>();
+// Module-level constants so MemoMarkdown never gets fresh refs for these
+// props, which would defeat ReactMarkdown's internal prop-equality checks.
+const REMARK_PLUGINS = [remarkGfm];
+const MARKDOWN_COMPONENTS = { code: CodeHighlight, a: customLink };
 
-  // For each tag type, check if there are unclosed tags
-  for (const tagName of DYAD_CUSTOM_TAGS) {
-    // Count opening and closing tags
-    const openTagPattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>`, "g");
-    const closeTagPattern = new RegExp(`</${tagName}>`, "g");
-
-    // Track the positions of opening tags
-    const openingMatches: RegExpExecArray[] = [];
-    let match;
-
-    // Reset regex lastIndex to start from the beginning
-    openTagPattern.lastIndex = 0;
-
-    while ((match = openTagPattern.exec(processedContent)) !== null) {
-      openingMatches.push({ ...match });
-    }
-
-    const openCount = openingMatches.length;
-    const closeCount = (processedContent.match(closeTagPattern) || []).length;
-
-    // If we have more opening than closing tags
-    const missingCloseTags = openCount - closeCount;
-    if (missingCloseTags > 0) {
-      // Add the required number of closing tags at the end
-      processedContent += Array(missingCloseTags)
-        .fill(`</${tagName}>`)
-        .join("");
-
-      // Mark the last N tags as in progress where N is the number of missing closing tags
-      const inProgressIndexes = new Set<number>();
-      const startIndex = openCount - missingCloseTags;
-      for (let i = startIndex; i < openCount; i++) {
-        inProgressIndexes.add(openingMatches[i].index);
-      }
-      inProgressTags.set(tagName, inProgressIndexes);
-    }
-  }
-
-  return { processedContent, inProgressTags };
-}
-
-/**
- * Parse the content to extract custom tags and markdown sections into a unified array
- */
-function parseCustomTags(content: string): ContentPiece[] {
-  const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
-
-  const tagPattern = new RegExp(
-    `<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
-    "gs",
+// Memoized markdown piece. Without this, ReactMarkdown re-parses every
+// completed segment's text into an AST on every streaming chunk.
+const MemoMarkdown = React.memo(function MemoMarkdown({
+  content,
+}: {
+  content: string;
+}) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      components={MARKDOWN_COMPONENTS}
+    >
+      {content}
+    </ReactMarkdown>
   );
+});
 
-  const contentPieces: ContentPiece[] = [];
-  let lastIndex = 0;
-  let match;
+type CustomTagBlock = Extract<Block, { kind: "custom-tag" }>;
 
-  // Find all custom tags
-  while ((match = tagPattern.exec(processedContent)) !== null) {
-    const [fullMatch, tag, attributesStr, tagContent] = match;
-    const startIndex = match.index;
-
-    // Add the markdown content before this tag
-    if (startIndex > lastIndex) {
-      contentPieces.push({
-        type: "markdown",
-        content: processedContent.substring(lastIndex, startIndex),
-      });
-    }
-
-    // Parse attributes and unescape values
-    const attributes: Record<string, string> = {};
-    const attrPattern = /([\w-]+)="([^"]*)"/g;
-    let attrMatch;
-    while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
-      attributes[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
-    }
-
-    // Check if this tag was marked as in progress
-    const tagInProgressSet = inProgressTags.get(tag);
-    const isInProgress = tagInProgressSet?.has(startIndex);
-
-    // Add the tag info with unescaped content
-    contentPieces.push({
-      type: "custom-tag",
-      tagInfo: {
-        tag,
-        attributes,
-        content: unescapeXmlContent(tagContent),
-        fullMatch,
-        inProgress: isInProgress || false,
-      },
-    });
-
-    lastIndex = startIndex + fullMatch.length;
-  }
-
-  // Add the remaining markdown content
-  if (lastIndex < processedContent.length) {
-    contentPieces.push({
-      type: "markdown",
-      content: processedContent.substring(lastIndex),
-    });
-  }
-
-  return contentPieces;
-}
+// Memoized custom-tag block. The incremental parser preserves the Block
+// reference for any completed (closed) tag across streaming patches, so
+// referential equality on `block` is sufficient — completed blocks
+// short-circuit and skip renderCustomTag entirely.
+const MemoBlockCustomTag = React.memo(
+  function MemoBlockCustomTag({
+    block,
+    isStreaming,
+  }: {
+    block: CustomTagBlock;
+    isStreaming: boolean;
+  }) {
+    return <>{renderCustomTag(block, { isStreaming })}</>;
+  },
+  (prev, next) =>
+    prev.block === next.block &&
+    // Completed tags ignore isStreaming (getState returns "finished"
+    // regardless), so skip the check to avoid one-time re-renders of every
+    // completed tag when streaming ends.
+    (prev.block.inProgress === false || prev.isStreaming === next.isStreaming),
+);
 
 function getState({
   isStreaming,
   inProgress,
+  explicitState,
 }: {
   isStreaming?: boolean;
   inProgress?: boolean;
+  explicitState?: string;
 }): CustomTagState {
+  if (explicitState === "aborted" || explicitState === "finished") {
+    return explicitState;
+  }
+  if (explicitState === "in-progress" || explicitState === "pending") {
+    return "pending";
+  }
   if (!inProgress) {
     return "finished";
   }
@@ -354,10 +358,10 @@ function getState({
  * Render a custom tag based on its type
  */
 function renderCustomTag(
-  tagInfo: CustomTagInfo,
+  block: CustomTagBlock,
   { isStreaming }: { isStreaming: boolean },
 ): React.ReactNode {
-  const { tag, attributes, content, inProgress } = tagInfo;
+  const { tag, attributes, content, inProgress } = block;
 
   switch (tag) {
     case "dyad-read":
@@ -368,6 +372,7 @@ function renderCustomTag(
               path: attributes.path || "",
               startLine: attributes.start_line || "",
               endLine: attributes.end_line || "",
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -416,6 +421,7 @@ function renderCustomTag(
             properties: {
               query: attributes.query || "",
               state: getState({ isStreaming, inProgress }),
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -571,6 +577,7 @@ function renderCustomTag(
               count: attributes.count || "",
               total: attributes.total || "",
               truncated: attributes.truncated || "",
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -578,18 +585,41 @@ function renderCustomTag(
         </DyadGrep>
       );
 
-    case "dyad-add-integration":
+    case "dyad-explore-code":
       return (
-        <DyadAddIntegration
+        <DyadExploreCode
           node={{
             properties: {
-              provider: attributes.provider || "",
+              state: getState({ isStreaming, inProgress }),
+              query: attributes.query || "",
+              appName: attributes.app_name || "",
+              files: attributes.files || "",
+              symbols: attributes.symbols || "",
+              indexMs: attributes.index_ms || "",
+              searchMs: attributes.search_ms || "",
+              truncated: attributes.truncated || "",
             },
           }}
         >
           {content}
+        </DyadExploreCode>
+      );
+
+    case "dyad-add-integration":
+      return (
+        <DyadAddIntegration
+          provider={
+            attributes.provider === "neon" || attributes.provider === "supabase"
+              ? attributes.provider
+              : undefined
+          }
+        >
+          {content}
         </DyadAddIntegration>
       );
+
+    case "dyad-enable-nitro":
+      return <DyadEnableNitro state={getState({ isStreaming, inProgress })} />;
 
     case "dyad-edit":
       return (
@@ -635,6 +665,20 @@ function renderCustomTag(
         </DyadCodebaseContext>
       );
 
+    case "dyad-mcp-tool-search":
+      return (
+        <DyadMcpToolSearch
+          node={{
+            properties: {
+              query: attributes.query || "",
+              server: attributes.server || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadMcpToolSearch>
+      );
     case "dyad-mcp-tool-call":
       return (
         <DyadMcpToolCall
@@ -673,6 +717,22 @@ function renderCustomTag(
         </DyadOutput>
       );
 
+    case "dyad-script":
+      return (
+        <DyadScript
+          node={{
+            properties: {
+              description: attributes.description || "",
+              truncated: attributes.truncated || "",
+              executionMs: attributes["execution-ms"] || "",
+              fullOutputPath: attributes["full-output-path"] || "",
+            },
+          }}
+        >
+          {content}
+        </DyadScript>
+      );
+
     case "dyad-problem-report":
       return (
         <DyadProblemSummary summary={attributes.summary}>
@@ -700,8 +760,10 @@ function renderCustomTag(
             properties: {
               directory: attributes.directory || "",
               recursive: attributes.recursive || "",
-              include_hidden: attributes.include_hidden || "",
+              include_ignored:
+                attributes.include_ignored || attributes.include_hidden || "",
               state: getState({ isStreaming, inProgress }),
+              appName: attributes.app_name || "",
             },
           }}
         >
@@ -722,9 +784,19 @@ function renderCustomTag(
         </DyadDatabaseSchema>
       );
 
+    case "dyad-db-table-schema":
+    // Backward compat: old messages used provider-specific tags
     case "dyad-supabase-table-schema":
+    case "dyad-neon-table-schema":
       return (
-        <DyadSupabaseTableSchema
+        <DyadDbTableSchema
+          provider={
+            tag === "dyad-supabase-table-schema"
+              ? "Supabase"
+              : tag === "dyad-neon-table-schema"
+                ? "Neon"
+                : (attributes.provider as string) || ""
+          }
           node={{
             properties: {
               table: attributes.table || "",
@@ -733,7 +805,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadSupabaseTableSchema>
+        </DyadDbTableSchema>
       );
 
     case "dyad-supabase-project-info":
@@ -747,6 +819,33 @@ function renderCustomTag(
         >
           {content}
         </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-neon-project-info":
+      return (
+        <DyadNeonProjectInfo
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadNeonProjectInfo>
+      );
+
+    case "dyad-read-guide":
+      return (
+        <DyadReadGuide
+          node={{
+            properties: {
+              name: attributes.name || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadReadGuide>
       );
 
     case "dyad-image-generation":
@@ -770,7 +869,11 @@ function renderCustomTag(
           node={{
             properties: {
               title: attributes.title || "Processing...",
-              state: getState({ isStreaming, inProgress }),
+              state: getState({
+                isStreaming,
+                inProgress,
+                explicitState: attributes.state,
+              }),
             },
           }}
         >
@@ -835,6 +938,23 @@ function renderCustomTag(
         >
           {content}
         </DyadStepLimit>
+      );
+
+    case "dyad-app-blueprint":
+      return (
+        <DyadAppBlueprintCard
+          node={{
+            properties: {
+              "app-name": attributes["app-name"] || "",
+              template: attributes.template || "react",
+              theme: attributes.theme || "default",
+              "design-direction": attributes["design-direction"] || "",
+              "primary-color": attributes["primary-color"] || "",
+              complete: attributes.complete,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        />
       );
 
     default:

@@ -7,11 +7,17 @@ export const fixture: LocalAgentFixture = {
       text: "I'll calculate the sum of 5 and 3 using the calculator.",
       toolCalls: [
         {
-          // MCP tools are named as serverName__toolName
-          name: "testing-mcp-server__calculator_add" as any,
+          name: "execute_sandbox_script",
           args: {
-            a: 5,
-            b: 3,
+            description: "Call calculator_add through MCP",
+            script: [
+              "async function main() {",
+              "  const result = await testing_mcp_server__calculator_add({ a: 5, b: 3 });",
+              "  return JSON.stringify(result);",
+              "}",
+              "main();",
+            ].join("\n"),
+            execution_thread: "main",
           },
         },
       ],
@@ -21,4 +27,3 @@ export const fixture: LocalAgentFixture = {
     },
   ],
 };
-

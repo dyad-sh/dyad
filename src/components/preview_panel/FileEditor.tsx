@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
+import type { editor as MonacoEditor } from "monaco-editor";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ChevronRight, Circle, Save } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
+import { enqueueFileSave, getFileSaveQueueKey } from "./fileSaveQueue";
 
 interface FileEditorProps {
   appId: number | null;
@@ -30,6 +32,44 @@ interface BreadcrumbProps {
   hasUnsavedChanges: boolean;
   onSave: () => void;
   isSaving: boolean;
+}
+
+const retainedMonacoModels = new Map<
+  string,
+  { model: MonacoEditor.ITextModel; count: number }
+>();
+
+function retainMonacoModel(
+  modelPath: string,
+  model: MonacoEditor.ITextModel,
+): () => void {
+  const retainedModel = retainedMonacoModels.get(modelPath);
+  if (retainedModel?.model === model) {
+    retainedModel.count += 1;
+  } else {
+    retainedMonacoModels.set(modelPath, { model, count: 1 });
+  }
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+
+    const retainedModel = retainedMonacoModels.get(modelPath);
+    if (!retainedModel || retainedModel.model !== model) {
+      return;
+    }
+
+    retainedModel.count -= 1;
+    if (retainedModel.count <= 0) {
+      retainedMonacoModels.delete(modelPath);
+      if (!model.isDisposed()) {
+        model.dispose();
+      }
+    }
+  };
 }
 
 const Breadcrumb: React.FC<BreadcrumbProps> = ({
@@ -112,26 +152,39 @@ export const FileEditor = ({
   const isSavingRef = useRef<boolean>(false);
   const needsSaveRef = useRef<boolean>(false);
   const currentValueRef = useRef<string | undefined>(undefined);
+  const hasInitializedContentRef = useRef(false);
+  const isMountedRef = useRef(false);
+  const releaseModelRef = useRef<(() => void) | null>(null);
 
   const queryClient = useQueryClient();
   const { checkProblems } = useCheckProblems(appId);
 
-  // Update state when content loads
   useEffect(() => {
-    if (content !== null) {
-      setValue(content);
-      originalValueRef.current = content;
-      currentValueRef.current = content;
-      needsSaveRef.current = false;
-      setDisplayUnsavedChanges(false);
-      setIsSaving(false);
-    }
-  }, [content, filePath]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      releaseModelRef.current?.();
+      releaseModelRef.current = null;
+    };
+  }, []);
 
-  // Sync the UI with the needsSave ref
+  // Initialize editor state from disk once per mounted file editor instance.
   useEffect(() => {
-    setDisplayUnsavedChanges(needsSaveRef.current);
-  }, [needsSaveRef.current]);
+    if (
+      content === null ||
+      (hasInitializedContentRef.current && needsSaveRef.current)
+    ) {
+      return;
+    }
+
+    hasInitializedContentRef.current = true;
+    setValue(content);
+    originalValueRef.current = content;
+    currentValueRef.current = content;
+    needsSaveRef.current = false;
+    setDisplayUnsavedChanges(false);
+    setIsSaving(false);
+  }, [content]);
 
   // Determine if dark mode based on theme
   const isDarkMode =
@@ -162,15 +215,18 @@ export const FileEditor = ({
   // Handle editor mount
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
+    const model = editor.getModel();
+    if (model) {
+      releaseModelRef.current = retainMonacoModel(modelPath, model);
+    }
 
     // Navigate to initialLine if provided (handles case when editor mounts after initialLine is set)
     if (initialLine != null) {
       navigateToLine(initialLine);
     }
 
-    // Listen for model content change events
+    // Save when the editor loses focus and the current model is dirty.
     editor.onDidBlurEditorText(() => {
-      console.log("Editor text blurred, checking if save needed");
       if (needsSaveRef.current) {
         saveFile();
       }
@@ -190,24 +246,40 @@ export const FileEditor = ({
   // Save the file
   const saveFile = async () => {
     if (
-      !appId ||
-      !currentValueRef.current ||
+      appId === null ||
+      currentValueRef.current === undefined ||
       !needsSaveRef.current ||
       isSavingRef.current
     )
       return;
 
+    const saveAppId = appId;
+    const saveFilePath = filePath;
+    const savedValue = currentValueRef.current;
+    const saveQueueKey = getFileSaveQueueKey(saveAppId, saveFilePath);
+    const performSave = () =>
+      ipc.app.editAppFile({
+        appId: saveAppId,
+        filePath: saveFilePath,
+        content: savedValue,
+      });
+
     try {
       isSavingRef.current = true;
-      setIsSaving(true);
+      if (isMountedRef.current) {
+        setIsSaving(true);
+      }
 
-      const { warning } = await ipc.app.editAppFile({
-        appId,
-        filePath,
-        content: currentValueRef.current,
-      });
+      const { warning } = await enqueueFileSave(saveQueueKey, performSave);
+      queryClient.setQueryData(
+        queryKeys.appFiles.content({
+          appId: saveAppId,
+          filePath: saveFilePath,
+        }),
+        savedValue,
+      );
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.versions.list({ appId }),
+        queryKey: queryKeys.versions.list({ appId: saveAppId }),
       });
       if (settings?.enableAutoFixProblems) {
         checkProblems();
@@ -218,14 +290,19 @@ export const FileEditor = ({
         showSuccess(t("preview.fileSaved"));
       }
 
-      originalValueRef.current = currentValueRef.current;
-      needsSaveRef.current = false;
-      setDisplayUnsavedChanges(false);
+      originalValueRef.current = savedValue;
+      const hasNewerEdits = currentValueRef.current !== savedValue;
+      needsSaveRef.current = hasNewerEdits;
+      if (isMountedRef.current) {
+        setDisplayUnsavedChanges(hasNewerEdits);
+      }
     } catch (error) {
       showError(error);
     } finally {
       isSavingRef.current = false;
-      setIsSaving(false);
+      if (isMountedRef.current) {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -247,7 +324,7 @@ export const FileEditor = ({
     return <div className="p-4 text-red-500">Error: {error.message}</div>;
   }
 
-  if (!content) {
+  if (content === null) {
     return (
       <div className="p-4 text-gray-500">{t("preview.noContentAvailable")}</div>
     );
@@ -265,6 +342,7 @@ export const FileEditor = ({
         <Editor
           height="100%"
           path={modelPath}
+          keepCurrentModel
           defaultLanguage={getLanguage(filePath)}
           value={value}
           theme={editorTheme}

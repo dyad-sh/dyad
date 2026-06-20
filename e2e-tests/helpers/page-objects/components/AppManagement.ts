@@ -25,10 +25,36 @@ export class AppManagement {
     return this.page.getByTestId(`app-list-item-${appName}`);
   }
 
+  async showAppList() {
+    const appListContainer = this.page.getByTestId("app-list-container");
+    if (await appListContainer.isVisible().catch(() => false)) {
+      return;
+    }
+
+    const telemetryLaterButton = this.page.getByTestId(
+      "telemetry-later-button",
+    );
+    if (await telemetryLaterButton.isVisible().catch(() => false)) {
+      await telemetryLaterButton.click({ timeout: Timeout.MEDIUM });
+    }
+
+    await this.page.getByRole("link", { name: "Apps" }).hover();
+    const viewAllAppsButton = this.page.getByTestId("view-all-apps-button");
+    if (
+      await viewAllAppsButton.isVisible({ timeout: 1_000 }).catch(() => false)
+    ) {
+      await viewAllAppsButton.click();
+    }
+    await expect(appListContainer).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
   async isCurrentAppNameNone() {
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).toContainText(
-        "no app selected",
+      await expect(this.getTitleBarAppNameButton()).toHaveAttribute(
+        "data-app-name",
+        "",
       );
     }).toPass();
   }
@@ -36,22 +62,34 @@ export class AppManagement {
   async getCurrentAppName() {
     // Make sure to wait for the app to be set to avoid a race condition.
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).not.toContainText(
-        "no app selected",
+      await expect(this.getTitleBarAppNameButton()).not.toHaveAttribute(
+        "data-app-name",
+        "",
       );
     }).toPass();
-    return (await this.getTitleBarAppNameButton().textContent())?.replace(
-      "App: ",
-      "",
+    return (
+      (await this.getTitleBarAppNameButton().getAttribute("data-app-name")) ??
+      undefined
     );
   }
 
   async getCurrentAppPath() {
-    const currentAppName = await this.getCurrentAppName();
-    if (!currentAppName) {
-      throw new Error("No current app name found");
+    // Prefer data-app-path: after a template path-swap, the on-disk folder is
+    // a slugified name that differs from the display name.
+    await expect(async () => {
+      await expect(this.getTitleBarAppNameButton()).not.toHaveAttribute(
+        "data-app-path",
+        "",
+      );
+    }).toPass();
+    const appPath =
+      await this.getTitleBarAppNameButton().getAttribute("data-app-path");
+    if (!appPath) {
+      throw new Error("No current app path found");
     }
-    return this.getAppPath({ appName: currentAppName });
+    return path.isAbsolute(appPath)
+      ? appPath
+      : path.join(this.userDataDir, "dyad-apps", appPath);
   }
 
   getAppPath({ appName }: { appName: string }) {
@@ -59,7 +97,8 @@ export class AppManagement {
   }
 
   async clickAppListItem({ appName }: { appName: string }) {
-    await this.page.getByTestId(`app-list-item-${appName}`).click();
+    await this.showAppList();
+    await this.getAppListItem({ appName }).click();
   }
 
   async clickOpenInChatButton() {
@@ -104,6 +143,65 @@ export class AppManagement {
 
   async clickConnectSupabaseButton() {
     await this.page.getByTestId("connect-supabase-button").click();
+  }
+
+  async startDatabaseIntegrationSetup(_provider: "supabase" | "neon") {
+    // The in-chat integration card is now read-only outside the Agent v2
+    // pending-integration flow (which the markdown-driven test fixtures don't
+    // trigger). Navigate to the app details page where the connectors live so
+    // the rest of the setup flow (clickConnect*Button, selectNeonProject, etc.)
+    // can continue against the same UI as before.
+    await this.getTitleBarAppNameButton().click();
+  }
+
+  async clickConnectNeonButton() {
+    await this.page.getByTestId("connect-neon-button").click();
+  }
+
+  async selectNeonProject(projectName: string) {
+    const projectSelect = this.page.getByTestId("neon-project-select");
+    await expect(projectSelect).toBeVisible({ timeout: Timeout.MEDIUM });
+    await projectSelect.click();
+    await this.page
+      .getByRole("option", {
+        name: new RegExp(
+          `^${projectName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          "i",
+        ),
+      })
+      .click();
+    await expect(this.page.getByTestId("neon-branch-select")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
+  async selectNeonBranch(branchName: string) {
+    const branchSelect = this.page.getByTestId("neon-branch-select");
+    await expect(branchSelect).toBeVisible({ timeout: Timeout.MEDIUM });
+    await branchSelect.click();
+    await this.page
+      .getByRole("option", {
+        name: new RegExp(
+          `^${branchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          "i",
+        ),
+      })
+      .click();
+  }
+
+  // Imported apps default to needs_app_blueprint=0; flip it so tests can
+  // exercise the blueprint approval flow against an imported fixture.
+  async enableAppBlueprintForCurrentApp() {
+    const appName = await this.getCurrentAppName();
+    if (!appName) {
+      throw new Error("No current app to enable blueprint for");
+    }
+    await this.page.evaluate(async (appName) => {
+      await (window as any).electron.ipcRenderer.invoke(
+        "test:set-needs-app-blueprint",
+        { appName, value: true },
+      );
+    }, appName);
   }
 
   async importApp(appDir: string) {
@@ -192,6 +290,63 @@ export class AppManagement {
 
     throw new Error(
       `Dependencies not fully installed in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
+    );
+  }
+
+  async ensureCodeExplorerReady() {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath) {
+      throw new Error("No app selected");
+    }
+
+    const maxDurationMs = 180_000;
+    const retryIntervalMs = 5_000;
+    const startTime = Date.now();
+    let lastOutput = "";
+
+    while (Date.now() - startTime < maxDurationMs) {
+      try {
+        const stdout = execFileSync(
+          process.execPath,
+          [
+            "-e",
+            [
+              'const fs = require("fs");',
+              'const path = require("path");',
+              "const appPath = process.cwd();",
+              'require.resolve("typescript", { paths: [appPath] });',
+              'const hasTsconfig = fs.existsSync(path.join(appPath, "tsconfig.app.json")) || fs.existsSync(path.join(appPath, "tsconfig.json"));',
+              'if (!hasTsconfig) throw new Error("No tsconfig.app.json or tsconfig.json found");',
+              'console.log("Code explorer ready");',
+            ].join(""),
+          ],
+          {
+            cwd: appPath,
+            stdio: "pipe",
+            encoding: "utf8",
+          },
+        );
+        lastOutput = (stdout || "").toString().trim();
+        if (lastOutput.includes("Code explorer ready")) {
+          return;
+        }
+      } catch (error: any) {
+        const stdOut = error?.stdout ? error.stdout.toString() : "";
+        const stdErr = error?.stderr ? error.stderr.toString() : "";
+        lastOutput = [stdOut, stdErr, error?.message]
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, maxDurationMs - elapsed);
+      const waitMs = Math.min(retryIntervalMs, remaining);
+      if (waitMs <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
+    throw new Error(
+      `Code explorer was not ready in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
     );
   }
 }

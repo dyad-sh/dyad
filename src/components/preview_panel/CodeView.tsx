@@ -113,6 +113,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
           <div className="w-2/3">
             {selectedFile ? (
               <FileEditor
+                key={`${app.id ?? "unknown"}:${selectedFile.path}`}
                 appId={app.id ?? null}
                 filePath={selectedFile.path}
                 initialLine={selectedFile.line ?? null}

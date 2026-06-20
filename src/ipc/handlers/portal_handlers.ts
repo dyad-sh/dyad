@@ -5,8 +5,9 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { spawn } from "child_process";
-import { gitCommit, gitAdd } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("portal_handlers");
 const handle = createLoggedHandler(logger);
@@ -16,7 +17,10 @@ async function getApp(appId: number) {
     where: eq(apps.id, appId),
   });
   if (!app) {
-    throw new Error(`App with id ${appId} not found`);
+    throw new DyadError(
+      `App with id ${appId} not found`,
+      DyadErrorKind.NotFound,
+    );
   }
   return app;
 }
@@ -114,9 +118,7 @@ export function registerPortalHandlers() {
 
       // Stage all changes and commit
       try {
-        await gitAdd({ path: appPath, filepath: "." });
-
-        const commitHash = await gitCommit({
+        const commitHash = await gitService.stageAllAndCommit({
           path: appPath,
           message: "[dyad] Generate database migration file",
         });
@@ -125,7 +127,10 @@ export function registerPortalHandlers() {
         return { output: migrationOutput };
       } catch (gitError) {
         logger.error(`Migration created but failed to commit: ${gitError}`);
-        throw new Error(`Migration created but failed to commit: ${gitError}`);
+        throw new DyadError(
+          `Migration created but failed to commit: ${gitError}`,
+          DyadErrorKind.External,
+        );
       }
     },
   );

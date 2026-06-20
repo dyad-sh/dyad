@@ -13,7 +13,9 @@ import {
 
 interface DyadCodeSearchProps {
   children?: ReactNode;
-  node?: { properties?: { query?: string; state?: CustomTagState } };
+  node?: {
+    properties?: { query?: string; state?: CustomTagState; appName?: string };
+  };
 }
 
 export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
@@ -24,6 +26,7 @@ export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
   const query =
     node?.properties?.query || (typeof children === "string" ? children : "");
   const state = node?.properties?.state as CustomTagState;
+  const appName = node?.properties?.appName || "";
   const inProgress = state === "pending";
 
   return (
@@ -35,6 +38,7 @@ export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
     >
       <DyadCardHeader icon={<FileCode size={15} />} accentColor="indigo">
         <DyadBadge color="indigo">Code Search</DyadBadge>
+        {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         {!isExpanded && query && (
           <span className="text-sm text-muted-foreground italic truncate">
             {query}

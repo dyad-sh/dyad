@@ -1,7 +1,16 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useTranslation } from "react-i18next";
-import { useAtomValue, useSetAtom } from "jotai";
 import {
+  lazy,
+  Suspense,
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { AnimatePresence, motion, type Transition } from "framer-motion";
+import {
+  chatErrorByIdAtom,
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
@@ -12,7 +21,6 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
-import { ChatError } from "./chat/ChatError";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
 import { Button } from "@/components/ui/button";
@@ -24,7 +32,14 @@ import {
 import { ArrowDown } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
-import { isBasicAgentMode } from "@/lib/schemas";
+import { useChatMode } from "@/hooks/useChatMode";
+import { isDyadProEnabled } from "@/lib/schemas";
+import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useReducedMotionPref } from "@/hooks/useReducedMotion";
+import { useLoadApps } from "@/hooks/useLoadApps";
+
+const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
 interface ChatPanelProps {
   chatId?: number;
@@ -39,15 +54,28 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation("chat");
   const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const chatErrorById = useAtomValue(chatErrorByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+  const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
+    terminalOpenByChatIdAtom,
+  );
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { apps } = useLoadApps();
+  const currentApp = apps.find((app) => app.id === selectedAppId);
+  const reducedMotion = useReducedMotionPref();
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [terminalFitSignal, setTerminalFitSignal] = useState(0);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  const { settings, updateSettings } = useSettings();
+  const store = useStore();
+  const { settings } = useSettings();
+  const { selectedMode, setChatMode } = useChatMode(chatId);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
-    settings && isBasicAgentMode(settings) && isQuotaExceeded;
+    settings &&
+    !isDyadProEnabled(settings) &&
+    selectedMode === "local-agent" &&
+    isQuotaExceeded;
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -81,6 +109,10 @@ export function ChatPanel({
   // Scroll to bottom when a new stream starts (user sent a message)
   const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
+  const isTerminalOpen = chatId
+    ? (terminalOpenByChatId.get(chatId) ?? false)
+    : false;
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<number | undefined>(undefined);
@@ -118,13 +150,22 @@ export function ChatPanel({
       // no-op when no chat
       return;
     }
+    // Skip IPC fetch entirely when streaming: the patch stream carries fresher
+    // content than the throttled DB snapshot, and overwriting would corrupt the
+    // renderer's base for subsequent patches (offset mismatch). onEnd will do
+    // a correct full sync when the stream finishes.
+    // Read via store.get so both checks see the current atom value regardless
+    // of React batching or commit-to-effect timing.
+    if (store.get(isStreamingByIdAtom).get(chatId)) return;
     const chat = await ipc.chat.getChat(chatId);
+    // Re-check after the async fetch: streaming may have started while in flight.
+    if (store.get(isStreamingByIdAtom).get(chatId)) return;
     setMessagesById((prev) => {
       const next = new Map(prev);
       next.set(chatId, chat.messages);
       return next;
     });
-  }, [chatId, setMessagesById]);
+  }, [chatId, setMessagesById, store]); // store is stable; isStreamingById read via store.get at call time
 
   useEffect(() => {
     fetchChatMessages();
@@ -147,6 +188,49 @@ export function ChatPanel({
       });
     }
   }, [isStreaming, scrollToBottom]);
+
+  // Keep footer actions (including Retry) visible when stream errors render below.
+  useEffect(() => {
+    if (!streamError) return;
+
+    const container = messagesContainerRef.current;
+    const distanceFromBottom = container
+      ? container.scrollHeight - (container.scrollTop + container.clientHeight)
+      : 0;
+    const isNearBottom = distanceFromBottom <= 220;
+    if (!isAtBottomRef.current && !isNearBottom) return;
+
+    let cancelled = false;
+    let firstRafId: number | undefined;
+    let secondRafId: number | undefined;
+    let timeoutId: number | undefined;
+
+    firstRafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      secondRafId = requestAnimationFrame(() => {
+        if (cancelled) return;
+        scrollToBottom("instant");
+        timeoutId = window.setTimeout(() => {
+          if (!cancelled) {
+            scrollToBottom("smooth");
+          }
+        }, 120);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (firstRafId !== undefined) {
+        window.cancelAnimationFrame(firstRafId);
+      }
+      if (secondRafId !== undefined) {
+        window.cancelAnimationFrame(secondRafId);
+      }
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [streamError, scrollToBottom]);
 
   // Test mode only: Track scroll position to update isAtBottom state.
   // In production, Virtuoso's atBottomStateChange handles this.
@@ -178,8 +262,34 @@ export function ChatPanel({
     }
   }, [messages, isStreaming, settings?.isTestMode, scrollToBottom]);
 
+  const closeTerminal = useCallback(() => {
+    if (!chatId) return;
+    setTerminalOpenByChatId((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, false);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="toggle-terminal-button"]',
+        )
+        ?.focus();
+    });
+  }, [chatId, setTerminalOpenByChatId]);
+
+  const drawerEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
+  const chatLayerTransition: Transition = reducedMotion
+    ? { duration: 0.12 }
+    : { duration: 0.18, ease: drawerEase };
+  const terminalLayerTransition: Transition = reducedMotion
+    ? { duration: 0.12 }
+    : { duration: 0.22, ease: drawerEase };
+
+  const showTerminalDrawer = isTerminalOpen && chatId && !isVersionPaneOpen;
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex h-full flex-col overflow-hidden">
       <ChatHeader
         isVersionPaneOpen={isVersionPaneOpen}
         isPreviewOpen={isPreviewOpen}
@@ -188,47 +298,62 @@ export function ChatPanel({
       />
       <div className="flex flex-1 overflow-hidden">
         {!isVersionPaneOpen && (
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-1 relative overflow-hidden">
-              <MessagesList
-                messages={messages}
-                messagesEndRef={messagesEndRef}
-                ref={messagesContainerRef}
-                onAtBottomChange={handleAtBottomChange}
-              />
+          <div className="relative flex-1 min-w-0 overflow-hidden">
+            <AnimatePresence>
+              {!showTerminalDrawer && (
+                <motion.div
+                  key="chat"
+                  className="absolute inset-0 flex min-h-0 flex-col"
+                  initial={
+                    reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }
+                  }
+                  animate={
+                    reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }
+                  }
+                  exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
+                  transition={chatLayerTransition}
+                >
+                  <div className="flex-1 relative overflow-hidden">
+                    <MessagesList
+                      messages={messages}
+                      messagesEndRef={messagesEndRef}
+                      ref={messagesContainerRef}
+                      onAtBottomChange={handleAtBottomChange}
+                    />
 
-              {/* Scroll to bottom button */}
-              {showScrollButton && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          onClick={handleScrollButtonClick}
-                          size="icon"
-                          className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
-                          variant="outline"
-                        />
+                    {/* Scroll to bottom button */}
+                    {showScrollButton && (
+                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                onClick={handleScrollButtonClick}
+                                size="icon"
+                                className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
+                                variant="outline"
+                              />
+                            }
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </TooltipTrigger>
+                          <TooltipContent>{t("scrollToBottom")}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    )}
+                  </div>
+                  {showFreeAgentQuotaBanner && (
+                    <FreeAgentQuotaBanner
+                      onSwitchToBuildMode={() =>
+                        void setChatMode("build").catch(() => {})
                       }
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </TooltipTrigger>
-                    <TooltipContent>{t("scrollToBottom")}</TooltipContent>
-                  </Tooltip>
-                </div>
+                    />
+                  )}
+                  <NotificationBanner />
+                  <ChatInput chatId={chatId} />
+                </motion.div>
               )}
-            </div>
-
-            <ChatError error={error} onDismiss={() => setError(null)} />
-            {showFreeAgentQuotaBanner && (
-              <FreeAgentQuotaBanner
-                onSwitchToBuildMode={() =>
-                  updateSettings({ selectedChatMode: "build" })
-                }
-              />
-            )}
-            <NotificationBanner />
-            <ChatInput chatId={chatId} />
+            </AnimatePresence>
           </div>
         )}
         <VersionPane
@@ -236,6 +361,39 @@ export function ChatPanel({
           onClose={() => setIsVersionPaneOpen(false)}
         />
       </div>
+      <AnimatePresence initial={false}>
+        {showTerminalDrawer && (
+          <motion.div
+            key="terminal"
+            data-testid="terminal-drawer"
+            className="absolute inset-0 z-20 flex min-h-0 flex-col"
+            initial={reducedMotion ? { opacity: 0 } : { y: "100%" }}
+            animate={reducedMotion ? { opacity: 1 } : { y: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { y: "100%" }}
+            transition={terminalLayerTransition}
+            onAnimationComplete={() => {
+              setTerminalFitSignal((value) => value + 1);
+            }}
+          >
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  {t("terminal.loading")}
+                </div>
+              }
+            >
+              <TerminalPanel
+                appId={selectedAppId}
+                chatId={chatId}
+                appName={currentApp?.name}
+                onExit={closeTerminal}
+                fitSignal={terminalFitSignal}
+                size="full"
+              />
+            </Suspense>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

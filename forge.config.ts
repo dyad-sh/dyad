@@ -1,4 +1,8 @@
 import { windowsSign } from "./windowsSign";
+import {
+  removeUnusedAppPackageFiles,
+  removeUnusedCopiedResources,
+} from "./src/lib/packaging_cleanup";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -9,8 +13,43 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import { readFileSync } from "fs";
+import { createRequire } from "module";
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
+
+const require = createRequire(import.meta.url);
+const { isPrereleaseVersion } =
+  require("./scripts/release-version-utils.js") as {
+    isPrereleaseVersion: (version: string) => boolean;
+  };
+const packageJson = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string };
+
+const pgRuntimeDependencies = [
+  "pg",
+  "pg-cloudflare",
+  "pg-connection-string",
+  "pg-int8",
+  "pg-pool",
+  "pg-protocol",
+  "pg-types",
+  "pgpass",
+  "postgres-array",
+  "postgres-bytea",
+  "postgres-date",
+  "postgres-interval",
+  "split2",
+  "xtend",
+] as const;
+
+function isPgRuntimeDependency(file: string): boolean {
+  return pgRuntimeDependencies.some((dependency) => {
+    const modulePath = `/node_modules/${dependency}`;
+    return file === modulePath || file.startsWith(`${modulePath}/`);
+  });
+}
 
 // Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
@@ -42,10 +81,25 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }
+  if (file.startsWith("/node_modules/node-pty")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/mustardscript")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/@mustardscript")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/node-addon-api")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/bindings")) {
     return false;
   }
   if (file.startsWith("/node_modules/file-uri-to-path")) {
+    return false;
+  }
+  if (isPgRuntimeDependency(file)) {
     return false;
   }
   if (file.startsWith("/.vite")) {
@@ -57,6 +111,7 @@ const ignore = (file: string) => {
 
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
+const shouldSkipNativeRebuild = process.env.DYAD_SKIP_NATIVE_REBUILD === "true";
 
 if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
   throw new Error(
@@ -68,6 +123,22 @@ if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
 const config: ForgeConfig = {
   packagerConfig: {
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
+    afterCopy: [
+      (buildPath, _electronVersion, platform, arch, callback) => {
+        removeUnusedAppPackageFiles(buildPath, platform, arch).then(
+          () => callback(),
+          (error) => callback(error as Error),
+        );
+      },
+    ],
+    afterCopyExtraResources: [
+      (buildPath, _electronVersion, platform, _arch, callback) => {
+        removeUnusedCopiedResources(buildPath, platform).then(
+          () => callback(),
+          (error) => callback(error as Error),
+        );
+      },
+    ],
     protocols: [
       {
         name: "Dyad",
@@ -94,15 +165,21 @@ const config: ForgeConfig = {
           appleIdPassword: process.env.APPLE_PASSWORD!,
           teamId: process.env.APPLE_TEAM_ID!,
         },
-    asar: true,
+    asar: {
+      // node-pty loads helper binaries like spawn-helper and winpty-agent from disk.
+      unpackDir:
+        "{node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
+    },
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
-  rebuildConfig: {
-    extraModules: ["better-sqlite3"],
-    force: true,
-  },
+  rebuildConfig: shouldSkipNativeRebuild
+    ? { onlyModules: [] }
+    : {
+        extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
+        force: true,
+      },
   makers: [
     new MakerSquirrel(
       // @ts-expect-error - incorrect types exported by MakerSquirrel
@@ -122,6 +199,7 @@ const config: ForgeConfig = {
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({
       options: {
+        mimeType: ["x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),
@@ -145,7 +223,7 @@ const config: ForgeConfig = {
         },
         draft: true,
         force: true,
-        prerelease: true,
+        prerelease: isPrereleaseVersion(packageJson.version),
       },
     },
   ],
@@ -169,6 +247,16 @@ const config: ForgeConfig = {
         {
           entry: "workers/tsc/tsc_worker.ts",
           config: "vite.worker.config.mts",
+          target: "main",
+        },
+        {
+          entry: "workers/code_explorer/code_explorer_worker.ts",
+          config: "vite.code-explorer-worker.config.mts",
+          target: "main",
+        },
+        {
+          entry: "src/ipc/utils/sandbox/sandbox_worker.ts",
+          config: "vite.sandbox-worker.config.mts",
           target: "main",
         },
       ],

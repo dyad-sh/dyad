@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { FileText, Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useSetAtom } from "jotai";
 import { previewModeAtom } from "@/atoms/appAtoms";
+import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
 
@@ -21,6 +22,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
+  const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
 
   // Consider in progress if state is pending OR complete is explicitly "false"
   const isInProgress = state === "pending" || complete === "false";
@@ -63,7 +65,10 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
           {!isInProgress && hasPlan && (
             <button
               type="button"
-              onClick={() => setPreviewMode("plan")}
+              onClick={() => {
+                setPreviewMode("plan");
+                setIsPreviewOpen(true);
+              }}
               className="flex items-center gap-1.5 text-xs font-medium text-primary-foreground px-4 py-1.5 bg-primary rounded-md hover:bg-primary/90 transition-colors"
             >
               <Eye size={14} />

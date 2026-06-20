@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 import { CheckCircle, ArrowRight } from "lucide-react";
-import { planStateAtom } from "@/atoms/planAtoms";
+import {
+  planAcceptInNewChatByChatIdAtom,
+  planStateAtom,
+} from "@/atoms/planAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 interface DyadExitPlanProps {
@@ -16,9 +19,15 @@ export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
   const { notes } = node.properties;
   const chatId = useAtomValue(selectedChatIdAtom);
   const planState = useAtomValue(planStateAtom);
+  const acceptInNewChatByChatId = useAtomValue(planAcceptInNewChatByChatIdAtom);
   const isTransitioning = chatId
     ? planState.transitioningChatIds.has(chatId)
     : false;
+  // Defaults to a new chat when the choice is unknown (e.g. after a reload),
+  // matching the historical behavior.
+  const useNewChat = chatId
+    ? (acceptInNewChatByChatId.get(chatId) ?? true)
+    : true;
 
   const [dotCount, setDotCount] = useState(0);
   useEffect(() => {
@@ -40,8 +49,12 @@ export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
           <ArrowRight className="text-green-500" size={16} />
           <span className="text-green-700 dark:text-green-300">
             {isTransitioning
-              ? `Preparing a new chat${".".repeat(dotCount + 1)}`
-              : "Opening new chat for implementation"}
+              ? useNewChat
+                ? `Preparing a new chat${".".repeat(dotCount + 1)}`
+                : `Preparing implementation${".".repeat(dotCount + 1)}`
+              : useNewChat
+                ? "Opening new chat for implementation"
+                : "Continuing implementation in this chat"}
           </span>
         </div>
         {notes && (

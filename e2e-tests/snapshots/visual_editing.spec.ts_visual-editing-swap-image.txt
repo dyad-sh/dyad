@@ -7,7 +7,7 @@ const Index = () => {
             <div className="text-center">
                 <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
                 <img
-                    src="https://example.com/new-hero.png"
+                    src="http://localhost:3500/test-image.png"
                     alt="Hero image"
                     className="mx-auto mb-4 w-64 h-64" />
                 <p className="text-xl text-gray-600">Start building your amazing project here!

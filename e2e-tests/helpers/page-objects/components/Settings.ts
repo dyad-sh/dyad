@@ -6,6 +6,7 @@
 import { Page, expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
+import { Timeout } from "../../constants";
 
 export class Settings {
   constructor(
@@ -36,6 +37,12 @@ export class Settings {
       .click();
   }
 
+  async toggleCloudSandboxExperiment() {
+    await this.page
+      .getByRole("switch", { name: "Enable Cloud Sandbox" })
+      .click();
+  }
+
   async toggleEnableSelectAppFromHomeChatInput() {
     await this.page
       .getByRole("switch", {
@@ -48,10 +55,43 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }
 
+  async enableChatEventNotifications() {
+    await expect(
+      this.page.getByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeVisible();
+
+    const label = this.page.getByText("Enable notifications", { exact: true });
+
+    // Find the switch button that is a sibling to the label by going to the parent container
+    const toggleButton = label.locator("xpath=..").getByRole("switch");
+    await expect(toggleButton).toBeAttached();
+
+    await toggleButton.scrollIntoViewIfNeeded();
+
+    const ariaChecked = await toggleButton.getAttribute("aria-checked");
+    if (ariaChecked !== "true") {
+      await label.click();
+    }
+  }
+
   async changeReleaseChannel(channel: "stable" | "beta") {
     await this.page.getByRole("combobox", { name: "Release Channel" }).click();
     await this.page
       .getByRole("option", { name: channel === "stable" ? "Stable" : "Beta" })
+      .click();
+  }
+
+  async changeRuntimeMode(mode: "host" | "docker" | "cloud") {
+    await this.page.getByRole("combobox", { name: "Runtime Mode" }).click();
+    await this.page
+      .getByRole("option", {
+        name:
+          mode === "host"
+            ? "Local (default)"
+            : mode === "docker"
+              ? "Docker (experimental)"
+              : "Cloud Sandbox (Pro)",
+      })
       .click();
   }
 
@@ -99,8 +139,13 @@ export class Settings {
       telemetryUserId: "[UUID]",
       lastShownReleaseNotesVersion: "[scrubbed]",
     };
+    const ignoredKeys = new Set(["lastKnownPerformance"]);
 
     for (const key of sortedKeys) {
+      if (ignoredKeys.has(key)) {
+        continue;
+      }
+
       const beforeValue = beforeSettings[key];
       const afterValue = afterSettings[key];
       const beforeExists = key in beforeSettings;
@@ -132,6 +177,21 @@ export class Settings {
     expect(diffLines.join("\n")).toMatchSnapshot();
   }
 
+  async scrollToSettingsSection(sectionId: string) {
+    const section = this.page.locator(`#${sectionId}`);
+    await expect(section).toBeVisible();
+    await section.scrollIntoViewIfNeeded();
+  }
+
+  async waitForMcpTool(serverName: string, toolName: string) {
+    await expect(this.page.getByText(serverName, { exact: true })).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(this.page.getByText(toolName, { exact: true })).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
   async setUpTestProvider() {
     await this.page.getByText("Add custom providerConnect to").click();
     // Fill out provider dialog
@@ -152,12 +212,22 @@ export class Settings {
   async setUpTestModel() {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
-    await this.page
-      .getByRole("textbox", { name: "Model ID*" })
-      .fill("test-model");
-    await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
-    await this.page.getByRole("textbox", { name: "Name*" }).fill("test-model");
-    await this.page.getByRole("button", { name: "Add Model" }).click();
+    const dialog = this.page.getByRole("dialog", { name: "Add Custom Model" });
+    const modelIdInput = dialog.locator("#model-id");
+    const modelNameInput = dialog.locator("#model-name");
+    const addModelButton = dialog.getByRole("button", { name: "Add Model" });
+
+    await expect(async () => {
+      await modelIdInput.fill("test-model");
+      await expect(modelIdInput).toHaveValue("test-model", { timeout: 1_000 });
+      await modelNameInput.fill("test-model");
+      await expect(modelNameInput).toHaveValue("test-model", {
+        timeout: 1_000,
+      });
+      await expect(addModelButton).toBeEnabled({ timeout: 1_000 });
+      await addModelButton.click({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   }
 
   async addCustomTestModel({
@@ -169,13 +239,27 @@ export class Settings {
   }) {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
-    await this.page.getByRole("textbox", { name: "Model ID*" }).fill(name);
-    await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
-    await this.page.getByRole("textbox", { name: "Name*" }).fill(name);
-    if (contextWindow) {
-      await this.page.locator("#context-window").fill(String(contextWindow));
-    }
-    await this.page.getByRole("button", { name: "Add Model" }).click();
+    const dialog = this.page.getByRole("dialog", { name: "Add Custom Model" });
+    const modelIdInput = dialog.locator("#model-id");
+    const modelNameInput = dialog.locator("#model-name");
+    const contextWindowInput = dialog.locator("#context-window");
+    const addModelButton = dialog.getByRole("button", { name: "Add Model" });
+
+    await expect(async () => {
+      await modelIdInput.fill(name);
+      await expect(modelIdInput).toHaveValue(name, { timeout: 1_000 });
+      await modelNameInput.fill(name);
+      await expect(modelNameInput).toHaveValue(name, { timeout: 1_000 });
+      if (contextWindow) {
+        await contextWindowInput.fill(String(contextWindow));
+        await expect(contextWindowInput).toHaveValue(String(contextWindow), {
+          timeout: 1_000,
+        });
+      }
+      await expect(addModelButton).toBeEnabled({ timeout: 1_000 });
+      await addModelButton.click({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
   }
 
   async setUpTestProviderApiKey() {
@@ -185,7 +269,7 @@ export class Settings {
       .fill("test-api-key-12345");
     await this.page.getByRole("button", { name: "Save Key" }).click();
     // Wait for the key to be saved
-    await expect(this.page.getByText("test-api-key-12345")).toBeVisible();
+    await expect(this.page.getByText(/test.+2345/)).toBeVisible();
   }
 
   async setUpDyadProvider() {

@@ -93,7 +93,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - <summary of fix 2>
    ...
 
-   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
    ```
 
    Then run `/dyad:pr-push` to push the changes.

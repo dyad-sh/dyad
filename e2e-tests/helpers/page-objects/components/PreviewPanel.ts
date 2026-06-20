@@ -9,6 +9,63 @@ import { Timeout } from "../../constants";
 export class PreviewPanel {
   constructor(public page: Page) {}
 
+  getPlanContent() {
+    return this.page.getByTestId("plan-content");
+  }
+
+  getPlanSelectionCommentButton() {
+    return this.page.getByRole("button", { name: "Add comment" });
+  }
+
+  getPlanCommentsButton() {
+    return this.page.getByRole("button", { name: "View comments" });
+  }
+
+  getPlanAnnotationMarks() {
+    return this.page.locator("mark[data-annotation-id]");
+  }
+
+  async selectTextInPlan(selectedText: string) {
+    const planContent = this.getPlanContent();
+    await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    await planContent.evaluate((container, text) => {
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) =>
+            (node.textContent ?? "").trim().length > 0
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT,
+        },
+      );
+
+      let currentNode: Text | null;
+      while ((currentNode = walker.nextNode() as Text | null)) {
+        const startOffset = currentNode.textContent?.indexOf(text) ?? -1;
+        if (startOffset === -1) {
+          continue;
+        }
+
+        const range = document.createRange();
+        range.setStart(currentNode, startOffset);
+        range.setEnd(currentNode, startOffset + text.length);
+
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        (currentNode.parentElement ?? container).dispatchEvent(
+          new MouseEvent("mouseup", { bubbles: true }),
+        );
+        return;
+      }
+
+      throw new Error(`Could not find "${text}" in plan content`);
+    }, selectedText);
+  }
+
   async selectPreviewMode(
     mode:
       | "code"
@@ -18,7 +75,44 @@ export class PreviewPanel {
       | "security"
       | "publish",
   ) {
-    await this.page.getByTestId(`${mode}-mode-button`).click();
+    // Mode buttons live inside the preview panel, so the panel must be expanded
+    // before they're clickable. If the panel is collapsed, the chat panel covers
+    // the toolbar and intercepts pointer events.
+    const previewPanel = this.page.locator("#preview-panel");
+    const sizeAttr = await previewPanel.getAttribute("data-panel-size");
+    if (sizeAttr === null || parseFloat(sizeAttr) < 5) {
+      await this.page.getByTestId("toggle-preview-panel-button").click();
+      // Wait for panel-resize transition (chat.tsx uses 100ms transition)
+      await this.page.waitForFunction(
+        () => {
+          const el = document.querySelector("#preview-panel");
+          const v = el?.getAttribute("data-panel-size");
+          return v !== null && v !== undefined && parseFloat(v) >= 5;
+        },
+        undefined,
+        { timeout: Timeout.MEDIUM },
+      );
+    }
+
+    // When the toolbar is narrow (< 700px), `configure`, `problems`, and
+    // `security` move into an overflow dropdown. Open the dropdown first if
+    // the direct button isn't visible.
+    const directButton = this.page.getByTestId(`${mode}-mode-button`);
+    await expect(async () => {
+      const isInOverflow =
+        (mode === "security" || mode === "problems" || mode === "configure") &&
+        (await directButton
+          .first()
+          .isVisible()
+          .catch(() => false)) === false;
+      if (isInOverflow) {
+        await this.page
+          .getByTestId("preview-mode-overflow-button")
+          .click({ timeout: 1_000 });
+      }
+      await expect(directButton.first()).toBeVisible({ timeout: 1_000 });
+      await directButton.first().click({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async clickRecheckProblems() {
@@ -77,8 +171,26 @@ export class PreviewPanel {
     await this.page.getByTestId("preview-navigate-forward-button").click();
   }
 
+  getPreviewAddressBarInput() {
+    return this.page.getByTestId("preview-address-bar-input");
+  }
+
+  async fillPreviewAddressBar(path: string) {
+    const input = this.getPreviewAddressBarInput();
+    await input.fill(path);
+    await input.press("Enter");
+  }
+
   async clickPreviewOpenBrowser() {
     await this.page.getByTestId("preview-open-browser-button").click();
+  }
+
+  async clickCopyShareableLink() {
+    await this.page.getByTestId("preview-copy-shareable-link-button").click();
+  }
+
+  getCloudBadge() {
+    return this.page.getByTestId("preview-cloud-badge");
   }
 
   async clickPreviewAnnotatorButton() {
@@ -101,20 +213,44 @@ export class PreviewPanel {
   }
 
   locateLoadingAppPreview() {
-    return this.page.getByText("Preparing app preview...");
+    return this.locatePreviewLoadingScreen();
   }
 
-  locateStartingAppPreview() {
-    return this.page.getByText("Starting your app server...");
+  locatePreviewLoadingScreen() {
+    return this.page.getByTestId("preview-loading-screen");
+  }
+
+  locatePreviewLoadingLogList() {
+    return this.page.getByTestId("preview-loading-log-list");
+  }
+
+  locatePreviewLoadingErrorBanner() {
+    return this.page.getByTestId("preview-loading-error-banner");
+  }
+
+  async clickPreviewLoadingErrorToggle() {
+    await this.page.getByTestId("preview-loading-error-toggle").click();
+  }
+
+  async clickPreviewLoadingFixErrors() {
+    await this.page.getByTestId("preview-loading-fix-errors-button").click();
+  }
+
+  locatePreviewLoadingRebuildButton() {
+    return this.page.getByTestId("preview-loading-rebuild-button");
+  }
+
+  async clickPreviewLoadingRebuild() {
+    await this.locatePreviewLoadingRebuildButton().click();
   }
 
   getPreviewIframeElement() {
     return this.page.getByTestId("preview-iframe-element");
   }
 
-  expectPreviewIframeIsVisible() {
+  expectPreviewIframeIsVisible(timeout = Timeout.LONG) {
     return expect(this.getPreviewIframeElement()).toBeVisible({
-      timeout: Timeout.LONG,
+      timeout,
     });
   }
 
@@ -133,8 +269,9 @@ export class PreviewPanel {
     await this.page.getByRole("button", { name: /Fix All Errors/ }).click();
   }
 
-  async snapshotPreviewErrorBanner() {
+  async snapshotPreviewErrorBanner({ name }: { name?: string } = {}) {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
+      name,
       timeout: Timeout.LONG,
     });
   }

@@ -9,7 +9,7 @@ import logo from "../../assets/logo.svg";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ipc } from "@/ipc/types";
@@ -23,18 +23,8 @@ import {
 } from "@/components/ui/tooltip";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { Wrench, Cog, Trash2 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useRunApp } from "@/hooks/useRunApp";
-import { showError, showSuccess } from "@/lib/toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -65,11 +55,8 @@ export const TitleBar = () => {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
 
-  // Get selected app name
   const selectedApp = apps.find((app) => app.id === selectedAppId);
-  const displayText = selectedApp
-    ? `App: ${selectedApp.name}`
-    : "(no app selected)";
+  const displayText = selectedApp ? selectedApp.name : "No app selected";
 
   const handleAppClick = () => {
     if (selectedApp) {
@@ -82,28 +69,54 @@ export const TitleBar = () => {
 
   return (
     <>
-      <div className="@container z-11 w-full h-11 pt-3 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
-        <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
+      <div className="@container z-11 w-full h-[calc(var(--layout-title-bar-offset)+1px)] pt-1 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
+        {/*
+         * Left region matches the sidebar's expanded width so chat tabs always
+         * start past the sidebar panel's right edge. Without this, an active
+         * tab's flat-bottom edge ends up over the sidebar instead of the white
+         * main content area, breaking the "tab merges into content" affordance.
+         */}
+        <div className="flex items-center shrink-0">
+          <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5 ml-2" />
-        <Button
-          data-testid="title-bar-app-name-button"
-          variant="outline"
-          size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
-          onClick={handleAppClick}
-        >
-          {displayText}
-        </Button>
-        {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
-
-        <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">
-          <ChatTabs selectedChatId={selectedChatId} />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-testid="title-bar-app-name-button"
+                  data-app-name={selectedApp?.name ?? ""}
+                  data-app-path={selectedApp?.path ?? ""}
+                  aria-label={
+                    selectedApp
+                      ? `Manage ${selectedApp.name}`
+                      : "No app selected"
+                  }
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedApp}
+                  className={cn(
+                    "no-app-region-drag ml-2 h-7 px-1.5 gap-1.5 flex items-center font-medium text-xs",
+                    selectedApp
+                      ? "cursor-pointer"
+                      : "opacity-70 cursor-default disabled:opacity-70",
+                  )}
+                  onClick={handleAppClick}
+                />
+              }
+            >
+              <img src={logo} alt="Dyad" className="w-5 h-5 shrink-0" />
+              <span className="hidden @2xl:inline max-w-40 truncate">
+                Manage app
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{displayText}</TooltipContent>
+          </Tooltip>
+          {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
         </div>
 
-        <TitleBarActions />
+        <div className="flex-1 min-w-0 overflow-hidden self-end">
+          <ChatTabs selectedChatId={selectedChatId} />
+        </div>
 
         {showWindowControls && <WindowsControls />}
       </div>
@@ -132,9 +145,9 @@ function WindowsControls() {
   };
 
   return (
-    <div className="ml-auto flex no-app-region-drag">
+    <div className="ml-auto flex no-app-region-drag -mt-1 h-[var(--layout-title-bar-offset)] self-start">
       <button
-        className="w-10 h-10 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        className="w-12 h-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         onClick={minimizeWindow}
         aria-label="Minimize"
       >
@@ -153,7 +166,7 @@ function WindowsControls() {
         </svg>
       </button>
       <button
-        className="w-10 h-10 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        className="w-12 h-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         onClick={maximizeWindow}
         aria-label="Maximize"
       >
@@ -174,7 +187,7 @@ function WindowsControls() {
         </svg>
       </button>
       <button
-        className="w-10 h-10 flex items-center justify-center hover:bg-red-500 transition-colors"
+        className="w-12 h-full flex items-center justify-center hover:bg-red-500 transition-colors"
         onClick={closeWindow}
         aria-label="Close"
       >
@@ -192,73 +205,6 @@ function WindowsControls() {
           />
         </svg>
       </button>
-    </div>
-  );
-}
-
-function TitleBarActions() {
-  const { t } = useTranslation("home");
-  const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { restartApp, refreshAppIframe } = useRunApp();
-
-  const onCleanRestart = useCallback(() => {
-    restartApp({ removeNodeModules: true });
-  }, [restartApp]);
-
-  const useClearSessionData = () => {
-    return useMutation({
-      mutationFn: () => {
-        return ipc.system.clearSessionData();
-      },
-      onSuccess: async () => {
-        await refreshAppIframe();
-        showSuccess("Preview data cleared");
-      },
-      onError: (error) => {
-        showError(`Error clearing preview data: ${error}`);
-      },
-    });
-  };
-
-  const { mutate: clearSessionData } = useClearSessionData();
-
-  const onClearSessionData = useCallback(() => {
-    clearSessionData();
-  }, [clearSessionData]);
-
-  return (
-    <div
-      className="flex items-center gap-0.5 no-app-region-drag mr-2"
-      style={{ visibility: selectedAppId ? "visible" : "hidden" }}
-    >
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          data-testid="preview-more-options-button"
-          className="flex items-center justify-center w-8 h-8 rounded-md text-sm hover:bg-sidebar-accent transition-colors"
-        >
-          <Wrench size={16} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuItem onClick={onCleanRestart}>
-            <Cog size={16} />
-            <div className="flex flex-col">
-              <span>{t("preview.rebuild")}</span>
-              <span className="text-xs text-muted-foreground">
-                {t("preview.rebuildDescription")}
-              </span>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onClearSessionData}>
-            <Trash2 size={16} />
-            <div className="flex flex-col">
-              <span>{t("preview.clearCache")}</span>
-              <span className="text-xs text-muted-foreground">
-                {t("preview.clearCacheDescription")}
-              </span>
-            </div>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   );
 }
@@ -281,8 +227,9 @@ export function DyadProButton({
       }}
       variant="outline"
       className={cn(
-        "hidden @2xl:block ml-1 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white text-xs px-2 pt-1 pb-1",
-        !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
+        "hidden @2xl:block ml-1 no-app-region-drag h-7 text-xs px-2 pt-1 pb-1",
+        isDyadProEnabled &&
+          "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-900 dark:hover:bg-indigo-900/40",
       )}
       size="sm"
     >
@@ -303,17 +250,30 @@ export function AICreditStatus({
 }: {
   userBudget: NonNullable<UserBudgetInfo>;
 }) {
-  const remaining = Math.round(
-    userBudget.totalCredits - userBudget.usedCredits,
-  );
+  const total = Math.round(userBudget.totalCredits);
+  const used = Math.round(userBudget.usedCredits);
+  const remaining = Math.max(0, total - used);
+  const resetDate = userBudget.budgetResetDate
+    ? new Date(userBudget.budgetResetDate).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : null;
   return (
     <Tooltip>
       <TooltipTrigger>
-        <div className="text-xs pl-1 mt-0.5">{remaining} credits</div>
+        <div className="text-xs pl-1 mt-0.5 opacity-90">· {remaining}</div>
       </TooltipTrigger>
       <TooltipContent>
-        <div>
-          <p>Note: there is a slight delay in updating the credit status.</p>
+        <div className="flex flex-col gap-0.5 text-xs">
+          <p className="font-medium">
+            {remaining.toLocaleString()} of {total.toLocaleString()} credits
+            remaining
+          </p>
+          {resetDate && <p className="opacity-80">Resets on {resetDate}</p>}
+          <p className="opacity-60">
+            Note: credit status may take a moment to update.
+          </p>
         </div>
       </TooltipContent>
     </Tooltip>

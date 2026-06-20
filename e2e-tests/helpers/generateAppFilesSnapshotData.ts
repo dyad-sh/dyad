@@ -7,6 +7,10 @@ export interface FileSnapshotData {
   content: string;
 }
 
+const STABLE_PLACEHOLDER_FILES = new Map([
+  ["pnpm-workspace.yaml", "[Dyad-managed pnpm workspace config]"],
+]);
+
 const binaryExtensions = new Set([
   ".png",
   ".jpg",
@@ -109,6 +113,14 @@ export function generateAppFilesSnapshotData(
           .readFileSync(entryPath, "utf-8")
           // Normalize line endings to always use \n
           .replace(/\r\n/g, "\n");
+        const stablePlaceholder = STABLE_PLACEHOLDER_FILES.get(entry.name);
+        if (stablePlaceholder) {
+          files.push({
+            relativePath,
+            content: stablePlaceholder,
+          });
+          continue;
+        }
         if (entry.name === "package.json") {
           const packageJson = JSON.parse(content);
           packageJson.packageManager = "<scrubbed>";

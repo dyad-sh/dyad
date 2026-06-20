@@ -4,9 +4,10 @@
  * to component page objects (e.g., po.chatActions.sendPrompt()).
  */
 
-import { Page, expect } from "@playwright/test";
+import { Page, expect, type Locator, type TestInfo } from "@playwright/test";
 import { ElectronApplication } from "playwright";
 import fs from "fs";
+import path from "path";
 
 import { generateAppFilesSnapshotData } from "../generateAppFilesSnapshotData";
 import {
@@ -15,6 +16,7 @@ import {
   normalizeVersionedFiles,
   normalizePath,
   prettifyDump,
+  normalizeMessagesAriaSnapshot,
 } from "../utils";
 
 // Import component page objects
@@ -30,10 +32,12 @@ import { ModelPicker } from "./components/ModelPicker";
 import { Settings } from "./components/Settings";
 import { AppManagement } from "./components/AppManagement";
 import { PromptLibrary } from "./components/PromptLibrary";
+import { BrowserNotifications } from "./components/BrowserNotifications";
 
 // Import dialog page objects
 import { ContextFilesPickerDialog } from "./dialogs/ContextFilesPickerDialog";
 import { ProModesDialog } from "./dialogs/ProModesDialog";
+import { Timeout } from "../constants";
 
 export class PageObject {
   public userDataDir: string;
@@ -52,14 +56,21 @@ export class PageObject {
   public settings: Settings;
   public appManagement: AppManagement;
   public promptLibrary: PromptLibrary;
+  public browserNotifications: BrowserNotifications;
+  private stableMessageSnapshotIndex = 0;
 
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir, fakeLlmPort }: { userDataDir: string; fakeLlmPort: number },
+    {
+      userDataDir,
+      fakeLlmPort,
+      testInfo,
+    }: { userDataDir: string; fakeLlmPort: number; testInfo?: TestInfo },
   ) {
     this.userDataDir = userDataDir;
     this.fakeLlmPort = fakeLlmPort;
+    this.testInfo = testInfo;
 
     // Initialize component page objects
     this.githubConnector = new GitHubConnector(this.page, fakeLlmPort);
@@ -74,6 +85,110 @@ export class PageObject {
     this.settings = new Settings(this.page, userDataDir, fakeLlmPort);
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
+    this.browserNotifications = new BrowserNotifications(this.page);
+  }
+
+  private testInfo?: TestInfo;
+
+  private nextStableMessageSnapshotPath(name?: string) {
+    if (name) {
+      const snapshotName = name.endsWith(".aria.yml")
+        ? name
+        : `${name}.aria.yml`;
+      return this.testInfo?.snapshotPath(snapshotName, {
+        kind: "aria",
+      });
+    }
+
+    this.stableMessageSnapshotIndex++;
+    if (!this.testInfo) {
+      return undefined;
+    }
+    const title = this.testInfo?.title ?? "messages";
+    // Mirrors Playwright's snapshot-name sanitization: everything except
+    // letters, digits, and "-" becomes a "-" so auto-derived names line up
+    // with the files toMatchAriaSnapshot() would generate.
+    const normalizedTitle =
+      title
+        .replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, "-")
+        .replace(/^-+/, "")
+        .replace(/-+$/, "") || "messages";
+    return this.testInfo.snapshotPath(
+      `${normalizedTitle}-${this.stableMessageSnapshotIndex}.aria.yml`,
+      { kind: "aria" },
+    );
+  }
+
+  private async expectStableMessageAriaSnapshot(
+    captureSnapshot: () => Promise<string>,
+    name?: string,
+  ) {
+    const snapshotPath = this.nextStableMessageSnapshotPath(name);
+    if (!snapshotPath) {
+      const actualSnapshot = await captureSnapshot();
+      expect(actualSnapshot).toMatchSnapshot();
+      return;
+    }
+
+    const updateSnapshots = this.testInfo?.config.updateSnapshots ?? "none";
+    const snapshotExists = fs.existsSync(snapshotPath);
+    const shouldUpdate =
+      updateSnapshots === "all" ||
+      updateSnapshots === "changed" ||
+      (updateSnapshots === "missing" && !snapshotExists);
+
+    if (shouldUpdate) {
+      const actualSnapshot = await captureSnapshot();
+      fs.writeFileSync(snapshotPath, actualSnapshot);
+      if (updateSnapshots === "missing") {
+        // Match Playwright's snapshot semantics: a missing baseline is
+        // written but still fails the test, so a renamed/typo'd snapshot
+        // name cannot silently pass on CI.
+        throw new Error(
+          `ARIA snapshot is missing at ${snapshotPath}, writing actual. Re-run the test to use the new baseline.`,
+        );
+      }
+      return;
+    }
+
+    if (!snapshotExists) {
+      throw new Error(`ARIA snapshot does not exist: ${snapshotPath}`);
+    }
+
+    const expectedSnapshot = fs.readFileSync(snapshotPath, "utf8");
+
+    let actualSnapshot = await captureSnapshot();
+    if (actualSnapshot !== expectedSnapshot) {
+      try {
+        await expect(async () => {
+          actualSnapshot = await captureSnapshot();
+          expect(actualSnapshot).toBe(expectedSnapshot);
+        }).toPass({
+          intervals: [100, 250, 500, 1_000],
+          timeout: Timeout.SHORT,
+        });
+        return;
+      } catch {
+        // Attach the last observed mismatch below for the normal snapshot diff.
+      }
+    }
+
+    if (actualSnapshot !== expectedSnapshot && this.testInfo) {
+      const baseName = path.basename(snapshotPath, ".aria.yml");
+      const actualPath = this.testInfo.outputPath(
+        `${baseName}-actual.aria.yml`,
+      );
+      fs.writeFileSync(actualPath, actualSnapshot);
+      await this.testInfo.attach(`${baseName}-expected`, {
+        path: snapshotPath,
+        contentType: "text/plain",
+      });
+      await this.testInfo.attach(`${baseName}-actual`, {
+        path: actualPath,
+        contentType: "text/plain",
+      });
+    }
+    expect(actualSnapshot).toBe(expectedSnapshot);
   }
 
   // ================================
@@ -82,6 +197,7 @@ export class PageObject {
 
   private async baseSetup() {
     await this.githubConnector.clearPushEvents();
+    await this.githubConnector.resetRepos();
   }
 
   async setUp({
@@ -231,11 +347,19 @@ export class PageObject {
   // ================================
 
   async approveProposal() {
-    await this.page.getByTestId("approve-proposal-button").click();
+    const approveButton = this.page
+      .getByTestId("approve-proposal-button")
+      .last();
+    await expect(approveButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await approveButton.click();
+    await expect(approveButton).toBeHidden({ timeout: Timeout.MEDIUM });
   }
 
   async rejectProposal() {
-    await this.page.getByTestId("reject-proposal-button").click();
+    const rejectButton = this.page.getByTestId("reject-proposal-button").last();
+    await expect(rejectButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await rejectButton.click();
+    await expect(rejectButton).toBeHidden({ timeout: Timeout.MEDIUM });
   }
 
   async clickRestart() {
@@ -326,33 +450,46 @@ export class PageObject {
 
   async snapshotMessages({
     replaceDumpPath = false,
+    name,
+    stable = true,
     timeout,
-  }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
-    // NOTE: once you have called this, you can NOT manipulate the UI anymore or React will break.
-    if (replaceDumpPath) {
-      await this.page.evaluate(() => {
-        const messagesList = document.querySelector(
-          "[data-testid=messages-list]",
-        );
-        if (!messagesList) {
-          throw new Error("Messages list not found");
-        }
-        // Scrub compaction backup paths embedded in message text
-        // e.g. .dyad/chats/1/compaction-2026-02-05T21-25-24-285Z.md
-        messagesList.innerHTML = messagesList.innerHTML.replace(
-          /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
-          "[[compaction-backup-path]]",
-        );
-
-        messagesList.innerHTML = messagesList.innerHTML.replace(
-          /\[\[dyad-dump-path=([^\]]+)\]\]/g,
-          "[[dyad-dump-path=*]]",
-        );
-      });
+  }: {
+    replaceDumpPath?: boolean;
+    name?: string;
+    stable?: boolean;
+    timeout?: number;
+  } = {}) {
+    const messagesList = this.page.getByTestId("messages-list");
+    if (!stable) {
+      await expect(messagesList).toMatchAriaSnapshot({ timeout });
+      return;
     }
-    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot({
-      timeout,
-    });
+
+    await this.expectStableMessageAriaSnapshot(async () => {
+      const rawSnapshot = await messagesList.ariaSnapshot({ timeout });
+      let normalizedSnapshot = normalizeMessagesAriaSnapshot(rawSnapshot);
+      if (replaceDumpPath) {
+        // Scrub machine-specific paths after snapshotting so React-owned DOM is not mutated.
+        normalizedSnapshot = normalizedSnapshot
+          .replace(
+            /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
+            "[[compaction-backup-path]]",
+          )
+          .replace(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
+      }
+      return `${normalizedSnapshot.trimEnd()}\n`;
+    }, name);
+  }
+
+  async snapshotStableAria(
+    locator: Locator,
+    name: string,
+    { timeout }: { timeout?: number } = {},
+  ) {
+    await this.expectStableMessageAriaSnapshot(async () => {
+      const rawSnapshot = await locator.ariaSnapshot({ timeout });
+      return `${normalizeMessagesAriaSnapshot(rawSnapshot).trimEnd()}\n`;
+    }, name);
   }
 
   async snapshotServerDump(
@@ -431,13 +568,25 @@ export class PageObject {
         },
       );
     }
+    if (parsedDump["body"]["system"]) {
+      parsedDump["body"]["system"] = parsedDump["body"]["system"].map(
+        (message: any) => {
+          if (message.type === "text") {
+            message.text = "[[SYSTEM_MESSAGE]]";
+          }
+          return message;
+        },
+      );
+    }
+    // Normalize tool call IDs across both raw request snapshots and prettified
+    // message dumps. Anthropic direct passthrough stores tool IDs inside content
+    // blocks instead of OpenAI-style message.tool_calls arrays.
+    normalizeToolCallIds(parsedDump);
     if (type === "request") {
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
       // Normalize item_reference IDs (e.g., msg_1234567890) to be deterministic
       normalizeItemReferences(parsedDump);
-      // Normalize tool_call IDs (e.g., call_1234567890_0) to be deterministic
-      normalizeToolCallIds(parsedDump);
       expect(
         JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
       ).toMatchSnapshot(name);
@@ -462,7 +611,7 @@ export class PageObject {
 
   async sendPrompt(
     prompt: string,
-    options?: { skipWaitForCompletion?: boolean },
+    options?: { skipWaitForCompletion?: boolean; timeout?: number },
   ) {
     return this.chatActions.sendPrompt(prompt, options);
   }

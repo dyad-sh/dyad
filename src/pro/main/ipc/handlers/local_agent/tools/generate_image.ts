@@ -11,6 +11,8 @@ import {
 } from "./types";
 import { engineFetch } from "./engine_fetch";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import { ImageGenerationApiResponseSchema } from "@/ipc/types/image_generation";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("generate_image");
 
@@ -20,17 +22,6 @@ const generateImageSchema = z.object({
     .describe(
       "A detailed, descriptive prompt for the image to generate. Be specific about colors, composition, style, mood, and subject matter. Avoid generic or vague descriptions.",
     ),
-});
-
-const imageDataSchema = z.object({
-  url: z.string().nullable().optional(),
-  b64_json: z.string().nullable().optional(),
-  revised_prompt: z.string().nullable().optional(),
-});
-
-const generateImageResponseSchema = z.object({
-  created: z.number(),
-  data: z.array(imageDataSchema),
 });
 
 const DESCRIPTION = `Generate an image using AI based on a text prompt. The generated image is saved to the project's .dyad/media directory.
@@ -59,7 +50,7 @@ The tool returns the file path in .dyad/media. Use the copy_file tool to copy it
 async function callGenerateImage(
   prompt: string,
   ctx: Pick<AgentContext, "dyadRequestId">,
-): Promise<z.infer<typeof imageDataSchema>> {
+): Promise<z.infer<typeof ImageGenerationApiResponseSchema>["data"][number]> {
   const response = await engineFetch(ctx, "/images/generations", {
     method: "POST",
     body: JSON.stringify({
@@ -75,17 +66,20 @@ async function callGenerateImage(
     );
   }
 
-  const data = generateImageResponseSchema.parse(await response.json());
+  const data = ImageGenerationApiResponseSchema.parse(await response.json());
 
   if (!data.data || data.data.length === 0) {
-    throw new Error("Image generation returned no results");
+    throw new DyadError(
+      "Image generation returned no results",
+      DyadErrorKind.External,
+    );
   }
 
   return data.data[0];
 }
 
 async function saveGeneratedImage(
-  imageData: z.infer<typeof imageDataSchema>,
+  imageData: z.infer<typeof ImageGenerationApiResponseSchema>["data"][number],
   appPath: string,
 ): Promise<string> {
   const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
@@ -103,12 +97,18 @@ async function saveGeneratedImage(
   } else if (imageData.url) {
     const response = await fetch(imageData.url);
     if (!response.ok) {
-      throw new Error(`Failed to download generated image: ${response.status}`);
+      throw new DyadError(
+        `Failed to download generated image: ${response.status}`,
+        DyadErrorKind.External,
+      );
     }
     const arrayBuffer = await response.arrayBuffer();
     await fs.writeFile(filePath, Buffer.from(arrayBuffer));
   } else {
-    throw new Error("Image generation returned no image data");
+    throw new DyadError(
+      "Image generation returned no image data",
+      DyadErrorKind.External,
+    );
   }
 
   return relativePath;

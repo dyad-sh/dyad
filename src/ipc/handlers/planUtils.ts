@@ -1,11 +1,5 @@
-export function slugify(text: string): string {
-  const result = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .substring(0, 60);
-  return result || "untitled";
-}
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+export { slugify } from "@/shared/slugify";
 
 export function buildFrontmatter(meta: Record<string, string>): string {
   const lines = Object.entries(meta).map(
@@ -17,7 +11,7 @@ export function buildFrontmatter(meta: Record<string, string>): string {
 
 export function validatePlanId(planId: string): void {
   if (!/^[a-z0-9-]+$/.test(planId)) {
-    throw new Error("Invalid plan ID");
+    throw new DyadError("Invalid plan ID", DyadErrorKind.Validation);
   }
 }
 

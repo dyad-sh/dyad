@@ -17,8 +17,8 @@ import { useSettings } from "@/hooks/useSettings";
 export function ProBanner() {
   const { settings } = useSettings();
 
-  const [selectedBanner] = useState<"ai" | "smart" | "turbo">(() => {
-    const options = ["ai", "smart", "turbo"] as const;
+  const [selectedBanner] = useState<"ai" | "smart">(() => {
+    const options = ["ai", "smart"] as const;
     return options[Math.floor(Math.random() * options.length)];
   });
 
@@ -28,13 +28,7 @@ export function ProBanner() {
 
   return (
     <div className="mt-6 max-w-2xl mx-auto">
-      {selectedBanner === "ai" ? (
-        <AiAccessBanner />
-      ) : selectedBanner === "smart" ? (
-        <SmartContextBanner />
-      ) : (
-        <TurboBanner />
-      )}
+      {selectedBanner === "ai" ? <AiAccessBanner /> : <SmartContextBanner />}
     </div>
   );
 }
@@ -177,48 +171,6 @@ export function SmartContextBanner() {
             type="button"
             aria-label="Get Dyad Pro"
             className="inline-flex items-center rounded-md bg-white/90 text-emerald-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
-          >
-            {t("proBanner.getDyadPro")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function TurboBanner() {
-  const { t } = useTranslation("home");
-  return (
-    <div
-      className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-rose-50 via-rose-100 to-rose-200 dark:from-rose-800 dark:via-fuchsia-800 dark:to-rose-800 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-rose-900/10 dark:ring-white/5 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
-      onClick={() => {
-        ipc.system.openExternalUrl(
-          "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-turbo",
-        );
-      }}
-    >
-      <div
-        className="absolute inset-0 z-0 bg-gradient-to-tr from-white/60 via-transparent to-transparent pointer-events-none dark:from-white/10"
-        aria-hidden="true"
-      />
-      <div className="absolute inset-0 z-0 pointer-events-none dark:hidden">
-        <div className="absolute -top-10 -left-8 h-44 w-44 rounded-full blur-2xl bg-rose-200/50" />
-        <div className="absolute -bottom-12 -right-8 h-56 w-56 rounded-full blur-3xl bg-fuchsia-200/50" />
-      </div>
-      <div className="relative z-10 px-4 md:px-6 pr-6 md:pr-8">
-        <div className="mt-0.5 sm:mt-1 flex items-center gap-2 sm:gap-3 justify-center">
-          <div className="flex flex-col items-center text-center">
-            <div className="text-xl font-semibold tracking-tight text-rose-900 dark:text-rose-100">
-              {t("proBanner.generateCode4x")}
-            </div>
-            <div className="text-sm sm:text-base mt-1 text-rose-700 dark:text-rose-200/80">
-              {t("proBanner.withTurboModels")}
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label="Get Dyad Pro"
-            className="inline-flex items-center rounded-md bg-white/90 text-rose-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
             {t("proBanner.getDyadPro")}
           </button>

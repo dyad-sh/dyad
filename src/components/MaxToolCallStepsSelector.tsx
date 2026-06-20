@@ -26,20 +26,20 @@ const options: OptionInfo[] = [
       "Limits tool calls to 25. Good for simple tasks that don't need many steps.",
   },
   {
+    value: "50",
+    label: "Medium (50)",
+    description: "Moderate limit for straightforward tasks.",
+  },
+  {
     value: defaultValue,
     label: `Default (${DEFAULT_MAX_TOOL_CALL_STEPS})`,
     description: "Balanced limit for most tasks.",
   },
   {
-    value: "100",
-    label: "High (100)",
-    description: "Extended limit for complex multi-step tasks.",
-  },
-  {
     value: "200",
-    label: "Very High (200)",
+    label: "High (200)",
     description:
-      "Maximum tool calls for very complex tasks (may increase cost and time).",
+      "Extended limit for complex multi-step tasks (may increase cost and time).",
   },
 ];
 
@@ -57,11 +57,17 @@ export const MaxToolCallStepsSelector: React.FC = () => {
   };
 
   // Determine the current value
-  const currentValue = settings?.maxToolCallSteps?.toString() || defaultValue;
+  const rawValue = settings?.maxToolCallSteps;
+  const currentValue =
+    rawValue == null || rawValue === DEFAULT_MAX_TOOL_CALL_STEPS
+      ? defaultValue
+      : rawValue.toString();
 
   // Find the current option to display its description
   const currentOption =
-    options.find((opt) => opt.value === currentValue) || options[1];
+    options.find((opt) => opt.value === currentValue) ||
+    options.find((opt) => opt.value === defaultValue) ||
+    options[0];
 
   return (
     <div className="space-y-1">

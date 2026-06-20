@@ -3,6 +3,7 @@ import log from "electron-log";
 import { platform } from "os";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
+import { getInitialLoadIsFirstSession } from "@/main/settings";
 
 const logger = log.scope("window-handlers");
 
@@ -40,7 +41,29 @@ export function registerWindowHandlers() {
     window.close();
   });
 
+  createTypedHandler(systemContracts.focusWindow, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      logger.error("Failed to get BrowserWindow instance for focus command");
+      return;
+    }
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show(); // Ensures window is visible on macOS
+    window.focus();
+  });
+
   createTypedHandler(systemContracts.getSystemPlatform, async () => {
     return platform();
   });
+
+  createTypedHandler(
+    systemContracts.getInitialLoadTelemetryContext,
+    async () => {
+      return {
+        isFirstSession: getInitialLoadIsFirstSession(),
+      };
+    },
+  );
 }

@@ -28,6 +28,8 @@ import {
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 // Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
 const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
@@ -49,7 +51,10 @@ export function registerVisualEditingHandlers() {
         });
 
         if (!app) {
-          throw new Error(`App not found: ${appId}`);
+          throw new DyadError(
+            `App not found: ${appId}`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         const appPath = getDyadAppPath(app.path);
@@ -163,6 +168,8 @@ export function registerVisualEditingHandlers() {
           });
         }
 
+        const changedPaths = new Set<string>();
+
         // Apply changes to each file
         for (const [relativePath, lineChanges] of fileChanges) {
           const normalizedRelativePath = normalizePath(relativePath);
@@ -170,6 +177,7 @@ export function registerVisualEditingHandlers() {
           const content = await fsPromises.readFile(filePath, "utf-8");
           const transformedContent = transformContent(content, lineChanges);
           await fsPromises.writeFile(filePath, transformedContent, "utf-8");
+          changedPaths.add(normalizedRelativePath);
           // Check if git repository exists and commit the change
           if (fs.existsSync(path.join(appPath, ".git"))) {
             await gitAdd({
@@ -183,6 +191,15 @@ export function registerVisualEditingHandlers() {
             });
           }
         }
+        for (const absoluteImagePath of writtenImagePaths) {
+          changedPaths.add(
+            normalizePath(path.relative(appPath, absoluteImagePath)),
+          );
+        }
+        queueCloudSandboxSnapshotSync({
+          appId,
+          changedPaths: [...changedPaths],
+        });
       } catch (error) {
         // Unstage any image files that were git-added before the failure
         for (const { appPath, filepath } of stagedGitPaths) {
@@ -226,7 +243,10 @@ export function registerVisualEditingHandlers() {
         });
 
         if (!app) {
-          throw new Error(`App not found: ${appId}`);
+          throw new DyadError(
+            `App not found: ${appId}`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         const appPath = getDyadAppPath(app.path);

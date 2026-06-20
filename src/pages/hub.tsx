@@ -1,15 +1,11 @@
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import { useRouter } from "@tanstack/react-router";
+import { BackButton } from "@/components/ui/back-button";
 import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import { TemplateCard } from "@/components/TemplateCard";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
-import { NeonConnector } from "@/components/NeonConnector";
 
 const HubPage: React.FC = () => {
-  const router = useRouter();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { templates, isLoading } = useTemplates();
   const { settings, updateSettings } = useSettings();
@@ -31,15 +27,7 @@ const HubPage: React.FC = () => {
   return (
     <div className="min-h-screen px-8 py-4">
       <div className="max-w-5xl mx-auto pb-12">
-        <Button
-          onClick={() => router.history.back()}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
-        </Button>
+        <BackButton />
         <header className="mb-8 text-left">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             Pick your default template
@@ -89,8 +77,6 @@ const HubPage: React.FC = () => {
             </div>
           </section>
         )}
-
-        <BackendSection />
       </div>
 
       <CreateAppDialog
@@ -101,24 +87,5 @@ const HubPage: React.FC = () => {
     </div>
   );
 };
-
-function BackendSection() {
-  return (
-    <div className="">
-      <header className="mb-4 text-left">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Backend Services
-        </h1>
-        <p className="text-md text-gray-600 dark:text-gray-400">
-          Connect to backend services for your projects.
-        </p>
-      </header>
-
-      <div className="grid grid-cols-1 gap-6">
-        <NeonConnector />
-      </div>
-    </div>
-  );
-}
 
 export default HubPage;

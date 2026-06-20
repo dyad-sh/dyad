@@ -1,13 +1,13 @@
-import { useAtom, useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
+import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
 import {
-  appConsoleEntriesAtom,
-  previewModeAtom,
-  previewPanelKeyAtom,
-  selectedAppIdAtom,
-} from "../../atoms/appAtoms";
+  currentConsoleEntriesAtom,
+  currentPreviewReloadTokenAtom,
+} from "@/atoms/previewRuntimeAtoms";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
+import { PreviewToolbar } from "./PreviewToolbar";
 import { Problems } from "./Problems";
 import { ConfigurePanel } from "./ConfigurePanel";
 import { ChevronDown, ChevronUp, Logs } from "lucide-react";
@@ -21,6 +21,7 @@ import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -59,13 +60,13 @@ const ConsoleHeader = ({
 
 // Main PreviewPanel component
 export function PreviewPanel() {
-  const [previewMode] = useAtom(previewModeAtom);
+  const previewMode = useAtomValue(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, loading, app } = useRunApp();
-  const { loadEdgeLogs } = useSupabase();
-  const key = useAtomValue(previewPanelKeyAtom);
-  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
+  const { runApp, loading } = useRunApp();
+  const { app } = useLoadApp(selectedAppId);
+  const key = useAtomValue(currentPreviewReloadTokenAtom);
+  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
 
   const latestMessage =
     consoleEntries.length > 0
@@ -80,6 +81,12 @@ export function PreviewPanel() {
       console.error("Failed to notify app selection:", error);
     }
   }, []);
+
+  useSupabase({
+    edgeLogsProjectId: app?.supabaseProjectId,
+    edgeLogsOrganizationSlug: app?.supabaseOrganizationSlug,
+    edgeLogsAppId: app?.id,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -121,48 +128,32 @@ export function PreviewPanel() {
   // will handle cleanup of idle apps, and users may want apps to keep
   // running in the background.
 
-  // Load edge logs if app has Supabase project configured
-  useEffect(() => {
-    const projectId = app?.supabaseProjectId;
-    const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
-    if (!projectId) return;
-
-    // Load logs immediately
-    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-      console.error("Failed to load edge logs:", error);
-    });
-
-    // Poll for new logs every 5 seconds
-    const intervalId = setInterval(() => {
-      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-        console.error("Failed to load edge logs:", error);
-      });
-    }, 5000);
-
-    return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="vertical">
           <Panel id="content" minSize={30}>
-            <div className="h-full overflow-y-auto">
-              {previewMode === "preview" ? (
-                <PreviewIframe key={key} loading={loading} />
-              ) : previewMode === "code" ? (
-                <CodeView loading={loading} app={app} />
-              ) : previewMode === "configure" ? (
-                <ConfigurePanel />
-              ) : previewMode === "publish" ? (
-                <PublishPanel />
-              ) : previewMode === "security" ? (
-                <SecurityPanel />
-              ) : previewMode === "plan" ? (
-                <PlanPanel />
-              ) : (
-                <Problems />
+            <div className="flex h-full flex-col">
+              {previewMode !== "preview" && (
+                <PreviewToolbar compactThreshold={0} />
               )}
+              <div className="flex-1 overflow-y-auto">
+                {previewMode === "preview" ? (
+                  <PreviewIframe key={key} loading={loading} />
+                ) : previewMode === "code" ? (
+                  <CodeView loading={loading} app={app ?? null} />
+                ) : previewMode === "configure" ? (
+                  <ConfigurePanel />
+                ) : previewMode === "publish" ? (
+                  <PublishPanel />
+                ) : previewMode === "security" ? (
+                  <SecurityPanel />
+                ) : previewMode === "plan" ? (
+                  <PlanPanel />
+                ) : (
+                  <Problems />
+                )}
+              </div>
             </div>
           </Panel>
           {isConsoleOpen && (

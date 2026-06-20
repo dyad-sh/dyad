@@ -9,3 +9,5 @@ Content here
 ```
 
 Valid states: `"finished"`, `"in-progress"`, `"aborted"`
+
+- Renderer unit tests that import chat components can initialize Monaco through the file editor tree, leading to Happy DOM errors like `moduleId: 'vs/editor/editor.main'` or offline `cdn.jsdelivr.net` failures. For pure helper logic, extract the helper into a small `.ts` module and test that directly; when testing `DyadMarkdownParser`, mock `../preview_panel/FileEditor`.

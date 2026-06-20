@@ -17,16 +17,15 @@ import {
   gitListBranches,
   gitListRemoteBranches,
   isGitStatusClean,
-  gitAddAll,
-  gitCommit,
   getCurrentCommitHash,
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
 } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -38,17 +37,25 @@ import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { slugifyAppPath } from "@/shared/slugify";
+import {
+  isComponentTaggerUpgradeNeeded,
+  applyComponentTagger,
+} from "../utils/app_upgrade_utils";
 
 const logger = log.scope("github_handlers");
 
 /**
- * Normalizes a GitHub repository name to match GitHub's automatic normalization rules.
- * GitHub converts spaces to hyphens when creating repositories.
+ * Normalizes a repository name to a kebab-case slug so it is a valid GitHub repo
+ * name AND a valid Vercel project name (Vercel requires lowercase names). This
+ * mirrors how app folder paths are derived (via `slugifyAppPath`), keeping the
+ * repo and Vercel project names consistent with the app's folder.
  * @param repoName - The original repository name
- * @returns The normalized repository name with spaces replaced by hyphens
+ * @returns The kebab-case repository name (e.g. "TaskMaster Pro" -> "task-master-pro")
  */
 export function normalizeGitHubRepoName(repoName: string): string {
-  return repoName.trim().replace(/\s+/g, "-");
+  return slugifyAppPath(repoName);
 }
 
 // --- GitHub Device Flow Constants ---
@@ -136,7 +143,7 @@ export async function prepareLocalBranch({
 }) {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) {
-    throw new Error("App not found");
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
   const appPath = getDyadAppPath(app.path);
   const targetBranch = branch || "main";
@@ -187,8 +194,7 @@ export async function prepareLocalBranch({
         }
 
         try {
-          await gitAddAll({ path: appPath });
-          const commitHash = await gitCommit({
+          const commitHash = await gitService.stageAllAndCommit({
             path: appPath,
             message:
               "chore: auto-commit local changes before connecting to GitHub",
@@ -424,7 +430,10 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           break;
       }
     } else {
-      throw new Error(`Unknown response structure: ${JSON.stringify(data)}`);
+      throw new DyadError(
+        `Unknown response structure: ${JSON.stringify(data)}`,
+        DyadErrorKind.External,
+      );
     }
   } catch (error) {
     logger.error("Error polling for GitHub access token:", error);
@@ -551,7 +560,7 @@ async function handleListGithubRepos(): Promise<
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     // Fetch user's repositories
@@ -579,6 +588,7 @@ async function handleListGithubRepos(): Promise<
       private: repo.private,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list repos:", err);
     throw new Error(err.message || "Failed to list GitHub repositories.");
   }
@@ -594,7 +604,7 @@ async function handleGetRepoBranches(
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     // Fetch repository branches
@@ -621,6 +631,7 @@ async function handleGetRepoBranches(
       commit: { sha: branch.commit.sha },
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to get repo branches:", err);
     throw new Error(err.message || "Failed to get repository branches.");
   }
@@ -685,7 +696,7 @@ async function handleCreateRepo(
   const settings = readSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
   // If org is empty, create for the authenticated user
   let owner = org;
@@ -753,10 +764,10 @@ async function handleCreateRepo(
     throw new Error(errorMessage);
   }
 
-  // Set up remote URL before preparing branch
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${normalizedRepo}.git`;
+  // Set up remote URL before preparing branch.
+  // The URL is stored without credentials; auth is injected per-invocation
+  // via environment variables in git_utils.
+  const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`;
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
@@ -790,7 +801,7 @@ async function handleConnectToExistingRepo(
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     // Verify the repository exists and user has access
@@ -811,10 +822,9 @@ async function handleConnectToExistingRepo(
       );
     }
 
-    // Set up remote URL before preparing branch
-    const remoteUrl = IS_TEST_BUILD
-      ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
-      : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+    // Set up remote URL before preparing branch (credentials are never
+    // stored in the URL; auth is injected per-invocation in git_utils)
+    const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${repo}.git`;
 
     // Prepare local branch with remote URL set up
     await prepareLocalBranch({
@@ -827,6 +837,7 @@ async function handleConnectToExistingRepo(
     // Store org, repo, and branch in the app's DB row
     await updateAppGithubRepo({ appId, org: owner, repo, branch });
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to connect to existing repo:", err);
     throw new Error(err.message || "Failed to connect to existing repository.");
   }
@@ -849,21 +860,24 @@ async function handlePushToGithub(
   const settings = readSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
 
   // Get app info from DB
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new Error("App is not linked to a GitHub repo.");
+    throw new DyadError(
+      "App is not linked to a GitHub repo.",
+      DyadErrorKind.Precondition,
+    );
   }
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch || "main";
 
-  // Set up remote URL with token
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set up remote URL (credentials are never stored in the URL; auth is
+  // injected per-invocation in git_utils). Re-setting it on every push also
+  // scrubs tokens that older versions embedded in .git/config.
+  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -961,19 +975,21 @@ async function handleRebaseFromGithub(
   const settings = readSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
-    throw new Error("Not authenticated with GitHub.");
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new Error("App is not linked to a GitHub repo.");
+    throw new DyadError(
+      "App is not linked to a GitHub repo.",
+      DyadErrorKind.Precondition,
+    );
   }
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch || "main";
 
-  // Set up remote URL with token
-  const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set up remote URL (credentials are never stored in the URL; auth is
+  // injected per-invocation in git_utils)
+  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -1035,12 +1051,15 @@ async function handleListCollaborators(
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      throw new Error("App is not linked to a GitHub repo.");
+      throw new DyadError(
+        "App is not linked to a GitHub repo.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     const response = await fetch(
@@ -1066,6 +1085,7 @@ async function handleListCollaborators(
       permissions: c.permissions,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list collaborators:", err);
     throw new Error(err.message || "Failed to list collaborators.");
   }
@@ -1079,10 +1099,13 @@ async function handleInviteCollaborator(
     // Validate username
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
-      throw new Error("Username cannot be empty.");
+      throw new DyadError("Username cannot be empty.", DyadErrorKind.External);
     }
     if (trimmedUsername.length > 39) {
-      throw new Error("GitHub username cannot exceed 39 characters.");
+      throw new DyadError(
+        "GitHub username cannot exceed 39 characters.",
+        DyadErrorKind.Validation,
+      );
     }
     // Single character usernames must be alphanumeric only
     if (trimmedUsername.length === 1) {
@@ -1103,12 +1126,15 @@ async function handleInviteCollaborator(
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      throw new Error("App is not linked to a GitHub repo.");
+      throw new DyadError(
+        "App is not linked to a GitHub repo.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     // GitHub API to add a collaborator (sends an invitation)
@@ -1134,6 +1160,7 @@ async function handleInviteCollaborator(
       );
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to invite collaborator:", err);
     throw new Error(err.message || "Failed to invite collaborator.");
   }
@@ -1147,12 +1174,15 @@ async function handleRemoveCollaborator(
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      throw new Error("Not authenticated with GitHub.");
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
 
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      throw new Error("App is not linked to a GitHub repo.");
+      throw new DyadError(
+        "App is not linked to a GitHub repo.",
+        DyadErrorKind.Precondition,
+      );
     }
 
     const response = await fetch(
@@ -1174,6 +1204,7 @@ async function handleRemoveCollaborator(
       );
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to remove collaborator:", err);
     throw new Error(err.message || "Failed to remove collaborator.");
   }
@@ -1203,7 +1234,7 @@ async function handleDisconnectGithubRepo(
   });
 
   if (!app) {
-    throw new Error("App not found");
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
 
   // Update app in database to remove GitHub repo, org, and branch
@@ -1221,7 +1252,13 @@ async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
 ): Promise<CloneRepoResult> {
-  const { url, installCommand, startCommand, appName } = params;
+  const {
+    url,
+    installCommand,
+    startCommand,
+    appName,
+    optimizeForDyad = true,
+  } = params;
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1260,18 +1297,22 @@ async function handleCloneRepoFromUrl(
     }
 
     const appPath = getDyadAppPath(finalAppName);
+
+    if (!isAppLocationAccessible(appPath)) {
+      throw new Error(
+        `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {
         fs.mkdirSync(appPath, { recursive: true });
       }
     }
-    // Use authenticated URL if token exists, otherwise use public HTTPS URL
-    const cloneUrl = accessToken
-      ? IS_TEST_BUILD
-        ? `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`
-        : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repoName}.git`
-      : `https://github.com/${owner}/${repoName}.git`; // Changed: use public HTTPS URL instead of original url
+    // Always clone with a credential-free URL; if a token exists it is
+    // injected per-invocation in git_utils.
+    const cloneUrl = `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`;
     try {
       await gitClone({
         path: appPath,
@@ -1303,7 +1344,25 @@ async function handleCloneRepoFromUrl(
       })
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
-    // Return success object
+
+    let autoUpgradeWarning = false;
+    if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
+      try {
+        await applyComponentTagger(appPath, { installDependencies: false });
+        logger.log(
+          `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
+        );
+      } catch (upgradeError) {
+        // Auto-upgrade  Failures are logged but don't block import.
+        // User will be notified via warning toast to manually upgrade if needed.
+        autoUpgradeWarning = true;
+        logger.warn(
+          `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
+          upgradeError,
+        );
+      }
+    }
+
     return {
       app: {
         ...newApp,
@@ -1313,9 +1372,9 @@ async function handleCloneRepoFromUrl(
         vercelTeamSlug: null,
       },
       hasAiRules,
+      autoUpgradeWarning,
     };
   } catch (err: any) {
-    // Catch any remaining unexpected errors and return an error object
     logger.error("[GitHub Handler] Unexpected error in clone flow:", err);
     return {
       error: err.message || "An unexpected error occurred during cloning.",

@@ -1,4 +1,5 @@
-import { test, testSkipIfWindows } from "./helpers/test_helper";
+import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
 
 // Skipping because snapshotting the security findings table is not
 // consistent across platforms because different amounts of text
@@ -15,7 +16,10 @@ testSkipIfWindows("security review", async ({ po }) => {
 
   await po.page.getByRole("button", { name: "Fix Issue" }).first().click();
   await po.chatActions.waitForChatCompletion();
-  await po.snapshotMessages();
+  await po.snapshotMessages({
+    name: "security-review---fix-issue",
+    replaceDumpPath: true,
+  });
 });
 
 testSkipIfWindows(
@@ -65,6 +69,48 @@ test("security review - multi-select and fix issues", async ({ po }) => {
 
   // Click the fix selected button
   await fixSelectedButton.click();
+  await expect(async () => {
+    const text = await po.page.getByTestId("messages-list").textContent();
+    expect(text).toMatch(
+      /Please fix the following 2 security issues[\s\S]*Version 2:/,
+    );
+  }).toPass({ timeout: Timeout.MEDIUM });
+  await po.snapshotMessages({ replaceDumpPath: true });
+});
+
+test("security review - creates chat tabs", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=1");
+
+  await po.previewPanel.selectPreviewMode("security");
+
+  // Initial tab count should be 1 (the first chat)
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Run security review creates a new chat
+  await po.page
+    .getByRole("button", { name: "Run Security Review" })
+    .first()
+    .click();
   await po.chatActions.waitForChatCompletion();
-  await po.snapshotMessages();
+
+  // Tab count should increase to 2
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Click Fix Issue creates another chat
+  await po.page.getByRole("button", { name: "Fix Issue" }).first().click();
+  await po.chatActions.waitForChatCompletion();
+
+  // Tab count should increase to 3
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(3);
+  }).toPass({ timeout: Timeout.MEDIUM });
 });

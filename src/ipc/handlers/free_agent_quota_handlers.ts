@@ -6,6 +6,7 @@ import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
 import { ipcMain } from "electron";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 import fetch from "node-fetch";
 
 const logger = log.scope("free_agent_quota_handlers");
@@ -61,8 +62,7 @@ async function getServerTime(): Promise<number> {
   }
 }
 
-/** Maximum number of free agent messages per 24-hour window */
-export const FREE_AGENT_QUOTA_LIMIT = 5;
+export { FREE_AGENT_QUOTA_LIMIT };
 
 /**
  * Duration of the quota window in milliseconds (23 hours).
@@ -138,7 +138,7 @@ export async function unmarkMessageAsUsingFreeAgentQuota(
  * Gets the current free agent quota status.
  * Exported for use in chat stream handlers.
  *
- * Quota behavior: All 5 messages are released at once when 24 hours have passed
+ * Quota behavior: All quota messages are released at once when 24 hours have passed
  * since the oldest message was sent (not a rolling window).
  */
 export async function getFreeAgentQuotaStatus() {
@@ -164,7 +164,7 @@ export async function getFreeAgentQuotaStatus() {
   }
 
   // Check if the oldest message is >= 24 hours old
-  // If so, all 5 messages are released at once (quota resets)
+  // If so, all quota messages are released at once (quota resets)
   // Uses server time to prevent clock manipulation cheating
   const oldestMessage = quotaMessages[0];
   const windowStartTime = oldestMessage.createdAt.getTime();

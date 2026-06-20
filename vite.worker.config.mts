@@ -1,5 +1,8 @@
+import { builtinModules } from "node:module";
 import { defineConfig } from "vite";
 import path from "path";
+
+const nodeBuiltins = builtinModules.flatMap((name) => [name, `node:${name}`]);
 
 // https://vitejs.dev/config
 export default defineConfig({
@@ -18,7 +21,7 @@ export default defineConfig({
       formats: ["cjs"],
     },
     rollupOptions: {
-      external: ["node:fs", "node:path", "node:worker_threads", "typescript"],
+      external: [...nodeBuiltins, "typescript", "pg"],
       //   output: {
       //     dir: "dist/workers/tsc",
       //   },

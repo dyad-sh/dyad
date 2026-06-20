@@ -7,6 +7,8 @@ import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
+import type { AppFrameworkType } from "@/lib/framework_constants";
+import type { McpToolDef } from "./mcp_type_defs";
 
 // ============================================================================
 // XML Escape Helpers
@@ -27,16 +29,11 @@ export {
 export type Todo = AgentTodo;
 
 /** Tracks which file-editing tools were used on each file path */
-export const FILE_EDIT_TOOL_NAMES = [
-  "write_file",
-  "edit_file",
-  "search_replace",
-] as const;
+export const FILE_EDIT_TOOL_NAMES = ["write_file", "search_replace"] as const;
 export type FileEditToolName = (typeof FILE_EDIT_TOOL_NAMES)[number];
 export interface FileEditTracker {
   [filePath: string]: {
     write_file: number;
-    edit_file: number;
     search_replace: number;
   };
 }
@@ -45,9 +42,20 @@ export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
   appPath: string;
+  /**
+   * Apps referenced via `@app:Name` in the current turn. Read-only tools
+   * can target these via an `app_name` parameter; write tools cannot reach them.
+   * Keyed by lowercased app name so lookups are case-insensitive (matching
+   * the mention-extraction pipeline in `mention_apps.ts`). Value is the
+   * absolute app path.
+   */
+  referencedApps: Map<string, string>;
   chatId: number;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;
+  neonProjectId: string | null;
+  neonActiveBranchId: string | null;
+  frameworkType: AppFrameworkType | null;
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;
@@ -76,6 +84,7 @@ export interface AgentContext {
     toolName: string;
     toolDescription?: string | null;
     inputPreview?: string | null;
+    metadata?: { sqlMutatesSchema?: boolean } | null;
   }) => Promise<boolean>;
   /**
    * Append a user message to be sent after the tool result.
@@ -88,6 +97,37 @@ export interface AgentContext {
    * Call this when todos are updated to show them in the chat input area.
    */
   onUpdateTodos: (todos: Todo[]) => void;
+  /**
+   * Queues a warning toast to be shown to the user when the turn completes.
+   */
+  onWarningMessage?: (message: string) => void;
+  /**
+   * Marks that the current turn actually accessed an attachment path.
+   */
+  onAttachmentAccess?: () => void;
+  /**
+   * Stream-scoped abort signal. Tools that block on user-driven async work
+   * (e.g. waiting for an integration response) should race their wait against
+   * this signal so they don't keep the stream alive after a cancel.
+   */
+  abortSignal?: AbortSignal;
+  /**
+   * Whether MCP tools should be exposed as host functions inside the
+   * `execute_sandbox_script` sandbox this turn. Set by the local-agent
+   * handler based on read-only / plan-mode status and effective
+   * sandbox-tool availability. When false or undefined, `execute_sandbox_script`
+   * skips MCP capability injection — preventing sandboxed scripts from
+   * calling MCP tools in modes where MCP is intentionally not exposed.
+   */
+  mcpToolsEnabled?: boolean;
+  /**
+   * MCP tool definitions for the current turn, populated by the local-agent
+   * handler. The handler uses these to build the dynamic
+   * `execute_sandbox_script` description and the sandbox `execute()` path
+   * uses the same array to build the capability map — so the prompt and
+   * the runtime surface are guaranteed to agree.
+   */
+  mcpToolDefs?: McpToolDef[];
 }
 
 // ============================================================================
@@ -161,6 +201,14 @@ export interface ToolDefinition<T = any> {
    * @returns A human-readable description of the operation
    */
   getConsentPreview?: (args: T) => string;
+
+  /**
+   * Returns structured metadata for consent prompts. Keep this small and
+   * renderer-safe; it is sent over IPC.
+   */
+  getConsentMetadata?: (
+    args: T,
+  ) => { sqlMutatesSchema?: boolean } | null | undefined;
 
   /**
    * Build XML from parsed partial args.

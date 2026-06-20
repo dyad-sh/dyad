@@ -5,6 +5,7 @@
 
 import { readSettings } from "@/main/settings";
 import type { AgentContext } from "./types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const DYAD_ENGINE_URL =
   process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
@@ -33,7 +34,7 @@ export async function engineFetch(
   const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
   if (!apiKey) {
-    throw new Error("Dyad Pro API key is required");
+    throw new DyadError("Dyad Pro API key is required", DyadErrorKind.Auth);
   }
 
   const { headers: extraHeaders, ...restOptions } = options;

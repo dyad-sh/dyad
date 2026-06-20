@@ -1,41 +1,31 @@
 import { useCallback } from "react";
-import { useAtom } from "jotai";
-import {
-  localModelsAtom,
-  localModelsLoadingAtom,
-  localModelsErrorAtom,
-} from "@/atoms/localModelsAtoms";
+import { useQuery } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useLocalModels() {
-  const [models, setModels] = useAtom(localModelsAtom);
-  const [loading, setLoading] = useAtom(localModelsLoadingAtom);
-  const [error, setError] = useAtom(localModelsErrorAtom);
+  const { data, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.languageModels.ollamaLocal,
+    queryFn: async () => {
+      const { models } = await ipc.languageModel.listOllamaModels();
+      return models;
+    },
+    enabled: false,
+  });
 
-  /**
-   * Load local models from Ollama
-   */
   const loadModels = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { models: modelList } = await ipc.languageModel.listOllamaModels();
-      setModels(modelList);
-      setError(null);
-
-      return modelList;
-    } catch (error) {
-      console.error("Error loading local Ollama models:", error);
-      setError(error instanceof Error ? error : new Error(String(error)));
+    const result = await refetch();
+    if (result.error) {
+      console.error("Error loading local Ollama models:", result.error);
       return [];
-    } finally {
-      setLoading(false);
     }
-  }, [setModels, setError, setLoading]);
+    return result.data ?? [];
+  }, [refetch]);
 
   return {
-    models,
-    loading,
-    error,
+    models: data ?? [],
+    loading: isFetching,
+    error: error ?? null,
     loadModels,
   };
 }

@@ -3,6 +3,7 @@ import { LM_STUDIO_BASE_URL } from "../utils/lm_studio_utils";
 import { createTypedHandler } from "./base";
 import { languageModelContracts } from "../types/language-model";
 import type { LocalModel } from "../types/language-model";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("lmstudio_handler");
 
@@ -24,7 +25,10 @@ export async function fetchLMStudioModels(): Promise<{ models: LocalModel[] }> {
     `${LM_STUDIO_BASE_URL}/api/v0/models`,
   );
   if (!modelsResponse.ok) {
-    throw new Error("Failed to fetch models from LM Studio");
+    throw new DyadError(
+      "Failed to fetch models from LM Studio",
+      DyadErrorKind.External,
+    );
   }
   const modelsJson = await modelsResponse.json();
   const downloadedModels = modelsJson.data as LMStudioModel[];

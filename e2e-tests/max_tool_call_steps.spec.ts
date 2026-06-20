@@ -23,11 +23,11 @@ testSkipIfWindows("max tool call steps setting", async ({ po }) => {
   await po.navigation.goToSettingsTab();
   const beforeSettings2 = po.settings.recordSettings();
 
-  // Change to High (100)
+  // Change to High (200)
   await po.page
     .getByRole("combobox", { name: "Max Tool Calls (Agent)" })
     .click();
-  await po.page.getByRole("option", { name: "High (100)" }).click();
+  await po.page.getByRole("option", { name: "High (200)" }).click();
   po.settings.snapshotSettingsDelta(beforeSettings2);
 
   // Change back to Default
@@ -38,6 +38,6 @@ testSkipIfWindows("max tool call steps setting", async ({ po }) => {
   await po.page
     .getByRole("combobox", { name: "Max Tool Calls (Agent)" })
     .click();
-  await po.page.getByRole("option", { name: "Default (50)" }).click();
+  await po.page.getByRole("option", { name: "Default (100)" }).click();
   po.settings.snapshotSettingsDelta(beforeSettings3);
 });

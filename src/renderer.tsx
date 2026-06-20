@@ -27,7 +27,14 @@ import {
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
 import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
+import { pendingIntegrationAtom } from "./atoms/integrationAtoms";
 import { queryKeys } from "./lib/queryKeys";
+import {
+  createExceptionFromTelemetry,
+  getExceptionTelemetryContext,
+  shouldBypassNonProTelemetrySampling,
+  shouldFilterPostHogExceptionEvent,
+} from "./lib/posthogTelemetry";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -83,6 +90,13 @@ const posthogClient = posthog.init(
         console.debug("Telemetry not opted in, skipping event");
         return null;
       }
+
+      if (shouldFilterPostHogExceptionEvent(event)) {
+        console.debug(
+          "Filtering generic fetch failed exception from telemetry",
+        );
+        return null;
+      }
       const telemetryUserId = getTelemetryUserId();
       if (telemetryUserId) {
         posthogClient.identify(telemetryUserId);
@@ -92,15 +106,13 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
-      // For non-Pro users, only send 10% of events (but always send errors)
+      // For non-Pro users, only send 10% of events (but always send errors,
+      // app:initial-load, and sandbox.script.* — see shouldBypassNonProTelemetrySampling).
       if (!isDyadProUser()) {
-        const isErrorEvent =
-          event?.event === "$exception" ||
-          event?.event?.toLowerCase().includes("error") ||
-          event?.properties?.$exception_type ||
-          event?.properties?.error;
-
-        if (!isErrorEvent && Math.random() > 0.1) {
+        if (
+          !shouldBypassNonProTelemetrySampling(event) &&
+          Math.random() > 0.1
+        ) {
           console.debug("Non-Pro user: sampling out event", event?.event);
           return null;
         }
@@ -167,9 +179,27 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = ipc.events.misc.onErrorToast(({ message, action }) => {
+      showError(message, {
+        action: action
+          ? {
+              label: action.label,
+              onClick: () => {
+                ipc.system.openExternalUrl(action.url);
+              },
+            }
+          : undefined,
+      });
+    });
+    void ipc.misc.rendererErrorToastReady(undefined);
+    return () => unsubscribe();
+  }, []);
+
   // Agent v2 tool consent requests - queue consents instead of overwriting
   const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
+  const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
   const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
 
   // Agent todos updates
@@ -206,6 +236,7 @@ function App() {
           toolName: payload.toolName,
           toolDescription: payload.toolDescription,
           inputPreview: payload.inputPreview,
+          metadata: payload.metadata,
         },
       ]);
     });
@@ -225,14 +256,32 @@ function App() {
         next.delete(chatId);
         return next;
       });
+      // Without this, a cancelled/timed-out integration request would leave the
+      // chat card interactive and the Configure panel's Continue button armed
+      // against a backend resolver that no longer exists — clicking it would
+      // silently no-op while still queuing a phantom continuation message.
+      setPendingIntegration((prev) => {
+        if (!prev.has(chatId)) return prev;
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents, setPendingQuestionnaire]);
+  }, [setPendingAgentConsents, setPendingQuestionnaire, setPendingIntegration]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {
     const unsubscribe = ipc.events.system.onTelemetryEvent(
       ({ eventName, properties }) => {
+        if (eventName === "$exception") {
+          posthog.captureException(
+            createExceptionFromTelemetry(properties),
+            getExceptionTelemetryContext(properties),
+          );
+          return;
+        }
+
         posthog.capture(eventName, properties);
       },
     );

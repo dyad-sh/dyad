@@ -11,10 +11,16 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
+import { useChatMode } from "@/hooks/useChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useMcp } from "@/hooks/useMcp";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
+import {
+  getChatModeFallbackToastId,
+  getChatModeDisplayName,
+  showChatModeFallbackToast,
+} from "@/lib/chatModeToast";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
@@ -23,33 +29,57 @@ import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
-
-function NewBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-      New
-    </span>
-  );
-}
+import { useEffect, useRef } from "react";
 
 export function ChatModeSelector() {
-  const { settings, updateSettings } = useSettings();
+  const { updateSettings } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const {
+    selectedMode,
+    effectiveMode,
+    storedChatMode,
+    fallbackReason,
+    setChatMode,
+    settings,
+  } = useChatMode(isChatRoute ? chatId : null);
+  const fallbackToastKeyRef = useRef<string | null>(null);
 
-  // Migration happens on read, so selectedChatMode will never be "agent"
-  const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
-  const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
+  const { messagesRemaining, messagesLimit, isQuotaExceeded } =
+    useFreeAgentQuota();
   const { servers } = useMcp();
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
 
+  useEffect(() => {
+    if (!chatId || !fallbackReason || !storedChatMode) {
+      fallbackToastKeyRef.current = null;
+      return;
+    }
+
+    const toastKey = getChatModeFallbackToastId({
+      chatId,
+      reason: fallbackReason,
+      effectiveMode,
+    });
+    if (fallbackToastKeyRef.current === toastKey) {
+      return;
+    }
+
+    fallbackToastKeyRef.current = toastKey;
+    showChatModeFallbackToast({
+      effectiveMode,
+      isPro: isProEnabled,
+      toastId: toastKey,
+    });
+  }, [chatId, effectiveMode, fallbackReason, isProEnabled, storedChatMode]);
+
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
-    updateSettings({ selectedChatMode: newMode });
+    void setChatMode(newMode).catch(() => {});
 
     // We want to show a toast when user is switching to the new agent mode
     // because they might weird results mixing Build and Agent mode in the same chat.
@@ -80,19 +110,7 @@ export function ChatModeSelector() {
   };
 
   const getModeDisplayName = (mode: ChatMode) => {
-    switch (mode) {
-      case "build":
-        return "Build";
-      case "ask":
-        return "Ask";
-      case "local-agent":
-        // Show "Basic Agent" for non-Pro users, "Agent" for Pro users
-        return isProEnabled ? "Agent" : "Basic Agent";
-      case "plan":
-        return "Plan";
-      default:
-        return "Build";
-    }
+    return getChatModeDisplayName(mode, isProEnabled);
   };
 
   const getModeIcon = (mode: ChatMode) => {
@@ -122,6 +140,7 @@ export function ChatModeSelector() {
             render={
               <MiniSelectTrigger
                 data-testid="chat-mode-selector"
+                aria-label={`Chat mode: ${getModeDisplayName(selectedMode)}`}
                 className={cn(
                   "cursor-pointer w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
                   selectedMode === "build" || selectedMode === "local-agent"
@@ -154,7 +173,6 @@ export function ChatModeSelector() {
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />
                   <span className="font-medium">Agent v2</span>
-                  <NewBadge />
                 </div>
                 <span className="text-xs text-muted-foreground ml-[22px]">
                   Better at bigger tasks and debugging
@@ -167,7 +185,6 @@ export function ChatModeSelector() {
               <div className="flex items-center gap-1.5">
                 <Lightbulb size={14} className="text-blue-500" />
                 <span className="font-medium">Plan</span>
-                <NewBadge />
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
                 Design before you build
@@ -181,8 +198,7 @@ export function ChatModeSelector() {
                   <Bot size={14} className="text-muted-foreground" />
                   <span className="font-medium">Basic Agent</span>
                   <span className="text-xs text-muted-foreground">
-                    ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining for
-                    today)
+                    {`(${isQuotaExceeded ? "0" : messagesRemaining}/${messagesLimit} remaining for today)`}
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-[22px]">

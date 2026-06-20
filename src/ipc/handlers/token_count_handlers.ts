@@ -10,7 +10,9 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
+import { detectFrameworkType } from "../utils/framework_utils";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
 import {
@@ -25,7 +27,9 @@ import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
-import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { isLocalAgentBackedMode, isTurboEditsV2Enabled } from "@/lib/schemas";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolveChatModeForTurn } from "./chat_mode_resolution";
 
 const logger = log.scope("token_count_handlers");
 
@@ -46,7 +50,10 @@ export function registerTokenCountHandlers() {
       });
 
       if (!chat) {
-        throw new Error(`Chat not found: ${req.chatId}`);
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Prepare message history for token counting
@@ -58,7 +65,15 @@ export function registerTokenCountHandlers() {
       // Count input tokens
       const inputTokens = estimateTokens(req.input);
 
-      const settings = readSettings();
+      const storedSettings = readSettings();
+      const { mode: selectedChatMode } = await resolveChatModeForTurn({
+        storedChatMode: chat.chatMode,
+        settings: storedSettings,
+      });
+      const settings = {
+        ...storedSettings,
+        selectedChatMode,
+      };
 
       // Parse app mentions from the input
       const mentionedAppNames = parseAppMentions(req.input);
@@ -66,14 +81,15 @@ export function registerTokenCountHandlers() {
       // Count system prompt tokens
       // Migration on read converts "agent" to "build", so no need to check for it here
       const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
+      const frameworkType = detectFrameworkType(getDyadAppPath(chat.app.path));
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode:
-          settings.selectedChatMode === "local-agent"
-            ? "build"
-            : settings.selectedChatMode,
+          selectedChatMode === "local-agent" ? "build" : selectedChatMode,
         enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         themePrompt,
+        frameworkType,
+        hasSupabaseProject: !!chat.app?.supabaseProjectId,
       });
       let supabaseContext = "";
 
@@ -88,10 +104,18 @@ export function registerTokenCountHandlers() {
           supabaseProjectId: chat.app.supabaseProjectId,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
-      } else if (
-        // Neon projects don't need Supabase.
-        !chat.app?.neonProjectId
-      ) {
+      } else if (chat.app?.neonProjectId) {
+        systemPrompt +=
+          "\n\n" +
+          (await buildNeonPromptForApp({
+            appPath: chat.app.path,
+            neonProjectId: chat.app.neonProjectId!,
+            neonActiveBranchId: chat.app.neonActiveBranchId,
+            neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
+            selectedChatMode,
+          }));
+      } else {
+        // Neon projects don't need Supabase (already handled above).
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 
@@ -125,27 +149,35 @@ export function registerTokenCountHandlers() {
         );
       }
 
-      // Extract codebases for mentioned apps
-      const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-        mentionedAppNames,
-        chat.app?.id, // Exclude current app
+      // Agent/ask/plan modes reach referenced apps via tool calls rather than
+      // injecting full codebases into the prompt, so mentioned apps contribute
+      // ~0 tokens upfront. Match the extraction behavior in chat_stream_handlers
+      // so the UI estimate tracks what's actually sent.
+      const willUseLocalAgentStream = isLocalAgentBackedMode(
+        settings.selectedChatMode,
       );
 
-      // Calculate tokens for mentioned apps
       let mentionedAppsTokens = 0;
-      if (mentionedAppsCodebases.length > 0) {
-        const mentionedAppsContent = mentionedAppsCodebases
-          .map(
-            ({ appName, codebaseInfo }) =>
-              `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
-          )
-          .join("");
-
-        mentionedAppsTokens = estimateTokens(mentionedAppsContent);
-
-        logger.log(
-          `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+      if (!willUseLocalAgentStream) {
+        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+          mentionedAppNames,
+          chat.app?.id, // Exclude current app
         );
+
+        if (mentionedAppsCodebases.length > 0) {
+          const mentionedAppsContent = mentionedAppsCodebases
+            .map(
+              ({ appName, codebaseInfo }) =>
+                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+            )
+            .join("");
+
+          mentionedAppsTokens = estimateTokens(mentionedAppsContent);
+
+          logger.log(
+            `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+          );
+        }
       }
 
       // Calculate total tokens

@@ -1,0 +1,977 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { safeStorage } from "electron";
+import {
+  readSettings,
+  resolveEffectiveSettings,
+  readEffectiveSettings,
+  getSettingsFilePath,
+  writeSettings,
+  tryWriteSettings,
+  encrypt,
+  decrypt,
+  notifyRendererErrorToastListenerReady,
+  writeCrashSentinel,
+  setSentinelActiveChat,
+  readCrashSentinel,
+} from "@/main/settings";
+import { getUserDataPath } from "@/paths/paths";
+import { UserSettings } from "@/lib/schemas";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
+import { ZodError } from "zod";
+
+const mockSend = vi.fn();
+const mockWebContents = {
+  send: mockSend,
+} as unknown as Parameters<typeof notifyRendererErrorToastListenerReady>[0];
+const mockWindow = {
+  webContents: mockWebContents,
+};
+
+// Mock dependencies
+vi.mock("node:fs");
+vi.mock("node:path");
+vi.mock("electron", () => ({
+  app: {
+    on: vi.fn(),
+  },
+  BrowserWindow: {
+    fromWebContents: vi.fn(() => mockWindow),
+    getAllWindows: vi.fn(() => [mockWindow]),
+  },
+  safeStorage: {
+    isEncryptionAvailable: vi.fn(),
+    decryptString: vi.fn(),
+  },
+}));
+vi.mock("@/paths/paths", () => ({
+  getUserDataPath: vi.fn(),
+}));
+vi.mock("@/ipc/shared/remote_desktop_config", () => ({
+  getRemoteDesktopConfig: vi.fn(),
+}));
+
+const mockFs = vi.mocked(fs);
+const mockPath = vi.mocked(path);
+const mockSafeStorage = vi.mocked(safeStorage);
+const mockGetUserDataPath = vi.mocked(getUserDataPath);
+const mockGetRemoteDesktopConfig = vi.mocked(getRemoteDesktopConfig);
+
+describe("readSettings", () => {
+  const mockUserDataPath = "/mock/user/data";
+  const mockSettingsPath = "/mock/user/data/user-settings.json";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUserDataPath.mockReturnValue(mockUserDataPath);
+    mockPath.join.mockReturnValue(mockSettingsPath);
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("when settings file does not exist", () => {
+    it("should create default settings file and return default settings", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.writeFileSync.mockImplementation(() => {});
+
+      const result = readSettings();
+
+      expect(mockFs.existsSync).toHaveBeenCalledWith(mockSettingsPath);
+      expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+        mockSettingsPath,
+        expect.stringContaining('"selectedModel"'),
+      );
+      expect(scrubSettings(result)).toMatchInlineSnapshot(`
+        {
+          "autoApproveNonSchemaSql": true,
+          "autoExpandPreviewPanel": true,
+          "enableAppBlueprint": true,
+          "enableAutoFixProblems": false,
+          "enableAutoUpdate": true,
+          "enableCodeExplorer": true,
+          "enableContextCompaction": true,
+          "enableNativeGit": true,
+          "enablePnpmMinimumReleaseAgeWarning": false,
+          "enableProLazyEditsMode": true,
+          "enableProSmartFilesContextMode": true,
+          "enableSandboxScriptExecution": true,
+          "experiments": {},
+          "hasRunBefore": false,
+          "isRunning": false,
+          "lastKnownPerformance": undefined,
+          "previewIdleTimeoutPolicy": "default",
+          "providerSettings": {},
+          "releaseChannel": "stable",
+          "selectedChatMode": "build",
+          "selectedModel": {
+            "name": "auto",
+            "provider": "auto",
+          },
+          "selectedTemplateId": "react",
+          "selectedThemeId": "default",
+          "telemetryConsent": "unset",
+          "telemetryUserId": "[scrubbed]",
+        }
+      `);
+    });
+  });
+
+  describe("when settings file exists", () => {
+    it("should read and merge settings with defaults", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        telemetryConsent: "opted_in",
+        hasRunBefore: true,
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(mockFs.readFileSync).toHaveBeenCalledWith(
+        mockSettingsPath,
+        "utf-8",
+      );
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
+      });
+      expect(result.telemetryConsent).toBe("opted_in");
+      expect(result.hasRunBefore).toBe(true);
+      // Should still have defaults for missing properties
+      expect(result.blockUnsafeNpmPackages).toBeUndefined();
+      expect(result.enableAutoUpdate).toBe(true);
+      expect(result.releaseChannel).toBe("stable");
+    });
+
+    it("should treat existing settings files without hasRunBefore as already run", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.hasRunBefore).toBe(true);
+    });
+
+    it("should decrypt encrypted provider API keys", () => {
+      const mockFileContent = {
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "encrypted-api-key",
+              encryptionType: "electron-safe-storage",
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockReturnValue("decrypted-api-key");
+
+      const result = readSettings();
+
+      expect(mockSafeStorage.decryptString).toHaveBeenCalledWith(
+        Buffer.from("encrypted-api-key", "base64"),
+      );
+      expect(result.providerSettings.openai.apiKey).toEqual({
+        value: "decrypted-api-key",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
+    it("should decrypt encrypted GitHub access token", () => {
+      const mockFileContent = {
+        githubAccessToken: {
+          value: "encrypted-github-token",
+          encryptionType: "electron-safe-storage",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockReturnValue("decrypted-github-token");
+
+      const result = readSettings();
+
+      expect(mockSafeStorage.decryptString).toHaveBeenCalledWith(
+        Buffer.from("encrypted-github-token", "base64"),
+      );
+      expect(result.githubAccessToken).toEqual({
+        value: "decrypted-github-token",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
+    it("should decrypt encrypted Supabase tokens", () => {
+      const mockFileContent = {
+        supabase: {
+          accessToken: {
+            value: "encrypted-access-token",
+            encryptionType: "electron-safe-storage",
+          },
+          refreshToken: {
+            value: "encrypted-refresh-token",
+            encryptionType: "electron-safe-storage",
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString
+        .mockReturnValueOnce("decrypted-refresh-token")
+        .mockReturnValueOnce("decrypted-access-token");
+
+      const result = readSettings();
+
+      expect(mockSafeStorage.decryptString).toHaveBeenCalledTimes(2);
+      expect(result.supabase?.refreshToken).toEqual({
+        value: "decrypted-refresh-token",
+        encryptionType: "electron-safe-storage",
+      });
+      expect(result.supabase?.accessToken).toEqual({
+        value: "decrypted-access-token",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
+    it("should handle plaintext secrets without decryption", () => {
+      const mockFileContent = {
+        githubAccessToken: {
+          value: "plaintext-token",
+          encryptionType: "plaintext",
+        },
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "plaintext-api-key",
+              encryptionType: "plaintext",
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(mockSafeStorage.decryptString).not.toHaveBeenCalled();
+      expect(result.githubAccessToken?.value).toBe("plaintext-token");
+      expect(result.providerSettings.openai.apiKey?.value).toBe(
+        "plaintext-api-key",
+      );
+    });
+
+    it("should trim whitespace from decrypted API keys", () => {
+      const mockFileContent = {
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "encrypted-api-key",
+              encryptionType: "electron-safe-storage",
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockReturnValue(
+        "  decrypted-api-key-with-spaces\n",
+      );
+
+      const result = readSettings();
+
+      expect(result.providerSettings.openai.apiKey).toEqual({
+        value: "decrypted-api-key-with-spaces",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
+    it("should trim whitespace from plaintext secrets", () => {
+      const mockFileContent = {
+        githubAccessToken: {
+          value: "  plaintext-token-with-spaces\n",
+          encryptionType: "plaintext",
+        },
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "\nplaintext-api-key\n",
+              encryptionType: "plaintext",
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.githubAccessToken?.value).toBe(
+        "plaintext-token-with-spaces",
+      );
+      expect(result.providerSettings.openai.apiKey?.value).toBe(
+        "plaintext-api-key",
+      );
+    });
+
+    it("should handle secrets without encryptionType", () => {
+      const mockFileContent = {
+        githubAccessToken: {
+          value: "token-without-encryption-type",
+        },
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "api-key-without-encryption-type",
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(mockSafeStorage.decryptString).not.toHaveBeenCalled();
+      expect(result.githubAccessToken?.value).toBe(
+        "token-without-encryption-type",
+      );
+      expect(result.providerSettings.openai.apiKey?.value).toBe(
+        "api-key-without-encryption-type",
+      );
+    });
+
+    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "agent",
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // "agent" should be migrated to "build"
+      expect(result.selectedChatMode).toBe("build");
+      expect(result.defaultChatMode).toBe("build");
+    });
+
+    it("should preserve non-deprecated chat modes", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "local-agent",
+        defaultChatMode: "ask",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("ask");
+    });
+
+    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "agent",
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // "agent" should be converted to "build" on read
+      expect(result.selectedChatMode).toBe("build");
+      expect(result.defaultChatMode).toBe("build");
+    });
+
+    it("should preserve non-deprecated chat modes during migration", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "local-agent",
+        defaultChatMode: "ask",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // non-deprecated modes should be preserved
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("ask");
+    });
+
+    it("should preserve extra fields not recognized by the schema", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        telemetryConsent: "opted_in",
+        hasRunBefore: true,
+        // Extra fields that are not in the schema (should be preserved)
+        unknownField: "should be preserved",
+        deprecatedSetting: true,
+        extraConfig: {
+          someValue: 123,
+          anotherValue: "test",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(mockFs.readFileSync).toHaveBeenCalledWith(
+        mockSettingsPath,
+        "utf-8",
+      );
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
+      });
+      expect(result.telemetryConsent).toBe("opted_in");
+      expect(result.hasRunBefore).toBe(true);
+
+      // Extra fields should be preserved by passthrough()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resultAny = result as any;
+      expect(resultAny.unknownField).toBe("should be preserved");
+      expect(resultAny.deprecatedSetting).toBe(true);
+      expect(resultAny.extraConfig).toEqual({
+        someValue: 123,
+        anotherValue: "test",
+      });
+
+      // Should still have defaults for missing properties
+      expect(result.enableAutoUpdate).toBe(true);
+      expect(result.releaseChannel).toBe("stable");
+    });
+  });
+
+  describe("error handling", () => {
+    it("should return default settings when file read fails", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockImplementation(() => {
+        throw new DyadError("File read error", DyadErrorKind.External);
+      });
+
+      const result = readSettings();
+
+      expect(scrubSettings(result)).toMatchInlineSnapshot(`
+        {
+          "autoApproveNonSchemaSql": true,
+          "autoExpandPreviewPanel": true,
+          "enableAppBlueprint": true,
+          "enableAutoFixProblems": false,
+          "enableAutoUpdate": true,
+          "enableCodeExplorer": true,
+          "enableContextCompaction": true,
+          "enableNativeGit": true,
+          "enablePnpmMinimumReleaseAgeWarning": false,
+          "enableProLazyEditsMode": true,
+          "enableProSmartFilesContextMode": true,
+          "enableSandboxScriptExecution": true,
+          "experiments": {},
+          "hasRunBefore": false,
+          "isRunning": false,
+          "lastKnownPerformance": undefined,
+          "previewIdleTimeoutPolicy": "default",
+          "providerSettings": {},
+          "releaseChannel": "stable",
+          "selectedChatMode": "build",
+          "selectedModel": {
+            "name": "auto",
+            "provider": "auto",
+          },
+          "selectedTemplateId": "react",
+          "selectedThemeId": "default",
+          "telemetryConsent": "unset",
+          "telemetryUserId": "[scrubbed]",
+        }
+      `);
+    });
+
+    it("should return default settings when JSON parsing fails", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue("invalid json");
+
+      const result = readSettings();
+
+      expect(result).toMatchObject({
+        selectedModel: {
+          name: "auto",
+          provider: "auto",
+        },
+        releaseChannel: "stable",
+      });
+    });
+
+    it("should return default settings when schema validation fails", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          // Missing required 'provider' field
+        },
+        releaseChannel: "invalid-channel", // Invalid enum value
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result).toMatchObject({
+        selectedModel: {
+          name: "auto",
+          provider: "auto",
+        },
+        releaseChannel: "stable",
+      });
+    });
+
+    it("should drop a secret that cannot be decrypted without discarding settings", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        telemetryConsent: "opted_in",
+        githubAccessToken: {
+          value: "corrupted-encrypted-data",
+          encryptionType: "electron-safe-storage",
+        },
+        providerSettings: {
+          openai: {
+            apiKey: {
+              value: "plaintext-api-key",
+              encryptionType: "plaintext",
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockImplementation(() => {
+        throw new DyadError("Decryption failed", DyadErrorKind.External);
+      });
+
+      const result = readSettings();
+
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
+      });
+      expect(result.telemetryConsent).toBe("opted_in");
+      expect(result.githubAccessToken).toBeUndefined();
+      expect(result.providerSettings.openai.apiKey?.value).toBe(
+        "plaintext-api-key",
+      );
+    });
+
+    it("should not treat safeStorage readiness errors as corrupt secrets", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        githubAccessToken: {
+          value: "encrypted-token",
+          encryptionType: "electron-safe-storage",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockImplementation(() => {
+        throw new Error("safeStorage cannot be used before app is ready");
+      });
+
+      const result = readSettings();
+
+      expect(result.selectedModel).toEqual({
+        name: "auto",
+        provider: "auto",
+      });
+      expect(result.githubAccessToken).toBeUndefined();
+    });
+
+    it("should drop a Supabase organization when one organization secret cannot be decrypted", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        supabase: {
+          organizations: {
+            badOrg: {
+              accessToken: {
+                value: "corrupted-access-token",
+                encryptionType: "electron-safe-storage",
+              },
+              refreshToken: {
+                value: "encrypted-refresh-token",
+                encryptionType: "electron-safe-storage",
+              },
+              expiresIn: 3600,
+              tokenTimestamp: 123,
+            },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockImplementationOnce(() => {
+        throw new DyadError("Decryption failed", DyadErrorKind.External);
+      });
+
+      const result = readSettings();
+
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
+      });
+      expect(result.supabase?.organizations).toEqual({});
+    });
+  });
+
+  describe("effective settings", () => {
+    it("applies the remote default when the user has not explicitly set the setting", async () => {
+      mockGetRemoteDesktopConfig.mockResolvedValue({
+        defaults: { blockUnsafeNpmPackages: false },
+      });
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
+
+      const result = await readEffectiveSettings();
+
+      expect(result.blockUnsafeNpmPackages).toBe(false);
+      expect(mockFs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it("does not override an explicitly stored local value", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
+
+      const result = resolveEffectiveSettings(
+        {
+          ...readSettings(),
+          blockUnsafeNpmPackages: true,
+        },
+        null,
+      );
+
+      expect(result.blockUnsafeNpmPackages).toBe(true);
+    });
+
+    it("falls back to the built-in default when remote config is missing", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
+
+      const result = resolveEffectiveSettings(readSettings(), null);
+
+      expect(result.blockUnsafeNpmPackages).toBe(true);
+    });
+  });
+
+  describe("getSettingsFilePath", () => {
+    it("should return correct settings file path", () => {
+      const result = getSettingsFilePath();
+
+      expect(mockGetUserDataPath).toHaveBeenCalled();
+      expect(mockPath.join).toHaveBeenCalledWith(
+        mockUserDataPath,
+        "user-settings.json",
+      );
+      expect(result).toBe(mockSettingsPath);
+    });
+  });
+});
+
+describe("writeSettings", () => {
+  const mockUserDataPath = "/mock/user/data";
+  const mockSettingsPath = "/mock/user/data/user-settings.json";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUserDataPath.mockReturnValue(mockUserDataPath);
+    mockPath.join.mockReturnValue(mockSettingsPath);
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to defaults and shows a restore-docs toast when the existing settings file cannot be read", () => {
+    notifyRendererErrorToastListenerReady(mockWebContents);
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue("invalid json");
+
+    writeSettings({ enableAutoUpdate: false });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      "toast:error",
+      expect.objectContaining({
+        action: {
+          label: "Read restore docs",
+          url: "https://www.dyad.sh/docs/guides/migrate-restore#restoring-settings-from-backup",
+        },
+        message: expect.not.stringContaining("https://"),
+      }),
+    );
+    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\/mock\/user\/data\/user-settings\.json\.tmp-\d+-\d+$/,
+      ),
+      expect.stringContaining('"enableAutoUpdate": false'),
+    );
+    expect(mockFs.copyFileSync).toHaveBeenCalledWith(
+      mockSettingsPath,
+      expect.stringMatching(
+        /^\/mock\/user\/data\/user-settings\.json\.recovery-\d+\.bak$/,
+      ),
+    );
+    expect(mockFs.renameSync).toHaveBeenCalled();
+  });
+
+  it("writes through a temporary file and backs up the previous settings file", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        providerSettings: {},
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedTemplateId: "react",
+        enableAutoUpdate: true,
+        releaseChannel: "stable",
+      }),
+    );
+
+    writeSettings({ enableAutoUpdate: false });
+
+    const tempFilePath = expect.stringMatching(
+      /^\/mock\/user\/data\/user-settings\.json\.tmp-\d+-\d+$/,
+    );
+    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+      tempFilePath,
+      expect.stringContaining('"enableAutoUpdate": false'),
+    );
+    expect(mockFs.copyFileSync).toHaveBeenCalledWith(
+      mockSettingsPath,
+      `${mockSettingsPath}.bak`,
+    );
+    expect(mockFs.renameSync).toHaveBeenCalledWith(
+      tempFilePath,
+      mockSettingsPath,
+    );
+  });
+
+  it("throws a classified error when the settings file cannot be written", () => {
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    let thrown: unknown;
+    try {
+      writeSettings({ enableAutoUpdate: false });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(DyadError);
+    expect((thrown as DyadError).kind).toBe(DyadErrorKind.External);
+    expect((thrown as DyadError).cause).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "Failed to write settings: disk full",
+    );
+  });
+
+  it("classifies settings validation failures and preserves the cause", () => {
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => {});
+
+    let thrown: unknown;
+    try {
+      writeSettings({
+        selectedModel: null,
+      } as unknown as Partial<UserSettings>);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(DyadError);
+    expect((thrown as DyadError).kind).toBe(DyadErrorKind.Validation);
+    expect((thrown as DyadError).cause).toBeInstanceOf(ZodError);
+  });
+
+  it("returns false instead of throwing for best-effort settings writes", () => {
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    expect(
+      tryWriteSettings({ enableAutoUpdate: false }, "test best-effort write"),
+    ).toBe(false);
+  });
+});
+
+describe("encrypt", () => {
+  it("should trim whitespace before encrypting", () => {
+    const result = encrypt("  my-api-key\n");
+    // In test builds, encryption falls back to plaintext
+    expect(result.value).toBe("my-api-key");
+  });
+
+  it("should trim trailing newlines", () => {
+    const result = encrypt("sk-abc123\n\n");
+    expect(result.value).toBe("sk-abc123");
+  });
+
+  it("should not alter values without whitespace", () => {
+    const result = encrypt("sk-abc123");
+    expect(result.value).toBe("sk-abc123");
+  });
+});
+
+describe("decrypt", () => {
+  it("should trim whitespace from plaintext secrets", () => {
+    const result = decrypt({
+      value: "  my-api-key\n",
+      encryptionType: "plaintext",
+    });
+    expect(result).toBe("my-api-key");
+  });
+
+  it("should trim whitespace from electron-safe-storage secrets", () => {
+    mockSafeStorage.decryptString.mockReturnValue("  decrypted-key\n");
+    const result = decrypt({
+      value: Buffer.from("encrypted").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
+    expect(result).toBe("decrypted-key");
+  });
+
+  it("should not alter values without whitespace", () => {
+    const result = decrypt({
+      value: "sk-abc123",
+      encryptionType: "plaintext",
+    });
+    expect(result).toBe("sk-abc123");
+  });
+});
+
+function scrubSettings(result: UserSettings) {
+  return {
+    ...result,
+    telemetryUserId: "[scrubbed]",
+  };
+}
+
+describe("crash sentinel", () => {
+  const mockUserDataPath = "/mock/user/data";
+  const sentinelPath = `${mockUserDataPath}/session.lock`;
+  let store: Record<string, string>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUserDataPath.mockReturnValue(mockUserDataPath);
+    mockPath.join.mockImplementation((...args: string[]) => args.join("/"));
+    store = {};
+    mockFs.writeFileSync.mockImplementation((p, data) => {
+      store[p as string] = data as string;
+    });
+    mockFs.readFileSync.mockImplementation((p) => {
+      const value = store[p as string];
+      if (value === undefined) {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      return value;
+    });
+  });
+
+  it("writeCrashSentinel writes JSON with a timestamp and no active chat", () => {
+    writeCrashSentinel();
+    const data = readCrashSentinel();
+    expect(typeof data?.ts).toBe("number");
+    expect(data?.activeChatId).toBeUndefined();
+  });
+
+  it("setSentinelActiveChat records the chat id, preserving the timestamp", () => {
+    writeCrashSentinel();
+    const ts = readCrashSentinel()?.ts;
+    setSentinelActiveChat(42);
+    const data = readCrashSentinel();
+    expect(data?.activeChatId).toBe(42);
+    expect(data?.ts).toBe(ts);
+  });
+
+  it("readCrashSentinel returns null for the legacy bare-timestamp format", () => {
+    store[sentinelPath] = "1700000000000";
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel returns null when the sentinel is missing", () => {
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel returns null when ts is not a number", () => {
+    store[sentinelPath] = JSON.stringify({ ts: "nope", activeChatId: 1 });
+    expect(readCrashSentinel()).toBeNull();
+  });
+
+  it("readCrashSentinel ignores a non-numeric activeChatId", () => {
+    store[sentinelPath] = JSON.stringify({ ts: 123, activeChatId: "nope" });
+    expect(readCrashSentinel()).toEqual({ ts: 123, activeChatId: undefined });
+  });
+});

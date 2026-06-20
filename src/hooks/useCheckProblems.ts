@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ipc, type ProblemReport } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { queryKeys } from "@/lib/queryKeys";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function useCheckProblems(appId: number | null) {
   const { settings } = useSettings();
@@ -14,7 +15,7 @@ export function useCheckProblems(appId: number | null) {
     queryKey: queryKeys.problems.byApp({ appId }),
     queryFn: async (): Promise<ProblemReport> => {
       if (!appId) {
-        throw new Error("App ID is required");
+        throw new DyadError("App ID is required", DyadErrorKind.Validation);
       }
       return ipc.misc.checkProblems({ appId });
     },

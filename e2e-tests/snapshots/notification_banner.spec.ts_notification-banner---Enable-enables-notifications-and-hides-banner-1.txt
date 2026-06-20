@@ -1,1 +1,1 @@
-+ "enableChatCompletionNotifications": true
++ "enableChatEventNotifications": true

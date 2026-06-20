@@ -5,9 +5,13 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  isComponentTaggerUpgradeNeeded,
+  applyComponentTagger,
+} from "../utils/app_upgrade_utils";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
 
@@ -36,7 +40,10 @@ async function getApp(appId: number) {
     where: eq(apps.id, appId),
   });
   if (!app) {
-    throw new Error(`App with id ${appId} not found`);
+    throw new DyadError(
+      `App with id ${appId} not found`,
+      DyadErrorKind.NotFound,
+    );
   }
   return app;
 }
@@ -46,28 +53,6 @@ function isViteApp(appPath: string): boolean {
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
   return fs.existsSync(viteConfigPathTs) || fs.existsSync(viteConfigPathJs);
-}
-
-function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
-  const viteConfigPathJs = path.join(appPath, "vite.config.js");
-  const viteConfigPathTs = path.join(appPath, "vite.config.ts");
-
-  let viteConfigPath;
-  if (fs.existsSync(viteConfigPathTs)) {
-    viteConfigPath = viteConfigPathTs;
-  } else if (fs.existsSync(viteConfigPathJs)) {
-    viteConfigPath = viteConfigPathJs;
-  } else {
-    return false;
-  }
-
-  try {
-    const viteConfigContent = fs.readFileSync(viteConfigPath, "utf-8");
-    return !viteConfigContent.includes("@dyad-sh/react-vite-component-tagger");
-  } catch (e) {
-    logger.error("Error reading vite config", e);
-    return false;
-  }
 }
 
 function isCapacitorUpgradeNeeded(appPath: string): boolean {
@@ -93,108 +78,6 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
-async function applyComponentTagger(appPath: string) {
-  const viteConfigPathJs = path.join(appPath, "vite.config.js");
-  const viteConfigPathTs = path.join(appPath, "vite.config.ts");
-
-  let viteConfigPath;
-  if (fs.existsSync(viteConfigPathTs)) {
-    viteConfigPath = viteConfigPathTs;
-  } else if (fs.existsSync(viteConfigPathJs)) {
-    viteConfigPath = viteConfigPathJs;
-  } else {
-    throw new Error("Could not find vite.config.js or vite.config.ts");
-  }
-
-  let content = await fs.promises.readFile(viteConfigPath, "utf-8");
-
-  // Add import statement if not present
-  if (
-    !content.includes(
-      "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
-    )
-  ) {
-    // Add it after the last import statement
-    const lines = content.split("\n");
-    let lastImportIndex = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].startsWith("import ")) {
-        lastImportIndex = i;
-        break;
-      }
-    }
-    lines.splice(
-      lastImportIndex + 1,
-      0,
-      "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
-    );
-    content = lines.join("\n");
-  }
-
-  // Add plugin to plugins array
-  if (content.includes("plugins: [")) {
-    if (!content.includes("dyadComponentTagger()")) {
-      content = content.replace(
-        "plugins: [",
-        "plugins: [dyadComponentTagger(), ",
-      );
-    }
-  } else {
-    throw new Error(
-      "Could not find `plugins: [` in vite.config.ts. Manual installation required.",
-    );
-  }
-
-  await fs.promises.writeFile(viteConfigPath, content);
-
-  // Install the dependency
-  await new Promise<void>((resolve, reject) => {
-    logger.info("Installing component-tagger dependency");
-    const process = spawn(
-      "pnpm add -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
-      {
-        cwd: appPath,
-        shell: true,
-        stdio: "pipe",
-      },
-    );
-
-    process.stdout?.on("data", (data) => logger.info(data.toString()));
-    process.stderr?.on("data", (data) => logger.error(data.toString()));
-
-    process.on("close", (code) => {
-      if (code === 0) {
-        logger.info("component-tagger dependency installed successfully");
-        resolve();
-      } else {
-        logger.error(`Failed to install dependency, exit code ${code}`);
-        reject(new Error("Failed to install dependency"));
-      }
-    });
-
-    process.on("error", (err) => {
-      logger.error("Failed to spawn pnpm", err);
-      reject(err);
-    });
-  });
-
-  // Commit changes
-  try {
-    logger.info("Staging and committing changes");
-    await gitAddAll({ path: appPath });
-    await gitCommit({
-      path: appPath,
-      message: "[dyad] add Dyad component tagger",
-    });
-    logger.info("Successfully committed changes");
-  } catch (err) {
-    logger.warn(
-      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
-      err,
-    );
-  }
-}
-
 async function applyCapacitor({
   appName,
   appPath,
@@ -205,7 +88,7 @@ async function applyCapacitor({
   // Install Capacitor dependencies
   await simpleSpawn({
     command:
-      "pnpm add @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+      "pnpm add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
     cwd: appPath,
     successMessage: "Capacitor dependencies installed successfully",
     errorPrefix: "Failed to install Capacitor dependencies",
@@ -217,6 +100,17 @@ async function applyCapacitor({
     cwd: appPath,
     successMessage: "Capacitor initialized successfully",
     errorPrefix: "Failed to initialize Capacitor",
+  });
+
+  // Intentionally omit PNPM_INSTALL_POLICY_ARGS because:
+  // 1. confirmModulesPurge will almost never be needed for capacitor (i.e. user would need to switch from npm to pnpm and not triggered a rebuild).
+  // 2. strictBuildDeps should be kept true (default value) in case capacitor has native deps.
+  await simpleSpawn({
+    command:
+      "pnpm install --prod=false || npm install --include=dev --legacy-peer-deps",
+    cwd: appPath,
+    successMessage: "Development dependencies installed successfully",
+    errorPrefix: "Failed to install development dependencies",
   });
 
   // Add iOS and Android platforms
@@ -273,7 +167,7 @@ export function registerAppUpgradeHandlers() {
     "execute-app-upgrade",
     async (_, { appId, upgradeId }: { appId: number; upgradeId: string }) => {
       if (!upgradeId) {
-        throw new Error("upgradeId is required");
+        throw new DyadError("upgradeId is required", DyadErrorKind.Validation);
       }
 
       const app = await getApp(appId);
@@ -284,7 +178,10 @@ export function registerAppUpgradeHandlers() {
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
       } else {
-        throw new Error(`Unknown upgrade id: ${upgradeId}`);
+        throw new DyadError(
+          `Unknown upgrade id: ${upgradeId}`,
+          DyadErrorKind.External,
+        );
       }
     },
   );

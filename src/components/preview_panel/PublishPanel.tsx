@@ -7,6 +7,7 @@ import { PortalMigrate } from "@/components/PortalMigrate";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
+import { DatabaseSection } from "@/components/preview_panel/DatabaseSection";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -80,8 +81,16 @@ export const PublishPanel = () => {
           </h1>
         </div>
 
-        {/* Portal Section - Show only if app has neon project */}
-        {app.neonProjectId && <PortalMigrate appId={selectedAppId} />}
+        {/* Unified Database section - branch selection + migration + env vars when the
+            app has a neon project and branch context, otherwise fall back to PortalMigrate
+            for portal template apps. Only one is shown. */}
+        {app.neonProjectId &&
+        (app.neonActiveBranchId || app.neonDevelopmentBranchId) ? (
+          <DatabaseSection appId={selectedAppId} />
+        ) : app.neonProjectId &&
+          app.files.some((f) => f === "payload.config.ts") ? (
+          <PortalMigrate appId={selectedAppId} />
+        ) : null}
 
         {/* GitHub Section */}
         <Card>

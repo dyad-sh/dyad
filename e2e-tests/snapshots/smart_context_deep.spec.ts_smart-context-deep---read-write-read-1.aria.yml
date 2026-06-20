@@ -1,74 +1,28 @@
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"
-- img
 - text: Read src/pages/Index.tsx
 - paragraph: Done.
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
+- button "Copy"
 - text: auto
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
+- button "Copy Request ID"
 - paragraph: tc=update-index-1
 - paragraph: First read
-- 'button "Index.tsx src/pages/Index.tsx Edit Summary: replace file"':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: replace file"'
+- button "Copy"
 - text: auto
-- img
-- text: less than a minute ago
-- img
-- text: wrote 1 file(s)
-- button "Copy Request ID":
-  - img
-  - text: ""
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"
-- img
 - text: Read src/pages/Index.tsx
 - paragraph: Done.
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
+- button "Copy"
 - text: auto
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
+- button "Copy Request ID"
 - paragraph: "[dump]"
 - paragraph: "[[dyad-dump-path=*]]"
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
+- button "Copy"
 - text: auto
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

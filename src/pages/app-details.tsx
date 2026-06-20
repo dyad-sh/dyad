@@ -1,19 +1,24 @@
-import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
 import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useState } from "react";
+import { useChats } from "@/hooks/useChats";
+import { useSelectChat } from "@/hooks/useSelectChat";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  ArrowLeft,
   MoreVertical,
   MessageCircle,
   Pencil,
+  Plus,
   Folder,
   Star,
+  Trash2,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Popover,
   PopoverContent,
@@ -35,10 +40,17 @@ import {
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { NeonConnector } from "@/components/NeonConnector";
 import { showError, showSuccess } from "@/lib/toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useCheckName } from "@/hooks/useCheckName";
@@ -46,11 +58,42 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { useAppCollections } from "@/hooks/useAppCollections";
+import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectionDialog";
+import { useTranslation } from "react-i18next";
+import { queryKeys } from "@/lib/queryKeys";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+
+function UnavailableIntegrationCard({
+  provider,
+}: {
+  provider: "supabase" | "neon";
+}) {
+  const { t } = useTranslation("home");
+  const label = provider === "supabase" ? "Supabase" : "Neon";
+  const descriptionKey =
+    provider === "supabase"
+      ? "integrations.mutualExclusion.supabaseUnavailable"
+      : "integrations.mutualExclusion.neonUnavailable";
+  return (
+    <Card className="mt-1">
+      <CardHeader className="flex flex-row items-center gap-3 py-3">
+        <Info className="h-5 w-5 text-muted-foreground shrink-0" />
+        <div>
+          <CardTitle className="text-sm">{label}</CardTitle>
+          <CardDescription className="text-xs">
+            {t(descriptionKey)}
+          </CardDescription>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
-  const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
+  const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -63,6 +106,8 @@ export default function AppDetailsPage() {
     useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isRenamingFolder, setIsRenamingFolder] = useState(false);
+  const [isOpeningChat, setIsOpeningChat] = useState(false);
+  const isOpeningChatRef = useRef(false);
 
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const [newCopyAppName, setNewCopyAppName] = useState("");
@@ -71,6 +116,7 @@ export default function AppDetailsPage() {
 
   const queryClient = useQueryClient();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
 
   const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
   const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
@@ -80,9 +126,42 @@ export default function AppDetailsPage() {
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
 
-  // Get the appId from search params and find the corresponding app
+  // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
+  const providerFilter = search.provider;
+  const { chats, loading: chatsLoading, invalidateChats } = useChats(appId);
+  const { selectChat } = useSelectChat();
+  const initialChatMode = useInitialChatMode();
+
+  const { data: screenshotsData } = useQuery({
+    queryKey: queryKeys.apps.screenshots({ appId }),
+    queryFn: () => ipc.app.listAppScreenshots({ appId: appId! }),
+    enabled: !!appId,
+  });
+  const [screenshotLoadFailed, setScreenshotLoadFailed] = useState(false);
+  const latestScreenshotUrl = screenshotsData?.screenshots[0]?.url ?? null;
+  useEffect(() => {
+    setScreenshotLoadFailed(false);
+  }, [latestScreenshotUrl]);
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
+
+  const { collections, assignApps } = useAppCollections();
+  const [isAssignCollectionDialogOpen, setIsAssignCollectionDialogOpen] =
+    useState(false);
+  const currentCollection = useMemo(
+    () =>
+      selectedApp?.collectionId != null
+        ? (collections.find((c) => c.id === selectedApp.collectionId) ?? null)
+        : null,
+    [collections, selectedApp?.collectionId],
+  );
+
+  useEffect(() => {
+    if (appId) {
+      setSelectedAppId(appId);
+      setSelectedChatId(null);
+    }
+  }, [appId, setSelectedAppId, setSelectedChatId]);
 
   const handleDeleteApp = async () => {
     if (!appId) return;
@@ -91,6 +170,8 @@ export default function AppDetailsPage() {
       setIsDeleting(true);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
+      setSelectedAppId(null);
+      setSelectedChatId(null);
       await refreshApps();
       navigate({ to: "/", search: {} });
     } catch (error) {
@@ -252,15 +333,7 @@ export default function AppDetailsPage() {
   if (!selectedApp) {
     return (
       <div className="relative min-h-screen p-8">
-        <Button
-          onClick={() => router.history.back()}
-          variant="outline"
-          size="sm"
-          className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-3 w-4" />
-          Back
-        </Button>
+        <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
         <div className="flex flex-col items-center justify-center h-full">
           <h2 className="text-xl font-bold">App not found</h2>
         </div>
@@ -269,21 +342,45 @@ export default function AppDetailsPage() {
   }
 
   const currentAppPath = selectedApp.resolvedPath || "";
+  const latestChat = chats[0];
+  const handleOpenInChat = async () => {
+    if (isOpeningChatRef.current) {
+      return;
+    }
+
+    if (!appId) {
+      console.error("No app id found");
+      return;
+    }
+
+    try {
+      isOpeningChatRef.current = true;
+      setIsOpeningChat(true);
+      if (latestChat) {
+        selectChat({ chatId: latestChat.id, appId });
+        return;
+      }
+
+      const chatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode,
+      });
+      await invalidateChats();
+      selectChat({ chatId, appId });
+    } catch (error) {
+      showError(error);
+    } finally {
+      isOpeningChatRef.current = false;
+      setIsOpeningChat(false);
+    }
+  };
 
   return (
     <div
       className="relative min-h-screen p-4 w-full"
       data-testid="app-details-page"
     >
-      <Button
-        onClick={() => router.history.back()}
-        variant="outline"
-        size="sm"
-        className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-2"
-      >
-        <ArrowLeft className="h-3 w-4" />
-        Back
-      </Button>
+      <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
 
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
         <div className="flex items-center mb-3">
@@ -374,6 +471,30 @@ export default function AppDetailsPage() {
           </Popover>
         </div>
 
+        {latestScreenshotUrl && !screenshotLoadFailed && (
+          <button
+            type="button"
+            onClick={handleOpenInChat}
+            disabled={chatsLoading || isOpeningChat}
+            aria-label={`Open ${selectedApp.name} in Chat`}
+            data-testid="app-details-screenshot-open-in-chat"
+            className="group relative mb-4 block aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60"
+          >
+            <img
+              src={latestScreenshotUrl}
+              alt={`Preview of ${selectedApp?.name ?? "app"}`}
+              onError={() => setScreenshotLoadFailed(true)}
+              className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02] group-disabled:scale-100"
+            />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/15 group-hover:opacity-100 group-disabled:opacity-0">
+              <span className="flex items-center gap-2 rounded-md bg-background/95 px-3 py-1.5 text-sm font-medium text-foreground shadow-md">
+                Open in Chat
+                <MessageCircle className="h-4 w-4" />
+              </span>
+            </div>
+          </button>
+        )}
+
         <div className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
@@ -412,16 +533,61 @@ export default function AppDetailsPage() {
               <span className="text-sm break-all">{currentAppPath}</span>
             </div>
           </div>
+          <div className="col-span-2">
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
+              Collection
+            </span>
+            <div className="flex items-center gap-1">
+              <Folder className="h-3.5 w-3.5 text-muted-foreground" />
+              <span
+                className="text-sm"
+                data-testid="app-details-collection-name"
+              >
+                {currentCollection?.name ?? "No collection yet"}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-1 h-auto text-muted-foreground cursor-pointer hover:bg-transparent hover:text-foreground transition-colors"
+                onClick={() => setIsAssignCollectionDialogOpen(true)}
+                data-testid="app-details-edit-collection-button"
+              >
+                {selectedApp.collectionId == null ? (
+                  <Plus className="h-3.5 w-3.5" />
+                ) : (
+                  <Pencil className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              {selectedApp.collectionId != null && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 h-auto text-muted-foreground cursor-pointer hover:bg-transparent hover:text-destructive transition-colors"
+                  onClick={async () => {
+                    try {
+                      await assignApps({
+                        collectionId: null,
+                        appIds: [selectedApp.id],
+                      });
+                      showSuccess("Removed from collection");
+                    } catch (error) {
+                      showError(error);
+                    }
+                  }}
+                  title="Remove from collection"
+                  aria-label="Remove from collection"
+                  data-testid="app-details-remove-collection-button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
         <div className="mt-4 flex flex-col gap-2">
           <Button
-            onClick={() => {
-              if (!appId) {
-                console.error("No app id found");
-                return;
-              }
-              navigate({ to: "/chat" });
-            }}
+            onClick={handleOpenInChat}
+            disabled={chatsLoading || isOpeningChat}
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >
@@ -436,7 +602,48 @@ export default function AppDetailsPage() {
               </div>
             )}
           </div>
-          {appId && <SupabaseConnector appId={appId} />}
+          {/* When providerFilter is set, show the selected connector only if the other provider isn't already active */}
+          {providerFilter === "supabase" &&
+            appId &&
+            !selectedApp?.neonProjectId && <SupabaseConnector appId={appId} />}
+          {providerFilter === "supabase" &&
+            appId &&
+            selectedApp?.neonProjectId && (
+              <UnavailableIntegrationCard provider="supabase" />
+            )}
+          {providerFilter === "neon" &&
+            appId &&
+            !selectedApp?.supabaseProjectId && <NeonConnector appId={appId} />}
+          {providerFilter === "neon" &&
+            appId &&
+            selectedApp?.supabaseProjectId && (
+              <UnavailableIntegrationCard provider="neon" />
+            )}
+          {/* When no providerFilter, show both with existing mutual exclusion */}
+          {!providerFilter && (
+            <>
+              {appId &&
+                !selectedApp?.neonProjectId &&
+                !selectedApp?.supabaseProjectId && (
+                  <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{t("integrations.mutualExclusion.chooseOne")}</span>
+                  </div>
+                )}
+              {appId && !selectedApp?.neonProjectId && (
+                <SupabaseConnector appId={appId} />
+              )}
+              {appId && selectedApp?.neonProjectId && (
+                <UnavailableIntegrationCard provider="supabase" />
+              )}
+              {appId && !selectedApp?.supabaseProjectId && (
+                <NeonConnector appId={appId} />
+              )}
+              {appId && selectedApp?.supabaseProjectId && (
+                <UnavailableIntegrationCard provider="neon" />
+              )}
+            </>
+          )}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
         </div>
@@ -817,6 +1024,13 @@ export default function AppDetailsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <AssignAppsToCollectionDialog
+          open={isAssignCollectionDialogOpen}
+          onOpenChange={setIsAssignCollectionDialogOpen}
+          apps={selectedApp ? [selectedApp] : []}
+          collections={collections}
+        />
       </div>
     </div>
   );

@@ -1,6 +1,14 @@
 import React from "react";
 import { Button } from "../ui/button";
-import { X, Bot, Info, ShieldCheck, Check, Ban } from "lucide-react";
+import {
+  X,
+  Bot,
+  Info,
+  ShieldCheck,
+  Check,
+  Ban,
+  AlertTriangle,
+} from "lucide-react";
 import type { PendingAgentConsent } from "@/atoms/chatAtoms";
 import {
   Tooltip,
@@ -8,6 +16,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+import { useTranslation } from "react-i18next";
+
+const INPUT_PREVIEW_COLLAPSED_LINES = 6;
+const INPUT_PREVIEW_EXPANDED_MAX_HEIGHT = "40vh";
 
 interface AgentConsentBannerProps {
   consent: PendingAgentConsent;
@@ -23,16 +35,18 @@ export function AgentConsentBanner({
   onClose,
   queueTotal = 1,
 }: AgentConsentBannerProps) {
+  const { t } = useTranslation("chat");
   const { toolName, toolDescription, inputPreview } = consent;
+  const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
   const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
-    React.useState<number>(0);
+    React.useState<number>();
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!inputPreview) {
       setInputHasOverflow(false);
       return;
@@ -43,17 +57,21 @@ export function AgentConsentBanner({
 
     const compute = () => {
       const computedStyle = window.getComputedStyle(element);
-      const lineHeight = parseFloat(computedStyle.lineHeight || "16");
-      const maxLines = 6;
-      const maxHeightPx = Math.max(0, Math.round(lineHeight * maxLines));
-      setInputCollapsedMaxHeight(maxHeightPx);
-      setInputHasOverflow(element.scrollHeight > maxHeightPx + 1);
+      const parsedLineHeight = Number.parseFloat(computedStyle.lineHeight);
+      const lineHeight = Number.isFinite(parsedLineHeight)
+        ? parsedLineHeight
+        : 20;
+      const collapsedMaxHeight = Math.round(
+        lineHeight * INPUT_PREVIEW_COLLAPSED_LINES,
+      );
+
+      setInputCollapsedMaxHeight(collapsedMaxHeight);
+      setInputHasOverflow(element.scrollHeight > collapsedMaxHeight + 1);
     };
 
     compute();
-    const onResize = () => compute();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
   }, [inputPreview]);
 
   return (
@@ -91,15 +109,26 @@ export function AgentConsentBanner({
         </div>
         {inputPreview && (
           <div className="ml-6 mb-1.5">
-            <div
-              ref={inputRef}
-              className="bg-muted p-1.5 rounded text-sm whitespace-pre-wrap"
-              style={{
-                maxHeight: isInputExpanded ? "40vh" : inputCollapsedMaxHeight,
-                overflow: isInputExpanded ? "auto" : "hidden",
-              }}
-            >
-              {inputPreview}
+            {sqlMutatesSchema && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>{t("changesDatabaseSchema")}</span>
+              </div>
+            )}
+            <div className="rounded bg-muted p-1.5">
+              <div
+                ref={inputRef}
+                className={`text-sm whitespace-pre-wrap break-words transition-[max-height] duration-200 ease-out motion-reduce:transition-none ${
+                  isInputExpanded ? "overflow-auto" : "overflow-hidden"
+                }`}
+                style={{
+                  maxHeight: isInputExpanded
+                    ? INPUT_PREVIEW_EXPANDED_MAX_HEIGHT
+                    : inputCollapsedMaxHeight,
+                }}
+              >
+                {inputPreview}
+              </div>
             </div>
             {inputHasOverflow && (
               <button

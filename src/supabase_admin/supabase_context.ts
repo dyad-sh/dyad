@@ -1,3 +1,4 @@
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
 import { getSupabaseClient } from "./supabase_management_client";
@@ -26,12 +27,16 @@ async function getPublishableKey({
       `Get API keys for ${projectId}`,
     );
   } catch (error) {
-    throw new Error(
+    throw new DyadError(
       `Failed to fetch API keys for Supabase project "${projectId}". This could be due to: 1) Invalid project ID, 2) Network connectivity issues, or 3) Supabase API unavailability. Original error: ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.External,
     );
   }
   if (!keys) {
-    throw new Error("No keys found for Supabase project " + projectId);
+    throw new DyadError(
+      "No keys found for Supabase project " + projectId,
+      DyadErrorKind.NotFound,
+    );
   }
   const publishableKey = keys.find(
     (key) =>
@@ -39,8 +44,9 @@ async function getPublishableKey({
   );
 
   if (!publishableKey) {
-    throw new Error(
+    throw new DyadError(
       "No publishable key found for project. Make sure you are connected to the correct Supabase account and project. See https://dyad.sh/docs/integrations/supabase#no-publishable-keys",
+      DyadErrorKind.NotFound,
     );
   }
   return publishableKey.api_key;

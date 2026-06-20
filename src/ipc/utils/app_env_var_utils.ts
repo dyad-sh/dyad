@@ -5,15 +5,19 @@
 
 import { getDyadAppPath } from "@/paths/paths";
 import { EnvVar } from "@/ipc/types";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { queueCloudSandboxSnapshotSync } from "./cloud_sandbox_provider";
 
 const logger = log.scope("app_env_var_utils");
 
 export const ENV_FILE_NAME = ".env.local";
 
-function getEnvFilePath({ appPath }: { appPath: string }): string {
+export function getEnvFilePath({ appPath }: { appPath: string }): string {
   return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
 }
 
@@ -24,22 +28,28 @@ export async function updatePostgresUrlEnvVar({
   appPath: string;
   connectionUri: string;
 }) {
-  // Given the connection uri, update the env var for POSTGRES_URL
+  // Given the connection uri, update the env vars for POSTGRES_URL and DATABASE_URL
   const envVars = parseEnvFile(await readEnvFile({ appPath }));
 
-  // Find existing POSTGRES_URL or add it if it doesn't exist
-  const existingVar = envVars.find((envVar) => envVar.key === "POSTGRES_URL");
-  if (existingVar) {
-    existingVar.value = connectionUri;
-  } else {
-    envVars.push({
-      key: "POSTGRES_URL",
-      value: connectionUri,
-    });
+  // Update both POSTGRES_URL and DATABASE_URL to keep them in sync
+  for (const key of ["POSTGRES_URL", "DATABASE_URL"]) {
+    const existingVar = envVars.find((envVar) => envVar.key === key);
+    if (existingVar) {
+      existingVar.value = connectionUri;
+    } else {
+      envVars.push({
+        key,
+        value: connectionUri,
+      });
+    }
   }
 
   const envFileContents = serializeEnvFile(envVars);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+  queueCloudSandboxSnapshotSync({
+    appPath: getDyadAppPath(appPath),
+    changedPaths: [ENV_FILE_NAME],
+  });
 }
 
 export async function updateDbPushEnvVar({
@@ -50,15 +60,7 @@ export async function updateDbPushEnvVar({
   disabled: boolean;
 }) {
   try {
-    // Try to read existing env file
-    let envVars: EnvVar[];
-    try {
-      const content = await readEnvFile({ appPath });
-      envVars = parseEnvFile(content);
-    } catch {
-      // If file doesn't exist, start with empty array
-      envVars = [];
-    }
+    const envVars = await readEnvVarsOrEmpty({ appPath });
 
     // Update or add DYAD_DISABLE_DB_PUSH
     const existingVar = envVars.find(
@@ -75,6 +77,10 @@ export async function updateDbPushEnvVar({
 
     const envFileContents = serializeEnvFile(envVars);
     await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+    queueCloudSandboxSnapshotSync({
+      appPath: getDyadAppPath(appPath),
+      changedPaths: [ENV_FILE_NAME],
+    });
   } catch (error) {
     logger.error(
       `Failed to update DB push environment variable for app ${appPath}: ${error}`,
@@ -94,7 +100,10 @@ export async function readPostgresUrlFromEnvFile({
     (envVar) => envVar.key === "POSTGRES_URL",
   )?.value;
   if (!postgresUrl) {
-    throw new Error("POSTGRES_URL not found in .env.local");
+    throw new DyadError(
+      "POSTGRES_URL not found in .env.local",
+      DyadErrorKind.NotFound,
+    );
   }
   return postgresUrl;
 }
@@ -105,6 +114,30 @@ export async function readEnvFile({
   appPath: string;
 }): Promise<string> {
   return fs.promises.readFile(getEnvFilePath({ appPath }), "utf8");
+}
+
+export async function readEnvFileIfExists({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<string | null> {
+  try {
+    return await readEnvFile({ appPath });
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function readEnvVarsOrEmpty({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<EnvVar[]> {
+  const content = await readEnvFileIfExists({ appPath });
+  return content ? parseEnvFile(content) : [];
 }
 
 // Helper function to parse .env.local file content
@@ -156,6 +189,120 @@ export function parseEnvFile(content: string): EnvVar[] {
   }
 
   return envVars;
+}
+
+function upsertEnvVar(envVars: EnvVar[], key: string, value: string): void {
+  const existing = envVars.find((envVar) => envVar.key === key);
+  if (existing) {
+    existing.value = value;
+  } else {
+    envVars.push({ key, value });
+  }
+}
+
+/**
+ * Generate a random cookie secret for Neon Auth session signing.
+ */
+export function generateCookieSecret(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+export async function updateNeonEnvVars({
+  appPath,
+  connectionUri,
+  neonAuthBaseUrl,
+  frameworkType,
+  cookieSecret,
+  preserveExistingAuth = false,
+}: {
+  appPath: string;
+  connectionUri: string;
+  /** Auth base URL returned by the Neon Auth API */
+  neonAuthBaseUrl?: string;
+  /**
+   * App framework. Used to decide whether to write NEON_AUTH_COOKIE_SECRET —
+   * only the Next.js `createNeonAuth` integration consumes it (to sign the
+   * optional `session_data` cache cookie), so we only write it for Next.js.
+   */
+  frameworkType?: AppFrameworkType | null;
+  /** Persisted per-branch cookie secret. Used when neonAuthBaseUrl is set on a Next.js app. */
+  cookieSecret?: string;
+  /** Preserve existing auth vars when auth activation failed transiently. */
+  preserveExistingAuth?: boolean;
+}): Promise<void> {
+  let envVars = await readEnvVarsOrEmpty({ appPath });
+
+  upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
+  upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
+
+  const cookieSecretUsed = frameworkType === "nextjs";
+
+  if (neonAuthBaseUrl) {
+    upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", neonAuthBaseUrl);
+    if (cookieSecretUsed) {
+      if (cookieSecret) {
+        upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", cookieSecret);
+      } else if (!preserveExistingAuth) {
+        // Auth claimed active but caller didn't supply a secret — strip stale
+        // value rather than silently keep a wrong one.
+        envVars = envVars.filter((v) => v.key !== "NEON_AUTH_COOKIE_SECRET");
+      }
+    }
+  } else if (!preserveExistingAuth) {
+    // Auth activation failed or is not available on this branch —
+    // remove stale auth env vars so the old branch's values don't linger.
+    envVars = envVars.filter(
+      (v) =>
+        v.key !== "NEON_AUTH_BASE_URL" && v.key !== "NEON_AUTH_COOKIE_SECRET",
+    );
+  }
+
+  const envFileContents = serializeEnvFile(envVars);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+  queueCloudSandboxSnapshotSync({
+    appPath: getDyadAppPath(appPath),
+    changedPaths: [ENV_FILE_NAME],
+  });
+}
+
+/** Keys that are unambiguously Neon-owned and always safe to remove. */
+const NEON_ONLY_ENV_VAR_KEYS = [
+  "NEON_AUTH_BASE_URL",
+  "NEON_AUTH_COOKIE_SECRET",
+];
+
+/** Generic DB keys that should only be removed if their value looks Neon-owned. */
+const GENERIC_DB_ENV_VAR_KEYS = ["DATABASE_URL", "POSTGRES_URL"];
+
+export async function removeNeonEnvVars({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<void> {
+  const existingContent = await readEnvFileIfExists({ appPath });
+  if (!existingContent) {
+    return;
+  }
+
+  const envVars = parseEnvFile(existingContent);
+
+  const filtered = envVars.filter((envVar) => {
+    if (NEON_ONLY_ENV_VAR_KEYS.includes(envVar.key)) return false;
+    if (
+      GENERIC_DB_ENV_VAR_KEYS.includes(envVar.key) &&
+      envVar.value.includes(".neon.tech")
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const envFileContents = serializeEnvFile(filtered);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+  queueCloudSandboxSnapshotSync({
+    appPath: getDyadAppPath(appPath),
+    changedPaths: [ENV_FILE_NAME],
+  });
 }
 
 // Helper function to serialize environment variables to .env.local format

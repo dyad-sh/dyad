@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   ArrowUp,
   Circle,
   ExternalLink,
@@ -7,6 +6,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ipc } from "@/ipc/types";
 import {
@@ -23,7 +23,6 @@ interface ProviderSettingsHeaderProps {
   hasFreeTier?: boolean;
   providerWebsiteUrl?: string;
   isDyad: boolean;
-  onBackClick: () => void;
 }
 
 function getKeyButtonText({
@@ -48,7 +47,6 @@ export function ProviderSettingsHeader({
   hasFreeTier,
   providerWebsiteUrl,
   isDyad,
-  onBackClick,
 }: ProviderSettingsHeaderProps) {
   const handleGetApiKeyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -70,15 +68,7 @@ export function ProviderSettingsHeader({
 
   return (
     <>
-      <Button
-        onClick={onBackClick}
-        variant="outline"
-        size="sm"
-        className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Go Back
-      </Button>
+      <BackButton />
 
       <div className="mb-6">
         <div className="flex items-center mb-1">

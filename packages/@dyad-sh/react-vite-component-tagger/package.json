@@ -1,6 +1,6 @@
 {
   "name": "@dyad-sh/react-vite-component-tagger",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A Vite plugin that automatically adds data attributes to your React components.",
   "keywords": [
     "dyad",
@@ -36,9 +36,9 @@
     "eslint": "^8.52.0",
     "tsup": "^8.0.2",
     "typescript": "^5.2.2",
-    "vite": "^5.0.0"
+    "vite": "^8.0.0"
   },
   "peerDependencies": {
-    "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0"
+    "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0"
   }
 }

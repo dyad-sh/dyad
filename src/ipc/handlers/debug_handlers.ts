@@ -25,6 +25,8 @@ import {
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 
 // Shared function to get system debug info
 async function getSystemDebugInfo({
@@ -47,7 +49,9 @@ async function getSystemDebugInfo({
   }
 
   try {
-    pnpmVersion = await runShellCommand("pnpm --version");
+    pnpmVersion = await runShellCommand("pnpm --version", {
+      env: getPackageManagerCommandEnv(),
+    });
   } catch (err) {
     console.error("Failed to get pnpm version:", err);
   }
@@ -294,7 +298,9 @@ export function registerDebugHandlers() {
       // Get runtime info in parallel
       const [nodeVersion, pnpmVersion, nodePathResult] = await Promise.all([
         runShellCommand("node --version").catch(() => null),
-        runShellCommand("pnpm --version").catch(() => null),
+        runShellCommand("pnpm --version", {
+          env: getPackageManagerCommandEnv(),
+        }).catch(() => null),
         (platform() === "win32"
           ? runShellCommand("where.exe node")
           : runShellCommand("which node")
@@ -312,7 +318,10 @@ export function registerDebugHandlers() {
       });
 
       if (!chatRecord) {
-        throw new Error(`Chat with ID ${chatId} not found`);
+        throw new DyadError(
+          `Chat with ID ${chatId} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Get app data from database
@@ -321,7 +330,10 @@ export function registerDebugHandlers() {
       });
 
       if (!app) {
-        throw new Error(`App with ID ${chatRecord.appId} not found`);
+        throw new DyadError(
+          `App with ID ${chatRecord.appId} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Query custom providers, custom models, and MCP servers in parallel
@@ -337,7 +349,7 @@ export function registerDebugHandlers() {
         ]);
 
       // Read logs
-      const logs = readAppLogs(1_000, "info");
+      const logs = readAppLogs(5_000, "info");
 
       // Build the bundle
       const bundle: SessionDebugBundle = {
@@ -455,7 +467,10 @@ export function registerDebugHandlers() {
     const image = await win.capturePage();
     // Validate image
     if (!image || image.isEmpty()) {
-      throw new Error("Failed to capture screenshot");
+      throw new DyadError(
+        "Failed to capture screenshot",
+        DyadErrorKind.External,
+      );
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);

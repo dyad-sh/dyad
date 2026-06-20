@@ -1,5 +1,44 @@
 import { expect } from "@playwright/test";
-import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import path from "node:path";
+import fs from "node:fs/promises";
+import { testWithConfigSkipIfWindows, Timeout } from "./helpers/test_helper";
+
+const originalNpmCache = process.env.npm_config_cache;
+const originalNpmStoreDir = process.env.npm_config_store_dir;
+const originalPnpmStoreDir = process.env.pnpm_config_store_dir;
+
+const testSkipIfWindows = testWithConfigSkipIfWindows({
+  preLaunchHook: async ({ userDataDir }) => {
+    const npmCacheDir = path.join(userDataDir, "npm-cache");
+    const pnpmStoreDir = path.join(userDataDir, "pnpm-store");
+
+    await fs.mkdir(npmCacheDir, { recursive: true });
+    await fs.mkdir(pnpmStoreDir, { recursive: true });
+
+    process.env.npm_config_cache = npmCacheDir;
+    process.env.npm_config_store_dir = pnpmStoreDir;
+    process.env.pnpm_config_store_dir = pnpmStoreDir;
+  },
+  postLaunchHook: async () => {
+    if (originalNpmCache === undefined) {
+      delete process.env.npm_config_cache;
+    } else {
+      process.env.npm_config_cache = originalNpmCache;
+    }
+
+    if (originalNpmStoreDir === undefined) {
+      delete process.env.npm_config_store_dir;
+    } else {
+      process.env.npm_config_store_dir = originalNpmStoreDir;
+    }
+
+    if (originalPnpmStoreDir === undefined) {
+      delete process.env.pnpm_config_store_dir;
+    } else {
+      process.env.pnpm_config_store_dir = originalPnpmStoreDir;
+    }
+  },
+});
 
 testSkipIfWindows("capacitor upgrade and sync works", async ({ po }) => {
   await po.setUp();
@@ -35,7 +74,10 @@ testSkipIfWindows("capacitor upgrade and sync works", async ({ po }) => {
     // If error dialog appeared, dismiss it
     if (await errorDialog.isVisible()) {
       // Click the Close button within the dialog
-      await errorDialog.getByRole("button", { name: "Close" }).first().click();
+      await errorDialog
+        .getByRole("button", { name: "Close" })
+        .last()
+        .dispatchEvent("click");
       // Wait for dialog to close
       await expect(errorDialog).toBeHidden({ timeout: Timeout.SHORT });
     }

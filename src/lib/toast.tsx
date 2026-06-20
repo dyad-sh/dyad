@@ -4,6 +4,7 @@ import React from "react";
 import { CustomErrorToast } from "../components/CustomErrorToast";
 import { InputRequestToast } from "../components/InputRequestToast";
 import { McpConsentToast } from "../components/McpConsentToast";
+import { PnpmMinimumReleaseAgeToast } from "@/components/PnpmMinimumReleaseAgeToast";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -21,7 +22,15 @@ export const showSuccess = (message: string) => {
  * Show an error toast
  * @param message The error message to display
  */
-export const showError = (message: any) => {
+export const showError = (
+  message: any,
+  options?: {
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
+  },
+) => {
   const errorMessage = message.toString();
   console.error(message);
 
@@ -36,6 +45,7 @@ export const showError = (message: any) => {
           toastId={t}
           copied={true}
           onCopy={() => onCopy(t)}
+          action={options?.action}
         />
       ),
       { id: toastId, duration: Infinity },
@@ -50,6 +60,7 @@ export const showError = (message: any) => {
             toastId={t}
             copied={false}
             onCopy={() => onCopy(t)}
+            action={options?.action}
           />
         ),
         { id: toastId, duration: Infinity },
@@ -64,9 +75,10 @@ export const showError = (message: any) => {
         message={errorMessage}
         toastId={t}
         onCopy={() => onCopy(t)}
+        action={options?.action}
       />
     ),
-    { duration: 8_000 },
+    { duration: options?.action ? Infinity : 8_000 },
   );
 
   return toastId;
@@ -79,6 +91,32 @@ export const showError = (message: any) => {
 export const showWarning = (message: string) => {
   toast.warning(message);
   console.warn(message);
+};
+
+export const showPnpmMinimumReleaseAgeWarning = ({
+  message,
+  onInstallPnpm,
+  onOpenDocs,
+  onNeverShowAgain,
+}: {
+  message: string;
+  onInstallPnpm: () => Promise<void>;
+  onOpenDocs: () => void;
+  onNeverShowAgain: () => void;
+}) => {
+  console.warn(message);
+  return toast.custom(
+    (t) => (
+      <PnpmMinimumReleaseAgeToast
+        toastId={t}
+        message={message}
+        onInstallPnpm={onInstallPnpm}
+        onOpenDocs={onOpenDocs}
+        onNeverShowAgain={onNeverShowAgain}
+      />
+    ),
+    { id: "pnpm-minimum-release-age-warning", duration: Infinity },
+  );
 };
 
 /**

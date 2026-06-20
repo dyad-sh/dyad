@@ -38,7 +38,7 @@ test("themes management - CRUD operations", async ({ po }) => {
 
   // Verify dialog closes and theme card appears
   await expect(po.page.getByRole("dialog")).not.toBeVisible();
-  await expect(po.page.getByTestId("theme-card")).toBeVisible();
+  await expect(po.page.getByTestId("library-theme-card")).toBeVisible();
   await expect(po.page.getByText("My Test Theme")).toBeVisible();
   await expect(po.page.getByText("A test theme description")).toBeVisible();
 
@@ -268,7 +268,7 @@ test("themes management - AI generator flow", async ({ po }) => {
 
   // Verify dialog closes and theme card appears
   await expect(po.page.getByRole("dialog")).not.toBeVisible();
-  await expect(po.page.getByTestId("theme-card")).toBeVisible();
+  await expect(po.page.getByTestId("library-theme-card")).toBeVisible();
   await expect(po.page.getByText("AI Generated Theme")).toBeVisible();
   await expect(po.page.getByText("Created via AI generator")).toBeVisible();
 });
@@ -330,7 +330,7 @@ test("themes management - AI generator from website URL", async ({ po }) => {
 
   // Verify dialog closes and theme card appears
   await expect(po.page.getByRole("dialog")).not.toBeVisible();
-  const themeCard = po.page.getByTestId("theme-card");
+  const themeCard = po.page.getByTestId("library-theme-card");
   await expect(themeCard).toBeVisible();
   await expect(themeCard.getByText("Website Theme")).toBeVisible();
   await expect(themeCard.getByText("Generated from website")).toBeVisible();

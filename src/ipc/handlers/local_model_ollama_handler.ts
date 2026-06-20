@@ -2,6 +2,7 @@ import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { languageModelContracts } from "../types/language-model";
 import type { LocalModel } from "../types/language-model";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("ollama_handler");
 
@@ -60,7 +61,10 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
   try {
     const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
     if (!response.ok) {
-      throw new Error(`Failed to fetch model: ${response.statusText}`);
+      throw new DyadError(
+        `Failed to fetch model: ${response.statusText}`,
+        DyadErrorKind.External,
+      );
     }
 
     const data = await response.json();
@@ -85,15 +89,23 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
     logger.info(`Successfully fetched ${models.length} models from Ollama`);
     return { models };
   } catch (error) {
+    if (error instanceof DyadError) {
+      throw error;
+    }
     if (
       error instanceof TypeError &&
       (error as Error).message.includes("fetch failed")
     ) {
-      throw new Error(
-        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+      throw new DyadError(
+        "Could not connect to Ollama. Make sure it's running at " +
+          getOllamaApiUrl(),
+        DyadErrorKind.Precondition,
       );
     }
-    throw new Error("Failed to fetch models from Ollama");
+    throw new DyadError(
+      "Failed to fetch models from Ollama",
+      DyadErrorKind.External,
+    );
   }
 }
 

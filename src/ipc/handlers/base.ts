@@ -1,7 +1,34 @@
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
-import type { IpcContract } from "../contracts/core";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  createIpcErrorEnvelope,
+  createIpcSuccessEnvelope,
+  type IpcContract,
+} from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
+
+type RegisteredHandler = (
+  event: IpcMainInvokeEvent,
+  input: any,
+) => Promise<unknown>;
+
+// Registry of raw handler implementations keyed by channel. Lets unit tests
+// invoke a handler directly (after calling the module's register*Handlers())
+// without mocking electron or introspecting ipcMain.handle calls.
+const registeredHandlers = new Map<string, RegisteredHandler>();
+
+export function getRegisteredHandlerForTesting(
+  channel: string,
+): RegisteredHandler {
+  const handler = registeredHandlers.get(channel);
+  if (!handler) {
+    throw new Error(
+      `No handler registered for channel "${channel}". Did you call the module's register*Handlers() function first?`,
+    );
+  }
+  return handler;
+}
 
 /**
  * Creates a typed IPC handler from a contract.
@@ -26,7 +53,9 @@ export function createTypedHandler<
     input: z.infer<TInput>,
   ) => Promise<z.infer<TOutput>>,
 ): void {
-  ipcMain.handle(
+  registeredHandlers.set(contract.channel, handler);
+  // Optional chaining: ipcMain is undefined in unit tests (no electron runtime).
+  ipcMain?.handle(
     contract.channel,
     async (event: IpcMainInvokeEvent, rawInput: unknown) => {
       // Runtime validation of input
@@ -35,7 +64,12 @@ export function createTypedHandler<
         const errorMessage = parsed.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
-        throw new Error(`[${contract.channel}] Invalid input: ${errorMessage}`);
+        return createIpcErrorEnvelope(
+          new DyadError(
+            `[${contract.channel}] Invalid input: ${errorMessage}`,
+            DyadErrorKind.Validation,
+          ),
+        );
       }
 
       let result: z.infer<TOutput>;
@@ -43,7 +77,7 @@ export function createTypedHandler<
         result = await handler(event, parsed.data);
       } catch (err) {
         sendTelemetryException(err, { ipc_channel: contract.channel });
-        throw err;
+        return createIpcErrorEnvelope(err);
       }
 
       // Validate output in development mode only (catches handler bugs without prod overhead)
@@ -59,7 +93,7 @@ export function createTypedHandler<
         }
       }
 
-      return result;
+      return createIpcSuccessEnvelope(result);
     },
   );
 }
@@ -89,7 +123,9 @@ export function createLoggedTypedHandler(logger: {
       input: z.infer<TInput>,
     ) => Promise<z.infer<TOutput>>,
   ): void {
-    ipcMain.handle(
+    registeredHandlers.set(contract.channel, handler);
+    // Optional chaining: ipcMain is undefined in unit tests (no electron runtime).
+    ipcMain?.handle(
       contract.channel,
       async (event: IpcMainInvokeEvent, rawInput: unknown) => {
         // Runtime validation of input
@@ -98,11 +134,12 @@ export function createLoggedTypedHandler(logger: {
           const errorMessage = parsed.error.issues
             .map((e) => `${e.path.join(".")}: ${e.message}`)
             .join("; ");
-          const error = new Error(
+          const error = new DyadError(
             `[${contract.channel}] Invalid input: ${errorMessage}`,
+            DyadErrorKind.Validation,
           );
           logger.error(`[${contract.channel}] Invalid input`, error);
-          throw error;
+          return createIpcErrorEnvelope(error);
         }
 
         try {
@@ -122,11 +159,11 @@ export function createLoggedTypedHandler(logger: {
             }
           }
 
-          return result;
+          return createIpcSuccessEnvelope(result);
         } catch (err) {
           logger.error(`[${contract.channel}] Handler error`, err);
           sendTelemetryException(err, { ipc_channel: contract.channel });
-          throw err;
+          return createIpcErrorEnvelope(err);
         }
       },
     );

@@ -9,7 +9,7 @@ const testWithNotificationsEnabled = testWithConfig({
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(
       path.join(userDataDir, "user-settings.json"),
-      JSON.stringify({ enableChatCompletionNotifications: true }, null, 2),
+      JSON.stringify({ enableChatEventNotifications: true }, null, 2),
     );
   },
 });
@@ -21,9 +21,7 @@ test("notification banner - skip hides permanently", async ({ po }) => {
   // Banner should be visible since notifications are not enabled
   const banner = po.page.getByTestId("notification-tip-banner");
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText(
-    "Get notified when chat responses finish.",
-  );
+  await expect(banner).toContainText("Get notified about chat events.");
 
   // Record settings before skipping
   const beforeSettings = po.settings.recordSettings();
@@ -69,7 +67,7 @@ test("notification banner - Enable enables notifications and hides banner", asyn
   // Banner should be hidden after enabling
   await expect(banner).not.toBeVisible();
 
-  // Verify settings were updated with enableChatCompletionNotifications: true
+  // Verify settings were updated with enableChatEventNotifications: true
   po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Navigate away and back to verify banner stays hidden

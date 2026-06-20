@@ -2,6 +2,7 @@ import log from "electron-log";
 import fetch from "node-fetch";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("upload_handlers");
 
@@ -12,12 +13,18 @@ export function registerUploadHandlers() {
 
     // Validate the signed URL
     if (!url || typeof url !== "string" || !url.startsWith("https://")) {
-      throw new Error("Invalid signed URL provided");
+      throw new DyadError(
+        "Invalid signed URL provided",
+        DyadErrorKind.Validation,
+      );
     }
 
     // Validate content type
     if (!contentType || typeof contentType !== "string") {
-      throw new Error("Invalid content type provided");
+      throw new DyadError(
+        "Invalid content type provided",
+        DyadErrorKind.Validation,
+      );
     }
 
     // Perform the upload to the signed URL

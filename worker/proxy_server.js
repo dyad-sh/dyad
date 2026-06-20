@@ -15,15 +15,18 @@ const path = require("path");
 const LISTEN_HOST = "localhost";
 const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
+let rememberedBaseUrl = null;
+const fixedHeaders = workerData?.fixedHeaders || {};
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
   const fixed = workerData?.targetOrigin;
   if (fixed) {
     try {
-      rememberedOrigin = new URL(fixed).origin;
+      rememberedBaseUrl = new URL(fixed);
+      rememberedOrigin = rememberedBaseUrl.origin;
       parentPort?.postMessage(
-        `[proxy-worker] fixed upstream: ${rememberedOrigin}`,
+        `[proxy-worker] fixed upstream origin: ${rememberedOrigin}`,
       );
     } catch {
       throw new Error(
@@ -273,10 +276,75 @@ function injectHTML(buf) {
 
 /* ---------------- helper: build upstream URL from request -------------- */
 function buildTargetURL(clientReq) {
-  if (!rememberedOrigin) throw new Error("No upstream configured.");
+  if (!rememberedOrigin || !rememberedBaseUrl)
+    throw new Error("No upstream configured.");
 
-  // Forward to the remembered origin keeping path & query
-  return new URL(clientReq.url, rememberedOrigin);
+  const incomingUrl = new URL(clientReq.url, rememberedOrigin);
+  const basePath = rememberedBaseUrl.pathname.replace(/\/$/, "");
+  let incomingPath = incomingUrl.pathname;
+
+  if (
+    basePath &&
+    (incomingPath === basePath || incomingPath.startsWith(`${basePath}/`))
+  ) {
+    incomingPath = incomingPath.slice(basePath.length) || "/";
+  }
+
+  const targetPath =
+    incomingPath === "/"
+      ? rememberedBaseUrl.pathname
+      : `${basePath}${incomingPath}`;
+
+  return new URL(
+    `${targetPath}${incomingUrl.search}`,
+    rememberedBaseUrl.origin,
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Cookie rewriting for the embedded preview iframe                        */
+/*                                                                         */
+/* In a packaged build the Dyad shell loads from file://, a cross-site     */
+/* top-level ancestor to the http://localhost preview. That makes the      */
+/* request's "site for cookies" cross-site, so the browser withholds       */
+/* default Lax/Strict cookies and auth sessions fail to stick. (Dev mode   */
+/* hides this: the shell runs on http://localhost, same-site with the      */
+/* preview.)                                                               */
+/*                                                                         */
+/* Fix: rewrite every forwarded Set-Cookie to                              */
+/* `SameSite=None; Secure` so it's sent inside the iframe.                 */
+/* (Secure is required by SameSite=None and honored over localhost.)       */
+/* ----------------------------------------------------------------------- */
+function rewriteCookieForIframe(cookieStr) {
+  if (!cookieStr || typeof cookieStr !== "string") return cookieStr;
+  // filter(Boolean) drops empty segments from leading/trailing/double semicolons
+  // so we never emit a malformed header like "...; ; Secure".
+  const parts = cookieStr
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return cookieStr;
+  const nameValue = parts[0];
+  // Drop any existing SameSite / Secure / Partitioned attributes so ours win.
+  const attrs = parts.slice(1).filter((p) => {
+    const lower = p.toLowerCase();
+    return (
+      !lower.startsWith("samesite") &&
+      lower !== "secure" &&
+      lower !== "partitioned"
+    );
+  });
+  attrs.push("Secure", "SameSite=None");
+  return [nameValue, ...attrs].join("; ");
+}
+
+/* Rewrites the Set-Cookie header (an array in Node) in place on `headers`. */
+function rewriteSetCookieHeaders(headers) {
+  const sc = headers["set-cookie"];
+  if (!sc) return headers;
+  const list = Array.isArray(sc) ? sc : [sc];
+  headers["set-cookie"] = list.map(rewriteCookieForIframe);
+  return headers;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -313,7 +381,7 @@ const server = http.createServer((clientReq, clientRes) => {
   const lib = isTLS ? https : http;
 
   /* Copy request headers but rewrite Host / Origin / Referer */
-  const headers = { ...clientReq.headers, host: target.host };
+  const headers = { ...clientReq.headers, host: target.host, ...fixedHeaders };
   if (headers.origin) headers.origin = target.origin;
   if (headers.referer) {
     try {
@@ -352,6 +420,7 @@ const server = http.createServer((clientReq, clientRes) => {
     const inject = wantsInjection && isHtml;
 
     if (!inject) {
+      rewriteSetCookieHeaders(upRes.headers);
       clientRes.writeHead(upRes.statusCode, upRes.headers);
       return void upRes.pipe(clientRes);
     }
@@ -371,6 +440,7 @@ const server = http.createServer((clientReq, clientRes) => {
         delete hdrs["content-encoding"];
         // Also, remove ETag as content has changed
         delete hdrs["etag"];
+        rewriteSetCookieHeaders(hdrs);
 
         clientRes.writeHead(upRes.statusCode, hdrs);
         clientRes.end(patched);
@@ -402,7 +472,7 @@ server.on("upgrade", (req, socket, _head) => {
   }
 
   const isTLS = target.protocol === "https:";
-  const headers = { ...req.headers, host: target.host };
+  const headers = { ...req.headers, host: target.host, ...fixedHeaders };
   if (headers.origin) headers.origin = target.origin;
 
   const upReq = (isTLS ? https : http).request({
@@ -433,8 +503,33 @@ server.on("upgrade", (req, socket, _head) => {
 
 /* ----------------------------------------------------------------------- */
 
-server.listen(LISTEN_PORT, LISTEN_HOST, () => {
-  parentPort?.postMessage(
-    `proxy-server-start url=http://${LISTEN_HOST}:${LISTEN_PORT}`,
-  );
-});
+// Prefer the deterministic port (LISTEN_PORT). If it is already in use, scan
+// the fallback band upward instead of evicting whatever already holds the port.
+const FALLBACK_PORT_START = workerData?.fallbackPortStart || LISTEN_PORT + 1;
+const MAX_PORT_ATTEMPTS = workerData?.maxPortAttempts || 50;
+
+function listenWithFallback(port, nextFallback, attemptsLeft) {
+  function onError(err) {
+    if (err && err.code === "EADDRINUSE" && attemptsLeft > 1) {
+      parentPort?.postMessage(
+        `[proxy-worker] port ${port} in use, trying ${nextFallback}`,
+      );
+      listenWithFallback(nextFallback, nextFallback + 1, attemptsLeft - 1);
+      return;
+    }
+    parentPort?.postMessage(
+      `proxy-server-error code=${err?.code || "UNKNOWN"} base=${LISTEN_PORT} lastTried=${port}`,
+    );
+  }
+
+  server.once("error", onError);
+  server.listen(port, LISTEN_HOST, () => {
+    server.removeListener("error", onError);
+    const boundPort = server.address()?.port ?? port;
+    parentPort?.postMessage(
+      `proxy-server-start url=http://${LISTEN_HOST}:${boundPort}`,
+    );
+  });
+}
+
+listenWithFallback(LISTEN_PORT, FALLBACK_PORT_START, MAX_PORT_ATTEMPTS);

@@ -60,9 +60,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
     const prefix = sourceName ? `[${sourceName}]` : "";
     const formattedLog = `[${time}] ${level.toUpperCase()} ${prefix}: ${message}`;
 
-    setChatInput((prev) => {
-      return `${prev}\n\`\`\`\n${formattedLog}\n\`\`\``;
-    });
+    setChatInput((prev) => `${prev}\n\`\`\`\n${formattedLog}\n\`\`\``);
   };
 
   // Determine styling based on log level

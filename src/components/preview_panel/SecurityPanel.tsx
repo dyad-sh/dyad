@@ -1,6 +1,5 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useSecurityReview } from "@/hooks/useSecurityReview";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -24,7 +23,6 @@ import {
   Pencil,
   Wrench,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +36,7 @@ import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { showSuccess, showWarning } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 const getSeverityColor = (level: SecurityFinding["level"]) => {
   switch (level) {
@@ -699,8 +698,7 @@ function FindingDetailsDialog({
 
 export const SecurityPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const navigate = useNavigate();
+  const { selectChat } = useSelectChat();
   const queryClient = useQueryClient();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { data, isLoading, error, refetch } = useSecurityReview(selectedAppId);
@@ -785,14 +783,15 @@ export const SecurityPanel = () => {
       // Create a new chat
       const chatId = await ipc.chat.createChat(selectedAppId);
 
-      // Navigate to the new chat
-      setSelectedChatId(chatId);
-      await navigate({ to: "/chat", search: { id: chatId } });
+      // Select the new chat (updates session/recent tracking and navigates)
+      selectChat({ chatId, appId: selectedAppId });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
 
       // Stream the security review prompt
       await streamMessage({
         prompt: "/security-review",
         chatId,
+        appId: selectedAppId,
         onSettled: () => {
           refetch();
           setIsRunningReview(false);
@@ -816,9 +815,9 @@ export const SecurityPanel = () => {
 
       const chatId = await ipc.chat.createChat(selectedAppId);
 
-      // Navigate to the new chat
-      setSelectedChatId(chatId);
-      await navigate({ to: "/chat", search: { id: chatId } });
+      // Select the new chat (updates session/recent tracking and navigates)
+      selectChat({ chatId, appId: selectedAppId });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
 
       const prompt = `Please fix the following security issue in a simple and effective way:
 
@@ -829,6 +828,7 @@ ${finding.description}`;
       await streamMessage({
         prompt,
         chatId,
+        appId: selectedAppId,
         onSettled: () => {
           setFixingFindingKey(null);
         },
@@ -885,9 +885,9 @@ ${finding.description}`;
       // Create a new chat
       const chatId = await ipc.chat.createChat(selectedAppId);
 
-      // Navigate to the new chat
-      setSelectedChatId(chatId);
-      await navigate({ to: "/chat", search: { id: chatId } });
+      // Select the new chat (updates session/recent tracking and navigates)
+      selectChat({ chatId, appId: selectedAppId });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
 
       // Build a comprehensive prompt for all selected issues
       const issuesList = findingsToFix
@@ -904,6 +904,7 @@ ${issuesList}`;
       await streamMessage({
         prompt,
         chatId,
+        appId: selectedAppId,
         onSettled: () => {
           setIsFixingSelected(false);
           setSelectedFindings(new Set());

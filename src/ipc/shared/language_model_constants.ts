@@ -1,5 +1,3 @@
-import { LanguageModel } from "@/ipc/types";
-
 export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
   "google",
   "vertex",
@@ -18,14 +16,24 @@ export interface ModelOption {
 }
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
+export const GPT_5_5_MODEL_NAME = "gpt-5.5";
 export const SONNET_4_6 = "claude-sonnet-4-6";
 export const OPUS_4_6 = "claude-opus-4-6";
+export const OPUS_4_8 = "claude-opus-4-8";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
 export const GPT_5_NANO = "gpt-5-nano";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
+    {
+      name: GPT_5_5_MODEL_NAME,
+      displayName: "GPT 5.5",
+      description: "OpenAI's most capable coding model",
+      contextWindow: 1_000_000,
+      temperature: 1,
+      dollarSigns: 6,
+    },
     // https://platform.openai.com/docs/models/gpt-5.1
     {
       name: GPT_5_2_MODEL_NAME,
@@ -116,6 +124,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: OPUS_4_8,
+      displayName: "Claude Opus 4.8",
+      description: "Anthropic most capable model",
+      maxOutputTokens: 64_000,
+      contextWindow: 1_000_000,
+      temperature: 1,
+      dollarSigns: 6,
+    },
+    {
       name: "claude-opus-4-6",
       displayName: "Claude Opus 4.6",
       description:
@@ -123,7 +140,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 6,
     },
     // https://docs.anthropic.com/en/docs/about-claude/models/overview
@@ -135,39 +152,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
-      dollarSigns: 5,
-    },
-    {
-      name: "claude-opus-4-5",
-      displayName: "Claude Opus 4.5",
-      description:
-        "Anthropic's best model for coding (note: this model is very expensive!)",
-      // Set to 32k since context window is 1M tokens
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-      temperature: 0,
-      dollarSigns: 5,
-    },
-    {
-      name: "claude-sonnet-4-5-20250929",
-      displayName: "Claude Sonnet 4.5",
-      description:
-        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
-      maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
-      temperature: 0,
-      dollarSigns: 5,
-    },
-    {
-      name: "claude-sonnet-4-20250514",
-      displayName: "Claude Sonnet 4",
-      description: "Excellent coder (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
-      maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
       dollarSigns: 5,
     },
   ],
@@ -264,6 +249,16 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 1.0,
       dollarSigns: 2,
     },
+    // https://openrouter.ai/minimax/minimax-m2.7
+    {
+      name: "minimax/minimax-m2.7",
+      displayName: "MiniMax M2.7",
+      description: "Latest flagship model with enhanced reasoning and coding",
+      maxOutputTokens: 32_000,
+      contextWindow: 204_800,
+      temperature: 0,
+      dollarSigns: 1,
+    },
     // https://openrouter.ai/minimax/minimax-m2.5
     {
       name: "minimax/minimax-m2.5",
@@ -317,6 +312,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Auto",
       description: "Automatically selects the best model",
       tag: "Default",
+      tagColor: "bg-primary text-primary-foreground",
       // The following is reasonable defaults.
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
@@ -327,6 +323,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Free (OpenRouter)",
       description: "Selects from one of the free OpenRouter models",
       tag: "Free",
+      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
       // These are below Gemini 2.5 Pro & Flash limits
       // which are the ones defaulted to for both regular auto
       // and smart auto.
@@ -335,24 +332,14 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
     {
-      name: "turbo",
-      displayName: "Turbo (Pro)",
-      description: "Use very fast open-source frontier models",
-      maxOutputTokens: 32_000,
-      contextWindow: 256_000,
-      temperature: 0,
-      tag: "Fast",
-      tagColor: "bg-rose-800 text-white",
-    },
-    {
       name: "value",
-      displayName: "Super Value (Pro)",
+      displayName: "Super Value",
       description: "Uses the most cost-effective models available",
       maxOutputTokens: 32_000,
       contextWindow: 256_000,
       temperature: 0,
       tag: "Budget",
-      tagColor: "bg-emerald-700 text-white",
+      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
     },
   ],
   azure: [
@@ -467,41 +454,49 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      temperature: 1,
+    },
+  ],
+  // https://platform.minimax.io/docs/api-reference/text-anthropic-api
+  minimax: [
+    {
+      name: "MiniMax-M2.7",
+      displayName: "MiniMax M2.7",
+      description: "Latest flagship model with enhanced reasoning and coding",
+      maxOutputTokens: 32_000,
+      contextWindow: 204_800,
+      temperature: 1.0,
+      dollarSigns: 1,
     },
     {
-      name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-      displayName: "Claude 4 Sonnet",
-      description: "Excellent coder (note: >200k tokens is very expensive!)",
+      name: "MiniMax-M2.7-highspeed",
+      displayName: "MiniMax M2.7 High Speed",
+      description: "High-speed version of M2.7 for low-latency scenarios",
       maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
-      temperature: 0,
+      contextWindow: 204_800,
+      temperature: 1.0,
+      dollarSigns: 1,
+    },
+    {
+      name: "MiniMax-M2.5",
+      displayName: "MiniMax M2.5",
+      description: "Peak Performance. Ultimate Value. Master the Complex",
+      maxOutputTokens: 32_000,
+      contextWindow: 204_800,
+      temperature: 1.0,
+      dollarSigns: 1,
+    },
+    {
+      name: "MiniMax-M2.5-highspeed",
+      displayName: "MiniMax M2.5 High Speed",
+      description: "Same performance, faster and more agile",
+      maxOutputTokens: 32_000,
+      contextWindow: 204_800,
+      temperature: 1.0,
+      dollarSigns: 1,
     },
   ],
 };
-
-export const TURBO_MODELS: LanguageModel[] = [
-  {
-    apiName: "glm-4.7:turbo",
-    displayName: "GLM 4.7",
-    description: "Strong coding model (very fast)",
-    maxOutputTokens: 32_000,
-    contextWindow: 131_000,
-    temperature: 0.7,
-    dollarSigns: 3,
-    type: "cloud",
-  },
-  {
-    apiName: "kimi-k2:turbo",
-    displayName: "Kimi K2",
-    description: "Kimi 0905 update (fast)",
-    maxOutputTokens: 16_000,
-    contextWindow: 256_000,
-    temperature: 0,
-    dollarSigns: 2,
-    type: "cloud",
-  },
-];
 
 export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
   .filter(
@@ -517,6 +512,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
+  minimax: "MINIMAX_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -585,6 +581,13 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://console.aws.amazon.com/bedrock/",
     gatewayPrefix: "bedrock/",
+    secondary: true,
+  },
+  minimax: {
+    displayName: "MiniMax",
+    hasFreeTier: false,
+    websiteUrl: "https://platform.minimax.io/",
+    gatewayPrefix: "minimax/",
     secondary: true,
   },
 };

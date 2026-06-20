@@ -92,12 +92,14 @@ export const CloneRepoParamsSchema = z.object({
   appName: z.string().optional(),
   installCommand: z.string().optional(),
   startCommand: z.string().optional(),
+  optimizeForDyad: z.boolean().optional(),
 });
 
 export const CloneRepoResultSchema = z.union([
   z.object({
     app: AppSchema,
     hasAiRules: z.boolean(),
+    autoUpgradeWarning: z.boolean().optional(),
   }),
   z.object({
     error: z.string(),
@@ -313,6 +315,12 @@ export const gitContracts = {
     channel: "git:commit-changes",
     input: CommitChangesParamsSchema,
     output: z.string(), // Returns commit hash
+  }),
+
+  discardChanges: defineContract({
+    channel: "git:discard-changes",
+    input: GitBranchAppIdParamsSchema,
+    output: z.void(),
   }),
 } as const;
 

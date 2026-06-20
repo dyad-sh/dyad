@@ -3,11 +3,15 @@ import log from "electron-log";
 
 const logger = log.scope("runShellCommand");
 
-export function runShellCommand(command: string): Promise<string | null> {
+export function runShellCommand(
+  command: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
+): Promise<string | null> {
   logger.log(`Running command: ${command}`);
   return new Promise((resolve) => {
     let output = "";
     const process = spawn(command, {
+      env: options.env,
       shell: true,
       stdio: ["ignore", "pipe", "pipe"], // ignore stdin, pipe stdout/stderr
     });

@@ -69,6 +69,20 @@ export function greet(name: string) {
     );
 
     await fs.promises.writeFile(
+      path.join(testDir, "booking.ts"),
+      `export function createBooking(input: { id: string }) {
+  return createBooking({ id: input.id });
+}
+
+function update() {
+  const items = ["first"];
+  const selected = items[idx];
+  setState();
+  return onClick={() => createBooking({ id: "next" })};
+}`,
+    );
+
+    await fs.promises.writeFile(
       path.join(testDir, "readme.md"),
       `# Hello Project
 This is a hello world example.
@@ -88,9 +102,13 @@ function deepHello() {
       event: {} as any,
       appId: 1,
       appPath: testDir,
+      referencedApps: new Map(),
       chatId: 1,
       supabaseProjectId: null,
       supabaseOrganizationSlug: null,
+      neonProjectId: null,
+      neonActiveBranchId: null,
+      frameworkType: null,
       messageId: 1,
       isSharedModulesChanged: false,
       isDyadPro: false,
@@ -143,6 +161,14 @@ function deepHello() {
       expect(() => schema.parse({ query: "test", limit: 1 })).not.toThrow();
       expect(() => schema.parse({ query: "test", limit: 250 })).not.toThrow();
     });
+
+    it("validates literal mode", () => {
+      const schema = grepTool.inputSchema;
+
+      expect(() =>
+        schema.parse({ query: "createBooking({", literal: true }),
+      ).not.toThrow();
+    });
   });
 
   describe("execute - basic search", () => {
@@ -161,6 +187,19 @@ function deepHello() {
       // Should contain file:line: format
       expect(result).toMatch(/test1\.ts:\d+:/);
       expect(result).toMatch(/test2\.ts:\d+:/);
+    });
+
+    it("searches exact text with punctuation in literal mode", async () => {
+      const result = await grepTool.execute(
+        { query: "createBooking({", literal: true },
+        mockContext,
+      );
+
+      expect(result).toContain("booking.ts:2:");
+      expect(result).toContain("createBooking({ id: input.id })");
+      expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
+        expect.stringContaining('literal="true"'),
+      );
     });
 
     it("returns no matches found when nothing matches", async () => {
@@ -286,6 +325,63 @@ function deepHello() {
       expect(result).toContain("test1.ts");
       expect(result).not.toContain("node_modules");
     });
+
+    it("searches node_modules when include_ignored is true", async () => {
+      const nodeModulesDir = path.join(testDir, "node_modules", "some-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(nodeModulesDir, "index.js"),
+        `function dependencyHello() { return "hello from node_modules"; }`,
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "dependencyHello",
+          include_ignored: true,
+          include_pattern: "node_modules/some-pkg/**",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("node_modules/some-pkg/index.js");
+      expect(result).toContain("dependencyHello");
+    });
+
+    it("searches hidden ignored files when include_ignored is true", async () => {
+      const dyadDir = path.join(testDir, ".dyad");
+      await fs.promises.mkdir(dyadDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(dyadDir, "backup.txt"),
+        "hiddenIgnoredNeedle",
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "hiddenIgnoredNeedle",
+          include_ignored: true,
+          include_pattern: ".dyad/**",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain(".dyad/backup.txt");
+    });
+
+    it("keeps .git excluded when include_ignored is true", async () => {
+      const gitDir = path.join(testDir, ".git");
+      await fs.promises.mkdir(gitDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(gitDir, "config"),
+        "gitIgnoredNeedle",
+      );
+
+      const result = await grepTool.execute(
+        { query: "gitIgnoredNeedle", include_ignored: true },
+        mockContext,
+      );
+
+      expect(result).toBe("No matches found.");
+    });
   });
 
   describe("execute - regex patterns", () => {
@@ -314,6 +410,57 @@ function deepHello() {
 
       expect(result).toContain("hello");
       expect(result).toContain("goodbye");
+    });
+
+    it("throws a clear regex error for an invalid regex instead of inferring literal", async () => {
+      // `function{` is an invalid regex; previously this was inferred as a
+      // literal search. Now it fails as a regex with an actionable message.
+      await expect(
+        grepTool.execute({ query: "hello|function{" }, mockContext),
+      ).rejects.toThrow(/Invalid regex pattern[\s\S]*literal=true/);
+    });
+
+    it("runs a code-shaped query as a regex without inferring literal", async () => {
+      const result = await grepTool.execute(
+        { query: "setState()" },
+        mockContext,
+      );
+
+      // `()` is an empty group, so the regex still matches the call site — but
+      // there is no literal-inference note.
+      expect(result).toContain("booking.ts");
+      expect(result).not.toContain("looked like a code literal");
+    });
+
+    it("treats bracketed punctuation as a regex character class, not a literal", async () => {
+      const result = await grepTool.execute(
+        { query: "items[idx]" },
+        mockContext,
+      );
+
+      // Without literal inference, `[idx]` is a character class, so the literal
+      // source text `items[idx]` is not matched.
+      expect(result).toBe("No matches found.");
+    });
+
+    it("finds punctuated code text when literal=true is set", async () => {
+      const result = await grepTool.execute(
+        { query: "items[idx]", literal: true },
+        mockContext,
+      );
+
+      expect(result).toContain("booking.ts");
+      expect(result).toContain("items[idx]");
+    });
+
+    it("does not treat regex punctuation as syntax in literal mode", async () => {
+      const result = await grepTool.execute(
+        { query: "createBooking({", literal: true },
+        mockContext,
+      );
+
+      expect(result).not.toContain("Invalid regex pattern");
+      expect(result).toContain("booking.ts");
     });
   });
 
@@ -353,6 +500,35 @@ function deepHello() {
       expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
         expect.stringContaining('total="'),
       );
+    });
+
+    it("stops ignored searches after collecting enough matches", async () => {
+      const nodeModulesDir = path.join(testDir, "node_modules", "many-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await Promise.all(
+        Array.from({ length: 20 }, (_, index) =>
+          fs.promises.writeFile(
+            path.join(nodeModulesDir, `file-${index}.js`),
+            "ignoredSearchNeedle\n",
+          ),
+        ),
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "ignoredSearchNeedle",
+          include_ignored: true,
+          include_pattern: "node_modules/many-pkg/**",
+          limit: 3,
+        },
+        mockContext,
+      );
+
+      const matchLines = result
+        .split("\n")
+        .filter((line) => line.match(/:\d+:/));
+      expect(matchLines).toHaveLength(3);
+      expect(result).toContain("[TRUNCATED: Showing 3 of at least 4 matches.");
     });
   });
 
@@ -457,12 +633,28 @@ function deepHello() {
       expect(result).toContain('exclude="*.md"');
     });
 
+    it("includes include_ignored in attributes", () => {
+      const result = grepTool.buildXml?.(
+        { query: "test", include_ignored: true },
+        false,
+      );
+      expect(result).toContain('include_ignored="true"');
+    });
+
     it("includes case-sensitive in attributes when true", () => {
       const result = grepTool.buildXml?.(
         { query: "test", case_sensitive: true },
         false,
       );
       expect(result).toContain('case-sensitive="true"');
+    });
+
+    it("includes literal in attributes when true", () => {
+      const result = grepTool.buildXml?.(
+        { query: "createBooking({", literal: true },
+        false,
+      );
+      expect(result).toContain('literal="true"');
     });
   });
 
@@ -478,6 +670,86 @@ function deepHello() {
         include_pattern: "*.ts",
       });
       expect(preview).toBe('Search for "hello" in *.ts');
+    });
+
+    it("includes include_ignored in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "hello",
+        include_ignored: true,
+      });
+      expect(preview).toBe('Search for "hello" including ignored files');
+    });
+
+    it("includes literal mode in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "createBooking({",
+        literal: true,
+      });
+      expect(preview).toBe('Search for "createBooking({" as literal text');
+    });
+
+    it("includes app_name in preview", () => {
+      const preview = grepTool.getConsentPreview?.({
+        query: "hello",
+        app_name: "other-app",
+      });
+      expect(preview).toBe('Search for "hello" (app: other-app)');
+    });
+  });
+
+  describe("app_name (referenced apps)", () => {
+    let otherAppDir: string;
+
+    beforeEach(async () => {
+      otherAppDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "grep-other-app-"),
+      );
+      await fs.promises.writeFile(
+        path.join(otherAppDir, "only-in-other.ts"),
+        `const onlyInOther = "unique-other-app-token";`,
+      );
+    });
+
+    afterEach(async () => {
+      await fs.promises.rm(otherAppDir, { recursive: true, force: true });
+    });
+
+    it("searches the referenced app when app_name is provided", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      const result = await grepTool.execute(
+        { query: "unique-other-app-token", app_name: "other-app" },
+        mockContext,
+      );
+      expect(result).toContain("only-in-other.ts");
+      expect(result).toContain("unique-other-app-token");
+    });
+
+    it("does not see current-app matches when app_name targets another app", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      const result = await grepTool.execute(
+        { query: "goodbye", app_name: "other-app" },
+        mockContext,
+      );
+      expect(result).toBe("No matches found.");
+    });
+
+    it("throws on unknown app_name", async () => {
+      await expect(
+        grepTool.execute(
+          { query: "hello", app_name: "does-not-exist" },
+          mockContext,
+        ),
+      ).rejects.toThrow(/Unknown app_name 'does-not-exist'/);
+    });
+
+    it("includes app_name in the final XML output", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      await grepTool.execute(
+        { query: "unique-other-app-token", app_name: "other-app" },
+        mockContext,
+      );
+      const xmlCall = (mockContext.onXmlComplete as any).mock.calls[0]?.[0];
+      expect(xmlCall).toContain('app_name="other-app"');
     });
   });
 });

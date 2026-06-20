@@ -1,6 +1,6 @@
 import React from "react";
 import { toast } from "sonner";
-import { X, Copy, Check } from "lucide-react";
+import { X, Copy, Check, ExternalLink } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -12,6 +12,10 @@ interface CustomErrorToastProps {
   toastId: string | number;
   copied?: boolean;
   onCopy?: () => void;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 export function CustomErrorToast({
@@ -19,6 +23,7 @@ export function CustomErrorToast({
   toastId,
   copied = false,
   onCopy,
+  action,
 }: CustomErrorToastProps) {
   const handleClose = () => {
     toast.dismiss(toastId);
@@ -84,6 +89,20 @@ export function CustomErrorToast({
               <p className="text-sm text-red-800 leading-relaxed whitespace-pre-wrap bg-red-100/50 backdrop-blur-sm p-3 rounded-lg border border-red-200/50">
                 {message}
               </p>
+              {action && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    action.onClick();
+                    handleClose();
+                  }}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  {action.label}
+                </button>
+              )}
             </div>
           </div>
         </div>

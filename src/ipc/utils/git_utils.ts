@@ -14,7 +14,12 @@ import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
+
+function isUserVisibleGitPath(filePath: string) {
+  return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
+}
 
 /**
  * Returns a sanitized environment for git commands on Windows.
@@ -109,6 +114,7 @@ async function execGit(
 import type {
   GitBaseParams,
   GitFileParams,
+  GitListFilesParams,
   GitCheckoutParams,
   GitBranchRenameParams,
   GitCloneParams,
@@ -128,20 +134,63 @@ import type {
 } from "../git_types";
 
 /**
- * Helper function that wraps exec and throws an error if the exit code is non-zero
+ * Builds environment variables for native git network operations (clone,
+ * fetch, pull, push).
+ *
+ * Credentials are passed per-invocation via `http.<url>.extraheader` instead
+ * of being embedded in the remote URL, so tokens are never persisted to
+ * .git/config or echoed back in git error messages. Credential helpers are
+ * cleared and terminal prompting is disabled so git fails fast instead of
+ * invoking system helpers or waiting for input that can never arrive.
+ */
+function getGitNetworkEnv(accessToken?: string): Record<string, string> {
+  const configs: [key: string, value: string][] = [
+    // An empty credential.helper entry resets the helper list, so helpers
+    // from system/global config (osxkeychain, manager, etc.) never run.
+    ["credential.helper", ""],
+  ];
+  if (accessToken) {
+    const basicAuth = Buffer.from(`${accessToken}:x-oauth-basic`).toString(
+      "base64",
+    );
+    configs.push([
+      "http.https://github.com/.extraheader",
+      `Authorization: Basic ${basicAuth}`,
+    ]);
+  }
+  const env: Record<string, string> = {
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: String(configs.length),
+  };
+  configs.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
+}
+
+/**
+ * Helper function that wraps exec and throws an error if the exit code is non-zero.
+ *
+ * Defaults to {@link DyadErrorKind.External} so unexpected failures (network, permissions,
+ * corrupted repos) surface in telemetry. Use {@link DyadErrorKind.Conflict} only when the
+ * dominant failure mode is genuinely merge/working-tree conflict (callers that detect
+ * conflict state often rethrow {@link GitConflictError} instead).
  */
 async function execOrThrow(
   args: string[],
   path: string,
   errorMessage?: string,
+  kind: DyadErrorKind = DyadErrorKind.External,
+  options?: IGitStringExecutionOptions,
 ): Promise<void> {
-  const result = await execGit(args, path);
+  const result = await execGit(args, path, options);
   if (result.exitCode !== 0) {
     const errorDetails = result.stderr.trim() || result.stdout.trim();
     const error = errorMessage
       ? `${errorMessage}. ${errorDetails}`
       : `Git command failed: ${args.join(" ")}. ${errorDetails}`;
-    throw new Error(error);
+    throw new DyadError(error, kind);
   }
 }
 
@@ -221,8 +270,9 @@ export async function getCurrentCommitHash({
   if (settings.enableNativeGit) {
     const result = await execGit(["rev-parse", ref], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to resolve ref '${ref}': ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout.trim();
@@ -245,7 +295,10 @@ export async function isGitStatusClean({
     const result = await execGit(["status", "--porcelain"], path);
 
     if (result.exitCode !== 0) {
-      throw new Error(`Failed to get status: ${result.stderr}`);
+      throw new DyadError(
+        `Failed to get status: ${result.stderr}`,
+        DyadErrorKind.Conflict,
+      );
     }
 
     // If output is empty, working directory is clean (no changes)
@@ -269,8 +322,9 @@ export async function hasStagedChanges({
     // git diff --cached --quiet exits with 1 if there are staged changes, 0 if none
     const result = await execGit(["diff", "--cached", "--quiet"], path);
     if (result.exitCode !== 0 && result.exitCode !== 1) {
-      throw new Error(
+      throw new DyadError(
         `Failed to check staged changes: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.exitCode === 1;
@@ -299,8 +353,9 @@ export async function gitCommit({
     // Get the new commit hash
     const result = await execGit(["rev-parse", "HEAD"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout.trim();
@@ -341,8 +396,9 @@ export async function gitStageToRevert({
     // Get the current HEAD commit hash
     const currentHeadResult = await execGit(["rev-parse", "HEAD"], path);
     if (currentHeadResult.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get current commit: ${currentHeadResult.stderr.trim() || currentHeadResult.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
 
@@ -356,12 +412,16 @@ export async function gitStageToRevert({
     // Safety: refuse to run if the work-tree isn't clean.
     const statusResult = await execGit(["status", "--porcelain"], path);
     if (statusResult.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get status: ${statusResult.stderr.trim() || statusResult.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     if (statusResult.stdout.trim() !== "") {
-      throw new Error("Cannot revert: working tree has uncommitted changes.");
+      throw new DyadError(
+        "Cannot revert: working tree has uncommitted changes.",
+        DyadErrorKind.Conflict,
+      );
     }
 
     // Reset the working directory and index to match the target commit state
@@ -510,10 +570,90 @@ export async function gitReset({ path }: GitBaseParams): Promise<void> {
     // For isomorphic-git, resetting the index is complex and not directly supported
     // This is a fallback - in practice, this should rarely be needed when native git is disabled
     // If needed, users can manually reset via command line or enable native git
-    throw new Error(
+    throw new DyadError(
       "gitReset: Resetting the staging area is not fully supported when native git is disabled. " +
         "Please enable native git or manually unstage files using 'git reset HEAD'.",
+      DyadErrorKind.Precondition,
     );
+  }
+}
+
+export async function gitDiscardAllChanges({
+  path,
+}: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Reset all tracked files (index + working tree) to HEAD state
+    await execOrThrow(
+      ["reset", "--hard", "HEAD"],
+      path,
+      "Failed to reset to HEAD",
+    );
+    // Remove untracked files and directories
+    await execOrThrow(
+      ["clean", "-fd"],
+      path,
+      "Failed to remove untracked files",
+    );
+  } else {
+    const matrix = await git.statusMatrix({ fs, dir: path });
+    const removedFileDirs = new Set<string>();
+
+    for (const row of matrix) {
+      const [filepath, headStatus, workdirStatus, stageStatus] = row;
+      const fullPath = pathModule.join(path, filepath);
+
+      if (headStatus === 1) {
+        // Tracked file: restore if changed in workdir or stage
+        if (workdirStatus !== 1 || stageStatus !== 1) {
+          await git.checkout({
+            fs,
+            dir: path,
+            ref: "HEAD",
+            filepaths: [filepath],
+            force: true,
+          });
+        }
+      } else if (stageStatus !== 0) {
+        // Staged new file: remove from index
+        await git.remove({ fs, dir: path, filepath });
+        // Delete from disk if still present
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
+        }
+      } else if (workdirStatus !== 0) {
+        // Purely untracked file/directory: just delete from disk
+        if (fs.existsSync(fullPath)) {
+          await fsPromises.rm(fullPath, { recursive: true, force: true });
+          removedFileDirs.add(pathModule.dirname(fullPath));
+        }
+      }
+    }
+
+    // Prune empty directories only where files were actually removed.
+    // Collect each dir and its parent chain up to the repo root, then
+    // sort deepest-first so children are removed before parents.
+    const dirsToCheck = new Set<string>();
+    for (const dir of removedFileDirs) {
+      let current = dir;
+      while (current !== path && current.startsWith(path)) {
+        dirsToCheck.add(current);
+        current = pathModule.dirname(current);
+      }
+    }
+    const sorted = [...dirsToCheck].sort((a, b) => b.length - a.length);
+    for (const dir of sorted) {
+      try {
+        const remaining = await fsPromises.readdir(dir);
+        if (remaining.length === 0) {
+          await fsPromises.rmdir(dir);
+        }
+      } catch {
+        // Ignore errors (broken symlinks, permission issues) so the
+        // discard operation isn't aborted by a single failing directory.
+      }
+    }
   }
 }
 
@@ -564,20 +704,23 @@ export async function getGitUncommittedFiles({
   if (settings.enableNativeGit) {
     const result = await execGit(["status", "--porcelain"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get uncommitted files: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout
       .toString()
       .split("\n")
       .filter((line) => line.trim() !== "")
-      .map((line) => line.slice(3).trim());
+      .map((line) => line.slice(3).trim())
+      .filter(isUserVisibleGitPath);
   } else {
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
     return statusMatrix
       .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
-      .map((row) => row[0]);
+      .map((row) => row[0])
+      .filter(isUserVisibleGitPath);
   }
 }
 
@@ -592,14 +735,23 @@ export async function getGitUncommittedFilesWithStatus({
   if (settings.enableNativeGit) {
     const result = await execGit(["status", "--porcelain"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get uncommitted files: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout
       .toString()
       .split("\n")
       .filter((line) => line.trim() !== "")
+      .filter((line) => {
+        const filePath = line.slice(3).trim();
+        return isUserVisibleGitPath(
+          filePath.includes(" -> ")
+            ? filePath.substring(filePath.indexOf(" -> ") + 4)
+            : filePath,
+        );
+      })
       .map((line) => {
         // Git status --porcelain format: XY filename
         // X = staged status, Y = unstaged status
@@ -639,6 +791,7 @@ export async function getGitUncommittedFilesWithStatus({
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
     return statusMatrix
       .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
+      .filter((row) => isUserVisibleGitPath(row[0]))
       .map((row) => {
         const filePath = row[0];
         const head = row[1];
@@ -711,7 +864,7 @@ export async function gitListBranches({
     const result = await execGit(["branch", "--list"], path);
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
     // Parse output:
     // e.g. "* main\n  feature/login"
@@ -738,7 +891,7 @@ export async function gitListRemoteBranches({
     const result = await execGit(["branch", "-r", "--list"], path);
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
     // Parse output:
     // e.g. "  origin/main\n  origin/feature/login\n  upstream/develop"
@@ -778,7 +931,7 @@ export async function gitRenameBranch({
     // git branch -m oldBranch newBranch
     const result = await execGit(["branch", "-m", oldBranch, newBranch], path);
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
   } else {
     // isomorphic-git does not have a renameBranch function.
@@ -831,11 +984,9 @@ export async function gitClone({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Dugite version (real Git)
-    // Build authenticated URL if accessToken is provided and URL doesn't already have auth
-    const finalUrl =
-      accessToken && !url.includes("@")
-        ? url.replace("https://", `https://${accessToken}:x-oauth-basic@`)
-        : url;
+    // Strip any embedded auth from URL; credentials are injected per-invocation
+    // via environment variables so they never reach .git/config.
+    const cleanUrl = url.replace(/https:\/\/[^@]+@/, "https://");
     const args = ["clone"];
     if (depth && depth > 0) {
       args.push("--depth", String(depth));
@@ -843,11 +994,13 @@ export async function gitClone({
     if (singleBranch) {
       args.push("--single-branch");
     }
-    args.push("--", finalUrl, path);
-    const result = await execGit(args, ".");
+    args.push("--", cleanUrl, path);
+    const result = await execGit(args, ".", {
+      env: getGitNetworkEnv(accessToken),
+    });
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
   } else {
     // isomorphic-git version
@@ -879,7 +1032,7 @@ export async function gitSetRemoteUrl({
   // Validate remoteUrl to prevent argument injection attacks
   // URLs starting with "-" could be interpreted as command-line options
   if (remoteUrl.startsWith("-")) {
-    throw new Error("Invalid remote URL");
+    throw new DyadError("Invalid remote URL", DyadErrorKind.Validation);
   }
 
   if (settings.enableNativeGit) {
@@ -899,11 +1052,17 @@ export async function gitSetRemoteUrl({
         );
 
         if (updateResult.exitCode !== 0) {
-          throw new Error(`Failed to update remote: ${updateResult.stderr}`);
+          throw new DyadError(
+            `Failed to update remote: ${updateResult.stderr}`,
+            DyadErrorKind.Conflict,
+          );
         }
       } else if (result.exitCode !== 0) {
         // Handle other errors
-        throw new Error(`Failed to add remote: ${result.stderr}`);
+        throw new DyadError(
+          `Failed to add remote: ${result.stderr}`,
+          DyadErrorKind.Conflict,
+        );
       }
     } catch (error: any) {
       logger.error("Error setting up remote:", error);
@@ -946,15 +1105,23 @@ export async function gitPush({
       } else if (force) {
         args.push("--force");
       }
-      const result = await execGit(args, path);
+      const result = await execGit(args, path, {
+        env: getGitNetworkEnv(accessToken),
+      });
       if (result.exitCode !== 0) {
         const errorMsg = result.stderr.toString() || result.stdout.toString();
-        throw new Error(`Git push failed: ${errorMsg}`);
+        throw new DyadError(
+          `Git push failed: ${errorMsg}`,
+          DyadErrorKind.Conflict,
+        );
       }
       return;
     } catch (error: any) {
       logger.error("Error during git push:", error);
-      throw new Error(`Git push failed: ${error.message}`);
+      throw new DyadError(
+        `Git push failed: ${error.message}`,
+        DyadErrorKind.Conflict,
+      );
     }
   }
 
@@ -964,9 +1131,10 @@ export async function gitPush({
       "gitPush: 'forceWithLease' requested but not supported when native git is disabled. " +
         "Rejecting push to prevent unsafe force operation.",
     );
-    throw new Error(
+    throw new DyadError(
       "gitPush: 'forceWithLease' is not supported when native git is disabled. " +
         "Falling back to plain force could overwrite remote commits. Enable native git.",
+      DyadErrorKind.Precondition,
     );
   }
   await git.push({
@@ -989,8 +1157,9 @@ export async function gitPush({
 export async function gitRebaseAbort({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Rebase controls require native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1002,8 +1171,9 @@ export async function gitRebaseContinue({
 }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Rebase controls require native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1026,8 +1196,9 @@ export async function gitRebase({
 }): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Rebase requires native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1044,8 +1215,9 @@ export async function gitRebase({
 export async function gitMergeAbort({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Merge abort requires native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1060,8 +1232,9 @@ export async function gitCurrentBranch({
     // Dugite version
     const result = await execGit(["branch", "--show-current"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get current branch: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     const branch = result.stdout.trim() || null;
@@ -1113,15 +1286,59 @@ export async function gitIsIgnored({
     if (result.exitCode === 1) return false;
 
     // Other exit codes are actual errors
-    throw new Error(result.stderr.toString());
+    throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
   } else {
     // isomorphic-git version
-    return await git.isIgnored({
-      fs,
-      dir: path,
-      filepath,
-    });
+    return await gitIsIgnoredIso({ path, filepath });
   }
+}
+
+/**
+ * Check whether a specific file/directory is gitignored using isomorphic-git
+ */
+export async function gitIsIgnoredIso({
+  path,
+  filepath,
+}: GitFileParams): Promise<boolean> {
+  return await git.isIgnored({
+    fs,
+    dir: path,
+    filepath,
+  });
+}
+
+/**
+ * Lists all of the files in a git repository, such that:
+ * - Both tracked and untracked files are included.
+ * - Gitignored files/directories are excluded.
+ * - We can exclude additional files/directories as needed.
+ */
+export async function gitListFilesNative({
+  path,
+  excludedFiles,
+  excludedDirs,
+}: GitListFilesParams): Promise<string[]> {
+  const result = await execGit(
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      ".",
+      ...excludedFiles.map((file) => `:(exclude,glob)**/${file}`),
+      ...excludedDirs.map((dir) => `:(exclude,glob)**/${dir}/**`),
+    ],
+    path,
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Failed to list files: ${result.stderr.trim() || result.stdout.trim()}`,
+      DyadErrorKind.Conflict,
+    );
+  }
+  return result.stdout.split("\0").filter(Boolean).map(normalizePath);
 }
 
 export async function gitLogNative(
@@ -1142,7 +1359,7 @@ export async function gitLogNative(
   const logResult = await execGit(logArgs, path);
 
   if (logResult.exitCode !== 0) {
-    throw new Error(logResult.stderr.toString());
+    throw new DyadError(logResult.stderr.toString(), DyadErrorKind.Conflict);
   }
 
   const output = logResult.stdout.toString().trim();
@@ -1185,7 +1402,13 @@ export async function gitFetch({
 }: GitFetchParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execOrThrow(["fetch", remote], path, "Failed to fetch from remote");
+    await execOrThrow(
+      ["fetch", remote],
+      path,
+      "Failed to fetch from remote",
+      undefined,
+      { env: getGitNetworkEnv(accessToken) },
+    );
   } else {
     await git.fetch({
       fs,
@@ -1202,19 +1425,30 @@ export async function gitFetch({
   }
 }
 
-// Custom error function for git conflicts
-export function GitConflictError(message: string): Error {
-  const error = new Error(message);
-  error.name = "GitConflictError";
-  return error;
+/** Merge/pull conflicts — `name` kept for UI checks (e.g. GitHubConnector). */
+class GitConflictErrorImpl extends DyadError {
+  constructor(message: string) {
+    super(message, DyadErrorKind.Conflict);
+    this.name = "GitConflictError";
+  }
 }
 
-// Custom error function for git operations with structured error codes
+export function GitConflictError(message: string): Error {
+  return new GitConflictErrorImpl(message);
+}
+
+/** Blocked git operation due to repo state (merge/rebase in progress, etc.). */
+class GitStateErrorImpl extends DyadError {
+  readonly code: string;
+  constructor(message: string, code: string) {
+    super(message, DyadErrorKind.Precondition);
+    this.name = "GitStateError";
+    this.code = code;
+  }
+}
+
 export function GitStateError(message: string, code: string): Error {
-  const error = new Error(message);
-  error.name = "GitStateError";
-  (error as any).code = code;
-  return error;
+  return new GitStateErrorImpl(message, code);
 }
 
 // Error codes for git state errors
@@ -1239,15 +1473,19 @@ export async function gitPull({
     // Use withGitAuthor since pull may need to create merge commits
     // and requires user.name and user.email
     const pullArgs = await withGitAuthor([
-      "-c",
-      "credential.helper=",
       "pull",
       "--rebase=false",
       remote,
       branch,
     ]);
     try {
-      await execOrThrow(pullArgs, path, "Failed to pull from remote");
+      await execOrThrow(
+        pullArgs,
+        path,
+        "Failed to pull from remote",
+        undefined,
+        { env: getGitNetworkEnv(accessToken) },
+      );
     } catch (error: any) {
       // Check git state files to detect conflicts instead of parsing error messages
       if (hasGitConflictState({ path })) {
@@ -1357,9 +1595,10 @@ export async function gitCreateBranch({
   // isomorphic-git: branch creation uses the current HEAD; it does not honor "from"
   // in the same way as native `git branch <name> <from>`.
   if (from !== "HEAD") {
-    throw new Error(
+    throw new DyadError(
       `gitCreateBranch: 'from' is not supported when native git is disabled (from=${from}). ` +
         `Branches would be created from HEAD instead.`,
+      DyadErrorKind.Precondition,
     );
   }
   await git.branch({
@@ -1405,7 +1644,10 @@ export async function gitGetMergeConflicts({
       exitCode: number;
     };
     if (result.exitCode !== 0) {
-      throw new Error(`Failed to get merge conflicts: ${result.stderr}`);
+      throw new DyadError(
+        `Failed to get merge conflicts: ${result.stderr}`,
+        DyadErrorKind.Conflict,
+      );
     }
     return result.stdout
       .toString()
@@ -1414,8 +1656,9 @@ export async function gitGetMergeConflicts({
       .filter((s) => s.length > 0);
   }
   //throw error("gitGetMergeConflicts requires native Git. Enable native Git in settings.");
-  throw new Error(
+  throw new DyadError(
     "Git conflict detection requires native Git. Enable native Git in settings.",
+    DyadErrorKind.Precondition,
   );
 }
 

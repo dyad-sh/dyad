@@ -1,44 +1,17 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit":
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
-- button "Copy":
-  - img
-- img
-- text: Approved
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
 - paragraph: tc=local-agent/upload-to-codebase
-- 'button "Expand image: logo.png"':
-  - img "logo.png"
+- 'button "Expand image: logo.png"'
 - paragraph: I'll upload your file to the codebase.
-- img
 - text: uploaded-file.png Copy
-- img
-- text: "Copied To: assets/uploaded-file.png Copy uploaded file to codebase"
+- text: "Copied From: attachments:logo.png To: assets/uploaded-file.png Copy uploaded file to codebase"
 - paragraph: I've successfully copied your file to assets/uploaded-file.png in the codebase.
-- button "Copy":
-  - img
-- img
-- text: claude-opus-4-5
-- img
-- text: less than a minute ago
-- button "Copy Request ID":
-  - img
-  - text: ""
-- button "Undo":
-  - img
-  - text: ""
-- button "Retry":
-  - img
-  - text: ""
+- button "Copy"
+- text: "[[Version 3: files changed]]"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

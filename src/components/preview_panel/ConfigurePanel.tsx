@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { Button } from "@/components/ui/button";
@@ -19,12 +19,18 @@ import {
   HelpCircle,
   ArrowRight,
   Terminal,
+  Database,
+  Loader2,
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
+import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { NeonConnector } from "@/components/NeonConnector";
+import { useIntegrationContinue } from "@/hooks/useIntegrationContinue";
+import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
 
 const AppCommandsTitle = () => (
@@ -298,6 +304,95 @@ const EnvironmentVariablesTitle = () => (
   </div>
 );
 
+const IntegrationSection = () => {
+  const { t } = useTranslation("home");
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const {
+    pendingIntegration,
+    provider: pendingProvider,
+    completedProvider,
+    canContinue,
+    isSubmitting,
+    handleContinue,
+  } = useIntegrationContinue();
+
+  // Choose which connector to render: prefer the in-flight setup's provider
+  // (so the user sees the right connector before completion), otherwise fall
+  // back to whatever the app is already connected to. This is what lets the
+  // section remain visible after setup — users can change DB branches or
+  // reconnect without having to trigger a new integration prompt.
+  const displayProvider = pendingProvider ?? completedProvider;
+
+  // Scroll the section into view whenever a pending integration with a
+  // chosen provider becomes visible — so the user lands directly on the
+  // connector even if the configure panel is scrolled.
+  // We only do this for *active* setup (not the always-visible post-setup
+  // view), to avoid hijacking scroll when the user opens the configure panel.
+  const sectionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pendingProvider) return;
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [pendingProvider]);
+
+  if (selectedAppId == null || !displayProvider) return null;
+
+  const providerName =
+    displayProvider === "supabase"
+      ? t("integrations.databaseSetup.providers.supabase.name")
+      : t("integrations.databaseSetup.providers.neon.name");
+
+  return (
+    <div ref={sectionRef}>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <div className="flex items-center gap-2">
+              <Database size={18} className="text-muted-foreground" />
+              <span className="text-lg font-semibold">
+                {t("integrations.databaseSetup.badge")}: {providerName}
+              </span>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {displayProvider === "supabase" ? (
+            <SupabaseConnector appId={selectedAppId} />
+          ) : (
+            <NeonConnector appId={selectedAppId} />
+          )}
+          {pendingIntegration && pendingProvider && (
+            <>
+              <Button
+                onClick={handleContinue}
+                disabled={!canContinue || isSubmitting}
+                className="w-full"
+                size="sm"
+                data-testid="integration-setup-continue-button"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    {t("integrations.databaseSetup.continuing")}
+                  </>
+                ) : (
+                  t("integrations.databaseSetup.continue")
+                )}
+              </Button>
+              {!canContinue && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {t("integrations.databaseSetup.completePrompt", {
+                    provider: providerName,
+                  })}
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 export const ConfigurePanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const queryClient = useQueryClient();
@@ -420,67 +515,38 @@ export const ConfigurePanel = () => {
     setNewValue("");
   }, []);
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="p-4 space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <EnvironmentVariablesTitle />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-muted-foreground">
-                Loading environment variables...
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+  // Render env vars card content based on current state
+  const envVarsCardContent = isLoading ? (
+    <div className="text-center py-8">
+      <div className="text-sm text-muted-foreground">
+        Loading environment variables...
       </div>
-    );
-  }
-
-  // Show error state
-  if (error) {
-    return (
-      <div className="p-4 space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <EnvironmentVariablesTitle />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-red-500">
-                Error loading environment variables: {error.message}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+    </div>
+  ) : error ? (
+    <div className="text-center py-8">
+      <div className="text-sm text-red-500">
+        Error loading environment variables: {error.message}
       </div>
-    );
-  }
+    </div>
+  ) : !selectedAppId ? (
+    <div className="text-center py-8">
+      <div className="text-sm text-muted-foreground">
+        Select an app to manage environment variables
+      </div>
+    </div>
+  ) : null;
 
-  // Show no app selected state
-  if (!selectedAppId) {
+  if (envVarsCardContent) {
     return (
       <div className="p-4 space-y-4">
+        <IntegrationSection />
         <Card>
           <CardHeader>
             <CardTitle>
               <EnvironmentVariablesTitle />
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-muted-foreground">
-                Select an app to manage environment variables
-              </div>
-            </div>
-          </CardContent>
+          <CardContent>{envVarsCardContent}</CardContent>
         </Card>
       </div>
     );
@@ -488,6 +554,11 @@ export const ConfigurePanel = () => {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Integration (Supabase / Neon) — visible during setup AND afterwards
+          so users can change their DB branch / reconnect without re-triggering
+          the integration prompt. */}
+      <IntegrationSection />
+
       <Card>
         <CardHeader>
           <CardTitle>

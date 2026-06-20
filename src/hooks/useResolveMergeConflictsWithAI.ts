@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { useSetAtom } from "jotai";
+import { useSetAtom, useStore } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc } from "@/ipc/types";
 import {
@@ -7,11 +7,20 @@ import {
   chatMessagesByIdAtom,
   isStreamingByIdAtom,
   chatStreamCountByIdAtom,
+  streamingPreviewByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSettings } from "@/hooks/useSettings";
+import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
+import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
+import { triggerResync, syncChatFromDb } from "@/lib/resyncChat";
+import {
+  applyPreviewChunk,
+  clearPreviewForChat,
+} from "@/lib/streamingPreviewSync";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
@@ -33,11 +42,14 @@ export function useResolveMergeConflictsWithAI({
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
+  const setStreamingPreviewByChatId = useSetAtom(streamingPreviewByChatIdAtom);
+  const store = useStore();
   const navigate = useNavigate();
   const [isResolving, setIsResolving] = useState(false);
   const isResolvingRef = useRef(false);
   const { invalidateChats } = useChats(appId);
   const { refreshApp } = useLoadApp(appId);
+  const { settings } = useSettings();
 
   const resolveWithAI = useCallback(async () => {
     if (!appId) {
@@ -58,7 +70,10 @@ export function useResolveMergeConflictsWithAI({
     let chatId: number | null = null;
     try {
       // Create a new chat for conflict resolution
-      const newChatId = await ipc.chat.createChat(appId);
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "build",
+      });
       chatId = newChatId;
 
       // Clear conflicts state after successful chat creation
@@ -97,7 +112,24 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           prompt,
         },
         {
-          onChunk: ({ messages }) => {
+          onChunk: ({
+            messages,
+            streamingMessageId,
+            streamingPatch,
+            streamingPreview,
+            effectiveChatMode,
+            chatModeFallbackReason,
+          }) => {
+            if (
+              handleEffectiveChatModeChunk(
+                { effectiveChatMode, chatModeFallbackReason },
+                settings,
+                newChatId,
+              )
+            ) {
+              return;
+            }
+
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {
                 const next = new Map(prev);
@@ -106,11 +138,34 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               });
               hasIncrementedStreamCount = true;
             }
-            setMessagesById((prev) => {
-              const next = new Map(prev);
-              next.set(newChatId, messages);
-              return next;
-            });
+
+            applyPreviewChunk(
+              setStreamingPreviewByChatId,
+              newChatId,
+              streamingPreview,
+            );
+
+            if (messages) {
+              // Full messages update (initial load, post-compaction, etc.)
+              setMessagesById((prev) => {
+                const next = new Map(prev);
+                next.set(newChatId, messages);
+                return next;
+              });
+            } else if (
+              streamingMessageId !== undefined &&
+              streamingPatch !== undefined
+            ) {
+              const applied = applyStreamingPatch(
+                setMessagesById,
+                newChatId,
+                streamingMessageId,
+                streamingPatch,
+              );
+              if (!applied) {
+                triggerResync(newChatId, setMessagesById, store);
+              }
+            }
           },
           onEnd: () => {
             setIsStreamingById((prev) => {
@@ -118,10 +173,17 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               next.set(newChatId, false);
               return next;
             });
+            clearPreviewForChat(setStreamingPreviewByChatId, newChatId);
             isResolvingRef.current = false;
             setIsResolving(false);
             invalidateChats();
             refreshApp();
+            syncChatFromDb(
+              newChatId,
+              setMessagesById,
+              "[CHAT] Merge conflict onEnd",
+              store,
+            );
           },
           onError: ({ error }) => {
             showError(error || "Failed to resolve conflicts");
@@ -130,10 +192,17 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               next.set(newChatId, false);
               return next;
             });
+            clearPreviewForChat(setStreamingPreviewByChatId, newChatId);
             isResolvingRef.current = false;
             setIsResolving(false);
             invalidateChats();
             refreshApp();
+            syncChatFromDb(
+              newChatId,
+              setMessagesById,
+              "[CHAT] Merge conflict onError",
+              store,
+            );
           },
         },
       );
@@ -158,9 +227,12 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     setMessagesById,
     setIsStreamingById,
     setStreamCountById,
+    setStreamingPreviewByChatId,
     navigate,
     invalidateChats,
     refreshApp,
+    settings,
+    store,
   ]);
 
   return { resolveWithAI, isResolving };

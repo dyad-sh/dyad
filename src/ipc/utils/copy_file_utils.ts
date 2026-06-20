@@ -3,7 +3,10 @@ import path from "node:path";
 import log from "electron-log";
 import { safeJoin } from "./path_utils";
 import { gitAdd } from "./git_utils";
-import { isWithinDyadMediaDir } from "./media_path_utils";
+import {
+  isWithinDyadMediaDir,
+  resolveAttachmentLogicalPath,
+} from "./media_path_utils";
 import { withLock } from "./lock_utils";
 import { deploySupabaseFunction } from "../../supabase_admin/supabase_management_client";
 import {
@@ -11,6 +14,7 @@ import {
   isSharedServerModule,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("copy_file_utils");
 
@@ -49,7 +53,16 @@ export async function executeCopyFile({
   return withLock(appId, async () => {
     // Resolve the source path: allow both .dyad/media paths and app-relative paths
     let fromFullPath: string;
-    if (path.isAbsolute(from)) {
+    if (from.startsWith("attachments:")) {
+      const attachment = await resolveAttachmentLogicalPath(appPath, from);
+      if (!attachment) {
+        throw new DyadError(
+          `Attachment does not exist: ${from}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      fromFullPath = attachment.filePath;
+    } else if (path.isAbsolute(from)) {
       // Security: only allow absolute paths within the app's .dyad/media directory
       if (!isWithinDyadMediaDir(from, appPath)) {
         throw new Error(
@@ -64,7 +77,10 @@ export async function executeCopyFile({
     const toFullPath = safeJoin(appPath, to);
 
     if (!fs.existsSync(fromFullPath)) {
-      throw new Error(`Source file does not exist: ${from}`);
+      throw new DyadError(
+        `Source file does not exist: ${from}`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     // Security: resolve symlinks and re-validate that paths remain within bounds.

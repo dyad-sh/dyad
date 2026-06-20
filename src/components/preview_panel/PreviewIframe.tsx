@@ -1,22 +1,26 @@
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
-  selectedAppIdAtom,
-  appUrlAtom,
-  appConsoleEntriesAtom,
-  previewErrorMessageAtom,
+  appendConsoleEntriesForAppAtom,
+  currentAppUrlAtom,
+  currentPreviewErrorAtom,
   previewCurrentUrlAtom,
-} from "@/atoms/appAtoms";
+  setPreviewErrorForAppAtom,
+  type PreviewErrorUpdate,
+} from "@/atoms/previewRuntimeAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
   RefreshCw,
   ExternalLink,
-  Loader2,
+  Cloud,
+  Cog,
   X,
   Sparkles,
-  ChevronDown,
   Lightbulb,
+  ChevronDown,
   ChevronRight,
   MousePointerClick,
   Power,
@@ -25,6 +29,8 @@ import {
   Tablet,
   Smartphone,
   Pen,
+  MoreVertical,
+  Trash2,
   Maximize2,
   Minimize2,
 } from "lucide-react";
@@ -48,6 +54,8 @@ import {
   annotatorModeAtom,
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
+  isRestoringQueuedSelectionAtom,
+  pendingScreenshotAppIdAtom,
 } from "@/atoms/previewAtoms";
 import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
@@ -68,16 +76,30 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
+import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
+import { PreviewToolbar } from "./PreviewToolbar";
+import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
+import { useTranslation } from "react-i18next";
+import {
+  formatPreviewAddressPath,
+  normalizePreviewAddressPath,
+} from "./previewAddressPath";
 
 interface ErrorBannerProps {
-  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
+  error:
+    | {
+        message: string;
+        source: "preview-app" | "dyad-app" | "dyad-sync";
+      }
+    | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -87,6 +109,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const { isStreaming } = useStreamChat();
   if (!error) return null;
   const isDockerError = error.message.includes("Cannot connect to the Docker");
+  const isInternalDyadError = error.source === "dyad-app";
+  const isSyncError = error.source === "dyad-sync";
 
   const getTruncatedError = () => {
     const firstLine = error.message.split("\n")[0];
@@ -110,10 +134,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
-      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
-      {error.source === "dyad-app" && (
+      {(isInternalDyadError || isSyncError) && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          Internal Dyad error
+          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
         </div>
       )}
 
@@ -121,7 +144,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       <div
         className={cn(
           "px-6 py-1 text-sm",
-          error.source === "dyad-app" && "pt-6",
+          (isInternalDyadError || isSyncError) && "pt-6",
         )}
       >
         <div
@@ -147,9 +170,11 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : error.source === "dyad-app"
-                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
-                : "Check if restarting the app fixes the error."}
+              : isSyncError
+                ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
+                : isInternalDyadError
+                  ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                  : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
@@ -172,27 +197,47 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   );
 };
 
+const SCREENSHOT_CAPTURE_DELAY_MS = 3_000;
+
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
+  const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
-  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const { appUrl, originalUrl, mode } = useAtomValue(currentAppUrlAtom);
+  const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
-  const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
+  const errorMessage = useAtomValue(currentPreviewErrorAtom);
+  const setPreviewErrorForApp = useSetAtom(setPreviewErrorForAppAtom);
+  const setErrorMessage = useCallback(
+    (update: PreviewErrorUpdate) => {
+      if (selectedAppId === null) {
+        return;
+      }
+      setPreviewErrorForApp({ appId: selectedAppId, error: update });
+    },
+    [selectedAppId, setPreviewErrorForApp],
+  );
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
-  const { routes: availableRoutes } = useParseRouter(selectedAppId);
-  const { restartApp } = useRunApp();
+  const {
+    routes: availableRoutes,
+    loading: routesLoading,
+    error: routesError,
+  } = useParseRouter(selectedAppId);
+  const { restartApp, refreshAppIframe } = useRunApp();
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
+  const queryClient = useQueryClient();
 
   // Preserved URL state (persists across HMR-induced remounts)
   const [preservedUrls, setPreservedUrls] = useAtom(previewCurrentUrlAtom);
 
   // Get the initial URL to use - check if we have a preserved URL from before HMR remount
-  const initialUrl = selectedAppId ? preservedUrls[selectedAppId] : null;
+  const initialUrl = selectedAppId
+    ? (preservedUrls.get(selectedAppId) ?? null)
+    : null;
 
   // Navigation state - initialize with preserved URL if available
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -211,8 +256,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
     return 0;
   });
-  const setSelectedComponentsPreview = useSetAtom(
+  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
     selectedComponentsPreviewAtom,
+  );
+  const [isRestoringQueuedSelection, setIsRestoringQueuedSelection] = useAtom(
+    isRestoringQueuedSelectionAtom,
   );
   const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
     useAtom(visualEditingSelectedComponentAtom);
@@ -232,9 +280,163 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
+  const currentHistoryUrl = navigationHistory[currentHistoryPosition] ?? null;
+  const currentAddressPath = formatPreviewAddressPath(currentHistoryUrl);
+  const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
+  const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
+  const isEditingAddressBarRef = useRef(false);
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+  const [pendingScreenshotAppId, setPendingScreenshotAppId] = useAtom(
+    pendingScreenshotAppIdAtom,
+  );
+  const pendingScreenshotAppIdRef = useRef<number | null>(null);
+  // Track the latest screenshot requests so stale responses from earlier reloads
+  // don't get mistaken for annotator screenshots.
+  const pendingCommitScreenshotRequestRef = useRef<{
+    appId: number;
+    requestId: string;
+    commitHash: string;
+  } | null>(null);
+  const pendingAnnotatorScreenshotRequestIdRef = useRef<string | null>(null);
+  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read the latest selected app inside the capture timeout so the bail-out
+  // check compares against the current selection, not a stale render closure.
+  const selectedAppIdRef = useRef<number | null>(selectedAppId);
+  // Track which apps have already had the on-load fallback attempted this
+  // session so the check doesn't re-run on every HMR/reload.
+  const fallbackAttemptedAppIdsRef = useRef<Set<number>>(new Set());
+  const skipNextAddressBarBlurRef = useRef(false);
+
+  // Keep refs in sync so the message handler and timeout callbacks always read
+  // the latest values.
+  useEffect(() => {
+    pendingScreenshotAppIdRef.current = pendingScreenshotAppId;
+  }, [pendingScreenshotAppId]);
+
+  useEffect(() => {
+    selectedAppIdRef.current = selectedAppId;
+  }, [selectedAppId]);
+
+  useEffect(() => {
+    isEditingAddressBarRef.current = isEditingAddressBar;
+  }, [isEditingAddressBar]);
+
+  useEffect(() => {
+    if (!isEditingAddressBarRef.current) {
+      setAddressBarValue(currentAddressPath);
+    }
+  }, [currentAddressPath]);
+
+  // Drop any in-flight request state when the user switches apps so a stale
+  // guard from a replaced iframe doesn't block future captures.
+  useEffect(() => {
+    pendingCommitScreenshotRequestRef.current = null;
+    if (captureTimeoutRef.current !== null) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
+  }, [selectedAppId]);
+
+  // Clean up pending screenshot timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (captureTimeoutRef.current !== null) {
+        clearTimeout(captureTimeoutRef.current);
+        captureTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const captureScreenshot = (appId: number) => {
+    // If a capture is already scheduled, let it run — repeated triggers
+    // (HMR, onLoad, selector-initialized) shouldn't endlessly extend the wait.
+    if (captureTimeoutRef.current !== null) {
+      return;
+    }
+
+    // Wait for page animations to finish before capturing.
+    captureTimeoutRef.current = setTimeout(async () => {
+      captureTimeoutRef.current = null;
+      // Bail out if the user switched to a different app during the delay.
+      // Read from a ref so the comparison uses the current selection, not the
+      // render closure that scheduled this timeout.
+      if (selectedAppIdRef.current !== appId) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
+        return;
+      }
+      // Re-read contentWindow inside the timeout to avoid stale references
+      // (e.g. if the iframe reloads or gets replaced during the delay).
+      const contentWindow = iframeRef.current?.contentWindow;
+      if (!contentWindow) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
+        return;
+      }
+      // Resolve the commit hash at capture time so the saved screenshot
+      // corresponds to the current HEAD and not to a later commit that may
+      // land before the iframe responds with the image.
+      let commitHash: string | null = null;
+      try {
+        const result = await ipc.app.getCurrentCommitHash({ appId });
+        commitHash = result.commitHash;
+      } catch (err) {
+        console.warn("Failed to resolve commit hash for screenshot", err);
+      }
+      if (!commitHash) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
+        return;
+      }
+      // The user may have switched apps while resolving the commit hash.
+      if (selectedAppIdRef.current !== appId) {
+        if (pendingScreenshotAppIdRef.current === appId) {
+          setPendingScreenshotAppId(null);
+        }
+        return;
+      }
+      const requestId = crypto.randomUUID();
+      pendingCommitScreenshotRequestRef.current = {
+        appId,
+        requestId,
+        commitHash,
+      };
+      contentWindow.postMessage(
+        { type: "dyad-take-screenshot", requestId },
+        "*",
+      );
+    }, SCREENSHOT_CAPTURE_DELAY_MS);
+  };
+
+  const requestCommitScreenshot = () => {
+    if (
+      pendingScreenshotAppIdRef.current === null ||
+      pendingScreenshotAppIdRef.current !== selectedAppId ||
+      !iframeRef.current?.contentWindow
+    ) {
+      return;
+    }
+
+    captureScreenshot(selectedAppId);
+  };
+
+  const requestAnnotatorScreenshot = () => {
+    if (!iframeRef.current?.contentWindow) {
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    pendingAnnotatorScreenshotRequestIdRef.current = requestId;
+    iframeRef.current.contentWindow.postMessage(
+      { type: "dyad-take-screenshot", requestId },
+      "*",
+    );
+  };
 
   // AST Analysis State
   const [isDynamicComponent, setIsDynamicComponent] = useState(false);
@@ -246,6 +448,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+  const {
+    mutateAsync: createCloudSandboxShareLink,
+    isPending: isCreatingCloudSandboxShareLink,
+  } = useMutation({
+    mutationFn: async ({ appId }: { appId: number }) => {
+      return ipc.app.createCloudSandboxShareLink({ appId });
+    },
+  });
 
   // Device configurations
   const deviceWidthConfig = {
@@ -255,6 +465,98 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const isCloudMode = mode === "cloud";
+  const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
+  const { mutate: clearSessionData } = useMutation({
+    mutationFn: () => {
+      return ipc.system.clearSessionData();
+    },
+    onSuccess: async () => {
+      await refreshAppIframe();
+      showSuccess("Preview data cleared");
+    },
+    onError: (error) => {
+      showError(`Error clearing preview data: ${error}`);
+    },
+  });
+  const { data: cloudSandboxStatus } = useQuery({
+    queryKey: queryKeys.cloudSandboxes.status({ appId: selectedAppId }),
+    queryFn: async () => {
+      if (selectedAppId === null) {
+        return null;
+      }
+      return ipc.app.getCloudSandboxStatus({ appId: selectedAppId });
+    },
+    enabled: isCloudMode && selectedAppId !== null,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    if (
+      cloudSandboxStatus.status === "destroyed" &&
+      (cloudSandboxStatus.terminationReason === "credits_exhausted" ||
+        cloudSandboxStatus.terminationReason === "billing_unavailable" ||
+        cloudSandboxStatus.lastErrorCode === "sandbox_credits_exhausted" ||
+        cloudSandboxStatus.lastErrorCode === "sandbox_billing_unavailable")
+    ) {
+      setErrorMessage({
+        message: cloudSandboxStatus.lastErrorMessage
+          ? cloudSandboxStatus.lastErrorMessage.includes("Dyad stopped")
+            ? cloudSandboxStatus.lastErrorMessage
+            : cloudSandboxStatus.terminationReason === "credits_exhausted"
+              ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
+              : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again."
+          : cloudSandboxStatus.terminationReason === "credits_exhausted"
+            ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
+            : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again.",
+        source: "dyad-app",
+      });
+    }
+  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    const localSyncErrorMessage = cloudSandboxStatus.localSyncErrorMessage;
+
+    if (localSyncErrorMessage) {
+      setErrorMessage((current) =>
+        current && current.source !== "dyad-sync"
+          ? current
+          : {
+              message: localSyncErrorMessage,
+              source: "dyad-sync",
+            },
+      );
+      return;
+    }
+
+    setErrorMessage((current) =>
+      current?.source === "dyad-sync" ? undefined : current,
+    );
+  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+
+  useEffect(() => {
+    if (!isCloudMode || !cloudSandboxStatus) {
+      return;
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.userBudget.info,
+    });
+  }, [
+    cloudSandboxStatus?.billingSlicesCharged,
+    cloudSandboxStatus?.terminationReason,
+    isCloudMode,
+    queryClient,
+  ]);
 
   const analyzeComponent = async (componentId: string) => {
     if (!componentId || !selectedAppId) return;
@@ -378,6 +680,37 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [isProMode, isComponentSelectorInitialized]);
 
+  // Restore component overlays in iframe only during queued-message edit restoration.
+  // Normal interactive selections are already handled by the iframe's own click handler,
+  // so we guard this effect to avoid redundant clear-and-restore round-trips.
+  useEffect(() => {
+    if (!isRestoringQueuedSelection) return;
+    if (!iframeRef.current?.contentWindow || !isComponentSelectorInitialized) {
+      return;
+    }
+    // Clear the flag before sending so it doesn't re-trigger
+    setIsRestoringQueuedSelection(false);
+    if (selectedComponentsPreview.length === 0) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+      return;
+    }
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "restore-dyad-component-overlays",
+        componentIds: selectedComponentsPreview.map((c) => c.id),
+      },
+      "*",
+    );
+  }, [
+    isRestoringQueuedSelection,
+    selectedComponentsPreview,
+    isComponentSelectorInitialized,
+    setIsRestoringQueuedSelection,
+  ]);
+
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -404,7 +737,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -424,7 +757,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -446,7 +779,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -467,7 +800,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
         return;
       }
 
@@ -477,6 +810,47 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           { type: "dyad-pro-mode", enabled: isProMode },
           "*",
         );
+
+        // Take a screenshot if a commit just happened for this app.
+        // Read from ref to avoid stale closure issues.
+        if (
+          pendingScreenshotAppIdRef.current !== null &&
+          pendingScreenshotAppIdRef.current === selectedAppId &&
+          iframeRef.current?.contentWindow
+        ) {
+          requestCommitScreenshot();
+        } else if (
+          selectedAppId !== null &&
+          iframeRef.current?.contentWindow &&
+          captureTimeoutRef.current === null &&
+          pendingCommitScreenshotRequestRef.current === null &&
+          !fallbackAttemptedAppIdsRef.current.has(selectedAppId)
+        ) {
+          // No pending commit screenshot and no capture already in flight —
+          // check if the app already has a screenshot on disk. If not (e.g.
+          // iframe was still loading when earlier commits happened), capture
+          // one now. Only attempt once per app per session so repeated HMR
+          // reloads don't spam capture attempts for apps whose saves fail.
+          const appId = selectedAppId;
+          fallbackAttemptedAppIdsRef.current.add(appId);
+          ipc.app
+            .listAppScreenshots({ appId })
+            .then((result) => {
+              // Guard against app switches while this promise was in flight —
+              // otherwise the stale callback would occupy `captureTimeoutRef`
+              // for the old app and block the current app's commit-triggered
+              // captures.
+              if (selectedAppIdRef.current !== appId) {
+                return;
+              }
+              if (result.screenshots.length === 0) {
+                captureScreenshot(appId);
+              }
+            })
+            .catch(() => {
+              // Ignore — screenshot check is best-effort
+            });
+        }
         return;
       }
 
@@ -593,11 +967,69 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
 
       if (event.data?.type === "dyad-screenshot-response") {
-        if (event.data.success && event.data.dataUrl) {
-          setScreenshotDataUrl(event.data.dataUrl);
-          setAnnotatorMode(true);
-        } else {
-          showError(event.data.error);
+        const requestId =
+          typeof event.data.requestId === "string"
+            ? event.data.requestId
+            : null;
+        const pendingCommitScreenshotRequest =
+          pendingCommitScreenshotRequestRef.current;
+
+        if (
+          requestId !== null &&
+          pendingCommitScreenshotRequest !== null &&
+          requestId === pendingCommitScreenshotRequest.requestId
+        ) {
+          const appId = pendingCommitScreenshotRequest.appId;
+          const commitHash = pendingCommitScreenshotRequest.commitHash;
+          pendingCommitScreenshotRequestRef.current = null;
+          // Only clear the pending-screenshot atom if it still points to the
+          // same app — otherwise another flow may have queued a newer capture
+          // for a different app and we'd erase its pending state.
+          const clearPendingIfMatches = () => {
+            if (pendingScreenshotAppIdRef.current === appId) {
+              setPendingScreenshotAppId(null);
+            }
+          };
+          if (event.data.success && event.data.dataUrl) {
+            console.debug("App screenshot taken for app", appId);
+            clearPendingIfMatches();
+            ipc.app
+              .saveAppScreenshot({
+                appId,
+                dataUrl: event.data.dataUrl,
+                commitHash,
+              })
+              .then(() =>
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.apps.screenshots({ appId }),
+                }),
+              )
+              .then(() =>
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.apps.thumbnails,
+                }),
+              )
+              .catch((err: unknown) => {
+                console.error("Failed to save app screenshot:", err);
+              });
+          } else {
+            console.warn("App screenshot capture failed for app", appId);
+            clearPendingIfMatches();
+          }
+          return;
+        }
+
+        if (
+          requestId !== null &&
+          requestId === pendingAnnotatorScreenshotRequestIdRef.current
+        ) {
+          pendingAnnotatorScreenshotRequestIdRef.current = null;
+          if (event.data.success && event.data.dataUrl) {
+            setScreenshotDataUrl(event.data.dataUrl);
+            setAnnotatorMode(true);
+          } else {
+            showError(event.data.error);
+          }
         }
         return;
       }
@@ -644,7 +1076,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
@@ -661,7 +1093,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
       } else if (type === "pushState" || type === "replaceState") {
         // Resolve relative URLs against the app's base URL so that all
         // entries in navigationHistory are always absolute URLs.
@@ -697,15 +1129,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                setPreservedUrls((prev) => ({
-                  ...prev,
-                  [selectedAppId]: resolvedUrl,
-                }));
+                setPreservedUrls((prev) => {
+                  const next = new Map(prev);
+                  next.set(selectedAppId, resolvedUrl);
+                  return next;
+                });
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
                 setPreservedUrls((prev) => {
-                  const next = { ...prev };
-                  delete next[selectedAppId];
+                  const next = new Map(prev);
+                  next.delete(selectedAppId);
                   return next;
                 });
               }
@@ -731,15 +1164,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                setPreservedUrls((prev) => ({
-                  ...prev,
-                  [selectedAppId]: resolvedUrl,
-                }));
+                setPreservedUrls((prev) => {
+                  const next = new Map(prev);
+                  next.set(selectedAppId, resolvedUrl);
+                  return next;
+                });
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
                 setPreservedUrls((prev) => {
-                  const next = { ...prev };
-                  delete next[selectedAppId];
+                  const next = new Map(prev);
+                  next.delete(selectedAppId);
                   return next;
                 });
               }
@@ -758,12 +1192,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     currentHistoryPosition,
     selectedAppId,
     appUrl,
-    errorMessage,
+    appendConsoleEntries,
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
     setVisualEditingSelectedComponent,
     setPreservedUrls,
+    queryClient,
+    setPendingScreenshotAppId,
   ]);
 
   useEffect(() => {
@@ -824,12 +1260,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       return;
     }
     if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "dyad-take-screenshot",
-        },
-        "*",
-      );
+      requestAnnotatorScreenshot();
     }
   };
 
@@ -875,15 +1306,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             // Clear preserved URL if navigating back to root, otherwise update it
             if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
               setPreservedUrls((prev) => {
-                const newUrls = { ...prev };
-                delete newUrls[selectedAppId];
-                return newUrls;
+                const next = new Map(prev);
+                next.delete(selectedAppId);
+                return next;
               });
             } else {
-              setPreservedUrls((prev) => ({
-                ...prev,
-                [selectedAppId]: targetUrl,
-              }));
+              setPreservedUrls((prev) => {
+                const next = new Map(prev);
+                next.set(selectedAppId, targetUrl);
+                return next;
+              });
             }
           }
         } catch {
@@ -926,15 +1358,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             // Clear preserved URL if navigating forward to root, otherwise update it
             if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
               setPreservedUrls((prev) => {
-                const newUrls = { ...prev };
-                delete newUrls[selectedAppId];
-                return newUrls;
+                const next = new Map(prev);
+                next.delete(selectedAppId);
+                return next;
               });
             } else {
-              setPreservedUrls((prev) => ({
-                ...prev,
-                [selectedAppId]: targetUrl,
-              }));
+              setPreservedUrls((prev) => {
+                const next = new Map(prev);
+                next.set(selectedAppId, targetUrl);
+                return next;
+              });
             }
           }
         } catch {
@@ -983,51 +1416,91 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Function to navigate to a specific route
   const navigateToRoute = (path: string) => {
-    if (iframeRef.current?.contentWindow && appUrl) {
-      // Create the full URL by combining the base URL with the path
-      const baseUrl = new URL(appUrl).origin;
-      const newUrl = `${baseUrl}${path}`;
+    if (!iframeRef.current?.contentWindow || !appUrl) {
+      return false;
+    }
 
-      // Use postMessage to navigate (same as back/forward) - this uses location.replace()
-      // which provides smooth navigation without the black screen flicker that location.href causes
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "navigate",
-          payload: { url: newUrl },
-        },
-        "*",
-      );
+    const normalized = normalizePreviewAddressPath(path);
+    if (normalized.type === "empty") {
+      return false;
+    }
+    if (normalized.type === "invalid") {
+      showError(normalized.message);
+      return false;
+    }
 
-      // Update navigation history
-      const newHistory = [
-        ...navigationHistory.slice(0, currentHistoryPosition + 1),
-        newUrl,
-      ];
-      setNavigationHistory(newHistory);
-      setCurrentHistoryPosition(newHistory.length - 1);
-      setCanGoBack(true);
-      setCanGoForward(false);
+    // Create the full URL by combining the base URL with the path
+    const baseUrl = new URL(appUrl).origin;
+    const newUrl = new URL(normalized.path, baseUrl).href;
 
-      // Update iframe URL ref to match
-      currentIframeUrlRef.current = newUrl;
+    // Use postMessage to navigate (same as back/forward) - this uses location.replace()
+    // which provides smooth navigation without the black screen flicker that location.href causes
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "navigate",
+        payload: { url: newUrl },
+      },
+      "*",
+    );
 
-      // Update preservedUrls to match navigation (for HMR remounts)
-      if (selectedAppId) {
-        // Clear preserved URL if navigating to root, otherwise update it
-        if (path === "/" || path === "") {
-          setPreservedUrls((prev) => {
-            const newUrls = { ...prev };
-            delete newUrls[selectedAppId];
-            return newUrls;
-          });
-        } else {
-          setPreservedUrls((prev) => ({
-            ...prev,
-            [selectedAppId]: newUrl,
-          }));
-        }
+    // Update navigation history
+    const newHistory = [
+      ...navigationHistory.slice(0, currentHistoryPosition + 1),
+      newUrl,
+    ];
+    setNavigationHistory(newHistory);
+    setCurrentHistoryPosition(newHistory.length - 1);
+    setCanGoBack(true);
+    setCanGoForward(false);
+
+    // Update iframe URL ref to match
+    currentIframeUrlRef.current = newUrl;
+
+    // Update preservedUrls to match navigation (for HMR remounts)
+    if (selectedAppId) {
+      // Clear preserved URL if navigating to root, otherwise update it
+      const navigatedPath = formatPreviewAddressPath(newUrl);
+      if (navigatedPath === "/") {
+        setPreservedUrls((prev) => {
+          const next = new Map(prev);
+          next.delete(selectedAppId);
+          return next;
+        });
+      } else {
+        setPreservedUrls((prev) => {
+          const next = new Map(prev);
+          next.set(selectedAppId, newUrl);
+          return next;
+        });
       }
     }
+
+    return true;
+  };
+
+  const submitAddressBarValue = () => {
+    const result = normalizePreviewAddressPath(addressBarValue);
+    if (result.type === "empty") {
+      setAddressBarValue(currentAddressPath);
+      setIsEditingAddressBar(false);
+      return;
+    }
+
+    if (result.type === "invalid") {
+      showError(result.message);
+      setAddressBarValue(currentAddressPath);
+      setIsEditingAddressBar(false);
+      return;
+    }
+
+    const didNavigate = navigateToRoute(result.path);
+    if (didNavigate) {
+      skipNextAddressBarBlurRef.current = true;
+      setAddressBarValue(result.path);
+    } else {
+      setAddressBarValue(currentAddressPath);
+    }
+    setIsEditingAddressBar(false);
   };
 
   // Freeze iframe src between remounts so in-iframe SPA navigation (pushState/replaceState)
@@ -1051,24 +1524,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [appUrl, reloadKey, selectedAppId]);
 
-  // Display loading state
-  if (loading) {
-    return (
-      <div className="flex flex-col h-full relative">
-        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-          <div className="relative w-5 h-5 animate-spin">
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
-            <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
-            <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
-          </div>
-          <p className="text-gray-600 dark:text-gray-300">
-            Preparing app preview...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Display message if no app is selected
   if (selectedAppId === null) {
     return (
@@ -1082,183 +1537,76 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     restartApp();
   };
 
+  const onCleanRestart = () => {
+    restartApp({ removeNodeModules: true });
+  };
+
+  const onRecreateSandbox = () => {
+    restartApp({ recreateSandbox: true });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Browser-style header - hide when annotator is active */}
       {!annotatorMode && (
-        <div className="flex items-center p-2 border-b space-x-2">
-          {/* Navigation Buttons */}
-          <div className="flex space-x-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    data-testid="preview-toggle-chat-panel-button"
-                  />
-                }
-              >
-                {isChatPanelHidden ? (
-                  <Maximize2 size={16} />
-                ) : (
-                  <Minimize2 size={16} />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>
-                {isChatPanelHidden ? "Show chat" : "Hide chat"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleActivateComponentSelector}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isPicking
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-pick-element-button"
-                  />
-                }
-              >
-                <MousePointerClick size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {isPicking
-                  ? "Deactivate component selector"
-                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleAnnotatorClick}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      annotatorMode
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      isPicking ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-annotator-button"
-                  />
-                }
-              >
-                <Pen size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
-              </TooltipContent>
-            </Tooltip>
-            <button
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-              disabled={!canGoBack || loading || !selectedAppId}
-              onClick={handleNavigateBack}
-              data-testid="preview-navigate-back-button"
-            >
-              <ArrowLeft size={16} />
-            </button>
-            <button
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-              disabled={!canGoForward || loading || !selectedAppId}
-              onClick={handleNavigateForward}
-              data-testid="preview-navigate-forward-button"
-            >
-              <ArrowRight size={16} />
-            </button>
-            <button
-              onClick={handleReload}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-              disabled={loading || !selectedAppId}
-              data-testid="preview-refresh-button"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-
-          {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
-          <div className="relative flex-grow min-w-20">
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                <span
-                  className="truncate flex-1 mr-2 min-w-0"
-                  data-testid="preview-address-bar-path"
+        <PreviewToolbar>
+          {/* Browser navigation group */}
+          <div className="flex items-center space-x-2 ml-auto">
+            {isCloudMode && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      aria-label="Running in a cloud sandbox"
+                      className="flex items-center rounded-full bg-sky-100 px-2 py-1 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                      data-testid="preview-cloud-badge"
+                      role="status"
+                    />
+                  }
                 >
-                  {(() => {
-                    try {
-                      return new URL(navigationHistory[currentHistoryPosition])
-                        .pathname;
-                    } catch {
-                      return "/";
-                    }
-                  })()}
-                </span>
-                <ChevronDown size={14} className="flex-shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                {availableRoutes.length > 0 ? (
-                  availableRoutes.map((route) => (
-                    <DropdownMenuItem
-                      key={route.path}
-                      onClick={() => navigateToRoute(route.path)}
-                      className="flex justify-between"
-                    >
-                      <span>{route.label}</span>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs">
-                        {route.path}
-                      </span>
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    Loading routes...
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <Cloud size={14} />
+                </TooltipTrigger>
+                <TooltipContent>Running in a Cloud sandbox</TooltipContent>
+              </Tooltip>
+            )}
+            <div className="flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full p-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                      disabled={!canGoBack || loading || !selectedAppId}
+                      onClick={handleNavigateBack}
+                      data-testid="preview-navigate-back-button"
+                      aria-label="Navigate back"
+                    />
+                  }
+                >
+                  <ArrowLeft size={16} />
+                </TooltipTrigger>
+                <TooltipContent>Navigate back</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                      disabled={!canGoForward || loading || !selectedAppId}
+                      onClick={handleNavigateForward}
+                      data-testid="preview-navigate-forward-button"
+                      aria-label="Navigate forward"
+                    />
+                  }
+                >
+                  <ArrowRight size={16} />
+                </TooltipTrigger>
+                <TooltipContent>Navigate forward</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex space-x-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={onRestart}
-                    className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-                  />
-                }
-              >
-                <Power size={16} />
-                <span>Restart</span>
-              </TooltipTrigger>
-              <TooltipContent>Restart App</TooltipContent>
-            </Tooltip>
-            <button
-              data-testid="preview-open-browser-button"
-              onClick={() => {
-                if (originalUrl) {
-                  ipc.system.openExternalUrl(originalUrl);
-                }
-              }}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            >
-              <ExternalLink size={16} />
-            </button>
-
-            {/* Device Mode Button */}
+          {/* Address Bar - white pill with device mode, refresh + external inside */}
+          <div className="relative w-1/2 min-w-20 flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
             <Popover open={isDevicePopoverOpen} modal={false}>
               <Tooltip>
                 <TooltipTrigger
@@ -1272,14 +1620,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                         setIsDevicePopoverOpen(!isDevicePopoverOpen);
                       }}
                       className={cn(
-                        "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                        "flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300",
                         deviceMode !== "desktop" &&
                           "bg-gray-200 dark:bg-gray-700",
                       )}
                     />
                   }
                 >
-                  <MonitorSmartphone size={16} />
+                  <MonitorSmartphone size={14} />
                 </TooltipTrigger>
                 <TooltipContent>Device Mode</TooltipContent>
               </Tooltip>
@@ -1340,32 +1688,306 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 </ToggleGroup>
               </PopoverContent>
             </Popover>
+            <div className="flex min-w-[2rem] flex-1 items-center">
+              <input
+                aria-label="Preview path"
+                className="min-w-0 flex-1 rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
+                data-testid="preview-address-bar-input"
+                disabled={loading || !selectedAppId}
+                onBlur={() => {
+                  if (skipNextAddressBarBlurRef.current) {
+                    skipNextAddressBarBlurRef.current = false;
+                    return;
+                  }
+                  setAddressBarValue(currentAddressPath);
+                  setIsEditingAddressBar(false);
+                }}
+                onChange={(event) => setAddressBarValue(event.target.value)}
+                onFocus={(event) => {
+                  setIsEditingAddressBar(true);
+                  event.currentTarget.select();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitAddressBarValue();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setAddressBarValue(currentAddressPath);
+                    setIsEditingAddressBar(false);
+                    event.currentTarget.blur();
+                  }
+                }}
+                spellCheck={false}
+                value={addressBarValue}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Show detected routes"
+                  className="flex-shrink-0 rounded-full p-1 text-gray-700 opacity-70 hover:bg-gray-200 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700"
+                  data-testid="preview-address-bar-routes-button"
+                  disabled={loading || !selectedAppId}
+                >
+                  <ChevronDown size={12} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  {routesLoading ? (
+                    <DropdownMenuItem disabled>
+                      Loading routes...
+                    </DropdownMenuItem>
+                  ) : routesError ? (
+                    <DropdownMenuItem disabled>
+                      Unable to load routes
+                    </DropdownMenuItem>
+                  ) : availableRoutes.length > 0 ? (
+                    availableRoutes.map((route) => (
+                      <DropdownMenuItem
+                        key={route.path}
+                        onClick={() => navigateToRoute(route.path)}
+                        className="flex justify-between"
+                      >
+                        <span>{route.label}</span>
+                        <span className="text-gray-500 dark:text-gray-400 text-xs">
+                          {route.path}
+                        </span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      No routes detected
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleReload}
+                    className="flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                    disabled={loading || !selectedAppId}
+                    data-testid="preview-refresh-button"
+                    aria-label="Refresh preview"
+                  />
+                }
+              >
+                <RefreshCw size={14} />
+              </TooltipTrigger>
+              <TooltipContent>Refresh preview</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    data-testid="preview-open-browser-button"
+                    aria-label="Open in browser"
+                    onClick={async () => {
+                      try {
+                        const url = await resolvePreviewBrowserUrl({
+                          isCloudMode,
+                          selectedAppId,
+                          originalUrl,
+                          createCloudSandboxShareLink,
+                        });
+                        await ipc.system.openExternalUrl(url);
+                      } catch (error) {
+                        showError(
+                          error instanceof Error
+                            ? error.message
+                            : "Failed to open cloud sandbox share link.",
+                        );
+                      }
+                    }}
+                    disabled={
+                      isCloudMode
+                        ? selectedAppId === null ||
+                          isCreatingCloudSandboxShareLink
+                        : !originalUrl
+                    }
+                    className="flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                  />
+                }
+              >
+                <ExternalLink size={14} />
+              </TooltipTrigger>
+              <TooltipContent>Open in browser</TooltipContent>
+            </Tooltip>
           </div>
-        </div>
+
+          {/* Right action group - restart, editing tools, panel toggle */}
+          <div className="flex items-center space-x-1 ml-auto pl-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onRestart}
+                    data-testid="preview-restart-button"
+                    aria-label={
+                      isCloudMode ? "Restart Cloud Sandbox" : "Restart"
+                    }
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                  />
+                }
+              >
+                <Power size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    aria-label={
+                      isPicking
+                        ? "Deactivate component selector"
+                        : "Select component"
+                    }
+                    aria-pressed={isPicking}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-pick-element-button"
+                  />
+                }
+              >
+                <MousePointerClick size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isPicking
+                  ? "Deactivate component selector"
+                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleAnnotatorClick}
+                    aria-label={
+                      annotatorMode
+                        ? "Annotator mode active"
+                        : "Activate annotator"
+                    }
+                    aria-pressed={annotatorMode}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  />
+                }
+              >
+                <Pen size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
+                    aria-pressed={isChatPanelHidden}
+                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    data-testid="preview-toggle-chat-panel-button"
+                  />
+                }
+              >
+                {isChatPanelHidden ? (
+                  <Maximize2 size={16} />
+                ) : (
+                  <Minimize2 size={16} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {isChatPanelHidden ? "Show chat" : "Hide chat"}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                data-testid="preview-more-options-button"
+                aria-label={t("preview.moreOptions")}
+                className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              >
+                <MoreVertical size={16} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuItem onClick={onCleanRestart}>
+                  <Cog size={16} />
+                  <div className="flex flex-col">
+                    <span>{t("preview.rebuild")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("preview.rebuildDescription")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => clearSessionData()}>
+                  <Trash2 size={16} />
+                  <div className="flex flex-col">
+                    <span>{t("preview.clearCache")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("preview.clearCacheDescription")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                {isCloudSandboxMode && (
+                  <DropdownMenuItem onClick={onRecreateSandbox}>
+                    <Cog size={16} />
+                    <div className="flex flex-col">
+                      <span>Recreate Sandbox</span>
+                      <span className="text-xs text-muted-foreground">
+                        Destroys the current sandbox and creates a new one
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </PreviewToolbar>
       )}
 
       <div className="relative flex-grow overflow-hidden">
-        <ErrorBanner
-          error={errorMessage}
-          onDismiss={() => setErrorMessage(undefined)}
-          onAIFix={() => {
-            if (selectedChatId) {
-              streamMessage({
-                prompt: `Fix error: ${errorMessage?.message}`,
-                chatId: selectedChatId,
-              });
-            }
-          }}
+        {!loading && (
+          <ErrorBanner
+            error={errorMessage}
+            onDismiss={() => setErrorMessage(undefined)}
+            onAIFix={() => {
+              if (selectedChatId) {
+                streamMessage({
+                  prompt: `Fix error: ${errorMessage?.message}`,
+                  chatId: selectedChatId,
+                });
+              }
+            }}
+          />
+        )}
+        <PreviewLoadingScreen
+          loading={loading}
+          isAppUrlReady={!!appUrl}
+          hasStartupError={!loading && errorMessage?.source === "dyad-app"}
         />
-
-        {!appUrl ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
-            <p className="text-gray-600 dark:text-gray-300">
-              Starting your app server...
-            </p>
-          </div>
-        ) : (
+        {!loading && appUrl && (
           <div
             className={cn(
               "w-full h-full",
@@ -1402,6 +2024,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     setErrorMessage(undefined);
                     // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
                     // This prevents re-renders from accidentally changing the iframe src
+                    requestCommitScreenshot();
                   }}
                   ref={iframeRef}
                   key={reloadKey}

@@ -22,27 +22,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
+      should_run_schema_diff_tests: ${{ steps.check.outputs.should_run_schema_diff_tests }}
+      should_run_schema_classifier_tests: ${{ steps.check.outputs.should_run_schema_classifier_tests }}
       build_os: ${{ steps.matrix.outputs.build_os }}
       e2e_os: ${{ steps.matrix.outputs.e2e_os }}
       e2e_shard: ${{ steps.matrix.outputs.e2e_shard }}
       e2e_shard_total: ${{ steps.matrix.outputs.e2e_shard_total }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
           fetch-depth: 0
-      - name: Check if only .claude files changed
+      - name: Check changed files
         id: check
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            # Always run tests on pushes to main
-            echo "should_run_tests=true" >> $GITHUB_OUTPUT
-            echo "Running tests: push to main branch"
-            exit 0
-          fi
-
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
@@ -57,12 +52,39 @@ jobs:
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "should_run_schema_diff_tests=false" >> $GITHUB_OUTPUT
+            echo "should_run_schema_classifier_tests=false" >> $GITHUB_OUTPUT
             echo "Running tests: could not determine changed files"
+            echo "Skipping ts-pg-schema-diff tests: could not determine changed files"
+            echo "Skipping pg-schema-classifier tests: could not determine changed files"
             exit 0
           fi
 
           echo "Changed files:"
           echo "$CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -q "^packages/ts-pg-schema-diff/"; then
+            echo "should_run_schema_diff_tests=true" >> $GITHUB_OUTPUT
+            echo "Running ts-pg-schema-diff tests: package files changed"
+          else
+            echo "should_run_schema_diff_tests=false" >> $GITHUB_OUTPUT
+            echo "Skipping ts-pg-schema-diff tests: no package files changed"
+          fi
+
+          if echo "$CHANGED_FILES" | grep -q "^packages/pg-schema-classifier/"; then
+            echo "should_run_schema_classifier_tests=true" >> $GITHUB_OUTPUT
+            echo "Running pg-schema-classifier tests: package files changed"
+          else
+            echo "should_run_schema_classifier_tests=false" >> $GITHUB_OUTPUT
+            echo "Skipping pg-schema-classifier tests: no package files changed"
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Always run app tests on pushes to main.
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: push to main branch"
+            exit 0
+          fi
 
           # Check if all changed files are in config-only directories (.claude, rules)
           NON_CONFIG_FILES=$(echo "$CHANGED_FILES" | grep -v "^\.claude/" | grep -v "^rules/" || true)
@@ -86,23 +108,26 @@ jobs:
             AUTHOR="${{ github.event.pull_request.user.login }}"
           fi
           echo "Author: $AUTHOR"
-          if [ "$AUTHOR" = "wwwillchen" ] || [ "$AUTHOR" = "wwwillchen-bot" ] || [ "$AUTHOR" = "dyadbot" ] || [ "$AUTHOR" = "dyad-assistant" ] || [ "$AUTHOR" = "azizmejri1" ]; then
-            echo "is_privileged=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_privileged=false" >> $GITHUB_OUTPUT
-          fi
+          # Lowercase before matching so a login like "RyanGroch" matches the
+          # same lowercased allowlist used by the AI-review workflows.
+          AUTHOR_LC="${AUTHOR,,}"
+          case "$AUTHOR_LC" in
+            wwwillchen|keppo-bot|keppo-bot\[bot\]|dyad-assistant|azizmejri1|ryangroch)
+              echo "is_privileged=true" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "is_privileged=false" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
       # Sets the dynamic matrix for the build and e2e-tests jobs based on the PR author.
       # The "image" field is a JSON-encoded array string so that fromJSON() in runs-on
       # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
       #
-      # Privileged authors (wwwillchen, wwwillchen-bot, dyadbot, dyad-assistant, azizmejri1):
-      #   - Self-hosted macOS ARM64 runners, no Windows, no sharding.
+      # Privileged authors (wwwillchen, keppo-bot/keppo-bot[bot], dyad-assistant, azizmejri1, ryangroch):
+      #   - Self-hosted macOS ARM64 runners, no Windows, 4 shards.
       #
-      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shard 1/1)
-      #                                          │
-      #                                          v
-      #                                    merge-reports
+      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shards 1-4) ──> merge-reports
       #
       # All other authors:
       #   - GitHub-hosted runners for macOS + Windows, 4 shards each.
@@ -117,14 +142,91 @@ jobs:
           if [ "${{ steps.author-check.outputs.is_privileged }}" = "true" ]; then
             echo 'build_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard=[1,2]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard_total=[2]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           else
-            echo 'build_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
+            echo 'build_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
+            echo 'e2e_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
             echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
           fi
+
+  ts-pg-schema-diff-tests:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_schema_diff_tests == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Type-check ts-pg-schema-diff
+        run: npm --prefix packages/ts-pg-schema-diff run typecheck
+      - name: Unit tests
+        run: npm --prefix packages/ts-pg-schema-diff test
+      - name: Integration tests
+        run: npm --prefix packages/ts-pg-schema-diff run test:integration
+        env:
+          PG_SCHEMA_DIFF_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+  pg-schema-classifier-tests:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_schema_classifier_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Type-check pg-schema-classifier
+        run: npm --prefix packages/pg-schema-classifier run typecheck
+      - name: Unit tests
+        run: npm --prefix packages/pg-schema-classifier test
 
   build:
     needs: [check-changes]
@@ -140,14 +242,14 @@ jobs:
     runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: package.json
+          node-version: v24.13.1
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install npm 11.8.0
@@ -182,7 +284,7 @@ jobs:
         run: tar -cvf out-macos.tar out/
       - name: Upload build artifacts (macOS)
         if: contains(matrix.os.name, 'macos')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: build-${{ matrix.os.name }}
           path: |
@@ -192,7 +294,7 @@ jobs:
           retention-days: 1
       - name: Upload build artifacts (Windows)
         if: contains(matrix.os.name, 'windows')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         with:
           name: build-${{ matrix.os.name }}
           path: |
@@ -215,14 +317,14 @@ jobs:
     runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: package.json
+          node-version: v24.13.1
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install npm 11.8.0
@@ -235,7 +337,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
-          version: latest
+          version: 10.33.2
       - name: Clone nextjs-template
         run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
       - name: Get pnpm store directory
@@ -244,7 +346,7 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
       - name: Setup pnpm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -256,7 +358,7 @@ jobs:
       - name: Install nextjs-template dependencies
         run: cd nextjs-template && pnpm install
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: build-${{ matrix.os.name }}
       # macOS: Extract tar archive to restore app bundle with preserved metadata
@@ -268,8 +370,6 @@ jobs:
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
           FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
-          # Self-hosted macOS runners can handle more parallelism
-          PLAYWRIGHT_PARALLELISM: ${{ contains(matrix.os.image, 'self-hosted') && '3' || '1' }}
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
           PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
         # You can add debug logging to make it easier to see what's failing
@@ -288,14 +388,14 @@ jobs:
           }
           EOF
       - name: Upload shard results
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
           path: blob-report
           retention-days: 1
       - name: Upload flakiness report (for fork PRs)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: flakiness-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
@@ -317,13 +417,13 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || '' }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: lts/*
+          node-version: v24.13.1
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - name: Install dependencies
@@ -333,7 +433,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download blob reports from GitHub Actions Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: all-blob-reports
           pattern: blob-report-*
@@ -357,7 +457,7 @@ jobs:
           ls -la
 
       - name: Upload HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: html-report
           path: playwright-report
@@ -365,7 +465,7 @@ jobs:
           overwrite: true
 
       - name: Generate Playwright summary
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
         with:

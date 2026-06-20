@@ -6,13 +6,19 @@ When pushing changes and creating PRs:
 2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
 3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
 
-**Bot account push permissions:** The `wwwillchen-bot` account does NOT have write access to `upstream` (`dyad-sh/dyad`). If a branch tracks `upstream` (e.g., `upstream/claude/...`), pushing will fail with a permission error. In this case, push to `origin` (the bot's fork at `wwwillchen-bot/dyad`) instead:
+**Bot account push permissions:** The `keppo-bot` account does NOT have write access to `upstream` (`dyad-sh/dyad`). If a branch tracks `upstream` (e.g., `upstream/claude/...`), pushing will fail with a permission error. In this case, push to `origin` (the bot's fork at `keppo-bot/dyad`) instead:
 
 ```bash
 git push --force-with-lease -u origin HEAD
 ```
 
 This overrides the branch's tracking remote. Always check which remote `origin` points to (`git remote -v`) — for bot workspaces, `origin` is typically the bot's fork, not the upstream repo.
+
+If `git push` uses `GH_TOKEN` for an under-permissioned bot and fails with `Permission to <owner>/<repo>.git denied`, but local credentials should have access, retry as `env -u GH_TOKEN git push --force-with-lease` so git can use the local credential helper instead of the bot token.
+
+When creating a new worktree branch from `upstream/main` with `git worktree add -b <branch> <path> upstream/main`, Git may set the new branch's upstream to `upstream/main`. Before using push helpers that push to the tracked remote, run `git branch --unset-upstream` or set the upstream to the actual feature branch to avoid treating `main` as the branch target.
+
+If a PR's head branch is on another user's fork and `gh pr view --json maintainerCanModify` returns `false`, bot accounts cannot push fixes to that PR head even if review threads can be resolved. A fallback push to the base repo publishes the commit but does **not** update the original fork PR; call this out in the PR summary and ask the PR author or a maintainer to apply the published commit.
 
 ## `gh pr create` branch detection
 
@@ -23,6 +29,48 @@ gh pr create --head <owner>:<branch> ...
 ```
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
+
+## Finding existing PRs by head branch
+
+This repo's installed `gh pr view` may fail with `unknown flag: --head`. To check whether a fork branch already has a PR, use the branch argument from the matching local checkout (`gh pr view <branch> --repo dyad-sh/dyad`) or use `gh pr list --head <owner>:<branch> --json number,url` instead of passing `--head` to `gh pr view`.
+
+When a workflow has already identified a target PR number, pass that number explicitly to later `gh pr view`, `gh pr edit`, and `gh pr comment` calls. In workspaces with multiple open PRs or unusual branch associations, bare `gh pr view` can resolve a different PR than the one whose comments or checks are being handled.
+
+## GH auth allowlist and git push
+
+If `gh auth status` succeeds but `git push` fails with `Repo <owner>/<repo> is not allowlisted` followed by `fatal: could not read Username for 'https://github.com/...': Device not configured`, run `gh auth setup-git` first and then push to an allowlisted remote. In some bot workspaces, fork remotes are not allowlisted even when `upstream` is, so retry the push against `upstream` if project policy permits it.
+
+## Empty branches cannot produce PRs
+
+Before creating a PR for a freshly pushed branch, check whether it is actually ahead of the base branch:
+
+```bash
+git rev-list --left-right --count upstream/main...HEAD
+```
+
+If this returns `0	0`, the branch has no commits ahead of `upstream/main`. GitHub cannot open a PR for an empty branch, so do not fabricate an empty commit just to satisfy `gh pr create`; report the branch as pushed but PR-blocked instead.
+
+## `gh pr create` fork-collab permission error
+
+If `gh pr create` from a fork fails with `GraphQL: Fork collab Fork collab can't be granted by someone without permission (createPullRequest)`, add `--no-maintainer-edit`. `gh` defaults to enabling maintainer edits, which requires a permission the fork account does not have for the upstream repo.
+
+```bash
+gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --title "..." --body "..."
+```
+
+## `gh pr create` body quoting
+
+When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
+
+## Formatter Touching Unrelated Skill Files
+
+`npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After
+formatting, check `git status` and revert unrelated skill-file churn before
+committing unless the task intentionally changes those skill docs.
+
+## Commit hooks and untracked artifacts
+
+After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
 ## Skipping automated review
 
@@ -41,11 +89,16 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 - To rebase onto the base repo's main, you must add an `upstream` remote: `git remote add upstream https://github.com/<base-repo>.git`
 - Remote setup for cross-repo PRs: `origin` → fork (push here), `upstream` → base repo (rebase from here)
 - The `GITHUB_TOKEN` can push to the fork if the PR author enabled "Allow edits from maintainers"
-- **`claude-code-action` overwrites origin's fetch URL** to point to the base repo (using `GITHUB_REPOSITORY`). Any workflow that needs to push to the fork must set `pushurl` separately via `git remote set-url --push origin <fork-url>`, because git uses `pushurl` over `url` when both are configured. See `pr-review-responder.yml` and `claude-rebase.yml` for examples.
+- **`claude-code-action` overwrites origin's fetch URL** to point to the base repo (using `GITHUB_REPOSITORY`). Any workflow that needs to push to the fork must set `pushurl` separately via `git remote set-url --push origin <fork-url>`, because git uses `pushurl` over `url` when both are configured.
+- **Fork checkouts also ship the fork's `.claude/settings.json`**, which merges its `permissions.allow` list into the agent's effective allowlist. Strip it after checkout (or skip checkout) — see [rules/claude-github-workflows.md](claude-github-workflows.md) for hardening guidance.
 
 ## GITHUB_TOKEN and workflow chaining
 
-Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow (e.g., `label-rebase-prs.yml` adds `cc:rebase` to trigger `claude-rebase.yml`), the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
+Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow, the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
+
+## Bash `case` allowlists in workflows
+
+When matching GitHub bot logins in Bash `case` patterns, escape literal square brackets. For example, `keppo-bot[bot]` is parsed as a character class and does not match the login; use `keppo-bot\[bot\]`.
 
 ## GitHub API calls with special characters
 
@@ -76,7 +129,7 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
-2. **Bot account permission errors:** The `wwwillchen-bot` account (and similar bot/fork accounts) may not have permission to add labels on the upstream repo (`dyad-sh/dyad`). Both `gh pr edit --add-label` and the REST API will fail with 403/permission errors. In this case, skip label addition and note it in the PR summary rather than failing the workflow. Labels can be added later by a maintainer with appropriate permissions.
+2. **Bot account permission errors:** The `keppo-bot` account (and similar bot/fork accounts) may not have permission to add labels on the upstream repo (`dyad-sh/dyad`). Both `gh pr edit --add-label` and the REST API will fail with 403/permission errors. In this case, skip label addition and note it in the PR summary rather than failing the workflow. Labels can be added later by a maintainer with appropriate permissions.
 
 ## CI file access (claude-code-action)
 
@@ -84,7 +137,7 @@ In CI, `claude-code-action` restricts file access to the repo working directory 
 
 ## Force-pushing after rebase with split-remote origin
 
-When `origin` has separate fetch and push URLs (e.g., fetch → `dyad-sh/dyad`, push → `wwwillchen-bot/dyad`), `git push --force-with-lease` fails with **"stale info"** after a rebase because the local tracking ref was refreshed from the fetch URL but does not reflect the push URL's state. In this specific split-remote configuration, use `git push --force origin HEAD`:
+When `origin` has separate fetch and push URLs (e.g., fetch → `dyad-sh/dyad`, push → `keppo-bot/dyad`), `git push --force-with-lease` fails with **"stale info"** after a rebase because the local tracking ref was refreshed from the fetch URL but does not reflect the push URL's state. In this specific split-remote configuration, use `git push --force origin HEAD`:
 
 ```bash
 git push --force origin HEAD
@@ -92,7 +145,19 @@ git push --force origin HEAD
 
 **Note:** Plain `--force` can overwrite others' remote commits. Only use this in the split-remote scenario described above, where `--force-with-lease` cannot work. In normal setups, always prefer `--force-with-lease`.
 
+## Repo allowlist push fallback
+
+In some Codex shells, pushing to fork remotes can fail immediately with `Repo <owner>/<repo> is not allowlisted` even when `gh auth status` shows a valid token. If both fork remotes are blocked this way but `upstream` is allowed, push the branch directly to `upstream` (for example `git push --force-with-lease upstream HEAD:<branch>`) and then repoint the local branch to track `upstream/<branch>` so later status and push commands reflect the real remote.
+
+## GitHub broker credential failures
+
+If `git push`, `gh pr view`, and `gh auth status` fail with only `fetch failed`, but unauthenticated `git ls-remote https://github.com/dyad-sh/dyad HEAD` works, the local `gh-broker` credential helper is unreachable rather than GitHub being down. Check the broker health/token path before retrying pushes; SSH is not a fallback unless `ssh -T git@github.com` succeeds.
+
+If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, the configured broker URL is returning an HTML error page instead of the token API response. Verify `BROKER_BASE_URL` and broker routes such as `/healthz` or `/mint` before changing remotes or retrying GitHub commands.
+
 ## Rebase workflow and conflict resolution
+
+If `git fetch --all` fails on a contributor remote with `would clobber existing tag`, but the output shows `Fetching upstream` completed first, do not treat the rebase as blocked. Run `git fetch upstream` to confirm the base remote is current, then rebase onto `upstream/main`.
 
 ### Handling unstaged changes during rebase
 
@@ -109,6 +174,7 @@ The stashed changes will be automatically merged back after the rebase completes
 ### Conflict resolution tips
 
 - **Modify/delete conflicts**: When a rebase shows `CONFLICT (modify/delete): <file> deleted in <commit> and modified in HEAD`, use `git rm <file>` (not `git add`) to resolve by confirming the deletion. Use `git add <file>` only when you want to keep the modified version instead.
+- **Non-interactive rebase continue**: After resolving conflicts, prefer `GIT_EDITOR=true git rebase --continue` in agent shells. Plain `git rebase --continue` can open `vi` for `COMMIT_EDITMSG` and fail with `error: vi died of signal 15` when stdin is not interactive.
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
@@ -117,7 +183,11 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Complementary additions**: When both sides added new sections at the end of a file (e.g., both added different documentation tips), keep both sections rather than choosing one — they're not truly conflicting, just different additions
 - **Preserve variable declarations used in common code**: When one side of a conflict declares a variable (e.g., `const iframe = po.previewPanel.getPreviewIframeElement()`) that is referenced in non-conflicting code between or after conflict markers, keep the declaration even when adopting the other side's verification approach — the variable is needed regardless of which style you choose
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
+- **Atom refactor fallout after rebase**: If `npm run ts` reports `TS2305: Module '"@/atoms/appAtoms"' has no exported member 'currentAppAtom'`, the app-list state moved out of `appAtoms`; derive the selected app with `useLoadApps()` plus `selectedAppIdAtom` instead of reintroducing `currentAppAtom`.
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version
+- **Snapshot file conflicts (e.g., `e2e-tests/snapshots/*.txt`, `*.snap`)**: When a rebase conflicts on a snapshot, neither side may match what the rebased code actually produces (e.g., upstream changed the system prompt, your branch added new tools). Resolve quickly with `git checkout --theirs <file>` to unblock the rebase, then **regenerate snapshots after the rebase completes**: `npm test -- -u` for vitest snapshots, and re-run the affected E2E spec with `--update-snapshots` for E2E `.txt`/`.yml` snapshots. The system-prompt snapshot in `src/__tests__/__snapshots__/local_agent_prompt.test.ts.snap` and the matching E2E snapshots often drift together — after rebasing, expect to update both.
+- **Tests pinning specific prose**: A test that asserts on exact wording added by your branch (e.g., `expect(contents).toContain("REQUIRED")` for a phrase introduced in your AI rules patcher) will silently start asserting against text that was rebased away when upstream reworded the same section. After resolving the prose conflict, search for tests that reference the removed phrase (`grep "REQUIRED" *.test.ts`) and either delete the now-redundant assertion or update it to match the merged wording — the rebase itself does not surface this.
+- **Inverse of refactoring conflicts (incoming commit adds a feature in the old structure)**: When your branch extracted a helper (e.g., moved Nitro setup into `src/ipc/utils/nitro_setup.ts`) and an upstream commit later added a new step to the inline code (e.g., `addNitroToViteConfig` patching `vite.config.ts` from `enable_nitro.ts`), don't just take "ours" for the conflict. Port upstream's new step into your helper so the new feature still runs — otherwise the rebase silently drops upstream's feature for every caller of the helper.
 
 ## Rebasing with uncommitted changes
 
@@ -142,3 +212,15 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+
+## Resolving package-lock.json version conflicts after a release bump
+
+When rebasing past an upstream release tag, `package-lock.json` may conflict only on the two top-level `"version"` fields (e.g., `0.45.0` vs your branch's older `0.45.0-beta.1`). The lockfile's dependency tree is otherwise identical to upstream. Resolve by taking upstream's tree (`git checkout --ours package-lock.json` when rebasing onto upstream — `ours` is the rebase target during a `git rebase`), then manually edit the two `"version"` entries to match the current `package.json` version. Running `npm install` afterward is unnecessary just for this; only do it if a real dependency change requires regeneration.
+
+## Re-run `npm install` after taking either side of a `package-lock.json` conflict
+
+If a `package-lock.json` conflict during rebase isn't a pure version-bump and you resolve it by taking one side wholesale (`git checkout --ours package-lock.json` or `--theirs`), run `npm install` before `npm run ts` / tests. Otherwise `node_modules` still reflects the _pre-rebase_ lockfile, and tsc fails with `Cannot find module '<pkg>'` for any dependency that was added upstream during the rebase window. Symptom: typecheck errors on packages you never touched in your branch.
+
+Even without an explicit lockfile conflict, if a rebase brings in a new local package dependency and tests fail with Vite import resolution like `Failed to resolve import "pg" from "packages/ts-pg-schema-diff/..."`, run `npm install` before retrying tests so `node_modules` matches the rebased lockfile.
+
+This applies equally to **published npm dependencies added upstream when `package-lock.json` merged cleanly (no conflict at all)**: a clean rebase does not run `npm install` for you, so `npm run ts` fails with `Cannot find module '@xterm/...'` (or similar) for packages you never touched. Don't assume a missing-module typecheck error is a code problem — `grep` the package in `package.json` and `ls node_modules/<pkg>`; if it's listed but absent, run `npm install`. Rule of thumb: after any rebase whose merged lockfile differs from your pre-rebase `node_modules`, run `npm install` before `npm run ts` / tests.

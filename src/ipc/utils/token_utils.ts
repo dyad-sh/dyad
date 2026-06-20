@@ -33,17 +33,32 @@ export async function getMaxTokens(
 
 export async function getTemperature(
   model: LargeLanguageModel,
-): Promise<number> {
+): Promise<number | undefined> {
   const modelOption = await findLanguageModel(model);
+  if (modelOption?.type === "custom") {
+    return modelOption.temperature;
+  }
   return modelOption?.temperature ?? 0;
 }
 
 /**
  * Calculate the token threshold for triggering context compaction.
- * Returns the minimum of 80% of context window or 180k tokens.
+ *
+ * Returns the lower of a per-provider cap or `contextWindow - 25k`. The 25k
+ * headroom leaves room for the next user message + tool outputs before we hit
+ * the hard context limit.
+ *
+ * Per-provider caps differ because of input-token pricing tiers: Google bumps
+ * input price 2x once a request crosses 200k tokens, while other providers
+ * (e.g. OpenAI) only apply a 2x tier above ~272k tokens. We compact earlier
+ * for Google so requests stay in the cheaper input tier.
  */
-export function getCompactionThreshold(contextWindow: number): number {
-  return Math.min(Math.floor(contextWindow * 0.8), 180_000);
+export function getCompactionThreshold(
+  contextWindow: number,
+  provider: string,
+): number {
+  const cap = provider === "google" ? 190_000 : 250_000;
+  return Math.min(cap, Math.max(0, contextWindow - 25_000));
 }
 
 /**
@@ -52,6 +67,7 @@ export function getCompactionThreshold(contextWindow: number): number {
 export function shouldTriggerCompaction(
   totalTokens: number,
   contextWindow: number,
+  provider: string,
 ): boolean {
-  return totalTokens >= getCompactionThreshold(contextWindow);
+  return totalTokens >= getCompactionThreshold(contextWindow, provider);
 }

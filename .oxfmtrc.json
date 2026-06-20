@@ -9,6 +9,7 @@
     "**/pnpm-lock.yaml",
     "**/snapshots/**",
     "e2e-tests/fixtures/**",
-    ".claude/skills/fix-issue/scripts/goldens/**"
+    ".claude/skills/fix-issue/scripts/goldens/**",
+    "src/prompts/guides/**"
   ]
 }

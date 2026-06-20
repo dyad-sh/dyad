@@ -32,7 +32,10 @@ test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
   await expect(
     po.page.getByTestId("problem-summary").last(),
   ).toMatchAriaSnapshot();
-  await po.snapshotMessages({ replaceDumpPath: true });
+  await po.snapshotMessages({
+    name: "problems-auto-fix---gives-up-after-2-attempts-messages",
+    replaceDumpPath: true,
+  });
 });
 
 test("problems auto-fix - complex delete-rename-write", async ({ po }) => {
@@ -113,7 +116,7 @@ export default App;
 
     // Initially, all selected: button shows Fix X problems and Clear all is visible
     const fixButton = po.page.getByTestId("fix-all-button");
-    await expect(fixButton).toBeVisible();
+    await expect(fixButton).toBeVisible({ timeout: Timeout.LONG });
     await expect(fixButton).toContainText(/Fix \d+ problem\(s\)/);
 
     // Click first two rows to toggle off (deselect)

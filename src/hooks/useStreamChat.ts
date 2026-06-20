@@ -504,6 +504,14 @@ export function useStreamChat({
                 refreshApp();
                 refreshVersions();
                 invalidateTokenCount();
+                // Refresh the uncommitted changes banner immediately rather
+                // than waiting for its 5s poll, so it reflects the changes
+                // made by this stream as soon as it ends.
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.uncommittedFiles.byApp({
+                    appId: targetAppId,
+                  }),
+                });
                 onSettled?.({
                   success: true,
                   pausedByStepLimit: response.pausePromptQueue === true,

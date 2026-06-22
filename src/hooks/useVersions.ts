@@ -1,5 +1,5 @@
-import { useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useCallback, useRef } from "react";
 import {
   ipc,
   type RevertVersionResponse,
@@ -36,6 +36,9 @@ export function useVersions(appId: number | null) {
   const { restartApp } = useRunApp();
   const { settings } = useSettings();
   const setUncommittedChangesGate = useSetAtom(uncommittedChangesGateAtom);
+  // Read the gate atom imperatively (without subscribing) to guard against two
+  // concurrent reverts clobbering each other's dialog state.
+  const store = useStore();
 
   const updateVersionMetadataCache = (
     oid: string,
@@ -174,6 +177,12 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
+  // `mutateAsync` is not a stable reference in TanStack Query (it's recreated on
+  // every render), so read it through a ref to keep `revertVersion` below
+  // referentially stable. `mutateAsync` always invokes the latest mutationFn.
+  const mutateRevertRef = useRef(revertVersionMutation.mutateAsync);
+  mutateRevertRef.current = revertVersionMutation.mutateAsync;
+
   // Gate the revert on a clean worktree. If there are uncommitted changes, open
   // the app-wide dialog (see UncommittedChangesGateDialog) to get the user's
   // choice, which the revert handler applies on `main` before reverting. Returns
@@ -193,6 +202,14 @@ export function useVersions(appId: number | null) {
       });
       let resolution: UncommittedChangesResolution | null = null;
       if (uncommittedFiles.length > 0) {
+        // Bail out if another revert already has the gate dialog open (e.g. rapid
+        // clicks across VersionPane and MessagesList). Re-opening would overwrite
+        // the in-flight onResolve/onCancel and leave the first revert's Promise
+        // pending forever. The check + open below run synchronously, so there's no
+        // interleaving window between them.
+        if (store.get(uncommittedChangesGateAtom).open) {
+          return null;
+        }
         resolution = await new Promise<UncommittedChangesResolution | null>(
           (resolve) => {
             setUncommittedChangesGate({
@@ -213,7 +230,7 @@ export function useVersions(appId: number | null) {
           return null;
         }
       }
-      return revertVersionMutation.mutateAsync({
+      return mutateRevertRef.current({
         ...vars,
         uncommittedChangesStrategy: resolution?.action,
         commitMessage:
@@ -222,12 +239,7 @@ export function useVersions(appId: number | null) {
             : undefined,
       });
     },
-    [
-      appId,
-      queryClient,
-      setUncommittedChangesGate,
-      revertVersionMutation.mutateAsync,
-    ],
+    [appId, queryClient, setUncommittedChangesGate, store],
   );
 
   return {

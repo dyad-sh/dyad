@@ -41,8 +41,9 @@ export const RevertVersionParamsSchema = z.object({
   // and the worktree is dirty, the revert is refused as a backstop; the UI
   // resolves this first via UncommittedChangesGateDialog and passes the choice.
   uncommittedChangesStrategy: UncommittedChangesStrategySchema.optional(),
-  // Commit message to use when uncommittedChangesStrategy is "commit".
-  commitMessage: z.string().optional(),
+  // Commit message to use when uncommittedChangesStrategy is "commit". Bounded
+  // to keep an oversized renderer payload from reaching `git commit -m`.
+  commitMessage: z.string().max(10_000).optional(),
 });
 
 export type RevertVersionParams = z.infer<typeof RevertVersionParamsSchema>;

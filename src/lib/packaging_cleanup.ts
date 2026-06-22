@@ -36,6 +36,7 @@ const NODE_PTY_ALWAYS_REMOVE_RELATIVE_PATHS = [
   "build/Makefile",
   "build/binding.Makefile",
   "build/config.gypi",
+  "build/deps",
   "build/gyp-mac-tool",
   "build/Release/.deps",
   "build/Release/obj.target",
@@ -58,6 +59,27 @@ const BETTER_SQLITE3_REMOVE_RELATIVE_PATHS = [
   "build/Release/obj",
   "build/Release/sqlite3.a",
 ] as const;
+
+const NATIVE_BUILD_ARTIFACT_EXTENSIONS = new Set([
+  ".exp",
+  ".iobj",
+  ".ipdb",
+  ".lastbuildstate",
+  ".lib",
+  ".obj",
+  ".pdb",
+  ".recipe",
+  ".tlog",
+  ".vcxproj",
+]);
+
+function hasNativeBuildArtifactExtension(name: string): boolean {
+  const lowerName = name.toLowerCase();
+  return (
+    NATIVE_BUILD_ARTIFACT_EXTENSIONS.has(path.extname(lowerName)) ||
+    lowerName.endsWith(".vcxproj.filters")
+  );
+}
 
 async function rmIfExists(absolutePath: string): Promise<void> {
   try {
@@ -133,7 +155,9 @@ async function pruneNodePty(
   await removeFilesMatching(
     nodePtyPath,
     ({ name }) =>
-      name.endsWith(".pdb") || name.endsWith(".map") || name.includes(".test."),
+      hasNativeBuildArtifactExtension(name) ||
+      name.endsWith(".map") ||
+      name.includes(".test."),
   );
 
   const keepPrebuild = NODE_PTY_KEEP_PREBUILDS_BY_TARGET[`${platform}-${arch}`];
@@ -159,6 +183,13 @@ async function pruneBetterSqlite3(betterSqlite3Path: string): Promise<void> {
   await removeRelativePaths(
     betterSqlite3Path,
     BETTER_SQLITE3_REMOVE_RELATIVE_PATHS,
+  );
+
+  await removeFilesMatching(
+    betterSqlite3Path,
+    ({ name }) =>
+      hasNativeBuildArtifactExtension(name) ||
+      name.startsWith("test_extension."),
   );
 }
 
@@ -336,11 +367,15 @@ async function pruneGitCredentialManagerWindows(
 ): Promise<void> {
   await Promise.all(
     WINDOWS_MINGW_SUBFOLDERS.map((subfolder) =>
-      removeFilesMatching(path.join(gitPath, subfolder, "bin"), ({ name }) =>
-        WINDOWS_GCM_FILE_PATTERNS.some((pattern) => pattern.test(name)),
+      removeFilesMatching(
+        path.join(gitPath, subfolder, "bin"),
+        ({ name }) =>
+          name === "scalar.exe" ||
+          WINDOWS_GCM_FILE_PATTERNS.some((pattern) => pattern.test(name)),
       ),
     ),
   );
+  await rmIfExists(path.join(gitPath, "cmd", "scalar.exe"));
 
   // minGit's system gitconfig sets credential.helper=manager; drop the line so
   // git does not warn about (or attempt to launch) the removed helper.

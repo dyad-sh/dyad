@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ipc } from "@/ipc/types";
+import { ipc, type CheckoutVersionResponse } from "@/ipc/types";
 import { useSetAtom } from "jotai";
+import { toast } from "sonner";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -19,7 +20,7 @@ export function useCheckoutVersion() {
   const { settings } = useSettings();
 
   const { isPending: isCheckingOutVersion, mutateAsync: checkoutVersion } =
-    useMutation<void, Error, CheckoutVersionVariables>({
+    useMutation<CheckoutVersionResponse, Error, CheckoutVersionVariables>({
       mutationFn: async ({ appId, versionId }) => {
         if (appId === null) {
           // Should be caught by UI logic before calling, but as a safeguard.
@@ -30,12 +31,17 @@ export function useCheckoutVersion() {
         }
         setActiveCheckouts((prev) => prev + 1); // Increment counter
         try {
-          await ipc.version.checkoutVersion({ appId, versionId });
+          return await ipc.version.checkoutVersion({ appId, versionId });
         } finally {
           setActiveCheckouts((prev) => prev - 1); // Decrement counter
         }
       },
-      onSuccess: async (_, variables) => {
+      onSuccess: async (result, variables) => {
+        // The code was checked out, but the database snapshot may not have been
+        // restored (e.g. the version is older than Neon's retention window).
+        if (result?.warningMessage) {
+          toast.warning(result.warningMessage);
+        }
         // Invalidate queries that depend on the current version/branch
         await queryClient.invalidateQueries({
           queryKey: queryKeys.branches.current({ appId: variables.appId }),

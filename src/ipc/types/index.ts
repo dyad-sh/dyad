@@ -248,6 +248,7 @@ export type {
   RevertVersionParams,
   RevertVersionResponse,
   VersionChangedFile,
+  CheckoutVersionResponse,
 } from "./version";
 
 // Language model types

@@ -72,6 +72,14 @@ export const GetVersionChangesParamsSchema = z.object({
     .regex(/^[0-9a-fA-F]{4,64}$/, "versionId must be a hex commit SHA"),
 });
 
+export const CheckoutVersionResponseSchema = z.object({
+  warningMessage: z.string().optional(),
+});
+
+export type CheckoutVersionResponse = z.infer<
+  typeof CheckoutVersionResponseSchema
+>;
+
 // =============================================================================
 // Version Contracts
 // =============================================================================
@@ -92,7 +100,7 @@ export const versionContracts = {
   checkoutVersion: defineContract({
     channel: "checkout-version",
     input: CheckoutVersionParamsSchema,
-    output: z.void(),
+    output: CheckoutVersionResponseSchema,
   }),
 
   getVersionChanges: defineContract({

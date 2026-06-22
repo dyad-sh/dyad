@@ -16,6 +16,11 @@ export type Turn = {
   toolCalls?: ToolCall[];
   /** Text to output after tool results are received (final turn only) */
   textAfterTools?: string;
+  /**
+   * Optional delay (ms) to wait before streaming this turn's response. Used to
+   * keep a stream open long enough for tests to cancel it mid-flight.
+   */
+  delayMs?: number;
   /** Optional usage data to include in the final streaming chunk (for testing token-based features like compaction) */
   usage?: {
     prompt_tokens: number;

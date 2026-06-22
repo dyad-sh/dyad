@@ -66,6 +66,7 @@ import {
   escapeXmlContent,
   UserMessageContentPart,
   FileEditTracker,
+  type Todo,
 } from "./tools/types";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
@@ -76,7 +77,7 @@ import {
   ensureToolResultOrdering,
   type InjectedMessage,
 } from "./prepare_step_utils";
-import { loadTodos } from "./todo_persistence";
+import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
@@ -593,6 +594,9 @@ export async function handleLocalAgentStream(
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
   const warningMessages: string[] = [];
+  // Snapshot of todos persisted by a previous turn. Declared outside the try so
+  // the cancellation handler in `catch` can roll back to this pre-turn state.
+  let persistedTodos: Todo[] = [];
 
   try {
     // Get model client
@@ -602,7 +606,7 @@ export async function handleLocalAgentStream(
     );
 
     // Load persisted todos from a previous turn (if any)
-    const persistedTodos = await loadTodos(appPath, chat.id);
+    persistedTodos = await loadTodos(appPath, chat.id);
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
@@ -1474,6 +1478,7 @@ export async function handleLocalAgentStream(
           content: appendCancelledResponseNotice(fullResponse ?? ""),
         })
         .where(eq(messages.id, placeholderMessageId));
+      await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
       return false; // Cancelled - don't consume quota
     }
 
@@ -1632,6 +1637,7 @@ export async function handleLocalAgentStream(
           content: appendCancelledResponseNotice(fullResponse ?? ""),
         })
         .where(eq(messages.id, placeholderMessageId));
+      await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
       return false; // Cancelled - don't consume quota
     }
 
@@ -1654,6 +1660,34 @@ export async function handleLocalAgentStream(
       streamingPreview = "";
     }
   }
+}
+
+/**
+ * Roll back a chat's todos to its pre-turn state when its turn is cancelled.
+ *
+ * Only the todos created or changed by the cancelled response should be
+ * discarded — todos persisted by an earlier successful turn must survive so a
+ * cancelled follow-up (or a read-only turn) doesn't silently lose outstanding
+ * work. We therefore restore the `priorTodos` snapshot captured at turn start:
+ * if it is empty (no todos existed before this turn) we delete the file, and
+ * otherwise we rewrite it with the snapshot. Either way the renderer is sent the
+ * restored list so its UI matches disk.
+ */
+async function clearTodosOnCancel(
+  event: IpcMainInvokeEvent,
+  appPath: string,
+  chatId: number,
+  priorTodos: Todo[],
+): Promise<void> {
+  if (priorTodos.length > 0) {
+    await saveTodos(appPath, chatId, priorTodos);
+  } else {
+    await deleteTodos(appPath, chatId);
+  }
+  safeSend(event.sender, "agent-tool:todos-update", {
+    chatId,
+    todos: priorTodos,
+  });
 }
 
 function buildTerminatedRetryContinuationInstruction(): ModelMessage {

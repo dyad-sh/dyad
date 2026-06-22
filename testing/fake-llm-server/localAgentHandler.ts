@@ -657,6 +657,29 @@ export async function handleLocalAgentFixture(
       }
     }
 
+    // Optional delay so tests can cancel the stream while it is still open.
+    // Abort the wait as soon as the client disconnects so the timer doesn't
+    // keep the event loop alive (delaying test teardown) and we don't later
+    // try to write to a closed response (ERR_STREAM_WRITE_AFTER_END / EPIPE).
+    if (turn.delayMs && turn.delayMs > 0) {
+      let aborted = false;
+      await new Promise<void>((resolve) => {
+        const onClose = () => {
+          aborted = true;
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          req.removeListener("close", onClose);
+          resolve();
+        }, turn.delayMs);
+        req.once("close", onClose);
+      });
+      if (aborted || req.destroyed) {
+        return;
+      }
+    }
+
     // If this turn has tool calls, stream them
     if (turn.toolCalls && turn.toolCalls.length > 0) {
       const dropAfterToolCalls =

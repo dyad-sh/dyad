@@ -180,6 +180,32 @@ describe("resolveMcpToolDefs", () => {
     expect(found.map((d) => d.jsName)).toEqual(["github__create_issue"]);
     expect(missing).toEqual(["nope"]);
   });
+
+  it("returns all matches when a raw toolName is shared across servers", () => {
+    const collidingDefs = [
+      def({ jsName: "github__create_issue", toolName: "create_issue" }),
+      def({ jsName: "linear__create_issue", toolName: "create_issue" }),
+    ];
+    const { found, missing } = resolveMcpToolDefs(collidingDefs, [
+      "create_issue",
+    ]);
+    expect(found.map((d) => d.jsName)).toEqual([
+      "github__create_issue",
+      "linear__create_issue",
+    ]);
+    expect(missing).toEqual([]);
+  });
+
+  it("resolves a jsName to exactly its def even when the toolName collides", () => {
+    const collidingDefs = [
+      def({ jsName: "github__create_issue", toolName: "create_issue" }),
+      def({ jsName: "linear__create_issue", toolName: "create_issue" }),
+    ];
+    const { found } = resolveMcpToolDefs(collidingDefs, [
+      "linear__create_issue",
+    ]);
+    expect(found.map((d) => d.jsName)).toEqual(["linear__create_issue"]);
+  });
 });
 
 function createCtx(): AgentContext {

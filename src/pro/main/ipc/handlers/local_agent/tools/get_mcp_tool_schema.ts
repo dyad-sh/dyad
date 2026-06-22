@@ -38,7 +38,8 @@ export const getMcpToolSchemaTool: ToolDefinition<GetMcpToolSchemaArgs> = {
     "Get the description and full TypeScript signature of MCP tools by name. " +
     "The MCP tools listed in execute_sandbox_script show only names; call " +
     "this to get a tool's description and input schema before calling it as " +
-    "a host function inside a script.",
+    "a host function inside a script. If a name is shared by tools on more " +
+    "than one server, the signatures for all of them are returned.",
   inputSchema: getMcpToolSchemaSchema,
   defaultConsent: "always",
 
@@ -51,9 +52,12 @@ export const getMcpToolSchemaTool: ToolDefinition<GetMcpToolSchemaArgs> = {
     `Get schema for MCP tool(s): ${args.tools.join(", ")}`,
 
   buildXml: (args, isComplete) => {
-    if (!args.tools || args.tools.length === 0) return undefined;
     if (isComplete) return undefined;
-    return `<dyad-mcp-tool-schema tools="${escapeXmlAttr(args.tools.join(", "))}">Loading...`;
+    // buildXml runs on partial, unvalidated args mid-stream; `tools` may not be
+    // an array yet, so guard before joining.
+    const tools = Array.isArray(args.tools) ? args.tools : [];
+    if (tools.length === 0) return undefined;
+    return `<dyad-mcp-tool-schema tools="${escapeXmlAttr(tools.join(", "))}">Loading...`;
   },
 
   execute: async (args: GetMcpToolSchemaArgs, ctx: AgentContext) => {

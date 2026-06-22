@@ -269,28 +269,39 @@ export function buildMcpToolNameInventory(defs: McpToolDef[]): string {
 
 /**
  * Resolve caller-supplied tool names to defs. Accepts either the sandbox
- * `jsName` (what the inventory lists) or the raw MCP `toolName`, so the model
- * can ask for whichever it has. Names matching nothing land in `missing`.
- * Order follows the requested names; duplicates are collapsed.
+ * `jsName` (unique, what the inventory lists) or the raw MCP `toolName` (not
+ * unique: two servers can expose the same `toolName`). A jsName resolves to
+ * exactly one def; a raw toolName resolves to every def that shares it, so an
+ * ambiguous name returns all candidates rather than silently picking one.
+ * Names matching nothing land in `missing`. Order follows the requested names;
+ * duplicate defs are collapsed by jsName.
  */
 export function resolveMcpToolDefs(
   defs: McpToolDef[],
   names: string[],
 ): { found: McpToolDef[]; missing: string[] } {
   const byJsName = new Map(defs.map((d) => [d.jsName, d]));
-  const byToolName = new Map(defs.map((d) => [d.toolName, d]));
+  const byToolName = new Map<string, McpToolDef[]>();
+  for (const d of defs) {
+    const list = byToolName.get(d.toolName) ?? [];
+    list.push(d);
+    byToolName.set(d.toolName, list);
+  }
   const found: McpToolDef[] = [];
   const missing: string[] = [];
   const seen = new Set<string>();
   for (const name of names) {
-    const def = byJsName.get(name) ?? byToolName.get(name);
-    if (!def) {
+    const jsMatch = byJsName.get(name);
+    const matches = jsMatch ? [jsMatch] : (byToolName.get(name) ?? []);
+    if (matches.length === 0) {
       missing.push(name);
       continue;
     }
-    if (seen.has(def.jsName)) continue;
-    seen.add(def.jsName);
-    found.push(def);
+    for (const def of matches) {
+      if (seen.has(def.jsName)) continue;
+      seen.add(def.jsName);
+      found.push(def);
+    }
   }
   return { found, missing };
 }

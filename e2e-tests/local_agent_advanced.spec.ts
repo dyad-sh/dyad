@@ -139,6 +139,12 @@ testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
   await expect(po.page.getByText("add numbers").first()).toBeVisible();
 
   await po.snapshotMessages();
+
+  // Capture the request payload so the search-mode prompt (tool name inventory
+  // + get_mcp_tool_schema / search_mcp_tools wording) is covered, not just the
+  // rendered card.
+  await po.sendPrompt("[dump] add two numbers");
+  await po.snapshotServerDump("request");
 });
 
 /**

@@ -219,4 +219,17 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
     // point is to keep schemas out of context until requested).
     expect(desc).not.toContain("declare function Sentry__get_issue");
   });
+
+  it("omits get_mcp_tool_schema wording when that tool is not registered", async () => {
+    const desc = await buildExecuteSandboxScriptDescription(
+      [def("Sentry", "get_issue"), def("Linear", "create_issue")],
+      { useSearch: true, hasGetSchemaTool: false },
+    );
+
+    // Names are still listed, and search is still offered.
+    expect(desc).toContain("Sentry__get_issue");
+    expect(desc).toContain("search_mcp_tools");
+    // But the model must not be told to call the filtered-out tool.
+    expect(desc).not.toContain("get_mcp_tool_schema");
+  });
 });

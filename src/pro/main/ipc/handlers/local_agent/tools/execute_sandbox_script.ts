@@ -207,18 +207,33 @@ ${typeDefsBlock}
 // sees what exists without paying for the full declarations. To call a tool it
 // pulls the full signature with `get_mcp_tool_schema` (when it recognizes the
 // tool) or finds one with `search_mcp_tools` (when it doesn't).
-function buildMcpSearchAddendum(defs: McpToolDef[]): string {
+//
+// `hasGetSchemaTool` reflects whether `get_mcp_tool_schema` is actually
+// registered this turn. A user can set it to `never` in tool permissions,
+// which filters it out while search mode stays on; in that case the wording
+// must not tell the model to call a tool that isn't available.
+function buildMcpSearchAddendum(
+  defs: McpToolDef[],
+  hasGetSchemaTool: boolean,
+): string {
   const inventory = buildMcpToolNameInventory(defs);
+  const howToUse = hasGetSchemaTool
+    ? `1. If you recognize the tool you need, call \`get_mcp_tool_schema\` with its name(s) to get its description and full TypeScript declaration.
+2. If you are not sure which tool you need, call \`search_mcp_tools\` with keywords (optionally a \`server\`) to find candidates and get their declarations.
+3. Call the declared host functions inside this script, exactly as declared.`
+    : `1. Call \`search_mcp_tools\` with keywords (optionally a \`server\`) to get the TypeScript declarations of the tools you need.
+2. Call the declared host functions inside this script, exactly as declared.`;
+  const inventoryHeading = hasGetSchemaTool
+    ? "Available MCP tools (call get_mcp_tool_schema for a tool's signature):"
+    : "Available MCP tools (search for one with search_mcp_tools to get its signature):";
   return `
 
 MCP tools can also be invoked from inside the script. The tools available on each connected server are listed below by name only. To use one:
-1. If you recognize the tool you need, call \`get_mcp_tool_schema\` with its name(s) to get its description and full TypeScript declaration.
-2. If you are not sure which tool you need, call \`search_mcp_tools\` with keywords (optionally a \`server\`) to find candidates and get their declarations.
-3. Call the declared host functions inside this script, exactly as declared.
+${howToUse}
 - Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
 - MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
 
-Available MCP tools (call get_mcp_tool_schema for a tool's signature):
+${inventoryHeading}
 \`\`\`
 ${inventory}
 \`\`\``;
@@ -236,17 +251,21 @@ ${inventory}
  */
 export async function buildExecuteSandboxScriptDescription(
   precomputedDefs?: McpToolDef[],
-  options?: { useSearch?: boolean },
+  options?: { useSearch?: boolean; hasGetSchemaTool?: boolean },
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
   if (defs.length === 0) {
     return FILES_ONLY_PREAMBLE;
   }
-  // Search mode (experiment on): point the model at `search_mcp_tools`
-  // instead of inlining every tool's declarations. The full per-tool block is
-  // only embedded when search is off.
+  // Search mode: list tool names and point the model at the discovery tools
+  // instead of inlining every tool's declarations. `hasGetSchemaTool` defaults
+  // to true since get_mcp_tool_schema is normally registered alongside search;
+  // the handler passes false when tool permissions have filtered it out.
   if (options?.useSearch) {
-    return FILES_ONLY_PREAMBLE + buildMcpSearchAddendum(defs);
+    return (
+      FILES_ONLY_PREAMBLE +
+      buildMcpSearchAddendum(defs, options.hasGetSchemaTool ?? true)
+    );
   }
   return FILES_ONLY_PREAMBLE + buildMcpAddendum(buildMcpTypeDefsBlock(defs));
 }

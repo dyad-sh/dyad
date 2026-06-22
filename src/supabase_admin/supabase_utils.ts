@@ -544,17 +544,24 @@ export async function deploySupabaseFunctions({
     const requestedFunctionNames = functionNames
       ? Array.from(new Set(functionNames))
       : undefined;
+    const missingRequestedFunctionNames: string[] = [];
     const validFunctions = requestedFunctionNames
       ? requestedFunctionNames.filter((functionName) => {
           if (allValidFunctionNames.has(functionName)) {
             return true;
           }
+          missingRequestedFunctionNames.push(functionName);
           logger.warn(
             `Skipping ${functionName}: index.ts not found in local functions directory`,
           );
           return false;
         })
       : allValidFunctions;
+    if (missingRequestedFunctionNames.length > 0) {
+      const errorMessage = `Requested Supabase functions do not exist locally or are missing index.ts: ${missingRequestedFunctionNames.join(", ")}`;
+      logger.error(errorMessage);
+      errors.push(errorMessage);
+    }
 
     logger.info(
       `Found ${validFunctions.length} functions to deploy in ${functionsDir}`,
@@ -565,10 +572,8 @@ export async function deploySupabaseFunctions({
       if (!requestedFunctionNames) {
         return [];
       }
-      if (requestedFunctionNames.length > 0) {
-        const errorMessage = `Requested Supabase functions do not exist locally or are missing index.ts: ${requestedFunctionNames.join(", ")}`;
-        logger.error(errorMessage);
-        return [errorMessage];
+      if (errors.length > 0) {
+        return errors;
       }
     }
 

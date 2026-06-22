@@ -228,6 +228,33 @@ describe("deployAllSupabaseFunctions progress", () => {
     expect(listSupabaseFunctions).not.toHaveBeenCalled();
   });
 
+  it("returns an error for missing requested functions while deploying valid requested functions", async () => {
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        functionNames: ["alpha", "missing"],
+      }),
+    ).resolves.toEqual([
+      "Requested Supabase functions do not exist locally or are missing index.ts: missing",
+    ]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "alpha",
+        bundleOnly: true,
+      }),
+    );
+    expect(bulkUpdateFunctions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functions: [expect.objectContaining({ slug: "alpha" })],
+      }),
+    );
+  });
+
   it("does not prune during partial deploys when pruning is skipped", async () => {
     vi.mocked(listSupabaseFunctions).mockResolvedValue([
       { slug: "old-fn" },

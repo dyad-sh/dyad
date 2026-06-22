@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  deployAffectedSupabaseFunctions,
   deployAllSupabaseFunctions,
   deploySupabaseFunctions,
   type SupabaseDeployProgress,
@@ -13,6 +15,8 @@ import {
   deploySupabaseFunction,
   listSupabaseFunctions,
 } from "@/supabase_admin/supabase_management_client";
+
+const require = createRequire(import.meta.url);
 
 vi.mock("@/supabase_admin/supabase_management_client", async () => {
   const actual = await vi.importActual<
@@ -272,5 +276,90 @@ describe("deployAllSupabaseFunctions progress", () => {
 
     expect(listSupabaseFunctions).not.toHaveBeenCalled();
     expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
+  it("deploys pending functions when no shared modules changed", async () => {
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: false,
+        changedSharedModulePaths: [],
+        pendingFunctionDeploys: ["beta", "beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "beta",
+        bundleOnly: true,
+      }),
+    );
+  });
+
+  it("falls back to all functions when shared paths are missing", async () => {
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: [],
+        pendingFunctionDeploys: ["beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(2);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "alpha" }),
+    );
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "beta" }),
+    );
+  });
+
+  it("deploys the union of shared-affected functions and pending functions", async () => {
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    await fs.mkdir(nodeModulesPath, { recursive: true });
+    await fs.symlink(
+      path.dirname(require.resolve("typescript/package.json")),
+      path.join(nodeModulesPath, "typescript"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await fs.mkdir(path.join(appPath, "supabase", "functions", "_shared"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(appPath, "supabase", "functions", "_shared", "foo.ts"),
+      "export const foo = 1;",
+    );
+    await fs.writeFile(
+      path.join(appPath, "supabase", "functions", "alpha", "index.ts"),
+      "import '../_shared/foo.ts';",
+    );
+
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: ["beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(2);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "alpha" }),
+    );
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "beta" }),
+    );
   });
 });

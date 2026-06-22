@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  deployAllSupabaseFunctions: vi.fn(),
-  deploySupabaseFunctions: vi.fn(),
-  getSupabaseFunctionsAffectedBySharedModules: vi.fn(),
+  deployAffectedSupabaseFunctions: vi.fn(),
   readSettings: vi.fn(),
 }));
 
@@ -14,10 +12,7 @@ vi.mock("../../../../../../supabase_admin/supabase_utils", async () => {
 
   return {
     ...actual,
-    deployAllSupabaseFunctions: mocks.deployAllSupabaseFunctions,
-    deploySupabaseFunctions: mocks.deploySupabaseFunctions,
-    getSupabaseFunctionsAffectedBySharedModules:
-      mocks.getSupabaseFunctionsAffectedBySharedModules,
+    deployAffectedSupabaseFunctions: mocks.deployAffectedSupabaseFunctions,
   };
 });
 
@@ -31,15 +26,10 @@ describe("deployAllFunctionsIfNeeded", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.readSettings.mockReturnValue({ skipPruneEdgeFunctions: false });
-    mocks.deployAllSupabaseFunctions.mockResolvedValue([]);
-    mocks.deploySupabaseFunctions.mockResolvedValue([]);
-    mocks.getSupabaseFunctionsAffectedBySharedModules.mockResolvedValue({
-      kind: "partial",
-      functionNames: ["alpha"],
-    });
+    mocks.deployAffectedSupabaseFunctions.mockResolvedValue([]);
   });
 
-  it("deploys the union of shared-affected functions and skipped direct function deploys", async () => {
+  it("delegates shared changes and skipped direct function deploys to the shared deploy helper", async () => {
     const result = await deployAllFunctionsIfNeeded({
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
@@ -52,54 +42,24 @@ describe("deployAllFunctionsIfNeeded", () => {
     });
 
     expect(result).toEqual({ success: true });
-    expect(
-      mocks.getSupabaseFunctionsAffectedBySharedModules,
-    ).toHaveBeenCalledWith({
-      appPath: "/apps/test",
-      changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
-    });
-    expect(mocks.deploySupabaseFunctions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        functionNames: ["alpha", "beta"],
-      }),
-    );
-    expect(mocks.deployAllSupabaseFunctions).not.toHaveBeenCalled();
-  });
-
-  it("falls back to all function deploys when analysis is ambiguous", async () => {
-    mocks.getSupabaseFunctionsAffectedBySharedModules.mockResolvedValueOnce({
-      kind: "all",
-      reason: "unresolved_relative_import:../_shared/foo.ts",
-    });
-
-    const result = await deployAllFunctionsIfNeeded({
-      appPath: "/apps/test",
-      supabaseProjectId: "project-id",
-      supabaseOrganizationSlug: "org",
-      isSharedModulesChanged: true,
-      sharedServerModulePaths: ["supabase/functions/_shared/foo.ts"],
-      pendingFunctionDeploys: ["beta"],
-      onXmlStream: vi.fn(),
-      onXmlComplete: vi.fn(),
-    });
-
-    expect(result).toEqual({ success: true });
-    expect(mocks.deployAllSupabaseFunctions).toHaveBeenCalledWith(
+    expect(mocks.deployAffectedSupabaseFunctions).toHaveBeenCalledWith(
       expect.objectContaining({
         appPath: "/apps/test",
         supabaseProjectId: "project-id",
-        supabaseOrganizationSlug: "org",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: ["beta"],
+        onProgress: expect.any(Function),
       }),
     );
-    expect(mocks.deploySupabaseFunctions).not.toHaveBeenCalled();
   });
 
-  it("calls the deploy helper for empty partial impact so pruning can still run", async () => {
-    mocks.getSupabaseFunctionsAffectedBySharedModules.mockResolvedValueOnce({
-      kind: "partial",
-      functionNames: [],
-    });
-
+  it("returns deploy warnings from the shared helper", async () => {
+    mocks.deployAffectedSupabaseFunctions.mockResolvedValueOnce([
+      "Failed to bundle alpha",
+    ]);
     const result = await deployAllFunctionsIfNeeded({
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
@@ -111,11 +71,10 @@ describe("deployAllFunctionsIfNeeded", () => {
       onXmlComplete: vi.fn(),
     });
 
-    expect(result).toEqual({ success: true });
-    expect(mocks.deploySupabaseFunctions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        functionNames: [],
-      }),
-    );
+    expect(result).toEqual({
+      success: true,
+      warning:
+        "Some Supabase functions failed to deploy: Failed to bundle alpha",
+    });
   });
 });

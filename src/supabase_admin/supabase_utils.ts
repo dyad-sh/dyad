@@ -124,7 +124,7 @@ export function extractFunctionNameFromPath(filePath: string): string {
   return functionName;
 }
 
-type SupabaseFunctionImpact =
+export type SupabaseFunctionImpact =
   | { kind: "partial"; functionNames: string[] }
   | { kind: "all"; reason: string };
 
@@ -501,6 +501,80 @@ export async function getSupabaseFunctionsAffectedBySharedModules({
   }
 
   return { kind: "partial", functionNames: affectedFunctionNames };
+}
+
+/**
+ * Deploys the right Supabase function set after shared module changes and/or
+ * deferred direct function deploys.
+ */
+export async function deployAffectedSupabaseFunctions({
+  appPath,
+  supabaseProjectId,
+  supabaseOrganizationSlug,
+  skipPruneEdgeFunctions,
+  sharedModulesChanged,
+  changedSharedModulePaths,
+  pendingFunctionDeploys,
+  onProgress,
+}: {
+  appPath: string;
+  supabaseProjectId: string;
+  supabaseOrganizationSlug: string | null;
+  skipPruneEdgeFunctions: boolean;
+  sharedModulesChanged: boolean;
+  changedSharedModulePaths: string[];
+  pendingFunctionDeploys: string[];
+  onProgress?: (progress: SupabaseDeployProgress) => void;
+}): Promise<string[]> {
+  const deployArgs = {
+    appPath,
+    supabaseProjectId,
+    supabaseOrganizationSlug,
+    skipPruneEdgeFunctions,
+    onProgress,
+  };
+
+  if (sharedModulesChanged) {
+    const impact =
+      changedSharedModulePaths.length > 0
+        ? await getSupabaseFunctionsAffectedBySharedModules({
+            appPath,
+            changedSharedModulePaths,
+          })
+        : ({
+            kind: "all",
+            reason: "changed_shared_paths_missing",
+          } as const);
+
+    if (impact.kind === "partial") {
+      const functionNames = Array.from(
+        new Set([...impact.functionNames, ...pendingFunctionDeploys]),
+      );
+      logger.info(
+        functionNames.length > 0
+          ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
+          : "Shared modules changed, no affected Supabase functions to bundle",
+      );
+      return deploySupabaseFunctions({
+        ...deployArgs,
+        functionNames,
+      });
+    }
+
+    logger.info(
+      `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
+    );
+    return deployAllSupabaseFunctions(deployArgs);
+  }
+
+  const functionNames = Array.from(new Set(pendingFunctionDeploys));
+  logger.info(
+    `Redeploying pending Supabase functions: ${functionNames.join(", ")}`,
+  );
+  return deploySupabaseFunctions({
+    ...deployArgs,
+    functionNames,
+  });
 }
 
 /**

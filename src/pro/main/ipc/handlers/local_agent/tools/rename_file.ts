@@ -106,7 +106,10 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                   extractFunctionNameFromPath(args.to),
                 );
               } catch (error) {
-                return `File renamed, but failed to deploy Supabase function: ${error}`;
+                logger.warn(
+                  `File renamed, but failed to identify Supabase function name: ${args.to}`,
+                  error,
+                );
               }
             }
           }

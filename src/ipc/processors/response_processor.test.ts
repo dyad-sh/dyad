@@ -11,9 +11,7 @@ const mocks = vi.hoisted(() => ({
   readSettingsMock: vi.fn(),
   executeSupabaseSqlMock: vi.fn(),
   writeMigrationFileMock: vi.fn(),
-  deployAllSupabaseFunctionsMock: vi.fn(),
-  deploySupabaseFunctionsMock: vi.fn(),
-  getSupabaseFunctionsAffectedBySharedModulesMock: vi.fn(),
+  deployAffectedSupabaseFunctionsMock: vi.fn(),
 }));
 
 const {
@@ -22,9 +20,7 @@ const {
   readSettingsMock,
   executeSupabaseSqlMock,
   writeMigrationFileMock,
-  deployAllSupabaseFunctionsMock,
-  deploySupabaseFunctionsMock,
-  getSupabaseFunctionsAffectedBySharedModulesMock,
+  deployAffectedSupabaseFunctionsMock,
 } = mocks;
 
 const dbUpdates: Array<Record<string, unknown>> = [];
@@ -95,10 +91,7 @@ vi.mock("../../supabase_admin/supabase_utils", async () => {
 
   return {
     ...actual,
-    deployAllSupabaseFunctions: mocks.deployAllSupabaseFunctionsMock,
-    deploySupabaseFunctions: mocks.deploySupabaseFunctionsMock,
-    getSupabaseFunctionsAffectedBySharedModules:
-      mocks.getSupabaseFunctionsAffectedBySharedModulesMock,
+    deployAffectedSupabaseFunctions: mocks.deployAffectedSupabaseFunctionsMock,
   };
 });
 
@@ -133,12 +126,7 @@ describe("processFullResponseActions add dependency errors", () => {
     writeMigrationFileMock.mockResolvedValue(
       "supabase/migrations/0000_test.sql",
     );
-    deployAllSupabaseFunctionsMock.mockResolvedValue([]);
-    deploySupabaseFunctionsMock.mockResolvedValue([]);
-    getSupabaseFunctionsAffectedBySharedModulesMock.mockResolvedValue({
-      kind: "partial",
-      functionNames: ["alpha"],
-    });
+    deployAffectedSupabaseFunctionsMock.mockResolvedValue([]);
 
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
@@ -307,7 +295,7 @@ describe("processFullResponseActions add dependency errors", () => {
     });
   });
 
-  it("deploys shared-affected and skipped direct Supabase functions", async () => {
+  it("delegates shared-affected and skipped direct Supabase functions to the shared deploy helper", async () => {
     vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
@@ -333,26 +321,24 @@ describe("processFullResponseActions add dependency errors", () => {
     );
 
     expect(result).toMatchObject({ updatedFiles: true });
-    expect(
-      getSupabaseFunctionsAffectedBySharedModulesMock,
-    ).toHaveBeenCalledWith({
-      appPath: "/mock/apps/test-app",
-      changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
-    });
-    expect(deploySupabaseFunctionsMock).toHaveBeenCalledWith(
+    expect(deployAffectedSupabaseFunctionsMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        functionNames: ["alpha", "beta"],
+        appPath: "/mock/apps/test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: ["beta"],
       }),
     );
-    expect(deployAllSupabaseFunctionsMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to all Supabase functions for ambiguous shared dependency analysis", async () => {
+  it("surfaces shared deploy helper errors", async () => {
     vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
-    getSupabaseFunctionsAffectedBySharedModulesMock.mockResolvedValueOnce({
-      kind: "all",
-      reason: "typescript_not_installed",
-    });
+    deployAffectedSupabaseFunctionsMock.mockResolvedValueOnce([
+      "Failed to bundle alpha",
+    ]);
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
       appId: 1,
@@ -373,46 +359,19 @@ describe("processFullResponseActions add dependency errors", () => {
       },
     );
 
-    expect(deployAllSupabaseFunctionsMock).toHaveBeenCalledWith({
-      appPath: "/mock/apps/test-app",
-      supabaseProjectId: "supabase-project",
-      supabaseOrganizationSlug: "org",
-      skipPruneEdgeFunctions: false,
-    });
-    expect(deploySupabaseFunctionsMock).not.toHaveBeenCalled();
-  });
-
-  it("calls partial deploy helper for empty shared impact so pruning can still run", async () => {
-    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
-    getSupabaseFunctionsAffectedBySharedModulesMock.mockResolvedValueOnce({
-      kind: "partial",
-      functionNames: [],
-    });
-    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
-      id: 1,
-      appId: 1,
-      app: {
-        id: 1,
-        path: "test-app",
-        supabaseProjectId: "supabase-project",
-        supabaseOrganizationSlug: null,
-      },
-    } as any);
-
-    await processFullResponseActions(
-      '<dyad-write path="supabase/functions/_shared/unused.ts">export const unused = 1;</dyad-write>',
-      1,
-      {
-        chatSummary: undefined,
-        messageId: 1,
-      },
+    const contentUpdate = dbUpdates.find(
+      (update) =>
+        typeof update.content === "string" &&
+        update.content.includes("Failed to bundle alpha"),
     );
-
-    expect(deploySupabaseFunctionsMock).toHaveBeenCalledWith(
+    expect(contentUpdate?.content).toContain(
+      'message="Failed to deploy Supabase function after shared module change"',
+    );
+    expect(contentUpdate?.content).toContain("Failed to bundle alpha");
+    expect(deployAffectedSupabaseFunctionsMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        functionNames: [],
+        supabaseOrganizationSlug: "org",
       }),
     );
-    expect(deployAllSupabaseFunctionsMock).not.toHaveBeenCalled();
   });
 });

@@ -9,9 +9,7 @@ import {
   getGitUncommittedFiles,
 } from "@/ipc/utils/git_utils";
 import {
-  deployAllSupabaseFunctions,
-  deploySupabaseFunctions,
-  getSupabaseFunctionsAffectedBySharedModules,
+  deployAffectedSupabaseFunctions,
   type SupabaseDeployProgress,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
@@ -83,11 +81,14 @@ export async function deployAllFunctionsIfNeeded(
 
   try {
     const settings = readSettings();
-    const deployArgs = {
+    const deployErrors = await deployAffectedSupabaseFunctions({
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+      sharedModulesChanged: ctx.isSharedModulesChanged,
+      changedSharedModulePaths: ctx.sharedServerModulePaths,
+      pendingFunctionDeploys: ctx.pendingFunctionDeploys,
       onProgress: (progress: SupabaseDeployProgress) => {
         const statusXml = renderSupabaseDeployStatus(progress);
         if (progress.phase === "finished" || progress.phase === "failed") {
@@ -96,50 +97,7 @@ export async function deployAllFunctionsIfNeeded(
           ctx.onXmlStream(statusXml);
         }
       },
-    };
-
-    let deployErrors: string[];
-    if (ctx.isSharedModulesChanged) {
-      const impact =
-        ctx.sharedServerModulePaths.length > 0
-          ? await getSupabaseFunctionsAffectedBySharedModules({
-              appPath: ctx.appPath,
-              changedSharedModulePaths: ctx.sharedServerModulePaths,
-            })
-          : ({
-              kind: "all",
-              reason: "changed_shared_paths_missing",
-            } as const);
-
-      if (impact.kind === "partial") {
-        const functionNames = Array.from(
-          new Set([...impact.functionNames, ...ctx.pendingFunctionDeploys]),
-        );
-        logger.info(
-          functionNames.length > 0
-            ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
-            : "Shared modules changed, no affected Supabase functions to bundle",
-        );
-        deployErrors = await deploySupabaseFunctions({
-          ...deployArgs,
-          functionNames,
-        });
-      } else {
-        logger.info(
-          `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
-        );
-        deployErrors = await deployAllSupabaseFunctions(deployArgs);
-      }
-    } else {
-      const functionNames = Array.from(new Set(ctx.pendingFunctionDeploys));
-      logger.info(
-        `Redeploying pending Supabase functions: ${functionNames.join(", ")}`,
-      );
-      deployErrors = await deploySupabaseFunctions({
-        ...deployArgs,
-        functionNames,
-      });
-    }
+    });
 
     if (deployErrors.length > 0) {
       return {

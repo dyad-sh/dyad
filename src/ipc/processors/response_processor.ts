@@ -19,9 +19,7 @@ import {
 import {
   isServerFunction,
   isSharedServerModule,
-  deployAllSupabaseFunctions,
-  deploySupabaseFunctions,
-  getSupabaseFunctionsAffectedBySharedModules,
+  deployAffectedSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
@@ -608,56 +606,16 @@ export async function processFullResponseActions(
     ) {
       try {
         const settings = readSettings();
-        const deployArgs = {
+        const deployErrors = await deployAffectedSupabaseFunctions({
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug:
             chatWithApp.app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-        };
-        let deployErrors: string[];
-
-        if (sharedModulesChanged) {
-          const impact =
-            changedSharedModulePaths.length > 0
-              ? await getSupabaseFunctionsAffectedBySharedModules({
-                  appPath,
-                  changedSharedModulePaths,
-                })
-              : ({
-                  kind: "all",
-                  reason: "changed_shared_paths_missing",
-                } as const);
-
-          if (impact.kind === "partial") {
-            const functionNames = Array.from(
-              new Set([...impact.functionNames, ...pendingFunctionDeploys]),
-            );
-            logger.info(
-              functionNames.length > 0
-                ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
-                : "Shared modules changed, no affected Supabase functions to bundle",
-            );
-            deployErrors = await deploySupabaseFunctions({
-              ...deployArgs,
-              functionNames,
-            });
-          } else {
-            logger.info(
-              `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
-            );
-            deployErrors = await deployAllSupabaseFunctions(deployArgs);
-          }
-        } else {
-          const functionNames = Array.from(new Set(pendingFunctionDeploys));
-          logger.info(
-            `Redeploying pending Supabase functions: ${functionNames.join(", ")}`,
-          );
-          deployErrors = await deploySupabaseFunctions({
-            ...deployArgs,
-            functionNames,
-          });
-        }
+          sharedModulesChanged,
+          changedSharedModulePaths,
+          pendingFunctionDeploys,
+        });
 
         if (deployErrors.length > 0) {
           for (const err of deployErrors) {

@@ -235,3 +235,62 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
 
   return sections.join("\n");
 }
+
+/**
+ * Build a names-only inventory of every MCP tool, grouped by server. Injected
+ * into the search-mode `execute_sandbox_script` description so the model sees
+ * which tools exist without paying for their descriptions or schemas. The
+ * model then pulls a tool's full signature with `get_mcp_tool_schema` (or
+ * finds one via `search_mcp_tools`). Names are the sandbox `jsName` (what the
+ * model actually calls). Returns "" when `defs` is empty.
+ */
+export function buildMcpToolNameInventory(defs: McpToolDef[]): string {
+  if (defs.length === 0) {
+    return "";
+  }
+
+  const byServer = new Map<string, McpToolDef[]>();
+  for (const d of defs) {
+    const list = byServer.get(d.serverName) ?? [];
+    list.push(d);
+    byServer.set(d.serverName, list);
+  }
+
+  const sections: string[] = [];
+  for (const [serverName, list] of byServer) {
+    sections.push(`// ${serverName}`);
+    for (const def of list) {
+      sections.push(`- ${def.jsName}`);
+    }
+  }
+
+  return sections.join("\n");
+}
+
+/**
+ * Resolve caller-supplied tool names to defs. Accepts either the sandbox
+ * `jsName` (what the inventory lists) or the raw MCP `toolName`, so the model
+ * can ask for whichever it has. Names matching nothing land in `missing`.
+ * Order follows the requested names; duplicates are collapsed.
+ */
+export function resolveMcpToolDefs(
+  defs: McpToolDef[],
+  names: string[],
+): { found: McpToolDef[]; missing: string[] } {
+  const byJsName = new Map(defs.map((d) => [d.jsName, d]));
+  const byToolName = new Map(defs.map((d) => [d.toolName, d]));
+  const found: McpToolDef[] = [];
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const name of names) {
+    const def = byJsName.get(name) ?? byToolName.get(name);
+    if (!def) {
+      missing.push(name);
+      continue;
+    }
+    if (seen.has(def.jsName)) continue;
+    seen.add(def.jsName);
+    found.push(def);
+  }
+  return { found, missing };
+}

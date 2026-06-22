@@ -20,6 +20,7 @@ import {
 import {
   collectMcpToolDefs,
   buildMcpTypeDefsBlock,
+  buildMcpToolNameInventory,
   buildMcpCapabilityMap,
   type McpToolDef,
 } from "./mcp_type_defs";
@@ -201,33 +202,26 @@ ${typeDefsBlock}
 \`\`\``;
 }
 
-// Search-mode addendum: used when the `enableMcpToolSearch` experiment is on.
-// The per-tool declarations are NOT listed here to keep context lean; the
-// model discovers them via `search_mcp_tools` and then calls the returned
-// host functions from inside the script.
-function buildServerInventory(defs: McpToolDef[]): string {
-  const counts = new Map<string, number>();
-  for (const def of defs) {
-    const name = def.serverName;
-    if (!name) continue;
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  if (counts.size === 0) return "";
-  const list = [...counts.entries()]
-    .map(([name, n]) => `${name} (${n} tool${n === 1 ? "" : "s"})`)
-    .join(", ");
-  return `\nConnected MCP servers: ${list}. Search within one with the \`server\` param, or across all by omitting it.`;
-}
-
+// Search-mode addendum: used when the `enableMcpToolSearch` setting is on.
+// Every tool is listed by NAME ONLY (no descriptions or schemas) so the model
+// sees what exists without paying for the full declarations. To call a tool it
+// pulls the full signature with `get_mcp_tool_schema` (when it recognizes the
+// tool) or finds one with `search_mcp_tools` (when it doesn't).
 function buildMcpSearchAddendum(defs: McpToolDef[]): string {
+  const inventory = buildMcpToolNameInventory(defs);
   return `
 
-MCP tools can also be invoked from inside the script. To use one:
-1. Call the \`search_mcp_tools\` tool with keywords (optionally a \`server\`) to get the TypeScript declarations of the tools you need.
-2. Call those declared host functions inside this script, exactly as declared.
-${buildServerInventory(defs)}
+MCP tools can also be invoked from inside the script. The tools available on each connected server are listed below by name only. To use one:
+1. If you recognize the tool you need, call \`get_mcp_tool_schema\` with its name(s) to get its description and full TypeScript declaration.
+2. If you are not sure which tool you need, call \`search_mcp_tools\` with keywords (optionally a \`server\`) to find candidates and get their declarations.
+3. Call the declared host functions inside this script, exactly as declared.
 - Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
-- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).`;
+- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
+
+Available MCP tools (call get_mcp_tool_schema for a tool's signature):
+\`\`\`
+${inventory}
+\`\`\``;
 }
 
 /**

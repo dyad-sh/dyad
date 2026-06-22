@@ -1,0 +1,14 @@
+- paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
+- paragraph: tc=local-agent/get-mcp-tool-schema
+- paragraph: Let me get the schema for the calculator_add MCP tool.
+- button "MCP Tool Schema calculator_add"
+- paragraph: I have the calculator_add signature and can now call it.
+- button "Copy"
+- button "Copy Request ID"
+- button "Undo"
+- button "Retry"

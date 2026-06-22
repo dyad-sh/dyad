@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildMcpCapabilityMap,
   buildMcpTypeDefsBlock,
+  buildMcpToolNameInventory,
+  resolveMcpToolDefs,
   type McpToolDef,
 } from "./mcp_type_defs";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
@@ -115,6 +117,68 @@ describe("buildMcpTypeDefsBlock", () => {
       declare function b__one(args: Record<string, unknown>): Promise<McpResult>;
       "
     `);
+  });
+});
+
+describe("buildMcpToolNameInventory", () => {
+  it("returns an empty string when defs are empty", () => {
+    expect(buildMcpToolNameInventory([])).toBe("");
+  });
+
+  it("lists jsNames grouped by server, no descriptions or schemas", () => {
+    const block = buildMcpToolNameInventory([
+      def({
+        jsName: "github__search_repositories",
+        serverName: "github",
+        description: "Find repositories by name/description/topic",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      }),
+      def({ jsName: "github__list_commits", serverName: "github" }),
+      def({ jsName: "linear__list_issues", serverName: "linear" }),
+    ]);
+    expect(block).toMatchInlineSnapshot(`
+      "// github
+      - github__search_repositories
+      - github__list_commits
+      // linear
+      - linear__list_issues"
+    `);
+    expect(block).not.toContain("declare function");
+    expect(block).not.toContain("Find repositories");
+    expect(block).not.toContain("query");
+  });
+});
+
+describe("resolveMcpToolDefs", () => {
+  const defs = [
+    def({ jsName: "github__create_issue", toolName: "create_issue" }),
+    def({ jsName: "slack__send_message", toolName: "send_message" }),
+  ];
+
+  it("resolves by jsName and by raw toolName", () => {
+    const { found, missing } = resolveMcpToolDefs(defs, [
+      "github__create_issue",
+      "send_message",
+    ]);
+    expect(found.map((d) => d.jsName)).toEqual([
+      "github__create_issue",
+      "slack__send_message",
+    ]);
+    expect(missing).toEqual([]);
+  });
+
+  it("collapses duplicates and collects unmatched names", () => {
+    const { found, missing } = resolveMcpToolDefs(defs, [
+      "github__create_issue",
+      "create_issue",
+      "nope",
+    ]);
+    expect(found.map((d) => d.jsName)).toEqual(["github__create_issue"]);
+    expect(missing).toEqual(["nope"]);
   });
 });
 

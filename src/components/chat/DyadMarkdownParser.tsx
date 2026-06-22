@@ -31,6 +31,7 @@ import { ipc } from "@/ipc/types";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadMcpToolSearch } from "./DyadMcpToolSearch";
+import { DyadMcpToolSchema } from "./DyadMcpToolSchema";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
@@ -678,6 +679,20 @@ function renderCustomTag(
         >
           {content}
         </DyadMcpToolSearch>
+      );
+
+    case "dyad-mcp-tool-schema":
+      return (
+        <DyadMcpToolSchema
+          node={{
+            properties: {
+              tools: attributes.tools || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadMcpToolSchema>
       );
     case "dyad-mcp-tool-call":
       return (
